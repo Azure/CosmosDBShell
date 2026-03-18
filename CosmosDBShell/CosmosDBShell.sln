@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CosmosDBShell", "CosmosDBShell.csproj", "{57136F46-2510-61DA-1972-90D4EF6953F9}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{57136F46-2510-61DA-1972-90D4EF6953F9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{57136F46-2510-61DA-1972-90D4EF6953F9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{57136F46-2510-61DA-1972-90D4EF6953F9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{57136F46-2510-61DA-1972-90D4EF6953F9}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {77D9DAFE-1C66-41C6-AF5E-E200BDEC67A1}
+	EndGlobalSection
+EndGlobal

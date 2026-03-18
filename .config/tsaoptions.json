@@ -1,0 +1,10 @@
+{
+  "instanceUrl"        :  "https://msdata.visualstudio.com",
+  "projectName"        :  "CosmosDB",
+  "areaPath"           :  "CosmosDB\\Desktop Tooling",
+  "iterationPath"      :  "CosmosDB\\Triage",
+  "notificationAliases":  [
+                            "cdbshelleng@microsoft.com"
+                          ],
+  "codebaseName"       :  "CosmosDBOneBranch"
+}

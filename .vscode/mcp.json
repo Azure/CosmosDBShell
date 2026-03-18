@@ -1,0 +1,7 @@
+{
+    "servers": {
+        "mcp-cosmos_shell": {
+            "url": "http://localhost:6128"
+        }
+    }
+}

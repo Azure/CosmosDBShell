@@ -1,0 +1,29 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "C#: CosmosDBShell Debug ",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/CosmosDBShell/bin/Debug/net9.0/${command:dotnet.getRuntimeIdentifier}/CosmosDBShell",
+            "args": [],
+            "cwd": "${workspaceFolder}/CosmosDBShell",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "osx": {
+                "program": "${workspaceFolder}/CosmosDBShell/bin/Debug/net9.0/osx-x64/CosmosDBShell"
+            },
+            "windows": {
+                "program": "${workspaceFolder}/CosmosDBShell/bin/Debug/net9.0/win-x64/CosmosDBShell.exe"
+            },
+            "linux": {
+                "program": "${workspaceFolder}/CosmosDBShell/bin/Debug/net9.0/linux-x64/CosmosDBShell"
+            },
+            "targetArchitecture": "x86_64",
+        }
+    ]
+}

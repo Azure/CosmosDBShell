@@ -1,0 +1,97 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>    
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DebugType>embedded</DebugType>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>   
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <ApplicationManifest>res\app.manifest</ApplicationManifest>
+    <HighEntropyVA>true</HighEntropyVA>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <RootNamespace />
+    <AssemblyName>CosmosDBShell</AssemblyName>
+    <Product>CosmosDBShell</Product>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <!-- .NET Tool packaging -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>cosmosdbshell</ToolCommandName>
+
+<!-- Removed "any" 
+    <RuntimeIdentifiers>win-x64;linux-x64;linux-arm64;osx-x64;osx-arm64;any</RuntimeIdentifiers>
+    <ToolPackageRuntimeIdentifiers>win-x64;linux-x64;linux-arm64;osx-x64;osx-arm64;any</ToolPackageRuntimeIdentifiers>
+-->
+    <RuntimeIdentifiers>win-x64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <ToolPackageRuntimeIdentifiers>win-x64;linux-x64;linux-arm64;osx-x64;osx-arm64</ToolPackageRuntimeIdentifiers>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>CosmosDBShell</PackageId>
+    <Authors>Microsoft</Authors>
+    <Description>Interactive Cosmos DB Shell CLI with MCP tooling integration.</Description>
+    <RepositoryUrl>https://msdata.visualstudio.com/CosmosDB/_git/CosmosDB-Shell</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>cosmosdb;shell;cli;mcp</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'any'">
+    <PublishSingleFile>false</PublishSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="stylecop.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="stylecop.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="lang\en.ftl" />
+    <EmbeddedResource Include="Azure.Data.Cosmos.Shell.Mcp\ServerInstructions.md" />
+    <EmbeddedResource Include="..\docs\programming.md" Link="docs\programming.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CosmosDBShell.Tests" />
+    <InternalsVisibleTo Include="CosmosDBShell.Fuzzer" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="CommandLineParser" />
+    <PackageReference Include="Fluent.Net" />
+    <PackageReference Include="Microsoft.Azure.Cosmos" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="OmniSharp.Extensions.LanguageServer" />
+    <PackageReference Include="RadLine" />
+    <PackageReference Include="Azure.Core" />
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="StyleCop.Analyzers">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+ </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.Azure.Cosmos" />
+    <Using Include="Microsoft.Azure.Cosmos.Linq" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CosmosDBShell.Analyzer\CosmosDBShell.Analyzer.csproj">
+      <ReferenceOutputAssembly>False</ReferenceOutputAssembly>
+	  <OutputItemType>Analyzer</OutputItemType>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>

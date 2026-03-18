@@ -1,0 +1,8 @@
+schemaVersion: 0.0.1
+isProduction: true
+accountableOwners:
+  service: e474ed6b-b6a4-4831-a75b-c909369b2356
+routing:
+  defaultAreaPath:
+    org: msdata
+    path: CosmosDB\Desktop Tooling\NoSql

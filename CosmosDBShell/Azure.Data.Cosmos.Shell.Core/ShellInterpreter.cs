@@ -1,0 +1,1108 @@
+// ------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+// ------------------------------------------------------------
+
+namespace Azure.Data.Cosmos.Shell.Core;
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.States;
+using Azure.Data.Cosmos.Shell.Util;
+using global::Azure.Identity;
+using Microsoft.Azure.Cosmos;
+using RadLine;
+using Spectre.Console;
+
+/// <summary>
+/// Provides the main interpreter logic for the Cosmos DB Shell, including command execution,
+/// connection management, variable handling, and shell state management.
+/// </summary>
+public partial class ShellInterpreter : IDisposable
+{
+    internal static readonly ShellInterpreter Instance = new();
+
+    private const int MAXHISTORYITEMS = 60;
+
+    private const double TimeoutInSeconds = 10.0;
+
+    private static CancellationTokenSource? currentTokenSource;
+
+    private readonly string cfgPath;
+
+    private LineEditor? lineEditor;
+
+    private CancellationTokenSource editorCancelTokenSource;
+
+    private bool disposedValue;
+
+    private List<string> history;
+
+    internal ShellInterpreter()
+    {
+        this.State = new DisconnectedState();
+
+        // editor.KeyBindings.Add<ClearInputCommand>(ConsoleKey.Escape);
+        // TODO: Support selection commands?
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        this.cfgPath = Path.Combine(appData, "CosmosDBShell");
+        this.history = [];
+        if (!Directory.Exists(this.cfgPath))
+        {
+            Directory.CreateDirectory(this.cfgPath);
+        }
+
+        this.HistoryFile = Path.Combine(this.cfgPath, "cmd_history");
+        if (File.Exists(this.HistoryFile))
+        {
+            foreach (var line in File.ReadAllLines(this.HistoryFile))
+            {
+                this.history.Remove(line);
+                this.history.Add(line);
+            }
+        }
+
+        Console.CancelKeyPress += this.Console_CancelKeyPress;
+        this.editorCancelTokenSource = new CancellationTokenSource();
+    }
+
+    /// <summary>
+    /// Gets the line editor instance used by the shell, or <c>null</c> if not available.
+    /// </summary>
+    public LineEditor? Editor { get => this.lineEditor ??= this.CreateLineEditor(); }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the shell is currently running.
+    /// </summary>
+    public bool IsRunning { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the shell will echo commands before executing them in scripts.
+    /// </summary>
+    public bool Echo { get; set; } = true;
+
+    internal static CancellationTokenSource TokenSource
+    {
+        get
+        {
+            currentTokenSource?.Dispose();
+            return currentTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(TimeoutInSeconds));
+        }
+    }
+
+    internal static char CSVSeparator
+    {
+        get
+        {
+            var sep = Environment.GetEnvironmentVariable("COSMOS_SHELL_CSVSEP");
+            if (!string.IsNullOrEmpty(sep))
+            {
+                return sep[0];
+            }
+
+            return ';';
+        }
+    }
+
+    internal Dictionary<string, DefStatement> Functions { get; } = [];
+
+    internal string HistoryFile { get; private set; }
+
+    internal string? LastBuffer { get; set; }
+
+    internal string? OriginalString { get; set; }
+
+    internal string? CurrentScriptFileName { get; set; }
+
+    internal string? CurrentScriptContent { get; set; }
+
+    internal CommandRunner App { get; private set; } = new CommandRunner();
+
+    internal string? StdOutRedirect { get; set; }
+
+    internal string? ErrOutRedirect { get; set; }
+
+    internal bool AppendOutRedirection { get; set; }
+
+    internal bool AppendErrRedirection { get; set; }
+
+    internal State State { get; set; }
+
+    internal Program.CosmosShellOptions? Options { get; set; }
+
+    internal int? McpPort { get; set; }
+
+    internal Queue<VariableContainer> VariableContainers { get; } = new();
+
+    /// <summary>
+    /// Create a new instance of the <see cref="ShellInterpreter"/> class.
+    /// </summary>
+    /// <returns>A new instance of the <see cref="ShellInterpreter"/> class.</returns>
+    public static ShellInterpreter CreateInstance()
+    {
+        return new ShellInterpreter();
+    }
+
+    /// <summary>
+    /// Writes the specified message to the standard output stream, using the specified format parameters.
+    /// </summary>
+    /// <param name="message">The message to write.</param>
+    /// <param name="par">An array of objects to format.</param>
+    public static void WriteLine(string message, params object[] par)
+    {
+        Console.WriteLine(message, par);
+    }
+
+    /// <summary>
+    /// Writes the specified message to the standard output stream.
+    /// </summary>
+    /// <param name="message">The message to write.</param>
+    public static void WriteLine(string message)
+    {
+        Console.WriteLine(message);
+    }
+
+    /// <summary>
+    /// Writes an empty line to the standard output stream.
+    /// </summary>
+    public static void WriteLine()
+    {
+        Console.WriteLine();
+    }
+
+    /// <summary>
+    /// Writes the specified message to the standard output stream, using the specified format parameters.
+    /// </summary>
+    /// <param name="message">The message to write.</param>
+    /// <param name="par">An array of objects to format.</param>
+    public static void Write(string message, params object[] par)
+    {
+        Console.Write(message, par);
+    }
+
+    /// <summary>
+    /// Writes the specified message to the standard output stream.
+    /// </summary>
+    /// <param name="message">The message to write.</param>
+    public static void Write(string message)
+    {
+        Console.Write(message);
+    }
+
+    /// <summary>
+    /// Prompts the user for confirmation with a yes/no question.
+    /// </summary>
+    /// <param name="message">The message to display to the user.</param>
+    /// <returns><c>true</c> if the user confirms; otherwise, <c>false</c>.</returns>
+    public static bool Confirm(string message)
+    {
+        var yes = char.ToUpper(MessageService.GetString("yes_char")[0]);
+        var no = char.ToUpper(MessageService.GetString("no_char")[0]);
+
+        while (true)
+        {
+            Console.Write($"{MessageService.GetString(message)} ({yes}/{no})?");
+            var key = Console.ReadKey();
+            WriteLine();
+            if (char.ToUpper(key.KeyChar) == yes)
+            {
+                return true;
+            }
+
+            if (char.ToUpper(key.KeyChar) == no || key.Key == ConsoleKey.Escape)
+            {
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Cancels the current prompt operation, including any ongoing editor or command input.
+    /// </summary>
+    public void CancelPrompt()
+    {
+        currentTokenSource?.Cancel();
+        this.editorCancelTokenSource.Cancel();
+        this.editorCancelTokenSource = new CancellationTokenSource();
+    }
+
+    /// <summary>
+    /// Executes a command asynchronously in the shell interpreter.
+    /// </summary>
+    /// <param name="command">The command string to execute.</param>
+    /// <param name="token">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A <see cref="CommandState"/> representing the result of the command execution.</returns>
+    public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token)
+    {
+        var state = new CommandState();
+        state.SetFormat(Environment.GetEnvironmentVariable("COSMOS_SHELL_FORMAT"));
+        try
+        {
+            state = await this.RunCommandAsync(state, command, token);
+        }
+        catch (TaskCanceledException)
+        {
+            return new CommandState();
+        }
+        catch (PositionalException pe)
+        {
+            // Handle positional exceptions with location information
+            if (this.ErrOutRedirect != null)
+            {
+                var errorMessage = $"[{Path.GetFileName(pe.FileName)}:{pe.Line}:{pe.Column}]: error: {pe.Message}";
+                if (pe.LineText != null)
+                {
+                    errorMessage += Environment.NewLine + pe.LineText;
+                    errorMessage += Environment.NewLine + new string(' ', Math.Max(0, pe.Column - 1)) + "^";
+                }
+
+                if (this.AppendErrRedirection)
+                {
+                    File.AppendAllText(this.ErrOutRedirect, errorMessage);
+                }
+                else
+                {
+                    File.WriteAllText(this.ErrOutRedirect, errorMessage);
+                }
+            }
+            else
+            {
+                var m = Markup.Escape(pe.Message);
+                AnsiConsole.MarkupLine($"{Markup.Escape($"{pe.FileName}:{pe.Line}:{pe.Column}:")} [red]error:[/] {m}");
+                if (pe.LineText != null)
+                {
+                    AnsiConsole.MarkupLine($"  [grey]{Markup.Escape(pe.LineText)}[/]");
+                    AnsiConsole.MarkupLine($"  [red]{new string(' ', Math.Max(0, pe.Column - 1))}^[/]");
+                }
+            }
+
+            return new ErrorCommandState(pe.InnerException ?? pe);
+        }
+        catch (CommandException e)
+        {
+            if (this.ErrOutRedirect != null)
+            {
+                var errTxt = $"{e.Command}: {e.Message}";
+                if (this.AppendErrRedirection)
+                {
+                    File.AppendAllText(this.ErrOutRedirect, errTxt);
+                }
+                else
+                {
+                    File.WriteAllText(this.ErrOutRedirect, errTxt);
+                }
+            }
+            else
+            {
+                var m = Markup.Escape(e.Message);
+                AnsiConsole.MarkupLine($"{e.Command}: [red]{m}[/]");
+            }
+
+            return new ErrorCommandState(e);
+        }
+        catch (ShellException e)
+        {
+            if (this.ErrOutRedirect != null)
+            {
+                var errTxt = e.Message;
+                if (this.AppendErrRedirection)
+                {
+                    File.AppendAllText(this.ErrOutRedirect, errTxt);
+                }
+                else
+                {
+                    File.WriteAllText(this.ErrOutRedirect, errTxt);
+                }
+            }
+            else
+            {
+                var m = Markup.Escape(e.Message);
+                AnsiConsole.MarkupLine($"[red]{m}[/]");
+            }
+
+            return new ErrorCommandState(e);
+        }
+        catch (Exception e)
+        {
+            if (this.ErrOutRedirect != null)
+            {
+                var errTxt = e.Message;
+                if (e.InnerException != null)
+                {
+                    errTxt += Environment.NewLine + e.InnerException.ToString();
+                }
+#if DEBUG
+                if (e.StackTrace != null)
+                {
+                    errTxt += Environment.NewLine + e.StackTrace;
+                }
+#endif
+                if (this.AppendErrRedirection)
+                {
+                    File.AppendAllText(this.ErrOutRedirect, errTxt);
+                }
+                else
+                {
+                    File.WriteAllText(this.ErrOutRedirect, errTxt);
+                }
+            }
+            else
+            {
+                var m = Markup.Escape(e.Message);
+                AnsiConsole.MarkupLine($"[red]{m}[/]");
+                if (e.InnerException != null)
+                {
+                    AnsiConsole.WriteLine(e.InnerException.ToString());
+                }
+#if DEBUG
+                if (e.StackTrace != null)
+                {
+                    WriteLine(e.StackTrace);
+                }
+#endif
+            }
+
+            return new ErrorCommandState(e);
+        }
+
+        if (token.IsCancellationRequested)
+        {
+            return state;
+        }
+
+        return this.PrintState(state);
+    }
+
+    /// <summary>
+    /// Redirects the specified text to the standard output redirection file, if set.
+    /// Appends or overwrites the file based on the <see cref="AppendOutRedirection"/> flag.
+    /// Ensures a newline is present at the end of the redirected text.
+    /// </summary>
+    /// <param name="text">The text to redirect to the output file.</param>
+    public void Redirect(string text)
+    {
+        if (this.StdOutRedirect == null)
+        {
+            return;
+        }
+
+        if (this.AppendOutRedirection)
+        {
+            File.AppendAllText(this.StdOutRedirect, text);
+        }
+        else
+        {
+            File.WriteAllText(this.StdOutRedirect, text);
+        }
+
+        if (!text.EndsWith(Environment.NewLine))
+        {
+            File.AppendAllText(this.StdOutRedirect, Environment.NewLine);
+        }
+    }
+
+    /// <summary>
+    /// Releases all resources used by the <see cref="ShellInterpreter"/>.
+    /// </summary>
+    public void Dispose()
+    {
+        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        this.Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    internal static void ReportError(string message, params object[] par)
+    {
+        AnsiConsole.MarkupLine("[red]" + Markup.Escape(message) + "[/]", par);
+    }
+
+    internal ShellObject GetVariable(string name)
+    {
+        var scope = this.GetScope(name);
+        if (scope?.TryGetValue(name, out var value) == true)
+        {
+            return value;
+        }
+
+        throw new ShellException(MessageService.GetArgsString("error-variable_not_set", "name", name));
+    }
+
+    internal void PrintVersion(CommandState? commandState)
+    {
+        var version = typeof(VersionCommand).Assembly.GetName().Version?.ToString() ?? "unknown";
+        var versionString = MessageService.GetArgsString("command-version", "version", version);
+        AnsiConsole.MarkupLine(versionString);
+
+        var port = this.McpPort;
+        if (port != null)
+        {
+            var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
+            AnsiConsole.MarkupLine("[yellow]" + mcpPortString + "[/]");
+        }
+        else
+        {
+            AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
+        }
+
+        if (commandState != null)
+        {
+            var json = new Dictionary<string, object?>
+            {
+                ["version"] = version,
+                ["mcpEnabled"] = port != null,
+                ["mcpPort"] = port, // will be null if not enabled
+                ["mcpStatus"] = port != null ? "on" : "off",
+            };
+
+            var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
+            commandState.Result = new ShellJson(jsonElement);
+            commandState.IsPrinted = true;
+        }
+    }
+
+    internal async Task<int> RunAsync()
+    {
+        var result = 0;
+        this.PrintVersion(null);
+        WriteLine(MessageService.GetString("shell-ready"));
+        while (this.IsRunning)
+        {
+            this.StdOutRedirect = null;
+            try
+            {
+                this.ClearHighlightStatement();
+                var input = this.Editor != null ? await this.Editor.ReadLine(this.editorCancelTokenSource.Token) : PromptFallback();
+                if (input is not { } command)
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(command))
+                {
+                    this.history.Remove(command);
+                    this.history.Add(command);
+                    this.SaveHistory();
+                    CancellationToken token = TokenSource.Token;
+                    await this.ExecuteCommandAsync(command, token);
+                }
+            }
+            catch (TaskCanceledException)
+            {
+            }
+        }
+
+        return result;
+    }
+
+    internal async Task<CommandState> RunCommandAsync(CommandState currentState, string commandText, CancellationToken token)
+    {
+        var lexer = new Lexer(commandText);
+        var parser = new StatementParser(lexer);
+
+        foreach (var statements in parser.ParseStatements())
+        {
+            if (token.IsCancellationRequested)
+            {
+                break;
+            }
+
+            // Run the parsed statements
+            currentState = await statements.RunAsync(this, currentState, token);
+            if (currentState.IsError)
+            {
+                break;
+            }
+        }
+
+        if (parser.Errors.HasErrors)
+        {
+            return new ParserErrorCommandState(parser.Errors);
+        }
+
+        /*
+        var line = this.parser.Parse(commandText);
+        if (line.StdOutRedirect.Length > 0)
+        {
+            this.StdOutRedirect = line.StdOutRedirect;
+            this.AppendOutRedirection = line.AppendRedirect;
+        }
+
+        foreach (var cmd in line.Command)
+        {
+            if (token.IsCancellationRequested)
+            {
+                break;
+            }
+
+            for (int i = 0; i < cmd.Arguments.Length; i++)
+            {
+                // Replace parameters in the command
+                cmd.Arguments[i] = this.ReplaceJSonArgument(cmd.Arguments[i], currentState);
+            }
+
+#if DEBUG
+            if (cmd.JSonPath == "?" || cmd.JSonPath.ToString().Equals("GEN_DOC", StringComparison.CurrentCultureIgnoreCase))
+            {
+                continue;
+            }
+#endif
+            if (cmd.Arguments.Length > 0 && !this.App.IsExternal(cmd) && IsHelpOption(cmd.Arguments[0]) && !this.App.IsExternal(commandText))
+            {
+                HelpCommand.PrintCommandHelp(cmd.JSonPath, this.App);
+                continue;
+            }
+
+            if (File.Exists(cmd.JSonPath))
+            {
+                currentState = await this.RunScript(currentState, cmd, token);
+                continue;
+            }
+
+            currentState = await this.App.RunAsync(this, currentState, cmd, commandText, token);
+            if (currentState.IsError)
+            {
+                break;
+            }
+        }
+        */
+        return currentState;
+    }
+
+    internal async Task ConnectAsync(string connectionString, string? loginHint, string? credentialHint = null, string? explicitCredential = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null)
+    {
+        // Emulator convenience: if a plain localhost URL is provided, build a full connection string with the well-known key
+        if (ParsedDocDBConnectionString.IsPlainUrl(connectionString) &&
+            ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString))
+        {
+            WriteLine(MessageService.GetString("command-connect-emulator-detected"));
+            connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(connectionString);
+        }
+
+        // Emulator convenience: if the connection string targets localhost but has no AccountKey, inject the well-known key
+        if (ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString) &&
+            ParsedDocDBConnectionString.TryParseDocDBConnectionString(connectionString, out var emulatorParsed) &&
+            !emulatorParsed!.HasMasterKey)
+        {
+            WriteLine(MessageService.GetString("command-connect-emulator-detected"));
+            connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(emulatorParsed.Endpoint);
+        }
+
+        CosmosClient? client = null;
+
+        // Emulator convenience: default to Gateway mode (Direct mode fails on macOS emulator)
+        var requestedMode = mode ?? (ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString) ? ConnectionMode.Gateway : ConnectionMode.Direct);
+
+        var options = CreateClientOptions(connectionString, requestedMode);
+
+        CosmosClient? CreateClientFromParsedCredential(Credential kind, string? id, ConnectionMode requestedMode)
+        {
+            switch (kind)
+            {
+                case Credential.DBKey when !string.IsNullOrEmpty(id):
+                    return new CosmosClient(connectionString, id, options);
+
+                case Credential.EntraId when !string.IsNullOrEmpty(id):
+                    {
+                        var defaultCredentialOptions = new DefaultAzureCredentialOptions
+                        {
+                            TenantId = tenantId ?? id,
+                            ExcludeManagedIdentityCredential = true,
+                            ExcludeInteractiveBrowserCredential = true,
+                        };
+                        if (authorityHost != null)
+                        {
+                            defaultCredentialOptions.AuthorityHost = new Uri(authorityHost);
+                        }
+
+                        var credential = new DefaultAzureCredential(DefaultAzureCredential.DefaultEnvironmentVariableName, defaultCredentialOptions);
+                        return new CosmosClient(connectionString, credential, options);
+                    }
+
+                case Credential.ManagedIdentity:
+                    {
+                        var managedOptions = new DefaultAzureCredentialOptions();
+                        if (tenantId != null)
+                        {
+                            managedOptions.TenantId = tenantId;
+                        }
+
+                        if (authorityHost != null)
+                        {
+                            managedOptions.AuthorityHost = new Uri(authorityHost);
+                        }
+
+                        var defaultAzureCredential = new DefaultAzureCredential(DefaultAzureCredential.DefaultEnvironmentVariableName, managedOptions);
+                        return new CosmosClient(connectionString, defaultAzureCredential, options);
+                    }
+
+                default:
+                    return null;
+            }
+        }
+
+        // 1) EXPLICIT credential (takes precedence over environment variable)
+        if (explicitCredential != null &&
+            CredentialStringHelpers.TryParseCredential(explicitCredential, out var explKind, out var explId))
+        {
+            client = CreateClientFromParsedCredential(explKind, explId, requestedMode);
+        }
+
+        // 2) Environment credential (only if no explicit credential succeeded)
+        if (client == null)
+        {
+            var envCredential = credentialHint ?? Environment.GetEnvironmentVariable("COSMOS_SHELL_CREDENTIAL");
+            if (envCredential != null &&
+                CredentialStringHelpers.TryParseCredential(envCredential, out var envKind, out var envId))
+            {
+                client = CreateClientFromParsedCredential(envKind, envId, requestedMode);
+            }
+        }
+
+        // 3) Connection string parsing (account key vs. AAD interactive)
+        if (client == null &&
+            ParsedDocDBConnectionString.TryParseDocDBConnectionString(connectionString, out var parsedString))
+        {
+            try
+            {
+                if (parsedString?.HasMasterKey == false)
+                {
+                    client = ConnectDirect(connectionString, loginHint, requestedMode, tenantId, authorityHost);
+                }
+                else
+                {
+                    client = new CosmosClient(connectionString, CreateClientOptions(connectionString, requestedMode));
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteLine(ex.Message);
+            }
+        }
+
+        // 4) Fallback to direct interactive login if still not established
+        client ??= ConnectDirect(connectionString, loginHint, requestedMode, tenantId, authorityHost);
+
+        if (client == null)
+        {
+            throw new ShellException(MessageService.GetString("error-connection_failed"));
+        }
+
+        var props = await client.ReadAccountAsync();
+        WriteLine(MessageService.GetArgsString("command-connect-connected", "account", props.Id));
+        this.Connect(client);
+    }
+
+    /// <summary>
+    /// Connects to a client & disposes old state.
+    /// </summary>
+    internal void Connect(CosmosClient client)
+    {
+        this.State?.Dispose();
+        this.State = new ConnectedState(client);
+        CosmosCompleteCommand.ClearDatabases();
+        CosmosCompleteCommand.ClearContainers();
+    }
+
+    /// <summary>
+    /// Disconnects & disposes the old state.
+    /// </summary>
+    internal void Disconnect()
+    {
+        this.State?.Dispose();
+        this.State = new DisconnectedState();
+    }
+
+    internal void PrintCommand(string cmdString)
+    {
+        // Print the shell prompt similar to how it appears when typing command
+        //        AnsiConsole.Markup(new CosmosShellPrompt(this).GetPromptString());
+        //        AnsiConsole.Write(" ");
+        var txt = ((IHighlighter)Instance).BuildHighlightedText(cmdString);
+        AnsiConsole.Write(txt);
+        AnsiConsole.WriteLine(); // Ensure the next output starts on a new line
+
+        this.history.Remove(cmdString);
+        this.history.Add(cmdString);
+        this.Editor?.History.Add(cmdString);
+    }
+
+    internal CommandState PrintState(CommandState state)
+    {
+        if (state.IsPrinted)
+        {
+            // command already printed the state.
+            return state;
+        }
+
+        try
+        {
+            string? output;
+
+            if (state.Result?.DataType == Parser.DataType.Json)
+            {
+                output = state.GenerateOutputText();
+            }
+            else
+            {
+                output = state.Result?.ConvertShellObject(Parser.DataType.Text) as string;
+            }
+
+            if (output != null)
+            {
+                if (string.IsNullOrEmpty(this.StdOutRedirect))
+                {
+                    WriteLine(output);
+                }
+                else
+                {
+                    this.Redirect(output);
+                }
+            }
+
+            // Clear the result after printing
+            state.Result = null;
+        }
+        catch (Exception e)
+        {
+            var m = Markup.Escape(e.Message);
+            AnsiConsole.MarkupLine($"[red]PrintState:{m}[/]");
+            if (e.InnerException != null)
+            {
+                WriteLine(e.InnerException.ToString());
+            }
+#if DEBUG
+            if (e.StackTrace != null)
+            {
+                WriteLine(e.StackTrace);
+            }
+#endif
+            return new ErrorCommandState(e);
+        }
+
+        return state;
+    }
+
+    internal void DeclareFunction(DefStatement defStatement)
+    {
+        this.Functions[defStatement.Name] = defStatement;
+    }
+
+    internal void SetVariable(string variableName, ShellObject value)
+    {
+        // Ensure we have at least one variable container (global scope)
+        if (this.VariableContainers.Count == 0)
+        {
+            this.VariableContainers.Enqueue(new VariableContainer());
+        }
+
+        // When running inside a script, always write to the current (script) frame.
+        // This ensures script-local assignments don't modify variables in caller scopes.
+        // Outside of scripts, search for existing variable to maintain back-compat.
+        VariableContainer currentScope;
+        if (!string.IsNullOrEmpty(this.CurrentScriptFileName))
+        {
+            // Script execution: always use current frame (script-local by default)
+            currentScope = this.VariableContainers.Last();
+        }
+        else
+        {
+            // Interactive/global: update existing variable if found, else use current frame
+            currentScope = this.GetScope(variableName) ?? this.VariableContainers.Last();
+        }
+
+        var targetType = value.DataType;
+
+        // ConvertShellObject the value to get the actual result
+        var evaluatedValue = value.ConvertShellObject(targetType);
+
+        // Convert the evaluated value back to a ShellObject
+        ShellObject shellValue = evaluatedValue switch
+        {
+            string s => new ShellText(s),
+            int i => new ShellNumber(i),
+            bool b => new ShellBool(b),
+            double d => new ShellDecimal(d),
+            JsonElement json => new ShellJson(json),
+            ShellObject so => so,
+            _ => new ShellText(evaluatedValue?.ToString() ?? string.Empty),
+        };
+
+        // Store the variable in the current scope
+        currentScope.Set(variableName, shellValue);
+    }
+
+    /// <summary>
+    /// Releases the unmanaged resources used by the <see cref="ShellInterpreter"/> and optionally releases the managed resources.
+    /// </summary>
+    /// <param name="disposing">
+    /// <c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only unmanaged resources.
+    /// </param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!this.disposedValue)
+        {
+            if (disposing)
+            {
+                Console.CancelKeyPress -= this.Console_CancelKeyPress;
+                currentTokenSource?.Dispose();
+                this.editorCancelTokenSource?.Dispose();
+                this.State?.Dispose();
+            }
+
+            this.disposedValue = true;
+        }
+    }
+
+    private static string? PromptFallback()
+    {
+        Console.Write(CosmosShellPrompt.PromptText + "> ");
+        return Console.ReadLine();
+    }
+
+    private static CosmosClientOptions CreateClientOptions(string connectionString, ConnectionMode requestedMode)
+    {
+        var options = new CosmosClientOptions
+        {
+            ApplicationName = "CosmosDBShell",
+            ConnectionMode = requestedMode,
+            CosmosClientTelemetryOptions = new CosmosClientTelemetryOptions(),
+            UseSystemTextJsonSerializerWithOptions = new JsonSerializerOptions()
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            },
+        };
+
+        // do not check certificates for emulator - work around on osx issue
+        if (ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString))
+        {
+            options.ServerCertificateCustomValidationCallback = (cert, chain, errors) => true;
+        }
+
+        return options;
+    }
+
+    private static CosmosClient? ConnectDirect(string connectionString, string? loginHint, ConnectionMode requestedMode, string? tenantId = null, string? authorityHost = null)
+    {
+        try
+        {
+            ShellInterpreter.WriteLine(MessageService.GetString("shell-connect-browser-auth"));
+            var loginOptions = new InteractiveBrowserCredentialOptions
+            {
+                // options.ClientId = ConnectCommand.EntraClientID,
+                RedirectUri = new Uri(ConnectCommand.EntraRedirectUrl),
+            };
+
+            if (loginHint != null)
+            {
+                loginOptions.LoginHint = loginHint;
+            }
+
+            if (tenantId != null)
+            {
+                loginOptions.TenantId = tenantId;
+            }
+
+            if (authorityHost != null)
+            {
+                loginOptions.AuthorityHost = new Uri(authorityHost);
+            }
+
+            var credential = new InteractiveBrowserCredential(loginOptions);
+            return new CosmosClient(connectionString, credential, CreateClientOptions(connectionString, requestedMode));
+        }
+        catch (Exception ex)
+        {
+            WriteLine(ex.Message);
+
+            try
+            {
+                ShellInterpreter.WriteLine(MessageService.GetString("shell-connect-devicecode-auth"));
+
+                var deviceCodeOptions = new DeviceCodeCredentialOptions
+                {
+                    DeviceCodeCallback = (code, cancellationToken) =>
+                    {
+                        ShellInterpreter.WriteLine(code.Message);
+                        return Task.CompletedTask;
+                    },
+                };
+
+                if (tenantId != null)
+                {
+                    deviceCodeOptions.TenantId = tenantId;
+                }
+
+                if (authorityHost != null)
+                {
+                    deviceCodeOptions.AuthorityHost = new Uri(authorityHost);
+                }
+
+                var deviceCodeCredential = new DeviceCodeCredential(deviceCodeOptions);
+                return new CosmosClient(connectionString, deviceCodeCredential, CreateClientOptions(connectionString, requestedMode));
+            }
+            catch (Exception fallbackEx)
+            {
+                WriteLine(fallbackEx.Message);
+                return null;
+            }
+        }
+    }
+
+    private LineEditor CreateLineEditor()
+    {
+        try
+        {
+            var lineEditor = new LineEditor()
+            {
+                Prompt = new CosmosShellPrompt(this),
+                LineDecorationRenderer = new CosmosCompletionRenderer(this),
+                Highlighter = this,
+            };
+            lineEditor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.UpArrow);
+            lineEditor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.DownArrow);
+
+            lineEditor.KeyBindings.Add<ClearCurrentLineCommand>(ConsoleKey.Escape);
+            lineEditor.KeyBindings.Add(ConsoleKey.Tab, () => new CosmosCompleteCommand(this, AutoComplete.Next));
+            lineEditor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Control, () => new CosmosCompleteCommand(this, AutoComplete.Previous));
+            foreach (var line in this.history)
+            {
+                lineEditor.History.Add(line);
+            }
+
+            return lineEditor;
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine(e.Message);
+            return new LineEditor();
+        }
+    }
+
+    private VariableContainer? GetScope(string name)
+    {
+        foreach (var container in this.VariableContainers.Reverse())
+        {
+            if (container.Variables.ContainsKey(name))
+            {
+                return container;
+            }
+        }
+
+        return null;
+    }
+
+    private void Console_CancelKeyPress(object? sender, ConsoleCancelEventArgs e)
+    {
+        e.Cancel = true;
+        this.CancelPrompt();
+        WriteLine("̂C");
+    }
+
+    private void SaveHistory()
+    {
+        if (this.history.Count > MAXHISTORYITEMS)
+        {
+            this.history = [.. this.history.Skip(this.history.Count - MAXHISTORYITEMS)];
+        }
+
+        File.WriteAllLines(this.HistoryFile, this.history);
+    }
+
+    /*
+        private void PrintReadmeSection(string cmdStr)
+        {
+            if (App.commands.TryGetValue(cmdStr, out var cmd))
+            {
+                ShellInterpreter.Instance.WriteLine("###  " + cmd.CommandName);
+                ShellInterpreter.Instance.WriteLine(cmd.Description);
+                ShellInterpreter.Instance.WriteLine();
+                ShellInterpreter.Instance.WriteLine("```");
+                Console.Write($"Usage: {cmd.CommandName} ");
+
+                foreach (var p in cmd.Options)
+                {
+                    Console.Write("[-" + p.JSonPath[0]);
+
+                    if (!p.PropertyInfo.PropertyType.IsAssignableFrom(typeof(bool)))
+                    {
+                        Console.Write(" <ARG>");
+
+                    }
+
+                    Console.Write("] ");
+                }
+
+                foreach (var p in cmd.Parameters)
+                {
+                    var name = p.JSonPath;
+                    if (name == null)
+                    {
+                        continue;
+                    }
+                    if (p.IsRequired)
+                    {
+                        Console.Write(name + " ");
+                    }
+                    else
+                    {
+                        Console.Write($"[{name}] ");
+                    }
+                }
+                ShellInterpreter.Instance.WriteLine();
+                ShellInterpreter.Instance.WriteLine();
+
+                if (cmd.Parameters.Count > 0)
+                {
+                    ShellInterpreter.Instance.WriteLine($"Arguments:");
+                    foreach (var p in cmd.Parameters)
+                    {
+                        const int ARG_PADDING = 16;
+                        if (!p.IsRequired)
+                        {
+                            Console.Write($"    [{p.JSonPath}]".PadRight(ARG_PADDING));
+                        }
+                        else
+                        {
+                            Console.Write($"    {p.JSonPath}".PadRight(ARG_PADDING));
+                        }
+                        Console.Write(p.GetDescription(cmd.CommandName));
+
+                        if (!p.IsRequired)
+                        {
+                            Console.Write($" (Optional)");
+                        }
+                        ShellInterpreter.Instance.WriteLine();
+                    }
+                    ShellInterpreter.Instance.WriteLine();
+                }
+
+                if (cmd.Options.Count > 0)
+                {
+                    ShellInterpreter.Instance.WriteLine($"Options:");
+                    const int ARG_PADDING = 16;
+                    foreach (var p in cmd.Options)
+                    {
+                        StringBuilder sb = new();
+                        foreach (var n in p.JSonPath) {
+                            if (sb.Length > 0)
+                            {
+                                sb.Append(",  ");
+                            }
+                            sb.Append('-');
+                            sb.Append(n);
+                        }
+                        Console.Write($"    {sb}".PadRight(ARG_PADDING));
+                        ShellInterpreter.Instance.WriteLine(" " + p.Description);
+                    }
+                }
+            }
+            else
+            {
+                AnsiConsole.Markup($"[red]Error:[/]");
+                ShellInterpreter.Instance.WriteLine($"{cmdStr} not found.");
+            }
+            ShellInterpreter.Instance.WriteLine("```");
+        }
+        */
+}

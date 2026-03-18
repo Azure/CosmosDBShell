@@ -1,0 +1,23 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "${workspaceFolder}/CosmosDBShell/CosmosDBShell.csproj"
+            ],
+            "osx": {
+                "args": [
+                    "build",
+                    "${workspaceFolder}/CosmosDBShell/CosmosDBShell.csproj",
+                    "-r",
+                    "osx-x64"
+                ]
+            },
+            "problemMatcher": "$msCompile"
+        }
+    ]
+}
