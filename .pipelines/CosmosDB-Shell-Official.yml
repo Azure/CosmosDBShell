@@ -9,7 +9,9 @@
 #################################################################################
 
 trigger: # https://aka.ms/obpipelines/triggers
-  - main
+  branches:
+    include:
+      - "main"
 
 parameters: # parameters are shown up in ADO UI in a build queue time
   - name: "debug"
@@ -28,7 +30,6 @@ variables:
   BuildSolution: $(Build.SourcesDirectory)\CosmosDBShell.sln
   ReleaseProject: $(Build.SourcesDirectory)\CosmosDBShell\CosmosDBShell.csproj
   BuildConfiguration: Release
-  OneES_SbomNugetSDLPath: out\nupkg
 
   WindowsContainerImage: "onebranch.azurecr.io/windows/ltsc2022/vse2022:latest" # Docker image which is used to build the project https://aka.ms/obpipelines/containers
 
@@ -68,6 +69,7 @@ extends:
             variables: # More settings at https://aka.ms/obpipelines/yaml/jobs
               ob_outputDirectory: '$(Build.SourcesDirectory)\out' # this directory is uploaded to pipeline artifacts, reddog and cloudvault. More info at https://aka.ms/obpipelines/artifacts
               ob_artifactBaseName: cosmos_shell_all # combined artifact with all RIDs for SDL scanning
+              OneES_SbomNugetSDLPath: out\nupkg
               # https://aka.ms/obpipelines/sdl
               ob_sdl_binskim_enabled: true
               ob_sdl_binskim_scanOutputDirectoryOnly: true
@@ -98,12 +100,33 @@ extends:
                 inputs:
                   targetType: inline
                   script: |
+                    function Normalize-NuGetVersion([string]$value) {
+                      if ([string]::IsNullOrWhiteSpace($value)) {
+                        return $value
+                      }
+
+                      if ($value -match '^(?<core>\d+(?:\.\d+)*)(?<suffix>[-+].*)?$') {
+                        $normalizedCore = (($Matches.core -split '\.') | ForEach-Object { [string]([int]$_) }) -join '.'
+                        return "$normalizedCore$($Matches.suffix)"
+                      }
+
+                      return $value
+                    }
+
                     $buildNumber = "$(Build.BuildNumber)"
                     Write-Host "Build.BuildNumber=$buildNumber"
 
                     $version = $buildNumber
                     if (-not ($version -match '^\d+(\.\d+){1,3}$')) {
                       $version = "1.0.$(Build.BuildId)"
+                    }
+
+                    $version = Normalize-NuGetVersion $version
+
+                    if ($buildNumber -ne $version) {
+                      Write-Host "Updating Build.BuildNumber to normalized NuGet version: $version"
+                      Write-Host "##vso[build.updatebuildnumber]$version"
+                      $buildNumber = $version
                     }
 
                     $fileVersion = $version
@@ -303,12 +326,13 @@ extends:
                 condition: succeeded()
                 inputs:
                   command: "pack"
-                  projects: "$(ReleaseProject)"
+                  packagesToPack: "$(ReleaseProject)"
+                  configurationToPack: "$(BuildConfiguration)"
+                  nobuild: true
                   outputDir: '$(Build.SourcesDirectory)\out\nupkg'
-                  arguments: >
-                    --configuration $(BuildConfiguration) --no-build --no-restore
-                    /p:PackageVersion=$(Build.BuildNumber)
-                    /p:ContinuousIntegrationBuild=true
+                  versioningScheme: byEnvVar
+                  versionEnvVar: CosmosDBShell_Version
+                  buildProperties: "Version=$(CosmosDBShell_Version);PackageVersion=$(CosmosDBShell_Version);FileVersion=$(CosmosDBShell_FileVersion);InformationalVersion=$(CosmosDBShell_InformationalVersion);ContinuousIntegrationBuild=true"
 
               - task: PowerShell@2
                 displayName: "Expand RID packages for payload signing"
@@ -461,6 +485,18 @@ extends:
               # With ToolPackageRuntimeIdentifiers, dotnet pack produces per-RID packages
               # (e.g. CosmosDBShell.win-x64.*.nupkg) plus a pointer package (CosmosDBShell.*.nupkg).
               # All RID packages must be available before the pointer package is published.
+              - task: PowerShell@2
+                displayName: "List NuGet packages before publish"
+                condition: succeeded()
+                inputs:
+                  targetType: inline
+                  script: |
+                    $pkgDir = "$(Build.SourcesDirectory)\out\nupkg"
+                    Write-Host "NuGet packages in $pkgDir"
+                    Get-ChildItem -Path $pkgDir -Filter *.nupkg -File | Sort-Object Name | ForEach-Object {
+                      Write-Host " - $($_.Name) [$($_.Length) bytes]"
+                    }
+
               - task: NuGetCommand@2
                 displayName: "Push RID-specific NuGet packages"
                 condition: and(succeeded(),
@@ -468,9 +504,14 @@ extends:
                   eq('${{ parameters.publishNuget }}', 'true'))
                 inputs:
                   command: "push"
-                  packagesToPush: "$(Build.SourcesDirectory)\\out\\nupkg\\CosmosDBShell.{win-x64,linux-x64,linux-arm64,osx-x64,osx-arm64}.*.nupkg"
+                  packagesToPush: |
+                    $(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg
+                    $(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg
+                    $(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg
+                    $(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg
+                    $(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg
                   nuGetFeedType: "internal"
-                  publishVstsFeed: "CosmosDB/CosmosDB_CosmosShell"
+                  publishVstsFeed: "CosmosDB/CosmosDBShell"
                   allowPackageConflicts: true
               - task: NuGetCommand@2
                 displayName: "Push pointer NuGet package"
@@ -479,9 +520,9 @@ extends:
                   eq('${{ parameters.publishNuget }}', 'true'))
                 inputs:
                   command: "push"
-                  packagesToPush: "$(Build.SourcesDirectory)\\out\\nupkg\\CosmosDBShell.$(Build.BuildNumber).nupkg"
+                  packagesToPush: "$(Build.SourcesDirectory)\\out\\nupkg\\CosmosDBShell.$(CosmosDBShell_Version).nupkg"
                   nuGetFeedType: "internal"
-                  publishVstsFeed: "CosmosDB/CosmosDB_CosmosShell"
+                  publishVstsFeed: "CosmosDB/CosmosDBShell"
                   allowPackageConflicts: true
 
           - job: CodeQLAnalyze
@@ -540,3 +581,26 @@ extends:
                     Write-Host "Copying from $source to $dest"
                     New-Item -ItemType Directory -Path $dest -Force | Out-Null
                     Copy-Item -Path "$source\*" -Destination $dest -Recurse -Force
+
+              - task: PowerShell@2
+                displayName: "Validate package output for SBOM"
+                inputs:
+                  targetType: inline
+                  script: |
+                    $outputDir = "$(ob_outputDirectory)"
+
+                    if (-not (Test-Path $outputDir)) {
+                      Write-Error "Package output directory not found: $outputDir"
+                      exit 1
+                    }
+
+                    $files = Get-ChildItem -Path $outputDir -Recurse -File -ErrorAction SilentlyContinue
+                    if (-not $files -or $files.Count -eq 0) {
+                      Write-Error "Package output directory is empty: $outputDir"
+                      exit 1
+                    }
+
+                    Write-Host "Package output contains $($files.Count) file(s):"
+                    $files | Sort-Object FullName | Select-Object -First 50 | ForEach-Object {
+                      Write-Host " - $($_.FullName) [$($_.Length) bytes]"
+                    }
