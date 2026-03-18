@@ -109,6 +109,17 @@ dotnet tool uninstall --global <package-id>
 - [Programming](docs/programming.md) - Variables, control flow, functions
 - [MCP](docs/mcp.md) - Model Context Protocol integration
 
+## CI And Packaging
+
+GitHub Actions is used for repository CI and unsigned package creation.
+
+- [.github/workflows/ci.yml](.github/workflows/ci.yml): restore, build, test, and fuzzer smoke test
+- [.github/workflows/package-unsigned.yml](.github/workflows/package-unsigned.yml): build and publish unsigned NuGet artifacts
+
+GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so the workflows restore packages from nuget.org without depending on the Azure Pipelines setup.
+
+Azure Pipelines can continue in parallel for signing and publishing from the branch-based Azure setup.
+
 ## CLI Arguments
 
 | Option | Description |

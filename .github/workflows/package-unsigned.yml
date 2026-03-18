@@ -1,0 +1,149 @@
+name: Package Unsigned Artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - v*
+
+concurrency:
+  group: package-unsigned-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  BUILD_CONFIGURATION: Release
+
+jobs:
+  package:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            global.json
+            Directory.Packages.props
+            **/*.csproj
+
+      - name: Compute version properties
+        id: version
+        shell: pwsh
+        run: |
+          $version = "1.0.${{ github.run_number }}"
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $version = "${{ github.ref_name }}"
+            if ($version.StartsWith('v')) {
+              $version = $version.Substring(1)
+            }
+          }
+
+          $parts = $version.Split('.')
+          if ($parts.Count -eq 2) {
+            $fileVersion = "$version.${{ github.run_number }}.0"
+          } elseif ($parts.Count -eq 3) {
+            $fileVersion = "$version.${{ github.run_number }}"
+          } elseif ($parts.Count -ge 4) {
+            $fileVersion = ($parts[0..3] -join '.')
+          } else {
+            $fileVersion = "1.0.${{ github.run_number }}.0"
+          }
+
+          $infoVersion = "$version+${{ github.sha }}"
+
+          "package_version=$version" >> $env:GITHUB_OUTPUT
+          "file_version=$fileVersion" >> $env:GITHUB_OUTPUT
+          "informational_version=$infoVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore CosmosDBShell.sln --configfile .github/nuget.github.config
+
+      - name: Build solution
+        run: dotnet build CosmosDBShell.sln --configuration $env:BUILD_CONFIGURATION --no-restore
+        shell: pwsh
+
+      - name: Test solution
+        run: >-
+          dotnet test CosmosDBShell.sln
+          --configuration $env:BUILD_CONFIGURATION
+          --no-build
+          --no-restore
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory TestResults
+          --collect "Code coverage"
+        shell: pwsh
+
+      - name: Publish runtime artifacts
+        shell: pwsh
+        run: |
+          $rids = @('win-x64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
+          foreach ($rid in $rids) {
+            dotnet publish CosmosDBShell/CosmosDBShell.csproj `
+              --configuration $env:BUILD_CONFIGURATION `
+              --no-restore `
+              -r $rid `
+              --output "out/$rid" `
+              /p:Version=${{ steps.version.outputs.package_version }} `
+              /p:FileVersion=${{ steps.version.outputs.file_version }} `
+              /p:InformationalVersion=${{ steps.version.outputs.informational_version }}
+          }
+
+      - name: Pack unsigned NuGet artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path out/nupkg -Force | Out-Null
+          dotnet pack CosmosDBShell/CosmosDBShell.csproj `
+            --configuration $env:BUILD_CONFIGURATION `
+            --no-build `
+            --no-restore `
+            --output out/nupkg `
+            /p:PackageVersion=${{ steps.version.outputs.package_version }} `
+            /p:ContinuousIntegrationBuild=true
+
+      - name: Validate NuGet package set
+        shell: pwsh
+        run: |
+          $pkgDir = Join-Path $pwd 'out/nupkg'
+          $ridPatterns = @(
+            'CosmosDBShell.win-x64.*.nupkg',
+            'CosmosDBShell.linux-x64.*.nupkg',
+            'CosmosDBShell.linux-arm64.*.nupkg',
+            'CosmosDBShell.osx-x64.*.nupkg',
+            'CosmosDBShell.osx-arm64.*.nupkg'
+          )
+
+          foreach ($pattern in $ridPatterns) {
+            $matches = Get-ChildItem -Path (Join-Path $pkgDir $pattern) -ErrorAction SilentlyContinue
+            if (-not $matches -or $matches.Count -eq 0) {
+              Write-Error "Expected package was not generated: $pattern"
+              exit 1
+            }
+          }
+
+          $allPackages = Get-ChildItem -Path (Join-Path $pkgDir 'CosmosDBShell.*.nupkg') -ErrorAction SilentlyContinue
+          $pointerPackages = $allPackages | Where-Object {
+            $_.Name -notmatch '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
+          }
+
+          if (-not $pointerPackages -or $pointerPackages.Count -ne 1) {
+            $names = @($pointerPackages | ForEach-Object { $_.Name })
+            Write-Error "Expected exactly one pointer package (non-RID). Found: $($names -join ', ')"
+            exit 1
+          }
+
+      - name: Upload unsigned artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-build-artifacts
+          path: |
+            out
+            TestResults
+          if-no-files-found: error
