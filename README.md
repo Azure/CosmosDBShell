@@ -109,6 +109,17 @@ dotnet tool uninstall --global <package-id>
 - [Programming](docs/programming.md) - Variables, control flow, functions
 - [MCP](docs/mcp.md) - Model Context Protocol integration
 
+## CI And Packaging
+
+GitHub Actions handles PR validation and unsigned package creation:
+
+- [.github/workflows/ci.yml](.github/workflows/ci.yml): restore, build, test, and fuzzer smoke test (runs on every PR)
+- [.github/workflows/package-unsigned.yml](.github/workflows/package-unsigned.yml): build and upload unsigned NuGet artifacts (runs on tags)
+
+GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so the workflows restore packages from nuget.org without depending on the Azure DevOps feed.
+
+Azure Pipelines ([.pipelines/CosmosDB-Shell-Official.yml](.pipelines/CosmosDB-Shell-Official.yml)) handles signing and publishing via the internal Azure setup.
+
 ## CLI Arguments
 
 | Option | Description |

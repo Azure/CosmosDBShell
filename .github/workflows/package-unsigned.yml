@@ -1,0 +1,177 @@
+name: Package Unsigned Artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - v*
+
+concurrency:
+  group: package-unsigned-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  BUILD_CONFIGURATION: Release
+
+jobs:
+  package:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            global.json
+            Directory.Packages.props
+            **/*.csproj
+
+      - name: Compute version properties
+        id: version
+        shell: pwsh
+        run: |
+          $runNumber = [int]"${{ github.run_number }}"
+          $version = "1.0.$runNumber"
+
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $candidateVersion = "${{ github.ref_name }}"
+            if ($candidateVersion.StartsWith('v')) {
+              $candidateVersion = $candidateVersion.Substring(1)
+            }
+
+            # Accept numeric SemVer: major.minor.patch with optional prerelease/build metadata
+            if ($candidateVersion -match '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') {
+              $version = $candidateVersion
+            }
+          }
+
+          # Derive a strictly numeric file version (major.minor.build.revision)
+          $numericVersion = $version.Split('+')[0].Split('-')[0]
+          $parts = $numericVersion.Split('.')
+
+          $allNumeric = $true
+          foreach ($p in $parts) {
+            $tmp = 0
+            if (-not [int]::TryParse($p, [ref]$tmp)) {
+              $allNumeric = $false
+              break
+            }
+          }
+
+          if (-not $allNumeric -or $parts.Count -lt 1) {
+            $fileVersion = "1.0.$runNumber.0"
+          } else {
+            $major = [int]$parts[0]
+            $minor = if ($parts.Count -ge 2) { [int]$parts[1] } else { 0 }
+            $build = if ($parts.Count -ge 3) { [int]$parts[2] } else { $runNumber }
+            $revision = if ($parts.Count -ge 4) { [int]$parts[3] } else { 0 }
+            $fileVersion = "$major.$minor.$build.$revision"
+          }
+
+          $infoVersion = "$version+${{ github.sha }}"
+
+          "package_version=$version" >> $env:GITHUB_OUTPUT
+          "file_version=$fileVersion" >> $env:GITHUB_OUTPUT
+          "informational_version=$infoVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore CosmosDBShell.sln --configfile .github/nuget.github.config
+
+      - name: Build solution
+        run: dotnet build CosmosDBShell.sln --configuration $env:BUILD_CONFIGURATION --no-restore
+        shell: pwsh
+
+      - name: Test solution
+        run: >-
+          dotnet test CosmosDBShell.sln
+          --configuration $env:BUILD_CONFIGURATION
+          --no-build
+          --no-restore
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory TestResults
+          --collect "Code coverage"
+        shell: pwsh
+
+      - name: Publish runtime artifacts
+        shell: pwsh
+        run: |
+          $rids = @('win-x64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
+          foreach ($rid in $rids) {
+            dotnet publish CosmosDBShell/CosmosDBShell.csproj `
+              --configuration $env:BUILD_CONFIGURATION `
+              --no-restore `
+              -r $rid `
+              --output "out/$rid" `
+              /p:Version=${{ steps.version.outputs.package_version }} `
+              /p:FileVersion=${{ steps.version.outputs.file_version }} `
+              /p:InformationalVersion=${{ steps.version.outputs.informational_version }}
+          }
+
+      - name: Pack unsigned NuGet artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path out/nupkg -Force | Out-Null
+          dotnet pack CosmosDBShell/CosmosDBShell.csproj `
+            --configuration $env:BUILD_CONFIGURATION `
+            --no-build `
+            --no-restore `
+            --output out/nupkg `
+            /p:PackageVersion=${{ steps.version.outputs.package_version }} `
+            /p:Version=${{ steps.version.outputs.package_version }} `
+            /p:FileVersion=${{ steps.version.outputs.file_version }} `
+            /p:InformationalVersion=${{ steps.version.outputs.informational_version }} `
+            /p:ContinuousIntegrationBuild=true
+
+      - name: Validate NuGet package set
+        shell: pwsh
+        run: |
+          $pkgDir = Join-Path $pwd 'out/nupkg'
+          $ridPatterns = @(
+            'CosmosDBShell.win-x64.*.nupkg',
+            'CosmosDBShell.linux-x64.*.nupkg',
+            'CosmosDBShell.linux-arm64.*.nupkg',
+            'CosmosDBShell.osx-x64.*.nupkg',
+            'CosmosDBShell.osx-arm64.*.nupkg'
+          )
+
+          foreach ($pattern in $ridPatterns) {
+            $matches = Get-ChildItem -Path (Join-Path $pkgDir $pattern) -ErrorAction SilentlyContinue
+            if (-not $matches -or $matches.Count -eq 0) {
+              Write-Error "Expected package was not generated: $pattern"
+              exit 1
+            }
+          }
+
+          $allPackages = Get-ChildItem -Path (Join-Path $pkgDir 'CosmosDBShell.*.nupkg') -ErrorAction SilentlyContinue
+          $pointerPackages = $allPackages | Where-Object {
+            $_.Name -notmatch '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
+          }
+
+          if (-not $pointerPackages -or $pointerPackages.Count -ne 1) {
+            $names = @($pointerPackages | ForEach-Object { $_.Name })
+            Write-Error "Expected exactly one pointer package (non-RID). Found: $($names -join ', ')"
+            exit 1
+          }
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults
+          if-no-files-found: ignore
+
+      - name: Upload unsigned artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-build-artifacts
+          path: out
+          if-no-files-found: error
