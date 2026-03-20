@@ -111,14 +111,14 @@ dotnet tool uninstall --global <package-id>
 
 ## CI And Packaging
 
-GitHub Actions is used for repository CI and unsigned package creation.
+GitHub Actions handles PR validation and unsigned package creation:
 
-- [.github/workflows/ci.yml](.github/workflows/ci.yml): restore, build, test, and fuzzer smoke test
-- [.github/workflows/package-unsigned.yml](.github/workflows/package-unsigned.yml): build and upload unsigned NuGet artifacts
+- [.github/workflows/ci.yml](.github/workflows/ci.yml): restore, build, test, and fuzzer smoke test (runs on every PR)
+- [.github/workflows/package-unsigned.yml](.github/workflows/package-unsigned.yml): build and upload unsigned NuGet artifacts (runs on tags)
 
-GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so the workflows restore packages from nuget.org without depending on the Azure Pipelines setup.
+GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so the workflows restore packages from nuget.org without depending on the Azure DevOps feed.
 
-Azure Pipelines can continue in parallel for signing and publishing from the branch-based Azure setup.
+Azure Pipelines ([.pipelines/CosmosDB-Shell-Official.yml](.pipelines/CosmosDB-Shell-Official.yml)) handles signing and publishing via the internal Azure setup.
 
 ## CLI Arguments
 

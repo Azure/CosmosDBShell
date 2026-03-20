@@ -161,11 +161,17 @@ jobs:
             exit 1
           }
 
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults
+          if-no-files-found: ignore
+
       - name: Upload unsigned artifacts
         uses: actions/upload-artifact@v4
         with:
           name: unsigned-build-artifacts
-          path: |
-            out
-            TestResults
+          path: out
           if-no-files-found: error
