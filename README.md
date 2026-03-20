@@ -114,7 +114,7 @@ dotnet tool uninstall --global <package-id>
 GitHub Actions is used for repository CI and unsigned package creation.
 
 - [.github/workflows/ci.yml](.github/workflows/ci.yml): restore, build, test, and fuzzer smoke test
-- [.github/workflows/package-unsigned.yml](.github/workflows/package-unsigned.yml): build and publish unsigned NuGet artifacts
+- [.github/workflows/package-unsigned.yml](.github/workflows/package-unsigned.yml): build and upload unsigned NuGet artifacts
 
 GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so the workflows restore packages from nuget.org without depending on the Azure Pipelines setup.
 
