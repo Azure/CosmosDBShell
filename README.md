@@ -99,8 +99,28 @@ dotnet tool update --global <package-id> --add-source /path/to/nupkgs --version 
 
 Uninstall:
 
+List the installed global tools first so you can identify the exact package ID:
+
 ```bash
-dotnet tool uninstall --global <package-id>
+dotnet tool list --global
+```
+
+Then uninstall the matching package ID. For example, if you installed the Windows x64 RID-specific package:
+
+```powershell
+dotnet tool uninstall --global CosmosDBShell.win-x64
+```
+
+If you installed the base package instead:
+
+```bash
+dotnet tool uninstall --global CosmosDBShell
+```
+
+If you are not sure which package ID is installed, list global tools first:
+
+```bash
+dotnet tool list --global
 ```
 
 ## Documentation
