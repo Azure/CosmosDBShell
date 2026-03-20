@@ -18,6 +18,10 @@ parameters: # parameters are shown up in ADO UI in a build queue time
     displayName: "Enable debug output"
     type: boolean
     default: false
+  - name: "publishNuget"
+    displayName: "Publish NuGet packages to internal feed"
+    type: boolean
+    default: true
 
 variables:
   CDP_DEFINITION_BUILD_COUNT: $[counter('', 0)] # needed for onebranch.pipeline.version task https://aka.ms/obpipelines/versioning
@@ -122,6 +126,7 @@ extends:
                     if ($buildNumber -ne $version) {
                       Write-Host "Updating Build.BuildNumber to normalized NuGet version: $version"
                       Write-Host "##vso[build.updatebuildnumber]$version"
+                      $buildNumber = $version
                     }
 
                     $fileVersion = $version
@@ -494,7 +499,9 @@ extends:
 
               - task: NuGetCommand@2
                 displayName: "Push RID-specific NuGet packages"
-                condition: succeeded()
+                condition: and(succeeded(),
+                  eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+                  eq('${{ parameters.publishNuget }}', 'true'))
                 inputs:
                   command: "push"
                   packagesToPush: |
@@ -508,7 +515,9 @@ extends:
                   allowPackageConflicts: true
               - task: NuGetCommand@2
                 displayName: "Push pointer NuGet package"
-                condition: succeeded()
+                condition: and(succeeded(),
+                  eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+                  eq('${{ parameters.publishNuget }}', 'true'))
                 inputs:
                   command: "push"
                   packagesToPush: "$(Build.SourcesDirectory)\\out\\nupkg\\CosmosDBShell.$(CosmosDBShell_Version).nupkg"

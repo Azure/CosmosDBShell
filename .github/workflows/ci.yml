@@ -55,8 +55,17 @@ jobs:
 
       - name: Run fuzzer smoke test
         working-directory: CosmosDBShell.Fuzzer
-        run: dotnet run --configuration $env:BUILD_CONFIGURATION --no-build -- --all
+        run: dotnet run --configuration $env:BUILD_CONFIGURATION --no-build --no-restore -- --all
         shell: pwsh
+
+      - name: Fail if fuzzer crash findings exist
+        shell: pwsh
+        run: |
+          $crashes = Get-ChildItem -Path CosmosDBShell.Fuzzer/findings -Filter 'crash_*.txt' -ErrorAction SilentlyContinue
+          if ($crashes -and $crashes.Count -gt 0) {
+            Write-Error "Fuzzer recorded $($crashes.Count) crash(es). See the 'fuzz-findings' artifact for details."
+            exit 1
+          }
 
       - name: Upload test results
         if: always()
