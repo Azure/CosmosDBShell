@@ -38,23 +38,42 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $version = "1.0.${{ github.run_number }}"
+          $runNumber = [int]"${{ github.run_number }}"
+          $version = "1.0.$runNumber"
+
           if ("${{ github.ref_type }}" -eq "tag") {
-            $version = "${{ github.ref_name }}"
-            if ($version.StartsWith('v')) {
-              $version = $version.Substring(1)
+            $candidateVersion = "${{ github.ref_name }}"
+            if ($candidateVersion.StartsWith('v')) {
+              $candidateVersion = $candidateVersion.Substring(1)
+            }
+
+            # Accept numeric SemVer: major.minor.patch with optional prerelease/build metadata
+            if ($candidateVersion -match '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') {
+              $version = $candidateVersion
             }
           }
 
-          $parts = $version.Split('.')
-          if ($parts.Count -eq 2) {
-            $fileVersion = "$version.${{ github.run_number }}.0"
-          } elseif ($parts.Count -eq 3) {
-            $fileVersion = "$version.${{ github.run_number }}"
-          } elseif ($parts.Count -ge 4) {
-            $fileVersion = ($parts[0..3] -join '.')
+          # Derive a strictly numeric file version (major.minor.build.revision)
+          $numericVersion = $version.Split('+')[0].Split('-')[0]
+          $parts = $numericVersion.Split('.')
+
+          $allNumeric = $true
+          foreach ($p in $parts) {
+            $tmp = 0
+            if (-not [int]::TryParse($p, [ref]$tmp)) {
+              $allNumeric = $false
+              break
+            }
+          }
+
+          if (-not $allNumeric -or $parts.Count -lt 1) {
+            $fileVersion = "1.0.$runNumber.0"
           } else {
-            $fileVersion = "1.0.${{ github.run_number }}.0"
+            $major = [int]$parts[0]
+            $minor = if ($parts.Count -ge 2) { [int]$parts[1] } else { 0 }
+            $build = if ($parts.Count -ge 3) { [int]$parts[2] } else { $runNumber }
+            $revision = if ($parts.Count -ge 4) { [int]$parts[3] } else { 0 }
+            $fileVersion = "$major.$minor.$build.$revision"
           }
 
           $infoVersion = "$version+${{ github.sha }}"
