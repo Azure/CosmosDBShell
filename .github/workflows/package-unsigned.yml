@@ -76,7 +76,11 @@ jobs:
             $fileVersion = "$major.$minor.$build.$revision"
           }
 
-          $infoVersion = "$version+${{ github.sha }}"
+          if ($version -match '\+') {
+            $infoVersion = "$version.${{ github.sha }}"
+          } else {
+            $infoVersion = "$version+${{ github.sha }}"
+          }
 
           "package_version=$version" >> $env:GITHUB_OUTPUT
           "file_version=$fileVersion" >> $env:GITHUB_OUTPUT
