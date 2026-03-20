@@ -121,9 +121,11 @@ jobs:
           New-Item -ItemType Directory -Path out/nupkg -Force | Out-Null
           dotnet pack CosmosDBShell/CosmosDBShell.csproj `
             --configuration $env:BUILD_CONFIGURATION `
-            --no-build `
             --no-restore `
             --output out/nupkg `
+            /p:Version=${{ steps.version.outputs.package_version }} `
+            /p:FileVersion=${{ steps.version.outputs.file_version }} `
+            /p:InformationalVersion=${{ steps.version.outputs.informational_version }} `
             /p:PackageVersion=${{ steps.version.outputs.package_version }} `
             /p:ContinuousIntegrationBuild=true
 

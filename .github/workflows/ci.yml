@@ -55,7 +55,7 @@ jobs:
 
       - name: Run fuzzer smoke test
         working-directory: CosmosDBShell.Fuzzer
-        run: dotnet run --configuration $env:BUILD_CONFIGURATION --no-build -- --all
+        run: dotnet run --configuration $env:BUILD_CONFIGURATION --no-build --no-restore -- --all
         shell: pwsh
 
       - name: Upload test results
