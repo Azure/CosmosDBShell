@@ -162,12 +162,13 @@ jobs:
           $summary = $env:GITHUB_STEP_SUMMARY
           $version = '${{ steps.version.outputs.package_version }}'
           $artifactName = '${{ steps.version.outputs.artifact_name }}'
+          $branchName = '${{ github.ref_name }}'
           $lines = @(
             '## Branch tool packages',
             '',
-            "- Branch: `${{ github.ref_name }}`",
-            "- Preview version: `$version`",
-            "- Artifact: `$artifactName`",
+            ('- Branch: `' + $branchName + '`'),
+            ('- Preview version: `' + $version + '`'),
+            ('- Artifact: `' + $artifactName + '`'),
             '',
             'Download the artifact, extract the `.nupkg` files to a local folder, then install one of these packages:',
             '',
