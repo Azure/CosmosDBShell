@@ -507,12 +507,7 @@ extends:
                   eq('${{ parameters.publishNuget }}', 'true'))
                 inputs:
                   command: "push"
-                  packagesToPush: |
-                    $(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg
-                    $(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg
-                    $(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg
-                    $(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg
-                    $(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg
+                  packagesToPush: "$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg;$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg;$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg;$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg;$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg"
                   nuGetFeedType: "internal"
                   publishVstsFeed: "CosmosDB/CosmosDBShell"
                   allowPackageConflicts: true
