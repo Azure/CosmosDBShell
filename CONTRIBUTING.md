@@ -25,7 +25,7 @@ There are several ways you can contribute to the CosmosDBShell project:
   - Run the tool locally: `dotnet run --project CosmosDBShell/CosmosDBShell.csproj`
   - GitHub Actions runs CI from [.github/workflows/ci.yml](.github/workflows/ci.yml) and uploads unsigned artifacts from [.github/workflows/package-unsigned.yml](.github/workflows/package-unsigned.yml).
   - GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so it can restore from nuget.org independently of Azure Pipelines.
-  - Azure Pipelines can continue independently for branch-based signing and publishing.
+  - Azure Pipelines runs from [.pipelines/CosmosDB-Shell-Official.yml](.pipelines/CosmosDB-Shell-Official.yml) for signed builds and publishing from the `main` branch (and any manual runs configured there).
 
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)

@@ -107,16 +107,21 @@ jobs:
       - name: Publish runtime artifacts
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $rids = @('win-x64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
           foreach ($rid in $rids) {
             dotnet publish CosmosDBShell/CosmosDBShell.csproj `
               --configuration $env:BUILD_CONFIGURATION `
-              --no-restore `
+              --configfile .github/nuget.github.config `
               -r $rid `
               --output "out/$rid" `
               /p:Version=${{ steps.version.outputs.package_version }} `
               /p:FileVersion=${{ steps.version.outputs.file_version }} `
               /p:InformationalVersion=${{ steps.version.outputs.informational_version }}
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "RID publish failed for $rid with exit code $LASTEXITCODE."
+            }
           }
 
       - name: Pack unsigned NuGet artifacts
