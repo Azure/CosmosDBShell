@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Core;
 
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Azure.Data.Cosmos.Shell.Commands;
@@ -430,7 +431,9 @@ public partial class ShellInterpreter : IDisposable
 
     internal void PrintVersion(CommandState? commandState)
     {
-        var version = typeof(VersionCommand).Assembly.GetName().Version?.ToString() ?? "unknown";
+        var assembly = typeof(VersionCommand).Assembly;
+        var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        var version = informationalVersion?.Split('+')[0] ?? assembly.GetName().Version?.ToString() ?? "unknown";
         var versionString = MessageService.GetArgsString("command-version", "version", version);
         AnsiConsole.MarkupLine(versionString);
 

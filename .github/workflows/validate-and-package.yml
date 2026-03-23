@@ -1,14 +1,15 @@
-name: Package Branch Tool Artifacts
+name: Validate And Package
 
 on:
-  workflow_dispatch:
+  pull_request:
   push:
     branches:
       - "**"
+  workflow_dispatch:
 
 concurrency:
-  group: package-branches-${{ github.ref }}
-  cancel-in-progress: false
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -17,7 +18,74 @@ env:
   BUILD_CONFIGURATION: Release
 
 jobs:
-  package:
+  build-test:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            global.json
+            Directory.Packages.props
+            **/*.csproj
+
+      - name: Restore
+        run: dotnet restore CosmosDBShell.sln --configfile .github/nuget.github.config
+
+      - name: Build solution
+        run: dotnet build CosmosDBShell.sln --configuration $env:BUILD_CONFIGURATION --no-restore
+        shell: pwsh
+
+      - name: Test solution
+        run: >-
+          dotnet test CosmosDBShell.sln
+          --configuration $env:BUILD_CONFIGURATION
+          --no-build
+          --no-restore
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory TestResults
+          --collect "Code coverage"
+        shell: pwsh
+
+      - name: Run fuzzer smoke test
+        working-directory: CosmosDBShell.Fuzzer
+        run: dotnet run --configuration $env:BUILD_CONFIGURATION --no-build --no-restore -- --all
+        shell: pwsh
+
+      - name: Fail if fuzzer crash findings exist
+        shell: pwsh
+        run: |
+          $crashes = Get-ChildItem -Path CosmosDBShell.Fuzzer/findings -Filter 'crash_*.txt' -ErrorAction SilentlyContinue
+          if ($crashes -and $crashes.Count -gt 0) {
+            Write-Error "Fuzzer recorded $($crashes.Count) crash(es). See the 'fuzz-findings' artifact for details."
+            exit 1
+          }
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults
+          if-no-files-found: ignore
+
+      - name: Upload fuzzer findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-findings
+          path: CosmosDBShell.Fuzzer/findings
+          if-no-files-found: ignore
+
+  package-nuget:
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
 
     steps:
@@ -96,7 +164,7 @@ jobs:
             }
           }
 
-      - name: Pack branch NuGet artifacts
+      - name: Pack NuGet artifacts
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path out/nupkg -Force | Out-Null
@@ -164,7 +232,7 @@ jobs:
           $artifactSuffix = '${{ steps.version.outputs.artifact_suffix }}'
           $branchName = '${{ github.ref_name }}'
           $lines = @(
-            '## Branch tool packages',
+            '## NuGet packages',
             '',
             ('- Branch: `' + $branchName + '`'),
             ('- Preview version: `' + $version + '`'),
@@ -177,7 +245,7 @@ jobs:
             ('- `CosmosDBShell-osx-x64-' + $artifactSuffix + '`'),
             ('- `CosmosDBShell-osx-arm64-' + $artifactSuffix + '`'),
             '',
-            'Download the artifact, extract the `.nupkg` files to a local folder, then install one of these packages:',
+            'Download the artifact, extract the `.nupkg` file to a local folder, then install one of these packages:',
             '',
             '```powershell',
             'dotnet tool install --global CosmosDBShell --add-source C:\path\to\nupkgs --version ' + $version,

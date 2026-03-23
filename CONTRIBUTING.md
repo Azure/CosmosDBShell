@@ -23,7 +23,7 @@ There are several ways you can contribute to the CosmosDBShell project:
   - Build: `dotnet build CosmosDBShell.sln` (or use the VS Code build task with Ctrl+Shift+B).
   - Run tests: `dotnet test CosmosDBShell.sln`
   - Run the tool locally: `dotnet run --project CosmosDBShell/CosmosDBShell.csproj`
-  - GitHub Actions runs CI from [.github/workflows/ci.yml](.github/workflows/ci.yml) and uploads unsigned artifacts from [.github/workflows/package-unsigned.yml](.github/workflows/package-unsigned.yml).
+  - GitHub Actions runs CI and uploads NuGet package artifacts from [.github/workflows/validate-and-package.yml](.github/workflows/validate-and-package.yml).
   - GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so it can restore from nuget.org independently of Azure Pipelines.
   - Azure Pipelines runs from [.pipelines/CosmosDB-Shell-Official.yml](.pipelines/CosmosDB-Shell-Official.yml) for signed builds and publishing from the `main` branch (and any manual runs configured there).
 

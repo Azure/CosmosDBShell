@@ -131,15 +131,13 @@ dotnet tool list --global
 
 ## CI And Packaging
 
-GitHub Actions handles PR validation and unsigned package creation:
+GitHub Actions uses a single workflow for validation and branch/main package artifacts:
 
-- [.github/workflows/ci.yml](.github/workflows/ci.yml): restore, build, test, and fuzzer smoke test (runs on every PR)
-- [.github/workflows/package-branches.yml](.github/workflows/package-branches.yml): build installable preview NuGet tool packages for every non-`main` branch push and upload the `.nupkg` files as workflow artifacts
-- [.github/workflows/package-unsigned.yml](.github/workflows/package-unsigned.yml): build and upload unsigned NuGet artifacts (runs on tags)
+- [.github/workflows/validate-and-package.yml](.github/workflows/validate-and-package.yml): runs PR validation and uploads installable NuGet tool packages as artifacts on branch and main pushes
 
 GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so the workflows restore packages from nuget.org without depending on the Azure DevOps feed.
 
-The branch packaging workflow produces preview versions in the form `1.0.<run>-preview.<branch>`. Each workflow run also writes a summary with the exact artifact name and ready-to-use `dotnet tool install` commands so the package version is easy to find later.
+The packaging job produces preview versions in the form `1.0.<run>-preview.<branch>`, uploads separate artifacts for the pointer package and each RID-specific package, and writes a summary with the artifact names plus ready-to-use `dotnet tool install` commands.
 
 Azure Pipelines ([.pipelines/CosmosDB-Shell-Official.yml](.pipelines/CosmosDB-Shell-Official.yml)) handles signing and publishing via the internal Azure setup.
 
