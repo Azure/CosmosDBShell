@@ -304,7 +304,7 @@ public partial class ShellInterpreter : IDisposable
         var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         if (!string.IsNullOrWhiteSpace(informationalVersion))
         {
-            return informationalVersion;
+            return informationalVersion.Split('+')[0];
         }
 
         return assembly.GetName().Version?.ToString() ?? "unknown";
