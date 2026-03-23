@@ -75,20 +75,6 @@ jobs:
       - name: Test
         run: dotnet test CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --configuration $env:BUILD_CONFIGURATION --no-build --no-restore
         shell: pwsh
-      - name: Publish runtime artifacts
-        shell: pwsh
-        run: |
-          $rids = @('win-x64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
-          foreach ($rid in $rids) {
-            dotnet publish CosmosDBShell/CosmosDBShell.csproj `
-              --configuration $env:BUILD_CONFIGURATION `
-              --no-restore `
-              -r $rid `
-              --output "out/$rid" `
-              /p:Version=${{ steps.version.outputs.assembly_version }} `
-              /p:FileVersion=${{ steps.version.outputs.file_version }} `
-              /p:InformationalVersion=${{ steps.version.outputs.informational_version }}
-          }
 
       - name: Pack branch NuGet artifacts
         shell: pwsh
