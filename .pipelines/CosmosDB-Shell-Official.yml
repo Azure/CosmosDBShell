@@ -518,7 +518,7 @@ extends:
                   eq('${{ parameters.publishNuget }}', 'true'))
                 inputs:
                   command: "push"
-                  packagesToPush: "$(Build.SourcesDirectory)\\out\\nupkg\\CosmosDBShell.$(CosmosDBShell_PackageVersion).nupkg"
+                  packagesToPush: "$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.$(CosmosDBShell_PackageVersion).nupkg"
                   nuGetFeedType: "internal"
                   publishVstsFeed: "CosmosDB/CosmosDBShell"
                   allowPackageConflicts: true
