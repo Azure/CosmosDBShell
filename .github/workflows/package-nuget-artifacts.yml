@@ -3,8 +3,8 @@ name: Package Branch Tool Artifacts
 on:
   workflow_dispatch:
   push:
-    branches-ignore:
-      - main
+    branches:
+      - "**"
 
 concurrency:
   group: package-branches-${{ github.ref }}
