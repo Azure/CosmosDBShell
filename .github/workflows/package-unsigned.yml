@@ -185,9 +185,44 @@ jobs:
           path: TestResults
           if-no-files-found: ignore
 
-      - name: Upload unsigned artifacts
+      - name: Upload pointer package
         uses: actions/upload-artifact@v4
         with:
-          name: unsigned-build-artifacts
-          path: out
+          name: CosmosDBShell-pointer-${{ steps.version.outputs.package_version }}
+          path: out/nupkg/CosmosDBShell.${{ steps.version.outputs.package_version }}.nupkg
+          if-no-files-found: error
+
+      - name: Upload win-x64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: CosmosDBShell-win-x64-${{ steps.version.outputs.package_version }}
+          path: out/nupkg/CosmosDBShell.win-x64.${{ steps.version.outputs.package_version }}.nupkg
+          if-no-files-found: error
+
+      - name: Upload linux-x64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: CosmosDBShell-linux-x64-${{ steps.version.outputs.package_version }}
+          path: out/nupkg/CosmosDBShell.linux-x64.${{ steps.version.outputs.package_version }}.nupkg
+          if-no-files-found: error
+
+      - name: Upload linux-arm64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: CosmosDBShell-linux-arm64-${{ steps.version.outputs.package_version }}
+          path: out/nupkg/CosmosDBShell.linux-arm64.${{ steps.version.outputs.package_version }}.nupkg
+          if-no-files-found: error
+
+      - name: Upload osx-x64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: CosmosDBShell-osx-x64-${{ steps.version.outputs.package_version }}
+          path: out/nupkg/CosmosDBShell.osx-x64.${{ steps.version.outputs.package_version }}.nupkg
+          if-no-files-found: error
+
+      - name: Upload osx-arm64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: CosmosDBShell-osx-arm64-${{ steps.version.outputs.package_version }}
+          path: out/nupkg/CosmosDBShell.osx-arm64.${{ steps.version.outputs.package_version }}.nupkg
           if-no-files-found: error
