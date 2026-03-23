@@ -170,6 +170,13 @@ jobs:
             exit 1
           }
 
+          $anyMatches = Get-ChildItem -Path (Join-Path $pkgDir 'CosmosDBShell.any.*.nupkg') -ErrorAction SilentlyContinue
+          if ($anyMatches -and $anyMatches.Count -gt 0) {
+            $names = $anyMatches | ForEach-Object { $_.Name } | Sort-Object
+            Write-Error "Unexpected any-RID package(s) found: $($names -join ', ')"
+            exit 1
+          }
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
