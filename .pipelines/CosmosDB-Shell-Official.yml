@@ -123,6 +123,8 @@ extends:
 
                     $version = Normalize-NuGetVersion $version
 
+                    $packageVersion = "$version-preview"
+
                     if ($buildNumber -ne $version) {
                       Write-Host "Updating Build.BuildNumber to normalized NuGet version: $version"
                       Write-Host "##vso[build.updatebuildnumber]$version"
@@ -142,6 +144,7 @@ extends:
                     $infoVersion = "$buildNumber+$(Build.SourceVersion)"
 
                     Write-Host "##vso[task.setvariable variable=CosmosDBShell_Version]$version"
+                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_PackageVersion]$packageVersion"
                     Write-Host "##vso[task.setvariable variable=CosmosDBShell_FileVersion]$fileVersion"
                     Write-Host "##vso[task.setvariable variable=CosmosDBShell_InformationalVersion]$infoVersion"
 
@@ -331,8 +334,8 @@ extends:
                   nobuild: true
                   outputDir: '$(Build.SourcesDirectory)\out\nupkg'
                   versioningScheme: byEnvVar
-                  versionEnvVar: CosmosDBShell_Version
-                  buildProperties: "Version=$(CosmosDBShell_Version);PackageVersion=$(CosmosDBShell_Version);FileVersion=$(CosmosDBShell_FileVersion);InformationalVersion=$(CosmosDBShell_InformationalVersion);ContinuousIntegrationBuild=true"
+                  versionEnvVar: CosmosDBShell_PackageVersion
+                  buildProperties: "Version=$(CosmosDBShell_Version);PackageVersion=$(CosmosDBShell_PackageVersion);FileVersion=$(CosmosDBShell_FileVersion);InformationalVersion=$(CosmosDBShell_InformationalVersion);ContinuousIntegrationBuild=true"
 
               - task: PowerShell@2
                 displayName: "Expand RID packages for payload signing"
@@ -520,7 +523,7 @@ extends:
                   eq('${{ parameters.publishNuget }}', 'true'))
                 inputs:
                   command: "push"
-                  packagesToPush: "$(Build.SourcesDirectory)\\out\\nupkg\\CosmosDBShell.$(CosmosDBShell_Version).nupkg"
+                  packagesToPush: "$(Build.SourcesDirectory)\\out\\nupkg\\CosmosDBShell.$(CosmosDBShell_PackageVersion).nupkg"
                   nuGetFeedType: "internal"
                   publishVstsFeed: "CosmosDB/CosmosDBShell"
                   allowPackageConflicts: true
