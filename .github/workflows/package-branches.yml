@@ -72,6 +72,9 @@ jobs:
         run: dotnet build CosmosDBShell.sln --configuration $env:BUILD_CONFIGURATION --no-restore
         shell: pwsh
 
+      - name: Test
+        run: dotnet test CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --configuration $env:BUILD_CONFIGURATION --no-build --no-restore
+        shell: pwsh
       - name: Publish runtime artifacts
         shell: pwsh
         run: |
