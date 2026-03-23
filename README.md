@@ -136,9 +136,12 @@ dotnet tool list --global
 GitHub Actions handles PR validation and unsigned package creation:
 
 - [.github/workflows/ci.yml](.github/workflows/ci.yml): restore, build, test, and fuzzer smoke test (runs on every PR)
+- [.github/workflows/package-branches.yml](.github/workflows/package-branches.yml): build installable preview NuGet tool packages for every non-`main` branch push and upload the `.nupkg` files as workflow artifacts
 - [.github/workflows/package-unsigned.yml](.github/workflows/package-unsigned.yml): build and upload unsigned NuGet artifacts (runs on tags)
 
 GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so the workflows restore packages from nuget.org without depending on the Azure DevOps feed.
+
+The branch packaging workflow produces preview versions in the form `1.0.<run>-preview.<branch>`. Each workflow run also writes a summary with the exact artifact name and ready-to-use `dotnet tool install` commands so the package version is easy to find later.
 
 Azure Pipelines ([.pipelines/CosmosDB-Shell-Official.yml](.pipelines/CosmosDB-Shell-Official.yml)) handles signing and publishing via the internal Azure setup.
 
