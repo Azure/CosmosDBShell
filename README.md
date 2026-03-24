@@ -116,12 +116,6 @@ If you installed the base package instead:
 dotnet tool uninstall --global CosmosDBShell
 ```
 
-If you are not sure which package ID is installed, list global tools first:
-
-```bash
-dotnet tool list --global
-```
-
 ## Documentation
 
 - [Commands](docs/commands.md) - All shell commands
@@ -135,20 +129,16 @@ GitHub Actions uses a single workflow for validation and branch/main package art
 
 - [.github/workflows/validate-and-package.yml](.github/workflows/validate-and-package.yml): runs PR validation and uploads installable NuGet tool packages as artifacts on branch and main pushes
 
-GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so the workflows restore packages from nuget.org without depending on the Azure DevOps feed.
+GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so the workflow restores packages from nuget.org without depending on the Azure DevOps feed.
 
 The packaging job produces preview versions in the form `1.0.<run>-preview.<branch>`, uploads separate artifacts for the pointer package and each RID-specific package, and writes a summary with the artifact names plus ready-to-use `dotnet tool install` commands.
 
-Azure Pipelines ([.pipelines/CosmosDB-Shell-Official.yml](.pipelines/CosmosDB-Shell-Official.yml)) handles signing and publishing via the internal Azure setup.
+- [.github/workflows/validate-and-package.yml](.github/workflows/validate-and-package.yml): runs PR validation on pull requests and main branch pushes, and uploads installable NuGet tool packages as artifacts on branch and main pushes
+- [.github/workflows/package-nuget-artifacts.yml](.github/workflows/package-nuget-artifacts.yml): build installable preview/unsigned NuGet tool packages for branch pushes and tags, and upload the `.nupkg` files as workflow artifacts
 
-## CLI Arguments
+GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so the workflows restore packages from nuget.org without depending on the Azure DevOps feed.
 
-| Option | Description |
-| ------ | ----------- |
-| `-c <cmd>` | Execute and exit |
-| `-k <cmd>` | Execute and stay |
-| `--connect <str>` | Initial connection |
-| `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
+The packaging workflow produces preview versions in the form `1.0.<run>-preview.<branch>`. Each workflow run also writes a summary with the exact artifact name and ready-to-use `dotnet tool install` commands so the package version is easy to find later.
 | `--cs <n>` | Colors: 0=off, 1=standard, 2=truecolor |
 | `--help` | Show help |
 
