@@ -433,9 +433,9 @@ extends:
                       $_.Name -notmatch '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
                     }
 
-                    if (-not $pointerPackages -or $pointerPackages.Count -ne 1) {
+                    if ($pointerPackages -and $pointerPackages.Count -gt 1) {
                       $names = @($pointerPackages | ForEach-Object { $_.Name })
-                      Write-Error "Expected exactly one pointer package (non-RID). Found: $($names -join ', ')"
+                      Write-Error "Expected at most one pointer package (non-RID). Found: $($names -join ', ')"
                       exit 1
                     }
 
@@ -445,6 +445,17 @@ extends:
                       Write-Error "Unexpected any-RID package(s) found: $($names -join ', ')"
                       exit 1
                     }
+
+              - task: PowerShell@2
+                displayName: "Remove pointer package from shipping outputs"
+                condition: succeeded()
+                inputs:
+                  targetType: inline
+                  script: |
+                    $pkgDir = "$(Build.SourcesDirectory)\out\nupkg"
+                    Get-ChildItem -Path (Join-Path $pkgDir "CosmosDBShell.*.nupkg") -ErrorAction SilentlyContinue | Where-Object {
+                      $_.Name -notmatch '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
+                    } | Remove-Item -Force
 
               - task: onebranch.pipeline.signing@1
                 displayName: "Sign NuGet packages"
@@ -484,10 +495,9 @@ extends:
                     }
                     Write-Host "Non-shipping build outputs cleaned."
 
-              # Push RID-specific NuGet packages first, then the pointer package last.
-              # With ToolPackageRuntimeIdentifiers, dotnet pack produces per-RID packages
-              # (e.g. CosmosDBShell.win-x64.*.nupkg) plus a pointer package (CosmosDBShell.*.nupkg).
-              # All RID packages must be available before the pointer package is published.
+              # Publish only RID-specific NuGet tool packages.
+              # dotnet pack may also generate a non-RID pointer package, but feed installs
+              # should use the platform-specific package IDs directly.
               - task: PowerShell@2
                 displayName: "List NuGet packages before publish"
                 condition: succeeded()
@@ -499,29 +509,51 @@ extends:
                     Get-ChildItem -Path $pkgDir -Filter *.nupkg -File | Sort-Object Name | ForEach-Object {
                       Write-Host " - $($_.Name) [$($_.Length) bytes]"
                     }
+              - ${{ if and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(parameters.publishNuget, true)) }}:
+                  - task: NuGetCommand@2
+                    displayName: "Push win-x64 NuGet package"
+                    inputs:
+                      command: "push"
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg'
+                      nuGetFeedType: "internal"
+                      publishVstsFeed: "CosmosDB/CosmosDBShell"
+                      allowPackageConflicts: true
 
-              - task: NuGetCommand@2
-                displayName: "Push RID-specific NuGet packages"
-                condition: and(succeeded(),
-                  eq(variables['Build.SourceBranch'], 'refs/heads/main'),
-                  eq('${{ parameters.publishNuget }}', 'true'))
-                inputs:
-                  command: "push"
-                  packagesToPush: "$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg;$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg;$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg;$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg;$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg"
-                  nuGetFeedType: "internal"
-                  publishVstsFeed: "CosmosDB/CosmosDBShell"
-                  allowPackageConflicts: true
-              - task: NuGetCommand@2
-                displayName: "Push pointer NuGet package"
-                condition: and(succeeded(),
-                  eq(variables['Build.SourceBranch'], 'refs/heads/main'),
-                  eq('${{ parameters.publishNuget }}', 'true'))
-                inputs:
-                  command: "push"
-                  packagesToPush: "$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.$(CosmosDBShell_PackageVersion).nupkg"
-                  nuGetFeedType: "internal"
-                  publishVstsFeed: "CosmosDB/CosmosDBShell"
-                  allowPackageConflicts: true
+                  - task: NuGetCommand@2
+                    displayName: "Push linux-x64 NuGet package"
+                    inputs:
+                      command: "push"
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg'
+                      nuGetFeedType: "internal"
+                      publishVstsFeed: "CosmosDB/CosmosDBShell"
+                      allowPackageConflicts: true
+
+                  - task: NuGetCommand@2
+                    displayName: "Push linux-arm64 NuGet package"
+                    inputs:
+                      command: "push"
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg'
+                      nuGetFeedType: "internal"
+                      publishVstsFeed: "CosmosDB/CosmosDBShell"
+                      allowPackageConflicts: true
+
+                  - task: NuGetCommand@2
+                    displayName: "Push osx-x64 NuGet package"
+                    inputs:
+                      command: "push"
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg'
+                      nuGetFeedType: "internal"
+                      publishVstsFeed: "CosmosDB/CosmosDBShell"
+                      allowPackageConflicts: true
+
+                  - task: NuGetCommand@2
+                    displayName: "Push osx-arm64 NuGet package"
+                    inputs:
+                      command: "push"
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg'
+                      nuGetFeedType: "internal"
+                      publishVstsFeed: "CosmosDB/CosmosDBShell"
+                      allowPackageConflicts: true
 
           - job: CodeQLAnalyze
             displayName: CodeQL (C#)
