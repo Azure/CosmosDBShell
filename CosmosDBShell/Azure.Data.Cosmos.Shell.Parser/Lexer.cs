@@ -207,6 +207,11 @@ public enum TokenType
     Not,
 
     /// <summary>
+    /// Optional access token ('?').
+    /// </summary>
+    Question,
+
+    /// <summary>
     /// End of line token (newline characters).
     /// </summary>
     Eol,
@@ -386,6 +391,10 @@ internal class Lexer
             case '!':
                 this.Advance();
                 return new Token(TokenType.Not, "!", startPosition, 1);
+
+            case '?':
+                this.Advance();
+                return new Token(TokenType.Question, "?", startPosition, 1);
 
             case '\n':
             case '\r':

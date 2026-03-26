@@ -255,9 +255,9 @@ jobs:
             $_.Name -notmatch '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
           }
 
-          if (-not $pointerPackages -or $pointerPackages.Count -ne 1) {
+          if ($pointerPackages -and $pointerPackages.Count -gt 1) {
             $names = @($pointerPackages | ForEach-Object { $_.Name })
-            Write-Error "Expected exactly one pointer package (non-RID). Found: $($names -join ', ')"
+            Write-Error "Expected at most one pointer package (non-RID). Found: $($names -join ', ')"
             exit 1
           }
 
@@ -267,6 +267,15 @@ jobs:
             Write-Error "Unexpected any-RID package(s) found: $($names -join ', ')"
             exit 1
           }
+
+      - name: Remove pointer package from distributable artifacts
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          $pkgDir = Join-Path $pwd 'out/nupkg'
+          Get-ChildItem -Path (Join-Path $pkgDir 'CosmosDBShell.*.nupkg') -ErrorAction SilentlyContinue | Where-Object {
+            $_.Name -notmatch '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
+          } | Remove-Item -Force
 
       - name: List packaged NuGet files
         if: github.event_name != 'pull_request'

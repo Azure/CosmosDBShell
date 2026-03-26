@@ -172,7 +172,7 @@ internal class ExpressionParser
             return this.CreateAbortExpression();
         }
 
-        return this.ParseOr();
+        return this.ParsePipeExpression();
     }
 
     public Expression ParsePrimaryExpression()
@@ -184,6 +184,32 @@ internal class ExpressionParser
         }
 
         return this.ParsePrimary();
+    }
+
+    private Expression ParsePipeExpression()
+    {
+        if (this.aborted)
+        {
+            return this.CreateAbortExpression();
+        }
+
+        var left = this.ParseOr();
+
+        while (!this.aborted && this.Check(TokenType.Pipe))
+        {
+            var pipeToken = this.Current;
+            if (pipeToken == null)
+            {
+                this.AbortUnexpectedEnd();
+                return this.CreateAbortExpression();
+            }
+
+            this.Advance();
+            var right = this.ParseOr();
+            left = new FilterPipeExpression(left, pipeToken, right);
+        }
+
+        return left;
     }
 
     private bool Check(TokenType type)
@@ -500,7 +526,7 @@ internal class ExpressionParser
             }
 
             // Regular expression parsing
-            var expr = this.ParseOr();
+            var expr = this.ParsePipeExpression();
             var closeTokenExpr = this.Consume(TokenType.CloseParenthesis, MessageService.GetString("expression_error_expected_close_paren"));
             return new ParensExpression(openToken, expr, closeTokenExpr);
         }
@@ -620,6 +646,16 @@ internal class ExpressionParser
                 return new ConstantExpression(token, new ShellBool(false));
             }
 
+            if (string.Equals(token.Value, "null", StringComparison.OrdinalIgnoreCase))
+            {
+                return new ConstantExpression(token, new ShellJson(FilterExpressionUtilities.NullElement()));
+            }
+
+            if (token.Value.StartsWith(".", StringComparison.Ordinal))
+            {
+                return this.ParseFilterPathExpression(token);
+            }
+
             // Check for variables
             if (token.Value.StartsWith("$") && token.Value.Length > 1)
             {
@@ -644,6 +680,16 @@ internal class ExpressionParser
                 }
 
                 return new VariableExpression(token, varValue);
+            }
+
+            if (this.Check(TokenType.OpenParenthesis))
+            {
+                return this.ParseFilterCallExpression(token);
+            }
+
+            if (this.IsFilterZeroArgBuiltin(token.Value))
+            {
+                return new FilterCallExpression(token, []);
             }
 
             return new ConstantExpression(token, new ShellIdentifier(token.Value));
@@ -923,6 +969,32 @@ internal class ExpressionParser
 
             SkipTrivia();
 
+            // Shorthand object property: {id, status}
+            if (!this.IsAtEnd && this.currentToken != null &&
+                (this.currentToken.Type == TokenType.Comma || this.currentToken.Type == TokenType.CloseBrace) &&
+                keyToken.Type == TokenType.Identifier)
+            {
+                properties[key] = FilterPathExpression.CreateShorthand(keyToken, keyToken.Value);
+
+                if (this.currentToken.Type == TokenType.Comma)
+                {
+                    this.Advance();
+                    SkipTrivia();
+                    if (!this.IsAtEnd && this.currentToken?.Type == TokenType.CloseBrace)
+                    {
+                        var shorthandTrailingBrace = this.currentToken!;
+                        this.Advance();
+                        return new JsonExpression(lbrace, shorthandTrailingBrace, properties);
+                    }
+
+                    continue;
+                }
+
+                var shorthandCloseBrace = this.currentToken!;
+                this.Advance();
+                return new JsonExpression(lbrace, shorthandCloseBrace, properties);
+            }
+
             // Expect colon
             if (this.IsAtEnd || this.currentToken?.Type != TokenType.Colon)
             {
@@ -950,7 +1022,7 @@ internal class ExpressionParser
             }
 
             // Parse property value as a full expression
-            var value = this.ParseOr();
+            var value = this.ParsePipeExpression();
 
             // Add to properties if key valid
             if (key != null)
@@ -1070,7 +1142,7 @@ internal class ExpressionParser
             }
 
             // Parse next element as a full expression
-            var expr = this.ParseOr();
+            var expr = this.ParsePipeExpression();
             elements.Add(expr);
 
             this.SkipWhitespace();
@@ -1268,4 +1340,124 @@ internal class ExpressionParser
             () => this.Advance(),
             () => this.ParsePrimary(),
             token => token.Type == TokenType.CloseParenthesis);
+
+    private bool IsFilterZeroArgBuiltin(string value)
+    {
+        return string.Equals(value, "length", StringComparison.Ordinal) ||
+               string.Equals(value, "keys", StringComparison.Ordinal) ||
+               string.Equals(value, "type", StringComparison.Ordinal);
+    }
+
+    private Expression ParseFilterCallExpression(Token nameToken)
+    {
+        var arguments = new List<Expression>();
+        this.Consume(TokenType.OpenParenthesis, "Expected '('");
+
+        while (!this.IsAtEnd && !this.Check(TokenType.CloseParenthesis))
+        {
+            arguments.Add(this.ParsePipeExpression());
+            if (this.Check(TokenType.Comma))
+            {
+                this.Advance();
+                continue;
+            }
+
+            break;
+        }
+
+        var closeToken = this.Consume(TokenType.CloseParenthesis, "Expected ')'");
+        return new FilterCallExpression(nameToken, arguments, (closeToken.Start + closeToken.Length) - nameToken.Start);
+    }
+
+    private Expression ParseFilterPathExpression(Token firstToken)
+    {
+        var segments = new List<FilterPathSegment>();
+        int end = firstToken.Start + firstToken.Length;
+        this.AddDotIdentifierSegments(firstToken, segments);
+
+        while (!this.IsAtEnd)
+        {
+            if (this.Check(TokenType.OpenBracket))
+            {
+                var openBracket = this.Current;
+                this.Advance();
+                if (this.Check(TokenType.CloseBracket))
+                {
+                    var closeBracket = this.Current;
+                    this.Advance();
+                    bool optionalIterate = this.TryConsumeQuestion();
+                    end = (closeBracket?.Start ?? openBracket?.Start ?? end) + (closeBracket?.Length ?? 1);
+                    if (optionalIterate && this.lastNonNullToken != null)
+                    {
+                        end = this.lastNonNullToken.Start + this.lastNonNullToken.Length;
+                    }
+
+                    segments.Add(new FilterIterateSegment(optionalIterate));
+                    continue;
+                }
+
+                var indexToken = this.Consume(TokenType.Number, "Expected array index");
+                int index = int.TryParse(indexToken.Value, out var parsedIndex) ? parsedIndex : 0;
+                var indexedCloseBracket = this.Consume(TokenType.CloseBracket, "Expected ']'");
+                bool optionalIndex = this.TryConsumeQuestion();
+                end = indexedCloseBracket.Start + indexedCloseBracket.Length;
+                if (optionalIndex && this.lastNonNullToken != null)
+                {
+                    end = this.lastNonNullToken.Start + this.lastNonNullToken.Length;
+                }
+
+                segments.Add(new FilterIndexSegment(index, optionalIndex));
+                continue;
+            }
+
+            if (this.Check(TokenType.Identifier) && this.currentToken != null && this.currentToken.Value.StartsWith(".", StringComparison.Ordinal))
+            {
+                var token = this.currentToken;
+                this.Advance();
+                this.AddDotIdentifierSegments(token, segments);
+                end = token.Start + token.Length;
+                if (this.lastNonNullToken != null && this.lastNonNullToken.Type == TokenType.Question)
+                {
+                    end = this.lastNonNullToken.Start + this.lastNonNullToken.Length;
+                }
+
+                continue;
+            }
+
+            break;
+        }
+
+        return new FilterPathExpression(firstToken, segments, end - firstToken.Start);
+    }
+
+    private void AddDotIdentifierSegments(Token token, List<FilterPathSegment> segments)
+    {
+        var value = token.Value;
+        if (value == ".")
+        {
+            return;
+        }
+
+        var parts = value.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts)
+        {
+            segments.Add(new FilterPropertySegment(part, false));
+        }
+
+        if (parts.Length > 0 && this.TryConsumeQuestion())
+        {
+            segments[^1] = ((FilterPropertySegment)segments[^1]) with { Optional = true };
+        }
+    }
+
+    private bool TryConsumeQuestion()
+    {
+        if (this.Check(TokenType.Question))
+        {
+            this.Advance();
+            return true;
+        }
+
+        return false;
+    }
 }

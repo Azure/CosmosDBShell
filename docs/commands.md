@@ -308,6 +308,22 @@ Arguments:
     [args]      Arguments to pass to jq (Optional)
 ```
 
+### filter
+
+Native JSON filter and transformation command.
+
+```
+Usage: filter expression
+
+Arguments:
+    expression  Filter expression to evaluate against piped JSON input
+```
+
+Notes:
+- `filter` uses the built-in filter expression language documented in `docs/filter-v1-spec.md`.
+- `filter` keeps structured JSON results in the shell pipeline.
+- `jq` remains available as the external full-featured option when installed.
+
 ### ftab
 
 JSON to table processor.
