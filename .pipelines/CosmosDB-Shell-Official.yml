@@ -141,7 +141,7 @@ extends:
                       $fileVersion = ($parts[0..3] -join '.')
                     }
 
-                    $infoVersion = "$buildNumber+$(Build.SourceVersion)"
+                    $infoVersion = "$packageVersion+$(Build.SourceVersion)"
 
                     Write-Host "##vso[task.setvariable variable=CosmosDBShell_Version]$version"
                     Write-Host "##vso[task.setvariable variable=CosmosDBShell_PackageVersion]$packageVersion"
