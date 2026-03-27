@@ -127,22 +127,13 @@ dotnet tool uninstall --global CosmosDBShell
 
 ## CI And Packaging
 
-GitHub Actions uses a single workflow for validation and branch/main package artifacts:
+This repo currently uses one GitHub Actions workflow for validation and package artifacts:
 
-- [.github/workflows/validate-and-package.yml](.github/workflows/validate-and-package.yml): runs PR validation and uploads installable NuGet tool packages as artifacts on branch and main pushes
+- [.github/workflows/validate-and-package.yml](.github/workflows/validate-and-package.yml): runs validation on pull requests, and on branch pushes or manual runs it also builds installable RID-specific NuGet tool packages and uploads them as workflow artifacts
 
-GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so the workflow restores packages from nuget.org without depending on the Azure DevOps feed.
+GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so restores do not depend on the Azure DevOps feed.
 
-The packaging job produces preview versions in the form `1.0.<run>-preview.<branch>`, uploads separate artifacts for the pointer package and each RID-specific package, and writes a summary with the artifact names plus ready-to-use `dotnet tool install` commands.
-
-- [.github/workflows/validate-and-package.yml](.github/workflows/validate-and-package.yml): runs PR validation on pull requests and main branch pushes, and uploads installable NuGet tool packages as artifacts on branch and main pushes
-- [.github/workflows/package-nuget-artifacts.yml](.github/workflows/package-nuget-artifacts.yml): build installable preview/unsigned NuGet tool packages for branch pushes and tags, and upload the `.nupkg` files as workflow artifacts
-
-GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so the workflows restore packages from nuget.org without depending on the Azure DevOps feed.
-
-The packaging workflow produces preview versions in the form `1.0.<run>-preview.<branch>`. Each workflow run also writes a summary with the exact artifact name and ready-to-use `dotnet tool install` commands so the package version is easy to find later.
-| `--cs <n>` | Colors: 0=off, 1=standard, 2=truecolor |
-| `--help` | Show help |
+Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`, upload separate artifacts for each RID-specific package, and write a workflow summary with artifact names plus ready-to-use `dotnet tool install` commands.
 
 ## License
 
