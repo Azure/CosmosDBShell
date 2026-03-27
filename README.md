@@ -12,7 +12,7 @@ Lightweight CLI for Azure Cosmos DB.
 
 ## Quick Start
 
-**Requirements:** .NET SDK 9.0+
+**Requirements:** .NET SDK 10.0+
 
 ```bash
 dotnet run --project CosmosDBShell
@@ -32,6 +32,8 @@ query "SELECT * FROM c"
 ## Install from NuGet package artifacts
 
 When consuming build artifacts (`*.nupkg`) from this repo, install as a .NET global tool.
+
+`dotnet tool install` for these packages requires .NET 10 because the tool packages target `net10.0`.
 
 1. Download the NuGet package(s) to a local folder.
 2. Install from that folder with `--add-source`.
