@@ -603,8 +603,8 @@ public partial class ShellInterpreter : IDisposable
 
             if (accountKey == null)
             {
-                var envCredential = Environment.GetEnvironmentVariable("COSMOS_SHELL_CREDENTIAL");
-                if (envCredential != null && CredentialStringHelpers.TryParseAccountKey(envCredential, out var envKey))
+                var envKey = Environment.GetEnvironmentVariable("COSMOS_SHELL_ACCOUNT_KEY");
+                if (!string.IsNullOrEmpty(envKey))
                 {
                     accountKey = envKey;
                 }
@@ -615,8 +615,8 @@ public partial class ShellInterpreter : IDisposable
         }
         else if (!hasKey)
         {
-            var envCredential = Environment.GetEnvironmentVariable("COSMOS_SHELL_CREDENTIAL");
-            if (envCredential != null && CredentialStringHelpers.TryParseAccountKey(envCredential, out var envKey))
+            var envKey = Environment.GetEnvironmentVariable("COSMOS_SHELL_ACCOUNT_KEY");
+            if (!string.IsNullOrEmpty(envKey))
             {
                 var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
                 connectionString = $"AccountEndpoint={endpoint};AccountKey={envKey};";

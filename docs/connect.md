@@ -9,7 +9,7 @@ The credential type is determined by the first matching rule (top-to-bottom):
 | Priority | Condition | Credential Used |
 |----------|-----------|-----------------|
 | 1 | Endpoint is `localhost` or `127.0.0.1` | Emulator (well-known key) |
-| 2 | Connection string has `AccountKey`, or `COSMOS_SHELL_CREDENTIAL` env provides a key | Account key |
+| 2 | Connection string has `AccountKey`, or `COSMOS_SHELL_ACCOUNT_KEY` env provides a key | Account key |
 | 3 | `--connect-vscode-credential` flag provided | `VisualStudioCodeCredential` (falls back to next step) |
 | 4 | `COSMOS_SHELL_TOKEN` env var is set | Static access token |
 | 5 | `--managed-identity` option provided | `ManagedIdentityCredential` |
@@ -27,7 +27,7 @@ The `--authority-host` option is passed through to whichever credential is creat
 connect "AccountEndpoint=https://myaccount.documents.azure.com:443/;AccountKey=mykey;"
 
 # Key via environment variable
-export COSMOS_SHELL_CREDENTIAL="myaccountkey"
+export COSMOS_SHELL_ACCOUNT_KEY="myaccountkey"
 connect https://myaccount.documents.azure.com:443/
 ```
 
@@ -83,16 +83,12 @@ For sovereign clouds or custom Entra environments, use `--authority-host`:
 connect https://myaccount.documents.azure.com:443/ --authority-host=https://login.microsoftonline.us/
 ```
 
-## COSMOS_SHELL_CREDENTIAL Environment Variable
+## COSMOS_SHELL_ACCOUNT_KEY Environment Variable
 
-This environment variable provides an account key for authentication. It supports two formats:
+This environment variable provides an account key for authentication:
 
 ```bash
-# With key= prefix
-export COSMOS_SHELL_CREDENTIAL="key=myaccountkey"
-
-# Raw key (no prefix)
-export COSMOS_SHELL_CREDENTIAL="myaccountkey"
+export COSMOS_SHELL_ACCOUNT_KEY="myaccountkey"
 ```
 
 If the connection string already contains an `AccountKey`, the environment variable is ignored.
@@ -109,7 +105,7 @@ cosmos-shell --connect https://myaccount.documents.azure.com:443/ -c "cd mydb/my
 
 The token must be issued for the Cosmos DB RBAC scope (`https://<account>.documents.azure.com/.default`). The external process is responsible for obtaining a valid token with the correct scope and permissions.
 
-When `COSMOS_SHELL_TOKEN` is set, it takes priority over managed identity, interactive browser, and `DefaultAzureCredential` — but account keys (from the connection string or `COSMOS_SHELL_CREDENTIAL`) still take priority over it.
+When `COSMOS_SHELL_TOKEN` is set, it takes priority over managed identity, interactive browser, and `DefaultAzureCredential` — but account keys (from the connection string or `COSMOS_SHELL_ACCOUNT_KEY`) still take priority over it.
 
 > **Security note:** Environment variable values may be visible to other processes on the system. This is standard practice for CI/CD token passing, but avoid setting `COSMOS_SHELL_TOKEN` in shared or untrusted environments.
 
