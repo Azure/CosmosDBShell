@@ -581,7 +581,7 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
-    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null)
+    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false)
     {
         CosmosClient? client = null;
 
@@ -651,7 +651,42 @@ public partial class ShellInterpreter : IDisposable
         var requestedMode = mode ?? ConnectionMode.Direct;
         var options = CreateClientOptions(connectionString, requestedMode);
 
-        // Step 2: Static token from COSMOS_SHELL_TOKEN environment variable
+        // Step 2: VisualStudioCodeCredential (when launched from VS Code extension)
+        if (client == null && useVSCodeCredential)
+        {
+            WriteLine(MessageService.GetString("shell-connect-vscode-credential-auth"));
+            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
+
+            var vscOptions = new VisualStudioCodeCredentialOptions();
+            if (tenantId != null)
+            {
+                vscOptions.TenantId = tenantId;
+            }
+
+            if (authorityHost != null)
+            {
+                vscOptions.AuthorityHost = new Uri(authorityHost);
+            }
+
+            var vscCredential = new VisualStudioCodeCredential(vscOptions);
+            client = new CosmosClient(endpoint, vscCredential, options);
+
+            try
+            {
+                var vscProps = await client.ReadAccountAsync();
+                WriteLine(MessageService.GetArgsString("command-connect-connected", "account", vscProps.Id));
+                this.Connect(client);
+                return;
+            }
+            catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
+            {
+                client.Dispose();
+                client = null;
+                WriteLine(MessageService.GetString("shell-connect-vscode-credential-fallback"));
+            }
+        }
+
+        // Step 3: Static token from COSMOS_SHELL_TOKEN environment variable
         var envToken = Environment.GetEnvironmentVariable("COSMOS_SHELL_TOKEN");
         if (client == null && !string.IsNullOrEmpty(envToken))
         {
@@ -683,7 +718,7 @@ public partial class ShellInterpreter : IDisposable
             return;
         }
 
-        // Step 3: Managed identity
+        // Step 4: Managed identity
         if (client == null && managedIdentityClientId != null)
         {
             WriteLine(MessageService.GetArgsString("shell-connect-managed-identity-auth", "clientId", managedIdentityClientId));
@@ -703,7 +738,7 @@ public partial class ShellInterpreter : IDisposable
             return;
         }
 
-        // Step 3: Entra ID interactive (--tenant or --hint provided)
+        // Step 5: Entra ID interactive (--tenant or --hint provided)
         if (client == null && (tenantId != null || loginHint != null))
         {
             var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
@@ -772,7 +807,7 @@ public partial class ShellInterpreter : IDisposable
             }
         }
 
-        // Step 4: DefaultAzureCredential (endpoint only, or only --authority-host)
+        // Step 6: DefaultAzureCredential (endpoint only, or only --authority-host)
         if (client == null)
         {
             var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);

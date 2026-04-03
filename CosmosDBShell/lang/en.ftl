@@ -7,6 +7,8 @@ shell-connect-managed-identity-auth = Connecting with managed identity (client I
 shell-connect-default-auth = Connecting with DefaultAzureCredential...
 shell-connect-static-token-auth = Connecting with externally provided access token (COSMOS_SHELL_TOKEN)...
 shell-connect-static-token-expiry = Expires in { $timespan } (expiration: { $expiration }).
+shell-connect-vscode-credential-auth = Connecting with Visual Studio Code credential...
+shell-connect-vscode-credential-fallback = Visual Studio Code credential unavailable, falling back...
 shell-connect-devicecode-fallback = Browser authentication failed, falling back to device code authentication...
 
 yes_char = Y
@@ -385,6 +387,7 @@ help-ConnectTenant = The Entra ID tenant ID to authenticate against at startup.
 help-ConnectHint = Login hint for browser authentication at startup.
 help-ConnectAuthorityHost = The authority host URL at startup (default: https://login.microsoftonline.com/).
 help-ConnectManagedIdentity = The client ID of a user-assigned managed identity at startup.
+help-ConnectVSCodeCredential = Use Visual Studio Code credential for authentication at startup.
 help-EnableMcpServer = Enable MCP server for programmatic control of the shell
 help-EnableLspServer = Enable Language Server Protocol (LSP) server for editor integration
 help-McpPort = Enable MCP HTTP server. Optionally specify a port with --mcp <port>; default is 6128.

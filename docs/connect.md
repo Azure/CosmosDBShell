@@ -10,12 +10,13 @@ The credential type is determined by the first matching rule (top-to-bottom):
 |----------|-----------|-----------------|
 | 1 | Endpoint is `localhost` or `127.0.0.1` | Emulator (well-known key) |
 | 2 | Connection string has `AccountKey`, or `COSMOS_SHELL_CREDENTIAL` env provides a key | Account key |
-| 3 | `COSMOS_SHELL_TOKEN` env var is set | Static access token |
-| 4 | `--managed-identity` option provided | `ManagedIdentityCredential` |
-| 5 | `--tenant` or `--hint` option provided | `InteractiveBrowserCredential` (with `DeviceCodeCredential` fallback) |
-| 6 | Endpoint only (no additional arguments) | `DefaultAzureCredential` |
+| 3 | `--connect-vscode-credential` flag provided | `VisualStudioCodeCredential` (falls back to next step) |
+| 4 | `COSMOS_SHELL_TOKEN` env var is set | Static access token |
+| 5 | `--managed-identity` option provided | `ManagedIdentityCredential` |
+| 6 | `--tenant` or `--hint` option provided | `InteractiveBrowserCredential` (with `DeviceCodeCredential` fallback) |
+| 7 | Endpoint only (no additional arguments) | `DefaultAzureCredential` |
 
-The `--authority-host` option is passed through to whichever credential is created (priorities 3-5). It does not affect which credential type is selected.
+The `--authority-host` option is passed through to whichever credential is created (priorities 3-6). It does not affect which credential type is selected.
 
 ## Examples
 
@@ -122,9 +123,11 @@ cosmos-shell --connect https://myaccount.documents.azure.com:443/ --connect-mana
 cosmos-shell --connect https://localhost:8081
 ```
 
+The hidden `--connect-vscode-credential` flag enables `VisualStudioCodeCredential` authentication via the system broker. This is used by the VS Code extension and requires the Azure Resources extension to be signed in. If the credential is unavailable, the shell falls back to `COSMOS_SHELL_TOKEN` and then to subsequent credential steps.
+
 ## Connection Info
 
-Run `connect` with no arguments to display the current connection info, including the credential type used:
+Run `connect` with no arguments to display the current connection info:
 
 ```
 > connect
@@ -132,6 +135,5 @@ Connection Information
  Account     myaccount
  Endpoint    https://myaccount.documents.azure.com:443/
  Mode        Direct
- Credential  DefaultAzureCredential
  ...
 ```

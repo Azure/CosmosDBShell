@@ -98,7 +98,8 @@ internal class Program
                             o.ConnectionMode,
                             tenantId: o.ConnectTenant,
                             authorityHost: o.ConnectAuthorityHost,
-                            managedIdentityClientId: o.ConnectManagedIdentity);
+                            managedIdentityClientId: o.ConnectManagedIdentity,
+                            useVSCodeCredential: o.ConnectVSCodeCredential);
                     }
                     catch (Exception ex)
                     {
@@ -298,6 +299,9 @@ internal class Program
 
         [Option("connect-managed-identity", Required = false, HelpText = "ConnectManagedIdentity", ResourceType = typeof(LocalizableSentenceBuilder))]
         public string? ConnectManagedIdentity { get; set; }
+
+        [Option("connect-vscode-credential", Required = false, HelpText = "ConnectVSCodeCredential", ResourceType = typeof(LocalizableSentenceBuilder), Hidden = true)]
+        public bool ConnectVSCodeCredential { get; set; }
 
         [Option("mcp", Required = false, HelpText = "McpPort", ResourceType = typeof(LocalizableSentenceBuilder))]
         public int? McpPort { get; set; }
