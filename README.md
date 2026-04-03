@@ -4,7 +4,7 @@ Lightweight CLI for Azure Cosmos DB.
 
 ## Features
 
-- Connect via Azure AD or connection string
+- Connect via Entra ID, connection string, or Azure CLI/Developer tools
 - Navigate with `ls` and `cd` (Account -> Databases -> Containers -> Items)
 - Create, query, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `rm`
 - Pipelines and scripting with variables, loops, functions
@@ -24,7 +24,7 @@ dotnet run --project CosmosDBShell
 connect "AccountEndpoint=...;AccountKey=..."
 ls                          # list databases
 cd MyDatabase
-ls                          # list containers  
+ls                          # list containers
 cd MyContainer
 query "SELECT * FROM c"
 ```
@@ -104,6 +104,7 @@ dotnet tool uninstall --global <package-id>
 
 ## Documentation
 
+- [Connection](docs/connect.md) - Authentication and connection options
 - [Commands](docs/commands.md) - All shell commands
 - [Navigation](docs/navigation.md) - Navigation, pipes, CLI arguments
 - [Programming](docs/programming.md) - Variables, control flow, functions
@@ -115,7 +116,11 @@ dotnet tool uninstall --global <package-id>
 | ------ | ----------- |
 | `-c <cmd>` | Execute and exit |
 | `-k <cmd>` | Execute and stay |
-| `--connect <str>` | Initial connection |
+| `--connect <str>` | Connection string or endpoint URL |
+| `--connect-tenant <id>` | Entra ID tenant for interactive login |
+| `--connect-hint <email>` | Login hint for interactive login |
+| `--connect-authority-host <uri>` | Authority host (e.g. sovereign clouds) |
+| `--connect-managed-identity [id]` | Use managed identity (optionally user-assigned) |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
 | `--cs <n>` | Colors: 0=off, 1=standard, 2=truecolor |
 | `--help` | Show help |

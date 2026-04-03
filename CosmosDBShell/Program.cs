@@ -92,13 +92,13 @@ internal class Program
                 {
                     try
                     {
-                        var connectionMode = o.ConnectionMode;
-                        if (connectionMode is null && ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(o.ConnectionString))
-                        {
-                            connectionMode = ConnectionMode.Gateway;
-                        }
-
-                        await ShellInterpreter.Instance.ConnectAsync(o.ConnectionString, null, mode: connectionMode);
+                        await ShellInterpreter.Instance.ConnectAsync(
+                            o.ConnectionString,
+                            o.ConnectHint,
+                            o.ConnectionMode,
+                            tenantId: o.ConnectTenant,
+                            authorityHost: o.ConnectAuthorityHost,
+                            managedIdentityClientId: o.ConnectManagedIdentity);
                     }
                     catch (Exception ex)
                     {
@@ -286,6 +286,18 @@ internal class Program
 
         [Option("connect-mode", Required = false, HelpText = "ConnectionMode", ResourceType = typeof(LocalizableSentenceBuilder))]
         public ConnectionMode? ConnectionMode { get; set; }
+
+        [Option("connect-tenant", Required = false, HelpText = "ConnectTenant", ResourceType = typeof(LocalizableSentenceBuilder))]
+        public string? ConnectTenant { get; set; }
+
+        [Option("connect-hint", Required = false, HelpText = "ConnectHint", ResourceType = typeof(LocalizableSentenceBuilder))]
+        public string? ConnectHint { get; set; }
+
+        [Option("connect-authority-host", Required = false, HelpText = "ConnectAuthorityHost", ResourceType = typeof(LocalizableSentenceBuilder))]
+        public string? ConnectAuthorityHost { get; set; }
+
+        [Option("connect-managed-identity", Required = false, HelpText = "ConnectManagedIdentity", ResourceType = typeof(LocalizableSentenceBuilder))]
+        public string? ConnectManagedIdentity { get; set; }
 
         [Option("mcp", Required = false, HelpText = "McpPort", ResourceType = typeof(LocalizableSentenceBuilder))]
         public int? McpPort { get; set; }

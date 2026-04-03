@@ -164,7 +164,12 @@ Start the shell with options to customize behavior:
 |--------|-------------|
 | `-c <cmd>` | Execute command and exit |
 | `-k <cmd>` | Execute command and stay in shell |
-| `--connect <str>` | Connect with this connection string on startup |
+| `--connect <str>` | Connect with this connection string or endpoint on startup |
+| `--connect-mode <mode>` | Connection mode at startup: 'direct' or 'gateway' |
+| `--connect-tenant <id>` | Entra ID tenant ID at startup |
+| `--connect-hint <hint>` | Login hint for browser auth at startup |
+| `--connect-authority-host <url>` | Authority host URL at startup |
+| `--connect-managed-identity <id>` | User-assigned managed identity client ID at startup |
 | `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
 | `--cs <n>` | Color scheme: 0=off, 1=standard, 2=truecolor |
 | `--clearhistory` | Clear command history on start |

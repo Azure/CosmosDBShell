@@ -4,50 +4,26 @@
 
 namespace Azure.Data.Cosmos.Shell.Util
 {
-    public enum Credential
-    {
-        None,
-        DBKey,
-        EntraId,
-        ManagedIdentity,
-    }
-
     internal static class CredentialStringHelpers
     {
-        public static bool TryParseCredential(string credentialString, out Credential credential, out string credentialId)
+        public static bool TryParseAccountKey(string? envValue, out string accountKey)
         {
-            credential = Credential.None;
-            credentialId = string.Empty;
-            if (string.IsNullOrEmpty(credentialString))
+            accountKey = string.Empty;
+            if (string.IsNullOrEmpty(envValue))
             {
                 return false;
             }
 
-            var parts = credentialString.Split('=', 2);
-            if (parts.Length != 2)
+            if (envValue.StartsWith("key=", StringComparison.OrdinalIgnoreCase))
             {
-                return false; // Invalid format
+                accountKey = envValue.Substring(4);
+            }
+            else
+            {
+                accountKey = envValue;
             }
 
-            var type = parts[0].ToLowerInvariant();
-            var value = parts[1];
-            switch (type)
-            {
-                case "key":
-                    credential = Credential.DBKey;
-                    break;
-                case "tenantid":
-                    credential = Credential.EntraId;
-                    break;
-                case "identity":
-                    credential = Credential.ManagedIdentity;
-                    break;
-                default:
-                    return false; // Invalid credential type
-            }
-
-            credentialId = value;
-            return true;
+            return !string.IsNullOrEmpty(accountKey);
         }
     }
 }

@@ -2,6 +2,10 @@ shell-ready = Cosmos DB shell ready.
 shell-hisory_file_deleted = History deleted.
 shell-connect-browser-auth = Authenticating via browser. Please complete the login in the browser window that opens.
 shell-connect-devicecode-auth = Browser authentication failed. Falling back to device code authentication.
+shell-connect-key-auth = Connecting with account key...
+shell-connect-managed-identity-auth = Connecting with managed identity (client ID: { $clientId })...
+shell-connect-default-auth = Connecting with DefaultAzureCredential...
+shell-connect-devicecode-fallback = Browser authentication failed, falling back to device code authentication...
 
 yes_char = Y
 no_char = N
@@ -228,7 +232,8 @@ command-connect-description-key = Account key for authentication
 command-connect-description-endpoint = Account endpoint URL
 command-connect-description-mode = Connection mode: 'direct' (default) or 'gateway'
 command-connect-description-tenant = The Entra ID tenant ID to authenticate against.
-command-connect-description-host = The authority host URL (The default is https://login.microsoftonline.com/).
+command-connect-description-authority-host = The authority host URL (The default is https://login.microsoftonline.com/).
+command-connect-description-managed-identity = The client ID of a user-assigned managed identity to authenticate with.
 command-connect-error-no_endpoint = An account endpoint or connection string must be specified.
 command-connect-connected = Connected to account '{ $account }'
 command-connect-emulator-detected = Emulator endpoint detected, using well-known account key and gateway mode.
@@ -241,6 +246,7 @@ command-connect-info-mode = Connection Mode
 command-connect-info-read-regions = Read Regions
 command-connect-info-write-regions = Write Regions
 command-connect-info-location = Current Location
+command-connect-info-credential = Credential
 command-connect-rbac-error =
   You need the 'Data Contributor' RBAC role permission to enable all
   Azure Databases Extension features for the selected account.
@@ -320,7 +326,7 @@ command-settings-rbac-error =
   You need the '{ $permission }' RBAC role permission for '{ $request }' for the selected account.
 
   Principal id: '{ $id }'
-  
+
   Learn more: https://aka.ms/cosmos-native-rbac
 command-settings-overview = Overview
 command-settings-read_locations = Read Locations
@@ -373,6 +379,10 @@ help-ColorSystem = ColorSystem to use.(0=off, 1=standard, 2=true color)
 help-ClearHistory = Clears command history and exits.
 help-ConnectionString = The connection string to connect to.
 help-ConnectionMode = Connection mode: 'direct' (default) or 'gateway'
+help-ConnectTenant = The Entra ID tenant ID to authenticate against at startup.
+help-ConnectHint = Login hint for browser authentication at startup.
+help-ConnectAuthorityHost = The authority host URL at startup (default: https://login.microsoftonline.com/).
+help-ConnectManagedIdentity = The client ID of a user-assigned managed identity at startup.
 help-EnableMcpServer = Enable MCP server for programmatic control of the shell
 help-EnableLspServer = Enable Language Server Protocol (LSP) server for editor integration
 help-McpPort = Enable MCP HTTP server. Optionally specify a port with --mcp <port>; default is 6128.
@@ -383,7 +393,7 @@ json_error_no_array = JSON data is not an array.
 json_error_array_index_out_of_bounds = Array index {$index} is out of bounds. Array length is {$length}.
 json_error_parsing_arg =
     Error parsing JSON: {$message}
-    
+
     Argument must be a valid JSON.
 json_error_empty_arraya_brackets = Empty array brackets [] not yet supported.
 json_error_invalid_array_index = Invalid array index: [{$index}]
