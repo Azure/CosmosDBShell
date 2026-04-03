@@ -133,3 +133,52 @@ Connection Information
  Mode        Direct
  ...
 ```
+
+## Security Considerations
+
+Cosmos Shell is a developer and CI/CD tool, and all supported authentication methods are valid for those use cases. The notes below help you choose the right method for your environment and understand the tradeoffs.
+
+### Account Keys
+
+Account keys (including connection strings that contain an `AccountKey`) grant **full, unrestricted access** to the entire Cosmos DB account. This includes all databases, containers, and operations — there is no way to scope a key to a subset of resources or to read-only access.
+
+Keys are static shared secrets. If a key is leaked, it remains valid until you manually rotate it on the account. Anyone with the key can read, write, and delete any data.
+
+For production and security-sensitive workloads, Microsoft recommends [disabling key-based authentication](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-connect-role-based-access-control#disable-key-based-authentication) (`disableLocalAuth=true`) and using Entra ID with [data-plane RBAC](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-connect-role-based-access-control#grant-data-plane-role-based-access) instead. RBAC allows least-privilege scoping — for example, granting read-only access to a single container.
+
+Account keys are acceptable when:
+
+- Connecting to the **local emulator** (which uses a well-known key by design).
+- Running in a **CI/CD pipeline** where the key is stored in a secure secret store (e.g., Azure Key Vault, GitHub Actions secrets) and never written to logs.
+- Doing **local development** against a non-production account.
+
+### DefaultAzureCredential
+
+`DefaultAzureCredential` is the most convenient option for development — it automatically tries multiple credential sources (Azure CLI, VS Code, managed identity, and others) until one succeeds. However, this convenience introduces unpredictability: you cannot guarantee which credential in the chain will be used at runtime.
+
+In shared or production environments, this can lead to subtle problems. For example, if a developer runs `az login` on a VM that normally authenticates via managed identity, `DefaultAzureCredential` may silently fall back to the CLI credential with different permissions. Microsoft recommends [using a deterministic credential](https://learn.microsoft.com/en-us/dotnet/azure/sdk/authentication/best-practices#use-deterministic-credentials-in-production-environments) (such as `ManagedIdentityCredential`) in production instead of relying on the automatic chain.
+
+For Cosmos Shell usage:
+
+- **Local development**: `DefaultAzureCredential` (endpoint-only connection) is a good default. It picks up your Azure CLI or VS Code session automatically.
+- **CI/CD pipelines**: Prefer explicit credential types — `--managed-identity` for Azure-hosted runners, or `COSMOS_SHELL_TOKEN` with a pre-obtained token.
+- **Shared VMs or containers**: Use `--managed-identity` or `--tenant` to avoid resolving to an unintended identity.
+
+### Environment Variables
+
+Both `COSMOS_SHELL_ACCOUNT_KEY` and `COSMOS_SHELL_TOKEN` pass credentials through environment variables. Be aware of the following:
+
+- Environment variable values may be visible to **other processes** on the same system (e.g., via `/proc` on Linux or `ps eww` on macOS).
+- Values may persist in **shell history** if set inline (e.g., `export COSMOS_SHELL_ACCOUNT_KEY=...` in `.bash_history`).
+- In CI/CD systems, use **masked secret variables** (Azure Pipelines secrets, GitHub Actions secrets) to prevent credentials from appearing in build logs.
+- Avoid setting credential environment variables in shared or multi-user environments.
+
+### MCP Considerations
+
+When running with `--mcp`, the MCP server inherits the shell's connection credentials. It cannot restrict access below what the underlying connection provides.
+
+- If the shell is connected with an **account key**, every MCP client action has full, unrestricted account access — there is no RBAC layer to limit operations.
+- If the shell is connected with **Entra ID**, access is governed by the RBAC roles assigned to the authenticated identity, enabling least-privilege scoping.
+- The MCP client may relay command outputs and query results to a **remote LLM**. Treat all data returned through MCP as potentially shared with an external service.
+
+**Prefer Entra ID authentication with least-privilege RBAC roles when using MCP**, especially if the MCP client connects to a third-party AI service. See [MCP Security](mcp.md#security) for the full MCP security checklist.
