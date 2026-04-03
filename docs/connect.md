@@ -10,9 +10,10 @@ The credential type is determined by the first matching rule (top-to-bottom):
 |----------|-----------|-----------------|
 | 1 | Endpoint is `localhost` or `127.0.0.1` | Emulator (well-known key) |
 | 2 | Connection string has `AccountKey`, or `COSMOS_SHELL_CREDENTIAL` env provides a key | Account key |
-| 3 | `--managed-identity` option provided | `ManagedIdentityCredential` |
-| 4 | `--tenant` or `--hint` option provided | `InteractiveBrowserCredential` (with `DeviceCodeCredential` fallback) |
-| 5 | Endpoint only (no additional arguments) | `DefaultAzureCredential` |
+| 3 | `COSMOS_SHELL_TOKEN` env var is set | Static access token |
+| 4 | `--managed-identity` option provided | `ManagedIdentityCredential` |
+| 5 | `--tenant` or `--hint` option provided | `InteractiveBrowserCredential` (with `DeviceCodeCredential` fallback) |
+| 6 | Endpoint only (no additional arguments) | `DefaultAzureCredential` |
 
 The `--authority-host` option is passed through to whichever credential is created (priorities 3-5). It does not affect which credential type is selected.
 
@@ -94,6 +95,22 @@ export COSMOS_SHELL_CREDENTIAL="myaccountkey"
 ```
 
 If the connection string already contains an `AccountKey`, the environment variable is ignored.
+
+## COSMOS_SHELL_TOKEN Environment Variable
+
+This environment variable provides a pre-obtained Entra ID access token (JWT) for authentication. This is intended for single-shot command execution where an external process handles token acquisition.
+
+```bash
+# Obtain a token with the Cosmos DB RBAC scope, then pass it
+export COSMOS_SHELL_TOKEN=$(az account get-access-token --resource https://<account>.documents.azure.com --query accessToken -o tsv)
+cosmos-shell --connect https://myaccount.documents.azure.com:443/ -c "cd mydb/mycont; ls -m 5"
+```
+
+The token must be issued for the Cosmos DB RBAC scope (`https://<account>.documents.azure.com/.default`). The external process is responsible for obtaining a valid token with the correct scope and permissions.
+
+When `COSMOS_SHELL_TOKEN` is set, it takes priority over managed identity, interactive browser, and `DefaultAzureCredential` — but account keys (from the connection string or `COSMOS_SHELL_CREDENTIAL`) still take priority over it.
+
+> **Security note:** Environment variable values may be visible to other processes on the system. This is standard practice for CI/CD token passing, but avoid setting `COSMOS_SHELL_TOKEN` in shared or untrusted environments.
 
 ## CLI Startup Options
 

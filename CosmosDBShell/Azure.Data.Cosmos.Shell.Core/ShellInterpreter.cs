@@ -651,7 +651,39 @@ public partial class ShellInterpreter : IDisposable
         var requestedMode = mode ?? ConnectionMode.Direct;
         var options = CreateClientOptions(connectionString, requestedMode);
 
-        // Step 2: Managed identity
+        // Step 2: Static token from COSMOS_SHELL_TOKEN environment variable
+        var envToken = Environment.GetEnvironmentVariable("COSMOS_SHELL_TOKEN");
+        if (client == null && !string.IsNullOrEmpty(envToken))
+        {
+            WriteLine(MessageService.GetString("shell-connect-static-token-auth"));
+            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
+            var credential = new StaticTokenCredential(envToken);
+            if (credential.HasJwtExpiry)
+            {
+                var remaining = credential.ExpiresOn - DateTimeOffset.UtcNow;
+                var timeSpan = remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+                WriteLine(MessageService.GetArgsString("shell-connect-static-token-expiry", "timespan", $"{timeSpan:hh\\:mm\\:ss}", "expiration", credential.ExpiresOn.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")));
+            }
+
+            client = new CosmosClient(endpoint, credential, options);
+
+            AccountProperties tokenProps;
+            try
+            {
+                tokenProps = await client.ReadAccountAsync();
+            }
+            catch (Exception ex)
+            {
+                client.Dispose();
+                throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
+            }
+
+            WriteLine(MessageService.GetArgsString("command-connect-connected", "account", tokenProps.Id));
+            this.Connect(client);
+            return;
+        }
+
+        // Step 3: Managed identity
         if (client == null && managedIdentityClientId != null)
         {
             WriteLine(MessageService.GetArgsString("shell-connect-managed-identity-auth", "clientId", managedIdentityClientId));

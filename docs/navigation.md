@@ -176,6 +176,15 @@ Start the shell with options to customize behavior:
 | `--help` | Show usage information |
 | `--version` | Show version |
 
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `COSMOS_SHELL_TOKEN` | Pre-obtained Entra ID access token (JWT) for single-shot auth |
+| `COSMOS_SHELL_CREDENTIAL` | Account key (`key=<key>` or raw key) |
+| `COSMOS_SHELL_FORMAT` | Default output format |
+| `COSMOS_SHELL_CSVSEP` | CSV column separator |
+
 **Examples:**
 
 ```bash
