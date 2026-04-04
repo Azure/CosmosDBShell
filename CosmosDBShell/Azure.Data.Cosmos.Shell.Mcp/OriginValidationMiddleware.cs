@@ -46,6 +46,17 @@ internal static class OriginValidationMiddleware
             return false;
         }
 
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(uri.UserInfo))
+        {
+            return false;
+        }
+
         var host = uri.Host;
         foreach (var allowed in AllowedHosts)
         {

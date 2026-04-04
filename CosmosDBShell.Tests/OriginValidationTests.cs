@@ -30,6 +30,9 @@ public class OriginValidationTests
     [InlineData("http://172.16.0.1")]
     [InlineData("http://example.com:6128")]
     [InlineData("http://localhost.evil.com")]
+    [InlineData("ftp://localhost")]
+    [InlineData("file://localhost")]
+    [InlineData("http://user@localhost")]
     public void RejectsNonLoopbackOrigins(string origin)
     {
         Assert.False(OriginValidationMiddleware.IsAllowedOrigin(origin));
