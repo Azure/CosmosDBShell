@@ -45,11 +45,11 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
             if (database.Id == this.Name)
             {
                 var db = state.Client.GetDatabase(this.Name);
-                if (ShellInterpreter.Confirm("command-rmcon-confirm_container_deletion") || this.Force == true)
+                if (this.Force == true || ShellInterpreter.Confirm("command-rmcon-confirm_container_deletion"))
                 {
                     await db.DeleteAsync(cancellationToken: token);
                     CosmosCompleteCommand.ClearDatabases();
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_database", new Dictionary<string, object> { { "db", this.Name } }));
+                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", new Dictionary<string, object> { { "db", this.Name } }));
                 }
 
                 return 0;
@@ -66,7 +66,7 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
             if (containerProperty.Id == this.Name)
             {
                 var c = state.Client.GetContainer(state.DatabaseName, this.Name);
-                if (ShellInterpreter.Confirm("command-rmcon-confirm_container_deletion") || this.Force == true)
+                if (this.Force == true || ShellInterpreter.Confirm("command-rmcon-confirm_container_deletion"))
                 {
                     await c.DeleteContainerAsync(cancellationToken: token);
                     AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", new Dictionary<string, object> { { "db", this.Name } }));
