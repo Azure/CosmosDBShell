@@ -88,9 +88,11 @@ internal partial class ConnectCommand : CosmosCommand
                 IsPrinted = true,
             };
             var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(this.ConnectionString);
-            var jsonString = $"{{\"connected state\": \"{endpoint}\"}}";
-            using var jsonDoc = JsonDocument.Parse(jsonString);
-            returnState.Result = new ShellJson(jsonDoc.RootElement.Clone());
+            var resultElement = JsonSerializer.SerializeToElement(new Dictionary<string, string?>
+            {
+                ["connected state"] = endpoint,
+            });
+            returnState.Result = new ShellJson(resultElement);
             return returnState;
         }
         catch (Exception e)
