@@ -120,7 +120,7 @@ dotnet tool uninstall --global <package-id>
 | `--connect-tenant <id>` | Entra ID tenant for interactive login |
 | `--connect-hint <email>` | Login hint for interactive login |
 | `--connect-authority-host <uri>` | Authority host (e.g. sovereign clouds) |
-| `--connect-managed-identity [id]` | Use managed identity (optionally user-assigned) |
+| `--connect-managed-identity <id>` | Use a user-assigned managed identity |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
 | `--cs <n>` | Colors: 0=off, 1=standard, 2=truecolor |
 | `--help` | Show help |
