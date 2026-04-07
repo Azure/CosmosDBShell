@@ -381,7 +381,7 @@ help-ExecuteAndContinue = Executes the specified command and keeps the shell run
 help-ExecuteAndQuit = Executes the specified command and exits the shell (for example: /c "help").
 help-ColorSystem = ColorSystem to use.(0=off, 1=standard, 2=true color)
 help-ClearHistory = Clears command history and exits.
-help-ConnectionString = The connection string to connect to.
+help-ConnectionString = The endpoint URL or connection string to connect to.
 help-ConnectionMode = Connection mode: 'direct' (default) or 'gateway'
 help-ConnectTenant = The Entra ID tenant ID to authenticate against at startup.
 help-ConnectHint = Login hint for browser authentication at startup.
