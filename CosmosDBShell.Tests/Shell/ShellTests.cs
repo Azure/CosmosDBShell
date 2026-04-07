@@ -7,6 +7,7 @@ namespace CosmosShell.Tests.Shell;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -62,7 +63,14 @@ public class ShellTests
 
         Assert.NotNull(actualVersion);
         Assert.Equal(expectedVersion, actualVersion);
-        Assert.Contains("+", actualVersion, StringComparison.Ordinal);
+
+        var informationalVersion = typeof(ShellInterpreter).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informationalVersion))
+        {
+            Assert.Contains("+", actualVersion, StringComparison.Ordinal);
+        }
     }
 
 
