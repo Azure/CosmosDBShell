@@ -1,6 +1,6 @@
 # Connection Guide
 
-The `connect` command supports multiple authentication methods. The shell automatically selects the appropriate credential type based on the arguments provided.
+The `connect` command and the `--connect` startup option support multiple authentication methods. The shell automatically selects the appropriate credential type based on the arguments provided.
 
 ## Credential Decision Tree
 
@@ -10,11 +10,13 @@ The credential type is determined by the first matching rule (top-to-bottom):
 |----------|-----------|-----------------|
 | 1 | Endpoint is `localhost` or `127.0.0.1` | Emulator (well-known key) |
 | 2 | Connection string has `AccountKey`, or `COSMOS_SHELL_ACCOUNT_KEY` env provides a key | Account key |
-| 3 | `--connect-vscode-credential` flag provided | `VisualStudioCodeCredential` (falls back to next step) |
+| 3 | `--connect-vscode-credential` startup flag provided (startup only) | `VisualStudioCodeCredential` (falls back to next step) |
 | 4 | `COSMOS_SHELL_TOKEN` env var is set | Static access token |
 | 5 | `--managed-identity` option provided | `ManagedIdentityCredential` |
 | 6 | `--tenant` or `--hint` option provided | `InteractiveBrowserCredential` (with `DeviceCodeCredential` fallback) |
 | 7 | Endpoint only (no additional arguments) | `DefaultAzureCredential` |
+
+> **Note:** Step 3 (`--connect-vscode-credential`) is only available as a CLI startup option, not as an argument to the interactive `connect` command.
 
 The `--authority-host` option is passed through to whichever credential is created (priorities 3-6). It does not affect which credential type is selected.
 
