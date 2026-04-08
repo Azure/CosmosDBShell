@@ -86,6 +86,11 @@ public class ResourceManagementTests : IAsyncLifetime
         var state = await ExecuteAsync($"mkdb {dbName}");
         Assert.False(state.IsError);
 
+        // Verify via Cosmos SDK that the database exists
+        var dbResponse = await cosmosClient!.GetDatabase(dbName).ReadAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.OK, dbResponse.StatusCode);
+
+        // Verify via shell ls
         var lsState = await ExecuteAsync("ls");
         Assert.False(lsState.IsError);
     }
@@ -102,6 +107,11 @@ public class ResourceManagementTests : IAsyncLifetime
         var state = await ExecuteAsync("mkcon TestCon /id");
         Assert.False(state.IsError);
 
+        // Verify via Cosmos SDK that the container exists
+        var conResponse = await cosmosClient!.GetContainer(dbName, "TestCon").ReadContainerAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.OK, conResponse.StatusCode);
+
+        // Verify via shell ls
         var lsState = await ExecuteAsync("ls");
         Assert.False(lsState.IsError);
     }
@@ -119,6 +129,11 @@ public class ResourceManagementTests : IAsyncLifetime
         var state = await ExecuteAsync("rmcon TempCon true");
         var errorMsg1 = state is Azure.Data.Cosmos.Shell.Core.ErrorCommandState err1 ? err1.Exception.ToString() : "not an error";
         Assert.False(state.IsError, errorMsg1);
+
+        // Verify via Cosmos SDK that the container no longer exists
+        var ex = await Assert.ThrowsAsync<CosmosException>(
+            () => cosmosClient!.GetContainer(dbName, "TempCon").ReadContainerAsync(cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, ex.StatusCode);
     }
 
     [Fact]
@@ -132,6 +147,11 @@ public class ResourceManagementTests : IAsyncLifetime
         var state = await ExecuteAsync($"rmdb {dbName} true");
         var errorMsg2 = state is Azure.Data.Cosmos.Shell.Core.ErrorCommandState err2 ? err2.Exception.ToString() : "not an error";
         Assert.False(state.IsError, errorMsg2);
+
+        // Verify via Cosmos SDK that the database no longer exists
+        var ex = await Assert.ThrowsAsync<CosmosException>(
+            () => cosmosClient!.GetDatabase(dbName).ReadAsync(cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, ex.StatusCode);
     }
 
     [Fact]
