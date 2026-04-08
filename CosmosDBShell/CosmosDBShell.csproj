@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>    
+  <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <DebugType>embedded</DebugType>
     <SelfContained>true</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile>   
+    <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <ApplicationManifest>res\app.manifest</ApplicationManifest>
@@ -22,7 +22,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>cosmosdbshell</ToolCommandName>
 
-<!-- Removed "any" 
+<!-- Removed "any"
     <RuntimeIdentifiers>win-x64;linux-x64;linux-arm64;osx-x64;osx-arm64;any</RuntimeIdentifiers>
     <ToolPackageRuntimeIdentifiers>win-x64;linux-x64;linux-arm64;osx-x64;osx-arm64;any</ToolPackageRuntimeIdentifiers>
 -->
@@ -57,6 +57,7 @@
     <EmbeddedResource Include="lang\en.ftl" />
     <EmbeddedResource Include="Azure.Data.Cosmos.Shell.Mcp\ServerInstructions.md" />
     <EmbeddedResource Include="..\docs\programming.md" Link="docs\programming.md" />
+    <EmbeddedResource Include="..\docs\nosql-query-language.md" Link="docs\nosql-query-language.md" />
   </ItemGroup>
 
   <ItemGroup>
