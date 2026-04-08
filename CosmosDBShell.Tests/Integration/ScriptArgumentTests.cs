@@ -41,7 +41,7 @@ public class ScriptArgumentTests : IntegrationTestBase
 
         try
         {
-            var outputFile = CaptureOutputFile();
+            CaptureOutputFile(); // redirect stdout; result unused since we only assert state
             var token1 = new Token(TokenType.Identifier, scriptPath, 0, scriptPath.Length);
             var cmd = new CommandStatement(token1);
             var argToken1 = new Token(TokenType.String, "arg1", 0, 4);

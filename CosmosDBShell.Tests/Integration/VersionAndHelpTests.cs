@@ -16,7 +16,7 @@ public class VersionAndHelpTests : IntegrationTestBase
     [Fact]
     public async Task Help_NoArgs_ListsAllCommands()
     {
-        var outputFile = CaptureOutputFile();
+        CaptureOutputFile(); // redirect stdout; result unused since we only assert state
         var state = await RunScriptAsync("help");
 
         Assert.False(state.IsError);
@@ -25,7 +25,7 @@ public class VersionAndHelpTests : IntegrationTestBase
     [Fact]
     public async Task Help_SpecificCommand_ReturnsDetails()
     {
-        var outputFile = CaptureOutputFile();
+        CaptureOutputFile(); // redirect stdout; result unused since we only assert state
         var state = await RunScriptAsync("help echo");
 
         Assert.False(state.IsError);
