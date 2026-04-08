@@ -44,7 +44,7 @@ public abstract class IntegrationTestBase : IDisposable
         Shell.SetVariable(name, value);
     }
 
-    public void Dispose()
+    public virtual void Dispose()
     {
         foreach (var file in tempFiles)
         {

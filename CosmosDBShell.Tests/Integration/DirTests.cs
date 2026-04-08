@@ -73,7 +73,7 @@ public class DirTests : IntegrationTestBase
         Assert.Contains("name", text);
     }
 
-    public new void Dispose()
+    public override void Dispose()
     {
         try
         {
