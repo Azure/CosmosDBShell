@@ -273,7 +273,7 @@ internal class QueryCommand : CosmosCommand
 
             new Dictionary<string, object>
             {
-                { "metric", "Query preparation time " },
+                { "metric", "Query preparation time" },
                 { "value",  cumulative?.QueryPreparationTime.TotalMilliseconds ?? 0 },
                 { "formattedValue", $"{cumulative?.QueryPreparationTime.TotalMilliseconds ?? 0} ms" },
                 { "tooltip", "The query preparation time in the Azure Cosmos database service." },
