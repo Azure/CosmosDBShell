@@ -25,6 +25,7 @@ public class PipingTests : IntegrationTestBase
     [Fact]
     public async Task Pipe_JsonThroughJq_TransformsOutput()
     {
+        ExternalToolCheck.SkipIfMissing("jq");
         Shell.SetVariable("data", new ShellJson(JsonSerializer.SerializeToElement(new { name = "test", value = 42 })));
         var outputFile = CaptureOutputFile();
         var state = await RunScriptAsync("echo $data | jq .name");
@@ -45,7 +46,7 @@ public class PipingTests : IntegrationTestBase
         try
         {
             var outputFile = CaptureOutputFile();
-            var state = await RunScriptAsync($"dir -l -d \"{tempDir}\" | ftab -f name");
+            var state = await RunScriptAsync($"dir -l -d \"{ShellPath(tempDir)}\" | ftab -f name");
 
             Assert.False(state.IsError);
             var text = await File.ReadAllTextAsync(outputFile);
@@ -60,6 +61,7 @@ public class PipingTests : IntegrationTestBase
     [Fact]
     public async Task Pipe_ChainMultipleCommands()
     {
+        ExternalToolCheck.SkipIfMissing("jq");
         Shell.SetVariable("data", new ShellJson(JsonSerializer.SerializeToElement(new { msg = "chain" })));
         var outputFile = CaptureOutputFile();
         var state = await RunScriptAsync("echo $data | jq .msg");
