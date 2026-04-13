@@ -927,6 +927,11 @@ public partial class ShellInterpreter : IDisposable
         }
         else if (this.Options?.Verbose == true)
         {
+            if (!string.IsNullOrEmpty(prefix))
+            {
+                AnsiConsole.MarkupLine(Markup.Escape(prefix.TrimEnd()));
+            }
+
             AnsiConsole.WriteException(e, new ExceptionSettings
             {
                 Format = ExceptionFormats.ShortenPaths,
