@@ -44,6 +44,12 @@ public abstract class IntegrationTestBase : IDisposable
         Shell.SetVariable(name, value);
     }
 
+    /// <summary>
+    /// Converts a file-system path to forward slashes so the shell lexer
+    /// does not interpret backslashes as escape sequences inside double-quoted strings.
+    /// </summary>
+    internal static string ShellPath(string path) => path.Replace('\\', '/');
+
     public virtual void Dispose()
     {
         foreach (var file in tempFiles)

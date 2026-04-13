@@ -26,7 +26,7 @@ public class DirTests : IntegrationTestBase
     [Fact]
     public async Task Dir_CurrentDirectory_ReturnsFiles()
     {
-        var state = await RunScriptAsync($"dir -d \"{tempDir}\"");
+        var state = await RunScriptAsync($"dir -d \"{ShellPath(tempDir)}\"");
 
         Assert.False(state.IsError);
         Assert.NotNull(state.Result);
@@ -39,7 +39,7 @@ public class DirTests : IntegrationTestBase
     [Fact]
     public async Task Dir_WithPattern_FiltersResults()
     {
-        var state = await RunScriptAsync($"dir -d \"{tempDir}\" \"*.csh\"");
+        var state = await RunScriptAsync($"dir -d \"{ShellPath(tempDir)}\" \"*.csh\"");
 
         Assert.False(state.IsError);
         Assert.NotNull(state.Result);
@@ -52,7 +52,7 @@ public class DirTests : IntegrationTestBase
     [Fact]
     public async Task Dir_Recursive_FindsNestedFiles()
     {
-        var state = await RunScriptAsync($"dir -r -d \"{tempDir}\"");
+        var state = await RunScriptAsync($"dir -r -d \"{ShellPath(tempDir)}\"");
 
         Assert.False(state.IsError);
         Assert.NotNull(state.Result);
@@ -64,7 +64,7 @@ public class DirTests : IntegrationTestBase
     [Fact]
     public async Task Dir_ListFormat_ReturnsFileMetadata()
     {
-        var state = await RunScriptAsync($"dir -l -d \"{tempDir}\"");
+        var state = await RunScriptAsync($"dir -l -d \"{ShellPath(tempDir)}\"");
 
         Assert.False(state.IsError);
         Assert.NotNull(state.Result);

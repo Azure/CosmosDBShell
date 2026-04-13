@@ -15,7 +15,7 @@ public class CatTests : IntegrationTestBase
         try
         {
             var outputFile = CaptureOutputFile();
-            var state = await RunScriptAsync($"cat \"{tempFile}\"");
+            var state = await RunScriptAsync($"cat \"{ShellPath(tempFile)}\"");
 
             Assert.False(state.IsError);
             var text = await File.ReadAllTextAsync(outputFile);
