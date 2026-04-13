@@ -31,7 +31,7 @@ public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLif
         }
 
         // Navigate back to the connected root before each test
-        await NavigateToRoot();
+        await NavigateToRootAsync();
     }
 
     public ValueTask DisposeAsync()
@@ -42,7 +42,7 @@ public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLif
     [Fact]
     public async Task Ls_AtRoot_ListsDatabases()
     {
-        await NavigateToRoot();
+        await NavigateToRootAsync();
         var state = await ExecuteAsync("ls");
 
         Assert.False(state.IsError);
@@ -51,7 +51,7 @@ public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLif
     [Fact]
     public async Task Cd_ToDatabase_NavigatesToDatabase()
     {
-        await NavigateToRoot();
+        await NavigateToRootAsync();
         var state = await ExecuteAsync($"cd {fixture.DatabaseName}");
 
         Assert.False(state.IsError);
@@ -60,7 +60,7 @@ public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLif
     [Fact]
     public async Task Cd_ToContainer_NavigatesToContainer()
     {
-        await NavigateToRoot();
+        await NavigateToRootAsync();
         var state = await ExecuteAsync($"cd {fixture.DatabaseName}/{fixture.ContainerName}");
 
         Assert.False(state.IsError);
@@ -69,7 +69,7 @@ public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLif
     [Fact]
     public async Task Cd_DotDot_GoesUp()
     {
-        await NavigateToRoot();
+        await NavigateToRootAsync();
         await ExecuteAsync($"cd {fixture.DatabaseName}/{fixture.ContainerName}");
 
         var state = await ExecuteAsync("cd ..");
@@ -83,7 +83,7 @@ public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLif
     [Fact]
     public async Task Cd_NoArgs_ReturnsToRoot()
     {
-        await NavigateToRoot();
+        await NavigateToRootAsync();
         await ExecuteAsync($"cd {fixture.DatabaseName}/{fixture.ContainerName}");
 
         var state = await ExecuteAsync("cd");
@@ -93,7 +93,7 @@ public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLif
     [Fact]
     public async Task Ls_InDatabase_ListsContainers()
     {
-        await NavigateToRoot();
+        await NavigateToRootAsync();
         await ExecuteAsync($"cd {fixture.DatabaseName}");
 
         var state = await ExecuteAsync("ls");
@@ -105,7 +105,7 @@ public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLif
         return await fixture.Shell.ExecuteCommandAsync(command, CancellationToken.None);
     }
 
-    private async Task NavigateToRoot()
+    private async Task NavigateToRootAsync()
     {
         try
         {
