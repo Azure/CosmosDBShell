@@ -246,125 +246,11 @@ public partial class ShellInterpreter : IDisposable
         {
             return new CommandState();
         }
-        catch (PositionalException pe)
-        {
-            // Handle positional exceptions with location information
-            if (this.ErrOutRedirect != null)
-            {
-                var errorMessage = $"[{Path.GetFileName(pe.FileName)}:{pe.Line}:{pe.Column}]: error: {pe.Message}";
-                if (pe.LineText != null)
-                {
-                    errorMessage += Environment.NewLine + pe.LineText;
-                    errorMessage += Environment.NewLine + new string(' ', Math.Max(0, pe.Column - 1)) + "^";
-                }
-
-                if (this.AppendErrRedirection)
-                {
-                    File.AppendAllText(this.ErrOutRedirect, errorMessage);
-                }
-                else
-                {
-                    File.WriteAllText(this.ErrOutRedirect, errorMessage);
-                }
-            }
-            else
-            {
-                var m = Markup.Escape(pe.Message);
-                AnsiConsole.MarkupLine($"{Markup.Escape($"{pe.FileName}:{pe.Line}:{pe.Column}:")} [red]error:[/] {m}");
-                if (pe.LineText != null)
-                {
-                    AnsiConsole.MarkupLine($"  [grey]{Markup.Escape(pe.LineText)}[/]");
-                    AnsiConsole.MarkupLine($"  [red]{new string(' ', Math.Max(0, pe.Column - 1))}^[/]");
-                }
-            }
-
-            return new ErrorCommandState(pe.InnerException ?? pe);
-        }
-        catch (CommandException e)
-        {
-            if (this.ErrOutRedirect != null)
-            {
-                var errTxt = $"{e.Command}: {e.Message}";
-                if (this.AppendErrRedirection)
-                {
-                    File.AppendAllText(this.ErrOutRedirect, errTxt);
-                }
-                else
-                {
-                    File.WriteAllText(this.ErrOutRedirect, errTxt);
-                }
-            }
-            else
-            {
-                var m = Markup.Escape(e.Message);
-                AnsiConsole.MarkupLine($"{e.Command}: [red]{m}[/]");
-            }
-
-            return new ErrorCommandState(e);
-        }
-        catch (ShellException e)
-        {
-            if (this.ErrOutRedirect != null)
-            {
-                var errTxt = e.Message;
-                if (this.AppendErrRedirection)
-                {
-                    File.AppendAllText(this.ErrOutRedirect, errTxt);
-                }
-                else
-                {
-                    File.WriteAllText(this.ErrOutRedirect, errTxt);
-                }
-            }
-            else
-            {
-                var m = Markup.Escape(e.Message);
-                AnsiConsole.MarkupLine($"[red]{m}[/]");
-            }
-
-            return new ErrorCommandState(e);
-        }
         catch (Exception e)
         {
-            if (this.ErrOutRedirect != null)
-            {
-                var errTxt = e.Message;
-                if (e.InnerException != null)
-                {
-                    errTxt += Environment.NewLine + e.InnerException.ToString();
-                }
-#if DEBUG
-                if (e.StackTrace != null)
-                {
-                    errTxt += Environment.NewLine + e.StackTrace;
-                }
-#endif
-                if (this.AppendErrRedirection)
-                {
-                    File.AppendAllText(this.ErrOutRedirect, errTxt);
-                }
-                else
-                {
-                    File.WriteAllText(this.ErrOutRedirect, errTxt);
-                }
-            }
-            else
-            {
-                var m = Markup.Escape(e.Message);
-                AnsiConsole.MarkupLine($"[red]{m}[/]");
-                if (e.InnerException != null)
-                {
-                    AnsiConsole.WriteLine(e.InnerException.ToString());
-                }
-#if DEBUG
-                if (e.StackTrace != null)
-                {
-                    WriteLine(e.StackTrace);
-                }
-#endif
-            }
-
-            return new ErrorCommandState(e);
+            this.ReportExecutionError(e);
+            var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
+            return new ErrorCommandState(inner);
         }
 
         if (token.IsCancellationRequested)
@@ -946,18 +832,21 @@ public partial class ShellInterpreter : IDisposable
         }
         catch (Exception e)
         {
-            var m = Markup.Escape(e.Message);
-            AnsiConsole.MarkupLine($"[red]PrintState:{m}[/]");
-            if (e.InnerException != null)
+            if (this.Options?.Verbose == true)
             {
-                WriteLine(e.InnerException.ToString());
+                AnsiConsole.Markup($"[red]PrintState: [/]");
+                AnsiConsole.WriteException(e);
             }
-#if DEBUG
-            if (e.StackTrace != null)
+            else
             {
-                WriteLine(e.StackTrace);
+                var m = Markup.Escape(e.Message);
+                AnsiConsole.MarkupLine($"[red]PrintState:{m}[/]");
+                if (e.InnerException != null)
+                {
+                    WriteLine(e.InnerException.ToString());
+                }
             }
-#endif
+
             return new ErrorCommandState(e);
         }
 
@@ -1121,6 +1010,86 @@ public partial class ShellInterpreter : IDisposable
         }
 
         File.WriteAllLines(this.HistoryFile, this.history);
+    }
+
+    private void ReportExecutionError(Exception e)
+    {
+        if (e is PositionalException pe)
+        {
+            this.ReportPositionalError(pe);
+            return;
+        }
+
+        var prefix = e is CommandException ce ? $"{ce.Command}: " : string.Empty;
+        var showInner = e is not ShellException && e.InnerException != null;
+
+        if (this.ErrOutRedirect != null)
+        {
+            var errTxt = this.Options?.Verbose == true
+                ? e.ToString()
+                : prefix + e.Message + (showInner ? Environment.NewLine + e.InnerException!.ToString() : string.Empty);
+            if (this.AppendErrRedirection)
+            {
+                File.AppendAllText(this.ErrOutRedirect, errTxt);
+            }
+            else
+            {
+                File.WriteAllText(this.ErrOutRedirect, errTxt);
+            }
+        }
+        else if (this.Options?.Verbose == true)
+        {
+            if (!string.IsNullOrEmpty(prefix))
+            {
+                AnsiConsole.MarkupLine(Markup.Escape(prefix.TrimEnd()));
+            }
+
+            AnsiConsole.WriteException(e, new ExceptionSettings
+            {
+                Format = ExceptionFormats.ShortenPaths,
+            });
+        }
+        else
+        {
+            var m = Markup.Escape(e.Message);
+            AnsiConsole.MarkupLine($"{prefix}[red]{m}[/]");
+            if (showInner)
+            {
+                AnsiConsole.WriteLine(e.InnerException!.ToString());
+            }
+        }
+    }
+
+    private void ReportPositionalError(PositionalException pe)
+    {
+        if (this.ErrOutRedirect != null)
+        {
+            var errorMessage = $"[{Path.GetFileName(pe.FileName)}:{pe.Line}:{pe.Column}]: error: {pe.Message}";
+            if (pe.LineText != null)
+            {
+                errorMessage += Environment.NewLine + pe.LineText;
+                errorMessage += Environment.NewLine + new string(' ', Math.Max(0, pe.Column - 1)) + "^";
+            }
+
+            if (this.AppendErrRedirection)
+            {
+                File.AppendAllText(this.ErrOutRedirect, errorMessage);
+            }
+            else
+            {
+                File.WriteAllText(this.ErrOutRedirect, errorMessage);
+            }
+        }
+        else
+        {
+            var m = Markup.Escape(pe.Message);
+            AnsiConsole.MarkupLine($"{Markup.Escape($"{pe.FileName}:{pe.Line}:{pe.Column}:")} [red]error:[/] {m}");
+            if (pe.LineText != null)
+            {
+                AnsiConsole.MarkupLine($"  [grey]{Markup.Escape(pe.LineText)}[/]");
+                AnsiConsole.MarkupLine($"  [red]{new string(' ', Math.Max(0, pe.Column - 1))}^[/]");
+            }
+        }
     }
 
     /*

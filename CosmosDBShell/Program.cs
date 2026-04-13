@@ -311,5 +311,8 @@ internal class Program
 
         [Option("stdio", Required = false, HelpText = "EnableLspServer", ResourceType = typeof(LocalizableSentenceBuilder), Hidden = true)]
         public bool LspStdio { get; set; }
+
+        [Option("verbose", Required = false, HelpText = "Verbose", ResourceType = typeof(LocalizableSentenceBuilder))]
+        public bool Verbose { get; set; }
     }
 }
