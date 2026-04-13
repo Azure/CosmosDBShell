@@ -25,6 +25,7 @@ internal enum MetricTarget
 [CosmosExample("query \"SELECT * FROM c\"", Description = "Query all documents from container")]
 [CosmosExample("query \"SELECT * FROM c WHERE c.status = 'active'\"", Description = "Query with filter condition")]
 [CosmosExample("query \"SELECT c.id, c.name FROM c\" -max=10", Description = "Query specific fields with result limit")]
+[CosmosExample("query \"SELECT * FROM c\" -max=0", Description = "Query all matching documents without a limit")]
 [CosmosExample("query \"SELECT * FROM c\" -metrics=Display", Description = "Query with performance metrics displayed")]
 [CosmosExample("query \"SELECT * FROM c\" --database=MyDB --container=Products", Description = "Query specific database and container")]
 [McpAnnotation(
@@ -269,6 +270,12 @@ internal class QueryCommand : CosmosCommand
                 PopulateIndexMetrics = true,
             };
 
+            var effectiveMaxItemCount = ResultLimit.ResolveMaxItemCount(this.Max);
+            if (effectiveMaxItemCount.HasValue)
+            {
+                options.MaxItemCount = effectiveMaxItemCount.Value;
+            }
+
             if (this.Bucket.HasValue)
             {
                 options.ThroughputBucket = this.Bucket.Value;
@@ -280,15 +287,7 @@ internal class QueryCommand : CosmosCommand
             }
 
             using var feedIterator = container.GetItemQueryStreamIterator(this.Query, null, options);
-
-            var opt = new QueryRequestOptions
-            {
-                PopulateIndexMetrics = true,
-            };
-            if (this.Max.HasValue)
-            {
-                opt.MaxItemCount = this.Max.Value;
-            }
+            var limitReached = false;
 
             while (feedIterator.HasMoreResults)
             {
@@ -339,10 +338,10 @@ internal class QueryCommand : CosmosCommand
                 var queryMetrics = response.Diagnostics.GetQueryMetrics();
                 if (queryMetrics != null)
                 {
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", (queryMetrics?.TotalRequestCharge ?? 0).ToString() } }));
+                    AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", queryMetrics.TotalRequestCharge.ToString() } }));
                 }
 
-                aggregatedDocuments = CollectDocuments(aggregatedDocuments, queryDocument.RootElement.GetProperty("Documents"), opt.MaxItemCount);
+                aggregatedDocuments = CollectDocuments(aggregatedDocuments, queryDocument.RootElement.GetProperty("Documents"), effectiveMaxItemCount);
 
                 if (this.Metrics == MetricTarget.File)
                 {
@@ -482,10 +481,16 @@ internal class QueryCommand : CosmosCommand
                     GeneratePlainResultDocument(returnState, aggregatedDocuments);
                 }
 
-                if (opt.MaxItemCount >= 0 && aggregatedDocuments.Count >= opt.MaxItemCount)
+                if (ResultLimit.IsLimitReached(aggregatedDocuments.Count, effectiveMaxItemCount))
                 {
+                    limitReached = true;
                     break;
                 }
+            }
+
+            if (limitReached && effectiveMaxItemCount.HasValue)
+            {
+                AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
             }
 
             return returnState;

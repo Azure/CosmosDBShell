@@ -92,7 +92,7 @@ command-rm-no-matches = No items matched the pattern '{ $pattern }' for key '{ $
 
 command-query-description = Executes a query and returns the result
 command-query-description-query = The query to execute
-command-query-description-max = Maximum Number of items
+command-query-description-max = Maximum number of items returned when querying items. Defaults to 100 if omitted. Use 0 or a negative value for no limit.
 command-query-description-metrics = Show query metrics (possible values: Display (default), File (output to data json/csv))
 command-query-description-bucket = The throughput bucket to use for the query
 command-query-description-format = Output format (json, table, csv)
@@ -182,7 +182,7 @@ command-indexpolicy-error_invalid_policy = Invalid indexing policy JSON. Please 
 
 command-ls-description = List current container.
 command-ls-description-filter = The filter pattern.
-command-ls-description-max = Maximum Number of items
+command-ls-description-max = Maximum number of items returned when listing container items. Defaults to 100 if omitted. Use 0 or a negative value for no limit.
 command-ls-description-format = { command-query-description-format }
 command-ls-description-recursive = List items recursively
 command-ls-description-database = The database to list from
@@ -190,6 +190,7 @@ command-ls-description-container = The container to list items from
 command-ls-description-key = The property to match against (default: id)
 command-ls-container = Container { $container }
 command-ls-found_items = found { $count } items.
+command-results-limit_reached = Results limited to { $count } items. Use --max to change the limit or --max 0 for no limit.
 
 command-jq-description = Commandline JSON processor
 command-jq-description-args = Arguments for the jq command

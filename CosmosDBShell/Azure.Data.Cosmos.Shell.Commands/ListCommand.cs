@@ -16,6 +16,7 @@ using Spectre.Console;
 [CosmosExample("ls", Description = "List all databases, containers, or items depending on current context")]
 [CosmosExample("ls *Test*", Description = "Filter results using wildcard pattern")]
 [CosmosExample("ls -max=10", Description = "Limit results to maximum of 10 items")]
+[CosmosExample("ls -max=0", Description = "List all matching items without a limit")]
 [CosmosExample("ls --database=MyDB --container=Products", Description = "List items from specific database and container")]
 [CosmosExample("ls \"*active*\" --format=table", Description = "Filter and display results in table format")]
 [CosmosExample("ls active --key=status", Description = "Filter items where 'status' field equals 'active'")]
@@ -142,9 +143,10 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
         AnsiConsole.MarkupLine(MessageService.GetString("command-ls-container", new Dictionary<string, object> { { "container", Theme.ContainerNamePromt(container.Id) } }));
         var opt = new QueryRequestOptions();
-        if (this.Max.HasValue)
+        var effectiveMaxItemCount = ResultLimit.ResolveMaxItemCount(this.Max);
+        if (effectiveMaxItemCount.HasValue)
         {
-            opt.MaxItemCount = this.Max.Value;
+            opt.MaxItemCount = effectiveMaxItemCount.Value;
         }
 
         var containerResponse = await container.ReadContainerAsync(cancellationToken: token);
@@ -160,6 +162,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var returnState = new CommandState();
         returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOS_SHELL_FORMAT"));
         var list = new List<JsonElement>();
+        var limitReached = false;
         while (feedIterator.HasMoreResults)
         {
             var response = await feedIterator.ReadNextAsync(token);
@@ -182,15 +185,26 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
                     list.Add(element);
                 }
 
-                if (opt.MaxItemCount >= 0 && list.Count >= opt.MaxItemCount)
+                if (ResultLimit.IsLimitReached(list.Count, effectiveMaxItemCount))
                 {
+                    limitReached = true;
                     break;
                 }
+            }
+
+            if (limitReached)
+            {
+                break;
             }
         }
 
         returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = list }));
         AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object> { { "count", "[white]" + list.Count + "[/]" } }));
+        if (limitReached && effectiveMaxItemCount.HasValue)
+        {
+            AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
+        }
+
         return returnState;
     }
 

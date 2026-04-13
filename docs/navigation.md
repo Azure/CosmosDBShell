@@ -4,7 +4,7 @@ The shell models Cosmos DB resources as a simple folder-like hierarchy under you
 
 ## Resource Hierarchy
 
-```
+```text
 Account → Databases → Containers → Items
 ```
 
@@ -17,7 +17,7 @@ There are **no folders inside a container** – containers hold items (JSON docu
 The `ls` command lists resources at the current level:
 
 | Context | `ls` shows |
-|---------|-----------|
+| ------- | ---------- |
 | Connected (root) | All databases in the account |
 | Inside a database | All containers in that database |
 | Inside a container | Items (documents) in that container |
@@ -25,8 +25,8 @@ The `ls` command lists resources at the current level:
 **Options:**
 
 | Option | Description |
-|--------|-------------|
-| `-m <n>` | Limit results to first n items (container scope) |
+| ------ | ----------- |
+| `-m <n>` | Limit results to first n items (container scope). Default is 100 when omitted; use 0 or a negative value for no limit |
 | `-f <fmt>` | Output format (for example: `table`) |
 | `--db <name>` | Override database name |
 | `--con <name>` | Override container name |
@@ -35,12 +35,15 @@ The `ls` command lists resources at the current level:
 **Examples:**
 
 ```bash
-ls                  # list current level
+ls                  # list current level; in a container this defaults to first 100 items
 ls -m 10            # list first 10 items
+ls -m 0             # list all matching items without a limit
 ls "*active*" --key status
 ls --db MyDb        # list containers in a specific database
 ls --db MyDb --con Items -m 5
 ```
+
+If `ls` reaches the effective limit while listing container items, it prints a runtime message telling you the results were limited.
 
 Tip: to iterate local files in scripts, use `dir`:
 
@@ -53,7 +56,7 @@ for $script in (dir "examples/list_dir/*.csh") { echo $script.name }
 The `cd` command changes your current scope:
 
 | From | Command | Result |
-|------|---------|--------|
+| ---- | ------- | ------ |
 | Connected | `cd <database>` | Enter that database |
 | Database | `cd <container>` | Enter that container |
 | Any level | `cd ..` | Go up one level |
@@ -97,7 +100,7 @@ The `|` operator pipes the JSON result of the left command into the right comman
 When a command receives piped JSON, you can use path expressions to access specific values:
 
 | Path | Description |
-|------|-------------|
+| ---- | ----------- |
 | `$` | The entire piped JSON object |
 | `$.property` | Access a property |
 | `$.items[0]` | Access array element |
@@ -148,7 +151,7 @@ ls -q "SELECT c.id, c.status FROM c WHERE c.priority = 1" | echo $.items
 These commands accept and process piped JSON:
 
 | Command | Pipe behavior |
-|---------|---------------|
+| ------- | ------------- |
 | `mkitem` | Creates item(s) from piped JSON |
 | `echo` | Outputs piped value or extracts path |
 | `cd` | Can use path to select target |
@@ -161,7 +164,7 @@ These commands accept and process piped JSON:
 Start the shell with options to customize behavior:
 
 | Option | Description |
-|--------|-------------|
+| ------ | ----------- |
 | `-c <cmd>` | Execute command and exit |
 | `-k <cmd>` | Execute command and stay in shell |
 | `--connect <str>` | Connect with this connection string or endpoint on startup |
@@ -179,7 +182,7 @@ Start the shell with options to customize behavior:
 ### Environment Variables
 
 | Variable | Description |
-|----------|-------------|
+| -------- | ----------- |
 | `COSMOS_SHELL_TOKEN` | Pre-obtained Entra ID access token (JWT) for single-shot auth |
 | `COSMOS_SHELL_ACCOUNT_KEY` | Account key for authentication |
 | `COSMOS_SHELL_FORMAT` | Default output format |
