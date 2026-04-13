@@ -29,6 +29,96 @@ internal class ToolOperations
 
     public McpRequestHandler<CallToolRequestParams, CallToolResult> CallToolHandler => this.OnCallToolsAsync;
 
+    private static Tool GetTool(CommandFactory command)
+    {
+        var tool = new Tool
+        {
+            Name = command.CommandName,
+            Description = command.Description + command.McpDescription + (command.McpRestricted ? "\nWarning: This tool can't be used in MCP context. Usage is user only. Suggest using the command manually or run help for this command." : string.Empty),
+        };
+        var schema = new JsonObject
+        {
+            ["type"] = "object",
+        };
+        var properties = new JsonObject();
+        var required = new JsonArray();
+
+        foreach (var arg in command.Parameters)
+        {
+            if (arg.IsRequired)
+            {
+                required.Add(arg.Name[0]);
+            }
+
+            var propertyInfo = arg.PropertyInfo
+                ?? throw new InvalidOperationException($"Parameter '{arg.Name[0]}' for command '{command.CommandName}' is missing property metadata.");
+
+            properties[arg.Name[0]] = CreatePropertySchema(
+                propertyInfo.PropertyType,
+                arg.GetDescription(command.CommandName),
+                arg.Name);
+        }
+        var propertyInfo = option.PropertyInfo;
+        if (propertyInfo == null)
+        {
+            continue;
+        }
+
+        properties[option.Name[0]] = CreatePropertySchema(
+            propertyInfo.PropertyType,
+        {
+            var propertyInfo = option.PropertyInfo
+                ?? throw new InvalidOperationException($"Option '{option.Name[0]}' for command '{command.CommandName}' is missing property metadata.");
+
+            properties[option.Name[0]] = CreatePropertySchema(
+                propertyInfo.PropertyType,
+                option.GetDescription(command.CommandName),
+                option.Name,
+                option.DefaultValue);
+        }
+
+        if (properties.Count > 0)
+        {
+            schema["properties"] = properties;
+        }
+
+        if (required.Count > 0)
+        {
+            schema["required"] = required;
+        }
+
+        var mcpAnnotation = command.McpAnnotation;
+
+        if (mcpAnnotation != null)
+        {
+            var annotation = new ToolAnnotations { Title = mcpAnnotation.Title };
+            if (mcpAnnotation.ReadOnly)
+            {
+                annotation.ReadOnlyHint = true;
+            }
+
+            if (mcpAnnotation.Destructive)
+            {
+                annotation.DestructiveHint = true;
+            }
+
+            if (mcpAnnotation.Idempotent)
+            {
+                annotation.IdempotentHint = true;
+            }
+
+            if (mcpAnnotation.OpenWorld)
+            {
+                annotation.OpenWorldHint = true;
+            }
+
+            tool.Annotations = annotation;
+        }
+
+        tool.InputSchema = JsonSerializer.SerializeToElement(schema);
+        return tool;
+    }
+
     private static string FormatParameter(string? p)
     {
         if (p == null)
@@ -83,77 +173,87 @@ internal class ToolOperations
         return p;
     }
 
-    private static Tool GetTool(CommandFactory command)
+    private static JsonObject CreatePropertySchema(Type propertyType, string? description, string[] names, object? defaultValue = null)
     {
-        var tool = new Tool
-        {
-            Name = command.CommandName,
-            Description = command.Description + command.McpDescription + (command.McpRestricted ? "\nWarning: This tool can't be used in MCP context. Usage is user only. Suggest using the command manually or run help for this command." : string.Empty),
-        };
-        var args = command.Parameters;
-        var schema = new JsonObject
-        {
-            ["type"] = "object",
-        };
+        var schema = CreateTypeSchema(propertyType);
+        var descriptionText = description ?? string.Empty;
 
-        if (args != null && args.Count > 0)
+        if (names.Length > 1)
         {
-            var arguments = new JsonObject();
-            var required = new JsonArray();
-            foreach (var arg in args)
-            {
-                if (arg.IsRequired)
-                {
-                    required.Add(arg.Name[0]);
-                }
-
-                arguments.Add(arg.Name[0], new JsonObject()
-                {
-                    ["type"] = GetParameterType(arg.ParameterType),
-                    ["description"] = arg.GetDescription(command.CommandName),
-                });
-            }
-
-            schema["properties"] = arguments;
-            schema["required"] = required;
+            var aliases = string.Join(", ", names.Skip(1).Select(alias => $"--{alias}"));
+            descriptionText = string.IsNullOrWhiteSpace(descriptionText)
+                ? $"Aliases: {aliases}"
+                : $"{descriptionText} Aliases: {aliases}";
         }
 
-        var mcpAnnotation = command.McpAnnotation;
-
-        if (mcpAnnotation != null)
+        if (!string.IsNullOrWhiteSpace(descriptionText))
         {
-            var annotation = new ToolAnnotations { Title = mcpAnnotation.Title };
-            if (mcpAnnotation.ReadOnly)
-            {
-                annotation.ReadOnlyHint = true;
-            }
-
-            if (mcpAnnotation.Destructive)
-            {
-                annotation.DestructiveHint = true;
-            }
-
-            if (mcpAnnotation.Idempotent)
-            {
-                annotation.IdempotentHint = true;
-            }
-
-            if (mcpAnnotation.OpenWorld)
-            {
-                annotation.OpenWorldHint = true;
-            }
-
-            tool.Annotations = annotation;
+            schema["description"] = descriptionText;
         }
 
-        tool.InputSchema = JsonSerializer.SerializeToElement(schema);
-        return tool;
+        if (defaultValue != null)
+        {
+            schema["default"] = JsonSerializer.SerializeToNode(defaultValue);
+        }
+
+        return schema;
     }
 
-    private static string GetParameterType(ParameterType parameterType)
+    private static JsonObject CreateTypeSchema(Type propertyType)
     {
-        // ATM only string is supported the types are used for highlighting and mcs doesn't know/want to know about a parameter
-        // is a database or a container
+        var targetType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+
+        if (targetType.IsEnum)
+        {
+            var enumValues = new JsonArray();
+            foreach (var name in Enum.GetNames(targetType))
+            {
+                enumValues.Add(name);
+            }
+
+            return new JsonObject
+            {
+                ["type"] = "string",
+                ["enum"] = enumValues,
+            };
+        }
+
+        if (targetType.IsArray)
+        {
+            return new JsonObject
+            {
+                ["type"] = "array",
+                ["items"] = CreateTypeSchema(targetType.GetElementType() ?? typeof(string)),
+            };
+        }
+
+        return new JsonObject
+        {
+            ["type"] = GetJsonSchemaType(targetType),
+        };
+    }
+
+    private static string GetJsonSchemaType(Type targetType)
+    {
+        if (targetType == typeof(bool))
+        {
+            return "boolean";
+        }
+
+        if (targetType == typeof(int) ||
+            targetType == typeof(long) ||
+            targetType == typeof(short))
+        {
+            return "integer";
+        }
+
+        if (targetType == typeof(float) ||
+            targetType == typeof(double) ||
+            targetType == typeof(decimal))
+        {
+            return "number";
+        }
+
         return "string";
     }
 
