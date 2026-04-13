@@ -113,11 +113,14 @@ public class ParsedDocDBConnectionString
     }
 
     /// <summary>
-    /// Builds a full emulator connection string from an endpoint URL using the well-known emulator key.
+    /// Builds a full emulator connection string from an endpoint URL.
+    /// Uses the provided account key or falls back to the well-known emulator key.
+    /// Always includes DisableServerCertificateValidation=True.
     /// </summary>
     /// <param name="endpoint">The emulator endpoint URL.</param>
-    /// <returns>A connection string with AccountEndpoint and the well-known AccountKey.</returns>
-    public static string BuildEmulatorConnectionString(string endpoint)
+    /// <param name="accountKey">An optional account key. If null, the well-known emulator key is used.</param>
+    /// <returns>A connection string with AccountEndpoint, AccountKey, and DisableServerCertificateValidation=True.</returns>
+    public static string BuildEmulatorConnectionString(string endpoint, string? accountKey = null)
     {
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uriResult) ||
             (uriResult.Scheme != Uri.UriSchemeHttp && uriResult.Scheme != Uri.UriSchemeHttps))
@@ -126,7 +129,29 @@ public class ParsedDocDBConnectionString
         }
 
         string sanitizedEndpoint = uriResult.GetComponents(UriComponents.HttpRequestUrl, UriFormat.Unescaped);
-        return $"AccountEndpoint={sanitizedEndpoint};AccountKey={EmulatorAccountKey}";
+        string key = accountKey ?? EmulatorAccountKey;
+        return $"AccountEndpoint={sanitizedEndpoint};AccountKey={key};DisableServerCertificateValidation=True;";
+    }
+
+    /// <summary>
+    /// Extracts a clean endpoint URL from a connection string or plain URL.
+    /// </summary>
+    /// <param name="connectionStringOrUrl">A connection string (with AccountEndpoint=) or a plain URL.</param>
+    /// <returns>The endpoint URL.</returns>
+    /// <exception cref="ArgumentException">Thrown when the endpoint cannot be determined.</exception>
+    public static string ExtractEndpoint(string connectionStringOrUrl)
+    {
+        if (TryParseDocDBConnectionString(connectionStringOrUrl, out var parsed))
+        {
+            return parsed!.Endpoint;
+        }
+
+        if (IsPlainUrl(connectionStringOrUrl))
+        {
+            return connectionStringOrUrl;
+        }
+
+        throw new ArgumentException("Cannot determine endpoint from the provided connection string or URL.", nameof(connectionStringOrUrl));
     }
 
     /// <summary>

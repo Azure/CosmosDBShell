@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Core;
 
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Azure.Data.Cosmos.Shell.Commands;
@@ -412,6 +413,17 @@ public partial class ShellInterpreter : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    internal static string GetDisplayVersion(Assembly assembly)
+    {
+        var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informationalVersion))
+        {
+            return informationalVersion;
+        }
+
+        return assembly.GetName().Version?.ToString() ?? "unknown";
+    }
+
     internal static void ReportError(string message, params object[] par)
     {
         AnsiConsole.MarkupLine("[red]" + Markup.Escape(message) + "[/]", par);
@@ -430,7 +442,7 @@ public partial class ShellInterpreter : IDisposable
 
     internal void PrintVersion(CommandState? commandState)
     {
-        var version = typeof(VersionCommand).Assembly.GetName().Version?.ToString() ?? "unknown";
+        var version = GetDisplayVersion(typeof(VersionCommand).Assembly);
         var versionString = MessageService.GetArgsString("command-version", "version", version);
         AnsiConsole.MarkupLine(versionString);
 
@@ -569,128 +581,297 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
-    internal async Task ConnectAsync(string connectionString, string? loginHint, string? credentialHint = null, string? explicitCredential = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null)
+    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false)
     {
-        // Emulator convenience: if a plain localhost URL is provided, build a full connection string with the well-known key
-        if (ParsedDocDBConnectionString.IsPlainUrl(connectionString) &&
-            ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString))
+        Uri? authorityHostUri = null;
+        if (!string.IsNullOrWhiteSpace(authorityHost))
         {
-            WriteLine(MessageService.GetString("command-connect-emulator-detected"));
-            connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(connectionString);
-        }
-
-        // Emulator convenience: if the connection string targets localhost but has no AccountKey, inject the well-known key
-        if (ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString) &&
-            ParsedDocDBConnectionString.TryParseDocDBConnectionString(connectionString, out var emulatorParsed) &&
-            !emulatorParsed!.HasMasterKey)
-        {
-            WriteLine(MessageService.GetString("command-connect-emulator-detected"));
-            connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(emulatorParsed.Endpoint);
+            if (!Uri.TryCreate(authorityHost, UriKind.Absolute, out authorityHostUri))
+            {
+                throw new ShellException($"Invalid authority host URL: '{authorityHost}'");
+            }
         }
 
         CosmosClient? client = null;
 
-        // Emulator convenience: default to Gateway mode (Direct mode fails on macOS emulator)
-        var requestedMode = mode ?? (ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString) ? ConnectionMode.Gateway : ConnectionMode.Direct);
-
-        var options = CreateClientOptions(connectionString, requestedMode);
-
-        CosmosClient? CreateClientFromParsedCredential(Credential kind, string? id, ConnectionMode requestedMode)
+        // Step 1: Resolve account key (from connection string, env variable, or emulator well-known key)
+        bool isEmulator = ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString);
+        if (isEmulator)
         {
-            switch (kind)
+            WriteLine(MessageService.GetString("command-connect-emulator-detected"));
+        }
+
+        bool hasKey = ParsedDocDBConnectionString.TryParseDocDBConnectionString(connectionString, out var parsedCs) && parsedCs!.HasMasterKey;
+
+        if (isEmulator)
+        {
+            // Always route emulator through BuildEmulatorConnectionString to ensure
+            // DisableServerCertificateValidation=True is present.
+            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
+            string? accountKey = parsedCs?.MasterKey;
+
+            if (accountKey == null)
             {
-                case Credential.DBKey when !string.IsNullOrEmpty(id):
-                    return new CosmosClient(connectionString, id, options);
+                var envKey = Environment.GetEnvironmentVariable("COSMOS_SHELL_ACCOUNT_KEY");
+                if (!string.IsNullOrEmpty(envKey))
+                {
+                    accountKey = envKey;
+                }
+            }
 
-                case Credential.EntraId when !string.IsNullOrEmpty(id):
-                    {
-                        var defaultCredentialOptions = new DefaultAzureCredentialOptions
-                        {
-                            TenantId = tenantId ?? id,
-                            ExcludeManagedIdentityCredential = true,
-                            ExcludeInteractiveBrowserCredential = true,
-                        };
-                        if (authorityHost != null)
-                        {
-                            defaultCredentialOptions.AuthorityHost = new Uri(authorityHost);
-                        }
-
-                        var credential = new DefaultAzureCredential(DefaultAzureCredential.DefaultEnvironmentVariableName, defaultCredentialOptions);
-                        return new CosmosClient(connectionString, credential, options);
-                    }
-
-                case Credential.ManagedIdentity:
-                    {
-                        var managedOptions = new DefaultAzureCredentialOptions();
-                        if (tenantId != null)
-                        {
-                            managedOptions.TenantId = tenantId;
-                        }
-
-                        if (authorityHost != null)
-                        {
-                            managedOptions.AuthorityHost = new Uri(authorityHost);
-                        }
-
-                        var defaultAzureCredential = new DefaultAzureCredential(DefaultAzureCredential.DefaultEnvironmentVariableName, managedOptions);
-                        return new CosmosClient(connectionString, defaultAzureCredential, options);
-                    }
-
-                default:
-                    return null;
+            connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(endpoint, accountKey);
+            hasKey = true;
+        }
+        else if (!hasKey)
+        {
+            var envKey = Environment.GetEnvironmentVariable("COSMOS_SHELL_ACCOUNT_KEY");
+            if (!string.IsNullOrEmpty(envKey))
+            {
+                var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
+                connectionString = $"AccountEndpoint={endpoint};AccountKey={envKey};";
+                hasKey = true;
             }
         }
 
-        // 1) EXPLICIT credential (takes precedence over environment variable)
-        if (explicitCredential != null &&
-            CredentialStringHelpers.TryParseCredential(explicitCredential, out var explKind, out var explId))
+        if (hasKey)
         {
-            client = CreateClientFromParsedCredential(explKind, explId, requestedMode);
-        }
+            WriteLine(MessageService.GetString("shell-connect-key-auth"));
+            var keyMode = mode ?? (isEmulator ? ConnectionMode.Gateway : ConnectionMode.Direct);
+            var keyOptions = CreateClientOptions(connectionString, keyMode);
+            client = new CosmosClient(connectionString, keyOptions);
 
-        // 2) Environment credential (only if no explicit credential succeeded)
-        if (client == null)
-        {
-            var envCredential = credentialHint ?? Environment.GetEnvironmentVariable("COSMOS_SHELL_CREDENTIAL");
-            if (envCredential != null &&
-                CredentialStringHelpers.TryParseCredential(envCredential, out var envKind, out var envId))
-            {
-                client = CreateClientFromParsedCredential(envKind, envId, requestedMode);
-            }
-        }
-
-        // 3) Connection string parsing (account key vs. AAD interactive)
-        if (client == null &&
-            ParsedDocDBConnectionString.TryParseDocDBConnectionString(connectionString, out var parsedString))
-        {
+            AccountProperties keyProps;
             try
             {
-                if (parsedString?.HasMasterKey == false)
-                {
-                    client = ConnectDirect(connectionString, loginHint, requestedMode, tenantId, authorityHost);
-                }
-                else
-                {
-                    client = new CosmosClient(connectionString, CreateClientOptions(connectionString, requestedMode));
-                }
+                keyProps = await client.ReadAccountAsync();
             }
             catch (Exception ex)
             {
-                WriteLine(ex.Message);
+                client.Dispose();
+                throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
+            }
+
+            WriteLine(MessageService.GetArgsString("command-connect-connected", "account", keyProps.Id));
+            this.Connect(client);
+            return;
+        }
+
+        // Token-based auth paths
+        var requestedMode = mode ?? ConnectionMode.Direct;
+        var options = CreateClientOptions(connectionString, requestedMode);
+
+        // Step 2: VisualStudioCodeCredential (when launched from VS Code extension)
+        if (client == null && useVSCodeCredential)
+        {
+            WriteLine(MessageService.GetString("shell-connect-vscode-credential-auth"));
+            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
+
+            var vscOptions = new VisualStudioCodeCredentialOptions();
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                vscOptions.TenantId = tenantId;
+            }
+
+            if (authorityHostUri != null)
+            {
+                vscOptions.AuthorityHost = authorityHostUri;
+            }
+
+            var vscCredential = new VisualStudioCodeCredential(vscOptions);
+            client = new CosmosClient(endpoint, vscCredential, options);
+
+            try
+            {
+                var vscProps = await client.ReadAccountAsync();
+                WriteLine(MessageService.GetArgsString("command-connect-connected", "account", vscProps.Id));
+                this.Connect(client);
+                return;
+            }
+            catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
+            {
+                client.Dispose();
+                client = null;
+                WriteLine(MessageService.GetString("shell-connect-vscode-credential-fallback"));
+            }
+            catch (Exception)
+            {
+                client?.Dispose();
+                client = null;
+                throw;
             }
         }
 
-        // 4) Fallback to direct interactive login if still not established
-        client ??= ConnectDirect(connectionString, loginHint, requestedMode, tenantId, authorityHost);
-
-        if (client == null)
+        // Step 3: Static token from COSMOS_SHELL_TOKEN environment variable
+        var envToken = Environment.GetEnvironmentVariable("COSMOS_SHELL_TOKEN");
+        if (client == null && !string.IsNullOrEmpty(envToken))
         {
-            throw new ShellException(MessageService.GetString("error-connection_failed"));
+            WriteLine(MessageService.GetString("shell-connect-static-token-auth"));
+            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
+            var credential = new StaticTokenCredential(envToken);
+            if (credential.HasJwtExpiry)
+            {
+                var remaining = credential.ExpiresOn - DateTimeOffset.UtcNow;
+                var timeSpan = remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+                WriteLine(MessageService.GetArgsString("shell-connect-static-token-expiry", "timespan", $"{timeSpan:hh\\:mm\\:ss}", "expiration", credential.ExpiresOn.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")));
+            }
+
+            client = new CosmosClient(endpoint, credential, options);
+
+            AccountProperties tokenProps;
+            try
+            {
+                tokenProps = await client.ReadAccountAsync();
+            }
+            catch (Exception ex)
+            {
+                client.Dispose();
+                throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
+            }
+
+            WriteLine(MessageService.GetArgsString("command-connect-connected", "account", tokenProps.Id));
+            this.Connect(client);
+            return;
         }
 
-        var props = await client.ReadAccountAsync();
-        WriteLine(MessageService.GetArgsString("command-connect-connected", "account", props.Id));
-        this.Connect(client);
+        // Step 4: Managed identity
+        if (client == null && !string.IsNullOrWhiteSpace(managedIdentityClientId))
+        {
+            WriteLine(MessageService.GetArgsString("shell-connect-managed-identity-auth", "clientId", managedIdentityClientId));
+            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
+            var miOptions = new ManagedIdentityCredentialOptions(ManagedIdentityId.FromUserAssignedClientId(managedIdentityClientId));
+            if (authorityHostUri != null)
+            {
+                miOptions.AuthorityHost = authorityHostUri;
+            }
+
+            var credential = new ManagedIdentityCredential(miOptions);
+            client = new CosmosClient(endpoint, credential, options);
+
+            AccountProperties miProps;
+            try
+            {
+                miProps = await client.ReadAccountAsync();
+            }
+            catch (Exception ex)
+            {
+                client.Dispose();
+                throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
+            }
+
+            WriteLine(MessageService.GetArgsString("command-connect-connected", "account", miProps.Id));
+            this.Connect(client);
+            return;
+        }
+
+        // Step 5: Entra ID interactive (--tenant or --hint provided)
+        if (client == null && (!string.IsNullOrWhiteSpace(tenantId) || !string.IsNullOrWhiteSpace(loginHint)))
+        {
+            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
+
+            var browserOptions = new InteractiveBrowserCredentialOptions
+            {
+                RedirectUri = new Uri(ConnectCommand.EntraRedirectUrl),
+            };
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                browserOptions.TenantId = tenantId;
+            }
+
+            if (!string.IsNullOrWhiteSpace(loginHint))
+            {
+                browserOptions.LoginHint = loginHint;
+            }
+
+            if (authorityHostUri != null)
+            {
+                browserOptions.AuthorityHost = authorityHostUri;
+            }
+
+            WriteLine(MessageService.GetString("shell-connect-browser-auth"));
+            var browserCredential = new InteractiveBrowserCredential(browserOptions);
+            client = new CosmosClient(endpoint, browserCredential, options);
+
+            try
+            {
+                var entraProps = await client.ReadAccountAsync();
+                WriteLine(MessageService.GetArgsString("command-connect-connected", "account", entraProps.Id));
+                this.Connect(client);
+                return;
+            }
+            catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
+            {
+                // Browser auth failed, fall back to device code
+                WriteLine(MessageService.GetString("shell-connect-devicecode-fallback"));
+                client.Dispose();
+
+                var deviceCodeOptions = new DeviceCodeCredentialOptions
+                {
+                    DeviceCodeCallback = (code, cancellationToken) =>
+                    {
+                        ShellInterpreter.WriteLine(code.Message);
+                        return Task.CompletedTask;
+                    },
+                };
+                if (!string.IsNullOrWhiteSpace(tenantId))
+                {
+                    deviceCodeOptions.TenantId = tenantId;
+                }
+
+                if (authorityHostUri != null)
+                {
+                    deviceCodeOptions.AuthorityHost = authorityHostUri;
+                }
+
+                var deviceCodeCredential = new DeviceCodeCredential(deviceCodeOptions);
+                client = new CosmosClient(endpoint, deviceCodeCredential, options);
+
+                AccountProperties dcProps;
+                try
+                {
+                    dcProps = await client.ReadAccountAsync();
+                }
+                catch (Exception dcEx)
+                {
+                    client.Dispose();
+                    throw new ShellException(MessageService.GetString("error-connection_failed"), dcEx);
+                }
+
+                WriteLine(MessageService.GetArgsString("command-connect-connected", "account", dcProps.Id));
+                this.Connect(client);
+                return;
+            }
+        }
+
+        // Step 6: DefaultAzureCredential (endpoint only, or only --authority-host)
+        if (client == null)
+        {
+            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
+            WriteLine(MessageService.GetString("shell-connect-default-auth"));
+            var dacOptions = new DefaultAzureCredentialOptions
+            {
+                ExcludeInteractiveBrowserCredential = false,
+            };
+            if (authorityHostUri != null)
+            {
+                dacOptions.AuthorityHost = authorityHostUri;
+            }
+
+            var dacCredential = new DefaultAzureCredential(dacOptions);
+            client = new CosmosClient(endpoint, dacCredential, options);
+
+            try
+            {
+                var dacProps = await client.ReadAccountAsync();
+                WriteLine(MessageService.GetArgsString("command-connect-connected", "account", dacProps.Id));
+                this.Connect(client);
+                return;
+            }
+            catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
+            {
+                client.Dispose();
+                throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
+            }
+        }
     }
 
     /// <summary>
@@ -880,73 +1061,6 @@ public partial class ShellInterpreter : IDisposable
         }
 
         return options;
-    }
-
-    private static CosmosClient? ConnectDirect(string connectionString, string? loginHint, ConnectionMode requestedMode, string? tenantId = null, string? authorityHost = null)
-    {
-        try
-        {
-            ShellInterpreter.WriteLine(MessageService.GetString("shell-connect-browser-auth"));
-            var loginOptions = new InteractiveBrowserCredentialOptions
-            {
-                // options.ClientId = ConnectCommand.EntraClientID,
-                RedirectUri = new Uri(ConnectCommand.EntraRedirectUrl),
-            };
-
-            if (loginHint != null)
-            {
-                loginOptions.LoginHint = loginHint;
-            }
-
-            if (tenantId != null)
-            {
-                loginOptions.TenantId = tenantId;
-            }
-
-            if (authorityHost != null)
-            {
-                loginOptions.AuthorityHost = new Uri(authorityHost);
-            }
-
-            var credential = new InteractiveBrowserCredential(loginOptions);
-            return new CosmosClient(connectionString, credential, CreateClientOptions(connectionString, requestedMode));
-        }
-        catch (Exception ex)
-        {
-            WriteLine(ex.Message);
-
-            try
-            {
-                ShellInterpreter.WriteLine(MessageService.GetString("shell-connect-devicecode-auth"));
-
-                var deviceCodeOptions = new DeviceCodeCredentialOptions
-                {
-                    DeviceCodeCallback = (code, cancellationToken) =>
-                    {
-                        ShellInterpreter.WriteLine(code.Message);
-                        return Task.CompletedTask;
-                    },
-                };
-
-                if (tenantId != null)
-                {
-                    deviceCodeOptions.TenantId = tenantId;
-                }
-
-                if (authorityHost != null)
-                {
-                    deviceCodeOptions.AuthorityHost = new Uri(authorityHost);
-                }
-
-                var deviceCodeCredential = new DeviceCodeCredential(deviceCodeOptions);
-                return new CosmosClient(connectionString, deviceCodeCredential, CreateClientOptions(connectionString, requestedMode));
-            }
-            catch (Exception fallbackEx)
-            {
-                WriteLine(fallbackEx.Message);
-                return null;
-            }
-        }
     }
 
     private LineEditor CreateLineEditor()

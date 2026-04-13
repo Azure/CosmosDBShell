@@ -23,6 +23,16 @@ public class LocalizableSentenceBuilder : SentenceBuilder
 
     public static string ConnectionMode => MessageService.GetString("help-ConnectionMode");
 
+    public static string ConnectTenant => MessageService.GetString("help-ConnectTenant");
+
+    public static string ConnectHint => MessageService.GetString("help-ConnectHint");
+
+    public static string ConnectAuthorityHost => MessageService.GetString("help-ConnectAuthorityHost");
+
+    public static string ConnectManagedIdentity => MessageService.GetString("help-ConnectManagedIdentity");
+
+    public static string ConnectVSCodeCredential => MessageService.GetString("help-ConnectVSCodeCredential");
+
     public static string Command => MessageService.GetString("help-cmd");
 
     public static string EnableMcpServer => MessageService.GetString("help-EnableMcpServer");
