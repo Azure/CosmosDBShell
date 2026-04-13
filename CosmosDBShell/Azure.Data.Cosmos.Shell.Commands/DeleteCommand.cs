@@ -12,7 +12,7 @@ using global::Azure.Data.Cosmos.Shell.Core;
 [CosmosExample("delete item test-*", Description = "Delete items matching the pattern")]
 [CosmosExample("delete container OldContainer", Description = "Delete a container")]
 [CosmosExample("delete database TestDB", Description = "Delete a database")]
-[McpAnnotation(Restricted = true)]
+[McpAnnotation(Restricted = true, Destructive = true)]
 internal class DeleteCommand : CosmosCommand
 {
     [CosmosParameter("item", IsRequired = true)]

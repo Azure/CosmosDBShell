@@ -16,6 +16,7 @@ using ModelContextProtocol.Server;
 internal class ResourceOperations
 {
     private const string ScriptingUri = "cosmos://docs/scripting";
+    private const string QueryLanguageUri = "cosmos://docs/nosql-query-language";
 
     /// <summary>
     /// Returns the Cosmos Shell scripting / programming guide so the LLM can
@@ -30,6 +31,21 @@ internal class ResourceOperations
     public static string GetScriptingGuide()
     {
         return LoadEmbeddedResource("programming.md");
+    }
+
+    /// <summary>
+    /// Returns the Cosmos DB NoSQL query language reference so the LLM can
+    /// help users write correct queries.
+    /// </summary>
+    [McpServerResource(
+        UriTemplate = QueryLanguageUri,
+        Name = "cosmos-nosql-query-language",
+        Title = "Cosmos DB NoSQL Query Language Reference",
+        MimeType = "text/markdown")]
+    [Description("Complete reference for Azure Cosmos DB NoSQL query syntax: SELECT, FROM, WHERE, JOIN, aggregate functions, date/time functions, string functions, array functions, and best practices. Use this resource when helping users write or debug Cosmos DB queries.")]
+    public static string GetQueryLanguageReference()
+    {
+        return LoadEmbeddedResource("nosql-query-language.md");
     }
 
     private static string LoadEmbeddedResource(string suffix)

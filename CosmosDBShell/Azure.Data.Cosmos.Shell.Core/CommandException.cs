@@ -51,6 +51,12 @@ public class CommandException : ShellException
     /// </summary>
     public string Command { get; }
 
+    /// <inheritdoc/>
+    public override string ToString()
+    {
+        return $"{this.Command}: {base.ToString()}";
+    }
+
     private static string GetMessage(Exception exception)
     {
         if (exception.InnerException != null)

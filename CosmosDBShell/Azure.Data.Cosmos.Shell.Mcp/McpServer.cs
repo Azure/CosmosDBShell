@@ -44,6 +44,7 @@ internal class McpServer
                 // logging.AddEventSourceLogger();
             });
         var application = builder.Build();
+        application.UseOriginValidation();
         application.MapMcp();
         return application;
     }

@@ -48,6 +48,7 @@ Your MCP client may use a remote LLM. Command outputs, query results, and file c
 
 | Risk | Mitigation |
 | ---- | ---------- |
+| DNS rebinding | Origin header validated on all requests; non-loopback origins rejected |
 | Unauthorized access | Bind to localhost only, don't expose port publicly |
 | Credential leakage | Use Azure AD instead of connection strings/keys |
 | Excessive permissions | Apply least-privilege RBAC, narrow scopes |
