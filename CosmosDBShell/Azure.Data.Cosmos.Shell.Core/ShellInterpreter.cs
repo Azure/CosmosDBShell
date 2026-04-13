@@ -651,20 +651,18 @@ public partial class ShellInterpreter : IDisposable
         }
         catch (Exception e)
         {
+            if (this.Options?.Verbose == true)
             {
-                if (this.Options?.Verbose == true)
+                AnsiConsole.Markup($"[red]PrintState: [/]");
+                AnsiConsole.WriteException(e);
+            }
+            else
+            {
+                var m = Markup.Escape(e.Message);
+                AnsiConsole.MarkupLine($"[red]PrintState:{m}[/]");
+                if (e.InnerException != null)
                 {
-                    AnsiConsole.Markup($"[red]PrintState: [/]");
-                    AnsiConsole.WriteException(e);
-                }
-                else
-                {
-                    var m = Markup.Escape(e.Message);
-                    AnsiConsole.MarkupLine($"[red]PrintState:{m}[/]");
-                    if (e.InnerException != null)
-                    {
-                        WriteLine(e.InnerException.ToString());
-                    }
+                    WriteLine(e.InnerException.ToString());
                 }
             }
 
