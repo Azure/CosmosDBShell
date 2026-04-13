@@ -260,7 +260,7 @@ internal class QueryCommand : CosmosCommand
                 { "metric", "Runtime execution time" },
                 { "value",  cumulative?.RuntimeExecutionTime.TotalMilliseconds ?? 0 },
                 { "formattedValue", $"{cumulative?.RuntimeExecutionTime.TotalMilliseconds ?? 0} ms" },
-                { "tooltip", "The query runtime execution time during query in the Azure Cosmos database\r\n    //     service." },
+                { "tooltip", "The query runtime execution time in the Azure Cosmos database service." },
             },
 
             new Dictionary<string, object>
