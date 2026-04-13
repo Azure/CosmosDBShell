@@ -16,7 +16,7 @@ public class UserDefinedFunctionTests : IntegrationTestBase
         var state = await RunScriptAsync("def greet [who] { echo $\"Hello $who\" }\ngreet \"World\"");
 
         Assert.False(state.IsError);
-        var text = await File.ReadAllTextAsync(outputFile);
+        var text = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
         Assert.Contains("Hello World", text);
     }
 

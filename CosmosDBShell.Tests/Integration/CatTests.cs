@@ -10,7 +10,7 @@ public class CatTests : IntegrationTestBase
     public async Task Cat_ValidFile_ReturnsContents()
     {
         var tempFile = Path.Combine(Path.GetTempPath(), $"cat-test-{Guid.NewGuid():N}.txt");
-        await File.WriteAllTextAsync(tempFile, "file content here");
+        await File.WriteAllTextAsync(tempFile, "file content here", TestContext.Current.CancellationToken);
 
         try
         {
@@ -18,7 +18,7 @@ public class CatTests : IntegrationTestBase
             var state = await RunScriptAsync($"cat \"{ShellPath(tempFile)}\"");
 
             Assert.False(state.IsError);
-            var text = await File.ReadAllTextAsync(outputFile);
+            var text = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
             Assert.Contains("file content here", text);
         }
         finally

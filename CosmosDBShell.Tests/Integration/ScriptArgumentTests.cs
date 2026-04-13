@@ -15,7 +15,7 @@ public class ScriptArgumentTests : IntegrationTestBase
         var tempDir = Path.Combine(Path.GetTempPath(), "CosmosShellIntTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var scriptPath = Path.Combine(tempDir, "test_dollar0.csh");
-        await File.WriteAllTextAsync(scriptPath, "$captured = $0\n");
+        await File.WriteAllTextAsync(scriptPath, "$captured = $0\n", TestContext.Current.CancellationToken);
 
         try
         {
@@ -37,7 +37,7 @@ public class ScriptArgumentTests : IntegrationTestBase
         var tempDir = Path.Combine(Path.GetTempPath(), "CosmosShellIntTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var scriptPath = Path.Combine(tempDir, "test_args.csh");
-        await File.WriteAllTextAsync(scriptPath, "echo $1 $2\n");
+        await File.WriteAllTextAsync(scriptPath, "echo $1 $2\n", TestContext.Current.CancellationToken);
 
         try
         {
@@ -64,7 +64,7 @@ public class ScriptArgumentTests : IntegrationTestBase
         var tempDir = Path.Combine(Path.GetTempPath(), "CosmosShellIntTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var scriptPath = Path.Combine(tempDir, "child.csh");
-        await File.WriteAllTextAsync(scriptPath, "$leak = 123\n");
+        await File.WriteAllTextAsync(scriptPath, "$leak = 123\n", TestContext.Current.CancellationToken);
 
         try
         {
@@ -86,7 +86,7 @@ public class ScriptArgumentTests : IntegrationTestBase
         var tempDir = Path.Combine(Path.GetTempPath(), "CosmosShellIntTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var scriptPath = Path.Combine(tempDir, "control_flow.csh");
-        await File.WriteAllTextAsync(scriptPath, "$sum = 0\nfor $i in [1, 2, 3] {\n  $sum = ($sum + $i)\n}\nreturn $sum\n");
+        await File.WriteAllTextAsync(scriptPath, "$sum = 0\nfor $i in [1, 2, 3] {\n  $sum = ($sum + $i)\n}\nreturn $sum\n", TestContext.Current.CancellationToken);
 
         try
         {

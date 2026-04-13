@@ -16,7 +16,7 @@ public class EchoTests : IntegrationTestBase
         var state = await RunScriptAsync("echo \"hello world\"");
 
         Assert.False(state.IsError);
-        var text = await File.ReadAllTextAsync(outputFile);
+        var text = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
         Assert.Contains("hello world", text);
     }
 
@@ -27,7 +27,7 @@ public class EchoTests : IntegrationTestBase
         var state = await RunScriptAsync("echo \"a\" \"b\" \"c\"");
 
         Assert.False(state.IsError);
-        var text = await File.ReadAllTextAsync(outputFile);
+        var text = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
         Assert.Contains("a b c", text);
     }
 
@@ -38,7 +38,7 @@ public class EchoTests : IntegrationTestBase
         var state = await RunScriptAsync("$x = \"World\"\necho $\"Hello $x\"");
 
         Assert.False(state.IsError);
-        var text = await File.ReadAllTextAsync(outputFile);
+        var text = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
         Assert.Contains("Hello World", text);
     }
 
@@ -50,7 +50,7 @@ public class EchoTests : IntegrationTestBase
         var state = await RunScriptAsync("echo $data | echo");
 
         Assert.False(state.IsError);
-        var text = await File.ReadAllTextAsync(outputFile);
+        var text = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
         Assert.Contains("piped_value", text);
     }
 }

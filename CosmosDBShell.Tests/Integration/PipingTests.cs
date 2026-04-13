@@ -18,7 +18,7 @@ public class PipingTests : IntegrationTestBase
         var state = await RunScriptAsync("echo \"hello\" | echo");
 
         Assert.False(state.IsError);
-        var text = await File.ReadAllTextAsync(outputFile);
+        var text = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
         Assert.Contains("hello", text);
     }
 
@@ -31,7 +31,7 @@ public class PipingTests : IntegrationTestBase
         var state = await RunScriptAsync("echo $data | jq .name");
 
         Assert.False(state.IsError);
-        var text = await File.ReadAllTextAsync(outputFile);
+        var text = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
         Assert.Contains("test", text);
     }
 
@@ -49,7 +49,7 @@ public class PipingTests : IntegrationTestBase
             var state = await RunScriptAsync($"dir -l -d \"{ShellPath(tempDir)}\" | ftab -f name");
 
             Assert.False(state.IsError);
-            var text = await File.ReadAllTextAsync(outputFile);
+            var text = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
             Assert.Contains("name", text);
         }
         finally
@@ -67,7 +67,7 @@ public class PipingTests : IntegrationTestBase
         var state = await RunScriptAsync("echo $data | jq .msg");
 
         Assert.False(state.IsError);
-        var text = await File.ReadAllTextAsync(outputFile);
+        var text = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
         Assert.Contains("chain", text);
     }
 

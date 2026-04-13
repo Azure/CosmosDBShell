@@ -14,7 +14,7 @@ public class OutputRedirectionTests : IntegrationTestBase
 
         Assert.False(state.IsError);
         Assert.True(File.Exists(outputFile));
-        var text = await File.ReadAllTextAsync(outputFile);
+        var text = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
         Assert.Contains("hello", text);
     }
 
@@ -27,7 +27,7 @@ public class OutputRedirectionTests : IntegrationTestBase
         Shell.AppendOutRedirection = true;
         await RunScriptAsync("echo \"second\"");
 
-        var text = await File.ReadAllTextAsync(outputFile);
+        var text = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
         Assert.Contains("first", text);
         Assert.Contains("second", text);
     }
@@ -44,7 +44,7 @@ public class OutputRedirectionTests : IntegrationTestBase
             Assert.True(state.IsError);
 
             Assert.True(File.Exists(tempFile));
-            var text = await File.ReadAllTextAsync(tempFile);
+            var text = await File.ReadAllTextAsync(tempFile, TestContext.Current.CancellationToken);
             Assert.NotEmpty(text);
         }
         finally
