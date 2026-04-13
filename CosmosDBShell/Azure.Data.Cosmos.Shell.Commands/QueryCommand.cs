@@ -143,108 +143,110 @@ internal class QueryCommand : CosmosCommand
     private static List<Dictionary<string, object>> GetMetrics(ResponseMessage msg)
     {
         var queryMetrics = msg.Diagnostics.GetQueryMetrics();
+        var charge = queryMetrics?.TotalRequestCharge ?? 0;
+        var cumulative = queryMetrics?.CumulativeMetrics;
         return [
             new Dictionary<string, object>
             {
                 { "metric", "Request Charge" },
-                { "value",  queryMetrics.TotalRequestCharge },
-                { "formattedValue", $"{queryMetrics.TotalRequestCharge} RUs" },
+                { "value",  charge },
+                { "formattedValue", $"{charge} RUs" },
                 { "tooltip", "Request Charge" },
             },
 
             new Dictionary<string, object>
             {
                 { "metric", "Retrieved document count" },
-                { "value",  queryMetrics.CumulativeMetrics.RetrievedDocumentCount },
-                { "formattedValue", $"{queryMetrics.CumulativeMetrics.RetrievedDocumentCount}" },
+                { "value",  cumulative?.RetrievedDocumentCount ?? 0 },
+                { "formattedValue", $"{cumulative?.RetrievedDocumentCount ?? 0}" },
                 { "tooltip", "Total number of retrieved documents" },
             },
 
             new Dictionary<string, object>
             {
                 { "metric", "Retrieved document size" },
-                { "value",  queryMetrics.CumulativeMetrics.RetrievedDocumentSize },
-                { "formattedValue", $"{queryMetrics.CumulativeMetrics.RetrievedDocumentSize} bytes" },
+                { "value",  cumulative?.RetrievedDocumentSize ?? 0 },
+                { "formattedValue", $"{cumulative?.RetrievedDocumentSize ?? 0} bytes" },
                 { "tooltip", "Total size of retrieved documents in bytes" },
             },
 
             new Dictionary<string, object>
             {
                 { "metric", "Output document count" },
-                { "value",  queryMetrics.CumulativeMetrics.OutputDocumentCount },
-                { "formattedValue", $"{queryMetrics.CumulativeMetrics.OutputDocumentCount}" },
+                { "value",  cumulative?.OutputDocumentCount ?? 0 },
+                { "formattedValue", $"{cumulative?.OutputDocumentCount ?? 0}" },
                 { "tooltip", "Total Number of output documents" },
             },
 
             new Dictionary<string, object>
             {
                 { "metric", "Output document size" },
-                { "value",  queryMetrics.CumulativeMetrics.OutputDocumentSize },
-                { "formattedValue", $"{queryMetrics.CumulativeMetrics.OutputDocumentSize} bytes" },
+                { "value",  cumulative?.OutputDocumentSize ?? 0 },
+                { "formattedValue", $"{cumulative?.OutputDocumentSize ?? 0} bytes" },
                 { "tooltip", "Total size of output documents in bytes" },
             },
 
             new Dictionary<string, object>
             {
                 { "metric", "Index hit ratio" },
-                { "value",  queryMetrics.CumulativeMetrics.IndexHitRatio },
-                { "formattedValue", $"{queryMetrics.CumulativeMetrics.IndexHitRatio}" },
+                { "value",  cumulative?.IndexHitRatio ?? 0 },
+                { "formattedValue", $"{cumulative?.IndexHitRatio ?? 0}" },
                 { "tooltip", "The index hit ratio by query in the Azure Cosmos database service. Value is within the range [0,1]." },
             },
 
             new Dictionary<string, object>
             {
                 { "metric", "Index lookup time" },
-                { "value",  queryMetrics.CumulativeMetrics.IndexLookupTime.TotalMilliseconds },
-                { "formattedValue", $"{queryMetrics.CumulativeMetrics.IndexLookupTime.TotalMilliseconds} ms" },
+                { "value",  cumulative?.IndexLookupTime.TotalMilliseconds ?? 0 },
+                { "formattedValue", $"{cumulative?.IndexLookupTime.TotalMilliseconds ?? 0} ms" },
                 { "tooltip", "The query index lookup time in the Azure Cosmos database service." },
             },
 
             new Dictionary<string, object>
             {
                 { "metric", "Document load time" },
-                { "value",  queryMetrics.CumulativeMetrics.DocumentLoadTime.TotalMilliseconds },
-                { "formattedValue", $"{queryMetrics.CumulativeMetrics.DocumentLoadTime.TotalMilliseconds} ms" },
+                { "value",  cumulative?.DocumentLoadTime.TotalMilliseconds ?? 0 },
+                { "formattedValue", $"{cumulative?.DocumentLoadTime.TotalMilliseconds ?? 0} ms" },
                 { "tooltip", "Time spent in loading documents" },
             },
 
             new Dictionary<string, object>
             {
                 { "metric", "Runtime execution time" },
-                { "value",  queryMetrics.CumulativeMetrics.RuntimeExecutionTime.TotalMilliseconds },
-                { "formattedValue", $"{queryMetrics.CumulativeMetrics.RuntimeExecutionTime.TotalMilliseconds} ms" },
+                { "value",  cumulative?.RuntimeExecutionTime.TotalMilliseconds ?? 0 },
+                { "formattedValue", $"{cumulative?.RuntimeExecutionTime.TotalMilliseconds ?? 0} ms" },
                 { "tooltip", "The query runtime execution time during query in the Azure Cosmos database\r\n    //     service." },
             },
 
             new Dictionary<string, object>
             {
                 { "metric", "VMExecution execution time" },
-                { "value",  queryMetrics.CumulativeMetrics.VMExecutionTime.TotalMilliseconds },
-                { "formattedValue", $"{queryMetrics.CumulativeMetrics.VMExecutionTime.TotalMilliseconds} ms" },
+                { "value",  cumulative?.VMExecutionTime.TotalMilliseconds ?? 0 },
+                { "formattedValue", $"{cumulative?.VMExecutionTime.TotalMilliseconds ?? 0} ms" },
                 { "tooltip", "Total time spent executing the virtual machine" },
             },
 
             new Dictionary<string, object>
             {
                 { "metric", "Query preparation time " },
-                { "value",  queryMetrics.CumulativeMetrics.QueryPreparationTime.TotalMilliseconds },
-                { "formattedValue", $"{queryMetrics.CumulativeMetrics.QueryPreparationTime.TotalMilliseconds} ms" },
+                { "value",  cumulative?.QueryPreparationTime.TotalMilliseconds ?? 0 },
+                { "formattedValue", $"{cumulative?.QueryPreparationTime.TotalMilliseconds ?? 0} ms" },
                 { "tooltip", "The query preparation time in the Azure Cosmos database service." },
             },
 
             new Dictionary<string, object>
             {
                 { "metric", "Document write time" },
-                { "value",  queryMetrics.CumulativeMetrics.DocumentWriteTime.TotalMilliseconds },
-                { "formattedValue", $"{queryMetrics.CumulativeMetrics.DocumentWriteTime.TotalMilliseconds} ms" },
+                { "value",  cumulative?.DocumentWriteTime.TotalMilliseconds ?? 0 },
+                { "formattedValue", $"{cumulative?.DocumentWriteTime.TotalMilliseconds ?? 0} ms" },
                 { "tooltip", "Time spent to write query result set to response buffer" },
             },
 
             new Dictionary<string, object>
             {
                 { "metric", "Total time" },
-                { "value",  queryMetrics.CumulativeMetrics.TotalTime.TotalMilliseconds },
-                { "formattedValue", $"{queryMetrics.CumulativeMetrics.TotalTime.TotalMilliseconds} ms" },
+                { "value",  cumulative?.TotalTime.TotalMilliseconds ?? 0 },
+                { "formattedValue", $"{cumulative?.TotalTime.TotalMilliseconds ?? 0} ms" },
                 { "tooltip", "The total query time in the Azure Cosmos database service." },
             },
         ];
@@ -260,6 +262,7 @@ internal class QueryCommand : CosmosCommand
         var returnState = new CommandState();
         returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOS_SHELL_FORMAT"));
         var aggregatedDocuments = new List<JsonElement>();
+        var queryDocuments = new List<JsonDocument>();
 
         try
         {
@@ -332,16 +335,23 @@ internal class QueryCommand : CosmosCommand
                     throw new CommandException("query", MessageService.GetString("command-query-error-empty_content"));
                 }
 
-                using var queryDocument = JsonDocument.Parse(responseContent);
+                var queryDocument = JsonDocument.Parse(responseContent);
+                queryDocuments.Add(queryDocument);
                 ShellInterpreter.WriteLine(MessageService.GetString("command-query-fetched", new Dictionary<string, object> { { "count", queryDocument.RootElement.GetProperty("_count").ToString() } }));
                 var queryMetrics = response.Diagnostics.GetQueryMetrics();
-                AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", queryMetrics.TotalRequestCharge.ToString() } }));
+                if (queryMetrics != null)
+                {
+                    AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", (queryMetrics?.TotalRequestCharge ?? 0).ToString() } }));
+                }
+
                 aggregatedDocuments = CollectDocuments(aggregatedDocuments, queryDocument.RootElement.GetProperty("Documents"), opt.MaxItemCount);
 
                 if (this.Metrics == MetricTarget.File)
                 {
                     var metricProperty = GetMetrics(response);
-                    var parsedIndexMetrics = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(response.IndexMetrics);
+                    var parsedIndexMetrics = response.IndexMetrics != null
+                        ? Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(response.IndexMetrics)
+                        : null;
 
                     if (shell.StdOutRedirect == null || !string.Equals("csv", this.OutputFormat, StringComparison.OrdinalIgnoreCase))
                     {
@@ -349,7 +359,7 @@ internal class QueryCommand : CosmosCommand
                             new Dictionary<string, object>()
                             {
                                 { "documents", aggregatedDocuments },
-                                { "requestCharge", queryMetrics.TotalRequestCharge },
+                                { "requestCharge", queryMetrics?.TotalRequestCharge ?? 0 },
                                 { "queryMetrics", metricProperty },
                                 { "indexMetrics", parsedIndexMetrics ?? [] },
                             });
@@ -413,56 +423,61 @@ internal class QueryCommand : CosmosCommand
                 else if (this.Metrics == MetricTarget.Display)
                 {
                     GeneratePlainResultDocument(returnState, aggregatedDocuments);
-                    var table = new Table();
-                    table.AddColumns(MessageService.GetString("command-query-document_header"), MessageService.GetString("command-query-count_header"), MessageService.GetString("command-query-size_header"));
 
-                    table.AddRow(MessageService.GetString("command-query-retrieved"), $"[white]{queryMetrics.CumulativeMetrics.RetrievedDocumentCount}[/]", $"[white]{queryMetrics.CumulativeMetrics.RetrievedDocumentSize}[/]");
-                    table.AddRow(MessageService.GetString("command-query-output"), $"[white]{queryMetrics.CumulativeMetrics.OutputDocumentCount}[/]", $"[white]{queryMetrics.CumulativeMetrics.OutputDocumentSize}[/]");
-                    AnsiConsole.Write(table);
-
-                    table = new Table();
-                    table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
-                    table.HideHeaders();
-                    table.AddRow(MessageService.GetString("command-query-document_load"), $"[white]{FormatTime(queryMetrics.CumulativeMetrics.DocumentLoadTime)}[/]", MessageService.GetString("command-query-document_write"), $"[white]{FormatTime(queryMetrics.CumulativeMetrics.DocumentWriteTime)}[/]");
-                    table.AddRow(MessageService.GetString("command-query-query_preparation"), $"[white]{FormatTime(queryMetrics.CumulativeMetrics.QueryPreparationTime)}[/]", MessageService.GetString("command-query-runtime_execution"), $"[white]{FormatTime(queryMetrics.CumulativeMetrics.RuntimeExecutionTime)}[/]");
-                    table.AddRow(MessageService.GetString("command-query-vm_execution"), $"[white]{FormatTime(queryMetrics.CumulativeMetrics.VMExecutionTime)}[/]");
-                    table.AddEmptyRow();
-                    table.AddRow(MessageService.GetString("command-query-total"), $"[white]{FormatTime(queryMetrics.CumulativeMetrics.TotalTime)}[/]");
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-query-time_label"));
-                    AnsiConsole.Write(table);
-
-                    table = new Table();
-                    table.AddColumns(MessageService.GetString("command-query-index_hit_ratio"), MessageService.GetString("command-query-index_lookup_time"));
-                    table.AddRow($"[white]{queryMetrics.CumulativeMetrics.IndexHitRatio}[/]", $"[white]{FormatTime(queryMetrics.CumulativeMetrics.IndexLookupTime)}[/]");
-                    AnsiConsole.Write(table);
-
-                    if (response.IndexMetrics != null)
+                    var cumulativeMetrics = queryMetrics?.CumulativeMetrics;
+                    if (cumulativeMetrics != null)
                     {
-                        table = new Table();
+                        var table = new Table();
+                        table.AddColumns(MessageService.GetString("command-query-document_header"), MessageService.GetString("command-query-count_header"), MessageService.GetString("command-query-size_header"));
 
-                        table.AddColumns(MessageService.GetString("command-query-index_metrics"), MessageService.GetString("command-query-index_spec"), MessageService.GetString("command-query-index_score"));
-
-                        var parsedIndexMetrics = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(response.IndexMetrics);
-
-                        if (parsedIndexMetrics?.TryGetValue("UtilizedIndexes", out var utilizedIndices) == true)
-                        {
-                            if (utilizedIndices is JsonElement jo)
-                            {
-                                AddIndexTable(table, MessageService.GetString("command-query-index_metric-utilized_single"), jo.GetProperty("SingleIndexes"));
-                                AddIndexTable(table, MessageService.GetString("command-query-index_metric-potential_single"), jo.GetProperty("CompositeIndexes"));
-                            }
-                        }
-
-                        if (parsedIndexMetrics?.TryGetValue("PotentialIndexes", out var potentialIndices) == true)
-                        {
-                            if (potentialIndices is JsonElement jo)
-                            {
-                                AddIndexTable(table, MessageService.GetString("command-query-index_metric-utilized_composite"), jo.GetProperty("SingleIndexes"));
-                                AddIndexTable(table, MessageService.GetString("command-query-index_metric-potential_composite"), jo.GetProperty("CompositeIndexes"));
-                            }
-                        }
-
+                        table.AddRow(MessageService.GetString("command-query-retrieved"), $"[white]{cumulativeMetrics.RetrievedDocumentCount}[/]", $"[white]{cumulativeMetrics.RetrievedDocumentSize}[/]");
+                        table.AddRow(MessageService.GetString("command-query-output"), $"[white]{cumulativeMetrics.OutputDocumentCount}[/]", $"[white]{cumulativeMetrics.OutputDocumentSize}[/]");
                         AnsiConsole.Write(table);
+
+                        table = new Table();
+                        table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
+                        table.HideHeaders();
+                        table.AddRow(MessageService.GetString("command-query-document_load"), $"[white]{FormatTime(cumulativeMetrics.DocumentLoadTime)}[/]", MessageService.GetString("command-query-document_write"), $"[white]{FormatTime(cumulativeMetrics.DocumentWriteTime)}[/]");
+                        table.AddRow(MessageService.GetString("command-query-query_preparation"), $"[white]{FormatTime(cumulativeMetrics.QueryPreparationTime)}[/]", MessageService.GetString("command-query-runtime_execution"), $"[white]{FormatTime(cumulativeMetrics.RuntimeExecutionTime)}[/]");
+                        table.AddRow(MessageService.GetString("command-query-vm_execution"), $"[white]{FormatTime(cumulativeMetrics.VMExecutionTime)}[/]");
+                        table.AddEmptyRow();
+                        table.AddRow(MessageService.GetString("command-query-total"), $"[white]{FormatTime(cumulativeMetrics.TotalTime)}[/]");
+                        AnsiConsole.MarkupLine(MessageService.GetString("command-query-time_label"));
+                        AnsiConsole.Write(table);
+
+                        table = new Table();
+                        table.AddColumns(MessageService.GetString("command-query-index_hit_ratio"), MessageService.GetString("command-query-index_lookup_time"));
+                        table.AddRow($"[white]{cumulativeMetrics.IndexHitRatio}[/]", $"[white]{FormatTime(cumulativeMetrics.IndexLookupTime)}[/]");
+                        AnsiConsole.Write(table);
+
+                        if (response.IndexMetrics != null)
+                        {
+                            var indexTable = new Table();
+
+                            indexTable.AddColumns(MessageService.GetString("command-query-index_metrics"), MessageService.GetString("command-query-index_spec"), MessageService.GetString("command-query-index_score"));
+
+                            var parsedIndexMetrics = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(response.IndexMetrics);
+
+                            if (parsedIndexMetrics?.TryGetValue("UtilizedIndexes", out var utilizedIndices) == true)
+                            {
+                                if (utilizedIndices is JsonElement jo)
+                                {
+                                    AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-utilized_single"), jo.GetProperty("SingleIndexes"));
+                                    AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-potential_single"), jo.GetProperty("CompositeIndexes"));
+                                }
+                            }
+
+                            if (parsedIndexMetrics?.TryGetValue("PotentialIndexes", out var potentialIndices) == true)
+                            {
+                                if (potentialIndices is JsonElement jo)
+                                {
+                                    AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-utilized_composite"), jo.GetProperty("SingleIndexes"));
+                                    AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-potential_composite"), jo.GetProperty("CompositeIndexes"));
+                                }
+                            }
+
+                            AnsiConsole.Write(indexTable);
+                        }
                     }
                 }
                 else
@@ -485,6 +500,13 @@ internal class QueryCommand : CosmosCommand
         catch (Exception e)
         {
             throw new CommandException("query", e);
+        }
+        finally
+        {
+            foreach (var doc in queryDocuments)
+            {
+                doc.Dispose();
+            }
         }
     }
 

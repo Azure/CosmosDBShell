@@ -403,4 +403,149 @@ public class CommandStatementTests
         Assert.NotEmpty(errors);
     }
 
+    [Fact]
+    public async Task CommandOption_IntValue_IsConvertedCorrectly()
+    {
+        // query -max:5 should parse the int option without error.
+        // It will fail with NotConnectedException because we're not connected,
+        // but NOT with ArgumentException from failed int conversion.
+        var shell = ShellInterpreter.Instance;
+        var statement = ParseStatement("query \"SELECT 1\" -max:5");
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CommandOption_IntValue_WithEquals_IsConvertedCorrectly()
+    {
+        var shell = ShellInterpreter.Instance;
+        var statement = ParseStatement("query \"SELECT 1\" -max=10");
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CommandOption_IntValue_LongForm_IsConvertedCorrectly()
+    {
+        var shell = ShellInterpreter.Instance;
+        var statement = ParseStatement("query \"SELECT 1\" --max:100");
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CommandOption_InvalidIntValue_ThrowsCommandException()
+    {
+        var shell = ShellInterpreter.Instance;
+        var statement = ParseStatement("query \"SELECT 1\" -max:abc");
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+
+        Assert.Contains("Invalid integer value", ex.Message);
+        Assert.Contains("max", ex.Message);
+    }
+
+    [Fact]
+    public async Task CommandOption_EnumValue_IsConvertedCorrectly()
+    {
+        var shell = ShellInterpreter.Instance;
+        var statement = ParseStatement("query \"SELECT 1\" -metrics:Display");
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CommandOption_InvalidEnumValue_ThrowsCommandException()
+    {
+        var shell = ShellInterpreter.Instance;
+        var statement = ParseStatement("query \"SELECT 1\" -metrics:Invalid");
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+
+        Assert.Contains("Invalid value", ex.Message);
+        Assert.Contains("metrics", ex.Message);
+    }
+
+    [Fact]
+    public async Task CommandOption_MultipleTypedOptions_AreConvertedCorrectly()
+    {
+        var shell = ShellInterpreter.Instance;
+        var statement = ParseStatement("query \"SELECT 1\" -max:10 -metrics:Display -f:csv");
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CommandOption_IntValue_WithSpace_IsConvertedCorrectly()
+    {
+        var shell = ShellInterpreter.Instance;
+        var statement = ParseStatement("query \"SELECT 1\" -max 5");
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CommandOption_IntValue_LongForm_WithSpace_IsConvertedCorrectly()
+    {
+        var shell = ShellInterpreter.Instance;
+        var statement = ParseStatement("query \"SELECT 1\" --max 100");
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CommandOption_InvalidIntValue_WithSpace_ThrowsCommandException()
+    {
+        var shell = ShellInterpreter.Instance;
+        var statement = ParseStatement("query \"SELECT 1\" -max abc");
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+
+        Assert.Contains("Invalid integer value", ex.Message);
+        Assert.Contains("max", ex.Message);
+    }
+
+    [Fact]
+    public async Task CommandOption_EnumValue_WithSpace_IsConvertedCorrectly()
+    {
+        var shell = ShellInterpreter.Instance;
+        var statement = ParseStatement("query \"SELECT 1\" -metrics Display");
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CommandOption_InvalidEnumValue_WithSpace_ThrowsCommandException()
+    {
+        var shell = ShellInterpreter.Instance;
+        var statement = ParseStatement("query \"SELECT 1\" -metrics Invalid");
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+
+        Assert.Contains("Invalid value", ex.Message);
+        Assert.Contains("metrics", ex.Message);
+    }
+
+    [Fact]
+    public async Task CommandOption_MultipleTypedOptions_WithSpace_AreConvertedCorrectly()
+    {
+        var shell = ShellInterpreter.Instance;
+        var statement = ParseStatement("query \"SELECT 1\" -max 10 -metrics Display -f csv");
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+    }
+
 }

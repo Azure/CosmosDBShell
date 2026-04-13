@@ -256,6 +256,28 @@ internal class CommandStatement : Statement
                         throw new CommandException(this.Name, $"Invalid value '{stringValue}' for option '{rawName}'. Valid values are: {validValues}");
                     }
                 }
+                else if (targetType == typeof(int))
+                {
+                    if (int.TryParse(stringValue, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var intVal))
+                    {
+                        pi.SetValue(cmd, intVal);
+                    }
+                    else
+                    {
+                        throw new CommandException(this.Name, $"Invalid integer value '{stringValue}' for option '{rawName}'.");
+                    }
+                }
+                else if (targetType == typeof(double))
+                {
+                    if (double.TryParse(stringValue, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowThousands, System.Globalization.CultureInfo.InvariantCulture, out var dblVal))
+                    {
+                        pi.SetValue(cmd, dblVal);
+                    }
+                    else
+                    {
+                        throw new CommandException(this.Name, $"Invalid numeric value '{stringValue}' for option '{rawName}'.");
+                    }
+                }
                 else
                 {
                     // Assign as string; caller can convert later if needed.
