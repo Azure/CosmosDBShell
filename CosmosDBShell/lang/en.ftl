@@ -376,6 +376,7 @@ help-ConnectionMode = Connection mode: 'direct' (default) or 'gateway'
 help-EnableMcpServer = Enable MCP server for programmatic control of the shell
 help-EnableLspServer = Enable Language Server Protocol (LSP) server for editor integration
 help-McpPort = Enable MCP HTTP server. Optionally specify a port with --mcp <port>; default is 6128.
+help-Verbose = Print full exception details instead of only the message.
 mcp-error-invalid-port = Error: --mcp port must be greater than 0.
 
 json_error_property_not_found = Property '{ $property }' not found.

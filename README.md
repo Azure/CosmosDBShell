@@ -117,6 +117,7 @@ dotnet tool uninstall --global <package-id>
 | `-k <cmd>` | Execute and stay |
 | `--connect <str>` | Initial connection |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
+| `--verbose` | Print full exception details |
 | `--cs <n>` | Colors: 0=off, 1=standard, 2=truecolor |
 | `--help` | Show help |
 

@@ -283,7 +283,9 @@ public partial class ShellInterpreter : IDisposable
         {
             if (this.ErrOutRedirect != null)
             {
-                var errTxt = $"{e.Command}: {e.Message}";
+                var errTxt = this.Options?.Verbose == true
+                    ? e.ToString()
+                    : $"{e.Command}: {e.Message}";
                 if (this.AppendErrRedirection)
                 {
                     File.AppendAllText(this.ErrOutRedirect, errTxt);
@@ -292,6 +294,10 @@ public partial class ShellInterpreter : IDisposable
                 {
                     File.WriteAllText(this.ErrOutRedirect, errTxt);
                 }
+            }
+            else if (this.Options?.Verbose == true)
+            {
+                AnsiConsole.WriteException(e);
             }
             else
             {
@@ -305,7 +311,9 @@ public partial class ShellInterpreter : IDisposable
         {
             if (this.ErrOutRedirect != null)
             {
-                var errTxt = e.Message;
+                var errTxt = this.Options?.Verbose == true
+                    ? e.ToString()
+                    : e.Message;
                 if (this.AppendErrRedirection)
                 {
                     File.AppendAllText(this.ErrOutRedirect, errTxt);
@@ -314,6 +322,10 @@ public partial class ShellInterpreter : IDisposable
                 {
                     File.WriteAllText(this.ErrOutRedirect, errTxt);
                 }
+            }
+            else if (this.Options?.Verbose == true)
+            {
+                AnsiConsole.WriteException(e);
             }
             else
             {
@@ -327,17 +339,20 @@ public partial class ShellInterpreter : IDisposable
         {
             if (this.ErrOutRedirect != null)
             {
-                var errTxt = e.Message;
-                if (e.InnerException != null)
+                string errTxt;
+                if (this.Options?.Verbose == true)
                 {
-                    errTxt += Environment.NewLine + e.InnerException.ToString();
+                    errTxt = e.ToString();
                 }
-#if DEBUG
-                if (e.StackTrace != null)
+                else
                 {
-                    errTxt += Environment.NewLine + e.StackTrace;
+                    errTxt = e.Message;
+                    if (e.InnerException != null)
+                    {
+                        errTxt += Environment.NewLine + e.InnerException.ToString();
+                    }
                 }
-#endif
+
                 if (this.AppendErrRedirection)
                 {
                     File.AppendAllText(this.ErrOutRedirect, errTxt);
@@ -349,18 +364,19 @@ public partial class ShellInterpreter : IDisposable
             }
             else
             {
-                var m = Markup.Escape(e.Message);
-                AnsiConsole.MarkupLine($"[red]{m}[/]");
-                if (e.InnerException != null)
+                if (this.Options?.Verbose == true)
                 {
-                    AnsiConsole.WriteLine(e.InnerException.ToString());
+                    AnsiConsole.WriteException(e);
                 }
-#if DEBUG
-                if (e.StackTrace != null)
+                else
                 {
-                    WriteLine(e.StackTrace);
+                    var m = Markup.Escape(e.Message);
+                    AnsiConsole.MarkupLine($"[red]{m}[/]");
+                    if (e.InnerException != null)
+                    {
+                        AnsiConsole.WriteLine(e.InnerException.ToString());
+                    }
                 }
-#endif
             }
 
             return new ErrorCommandState(e);
@@ -765,18 +781,23 @@ public partial class ShellInterpreter : IDisposable
         }
         catch (Exception e)
         {
-            var m = Markup.Escape(e.Message);
-            AnsiConsole.MarkupLine($"[red]PrintState:{m}[/]");
-            if (e.InnerException != null)
             {
-                WriteLine(e.InnerException.ToString());
+                if (this.Options?.Verbose == true)
+                {
+                    AnsiConsole.Markup($"[red]PrintState: [/]");
+                    AnsiConsole.WriteException(e);
+                }
+                else
+                {
+                    var m = Markup.Escape(e.Message);
+                    AnsiConsole.MarkupLine($"[red]PrintState:{m}[/]");
+                    if (e.InnerException != null)
+                    {
+                        WriteLine(e.InnerException.ToString());
+                    }
+                }
             }
-#if DEBUG
-            if (e.StackTrace != null)
-            {
-                WriteLine(e.StackTrace);
-            }
-#endif
+
             return new ErrorCommandState(e);
         }
 
