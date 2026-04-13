@@ -16,7 +16,7 @@ public class ExecuteCommandExceptionTests
     [Fact]
     public async Task ExecuteCommandAsync_ShellException_ReturnsErrorState()
     {
-        var interpreter = CreateInterpreter();
+        using var interpreter = CreateInterpreter();
 
         // Accessing an undefined variable throws ShellException
         var state = await interpreter.ExecuteCommandAsync("echo $undefined_var_xyz", CancellationToken.None);
@@ -29,7 +29,7 @@ public class ExecuteCommandExceptionTests
     [Fact]
     public async Task ExecuteCommandAsync_CommandException_ReturnsErrorState()
     {
-        var interpreter = CreateInterpreter();
+        using var interpreter = CreateInterpreter();
 
         // ftab without piped input throws CommandException
         var state = await interpreter.ExecuteCommandAsync("ftab", CancellationToken.None);
@@ -42,9 +42,9 @@ public class ExecuteCommandExceptionTests
     [Fact]
     public async Task ExecuteCommandAsync_TaskCanceled_ReturnsNonErrorState()
     {
-        var interpreter = CreateInterpreter();
+        using var interpreter = CreateInterpreter();
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         var state = await interpreter.ExecuteCommandAsync("help", cts.Token);
 
@@ -54,7 +54,7 @@ public class ExecuteCommandExceptionTests
     [Fact]
     public async Task ExecuteCommandAsync_ShellException_PreservesExceptionInErrorState()
     {
-        var interpreter = CreateInterpreter();
+        using var interpreter = CreateInterpreter();
 
         var state = await interpreter.ExecuteCommandAsync("echo $no_such_variable", CancellationToken.None);
 
@@ -65,7 +65,7 @@ public class ExecuteCommandExceptionTests
     [Fact]
     public async Task ExecuteCommandAsync_CommandException_PreservesExceptionInErrorState()
     {
-        var interpreter = CreateInterpreter();
+        using var interpreter = CreateInterpreter();
 
         var state = await interpreter.ExecuteCommandAsync("ftab", CancellationToken.None);
 
@@ -77,7 +77,7 @@ public class ExecuteCommandExceptionTests
     [Fact]
     public async Task ExecuteCommandAsync_ErrorRedirect_WritesErrorToFile()
     {
-        var interpreter = CreateInterpreter();
+        using var interpreter = CreateInterpreter();
         var tempFile = Path.GetTempFileName();
         try
         {
@@ -99,7 +99,7 @@ public class ExecuteCommandExceptionTests
     [Fact]
     public async Task ExecuteCommandAsync_VerboseMode_ReturnsErrorState()
     {
-        var interpreter = CreateInterpreter();
+        using var interpreter = CreateInterpreter();
         interpreter.Options = new Program.CosmosShellOptions { Verbose = true };
 
         var state = await interpreter.ExecuteCommandAsync("echo $verbose_test_var", CancellationToken.None);
@@ -111,7 +111,7 @@ public class ExecuteCommandExceptionTests
     [Fact]
     public async Task ExecuteCommandAsync_SuccessfulCommand_ReturnsNonErrorState()
     {
-        var interpreter = CreateInterpreter();
+        using var interpreter = CreateInterpreter();
 
         var state = await interpreter.ExecuteCommandAsync("help", CancellationToken.None);
 
