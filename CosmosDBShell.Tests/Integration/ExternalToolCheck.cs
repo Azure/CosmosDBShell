@@ -30,8 +30,13 @@ internal static class ExternalToolCheck
                 CreateNoWindow = true,
             };
             using var p = Process.Start(psi);
-            p?.WaitForExit(3000);
-            return p?.ExitCode == 0;
+            if (p is null || !p.WaitForExit(3000))
+            {
+                try { p?.Kill(true); } catch { }
+                return false;
+            }
+
+            return p.ExitCode == 0;
         }
         catch
         {
