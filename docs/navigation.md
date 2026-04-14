@@ -8,7 +8,7 @@ The shell models Cosmos DB resources as a simple folder-like hierarchy under you
 Account → Databases → Containers → Items
 ```
 
-There are **no folders inside a container** – containers hold items (JSON documents) directly. Use `ls` to list the current level and `cd` to change scope.
+There are **no folders inside a container** – containers hold items (JSON documents) directly. Use `ls` to list the current level and `cd` to change scope. The `pwd` command prints the current location explicitly.
 
 ## Moving Around
 
@@ -80,6 +80,20 @@ ls -m 5                      # list first 5 items
 # Quick switch between containers
 cd ../Users                  # switch to Users container in same database
 cd                           # return to root (connected state)
+```
+
+### The `pwd` Command
+
+The `pwd` command prints the current shell location:
+
+```bash
+pwd                  # not connected
+connect "AccountEndpoint=...;AccountKey=..."
+pwd                  # /
+cd ToDoList
+pwd                  # /ToDoList
+cd Items
+pwd                  # /ToDoList/Items
 ```
 
 ## Pipes and JSON Flow

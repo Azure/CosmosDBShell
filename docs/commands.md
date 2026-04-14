@@ -70,6 +70,26 @@ Examples:
     cd                    # return to root
 ```
 
+### pwd
+
+Show the current shell location.
+
+```
+Usage: pwd
+```
+
+Examples:
+
+```bash
+pwd                    # not connected
+connect "AccountEndpoint=...;AccountKey=..."
+pwd                    # /
+cd MyDb
+pwd                    # /MyDb
+cd MyContainer
+pwd                    # /MyDb/MyContainer
+```
+
 ## Data Operations
 
 ### query

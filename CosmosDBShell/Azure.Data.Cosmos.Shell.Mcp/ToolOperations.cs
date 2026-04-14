@@ -191,50 +191,26 @@ internal class ToolOperations
 
         if (parameters?.Params == null)
         {
-            var content = new TextContentBlock
-            {
-                Text = "Cannot call tools with null parameters.",
-            };
+            this.logger?.LogWarning("Cannot call tools with null parameters.");
 
-            this.logger?.LogWarning(content.Text);
-
-            return new CallToolResult
-            {
-                Content = [content],
-                IsError = true,
-            };
+            return McpResponseFactory.CreateError("Cannot call tools with null parameters.", ShellInterpreter.Instance.State);
         }
 
         if (!ShellInterpreter.Instance.App.Commands.TryGetValue(parameters.Params.Name, out var command))
         {
-            var content = new TextContentBlock
-            {
-                Text = $"Could not find command: {parameters.Params.Name}",
-            };
+            var errorMessage = $"Could not find command: {parameters.Params.Name}";
 
-            this.logger?.LogWarning(content.Text);
+            this.logger?.LogWarning(errorMessage);
 
-            return new CallToolResult
-            {
-                Content = [content],
-                IsError = true,
-            };
+            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
         }
 
         if (command.McpRestricted)
         {
             this.logger?.LogWarning($"Command '{command.CommandName}' is restricted for MCP.");
-            return new CallToolResult
-            {
-                Content =
-                [
-                    new TextContentBlock
-                    {
-                        Text = $"Command '{command.CommandName}' is restricted for MCP. Use '{command.CommandName}' manually. Suggest to run 'help {command.CommandName}'.",
-                    }
-                ],
-                IsError = true,
-            };
+            return McpResponseFactory.CreateError(
+                $"Command '{command.CommandName}' is restricted for MCP. Use '{command.CommandName}' manually. Suggest to run 'help {command.CommandName}'.",
+                ShellInterpreter.Instance.State);
         }
 
         var cmd = command.CreateCommand();
@@ -361,32 +337,14 @@ internal class ToolOperations
         {
             ShellInterpreter.Instance.PrintCommand(sb.ToString());
             var response = await cmd.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), command.CommandName, cancellationToken);
-            var text = response.GenerateOutputText();
             ShellInterpreter.Instance.CancelPrompt();
-            return new CallToolResult
-            {
-                Content = [
-                    new TextContentBlock
-                    {
-                        Text = text,
-                    }
-                ],
-            };
+            return McpResponseFactory.CreateSuccess(response, ShellInterpreter.Instance.State);
         }
         catch (Exception ex)
         {
             this.logger?.LogError(ex, $"An exception occurred running '{command.CommandName}'. ");
 
-            return new CallToolResult
-            {
-                Content = [
-                    new TextContentBlock
-                    {
-                        Text = $"Error executing command '{command.CommandName}': {ex.Message}",
-                    }
-                ],
-                IsError = true,
-            };
+            return McpResponseFactory.CreateError($"Error executing command '{command.CommandName}': {ex.Message}", ShellInterpreter.Instance.State);
         }
         finally
         {
