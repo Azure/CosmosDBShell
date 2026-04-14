@@ -483,7 +483,7 @@ internal class QueryCommand : CosmosCommand
 
                 if (ResultLimit.IsLimitReached(aggregatedDocuments.Count, effectiveMaxItemCount))
                 {
-                    limitReached = true;
+                    limitReached = feedIterator.HasMoreResults;
                     break;
                 }
             }

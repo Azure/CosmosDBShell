@@ -190,7 +190,11 @@ command-ls-description-container = The container to list items from
 command-ls-description-key = The property to match against (default: id)
 command-ls-container = Container { $container }
 command-ls-found_items = found { $count } items.
-command-results-limit_reached = Results limited to { $count } items. Use --max to change the limit or --max 0 for no limit.
+command-results-limit_reached =
+    { $count ->
+        [one] Results limited to { $count } item. Use --max to change the limit or --max 0 for no limit.
+       *[other] Results limited to { $count } items. Use --max to change the limit or --max 0 for no limit.
+    }
 
 command-jq-description = Commandline JSON processor
 command-jq-description-args = Arguments for the jq command

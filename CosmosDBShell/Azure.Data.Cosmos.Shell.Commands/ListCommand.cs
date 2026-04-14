@@ -187,7 +187,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
                 if (ResultLimit.IsLimitReached(list.Count, effectiveMaxItemCount))
                 {
-                    limitReached = true;
+                    limitReached = feedIterator.HasMoreResults;
                     break;
                 }
             }
