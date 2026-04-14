@@ -13,12 +13,22 @@ TOOL USAGE GUIDELINES:
 
 - Safe Operations: 'query', 'ls', 'cd', 'settings' - use freely for exploration
 - Data Creation: 'create', 'mkitem' - safe to execute
-- Destructive Operations: 'rm', 'rmdb', 'rmcontainer', 'delete' - NEVER execute via MCP
+- Destructive Operations: 'rm', 'rmdb', 'rmcon', 'delete' - NEVER execute via MCP
 - Connection: 'connect' - safe to execute for establishing database connections
+
+NAVIGATION:
+
+- The shell models Cosmos DB as a folder-like hierarchy: Account → Databases → Containers → Items.
+- Use 'cd <name>' to enter a database or container, 'cd ..' to go up one level, and 'cd' to return to the root.
+- Path chaining is supported: 'cd MyDatabase/MyContainer' navigates multiple levels at once.
+- Use 'ls' at any level to list resources (databases, containers, or items depending on context).
+- Always verify your current context before running commands — most commands operate on the current scope.
+- When a command supports --db and --con options, prefer passing them explicitly to ensure it targets the correct database and container regardless of the current navigation state. Commands that support these options include: 'query', 'ls', 'cd', 'create', 'mkitem', 'settings', 'indexpolicy', and 'print'.
 
 BEST PRACTICES:
 
-- Start with 'ls' and 'query' commands to understand data structure before suggesting any modifications
+- Prefer 'query' over 'ls' to list container contents — it supports filtering, projection, and is more efficient for large containers. NEVER use 'ls' inside a container without '-m <limit>' to avoid scanning all items.
+- Start with 'ls' and 'cd' to understand the data hierarchy before suggesting any modifications
 - For destructive operations, provide exact manual command syntax
 - Always recommend 'help [command]' for detailed documentation on manual commands
 - Verify connection state and current context (database/container) before suggesting operations
