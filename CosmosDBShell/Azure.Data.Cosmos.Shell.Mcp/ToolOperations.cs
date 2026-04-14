@@ -29,7 +29,7 @@ internal class ToolOperations
 
     public McpRequestHandler<CallToolRequestParams, CallToolResult> CallToolHandler => this.OnCallToolsAsync;
 
-    private static Tool GetTool(CommandFactory command)
+    internal static Tool GetTool(CommandFactory command)
     {
         var tool = new Tool
         {
@@ -58,14 +58,8 @@ internal class ToolOperations
                 arg.GetDescription(command.CommandName),
                 arg.Name);
         }
-        var propertyInfo = option.PropertyInfo;
-        if (propertyInfo == null)
-        {
-            continue;
-        }
 
-        properties[option.Name[0]] = CreatePropertySchema(
-            propertyInfo.PropertyType,
+        foreach (var option in command.Options)
         {
             var propertyInfo = option.PropertyInfo
                 ?? throw new InvalidOperationException($"Option '{option.Name[0]}' for command '{command.CommandName}' is missing property metadata.");
@@ -117,6 +111,40 @@ internal class ToolOperations
 
         tool.InputSchema = JsonSerializer.SerializeToElement(schema);
         return tool;
+    }
+
+    private static object? ConvertJsonElement(JsonElement jsonElement, Type targetType)
+    {
+        if (targetType == typeof(string))
+        {
+            return jsonElement.GetString();
+        }
+
+        if (targetType == typeof(int))
+        {
+            return jsonElement.GetInt32();
+        }
+
+        if (targetType == typeof(bool))
+        {
+            return jsonElement.GetBoolean();
+        }
+
+        if (targetType == typeof(double))
+        {
+            return jsonElement.GetDouble();
+        }
+
+        if (targetType.IsEnum)
+        {
+            var stringValue = jsonElement.GetString();
+            if (stringValue != null && Enum.TryParse(targetType, stringValue, true, out var parsedEnum))
+            {
+                return parsedEnum;
+            }
+        }
+
+        return JsonSerializer.Deserialize(jsonElement.GetRawText(), targetType);
     }
 
     private static string FormatParameter(string? p)
@@ -193,7 +221,10 @@ internal class ToolOperations
 
         if (defaultValue != null)
         {
-            schema["default"] = JsonSerializer.SerializeToNode(defaultValue);
+            var serializedDefault = defaultValue is Enum
+                ? JsonValue.Create(Enum.GetName(defaultValue.GetType(), defaultValue))
+                : JsonSerializer.SerializeToNode(defaultValue);
+            schema["default"] = serializedDefault;
         }
 
         return schema;
@@ -360,26 +391,7 @@ internal class ToolOperations
                             if (par.Value is JsonElement jsonElement)
                             {
                                 var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                                if (targetType == typeof(string))
-                                {
-                                    convertedValue = jsonElement.GetString();
-                                }
-                                else if (targetType == typeof(int))
-                                {
-                                    convertedValue = jsonElement.GetInt32();
-                                }
-                                else if (targetType == typeof(bool))
-                                {
-                                    convertedValue = jsonElement.GetBoolean();
-                                }
-                                else if (targetType == typeof(double))
-                                {
-                                    convertedValue = jsonElement.GetDouble();
-                                }
-                                else
-                                {
-                                    convertedValue = JsonSerializer.Deserialize(jsonElement.GetRawText(), targetType);
-                                }
+                                convertedValue = ConvertJsonElement(jsonElement, targetType);
                             }
                             else
                             {
@@ -412,26 +424,7 @@ internal class ToolOperations
                             if (par.Value is JsonElement jsonElement)
                             {
                                 var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                                if (targetType == typeof(string))
-                                {
-                                    convertedValue = jsonElement.GetString();
-                                }
-                                else if (targetType == typeof(int))
-                                {
-                                    convertedValue = jsonElement.GetInt32();
-                                }
-                                else if (targetType == typeof(bool))
-                                {
-                                    convertedValue = jsonElement.GetBoolean();
-                                }
-                                else if (targetType == typeof(double))
-                                {
-                                    convertedValue = jsonElement.GetDouble();
-                                }
-                                else
-                                {
-                                    convertedValue = JsonSerializer.Deserialize(jsonElement.GetRawText(), targetType);
-                                }
+                                convertedValue = ConvertJsonElement(jsonElement, targetType);
                             }
                             else
                             {
