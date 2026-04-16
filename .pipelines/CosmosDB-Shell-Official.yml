@@ -156,7 +156,7 @@ extends:
                   custom: "restore"
 
               - task: ComponentGovernanceComponentDetection@0
-                displayName: 'Component Governance - Component Detection'
+                displayName: "Component Governance - Component Detection"
 
               # roslynanalyzers task wraps around dotnet build to enable static analysis
               - task: RoslynAnalyzers@3
@@ -498,8 +498,8 @@ extends:
                     }
                     Write-Host "Non-shipping build outputs cleaned."
 
-              # Keep the pointer package in out\nupkg so it is preserved in pipeline artifacts,
-              # but publish only the RID-specific NuGet tool packages to the feed.
+              # Keep the pointer package in out\nupkg so it is preserved in pipeline artifacts
+              # and available for publishing to the internal feed alongside the RID packages.
               - task: PowerShell@2
                 displayName: "List NuGet packages before publish"
                 condition: succeeded()
@@ -512,6 +512,15 @@ extends:
                       Write-Host " - $($_.Name) [$($_.Length) bytes]"
                     }
               - ${{ if and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(parameters.publishNuget, true)) }}:
+                  - task: NuGetCommand@2
+                    displayName: "Push base NuGet package"
+                    inputs:
+                      command: "push"
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg'
+                      nuGetFeedType: "internal"
+                      publishVstsFeed: "CosmosDB/CosmosDBShell"
+                      allowPackageConflicts: true
+
                   - task: NuGetCommand@2
                     displayName: "Push win-x64 NuGet package"
                     inputs:
