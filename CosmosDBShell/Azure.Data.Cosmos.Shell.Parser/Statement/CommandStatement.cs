@@ -258,8 +258,9 @@ internal class CommandStatement : Statement
                 }
                 else
                 {
-                    // Assign as string; caller can convert later if needed.
-                    pi.SetValue(cmd, stringValue);
+                    // Convert string to target type (e.g., int, int?, etc.)
+                    var convertedValue = Convert.ChangeType(stringValue, targetType);
+                    pi.SetValue(cmd, convertedValue);
                 }
             }
             else
