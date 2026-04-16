@@ -135,7 +135,7 @@ This repo currently uses one GitHub Actions workflow for validation and package 
 
 GitHub Actions uses [.github/nuget.github.config](.github/nuget.github.config) so restores do not depend on the Azure DevOps feed.
 
-Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`, upload separate artifacts for each RID-specific package, and write a workflow summary with artifact names plus ready-to-use `dotnet tool install` commands.
+Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`, upload separate artifacts for each RID-specific package plus a pointer/base package artifact for the non-RID package ID, and write a workflow summary with artifact names plus ready-to-use `dotnet tool install` commands.
 
 ## Command-Line Arguments
 

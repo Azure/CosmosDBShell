@@ -324,18 +324,29 @@ extends:
               # EXE that bundles all assemblies — the input signatures are lost.
               # The actual payload signing happens post-pack via extract/sign/repack below.
 
-              - task: DotNetCoreCLI@2
+              - task: PowerShell@2
                 displayName: "Pack CosmosDBShell NuGet"
                 condition: succeeded()
                 inputs:
-                  command: "pack"
-                  packagesToPack: "$(ReleaseProject)"
-                  configurationToPack: "$(BuildConfiguration)"
-                  nobuild: true
-                  outputDir: '$(Build.SourcesDirectory)\out\nupkg'
-                  versioningScheme: byEnvVar
-                  versionEnvVar: CosmosDBShell_PackageVersion
-                  buildProperties: "Version=$(CosmosDBShell_Version);PackageVersion=$(CosmosDBShell_PackageVersion);FileVersion=$(CosmosDBShell_FileVersion);InformationalVersion=$(CosmosDBShell_InformationalVersion);ContinuousIntegrationBuild=true"
+                  targetType: inline
+                  script: |
+                    $pkgDir = "$(Build.SourcesDirectory)\out\nupkg"
+                    New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
+
+                    dotnet pack "$(ReleaseProject)" `
+                      --configuration "$(BuildConfiguration)" `
+                      --no-build `
+                      --no-restore `
+                      --output $pkgDir `
+                      /p:Version=$(CosmosDBShell_Version) `
+                      /p:PackageVersion=$(CosmosDBShell_PackageVersion) `
+                      /p:FileVersion=$(CosmosDBShell_FileVersion) `
+                      /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) `
+                      /p:ContinuousIntegrationBuild=true
+
+                    if ($LASTEXITCODE -ne 0) {
+                      throw "dotnet pack failed with exit code $LASTEXITCODE."
+                    }
 
               - task: PowerShell@2
                 displayName: "Expand RID packages for payload signing"

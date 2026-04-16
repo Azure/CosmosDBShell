@@ -126,6 +126,7 @@ jobs:
             dotnet publish CosmosDBShell/CosmosDBShell.csproj `
               --configuration $env:BUILD_CONFIGURATION `
               --configfile .github/nuget.github.config `
+              --no-restore `
               -r $rid `
               --output "out/$rid" `
               /p:Version=${{ steps.version.outputs.assembly_version }} `
