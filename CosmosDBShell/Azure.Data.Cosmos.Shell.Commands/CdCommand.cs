@@ -24,6 +24,9 @@ Changes to a database or container.
 
 The folder structure is as follows: /database/container
 
+For MCP clients, prefer commands that use explicit --db and --con arguments when available.
+Use 'cd' mainly for discovery or when the target command does not support explicit database/container arguments.
+
 There is no folder inside a container.
 You can go back to the parent with 'cd ..'.
 To switch from one container to another you need to specify '..' as parent folder. 

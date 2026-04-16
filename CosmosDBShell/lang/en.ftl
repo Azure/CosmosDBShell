@@ -251,6 +251,8 @@ command-connect-info-read-regions = Read Regions
 command-connect-info-write-regions = Write Regions
 command-connect-info-location = Current Location
 command-connect-info-credential = Credential
+command-pwd-description = Shows the current shell location.
+command-pwd-not-connected = not connected
 command-connect-rbac-error =
   You need the 'Data Contributor' RBAC role permission to enable all
   Azure Databases Extension features for the selected account.
