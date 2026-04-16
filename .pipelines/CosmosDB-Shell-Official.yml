@@ -155,6 +155,9 @@ extends:
                   projects: $(BuildSolution)
                   custom: "restore"
 
+              - task: ComponentGovernanceComponentDetection@0
+                displayName: 'Component Governance - Component Detection'
+
               # roslynanalyzers task wraps around dotnet build to enable static analysis
               - task: RoslynAnalyzers@3
                 displayName: "DotNetCore build with RoslynAnalyzers"
