@@ -130,9 +130,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               throw "RID restore failed for $rid with exit code $LASTEXITCODE."
             }
-          }
 
-          foreach ($rid in $rids) {
             dotnet publish CosmosDBShell/CosmosDBShell.csproj `
               --configuration $env:BUILD_CONFIGURATION `
               --no-restore `
