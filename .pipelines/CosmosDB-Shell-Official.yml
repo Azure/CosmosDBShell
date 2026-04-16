@@ -447,9 +447,9 @@ extends:
                       $_.Name -notmatch '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
                     }
 
-                    if ($pointerPackages -and $pointerPackages.Count -gt 1) {
+                    if (-not $pointerPackages -or $pointerPackages.Count -ne 1) {
                       $names = @($pointerPackages | ForEach-Object { $_.Name })
-                      Write-Error "Expected at most one pointer package (non-RID). Found: $($names -join ', ')"
+                      Write-Error "Expected exactly one pointer package (non-RID). Found: $($names -join ', ')"
                       exit 1
                     }
 
@@ -513,15 +513,6 @@ extends:
                     }
               - ${{ if and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(parameters.publishNuget, true)) }}:
                   - task: NuGetCommand@2
-                    displayName: "Push base NuGet package"
-                    inputs:
-                      command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg'
-                      nuGetFeedType: "internal"
-                      publishVstsFeed: "CosmosDB/CosmosDBShell"
-                      allowPackageConflicts: true
-
-                  - task: NuGetCommand@2
                     displayName: "Push win-x64 NuGet package"
                     inputs:
                       command: "push"
@@ -562,6 +553,15 @@ extends:
                     inputs:
                       command: "push"
                       packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg'
+                      nuGetFeedType: "internal"
+                      publishVstsFeed: "CosmosDB/CosmosDBShell"
+                      allowPackageConflicts: true
+
+                  - task: NuGetCommand@2
+                    displayName: "Push base NuGet package"
+                    inputs:
+                      command: "push"
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg'
                       nuGetFeedType: "internal"
                       publishVstsFeed: "CosmosDB/CosmosDBShell"
                       allowPackageConflicts: true

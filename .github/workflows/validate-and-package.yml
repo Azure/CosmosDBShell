@@ -123,9 +123,18 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $rids = @('win-x64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
           foreach ($rid in $rids) {
+            dotnet restore CosmosDBShell/CosmosDBShell.csproj `
+              --configfile .github/nuget.github.config `
+              -r $rid
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "RID restore failed for $rid with exit code $LASTEXITCODE."
+            }
+          }
+
+          foreach ($rid in $rids) {
             dotnet publish CosmosDBShell/CosmosDBShell.csproj `
               --configuration $env:BUILD_CONFIGURATION `
-              --configfile .github/nuget.github.config `
               --no-restore `
               -r $rid `
               --output "out/$rid" `
