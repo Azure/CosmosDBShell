@@ -180,14 +180,14 @@ command-indexpolicy-description-container = The container to read/update the ind
 command-indexpolicy-updated = Indexing policy updated successfully.
 command-indexpolicy-error_invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 
-command-ls-description = List current container.
+command-ls-description = List resources in the current context.
 command-ls-description-filter = The filter pattern.
 command-ls-description-max = Maximum number of items returned when listing container items. Defaults to 100 if omitted. Use 0 or a negative value for no limit.
 command-ls-description-format = { command-query-description-format }
 command-ls-description-recursive = List items recursively
 command-ls-description-database = The database to list from
 command-ls-description-container = The container to list items from
-command-ls-description-key = The property to match against (default: id)
+command-ls-description-key = The property to match against (default: container partition key property)
 command-ls-container = Container { $container }
 command-ls-found_items = found { $count } items.
 command-results-limit_reached =
