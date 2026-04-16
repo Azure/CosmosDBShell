@@ -91,9 +91,9 @@ command-rm-error-no_filter = Filter is missing.
 command-rm-warning-missing-partition-key = Warning: Cannot delete item with id '{ $id }' - missing partition key '{ $partitionKey }'
 command-rm-no-matches = No items matched the pattern '{ $pattern }' for key '{ $key }'
 
-command-query-description = Executes a query and returns the result
+command-query-description = Executes a query and returns matching results
 command-query-description-query = The query to execute
-command-query-description-max = Maximum Number of items
+command-query-description-max = Maximum number of items returned when querying items. Use 0 or a negative value to disable the limit.
 command-query-description-metrics = Show query metrics (possible values: Display (default), File (output to data json/csv))
 command-query-description-bucket = The throughput bucket to use for the query
 command-query-description-format = Output format (json, table, csv)
@@ -181,16 +181,21 @@ command-indexpolicy-description-container = The container to read/update the ind
 command-indexpolicy-updated = Indexing policy updated successfully.
 command-indexpolicy-error_invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 
-command-ls-description = List current container.
+command-ls-description = List resources in the current context.
 command-ls-description-filter = The filter pattern.
-command-ls-description-max = Maximum Number of items
+command-ls-description-max = Maximum number of items returned when listing container items. Defaults to 100 if omitted. Use 0 or a negative value for no limit.
 command-ls-description-format = { command-query-description-format }
 command-ls-description-recursive = List items recursively
 command-ls-description-database = The database to list from
 command-ls-description-container = The container to list items from
-command-ls-description-key = The property to match against (default: id)
+command-ls-description-key = The property to match against (default: container partition key property)
 command-ls-container = Container { $container }
 command-ls-found_items = found { $count } items.
+command-results-limit_reached =
+    { $count ->
+        [one] Results limited to { $count } item. Use --max to change the limit or --max 0 for no limit.
+       *[other] Results limited to { $count } items. Use --max to change the limit or --max 0 for no limit.
+    }
 
 command-jq-description = Commandline JSON processor
 command-jq-description-args = Arguments for the jq command

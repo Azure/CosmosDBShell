@@ -8,7 +8,7 @@ Parameters with whitespace must be quoted. Escape character: `\`
 
 Connect to a Cosmos DB account. Supports account key, Entra ID, managed identity, and DefaultAzureCredential.
 
-```
+```text
 Usage: connect [-hint <ARG>] [-tenant <ARG>] [-authority-host <ARG>] [-mode <ARG>] [-managed-identity <ARG>] connectionString
 
 Arguments:
@@ -28,7 +28,7 @@ See [docs/connect.md](connect.md) for detailed credential flow documentation.
 
 Disconnect the current connection.
 
-```
+```text
 Usage: disconnect
 ```
 
@@ -38,14 +38,14 @@ Usage: disconnect
 
 List databases, containers, or items.
 
-```
+```text
 Usage: ls [-m <ARG>] [-f <ARG>] [filter]
 
 Arguments:
     [filter]    Filter pattern (Optional)
 
 Options:
-    -max, -m    Maximum number of items
+    -max, -m    Maximum number of items returned when listing container items. Defaults to 100; use 0 or a negative value for no limit
     -format, -f Output format
     -database, -db
                Override database name (Optional)
@@ -54,11 +54,13 @@ Options:
     -key, -k    Match filter against this property when listing items in a container (Optional)
 ```
 
+When `ls` is listing items from a container, it defaults to `100` items if `--max` is not specified. If the limit is hit at runtime, the shell prints a message telling you the results were limited. Use `--max <n>` to choose another limit or `--max 0` or a negative value to disable the limit.
+
 ### cd
 
 Change scope to database or container.
 
-```
+```text
 Usage: cd [item]
 
 Arguments:
@@ -96,21 +98,23 @@ pwd                    # /MyDb/MyContainer
 
 Execute SQL query.
 
-```
+```text
 Usage: query [-m <ARG>] query
 
 Arguments:
     query       The query to execute
 
 Options:
-    -max, -m    Maximum number of items
+    -max, -m    Maximum number of items returned. Use 0 or a negative value for no limit
 ```
+
+`query` does not apply a default item limit. Use `--max <n>` to cap returned items when needed, or `--max 0` to disable the limit explicitly.
 
 ### print
 
 Get item by id and partition key.
 
-```
+```text
 Usage: print id key
 
 Arguments:
@@ -122,7 +126,7 @@ Arguments:
 
 Create items in container (reads JSON from pipe).
 
-```
+```text
 Usage: mkitem
 ```
 
@@ -130,7 +134,7 @@ Usage: mkitem
 
 Remove items from container.
 
-```
+```text
 Usage: rm pattern
 
 Arguments:
@@ -143,7 +147,7 @@ Arguments:
 
 Execute a command or script determined at runtime (statement).
 
-```
+```text
 Usage: exec <expression> [argument ...]
 
 Arguments:
@@ -152,6 +156,7 @@ Arguments:
 ```
 
 Notes:
+
 - If `expression` evaluates to an existing file path, it is executed as a `.csh` script.
 
 Examples:
@@ -169,7 +174,7 @@ for $file in (dir "*.csh") { exec $file.path }
 
 Create database.
 
-```
+```text
 Usage: mkdb name
 
 Arguments:
@@ -180,7 +185,7 @@ Arguments:
 
 Create container.
 
-```
+```text
 Usage: mkcon name partition_key [unique_key]
 
 Arguments:
@@ -193,7 +198,7 @@ Arguments:
 
 Remove database.
 
-```
+```text
 Usage: rmdb name
 
 Arguments:
@@ -204,7 +209,7 @@ Arguments:
 
 Remove container.
 
-```
+```text
 Usage: rmcon name
 
 Arguments:
@@ -215,7 +220,7 @@ Arguments:
 
 Create item, container, or database.
 
-```
+```text
 Usage: create item [name] [partition_key]
 
 Arguments:
@@ -228,7 +233,7 @@ Arguments:
 
 Delete item, container, or database.
 
-```
+```text
 Usage: delete item pattern
 
 Arguments:
@@ -242,7 +247,7 @@ Arguments:
 
 Execute Azure CLI command.
 
-```
+```text
 Usage: az [args]
 
 Arguments:
@@ -253,7 +258,7 @@ Arguments:
 
 Print message; useful to pipe text/JSON.
 
-```
+```text
 Usage: echo message
 
 Arguments:
@@ -264,7 +269,7 @@ Arguments:
 
 Display file contents.
 
-```
+```text
 Usage: cat [path]
 
 Arguments:
@@ -275,7 +280,7 @@ Arguments:
 
 List files and directories in the local file system.
 
-```
+```text
 Usage: dir [-d <ARG>] [-r] [-l] [filter]
 
 Arguments:
@@ -288,6 +293,7 @@ Options:
 ```
 
 Notes:
+
 - If you pass a directory path as the positional argument and omit `--directory`, it is treated as the directory to list (filter becomes `*`).
 - The JSON result is an array of entries with: `name`, `path`, `isDirectory`, `size`, `lastModified`.
 
@@ -295,7 +301,7 @@ Notes:
 
 Command-line JSON processor.
 
-```
+```text
 Usage: jq [args]
 
 Arguments:
@@ -306,7 +312,7 @@ Arguments:
 
 JSON to table processor.
 
-```
+```text
 Usage: ftab [-f <ARG>] [-take <ARG>] [-sort <ARG>] [-colorize <ARG>] [-format <ARG>]
 
 Options:
@@ -321,7 +327,7 @@ Options:
 
 Get or set SDK throughput bucket.
 
-```
+```text
 Usage: bucket [bucket]
 
 Arguments:
@@ -332,7 +338,7 @@ Arguments:
 
 Show account overview or container settings.
 
-```
+```text
 Usage: settings
 ```
 
@@ -340,7 +346,7 @@ Usage: settings
 
 Show help for commands.
 
-```
+```text
 Usage: help [-details] [-plain] [command]
 
 Arguments:
@@ -355,7 +361,7 @@ Options:
 
 Display version.
 
-```
+```text
 Usage: version
 ```
 
@@ -363,6 +369,6 @@ Usage: version
 
 Exit Cosmos DB shell.
 
-```
+```text
 Usage: exit
 ```

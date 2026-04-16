@@ -119,6 +119,30 @@ public class QueryCommandTests
     }
 
     [Fact]
+    public void PageExceedsLimit_ReturnsTrueWhenCurrentPageWouldBeTruncated()
+    {
+        var page = JsonSerializer.SerializeToElement(new[]
+        {
+            new { id = "3" },
+            new { id = "4" },
+        });
+
+        Assert.True(QueryCommand.PageExceedsLimit(currentCount: 2, page, maxItemCount: 3));
+    }
+
+    [Fact]
+    public void PageExceedsLimit_ReturnsFalseWhenCurrentPageFitsRemainingCapacity()
+    {
+        var page = JsonSerializer.SerializeToElement(new[]
+        {
+            new { id = "3" },
+        });
+
+        Assert.False(QueryCommand.PageExceedsLimit(currentCount: 2, page, maxItemCount: 3));
+        Assert.False(QueryCommand.PageExceedsLimit(currentCount: 2, page, maxItemCount: null));
+    }
+
+    [Fact]
     public void BuildMetrics_NullCumulative_ReturnsZeroDefaults()
     {
         var metrics = QueryCommand.BuildMetrics(0, null);
