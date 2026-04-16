@@ -359,7 +359,7 @@ internal class QueryCommand : CosmosCommand
                                 { "documents", aggregatedDocuments },
                                 { "requestCharge", queryMetrics?.TotalRequestCharge ?? 0 },
                                 { "queryMetrics", metricProperty },
-                                { "indexMetrics", parsedIndexMetrics ?? [] },
+                                { "indexMetrics", parsedIndexMetrics ?? new Dictionary<string, object>() },
                             });
                         returnState.Result = new ShellJson(element);
                     }
