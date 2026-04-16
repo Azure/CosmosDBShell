@@ -97,6 +97,11 @@ internal class SettingsCommand : CosmosCommand
             {
                 AskForRBacPermissions(id ?? string.Empty, request ?? string.Empty, permission ?? string.Empty);
             }
+            else if (IsThroughputNotConfiguredException(e))
+            {
+                // Serverless accounts and Emulators don't have throughput configured - show N/A
+                AnsiConsole.MarkupLine($"[yellow]{MessageService.GetString("command-settings-na")}[/]");
+            }
             else
             {
                 AnsiConsole.MarkupLine($"[red]{Markup.Escape(e.Message)}[/]");
@@ -250,6 +255,21 @@ internal class SettingsCommand : CosmosCommand
     {
         AnsiConsole.Markup($"[red]{MessageService.GetString("error")}[/] ");
         ShellInterpreter.WriteLine(MessageService.GetArgsString("command-settings-rbac-error", "id", principalId, "request", request, "permission", permission));
+    }
+
+    /// <summary>
+    /// Checks if the exception indicates that throughput is not configured (Serverless accounts or Emulators).
+    /// </summary>
+    private static bool IsThroughputNotConfiguredException(Exception e)
+    {
+        if (e is CosmosException cosmosEx &&
+            cosmosEx.StatusCode == System.Net.HttpStatusCode.NotFound &&
+            cosmosEx.Message.Contains("Throughput is not configured", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static async Task<CommandState> PrintOverviewAsync(CosmosClient client, CommandState commandState, CancellationToken token)
