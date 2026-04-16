@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Collections.Generic;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Data.Cosmos.Shell.Core;
@@ -65,7 +66,12 @@ internal class PrintCommand : CosmosCommand
             }
             else
             {
-                throw new CommandException("print", MessageService.GetArgsString("command-print-error-item_not_found", "status", response.StatusCode));
+                throw new CommandException("print", MessageService.GetString("command-print-error-item_not_found", new Dictionary<string, object>
+                {
+                    { "id", this.Id ?? "(null)" },
+                    { "partitionKey", this.PartitionKey ?? "(null)" },
+                    { "status", (int)response.StatusCode },
+                }));
             }
         }
         catch (CosmosException ex)

@@ -133,7 +133,7 @@ command-print-description-key = The Partition Key of the item to print
 command-print-description-format = Output format (json, table)
 command-print-description-database = The database containing the item to print
 command-print-description-container = The container containing the item to print
-command-print-error-item_not_found = Item not found. Status: { $status }
+command-print-error-item_not_found = Item with id '{ $id }' not found using partition key '{ $partitionKey }'. Verify the partition key value is correct. (HTTP { $status })
 command-print-error-reading_item = Error reading item: { $message }
 
 command-mkitem-description = Creates items in container
