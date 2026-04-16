@@ -270,7 +270,7 @@ internal class QueryCommand : CosmosCommand
                 PopulateIndexMetrics = true,
             };
 
-            var effectiveMaxItemCount = ResultLimit.ResolveMaxItemCount(this.Max);
+            var effectiveMaxItemCount = ResultLimit.ResolveMaxItemCount(this.Max, defaultMaxItemCount: null);
             if (effectiveMaxItemCount.HasValue)
             {
                 options.MaxItemCount = effectiveMaxItemCount.Value;

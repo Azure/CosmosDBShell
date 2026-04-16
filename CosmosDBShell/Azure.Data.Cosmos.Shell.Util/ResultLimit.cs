@@ -8,7 +8,7 @@ internal static class ResultLimit
 {
     public const int DefaultMaxItemCount = 100;
 
-    public static int? ResolveMaxItemCount(int? requestedMax, int defaultMaxItemCount = DefaultMaxItemCount)
+    public static int? ResolveMaxItemCount(int? requestedMax, int? defaultMaxItemCount = DefaultMaxItemCount)
     {
         if (!requestedMax.HasValue)
         {

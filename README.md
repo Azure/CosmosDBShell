@@ -26,7 +26,7 @@ ls                          # list databases
 cd MyDatabase
 ls                          # list containers
 cd MyContainer
-query "SELECT * FROM c"     # returns up to 100 items by default; use --max 0 for no limit
+query "SELECT * FROM c"
 ```
 
 ## Install from NuGet package artifacts

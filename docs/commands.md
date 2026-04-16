@@ -85,10 +85,10 @@ Arguments:
     query       The query to execute
 
 Options:
-    -max, -m    Maximum number of items returned. Defaults to 100; use 0 or a negative value for no limit
+    -max, -m    Maximum number of items returned. Use 0 or a negative value for no limit
 ```
 
-If `query` reaches the effective item limit, the shell prints a runtime message telling you the results were limited. Use `--max <n>` to choose another limit or `--max 0` to disable the limit.
+`query` does not apply a default item limit. Use `--max <n>` to cap returned items when needed, or `--max 0` to disable the limit explicitly.
 
 ### print
 

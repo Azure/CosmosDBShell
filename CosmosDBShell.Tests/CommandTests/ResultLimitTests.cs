@@ -15,6 +15,12 @@ public class ResultLimitTests
     }
 
     [Fact]
+    public void ResolveMaxItemCount_UsesUnlimitedWhenDefaultIsNull()
+    {
+        Assert.Null(ResultLimit.ResolveMaxItemCount(null, defaultMaxItemCount: null));
+    }
+
+    [Fact]
     public void ResolveMaxItemCount_UsesExplicitPositiveValue()
     {
         Assert.Equal(25, ResultLimit.ResolveMaxItemCount(25));

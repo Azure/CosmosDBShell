@@ -90,9 +90,9 @@ command-rm-error-no_filter = Filter is missing.
 command-rm-warning-missing-partition-key = Warning: Cannot delete item with id '{ $id }' - missing partition key '{ $partitionKey }'
 command-rm-no-matches = No items matched the pattern '{ $pattern }' for key '{ $key }'
 
-command-query-description = Executes a query and returns the result
+command-query-description = Executes a query and returns matching results
 command-query-description-query = The query to execute
-command-query-description-max = Maximum number of items returned when querying items. Defaults to 100 if omitted. Use 0 or a negative value for no limit.
+command-query-description-max = Maximum number of items returned when querying items.
 command-query-description-metrics = Show query metrics (possible values: Display (default), File (output to data json/csv))
 command-query-description-bucket = The throughput bucket to use for the query
 command-query-description-format = Output format (json, table, csv)
