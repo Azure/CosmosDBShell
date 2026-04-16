@@ -461,7 +461,7 @@ internal class QueryCommand : CosmosCommand
                             if (utilizedIndices is JsonElement jo)
                             {
                                 AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-utilized_single"), jo.GetProperty("SingleIndexes"));
-                                AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-potential_single"), jo.GetProperty("CompositeIndexes"));
+                                AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-utilized_composite"), jo.GetProperty("CompositeIndexes"));
                             }
                         }
 
@@ -469,7 +469,7 @@ internal class QueryCommand : CosmosCommand
                         {
                             if (potentialIndices is JsonElement jo)
                             {
-                                AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-utilized_composite"), jo.GetProperty("SingleIndexes"));
+                                AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-potential_single"), jo.GetProperty("SingleIndexes"));
                                 AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-potential_composite"), jo.GetProperty("CompositeIndexes"));
                             }
                         }
