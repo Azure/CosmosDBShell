@@ -16,8 +16,9 @@ using Spectre.Console;
 [CosmosExample("connect", Description = "Show current connection information and mode")]
 [CosmosExample("connect \"AccountEndpoint=https://myaccount.documents.azure.com:443/;AccountKey=mykey;\"", Description = "Connect using connection string with account key")]
 [CosmosExample("connect https://localhost:8081", Description = "Connect to the local Cosmos DB Emulator (uses well-known key and gateway mode)")]
-[CosmosExample("connect https://myaccount.documents.azure.com:443/ -hint=user@contoso.com", Description = "Connect using Azure AD authentication with login hint")]
-[CosmosExample("connect https://myaccount.documents.azure.com:443/ -cred=entraid:tenant-id -mode=gateway", Description = "Connect using Entra ID with gateway connection mode")]
+[CosmosExample("connect https://myaccount.documents.azure.com:443/ -hint=user@contoso.com", Description = "Connect using Entra ID authentication with login hint")]
+[CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -mode=gateway", Description = "Connect using Entra ID with gateway connection mode")]
+[CosmosExample("connect https://myaccount.documents.azure.com:443/ -managed-identity=<client-id>", Description = "Connect using a user-assigned managed identity")]
 internal partial class ConnectCommand : CosmosCommand
 {
     // internal static readonly string EntraRedirectUrl = "https://login.microsoftonline.com/common/oauth2/nativeclient";
@@ -36,8 +37,11 @@ internal partial class ConnectCommand : CosmosCommand
     [CosmosOption("mode")]
     public string? Mode { get; set; }
 
-    [CosmosOption("host")]
+    [CosmosOption("authority-host")]
     public string? AuthorityHost { get; set; }
+
+    [CosmosOption("managed-identity")]
+    public string? ManagedIdentityClientId { get; set; }
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
@@ -78,20 +82,17 @@ internal partial class ConnectCommand : CosmosCommand
 
         try
         {
-            // Default to Gateway mode for emulator if no explicit mode was specified
-            if (connectionMode is null && ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(this.ConnectionString))
-            {
-                connectionMode = ConnectionMode.Gateway;
-            }
-
-            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, null, null, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost);
+            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId);
             var returnState = new CommandState
             {
                 IsPrinted = true,
             };
-            var jsonString = $"{{\"connected state\": \"{this.ConnectionString}\"}}";
-            using var jsonDoc = JsonDocument.Parse(jsonString);
-            returnState.Result = new ShellJson(jsonDoc.RootElement.Clone());
+            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(this.ConnectionString);
+            var resultElement = JsonSerializer.SerializeToElement(new Dictionary<string, string?>
+            {
+                ["connected state"] = endpoint,
+            });
+            returnState.Result = new ShellJson(resultElement);
             return returnState;
         }
         catch (Exception e)

@@ -6,28 +6,23 @@ Parameters with whitespace must be quoted. Escape character: `\`
 
 ### connect
 
-Connect using connection string.
+Connect to a Cosmos DB account. Supports account key, Entra ID, managed identity, and DefaultAzureCredential.
 
 ```
-Usage: connect [-hint <ARG>] connectionString
+Usage: connect [-hint <ARG>] [-tenant <ARG>] [-authority-host <ARG>] [-mode <ARG>] [-managed-identity <ARG>] connectionString
 
 Arguments:
-    connectionString    The account connection string
+    connectionString    The account connection string or endpoint URL
 
 Options:
     -hint               Pre-populate username for login prompt
+    -tenant             Entra ID tenant ID to authenticate against
+    -authority-host     Authority host URL (default: https://login.microsoftonline.com/)
+    -mode               Connection mode: 'direct' (default) or 'gateway'
+    -managed-identity   Client ID of a user-assigned managed identity
 ```
 
-### azconnect
-
-Connect using Azure AD authentication.
-
-```
-Usage: azconnect endpoint
-
-Arguments:
-    endpoint    The account endpoint to connect to
-```
+See [docs/connect.md](connect.md) for detailed credential flow documentation.
 
 ### disconnect
 

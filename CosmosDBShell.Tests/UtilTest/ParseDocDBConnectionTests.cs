@@ -239,4 +239,51 @@ public class ParseDocDBConnectionTests
         // A plain URL should NOT parse as a connection string (no AccountEndpoint= prefix)
         Assert.False(ParsedDocDBConnectionString.TryParseDocDBConnectionString("https://localhost:8081", out _));
     }
+
+    [Fact]
+    public void TestEndpointExtractionFromMutatedEmulatorConnectionString()
+    {
+        // Simulates the bug scenario: a plain URL is mutated into a full connection string
+        // by BuildEmulatorConnectionString, then the endpoint must be extractable.
+        var plainUrl = "https://localhost:8081/";
+        var mutated = ParsedDocDBConnectionString.BuildEmulatorConnectionString(plainUrl);
+
+        Assert.True(ParsedDocDBConnectionString.TryParseDocDBConnectionString(mutated, out var parsed));
+        Assert.Equal(plainUrl, parsed?.Endpoint);
+
+        // The extracted endpoint must be a plain URL, not a connection string
+        Assert.True(ParsedDocDBConnectionString.IsPlainUrl(parsed?.Endpoint));
+    }
+
+    [Fact]
+    public void BuildEmulatorConnectionString_IncludesDisableServerCertificateValidation()
+    {
+        var cs = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");
+
+        Assert.Contains("DisableServerCertificateValidation=True", cs);
+        Assert.Contains("AccountKey=", cs);
+        Assert.Contains("AccountEndpoint=https://localhost:8081/", cs);
+    }
+
+    [Fact]
+    public void ExtractEndpoint_FromConnectionString_ReturnsEndpoint()
+    {
+        var endpoint = ParsedDocDBConnectionString.ExtractEndpoint("AccountEndpoint=https://myaccount.documents.azure.com:443/;AccountKey=abc==");
+
+        Assert.Equal("https://myaccount.documents.azure.com:443/", endpoint);
+    }
+
+    [Fact]
+    public void ExtractEndpoint_FromPlainUrl_ReturnsUrl()
+    {
+        var endpoint = ParsedDocDBConnectionString.ExtractEndpoint("https://myaccount.documents.azure.com:443/");
+
+        Assert.Equal("https://myaccount.documents.azure.com:443/", endpoint);
+    }
+
+    [Fact]
+    public void ExtractEndpoint_InvalidInput_Throws()
+    {
+        Assert.Throws<ArgumentException>(() => ParsedDocDBConnectionString.ExtractEndpoint("not-a-url-or-connection-string"));
+    }
 }
