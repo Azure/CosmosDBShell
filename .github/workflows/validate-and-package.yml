@@ -150,9 +150,13 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path out/nupkg -Force | Out-Null
+
+          # Restore for all RIDs so pack can build packages for each
+          dotnet restore CosmosDBShell/CosmosDBShell.csproj `
+            --configfile .github/nuget.github.config
+
           dotnet pack CosmosDBShell/CosmosDBShell.csproj `
             --configuration $env:BUILD_CONFIGURATION `
-            --no-build `
             --no-restore `
             --output out/nupkg `
             /p:PackageVersion=${{ steps.version.outputs.package_version }} `
