@@ -45,4 +45,15 @@ public class ToolOperationsTests
         Assert.DoesNotContain("container", required);
         Assert.DoesNotContain("max", required);
     }
+
+    [Fact]
+    public void MatchesArgumentName_AcceptsAliasesCaseInsensitively()
+    {
+        var factory = new CommandRunner().Commands["query"];
+        var databaseOption = factory.Options.Single(option => option.Name[0] == "database");
+
+        Assert.True(ToolOperations.MatchesArgumentName(databaseOption.Name, "db"));
+        Assert.True(ToolOperations.MatchesArgumentName(databaseOption.Name, "DB"));
+        Assert.True(ToolOperations.MatchesArgumentName(databaseOption.Name, "database"));
+    }
 }

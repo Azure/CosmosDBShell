@@ -147,6 +147,11 @@ internal class ToolOperations
         return JsonSerializer.Deserialize(jsonElement.GetRawText(), targetType);
     }
 
+    internal static bool MatchesArgumentName(string[] names, string? argumentName)
+    {
+        return names.Any(name => name.Equals(argumentName, StringComparison.OrdinalIgnoreCase));
+    }
+
     private static string FormatParameter(string? p)
     {
         if (p == null)
@@ -379,7 +384,7 @@ internal class ToolOperations
                     continue;
                 }
 
-                var argument = command.Options.FirstOrDefault(a => a.Name[0].Equals(par.Key, StringComparison.OrdinalIgnoreCase));
+                var argument = command.Options.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (argument != null)
                 {
                     var property = cmd.GetType().GetProperty(argument.Name[0], BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
@@ -412,7 +417,7 @@ internal class ToolOperations
                     continue;
                 }
 
-                var parameter = command.Parameters.FirstOrDefault(a => a.Name[0].Equals(par.Key, StringComparison.OrdinalIgnoreCase));
+                var parameter = command.Parameters.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (parameter != null)
                 {
                     var property = cmd.GetType().GetProperty(parameter.Name[0], BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
