@@ -213,7 +213,7 @@ internal class ToolOperations
 
         if (names.Length > 1)
         {
-            var aliases = string.Join(", ", names.Skip(1).Select(alias => $"--{alias}"));
+            var aliases = string.Join(", ", names.Skip(1));
             descriptionText = string.IsNullOrWhiteSpace(descriptionText)
                 ? $"Aliases: {aliases}"
                 : $"{descriptionText} Aliases: {aliases}";

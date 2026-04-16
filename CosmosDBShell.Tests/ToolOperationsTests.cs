@@ -27,8 +27,8 @@ public class ToolOperationsTests
         Assert.Equal("string", databaseProperty.GetProperty("type").GetString());
         Assert.Equal("string", containerProperty.GetProperty("type").GetString());
         Assert.Equal("integer", maxProperty.GetProperty("type").GetString());
-        Assert.Contains("Aliases: --db", databaseProperty.GetProperty("description").GetString());
-        Assert.Contains("Aliases: --con", containerProperty.GetProperty("description").GetString());
+        Assert.Contains("Aliases: db", databaseProperty.GetProperty("description").GetString());
+        Assert.Contains("Aliases: con", containerProperty.GetProperty("description").GetString());
     }
 
     [Fact]
