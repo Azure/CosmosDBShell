@@ -45,6 +45,7 @@ error-invalid_bucket_value = Throughput bucket value '{ $bucket }' is invalid. V
 error-variable_not_set = Variable '{ $name }' is not set.
 error-mutually-exclusive-options = Options '-c' and '-k' cannot be used together.
 error-shell-not-initialized = Shell is not initialized
+error-unable_to_read_container = Unable to read container.
 
 help-usage = Usage: { $command }
 help-arg = <ARG>
@@ -60,8 +61,8 @@ command-help-description-command = The specific command to get help for
 command-help-description-details = Show detailed help information for each command
 command-help-description-plain = Disable styling and colors for script or limited terminals
 
-command-rmdb-description = Removes database or container
-command-rmdb-description-name = The database or container to remove.
+command-rmdb-description = Removes database
+command-rmdb-description-name = The database to remove.
 command-rmdb-description-force = Force to remove the database without confirmation.
 command-rmdb-error-not_allowed_in_container = { error-not_allowed_in_container }
 command-rmdb-error-database_not_found = Database { $db } not found.
@@ -314,6 +315,7 @@ command-settings-description-format = Output format (json, table)
 command-settings-scale-heading = Scale
 command-settings-scale-usage = Based on usage, your container throughput will scale from { $min } RU/s (10% of max RU/s) - { $max } RU/s
 command-settings-title = Settings
+command-settings-na = N/A
 command-settings-ttl-label = Time to Live
 command-settings-Off = Off
 command-settings-On = On (no default)
@@ -436,6 +438,7 @@ statement_error_expected_after_loop = Expected statement after 'loop'
 statement_error_expected_def = Expected 'def'
 statement_error_expected_function_name = Expected function name
 statement_error_expected_parameter_name = Expected parameter name
+statement_error_expected_close_parenthesis = Expected ')'
 statement_error_expected_close_bracket = Expected ']'
 statement_error_expected_after_function_def = Expected statement after function definition
 statement_error_expected_return = Expected 'return'
@@ -443,13 +446,18 @@ statement_error_expected_break = Expected 'break'
 statement_error_expected_continue = Expected 'continue'
 statement_error_expected_open_brace = Expected '\u007B'
 statement_error_expected_close_brace = Expected '\u007D'
+statement_error_unexpected_close_brace = Unexpected '\u007D'
+statement_error_unexpected_end = Unexpected end of input
 statement_error_unexpected_end_parsing_command = Unexpected end of input when parsing command
 statement_error_expected_command_name = Expected command name
 statement_error_expected_option_name = Expected option name after '{$prefix}'
+statement_error_invalid_option_value = Invalid value for option '{ $option }'
 statement_error_expected_redirect_destination = Expected file name after '{$redirect}'
 statement_error_invalid_redirect_destination = Invalid destination for '{$redirect}' redirection
 statement_error_duplicate_out_redirect = Duplicate output redirection
 statement_error_duplicate_err_redirect = Duplicate error redirection
+
+json_error_empty_array_brackets = Empty array brackets are not allowed.
 
 # Binary operator error messages
 expression_error_null_boolean_left = Left operand evaluation returned null for boolean operation
@@ -507,6 +515,7 @@ help-category-management = Management
 help-category-management-styled = Management
 help-category-utilities = Utilities
 help-category-utilities-styled = Utilities
+help-error-FormatMutuallyExclusiveSetErrors = Conflicting options: { $option }. These cannot be used with { $incompat }.
 
 statement-if-description = Performs conditional processing in shell scripts.
 statement-if-syntax = if <expression> <statement> [[[ else <statement> ]]]
