@@ -223,15 +223,10 @@ jobs:
             ('- `CosmosDBShell-osx-x64-' + $artifactSuffix + '`'),
             ('- `CosmosDBShell-osx-arm64-' + $artifactSuffix + '`'),
             '',
-            'Download the artifact, extract the `.nupkg` file to a local folder, then install one of these packages:',
+            'Download the pointer package artifact and the artifact for your runtime, extract both `.nupkg` files to the same local folder, then install the base package:',
             '',
             '```powershell',
             'dotnet tool install --global CosmosDBShell --add-source C:\path\to\nupkgs --version ' + $version,
-            'dotnet tool install --global CosmosDBShell.win-x64 --add-source C:\path\to\nupkgs --version ' + $version,
-            'dotnet tool install --global CosmosDBShell.linux-x64 --add-source C:\path\to\nupkgs --version ' + $version,
-            'dotnet tool install --global CosmosDBShell.linux-arm64 --add-source C:\path\to\nupkgs --version ' + $version,
-            'dotnet tool install --global CosmosDBShell.osx-x64 --add-source C:\path\to\nupkgs --version ' + $version,
-            'dotnet tool install --global CosmosDBShell.osx-arm64 --add-source C:\path\to\nupkgs --version ' + $version,
             '```'
           )
           $lines -join "`n" | Out-File -FilePath $summary -Encoding utf8 -Append

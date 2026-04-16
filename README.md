@@ -36,53 +36,29 @@ When consuming build artifacts (`*.nupkg`) from this repo, install as a .NET glo
 
 `dotnet tool install` for these packages requires .NET 10 because the tool packages target `net10.0`.
 
-1. Download the NuGet package(s) to a local folder.
-2. Install from that folder with `--add-source`.
+1. Download the base tool package (`CosmosDBShell.<version>.nupkg`) and the package for your runtime to the same local folder.
+2. Install from that folder with `--add-source` using the base package ID `CosmosDBShell`.
 
-### Platform package IDs
+### Runtime-specific package files
 
-- Linux x64: `CosmosDBShell.linux-x64`
-- Linux ARM64: `CosmosDBShell.linux-arm64`
-- macOS x64: `CosmosDBShell.osx-x64`
-- macOS ARM64: `CosmosDBShell.osx-arm64`
-- Windows x64: `CosmosDBShell.win-x64`
+- Linux x64: `CosmosDBShell.linux-x64.<version>.nupkg`
+- Linux ARM64: `CosmosDBShell.linux-arm64.<version>.nupkg`
+- macOS x64: `CosmosDBShell.osx-x64.<version>.nupkg`
+- macOS ARM64: `CosmosDBShell.osx-arm64.<version>.nupkg`
+- Windows x64: `CosmosDBShell.win-x64.<version>.nupkg`
 
-### Install commands
+### Install command
 
-Linux x64:
-
-```bash
-dotnet tool install --global CosmosDBShell.linux-x64 --add-source /path/to/nupkgs --version <version>
-```
-
-Linux ARM64:
-
-```bash
-dotnet tool install --global CosmosDBShell.linux-arm64 --add-source /path/to/nupkgs --version <version>
-```
-
-macOS x64:
-
-```bash
-dotnet tool install --global CosmosDBShell.osx-x64 --add-source /path/to/nupkgs --version <version>
-```
-
-macOS ARM64:
-
-```bash
-dotnet tool install --global CosmosDBShell.osx-arm64 --add-source /path/to/nupkgs --version <version>
-```
-
-Windows x64 (PowerShell):
-
-```powershell
-dotnet tool install --global CosmosDBShell.win-x64 --add-source C:\path\to\nupkgs --version <version>
-```
-
-If your feed includes the base tool package (`CosmosDBShell.<version>.nupkg`) and its RID package, this also works:
+After placing the base package and the matching runtime package in the same folder, install with the base package ID:
 
 ```bash
 dotnet tool install --global CosmosDBShell --add-source /path/to/nupkgs --version <version>
+```
+
+Windows PowerShell example:
+
+```powershell
+dotnet tool install --global CosmosDBShell --add-source C:\path\to\nupkgs --version <version>
 ```
 
 ### Use, update, uninstall
@@ -107,13 +83,7 @@ List the installed global tools first so you can identify the exact package ID:
 dotnet tool list --global
 ```
 
-Then uninstall the matching package ID. For example, if you installed the Windows x64 RID-specific package:
-
-```powershell
-dotnet tool uninstall --global CosmosDBShell.win-x64
-```
-
-If you installed the base package instead:
+Then uninstall the tool by its package ID:
 
 ```bash
 dotnet tool uninstall --global CosmosDBShell

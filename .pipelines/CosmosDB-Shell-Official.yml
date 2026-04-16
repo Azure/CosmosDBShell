@@ -460,17 +460,6 @@ extends:
                       exit 1
                     }
 
-              - task: PowerShell@2
-                displayName: "Remove pointer package from shipping outputs"
-                condition: succeeded()
-                inputs:
-                  targetType: inline
-                  script: |
-                    $pkgDir = "$(Build.SourcesDirectory)\out\nupkg"
-                    Get-ChildItem -Path (Join-Path $pkgDir "CosmosDBShell.*.nupkg") -ErrorAction SilentlyContinue | Where-Object {
-                      $_.Name -notmatch '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
-                    } | Remove-Item -Force
-
               - task: onebranch.pipeline.signing@1
                 displayName: "Sign NuGet packages"
                 condition: succeeded()
@@ -509,9 +498,8 @@ extends:
                     }
                     Write-Host "Non-shipping build outputs cleaned."
 
-              # Publish only RID-specific NuGet tool packages.
-              # dotnet pack may also generate a non-RID pointer package, but feed installs
-              # should use the platform-specific package IDs directly.
+              # Keep the pointer package in out\nupkg so it is preserved in pipeline artifacts,
+              # but publish only the RID-specific NuGet tool packages to the feed.
               - task: PowerShell@2
                 displayName: "List NuGet packages before publish"
                 condition: succeeded()
