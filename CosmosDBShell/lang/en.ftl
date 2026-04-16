@@ -92,7 +92,7 @@ command-rm-no-matches = No items matched the pattern '{ $pattern }' for key '{ $
 
 command-query-description = Executes a query and returns matching results
 command-query-description-query = The query to execute
-command-query-description-max = Maximum number of items returned when querying items.
+command-query-description-max = Maximum number of items returned when querying items. Use 0 or a negative value to disable the limit.
 command-query-description-metrics = Show query metrics (possible values: Display (default), File (output to data json/csv))
 command-query-description-bucket = The throughput bucket to use for the query
 command-query-description-format = Output format (json, table, csv)

@@ -98,6 +98,22 @@ internal class QueryCommand : CosmosCommand
         return documents;
     }
 
+    internal static bool PageExceedsLimit(int currentCount, JsonElement pageDocuments, int? maxItemCount)
+    {
+        if (!maxItemCount.HasValue)
+        {
+            return false;
+        }
+
+        var remainingCapacity = maxItemCount.Value - currentCount;
+        if (remainingCapacity <= 0)
+        {
+            return pageDocuments.GetArrayLength() > 0;
+        }
+
+        return pageDocuments.GetArrayLength() > remainingCapacity;
+    }
+
     private static void AddIndexTable(Table table, string title, JsonElement? jToken)
     {
         if (jToken == null || jToken.Value.ValueKind == JsonValueKind.Null || jToken.Value.ValueKind == JsonValueKind.Undefined)
@@ -341,7 +357,9 @@ internal class QueryCommand : CosmosCommand
                     AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", queryMetrics.TotalRequestCharge.ToString() } }));
                 }
 
-                aggregatedDocuments = CollectDocuments(aggregatedDocuments, queryDocument.RootElement.GetProperty("Documents"), effectiveMaxItemCount);
+                var pageDocuments = queryDocument.RootElement.GetProperty("Documents");
+                var pageExceedsLimit = PageExceedsLimit(aggregatedDocuments.Count, pageDocuments, effectiveMaxItemCount);
+                aggregatedDocuments = CollectDocuments(aggregatedDocuments, pageDocuments, effectiveMaxItemCount);
 
                 if (this.Metrics == MetricTarget.File)
                 {
@@ -483,7 +501,7 @@ internal class QueryCommand : CosmosCommand
 
                 if (ResultLimit.IsLimitReached(aggregatedDocuments.Count, effectiveMaxItemCount))
                 {
-                    limitReached = feedIterator.HasMoreResults;
+                    limitReached = pageExceedsLimit || feedIterator.HasMoreResults;
                     break;
                 }
             }
