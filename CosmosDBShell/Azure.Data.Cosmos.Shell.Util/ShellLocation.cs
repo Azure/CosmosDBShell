@@ -11,15 +11,15 @@ internal static class ShellLocation
 {
     public static string NotConnectedText => MessageService.GetString("command-pwd-not-connected");
 
-    public static string GetCurrentLocation(State shellState)
+    public static string? GetCurrentLocation(State shellState)
     {
         return shellState switch
         {
             ContainerState containerState => $"/{containerState.DatabaseName}/{containerState.ContainerName}",
             DatabaseState databaseState => $"/{databaseState.DatabaseName}",
             ConnectedState => "/",
-            DisconnectedState => NotConnectedText,
-            _ => NotConnectedText,
+            DisconnectedState => null,
+            _ => null,
         };
     }
 

@@ -4,10 +4,12 @@
 
 namespace CosmosShell.Tests.Shell;
 
+using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
+using Spectre.Console;
 
 public class PwdCommandTests
 {
@@ -21,7 +23,7 @@ public class PwdCommandTests
         Assert.False(state.IsError);
         Assert.True(state.IsPrinted);
         var result = Assert.IsType<ShellJson>(state.Result);
-        Assert.Equal(ShellLocation.NotConnectedText, result.Value.GetProperty("currentLocation").GetString());
+        Assert.Equal(JsonValueKind.Null, result.Value.GetProperty("currentLocation").ValueKind);
     }
 
     [Fact]
@@ -61,5 +63,14 @@ public class PwdCommandTests
         Assert.False(state.IsError);
         var result = Assert.IsType<ShellJson>(state.Result);
         Assert.Equal("/TestDatabase/TestContainer", result.Value.GetProperty("currentLocation").GetString());
+    }
+
+    [Fact]
+    public void GetCurrentLocationMarkup_EscapesMarkupCharacters()
+    {
+        var markup = ShellLocation.GetCurrentLocationMarkup(new ContainerState("Con[tainer]", "Db[Name]", null!));
+
+        Assert.Contains(Markup.Escape("Db[Name]"), markup);
+        Assert.Contains(Markup.Escape("Con[tainer]"), markup);
     }
 }

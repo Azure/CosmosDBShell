@@ -163,7 +163,7 @@ internal partial class ConnectCommand : CosmosCommand
         table.AddRow(MessageService.GetString("command-connect-info-write-regions"), $"[white]{string.Join(", ", acc.WritableRegions.Select(r => r.Name))}[/]");
 
         // Show current navigation state
-        string currentLocation = ShellLocation.GetCurrentLocation(shell.State);
+        string currentLocation = ShellLocation.GetCurrentLocation(shell.State) ?? ShellLocation.NotConnectedText;
 
         table.AddRow(MessageService.GetString("command-connect-info-location"), $"[cyan]{Markup.Escape(currentLocation)}[/]");
 

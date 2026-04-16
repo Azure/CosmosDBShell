@@ -38,7 +38,7 @@ internal static class McpResponseFactory
             isError: true);
     }
 
-    internal static string GetCurrentLocation(State shellState)
+    internal static string? GetCurrentLocation(State shellState)
     {
         return ShellLocation.GetCurrentLocation(shellState);
     }
@@ -55,15 +55,7 @@ internal static class McpResponseFactory
 
     private static CallToolResult CreateResponse(JsonObject payload, State shellState, bool isError)
     {
-        var envelope = new JsonObject
-        {
-            ["currentLocation"] = GetCurrentLocation(shellState),
-        };
-
-        foreach (var kvp in payload)
-        {
-            envelope[kvp.Key] = kvp.Value?.DeepClone();
-        }
+        payload["currentLocation"] = GetCurrentLocation(shellState);
 
         return new CallToolResult
         {
@@ -71,7 +63,7 @@ internal static class McpResponseFactory
             [
                 new TextContentBlock
                 {
-                    Text = envelope.ToJsonString(JsonOptions),
+                    Text = payload.ToJsonString(JsonOptions),
                 }
             ],
             IsError = isError,

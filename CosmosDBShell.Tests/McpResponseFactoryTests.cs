@@ -92,4 +92,15 @@ public class McpResponseFactoryTests
         Assert.Equal("/TestDatabase", document.RootElement.GetProperty("currentLocation").GetString());
         Assert.Equal("boom", document.RootElement.GetProperty("error").GetString());
     }
+
+    [Fact]
+    public void CreateSuccess_WhenDisconnected_UsesNullCurrentLocation()
+    {
+        var result = McpResponseFactory.CreateSuccess(new CommandState(), new DisconnectedState());
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+
+        using var document = JsonDocument.Parse(text);
+        Assert.False(result.IsError);
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("currentLocation").ValueKind);
+    }
 }
