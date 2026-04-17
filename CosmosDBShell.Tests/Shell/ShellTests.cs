@@ -69,7 +69,9 @@ public class ShellTests
             .InformationalVersion;
         if (!string.IsNullOrWhiteSpace(informationalVersion))
         {
-            Assert.Contains("+", actualVersion, StringComparison.Ordinal);
+            Assert.True(
+                !actualVersion.Contains('+'),
+                $"Expected version output to omit build metadata and match the display version contract. Actual version: '{actualVersion}'. Raw informational version: '{informationalVersion}'. Display version: '{expectedVersion}'.");
         }
     }
 
