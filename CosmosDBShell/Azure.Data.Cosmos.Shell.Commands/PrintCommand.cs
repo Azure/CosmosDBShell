@@ -64,12 +64,20 @@ internal class PrintCommand : CosmosCommand
                 var jsonDocument = System.Text.Json.JsonDocument.Parse(content);
                 commandState.Result = new ShellJson(jsonDocument.RootElement);
             }
-            else
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 throw new CommandException("print", MessageService.GetString("command-print-error-item_not_found", new Dictionary<string, object>
                 {
                     { "id", this.Id ?? "(null)" },
                     { "partitionKey", this.PartitionKey ?? "(null)" },
+                    { "status", (int)response.StatusCode },
+                }));
+            }
+            else
+            {
+                throw new CommandException("print", MessageService.GetString("command-print-error-request_failed", new Dictionary<string, object>
+                {
+                    { "id", this.Id ?? "(null)" },
                     { "status", (int)response.StatusCode },
                 }));
             }
