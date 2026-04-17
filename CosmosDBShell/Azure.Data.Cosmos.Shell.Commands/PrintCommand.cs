@@ -53,7 +53,7 @@ internal class PrintCommand : CosmosCommand
 
         try
         {
-            var response = await container.ReadItemStreamAsync(this.Id, new PartitionKey(this.PartitionKey), cancellationToken: token);
+            using var response = await container.ReadItemStreamAsync(this.Id, new PartitionKey(this.PartitionKey), cancellationToken: token);
 
             if (response.IsSuccessStatusCode)
             {
