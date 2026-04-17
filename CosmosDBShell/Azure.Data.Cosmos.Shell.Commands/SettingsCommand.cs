@@ -99,8 +99,8 @@ internal class SettingsCommand : CosmosCommand
             }
             else if (IsThroughputNotConfiguredException(e))
             {
-                // Serverless accounts and Emulators don't have throughput configured - show N/A
-                AnsiConsole.MarkupLine($"[yellow]{MessageService.GetString("command-settings-na")}[/]");
+                // No dedicated throughput is configured on this container - show N/A
+                AnsiConsole.MarkupLine($"[grey]{MessageService.GetString("command-settings-na")}[/]");
             }
             else
             {
@@ -258,18 +258,23 @@ internal class SettingsCommand : CosmosCommand
     }
 
     /// <summary>
-    /// Checks if the exception indicates that throughput is not configured (Serverless accounts or Emulators).
+    /// Checks if the exception indicates that no dedicated throughput is configured on the container
+    /// (e.g., Serverless accounts, Emulators, or containers using shared database throughput).
     /// </summary>
     private static bool IsThroughputNotConfiguredException(Exception e)
     {
-        if (e is CosmosException cosmosEx &&
-            cosmosEx.StatusCode == System.Net.HttpStatusCode.NotFound &&
-            cosmosEx.Message.Contains("Throughput is not configured", StringComparison.OrdinalIgnoreCase))
+        if (e is not CosmosException cosmosEx ||
+            cosmosEx.StatusCode != System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        if ((int)cosmosEx.SubStatusCode == 1003)
         {
             return true;
         }
 
-        return false;
+        return cosmosEx.Message.Contains("Throughput is not configured", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<CommandState> PrintOverviewAsync(CosmosClient client, CommandState commandState, CancellationToken token)
