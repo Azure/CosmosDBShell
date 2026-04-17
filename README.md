@@ -36,29 +36,29 @@ When consuming build artifacts (`*.nupkg`) from this repo, install as a .NET glo
 
 `dotnet tool install` for these packages requires .NET 10 because the tool packages target `net10.0`.
 
-1. Download the base tool package (`CosmosDBShell.<version>.nupkg`) and the package for your runtime to the same local folder.
-2. Install from that folder with `--add-source` using the base package ID `CosmosDBShell`.
+1. Download the base tool package (`Microsoft.CosmosDBShell.<version>.nupkg`) and the package for your runtime to the same local folder.
+2. Install from that folder with `--add-source` using the base package ID `Microsoft.CosmosDBShell`.
 
 ### Runtime-specific package files
 
-- Linux x64: `CosmosDBShell.linux-x64.<version>.nupkg`
-- Linux ARM64: `CosmosDBShell.linux-arm64.<version>.nupkg`
-- macOS x64: `CosmosDBShell.osx-x64.<version>.nupkg`
-- macOS ARM64: `CosmosDBShell.osx-arm64.<version>.nupkg`
-- Windows x64: `CosmosDBShell.win-x64.<version>.nupkg`
+- Linux x64: `Microsoft.CosmosDBShell.linux-x64.<version>.nupkg`
+- Linux ARM64: `Microsoft.CosmosDBShell.linux-arm64.<version>.nupkg`
+- macOS x64: `Microsoft.CosmosDBShell.osx-x64.<version>.nupkg`
+- macOS ARM64: `Microsoft.CosmosDBShell.osx-arm64.<version>.nupkg`
+- Windows x64: `Microsoft.CosmosDBShell.win-x64.<version>.nupkg`
 
 ### Install command
 
 After placing the base package and the matching runtime package in the same folder, install with the base package ID:
 
 ```bash
-dotnet tool install --global CosmosDBShell --add-source /path/to/nupkgs --version <version>
+dotnet tool install --global Microsoft.CosmosDBShell --add-source /path/to/nupkgs --version <version>
 ```
 
 Windows PowerShell example:
 
 ```powershell
-dotnet tool install --global CosmosDBShell --add-source C:\path\to\nupkgs --version <version>
+dotnet tool install --global Microsoft.CosmosDBShell --add-source C:\path\to\nupkgs --version <version>
 ```
 
 ### Use, update, uninstall
@@ -86,7 +86,7 @@ dotnet tool list --global
 Then uninstall the tool by its package ID:
 
 ```bash
-dotnet tool uninstall --global CosmosDBShell
+dotnet tool uninstall --global Microsoft.CosmosDBShell
 ```
 
 ## Documentation
