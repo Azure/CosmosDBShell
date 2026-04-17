@@ -37,7 +37,7 @@ jobs:
             **/*.csproj
 
       - name: Restore
-        run: dotnet restore CosmosDBShell.sln --configfile .github/nuget.github.config
+        run: dotnet restore CosmosDBShell.sln
 
       - name: Build solution
         run: dotnet build CosmosDBShell.sln --configuration $env:BUILD_CONFIGURATION --no-restore
@@ -124,7 +124,6 @@ jobs:
           $rids = @('win-x64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
           foreach ($rid in $rids) {
             dotnet restore CosmosDBShell/CosmosDBShell.csproj `
-              --configfile .github/nuget.github.config `
               -r $rid
 
             if ($LASTEXITCODE -ne 0) {
@@ -152,8 +151,7 @@ jobs:
           New-Item -ItemType Directory -Path out/nupkg -Force | Out-Null
 
           # Restore for all RIDs so pack can build packages for each
-          dotnet restore CosmosDBShell/CosmosDBShell.csproj `
-            --configfile .github/nuget.github.config
+          dotnet restore CosmosDBShell/CosmosDBShell.csproj
 
           dotnet pack CosmosDBShell/CosmosDBShell.csproj `
             --configuration $env:BUILD_CONFIGURATION `

@@ -154,6 +154,7 @@ extends:
                   command: "custom"
                   projects: $(BuildSolution)
                   custom: "restore"
+                  arguments: "--configfile $(Build.SourcesDirectory)\\.pipelines\\nuget.config"
 
               - task: ComponentGovernanceComponentDetection@0
                 displayName: "Component Governance - Component Detection"
@@ -577,7 +578,7 @@ extends:
                 inputs:
                   languages: "csharp"
               - script: |
-                  dotnet restore CosmosDBShell.sln
+                  dotnet restore CosmosDBShell.sln --configfile .pipelines/nuget.config
                   dotnet build CosmosDBShell.sln -c Release --no-incremental
                 displayName: Build for CodeQL
               - task: CodeQL3000Finalize@0
