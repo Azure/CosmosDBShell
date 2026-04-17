@@ -70,7 +70,6 @@ internal class PrintCommand : CosmosCommand
                 {
                     { "id", this.Id ?? "(null)" },
                     { "partitionKey", this.PartitionKey ?? "(null)" },
-                    { "status", (int)response.StatusCode },
                 }));
             }
             else
