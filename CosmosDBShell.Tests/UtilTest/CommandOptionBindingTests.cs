@@ -325,12 +325,15 @@ namespace CosmosShell.Tests.Parser
         }
 
         [Fact]
-        public async Task NullableIntOption_InvalidValue_ThrowsFormatException()
+        public async Task NullableIntOption_InvalidValue_ThrowsCommandException()
         {
             var stmt = Parse("numoptcmd -m notanumber \"SELECT * FROM c\"");
             Assert.True(shell.App.Commands.TryGetValue("numoptcmd", out var factory));
-            await Assert.ThrowsAsync<FormatException>(
+            var ex = await Assert.ThrowsAsync<CommandException>(
                 async () => await stmt.CreateCommandAsync(factory, shell, new CommandState(), CancellationToken.None));
+
+            Assert.Contains("notanumber", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("'m'", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
 }
