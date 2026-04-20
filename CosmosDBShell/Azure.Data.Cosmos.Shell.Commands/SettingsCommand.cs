@@ -19,6 +19,11 @@ using Spectre.Console;
 [CosmosExample("settings --database=MyDB --container=Products", Description = "Display container settings for a specific database and container")]
 internal class SettingsCommand : CosmosCommand
 {
+    /// <summary>
+    /// Cosmos DB substatus returned when no dedicated throughput offer exists for the current container.
+    /// </summary>
+    private const int ThroughputNotConfiguredSubStatusCode = 1003;
+
     private static readonly Regex PrincipalIdRegex = new("Request for (.*) is blocked because principal \\[(.*)\\] does not have required RBAC permissions to perform action \\[(.*)\\]");
 
     [CosmosOption("database", "db")]
@@ -269,8 +274,9 @@ internal class SettingsCommand : CosmosCommand
             return false;
         }
 
-        if ((int)cosmosEx.SubStatusCode == 1003)
+        if ((int)cosmosEx.SubStatusCode == ThroughputNotConfiguredSubStatusCode)
         {
+            // Cosmos DB uses this substatus when the container has no dedicated throughput offer.
             return true;
         }
 
