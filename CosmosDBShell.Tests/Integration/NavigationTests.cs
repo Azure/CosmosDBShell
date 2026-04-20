@@ -4,39 +4,21 @@
 
 namespace CosmosShell.Tests.Integration;
 
-using System.Net.Http;
-using System.Threading;
-
-using Azure.Data.Cosmos.Shell.Core;
-
 using Xunit;
-using Xunit.Sdk;
 
-[Trait("Category", "Emulator")]
-[Collection("Emulator")]
-public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLifetime
+public class NavigationTests : EmulatorFixtureTestBase
 {
-    private readonly EmulatorDatabaseFixture fixture;
-
     public NavigationTests(EmulatorDatabaseFixture fixture)
+        : base(fixture)
     {
-        this.fixture = fixture;
     }
 
-    public async ValueTask InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
-        if (!fixture.IsAvailable)
-        {
-            throw SkipException.ForSkip("Cosmos DB emulator not available");
-        }
+        await base.InitializeAsync();
 
         // Navigate back to the connected root before each test
         await NavigateToRootAsync();
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        return ValueTask.CompletedTask;
     }
 
     [Fact]
@@ -52,7 +34,7 @@ public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLif
     public async Task Cd_ToDatabase_NavigatesToDatabase()
     {
         await NavigateToRootAsync();
-        var state = await ExecuteAsync($"cd {fixture.DatabaseName}");
+        var state = await ExecuteAsync($"cd {Fixture.DatabaseName}");
 
         Assert.False(state.IsError);
     }
@@ -61,7 +43,7 @@ public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLif
     public async Task Cd_ToContainer_NavigatesToContainer()
     {
         await NavigateToRootAsync();
-        var state = await ExecuteAsync($"cd {fixture.DatabaseName}/{fixture.ContainerName}");
+        var state = await ExecuteAsync($"cd {Fixture.DatabaseName}/{Fixture.ContainerName}");
 
         Assert.False(state.IsError);
     }
@@ -70,7 +52,7 @@ public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLif
     public async Task Cd_DotDot_GoesUp()
     {
         await NavigateToRootAsync();
-        await ExecuteAsync($"cd {fixture.DatabaseName}/{fixture.ContainerName}");
+        await ExecuteAsync($"cd {Fixture.DatabaseName}/{Fixture.ContainerName}");
 
         var state = await ExecuteAsync("cd ..");
         Assert.False(state.IsError);
@@ -84,7 +66,7 @@ public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLif
     public async Task Cd_NoArgs_ReturnsToRoot()
     {
         await NavigateToRootAsync();
-        await ExecuteAsync($"cd {fixture.DatabaseName}/{fixture.ContainerName}");
+        await ExecuteAsync($"cd {Fixture.DatabaseName}/{Fixture.ContainerName}");
 
         var state = await ExecuteAsync("cd");
         Assert.False(state.IsError);
@@ -94,15 +76,10 @@ public class NavigationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLif
     public async Task Ls_InDatabase_ListsContainers()
     {
         await NavigateToRootAsync();
-        await ExecuteAsync($"cd {fixture.DatabaseName}");
+        await ExecuteAsync($"cd {Fixture.DatabaseName}");
 
         var state = await ExecuteAsync("ls");
         Assert.False(state.IsError);
-    }
-
-    private async Task<CommandState> ExecuteAsync(string command)
-    {
-        return await fixture.Shell.ExecuteCommandAsync(command, CancellationToken.None);
     }
 
     private async Task NavigateToRootAsync()

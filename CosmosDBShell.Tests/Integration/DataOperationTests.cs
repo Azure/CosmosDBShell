@@ -5,54 +5,22 @@
 namespace CosmosShell.Tests.Integration;
 
 using System.Text.Json;
-using System.Threading;
-
-using Azure.Data.Cosmos.Shell.Core;
 
 using Xunit;
-using Xunit.Sdk;
 
-[Trait("Category", "Emulator")]
-[Collection("Emulator")]
-public class DataOperationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLifetime
+public class DataOperationTests : EmulatorFixtureTestBase
 {
-    private readonly EmulatorDatabaseFixture fixture;
-    private readonly List<string> tempFiles = [];
-
     public DataOperationTests(EmulatorDatabaseFixture fixture)
+        : base(fixture)
     {
-        this.fixture = fixture;
     }
 
-    public async ValueTask InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
-        if (!fixture.IsAvailable)
-        {
-            throw SkipException.ForSkip("Cosmos DB emulator not available");
-        }
+        await base.InitializeAsync();
 
         await ExecuteAsync("cd");
-        await ExecuteAsync($"cd {fixture.DatabaseName}/{fixture.ContainerName}");
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        foreach (var file in tempFiles)
-        {
-            try
-            {
-                if (File.Exists(file))
-                {
-                    File.Delete(file);
-                }
-            }
-            catch
-            {
-                // Best-effort cleanup
-            }
-        }
-
-        return ValueTask.CompletedTask;
+        await ExecuteAsync($"cd {Fixture.DatabaseName}/{Fixture.ContainerName}");
     }
 
     [Fact]
@@ -114,35 +82,5 @@ public class DataOperationTests : IClassFixture<EmulatorDatabaseFixture>, IAsync
         var lsJson = JsonDocument.Parse(lsOutput).RootElement;
         var items = lsJson.GetProperty("items");
         Assert.DoesNotContain(items.EnumerateArray(), item => item.GetProperty("id").GetString() == id);
-    }
-
-    private async Task<CommandState> ExecuteAsync(string command)
-    {
-        return await fixture.Shell.ExecuteCommandAsync(command, CancellationToken.None);
-    }
-
-    private string CreateTempFile(string extension = ".json")
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"dotest-{Guid.NewGuid():N}{extension}");
-        tempFiles.Add(path);
-        return path;
-    }
-
-    private async Task<string> ExecuteWithOutputAsync(string command)
-    {
-        var outputFile = CreateTempFile();
-        fixture.Shell.StdOutRedirect = outputFile;
-        try
-        {
-            var state = await ExecuteAsync(command);
-            Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
-
-            Assert.True(File.Exists(outputFile), $"Expected output file at {outputFile}");
-            return await File.ReadAllTextAsync(outputFile);
-        }
-        finally
-        {
-            fixture.Shell.StdOutRedirect = null;
-        }
     }
 }

@@ -10,30 +10,21 @@ using System.Threading;
 using Azure.Data.Cosmos.Shell.Core;
 
 using Xunit;
-using Xunit.Sdk;
 
-[Trait("Category", "Emulator")]
-[Collection("Emulator")]
-public class QueryCommandTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLifetime
+public class QueryCommandTests : EmulatorFixtureTestBase
 {
-    private readonly EmulatorDatabaseFixture fixture;
-    private readonly List<string> tempFiles = [];
-
     public QueryCommandTests(EmulatorDatabaseFixture fixture)
+        : base(fixture)
     {
-        this.fixture = fixture;
     }
 
-    public async ValueTask InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
-        if (!fixture.IsAvailable)
-        {
-            throw SkipException.ForSkip("Cosmos DB emulator not available");
-        }
+        await base.InitializeAsync();
 
         // Navigate to the test container
         await ExecuteAsync("cd");
-        await ExecuteAsync($"cd {fixture.DatabaseName}/{fixture.ContainerName}");
+        await ExecuteAsync($"cd {Fixture.DatabaseName}/{Fixture.ContainerName}");
 
         // Seed test items
         for (int i = 1; i <= 5; i++)
@@ -47,26 +38,6 @@ public class QueryCommandTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncL
             });
             await ExecuteAsync($"mkitem '{json}'");
         }
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        foreach (var file in tempFiles)
-        {
-            try
-            {
-                if (File.Exists(file))
-                {
-                    File.Delete(file);
-                }
-            }
-            catch
-            {
-                // Best-effort cleanup
-            }
-        }
-
-        return ValueTask.CompletedTask;
     }
 
     [Fact]
@@ -157,17 +128,14 @@ public class QueryCommandTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncL
     public async Task Query_MetricsFile_Csv_WritesMetricsCsvFile()
     {
         var outputFile = CreateTempFile(".csv");
-        fixture.Shell.StdOutRedirect = outputFile;
+        var metricsFile = Path.ChangeExtension(outputFile, "metrics.csv");
+        Shell.StdOutRedirect = outputFile;
         try
         {
             var state = await ExecuteAsync("query \"SELECT * FROM c WHERE c.id = 'qtest-1'\" -metrics:File -f:csv");
-            var errorMsg = FormatError(state);
-
-            Assert.False(state.IsError, errorMsg);
+            Assert.False(state.IsError, FormatError(state));
 
             // Metrics=File with csv format writes a separate .metrics.csv file
-            var metricsFile = Path.ChangeExtension(outputFile, "metrics.csv");
-            tempFiles.Add(metricsFile);
             Assert.True(File.Exists(metricsFile), $"Expected metrics file at {metricsFile}");
 
             var metricsContent = await File.ReadAllTextAsync(metricsFile, TestContext.Current.CancellationToken);
@@ -176,7 +144,18 @@ public class QueryCommandTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncL
         }
         finally
         {
-            fixture.Shell.StdOutRedirect = null;
+            Shell.StdOutRedirect = null;
+            if (File.Exists(metricsFile))
+            {
+                try
+                {
+                    File.Delete(metricsFile);
+                }
+                catch
+                {
+                    // Best-effort cleanup
+                }
+            }
         }
     }
 
@@ -196,14 +175,14 @@ public class QueryCommandTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncL
         await ExecuteAsync("cd");
 
         var output = await ExecuteWithOutputAsync(
-            $"query \"SELECT * FROM c WHERE c.id = 'qtest-1'\" --database:{fixture.DatabaseName} --container:{fixture.ContainerName}");
+            $"query \"SELECT * FROM c WHERE c.id = 'qtest-1'\" --database:{Fixture.DatabaseName} --container:{Fixture.ContainerName}");
 
         var doc = JsonDocument.Parse(output);
         var items = doc.RootElement.GetProperty("items");
         Assert.Equal(1, items.GetArrayLength());
 
         // Navigate back for other tests
-        await ExecuteAsync($"cd {fixture.DatabaseName}/{fixture.ContainerName}");
+        await ExecuteAsync($"cd {Fixture.DatabaseName}/{Fixture.ContainerName}");
     }
 
     [Fact]
@@ -275,45 +254,5 @@ public class QueryCommandTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncL
         {
             shell.Dispose();
         }
-    }
-
-    private static string FormatError(CommandState state)
-    {
-        return state is ErrorCommandState err ? err.Exception.ToString() : "not an error";
-    }
-
-    private string CreateTempFile(string extension = ".json")
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"qtest-{Guid.NewGuid():N}{extension}");
-        tempFiles.Add(path);
-        return path;
-    }
-
-    /// <summary>
-    /// Executes a command with stdout redirected to a temp file and returns the file content.
-    /// The shell clears state.Result after printing, so we capture output via file redirect.
-    /// </summary>
-    private async Task<string> ExecuteWithOutputAsync(string command)
-    {
-        var outputFile = CreateTempFile();
-        fixture.Shell.StdOutRedirect = outputFile;
-        try
-        {
-            var state = await ExecuteAsync(command);
-            var errorMsg = FormatError(state);
-            Assert.False(state.IsError, errorMsg);
-
-            Assert.True(File.Exists(outputFile), $"Expected output file at {outputFile}");
-            return await File.ReadAllTextAsync(outputFile);
-        }
-        finally
-        {
-            fixture.Shell.StdOutRedirect = null;
-        }
-    }
-
-    private async Task<CommandState> ExecuteAsync(string command)
-    {
-        return await fixture.Shell.ExecuteCommandAsync(command, CancellationToken.None);
     }
 }

@@ -5,44 +5,34 @@
 namespace CosmosShell.Tests.Integration;
 
 using System.Text.Json;
-using System.Threading;
-
-using Azure.Data.Cosmos.Shell.Core;
 
 using Xunit;
-using Xunit.Sdk;
 
-[Trait("Category", "Emulator")]
-[Collection("Emulator")]
-public class AdditionalCommandsTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLifetime
+public class AdditionalCommandsTests : EmulatorFixtureTestBase
 {
-    private readonly EmulatorDatabaseFixture fixture;
     private readonly List<string> createdContainers = [];
 
     public AdditionalCommandsTests(EmulatorDatabaseFixture fixture)
+        : base(fixture)
     {
-        this.fixture = fixture;
     }
 
-    public async ValueTask InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
-        if (!fixture.IsAvailable)
-        {
-            throw SkipException.ForSkip("Cosmos DB emulator not available");
-        }
+        await base.InitializeAsync();
 
         await ExecuteAsync("cd");
-        await ExecuteAsync($"cd {fixture.DatabaseName}");
+        await ExecuteAsync($"cd {Fixture.DatabaseName}");
     }
 
-    public async ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         foreach (var name in createdContainers)
         {
             try
             {
                 await ExecuteAsync("cd");
-                await ExecuteAsync($"cd {fixture.DatabaseName}");
+                await ExecuteAsync($"cd {Fixture.DatabaseName}");
                 await ExecuteAsync($"rmcon {name} true");
             }
             catch
@@ -50,6 +40,8 @@ public class AdditionalCommandsTests : IClassFixture<EmulatorDatabaseFixture>, I
                 // Best-effort cleanup
             }
         }
+
+        await base.DisposeAsync();
     }
 
     [Fact]
@@ -62,7 +54,7 @@ public class AdditionalCommandsTests : IClassFixture<EmulatorDatabaseFixture>, I
         Assert.True(json.TryGetProperty("currentLocation", out var loc));
         var locStr = loc.GetString();
         Assert.False(string.IsNullOrEmpty(locStr));
-        Assert.Contains(fixture.DatabaseName, locStr);
+        Assert.Contains(Fixture.DatabaseName, locStr);
     }
 
     [Fact]
@@ -90,7 +82,7 @@ public class AdditionalCommandsTests : IClassFixture<EmulatorDatabaseFixture>, I
     [Fact]
     public async Task IndexPolicy_Read_ReturnsPolicyJson()
     {
-        await ExecuteAsync($"cd {fixture.ContainerName}");
+        await ExecuteAsync($"cd {Fixture.ContainerName}");
         var state = await ExecuteAsync("indexpolicy");
         Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
 
@@ -101,7 +93,7 @@ public class AdditionalCommandsTests : IClassFixture<EmulatorDatabaseFixture>, I
     [Fact]
     public async Task IndexPolicy_Write_UpdatesPolicy()
     {
-        await ExecuteAsync($"cd {fixture.ContainerName}");
+        await ExecuteAsync($"cd {Fixture.ContainerName}");
 
         var policy = "{\"indexingMode\":\"consistent\",\"automatic\":true,\"includedPaths\":[{\"path\":\"/*\"}],\"excludedPaths\":[{\"path\":\"/\\\"_etag\\\"/?\"}]}";
         var state = await ExecuteAsync($"indexpolicy '{policy}'");
@@ -114,7 +106,7 @@ public class AdditionalCommandsTests : IClassFixture<EmulatorDatabaseFixture>, I
     [Fact]
     public async Task IndexPolicy_InvalidJson_ReturnsError()
     {
-        await ExecuteAsync($"cd {fixture.ContainerName}");
+        await ExecuteAsync($"cd {Fixture.ContainerName}");
 
         var state = await ExecuteAsync("indexpolicy 'not json'");
         Assert.True(state.IsError);
@@ -130,19 +122,19 @@ public class AdditionalCommandsTests : IClassFixture<EmulatorDatabaseFixture>, I
     [Fact]
     public async Task Settings_AtContainerLevel_ReturnsContainerSettings()
     {
-        await ExecuteAsync($"cd {fixture.ContainerName}");
+        await ExecuteAsync($"cd {Fixture.ContainerName}");
 
         var state = await ExecuteAsync("settings");
         Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
 
         var json = IntegrationTestBase.GetJson(state);
-        Assert.Equal(fixture.ContainerName, json.GetProperty("id").GetString());
+        Assert.Equal(Fixture.ContainerName, json.GetProperty("id").GetString());
     }
 
     [Fact]
     public async Task Create_Item_AddsItemToContainer()
     {
-        await ExecuteAsync($"cd {fixture.ContainerName}");
+        await ExecuteAsync($"cd {Fixture.ContainerName}");
 
         var id = $"create-{Guid.NewGuid():N}";
         var payload = JsonSerializer.Serialize(new { id, name = "from-create" });
@@ -177,7 +169,7 @@ public class AdditionalCommandsTests : IClassFixture<EmulatorDatabaseFixture>, I
     [Fact]
     public async Task Delete_Item_RemovesItem()
     {
-        await ExecuteAsync($"cd {fixture.ContainerName}");
+        await ExecuteAsync($"cd {Fixture.ContainerName}");
 
         var id = $"del-{Guid.NewGuid():N}";
         var payload = JsonSerializer.Serialize(new { id, name = "to-delete" });
@@ -195,10 +187,5 @@ public class AdditionalCommandsTests : IClassFixture<EmulatorDatabaseFixture>, I
     {
         var state = await ExecuteAsync("delete widget foo");
         Assert.True(state.IsError);
-    }
-
-    private async Task<CommandState> ExecuteAsync(string command)
-    {
-        return await fixture.Shell.ExecuteCommandAsync(command, CancellationToken.None);
     }
 }
