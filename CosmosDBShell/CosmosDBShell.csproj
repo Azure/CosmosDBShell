@@ -15,7 +15,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <RootNamespace />
     <AssemblyName>CosmosDBShell</AssemblyName>
-    <Product>CosmosDBShell</Product>
+    <Product>Microsoft.CosmosDBShell</Product>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
 
     <!-- .NET Tool packaging -->
@@ -31,7 +31,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <PackageId>CosmosDBShell</PackageId>
+    <PackageId>Microsoft.CosmosDBShell</PackageId>
     <Authors>Microsoft</Authors>
     <Description>Interactive Cosmos DB Shell CLI with MCP tooling integration.</Description>
     <RepositoryUrl>https://msdata.visualstudio.com/CosmosDB/_git/CosmosDB-Shell</RepositoryUrl>
