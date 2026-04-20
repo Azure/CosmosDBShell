@@ -4,74 +4,23 @@
 
 namespace CosmosShell.Tests.Integration;
 
-using System.Threading;
-
-using Azure.Data.Cosmos.Shell.Core;
-using Azure.Data.Cosmos.Shell.Parser;
-using Azure.Data.Cosmos.Shell.Util;
-
 using Microsoft.Azure.Cosmos;
 
 using Xunit;
 
-[Trait("Category", "Emulator")]
-[Collection("Emulator")]
-public class ResourceManagementTests : IAsyncLifetime
+public class ResourceManagementTests : ConnectedEmulatorTestBase
 {
-    private ShellInterpreter shell = null!;
-    private CosmosClient? cosmosClient;
-    private readonly List<string> createdDatabases = [];
-
-    public async ValueTask InitializeAsync()
-    {
-        await EmulatorProbe.EnsureAvailableAsync();
-
-        shell = ShellInterpreter.CreateInstance();
-
-        var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(EmulatorTestBase.EmulatorEndpoint);
-        await shell.ConnectAsync(connectionString, null);
-
-        var options = new CosmosClientOptions
-        {
-            ConnectionMode = ConnectionMode.Gateway,
-            ServerCertificateCustomValidationCallback = (_, _, _) => true,
-        };
-        cosmosClient = new CosmosClient(connectionString, options);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (cosmosClient != null)
-        {
-            foreach (var db in createdDatabases)
-            {
-                try
-                {
-                    await cosmosClient.GetDatabase(db).DeleteAsync();
-                }
-                catch
-                {
-                    // Best-effort cleanup
-                }
-            }
-
-            cosmosClient.Dispose();
-        }
-
-        shell?.Dispose();
-    }
-
     [Fact]
     public async Task MkDb_CreatesDatabase_LsShowsIt()
     {
         var dbName = $"RmTest_{Guid.NewGuid():N}";
-        createdDatabases.Add(dbName);
+        CreatedDatabases.Add(dbName);
 
         var state = await ExecuteAsync($"mkdb {dbName}");
         Assert.False(state.IsError);
 
         // Verify via Cosmos SDK that the database exists
-        var dbResponse = await cosmosClient!.GetDatabase(dbName).ReadAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var dbResponse = await CosmosClient.GetDatabase(dbName).ReadAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.OK, dbResponse.StatusCode);
 
         // Verify via shell ls
@@ -83,7 +32,7 @@ public class ResourceManagementTests : IAsyncLifetime
     public async Task MkCon_CreatesContainer_LsShowsIt()
     {
         var dbName = $"RmTest_{Guid.NewGuid():N}";
-        createdDatabases.Add(dbName);
+        CreatedDatabases.Add(dbName);
 
         await ExecuteAsync($"mkdb {dbName}");
         await ExecuteAsync($"cd {dbName}");
@@ -92,7 +41,7 @@ public class ResourceManagementTests : IAsyncLifetime
         Assert.False(state.IsError);
 
         // Verify via Cosmos SDK that the container exists
-        var conResponse = await cosmosClient!.GetContainer(dbName, "TestCon").ReadContainerAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var conResponse = await CosmosClient.GetContainer(dbName, "TestCon").ReadContainerAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.OK, conResponse.StatusCode);
 
         // Verify via shell ls
@@ -104,19 +53,18 @@ public class ResourceManagementTests : IAsyncLifetime
     public async Task RmCon_RemovesContainer()
     {
         var dbName = $"RmTest_{Guid.NewGuid():N}";
-        createdDatabases.Add(dbName);
+        CreatedDatabases.Add(dbName);
 
         await ExecuteAsync($"mkdb {dbName}");
         await ExecuteAsync($"cd {dbName}");
         await ExecuteAsync("mkcon TempCon /id");
 
         var state = await ExecuteAsync("rmcon TempCon true");
-        var errorMsg1 = state is Azure.Data.Cosmos.Shell.Core.ErrorCommandState err1 ? err1.Exception.ToString() : "not an error";
-        Assert.False(state.IsError, errorMsg1);
+        Assert.False(state.IsError, FormatError(state));
 
         // Verify via Cosmos SDK that the container no longer exists
         var ex = await Assert.ThrowsAsync<CosmosException>(
-            () => cosmosClient!.GetContainer(dbName, "TempCon").ReadContainerAsync(cancellationToken: TestContext.Current.CancellationToken));
+            () => CosmosClient.GetContainer(dbName, "TempCon").ReadContainerAsync(cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(System.Net.HttpStatusCode.NotFound, ex.StatusCode);
     }
 
@@ -124,17 +72,16 @@ public class ResourceManagementTests : IAsyncLifetime
     public async Task RmDb_RemovesDatabase()
     {
         var dbName = $"RmTest_{Guid.NewGuid():N}";
-        // Don't add to createdDatabases since we're deleting it in the test
 
+        // Don't add to CreatedDatabases since we're deleting it in the test
         await ExecuteAsync($"mkdb {dbName}");
 
         var state = await ExecuteAsync($"rmdb {dbName} true");
-        var errorMsg2 = state is Azure.Data.Cosmos.Shell.Core.ErrorCommandState err2 ? err2.Exception.ToString() : "not an error";
-        Assert.False(state.IsError, errorMsg2);
+        Assert.False(state.IsError, FormatError(state));
 
         // Verify via Cosmos SDK that the database no longer exists
         var ex = await Assert.ThrowsAsync<CosmosException>(
-            () => cosmosClient!.GetDatabase(dbName).ReadAsync(cancellationToken: TestContext.Current.CancellationToken));
+            () => CosmosClient.GetDatabase(dbName).ReadAsync(cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(System.Net.HttpStatusCode.NotFound, ex.StatusCode);
     }
 
@@ -150,7 +97,7 @@ public class ResourceManagementTests : IAsyncLifetime
     public async Task MkCon_InvalidPartitionKey_ReturnsError()
     {
         var dbName = $"RmTest_{Guid.NewGuid():N}";
-        createdDatabases.Add(dbName);
+        CreatedDatabases.Add(dbName);
 
         await ExecuteAsync($"mkdb {dbName}");
         await ExecuteAsync($"cd {dbName}");
@@ -164,12 +111,12 @@ public class ResourceManagementTests : IAsyncLifetime
     public async Task Create_Database_CreatesDatabase()
     {
         var dbName = $"RmTest_{Guid.NewGuid():N}";
-        createdDatabases.Add(dbName);
+        CreatedDatabases.Add(dbName);
 
         var state = await ExecuteAsync($"create database {dbName}");
         Assert.False(state.IsError);
 
-        var dbResponse = await cosmosClient!.GetDatabase(dbName).ReadAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var dbResponse = await CosmosClient.GetDatabase(dbName).ReadAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.OK, dbResponse.StatusCode);
     }
 
@@ -178,10 +125,5 @@ public class ResourceManagementTests : IAsyncLifetime
     {
         var state = await ExecuteAsync("create database");
         Assert.True(state.IsError);
-    }
-
-    private async Task<CommandState> ExecuteAsync(string command)
-    {
-        return await shell.ExecuteCommandAsync(command, CancellationToken.None);
     }
 }

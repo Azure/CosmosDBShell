@@ -5,70 +5,16 @@
 namespace CosmosShell.Tests.Integration;
 
 using System.Text.Json;
-using System.Threading;
-
-using Azure.Data.Cosmos.Shell.Core;
-using Azure.Data.Cosmos.Shell.Parser;
-using Azure.Data.Cosmos.Shell.Util;
-
-using Microsoft.Azure.Cosmos;
 
 using Xunit;
 
-[Trait("Category", "Emulator")]
-[Collection("Emulator")]
-public class EndToEndScriptTests : IAsyncLifetime
+public class EndToEndScriptTests : ConnectedEmulatorTestBase
 {
-    private ShellInterpreter shell = null!;
-    private CosmosClient? cosmosClient;
-    private readonly List<string> createdDatabases = [];
-
-    public async ValueTask InitializeAsync()
-    {
-        await EmulatorProbe.EnsureAvailableAsync();
-
-        shell = ShellInterpreter.CreateInstance();
-
-        var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(EmulatorTestBase.EmulatorEndpoint);
-        var options = new CosmosClientOptions
-        {
-            ConnectionMode = ConnectionMode.Gateway,
-            ServerCertificateCustomValidationCallback = (_, _, _) => true,
-        };
-        cosmosClient = new CosmosClient(connectionString, options);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (cosmosClient != null)
-        {
-            foreach (var db in createdDatabases)
-            {
-                try
-                {
-                    await cosmosClient.GetDatabase(db).DeleteAsync();
-                }
-                catch
-                {
-                    // Best-effort cleanup
-                }
-            }
-
-            cosmosClient.Dispose();
-        }
-
-        shell?.Dispose();
-    }
-
     [Fact]
     public async Task Script_CreateDbContainerAndInsertItems()
     {
         var dbName = $"E2E_{Guid.NewGuid():N}";
-        createdDatabases.Add(dbName);
-
-        // Connect via SDK API
-        var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(EmulatorTestBase.EmulatorEndpoint);
-        await shell.ConnectAsync(connectionString, null);
+        CreatedDatabases.Add(dbName);
 
         var script = $"""
             mkdb {dbName}
@@ -82,20 +28,15 @@ public class EndToEndScriptTests : IAsyncLifetime
             """;
 
         var state = await ExecuteAsync(script);
-        Assert.False(state.IsError);
+        Assert.False(state.IsError, FormatError(state));
     }
 
     [Fact]
     public async Task Script_NavigateAndQuery()
     {
         var dbName = $"E2E_{Guid.NewGuid():N}";
-        createdDatabases.Add(dbName);
+        CreatedDatabases.Add(dbName);
 
-        // Connect via SDK API
-        var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(EmulatorTestBase.EmulatorEndpoint);
-        await shell.ConnectAsync(connectionString, null);
-
-        // Setup
         var setupScript = $"""
             mkdb {dbName}
             cd {dbName}
@@ -106,16 +47,9 @@ public class EndToEndScriptTests : IAsyncLifetime
             """;
 
         var setupState = await ExecuteAsync(setupScript);
-        Assert.False(setupState.IsError);
+        Assert.False(setupState.IsError, FormatError(setupState));
 
-        // Query
         var queryState = await ExecuteAsync("query \"SELECT * FROM c WHERE c.val > 5\"");
-        var errorMsg = queryState is Azure.Data.Cosmos.Shell.Core.ErrorCommandState err ? err.Exception.ToString() : "not an error";
-        Assert.False(queryState.IsError, errorMsg);
-    }
-
-    private async Task<CommandState> ExecuteAsync(string command)
-    {
-        return await shell.ExecuteCommandAsync(command, CancellationToken.None);
+        Assert.False(queryState.IsError, FormatError(queryState));
     }
 }

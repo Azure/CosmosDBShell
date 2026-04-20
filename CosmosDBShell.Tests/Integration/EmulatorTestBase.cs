@@ -14,12 +14,12 @@ public abstract class EmulatorTestBase : IntegrationTestBase, IAsyncLifetime
 {
     internal const string EmulatorEndpoint = "https://localhost:8081";
 
-    public async ValueTask InitializeAsync()
+    public virtual async ValueTask InitializeAsync()
     {
         await EmulatorProbe.EnsureAvailableAsync();
     }
 
-    public ValueTask DisposeAsync()
+    public virtual ValueTask DisposeAsync()
     {
         return ValueTask.CompletedTask;
     }
