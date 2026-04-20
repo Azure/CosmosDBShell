@@ -154,6 +154,7 @@ extends:
                   command: "custom"
                   projects: $(BuildSolution)
                   custom: "restore"
+                  arguments: "--configfile $(Build.SourcesDirectory)\\.pipelines\\nuget.config"
 
               - task: ComponentGovernanceComponentDetection@0
                 displayName: "Component Governance - Component Detection"
@@ -186,7 +187,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r win-x64 --output $(Build.SourcesDirectory)\out\win-x64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion)'
+                  arguments: '--configuration $(BuildConfiguration) -r win-x64 --output $(Build.SourcesDirectory)\out\win-x64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -195,7 +196,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r osx-x64 --output $(Build.SourcesDirectory)\out\osx-x64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion)'
+                  arguments: '--configuration $(BuildConfiguration) -r osx-x64 --output $(Build.SourcesDirectory)\out\osx-x64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -204,7 +205,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r linux-x64 --output $(Build.SourcesDirectory)\out\linux-x64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion)'
+                  arguments: '--configuration $(BuildConfiguration) -r linux-x64 --output $(Build.SourcesDirectory)\out\linux-x64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -213,7 +214,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r linux-arm64 --output $(Build.SourcesDirectory)\out\linux-arm64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion)'
+                  arguments: '--configuration $(BuildConfiguration) -r linux-arm64 --output $(Build.SourcesDirectory)\out\linux-arm64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -222,7 +223,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r osx-arm64 --output $(Build.SourcesDirectory)\out\osx-arm64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion)'
+                  arguments: '--configuration $(BuildConfiguration) -r osx-arm64 --output $(Build.SourcesDirectory)\out\osx-arm64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               # Kept for reference, intentionally disabled:
@@ -577,7 +578,7 @@ extends:
                 inputs:
                   languages: "csharp"
               - script: |
-                  dotnet restore CosmosDBShell.sln
+                  dotnet restore CosmosDBShell.sln --configfile .pipelines/nuget.config
                   dotnet build CosmosDBShell.sln -c Release --no-incremental
                 displayName: Build for CodeQL
               - task: CodeQL3000Finalize@0

@@ -48,13 +48,18 @@ error-shell-not-initialized = Shell is not initialized
 error-unable_to_read_container = Unable to read container.
 
 help-usage = Usage: { $command }
+help-usage-heading = Usage
 help-arg = <ARG>
 help-arguments = Arguments:
+help-arguments-heading = Arguments
 help-optional = (Optional)
 help-options = Options:
+help-options-heading = Options
 help-description-not-found = description not found.
 help-commands = Commands:
 help-examples = Examples:
+help-examples-heading = Examples
+help-aliases = Aliases:
 
 command-help-description = Shows help information for commands
 command-help-description-command = The specific command to get help for
@@ -133,7 +138,8 @@ command-print-description-key = The Partition Key of the item to print
 command-print-description-format = Output format (json, table)
 command-print-description-database = The database containing the item to print
 command-print-description-container = The container containing the item to print
-command-print-error-item_not_found = Item not found. Status: { $status }
+command-print-error-item_not_found = Item with id '{ $id }' not found using partition key '{ $partitionKey }'. Verify the partition key value is correct.
+command-print-error-request_failed = Request failed for item '{ $id }'. (HTTP { $status })
 command-print-error-reading_item = Error reading item: { $message }
 
 command-mkitem-description = Creates items in container
@@ -205,6 +211,8 @@ command-ftab-description-take = Limit the number of rendered rows (Optional)
 command-ftab-description-sort = Sort rows by a field before rendering. Use field or field:asc|desc (Optional)
 command-ftab-description-colorize = Colorize terminal cells using field:value:style rules separated by ';' (Optional)
 command-ftab-description-format = Output format: default, markdown, or html (Optional)
+
+command-cls-description = Clears the console screen.
 
 command-exit-description = Exits cosmos db shell.
 

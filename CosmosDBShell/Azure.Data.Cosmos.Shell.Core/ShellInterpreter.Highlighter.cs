@@ -260,12 +260,18 @@ public partial class ShellInterpreter : IHighlighter
 
         public void Visit(UnaryOperatorExpression unaryOperatorExpression)
         {
+            this.AppendUpTo(unaryOperatorExpression.OperatorToken.Start);
+            this.result.Append(Theme.FormatOperator(unaryOperatorExpression.OperatorToken.Value));
+            this.currentPosition = unaryOperatorExpression.OperatorToken.End;
             unaryOperatorExpression.Expression.Accept(this);
         }
 
         public void Visit(BinaryOperatorExpression binaryOperatorExpression)
         {
             binaryOperatorExpression.Left.Accept(this);
+            this.AppendUpTo(binaryOperatorExpression.OperatorToken.Start);
+            this.result.Append(Theme.FormatOperator(binaryOperatorExpression.OperatorToken.Value));
+            this.currentPosition = binaryOperatorExpression.OperatorToken.End;
             binaryOperatorExpression.Right.Accept(this);
         }
 
@@ -484,6 +490,9 @@ public partial class ShellInterpreter : IHighlighter
         public void Visit(AssignmentStatement assignmentStatement)
         {
             assignmentStatement.Variable.Accept(this);
+            this.AppendUpTo(assignmentStatement.AssignmentToken.Start);
+            this.result.Append(Theme.FormatOperator(assignmentStatement.AssignmentToken.Value));
+            this.currentPosition = assignmentStatement.AssignmentToken.End;
             assignmentStatement.Value.Accept(this);
         }
 

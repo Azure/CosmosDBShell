@@ -258,8 +258,16 @@ internal class CommandStatement : Statement
                 }
                 else
                 {
-                    // Assign as string; caller can convert later if needed.
-                    pi.SetValue(cmd, stringValue);
+                    // Convert string to target type (e.g., int, int?, etc.)
+                    try
+                    {
+                        var convertedValue = Convert.ChangeType(stringValue, targetType);
+                        pi.SetValue(cmd, convertedValue);
+                    }
+                    catch (Exception ex) when (ex is FormatException or OverflowException or InvalidCastException)
+                    {
+                        throw new CommandException(this.Name, $"Invalid value '{stringValue}' for option '{rawName}'. Expected a value of type '{targetType.Name}'.", ex);
+                    }
                 }
             }
             else
