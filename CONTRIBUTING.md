@@ -20,9 +20,12 @@ There are several ways you can contribute to the CosmosDBShell project:
   - **Prerequisites**: [.NET SDK 10.0+](https://dotnet.microsoft.com/download)
   - Clone the repository and open it in VS Code or your preferred IDE.
   - Restore dependencies: `dotnet restore CosmosDBShell.sln`
-  - Build: `dotnet build CosmosDBShell.sln` (or press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> in VS Code).
+  - Build: `dotnet build CosmosDBShell.sln` (or use the VS Code build task with Ctrl+Shift+B).
   - Run tests: `dotnet test CosmosDBShell.sln`
   - Run the tool locally: `dotnet run --project CosmosDBShell/CosmosDBShell.csproj`
+  - GitHub Actions runs CI and uploads NuGet package artifacts from [.github/workflows/validate-and-package.yml](.github/workflows/validate-and-package.yml).
+  - Local builds and GitHub Actions use the default NuGet sources (nuget.org). The Azure DevOps pipeline uses [.pipelines/nuget.config](.pipelines/nuget.config) to restrict restores to the internal feed.
+  - Azure Pipelines runs from [.pipelines/CosmosDB-Shell-Official.yml](.pipelines/CosmosDB-Shell-Official.yml) for signed builds and publishing from the `main` branch (and any manual runs configured there).
 
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)

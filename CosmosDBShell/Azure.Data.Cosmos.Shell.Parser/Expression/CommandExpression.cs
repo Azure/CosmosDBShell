@@ -255,7 +255,9 @@ internal class CommandExpression : Expression
                 }
                 else
                 {
-                    pi.SetValue(cmd, stringValue);
+                    // Convert string to target type (e.g., int, int?, etc.)
+                    var convertedValue = Convert.ChangeType(stringValue, targetType);
+                    pi.SetValue(cmd, convertedValue);
                 }
             }
             else

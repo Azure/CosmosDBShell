@@ -91,4 +91,9 @@ internal static class Theme
     {
         return $"[red]{Markup.Escape(value)}[/]";
     }
+
+    internal static string FormatOperator(string value)
+    {
+        return $"[deepskyblue1]{Markup.Escape(value)}[/]";
+    }
 }
