@@ -114,49 +114,6 @@ internal class QueryCommand : CosmosCommand
         return pageDocuments.GetArrayLength() > remainingCapacity;
     }
 
-    private static void AddIndexTable(Table table, string title, JsonElement? jToken)
-    {
-        if (jToken == null || jToken.Value.ValueKind == JsonValueKind.Null || jToken.Value.ValueKind == JsonValueKind.Undefined)
-        {
-            table.AddRow($"[white]{title}[/]", $"[white]-[/]", $"[white]-[/]");
-            return;
-        }
-
-        if (jToken.Value.ValueKind == JsonValueKind.Array)
-        {
-            var arr = jToken.Value.EnumerateArray().ToList();
-            if (arr.Count == 0)
-            {
-                table.AddRow($"[white]{title}[/]", $"[white]-[/]", $"[white]-[/]");
-                return;
-            }
-
-            var i = 0;
-            while (i < arr.Count)
-            {
-                string col1 = arr[i].ToString();
-                i += 1;
-                string col2;
-                if (i < arr.Count)
-                {
-                    col2 = arr[i].ToString();
-                }
-                else
-                {
-                    col2 = "-";
-                }
-
-                i += 1;
-                table.AddRow($"[white]{title}[/]", $"[white]{col1}[/]", $"[white]{col2}[/]");
-            }
-        }
-    }
-
-    private static void GeneratePlainResultDocument(CommandState returnState, IEnumerable<JsonElement> documents)
-    {
-        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = documents.ToList() }));
-    }
-
     internal static List<Dictionary<string, object>> GetMetrics(ResponseMessage msg)
     {
         var queryMetrics = msg.Diagnostics.GetQueryMetrics();
@@ -270,6 +227,49 @@ internal class QueryCommand : CosmosCommand
                 { "tooltip", "The total query time in the Azure Cosmos database service." },
             },
         ];
+    }
+
+    private static void AddIndexTable(Table table, string title, JsonElement? jToken)
+    {
+        if (jToken == null || jToken.Value.ValueKind == JsonValueKind.Null || jToken.Value.ValueKind == JsonValueKind.Undefined)
+        {
+            table.AddRow($"[white]{title}[/]", $"[white]-[/]", $"[white]-[/]");
+            return;
+        }
+
+        if (jToken.Value.ValueKind == JsonValueKind.Array)
+        {
+            var arr = jToken.Value.EnumerateArray().ToList();
+            if (arr.Count == 0)
+            {
+                table.AddRow($"[white]{title}[/]", $"[white]-[/]", $"[white]-[/]");
+                return;
+            }
+
+            var i = 0;
+            while (i < arr.Count)
+            {
+                string col1 = arr[i].ToString();
+                i += 1;
+                string col2;
+                if (i < arr.Count)
+                {
+                    col2 = arr[i].ToString();
+                }
+                else
+                {
+                    col2 = "-";
+                }
+
+                i += 1;
+                table.AddRow($"[white]{title}[/]", $"[white]{col1}[/]", $"[white]{col2}[/]");
+            }
+        }
+    }
+
+    private static void GeneratePlainResultDocument(CommandState returnState, IEnumerable<JsonElement> documents)
+    {
+        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = documents.ToList() }));
     }
 
     private async Task<CommandState> ExecuteQueryAsync(Container container, ShellInterpreter shell, CancellationToken token)

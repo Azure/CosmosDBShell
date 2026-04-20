@@ -70,13 +70,14 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
 
             if (database.Id == this.Name)
             {
-                    var db = client.GetDatabase(this.Name);
-                    if (this.Force is true || ShellInterpreter.Confirm("command-rmdb-confirm_db_deletion"))
+                var db = client.GetDatabase(this.Name);
+                if (this.Force is true || ShellInterpreter.Confirm("command-rmdb-confirm_db_deletion"))
                 {
                     await db.DeleteAsync(cancellationToken: token);
                     UpdateStateAfterDelete(shell, client, database.Id);
                     CosmosCompleteCommand.ClearDatabases();
-                        AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", new Dictionary<string, object> { { "db", database.Id } }));
+                    var messageArguments = new Dictionary<string, object> { { "db", database.Id } };
+                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", messageArguments));
                 }
 
                 return 0;

@@ -4,6 +4,7 @@
 
 namespace CosmosShell.Tests.Integration;
 
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -24,6 +25,31 @@ public abstract class IntegrationTestBase : IDisposable
     internal async Task<CommandState> RunScriptAsync(string script)
     {
         return await Shell.ExecuteCommandAsync(script, CancellationToken.None);
+    }
+
+    internal static JsonElement GetJson(CommandState state)
+    {
+        return Assert.IsType<ShellJson>(state.Result).Value;
+    }
+
+    internal static string GetText(CommandState state)
+    {
+        return Assert.IsType<ShellText>(state.Result).Text;
+    }
+
+    internal static string GetErrorMessage(CommandState state)
+    {
+        return Assert.IsType<ErrorCommandState>(state).Exception.Message;
+    }
+
+    internal static string FormatError(CommandState state)
+    {
+        return state is ErrorCommandState err ? err.Exception.ToString() : "not an error";
+    }
+
+    internal static async Task<string> ReadRedirectAsync(string outputFile)
+    {
+        return await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
     }
 
     internal string CaptureOutputFile()

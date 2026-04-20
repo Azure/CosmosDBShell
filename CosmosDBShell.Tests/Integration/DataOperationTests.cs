@@ -46,10 +46,19 @@ public class DataOperationTests : IClassFixture<EmulatorDatabaseFixture>, IAsync
         var id = $"item-{Guid.NewGuid():N}";
         var json = JsonSerializer.Serialize(new { id, name = "test-item" });
         var state = await ExecuteAsync($"mkitem '{json}'");
-        Assert.False(state.IsError);
+        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
+
+        var mkItemJson = IntegrationTestBase.GetJson(state);
+        Assert.Equal("success", mkItemJson.GetProperty("result").GetString());
 
         var lsState = await ExecuteAsync("ls");
-        Assert.False(lsState.IsError);
+        Assert.False(lsState.IsError, IntegrationTestBase.FormatError(lsState));
+
+        var lsJson = IntegrationTestBase.GetJson(lsState);
+        var items = lsJson.GetProperty("items");
+        Assert.Contains(items.EnumerateArray(), item =>
+            item.GetProperty("id").GetString() == id &&
+            item.GetProperty("name").GetString() == "test-item");
     }
 
     [Fact]
@@ -60,8 +69,13 @@ public class DataOperationTests : IClassFixture<EmulatorDatabaseFixture>, IAsync
         await ExecuteAsync($"mkitem '{json}'");
 
         var state = await ExecuteAsync($"query \"SELECT * FROM c WHERE c.id = '{id}'\"");
-        var errorMsg = state is Azure.Data.Cosmos.Shell.Core.ErrorCommandState err ? err.Exception.ToString() : "not an error";
-        Assert.False(state.IsError, errorMsg);
+        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
+
+        var queryJson = IntegrationTestBase.GetJson(state);
+        var items = queryJson.GetProperty("items");
+        Assert.Equal(1, items.GetArrayLength());
+        Assert.Equal(id, items[0].GetProperty("id").GetString());
+        Assert.Equal("for-query", items[0].GetProperty("name").GetString());
     }
 
     [Fact]
@@ -72,7 +86,11 @@ public class DataOperationTests : IClassFixture<EmulatorDatabaseFixture>, IAsync
         await ExecuteAsync($"mkitem '{json}'");
 
         var state = await ExecuteAsync($"print {id} {id}");
-        Assert.False(state.IsError);
+        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
+
+        var printedItem = IntegrationTestBase.GetJson(state);
+        Assert.Equal(id, printedItem.GetProperty("id").GetString());
+        Assert.Equal("for-print", printedItem.GetProperty("name").GetString());
     }
 
     [Fact]
@@ -83,7 +101,14 @@ public class DataOperationTests : IClassFixture<EmulatorDatabaseFixture>, IAsync
         await ExecuteAsync($"mkitem '{json}'");
 
         var state = await ExecuteAsync($"rm \"{id}\"");
-        Assert.False(state.IsError);
+        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
+
+        var lsState = await ExecuteAsync("ls");
+        Assert.False(lsState.IsError, IntegrationTestBase.FormatError(lsState));
+
+        var lsJson = IntegrationTestBase.GetJson(lsState);
+        var items = lsJson.GetProperty("items");
+        Assert.DoesNotContain(items.EnumerateArray(), item => item.GetProperty("id").GetString() == id);
     }
 
     private async Task<CommandState> ExecuteAsync(string command)

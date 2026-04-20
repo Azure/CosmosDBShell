@@ -4,6 +4,9 @@
 
 namespace CosmosShell.Tests.Integration;
 
+using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.States;
+
 using Xunit;
 
 [Trait("Category", "Emulator")]
@@ -14,18 +17,23 @@ public class ConnectionTests : EmulatorTestBase
     public async Task Connect_ToEmulator_Succeeds()
     {
         await ConnectToEmulatorAsync();
-        // If we get here without exception, the connection succeeded
+
+        Assert.IsType<ConnectedState>(Shell.State);
     }
 
     [Fact]
-    public async Task Connect_NoArgsWhenConnected_Behavior()
+    public async Task Connect_NoArgsWhenConnected_ReturnsConnectionInfoJson()
     {
         await ConnectToEmulatorAsync();
         var state = await RunScriptAsync("connect");
 
-        // connect with no args when already connected shows connection info or errors —
-        // either way it should not crash
-        Assert.NotNull(state);
+        Assert.False(state.IsError);
+
+        var json = GetJson(state);
+        Assert.True(json.GetProperty("connected").GetBoolean());
+        Assert.Equal("/", json.GetProperty("currentLocation").GetString());
+        Assert.Contains("localhost", json.GetProperty("endpoint").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.False(string.IsNullOrWhiteSpace(json.GetProperty("accountId").GetString()));
     }
 
     [Fact]
@@ -36,8 +44,14 @@ public class ConnectionTests : EmulatorTestBase
 
         Assert.False(state.IsError);
 
+        var json = GetJson(state);
+        Assert.True(json.GetProperty("disconnected").GetBoolean());
+        Assert.Contains("localhost", json.GetProperty("endpoint").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.IsType<DisconnectedState>(Shell.State);
+
         // After disconnect, ls should fail (not connected)
         var lsState = await RunScriptAsync("ls");
         Assert.True(lsState.IsError);
+        Assert.Contains("not connected", GetErrorMessage(lsState), StringComparison.OrdinalIgnoreCase);
     }
 }
