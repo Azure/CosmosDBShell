@@ -84,13 +84,7 @@ public class NavigationTests : EmulatorFixtureTestBase
 
     private async Task NavigateToRootAsync()
     {
-        try
-        {
-            await ExecuteAsync("cd");
-        }
-        catch
-        {
-            // Best effort
-        }
+        var state = await ExecuteAsync("cd");
+        Assert.False(state.IsError, FormatError(state));
     }
 }

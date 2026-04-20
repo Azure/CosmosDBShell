@@ -4,13 +4,14 @@
 
 namespace CosmosShell.Tests.Integration;
 
-using System.Threading;
 using System.Threading.Tasks;
 
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Util;
 
 using Microsoft.Azure.Cosmos;
+
+using Xunit;
 
 /// <summary>
 /// Base class for emulator integration tests that need a shell connected to the local emulator
@@ -73,6 +74,6 @@ public abstract class ConnectedEmulatorTestBase : EmulatorTestBase
 
     internal Task<CommandState> ExecuteAsync(string command)
     {
-        return Shell.ExecuteCommandAsync(command, CancellationToken.None);
+        return Shell.ExecuteCommandAsync(command, TestContext.Current.CancellationToken);
     }
 }

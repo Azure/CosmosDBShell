@@ -4,7 +4,6 @@
 
 namespace CosmosShell.Tests.Integration;
 
-using System.Threading;
 using System.Threading.Tasks;
 
 using Azure.Data.Cosmos.Shell.Core;
@@ -64,7 +63,7 @@ public abstract class EmulatorFixtureTestBase : IClassFixture<EmulatorDatabaseFi
 
     internal Task<CommandState> ExecuteAsync(string command)
     {
-        return Shell.ExecuteCommandAsync(command, CancellationToken.None);
+        return Shell.ExecuteCommandAsync(command, TestContext.Current.CancellationToken);
     }
 
     /// <summary>
