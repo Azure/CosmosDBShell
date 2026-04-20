@@ -4,11 +4,9 @@
 
 namespace CosmosShell.Tests.Integration;
 
-using System.Net.Http;
 using System.Threading.Tasks;
 
 using Xunit;
-using Xunit.Sdk;
 
 [Trait("Category", "Emulator")]
 [Collection("Emulator")]
@@ -16,19 +14,9 @@ public abstract class EmulatorTestBase : IntegrationTestBase, IAsyncLifetime
 {
     internal const string EmulatorEndpoint = "https://localhost:8081";
 
-    private static bool? emulatorAvailable;
-
     public async ValueTask InitializeAsync()
     {
-        if (emulatorAvailable == null)
-        {
-            emulatorAvailable = await ProbeEmulatorAsync();
-        }
-
-        if (!emulatorAvailable.Value)
-        {
-            throw SkipException.ForSkip("Cosmos DB emulator not available");
-        }
+        await EmulatorProbe.EnsureAvailableAsync();
     }
 
     public ValueTask DisposeAsync()
@@ -40,30 +28,5 @@ public abstract class EmulatorTestBase : IntegrationTestBase, IAsyncLifetime
     {
         var connectionString = Azure.Data.Cosmos.Shell.Util.ParsedDocDBConnectionString.BuildEmulatorConnectionString(EmulatorEndpoint);
         await Shell.ConnectAsync(connectionString, null);
-    }
-
-    private static async Task<bool> ProbeEmulatorAsync()
-    {
-        var envVar = Environment.GetEnvironmentVariable("COSMOS_EMULATOR_AVAILABLE");
-        if (string.Equals(envVar, "true", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        try
-        {
-            using var handler = new HttpClientHandler();
-            handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
-
-            using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
-            // The emulator returns 401 Unauthorized for unauthenticated GETs on "/",
-            // which is still a clear signal that it is reachable.
-            using var response = await client.GetAsync(new Uri($"{EmulatorEndpoint}/"));
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
     }
 }

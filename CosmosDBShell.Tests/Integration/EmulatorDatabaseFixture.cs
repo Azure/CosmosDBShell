@@ -4,7 +4,6 @@
 
 namespace CosmosShell.Tests.Integration;
 
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -29,24 +28,11 @@ public class EmulatorDatabaseFixture : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        var envVar = Environment.GetEnvironmentVariable("COSMOS_EMULATOR_AVAILABLE");
-        bool available;
-        if (string.Equals(envVar, "true", StringComparison.OrdinalIgnoreCase))
+        IsAvailable = await EmulatorProbe.IsAvailableAsync();
+        if (!IsAvailable)
         {
-            available = true;
-        }
-        else
-        {
-            available = await ProbeEmulatorAsync();
-        }
-
-        if (!available)
-        {
-            IsAvailable = false;
             return;
         }
-
-        IsAvailable = true;
 
         Shell = ShellInterpreter.CreateInstance();
         DatabaseName = $"IntTest_{Guid.NewGuid():N}";
@@ -87,24 +73,5 @@ public class EmulatorDatabaseFixture : IAsyncLifetime
         }
 
         Shell?.Dispose();
-    }
-
-    private static async Task<bool> ProbeEmulatorAsync()
-    {
-        try
-        {
-            using var handler = new HttpClientHandler();
-            handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
-
-            using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
-            // The emulator returns 401 Unauthorized for unauthenticated GETs on "/",
-            // which is still a clear signal that it is reachable.
-            using var response = await client.GetAsync(new Uri($"{EmulatorTestBase.EmulatorEndpoint}/"));
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
     }
 }

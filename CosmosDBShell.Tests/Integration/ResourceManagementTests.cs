@@ -4,7 +4,6 @@
 
 namespace CosmosShell.Tests.Integration;
 
-using System.Net.Http;
 using System.Threading;
 
 using Azure.Data.Cosmos.Shell.Core;
@@ -14,7 +13,6 @@ using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 
 using Xunit;
-using Xunit.Sdk;
 
 [Trait("Category", "Emulator")]
 [Collection("Emulator")]
@@ -26,21 +24,7 @@ public class ResourceManagementTests : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        var envVar = Environment.GetEnvironmentVariable("COSMOS_EMULATOR_AVAILABLE");
-        bool available;
-        if (string.Equals(envVar, "true", StringComparison.OrdinalIgnoreCase))
-        {
-            available = true;
-        }
-        else
-        {
-            available = await ProbeEmulatorAsync();
-        }
-
-        if (!available)
-        {
-            throw SkipException.ForSkip("Cosmos DB emulator not available");
-        }
+        await EmulatorProbe.EnsureAvailableAsync();
 
         shell = ShellInterpreter.CreateInstance();
 
@@ -199,24 +183,5 @@ public class ResourceManagementTests : IAsyncLifetime
     private async Task<CommandState> ExecuteAsync(string command)
     {
         return await shell.ExecuteCommandAsync(command, CancellationToken.None);
-    }
-
-    private static async Task<bool> ProbeEmulatorAsync()
-    {
-        try
-        {
-            using var handler = new HttpClientHandler();
-            handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
-
-            using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
-            // The emulator returns 401 Unauthorized for unauthenticated GETs on "/",
-            // which is still a clear signal that it is reachable.
-            using var response = await client.GetAsync(new Uri($"{EmulatorTestBase.EmulatorEndpoint}/"));
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
     }
 }
