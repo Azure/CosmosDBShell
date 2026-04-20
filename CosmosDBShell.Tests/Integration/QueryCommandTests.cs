@@ -13,6 +13,8 @@ using Xunit;
 
 public class QueryCommandTests : EmulatorFixtureTestBase
 {
+    private readonly string seedPrefix = $"qtest-{Guid.NewGuid():N}";
+
     public QueryCommandTests(EmulatorDatabaseFixture fixture)
         : base(fixture)
     {
@@ -31,19 +33,21 @@ public class QueryCommandTests : EmulatorFixtureTestBase
         {
             var json = JsonSerializer.Serialize(new
             {
-                id = $"qtest-{i}",
+                id = this.GetSeedItemId(i),
                 name = $"item-{i}",
                 category = i <= 3 ? "alpha" : "beta",
                 score = i * 10,
             });
-            await ExecuteAsync($"mkitem '{json}'");
+
+            var state = await ExecuteAsync($"mkitem '{json}'");
+            Assert.False(state.IsError, FormatError(state));
         }
     }
 
     [Fact]
     public async Task Query_SelectAll_ReturnsResults()
     {
-        var output = await ExecuteWithOutputAsync("query \"SELECT * FROM c WHERE STARTSWITH(c.id, 'qtest-')\"");
+        var output = await ExecuteWithOutputAsync($"query \"SELECT * FROM c WHERE STARTSWITH(c.id, '{this.seedPrefix}-')\"");
 
         var doc = JsonDocument.Parse(output);
         var items = doc.RootElement.GetProperty("items");
@@ -53,7 +57,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
     [Fact]
     public async Task Query_WithFilter_ReturnsFilteredResults()
     {
-        var output = await ExecuteWithOutputAsync("query \"SELECT * FROM c WHERE c.category = 'alpha' AND STARTSWITH(c.id, 'qtest-')\"");
+        var output = await ExecuteWithOutputAsync($"query \"SELECT * FROM c WHERE c.category = 'alpha' AND STARTSWITH(c.id, '{this.seedPrefix}-')\"");
 
         var doc = JsonDocument.Parse(output);
         var items = doc.RootElement.GetProperty("items");
@@ -63,21 +67,21 @@ public class QueryCommandTests : EmulatorFixtureTestBase
     [Fact]
     public async Task Query_SelectSpecificFields_ReturnsProjection()
     {
-        var output = await ExecuteWithOutputAsync("query \"SELECT c.id, c.name FROM c WHERE c.id = 'qtest-1'\"");
+        var output = await ExecuteWithOutputAsync($"query \"SELECT c.id, c.name FROM c WHERE c.id = '{this.GetSeedItemId(1)}'\"");
 
         var doc = JsonDocument.Parse(output);
         var items = doc.RootElement.GetProperty("items");
         Assert.Equal(1, items.GetArrayLength());
 
         var item = items[0];
-        Assert.Equal("qtest-1", item.GetProperty("id").GetString());
+        Assert.Equal(this.GetSeedItemId(1), item.GetProperty("id").GetString());
         Assert.Equal("item-1", item.GetProperty("name").GetString());
     }
 
     [Fact]
     public async Task Query_MaxOption_LimitsResults()
     {
-        var output = await ExecuteWithOutputAsync("query \"SELECT * FROM c WHERE STARTSWITH(c.id, 'qtest-')\" -max 2");
+        var output = await ExecuteWithOutputAsync($"query \"SELECT * FROM c WHERE STARTSWITH(c.id, '{this.seedPrefix}-')\" -max 2");
 
         var doc = JsonDocument.Parse(output);
         var items = doc.RootElement.GetProperty("items");
@@ -87,19 +91,19 @@ public class QueryCommandTests : EmulatorFixtureTestBase
     [Fact]
     public async Task Query_MetricsDisplay_ReturnsItemsAndRendersMetrics()
     {
-        var output = await ExecuteWithOutputAsync("query \"SELECT * FROM c WHERE c.id = 'qtest-1'\" -metrics:Display");
+        var output = await ExecuteWithOutputAsync($"query \"SELECT * FROM c WHERE c.id = '{this.GetSeedItemId(1)}'\" -metrics:Display");
 
         // Metrics=Display puts plain items in the result (metrics tables go to AnsiConsole)
         var doc = JsonDocument.Parse(output);
         var items = doc.RootElement.GetProperty("items");
         Assert.Equal(1, items.GetArrayLength());
-        Assert.Equal("qtest-1", items[0].GetProperty("id").GetString());
+        Assert.Equal(this.GetSeedItemId(1), items[0].GetProperty("id").GetString());
     }
 
     [Fact]
     public async Task Query_MetricsFile_ContainsMetricFields()
     {
-        var output = await ExecuteWithOutputAsync("query \"SELECT * FROM c WHERE c.id = 'qtest-1'\" -metrics:File");
+        var output = await ExecuteWithOutputAsync($"query \"SELECT * FROM c WHERE c.id = '{this.GetSeedItemId(1)}'\" -metrics:File");
 
         var doc = JsonDocument.Parse(output);
         var json = doc.RootElement;
@@ -132,7 +136,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
         Shell.StdOutRedirect = outputFile;
         try
         {
-            var state = await ExecuteAsync("query \"SELECT * FROM c WHERE c.id = 'qtest-1'\" -metrics:File -f:csv");
+            var state = await ExecuteAsync($"query \"SELECT * FROM c WHERE c.id = '{this.GetSeedItemId(1)}'\" -metrics:File -f:csv");
             Assert.False(state.IsError, FormatError(state));
 
             // Metrics=File with csv format writes a separate .metrics.csv file
@@ -162,7 +166,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
     [Fact]
     public async Task Query_FormatCsv_Succeeds()
     {
-        var state = await ExecuteAsync("query \"SELECT * FROM c WHERE c.id = 'qtest-1'\" -f:csv");
+        var state = await ExecuteAsync($"query \"SELECT * FROM c WHERE c.id = '{this.GetSeedItemId(1)}'\" -f:csv");
         var errorMsg = FormatError(state);
 
         Assert.False(state.IsError, errorMsg);
@@ -175,7 +179,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
         await ExecuteAsync("cd");
 
         var output = await ExecuteWithOutputAsync(
-            $"query \"SELECT * FROM c WHERE c.id = 'qtest-1'\" --database:{Fixture.DatabaseName} --container:{Fixture.ContainerName}");
+            $"query \"SELECT * FROM c WHERE c.id = '{this.GetSeedItemId(1)}'\" --database:{Fixture.DatabaseName} --container:{Fixture.ContainerName}");
 
         var doc = JsonDocument.Parse(output);
         var items = doc.RootElement.GetProperty("items");
@@ -214,7 +218,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
     [Fact]
     public async Task Query_CountAggregate_ReturnsCount()
     {
-        var output = await ExecuteWithOutputAsync("query \"SELECT VALUE COUNT(1) FROM c WHERE STARTSWITH(c.id, 'qtest-')\"");
+        var output = await ExecuteWithOutputAsync($"query \"SELECT VALUE COUNT(1) FROM c WHERE STARTSWITH(c.id, '{this.seedPrefix}-')\"");
 
         var doc = JsonDocument.Parse(output);
         var items = doc.RootElement.GetProperty("items");
@@ -230,14 +234,14 @@ public class QueryCommandTests : EmulatorFixtureTestBase
     [Fact]
     public async Task Query_OrderBy_ReturnsOrdered()
     {
-        var output = await ExecuteWithOutputAsync("query \"SELECT c.id FROM c WHERE STARTSWITH(c.id, 'qtest-') ORDER BY c.score DESC\"");
+        var output = await ExecuteWithOutputAsync($"query \"SELECT c.id FROM c WHERE STARTSWITH(c.id, '{this.seedPrefix}-') ORDER BY c.score DESC\"");
 
         var doc = JsonDocument.Parse(output);
         var items = doc.RootElement.GetProperty("items");
         Assert.True(items.GetArrayLength() >= 5);
 
         // First item should be the one with highest score (qtest-5)
-        Assert.Equal("qtest-5", items[0].GetProperty("id").GetString());
+        Assert.Equal(this.GetSeedItemId(5), items[0].GetProperty("id").GetString());
     }
 
     [Fact]
@@ -254,5 +258,10 @@ public class QueryCommandTests : EmulatorFixtureTestBase
         {
             shell.Dispose();
         }
+    }
+
+    private string GetSeedItemId(int index)
+    {
+        return $"{this.seedPrefix}-{index}";
     }
 }
