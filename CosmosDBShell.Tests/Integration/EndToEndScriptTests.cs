@@ -143,8 +143,10 @@ public class EndToEndScriptTests : IAsyncLifetime
             handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
 
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
-            var response = await client.GetAsync(new Uri($"{EmulatorTestBase.EmulatorEndpoint}/"));
-            return response.IsSuccessStatusCode;
+            // The emulator returns 401 Unauthorized for unauthenticated GETs on "/",
+            // which is still a clear signal that it is reachable.
+            using var response = await client.GetAsync(new Uri($"{EmulatorTestBase.EmulatorEndpoint}/"));
+            return true;
         }
         catch
         {

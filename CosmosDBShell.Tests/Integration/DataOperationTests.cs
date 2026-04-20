@@ -17,6 +17,7 @@ using Xunit.Sdk;
 public class DataOperationTests : IClassFixture<EmulatorDatabaseFixture>, IAsyncLifetime
 {
     private readonly EmulatorDatabaseFixture fixture;
+    private readonly List<string> tempFiles = [];
 
     public DataOperationTests(EmulatorDatabaseFixture fixture)
     {
@@ -30,13 +31,27 @@ public class DataOperationTests : IClassFixture<EmulatorDatabaseFixture>, IAsync
             throw SkipException.ForSkip("Cosmos DB emulator not available");
         }
 
-        // Navigate to the test container
         await ExecuteAsync("cd");
         await ExecuteAsync($"cd {fixture.DatabaseName}/{fixture.ContainerName}");
     }
 
     public ValueTask DisposeAsync()
     {
+        foreach (var file in tempFiles)
+        {
+            try
+            {
+                if (File.Exists(file))
+                {
+                    File.Delete(file);
+                }
+            }
+            catch
+            {
+                // Best-effort cleanup
+            }
+        }
+
         return ValueTask.CompletedTask;
     }
 
@@ -45,16 +60,12 @@ public class DataOperationTests : IClassFixture<EmulatorDatabaseFixture>, IAsync
     {
         var id = $"item-{Guid.NewGuid():N}";
         var json = JsonSerializer.Serialize(new { id, name = "test-item" });
-        var state = await ExecuteAsync($"mkitem '{json}'");
-        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
+        var mkOutput = await ExecuteWithOutputAsync($"mkitem '{json}'");
+        var mkJson = JsonDocument.Parse(mkOutput).RootElement;
+        Assert.Equal("success", mkJson.GetProperty("result").GetString());
 
-        var mkItemJson = IntegrationTestBase.GetJson(state);
-        Assert.Equal("success", mkItemJson.GetProperty("result").GetString());
-
-        var lsState = await ExecuteAsync("ls");
-        Assert.False(lsState.IsError, IntegrationTestBase.FormatError(lsState));
-
-        var lsJson = IntegrationTestBase.GetJson(lsState);
+        var lsOutput = await ExecuteWithOutputAsync("ls");
+        var lsJson = JsonDocument.Parse(lsOutput).RootElement;
         var items = lsJson.GetProperty("items");
         Assert.Contains(items.EnumerateArray(), item =>
             item.GetProperty("id").GetString() == id &&
@@ -68,10 +79,8 @@ public class DataOperationTests : IClassFixture<EmulatorDatabaseFixture>, IAsync
         var json = JsonSerializer.Serialize(new { id, name = "for-query" });
         await ExecuteAsync($"mkitem '{json}'");
 
-        var state = await ExecuteAsync($"query \"SELECT * FROM c WHERE c.id = '{id}'\"");
-        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
-
-        var queryJson = IntegrationTestBase.GetJson(state);
+        var output = await ExecuteWithOutputAsync($"query \"SELECT * FROM c WHERE c.id = '{id}'\"");
+        var queryJson = JsonDocument.Parse(output).RootElement;
         var items = queryJson.GetProperty("items");
         Assert.Equal(1, items.GetArrayLength());
         Assert.Equal(id, items[0].GetProperty("id").GetString());
@@ -85,10 +94,8 @@ public class DataOperationTests : IClassFixture<EmulatorDatabaseFixture>, IAsync
         var json = JsonSerializer.Serialize(new { id, name = "for-print" });
         await ExecuteAsync($"mkitem '{json}'");
 
-        var state = await ExecuteAsync($"print {id} {id}");
-        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
-
-        var printedItem = IntegrationTestBase.GetJson(state);
+        var output = await ExecuteWithOutputAsync($"print {id} {id}");
+        var printedItem = JsonDocument.Parse(output).RootElement;
         Assert.Equal(id, printedItem.GetProperty("id").GetString());
         Assert.Equal("for-print", printedItem.GetProperty("name").GetString());
     }
@@ -100,13 +107,11 @@ public class DataOperationTests : IClassFixture<EmulatorDatabaseFixture>, IAsync
         var json = JsonSerializer.Serialize(new { id, name = "for-rm" });
         await ExecuteAsync($"mkitem '{json}'");
 
-        var state = await ExecuteAsync($"rm \"{id}\"");
-        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
+        var rmState = await ExecuteAsync($"rm \"{id}\"");
+        Assert.False(rmState.IsError, IntegrationTestBase.FormatError(rmState));
 
-        var lsState = await ExecuteAsync("ls");
-        Assert.False(lsState.IsError, IntegrationTestBase.FormatError(lsState));
-
-        var lsJson = IntegrationTestBase.GetJson(lsState);
+        var lsOutput = await ExecuteWithOutputAsync("ls");
+        var lsJson = JsonDocument.Parse(lsOutput).RootElement;
         var items = lsJson.GetProperty("items");
         Assert.DoesNotContain(items.EnumerateArray(), item => item.GetProperty("id").GetString() == id);
     }
@@ -114,5 +119,30 @@ public class DataOperationTests : IClassFixture<EmulatorDatabaseFixture>, IAsync
     private async Task<CommandState> ExecuteAsync(string command)
     {
         return await fixture.Shell.ExecuteCommandAsync(command, CancellationToken.None);
+    }
+
+    private string CreateTempFile(string extension = ".json")
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"dotest-{Guid.NewGuid():N}{extension}");
+        tempFiles.Add(path);
+        return path;
+    }
+
+    private async Task<string> ExecuteWithOutputAsync(string command)
+    {
+        var outputFile = CreateTempFile();
+        fixture.Shell.StdOutRedirect = outputFile;
+        try
+        {
+            var state = await ExecuteAsync(command);
+            Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
+
+            Assert.True(File.Exists(outputFile), $"Expected output file at {outputFile}");
+            return await File.ReadAllTextAsync(outputFile);
+        }
+        finally
+        {
+            fixture.Shell.StdOutRedirect = null;
+        }
     }
 }
