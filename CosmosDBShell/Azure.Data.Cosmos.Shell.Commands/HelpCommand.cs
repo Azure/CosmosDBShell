@@ -87,12 +87,18 @@ internal class HelpCommand : CosmosCommand
             }
 
             ShellInterpreter.WriteLine();
-            ShellInterpreter.WriteLine($"Usage: {cmd.CommandName} " + BuildPlainUsage(cmd));
+            ShellInterpreter.WriteLine(MessageService.GetString("help-usage", new System.Collections.Generic.Dictionary<string, object> { ["command"] = cmd.CommandName }) + " " + BuildPlainUsage(cmd));
             ShellInterpreter.WriteLine();
+
+            if (cmd.Aliases.Count > 0)
+            {
+                ShellInterpreter.WriteLine($"{MessageService.GetString("help-aliases")} {string.Join(", ", cmd.Aliases)}");
+                ShellInterpreter.WriteLine();
+            }
 
             if (cmd.Parameters.Count > 0)
             {
-                ShellInterpreter.WriteLine("Arguments:");
+                ShellInterpreter.WriteLine(MessageService.GetString("help-arguments"));
                 foreach (var p in cmd.Parameters)
                 {
                     var name = p.Name.FirstOrDefault() ?? string.Empty;
@@ -102,7 +108,7 @@ internal class HelpCommand : CosmosCommand
                     var desc = p.GetDescription(cmd.CommandName) ?? string.Empty;
                     if (!p.IsRequired)
                     {
-                        ShellInterpreter.Write("(Optional) ");
+                        ShellInterpreter.Write($"{MessageService.GetString("help-optional")} ");
                     }
 
                     ShellInterpreter.WriteLine(desc);
@@ -113,7 +119,7 @@ internal class HelpCommand : CosmosCommand
 
             if (cmd.Options.Count > 0)
             {
-                ShellInterpreter.WriteLine("Options:");
+                ShellInterpreter.WriteLine(MessageService.GetString("help-options"));
                 foreach (var opt in cmd.Options)
                 {
                     var names = string.Join(", ", opt.Name.Select(n => "-" + n));
@@ -128,7 +134,7 @@ internal class HelpCommand : CosmosCommand
             var plainExamples = cmd.ExamplesWithDescriptions;
             if (plainExamples.Count > 0)
             {
-                ShellInterpreter.WriteLine("Examples:");
+                ShellInterpreter.WriteLine(MessageService.GetString("help-examples"));
                 for (int i = 0; i < plainExamples.Count; i++)
                 {
                     var (ex, desc) = plainExamples[i];
@@ -152,8 +158,13 @@ internal class HelpCommand : CosmosCommand
                 AnsiConsole.MarkupLine($"{INDENT}[bold cyan]{Markup.Escape(cmd.Description)}[/]");
             }
 
+            if (cmd.Aliases.Count > 0)
+            {
+                AnsiConsole.MarkupLine($"{INDENT}[dim]{Markup.Escape(MessageService.GetString("help-aliases"))} {Markup.Escape(string.Join(", ", cmd.Aliases))}[/]");
+            }
+
             ShellInterpreter.WriteLine();
-            WriteSectionHeader("Usage");
+            WriteSectionHeader(MessageService.GetString("help-usage-heading"));
             AnsiConsole.Markup(INDENT + $"{Theme.CommandColor}{Markup.Escape(cmd.CommandName)}[/] ");
         }
 
@@ -197,7 +208,7 @@ internal class HelpCommand : CosmosCommand
 
             if (cmd.Parameters.Count > 0)
             {
-                WriteSectionHeader("Arguments");
+                WriteSectionHeader(MessageService.GetString("help-arguments-heading"));
 
                 var table = new Table()
                     .Border(TableBorder.None)
@@ -238,7 +249,7 @@ internal class HelpCommand : CosmosCommand
 
         if (!plain && cmd?.Options.Count > 0)
         {
-            WriteSectionHeader("Options");
+            WriteSectionHeader(MessageService.GetString("help-options-heading"));
 
             var table = new Table()
                 .Border(TableBorder.None)
@@ -275,7 +286,7 @@ internal class HelpCommand : CosmosCommand
         if (!plain && examples != null && examples.Count > 0)
         {
             ShellInterpreter.WriteLine();
-            WriteSectionHeader("Examples");
+            WriteSectionHeader(MessageService.GetString("help-examples-heading"));
             for (int i = 0; i < examples.Count; i++)
             {
                 var (example, description) = examples[i];
@@ -333,6 +344,7 @@ internal class HelpCommand : CosmosCommand
         {
             ["command"] = cmd?.CommandName ?? string.Empty,
             ["description"] = cmd?.Description ?? string.Empty,
+            ["aliases"] = cmd?.Aliases.ToList() ?? [],
             ["additionalDescriptionForMcp"] = cmd?.McpDescription ?? string.Empty,
         };
 
@@ -431,7 +443,7 @@ internal class HelpCommand : CosmosCommand
         var managementCmds = new List<CommandFactory>();
         var utilityCmds = new List<CommandFactory>();
 
-        foreach (var cmd in app.Commands.Values.OrderBy(c => c.CommandName))
+        foreach (var cmd in EnumeratePrimaryCommands(app))
         {
             if (this.Details)
             {
@@ -485,7 +497,7 @@ internal class HelpCommand : CosmosCommand
         };
 
         var commands = new List<Dictionary<string, object>>();
-        foreach (var cmd in app.Commands.Values.OrderBy(c => c.CommandName))
+        foreach (var cmd in EnumeratePrimaryCommands(app))
         {
             var cmdInfo = new Dictionary<string, object>
             {
@@ -542,6 +554,13 @@ internal class HelpCommand : CosmosCommand
         return Task.FromResult(commandState);
     }
 
+    private static IEnumerable<CommandFactory> EnumeratePrimaryCommands(CommandRunner app)
+    {
+        return app.Commands.Values
+            .DistinctBy(c => c.CommandName)
+            .OrderBy(c => c.CommandName);
+    }
+
     private static void PrintCommandCategory(string categoryName, List<CommandFactory> commands)
     {
         if (commands.Count == 0)
@@ -581,14 +600,14 @@ internal class HelpCommand : CosmosCommand
 
             if (!string.IsNullOrWhiteSpace(s.Syntax))
             {
-                ShellInterpreter.WriteLine("Syntax:");
+                ShellInterpreter.WriteLine(MessageService.GetString("help-syntax") + ":");
                 ShellInterpreter.WriteLine($"  {s.Syntax}");
                 ShellInterpreter.WriteLine();
             }
 
             if (!string.IsNullOrWhiteSpace(s.Example))
             {
-                ShellInterpreter.WriteLine("Example:");
+                ShellInterpreter.WriteLine(MessageService.GetString("help-example") + ":");
                 var lines = s.Example.Split('\n');
                 foreach (var l in lines)
                 {
@@ -616,7 +635,7 @@ internal class HelpCommand : CosmosCommand
 
         if (!string.IsNullOrWhiteSpace(s.Syntax))
         {
-            WriteSectionHeader("Syntax");
+            WriteSectionHeader(MessageService.GetString("help-syntax"));
 
             // Apply syntax highlighting: keywords in cyan, placeholders in yellow, optional parts in dim
             var highlighted = s.Syntax;
@@ -642,7 +661,7 @@ internal class HelpCommand : CosmosCommand
 
         if (!string.IsNullOrWhiteSpace(s.Example))
         {
-            WriteSectionHeader("Example");
+            WriteSectionHeader(MessageService.GetString("help-example"));
             var parser = new StatementParser(s.Example);
             Statement? statement = null;
             try

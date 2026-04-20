@@ -19,6 +19,8 @@ internal class CommandFactory(Type commandType, CosmosCommandAttribute attr)
     /// </summary>
     public string CommandName { get => attr.CommandName; }
 
+    public IReadOnlyList<string> Aliases { get => attr.Aliases; }
+
     /// <summary>
     /// Gets the description of the command.
     /// </summary>

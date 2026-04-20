@@ -313,8 +313,9 @@ public class HighlighterTests
         var res = highlighter.BuildHighlightedText("$x = 42") as Markup;
         Assert.NotNull(res);
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
-        Assert.True(segs.Count >= 2);
-        Assert.Contains("$x = ", segs.Select(s => s.Text));
+        Assert.True(segs.Count >= 3);
+        Assert.Contains("$x ", segs.Select(s => s.Text));
+        Assert.Contains("=", segs.Select(s => s.Text));
         Assert.Contains("42", segs.Select(s => s.Text));
     }
 
@@ -541,8 +542,10 @@ public class HighlighterTests
         var res = highlighter.BuildHighlightedText("$result = 2 + 3 * 4") as Markup;
         Assert.NotNull(res);
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
-        Assert.Contains("$result = ", segs.Select(s => s.Text));
-        Assert.Contains(" + ", segs.Select(s => s.Text));
+        Assert.Contains("$result ", segs.Select(s => s.Text));
+        Assert.Contains("=", segs.Select(s => s.Text));
+        Assert.Contains("+", segs.Select(s => s.Text));
+        Assert.Contains("*", segs.Select(s => s.Text));
     }
 
     [Fact]

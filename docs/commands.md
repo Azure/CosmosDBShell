@@ -365,6 +365,18 @@ Display version.
 Usage: version
 ```
 
+### cls
+
+Clear the console screen.
+
+```text
+Usage: cls
+```
+
+Alias: `clear`
+
+**Keyboard shortcut**: `Ctrl+L`
+
 ### exit
 
 Exit Cosmos DB shell.

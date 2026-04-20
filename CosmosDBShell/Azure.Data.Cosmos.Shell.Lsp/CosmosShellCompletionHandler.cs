@@ -119,16 +119,16 @@ internal class CosmosShellCompletionHandler : ICompletionHandler
 
     private static void AddCommandCompletions(List<CompletionItem> items, string partial)
     {
-        foreach (var cmd in ShellInterpreter.Instance.App.Commands.Values
-                     .Where(c => c.CommandName.StartsWith(partial, StringComparison.OrdinalIgnoreCase)))
+        foreach (var (name, cmd) in ShellInterpreter.Instance.App.Commands
+                     .Where(kv => kv.Key.StartsWith(partial, StringComparison.OrdinalIgnoreCase)))
         {
             items.Add(new CompletionItem
             {
-                Label = cmd.CommandName,
+                Label = name,
                 Kind = CompletionItemKind.Function,
                 Detail = cmd.Description,
-                InsertText = cmd.CommandName,
-                SortText = "2_" + cmd.CommandName,
+                InsertText = name,
+                SortText = "2_" + name,
                 Documentation = string.IsNullOrEmpty(cmd.McpDescription) ? null : new MarkupContent { Kind = MarkupKind.Markdown, Value = cmd.McpDescription },
             });
         }

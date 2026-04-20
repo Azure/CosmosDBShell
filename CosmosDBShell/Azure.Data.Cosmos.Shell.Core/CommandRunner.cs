@@ -13,11 +13,13 @@ internal class CommandRunner
     {
         foreach (var type in typeof(CosmosCommand).Assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(CosmosCommand))))
         {
-            foreach (var a in type.GetCustomAttributes(false))
+            if (CommandFactory.TryCreateFactory(type, out var factory))
             {
-                if (CommandFactory.TryCreateFactory(type, out var factory))
+                this.Commands[factory.CommandName] = factory;
+
+                foreach (var alias in factory.Aliases)
                 {
-                    this.Commands[factory.CommandName] = factory;
+                    this.Commands[alias] = factory;
                 }
             }
         }
