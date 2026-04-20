@@ -176,6 +176,26 @@ public class ResourceManagementTests : IAsyncLifetime
         Assert.True(state.IsError);
     }
 
+    [Fact]
+    public async Task Create_Database_CreatesDatabase()
+    {
+        var dbName = $"RmTest_{Guid.NewGuid():N}";
+        createdDatabases.Add(dbName);
+
+        var state = await ExecuteAsync($"create database {dbName}");
+        Assert.False(state.IsError);
+
+        var dbResponse = await cosmosClient!.GetDatabase(dbName).ReadAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.OK, dbResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_Database_MissingName_ReturnsError()
+    {
+        var state = await ExecuteAsync("create database");
+        Assert.True(state.IsError);
+    }
+
     private async Task<CommandState> ExecuteAsync(string command)
     {
         return await shell.ExecuteCommandAsync(command, CancellationToken.None);
