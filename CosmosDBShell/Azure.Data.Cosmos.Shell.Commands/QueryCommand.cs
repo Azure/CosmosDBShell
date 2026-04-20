@@ -92,7 +92,7 @@ internal class QueryCommand : CosmosCommand
                 break;
             }
 
-            documents.Add(resultDocument);
+            documents.Add(resultDocument.Clone());
         }
 
         return documents;
@@ -277,7 +277,6 @@ internal class QueryCommand : CosmosCommand
         var returnState = new CommandState();
         returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOS_SHELL_FORMAT"));
         var aggregatedDocuments = new List<JsonElement>();
-        var queryDocuments = new List<JsonDocument>();
 
         try
         {
@@ -348,8 +347,7 @@ internal class QueryCommand : CosmosCommand
                     throw new CommandException("query", MessageService.GetString("command-query-error-empty_content"));
                 }
 
-                var queryDocument = JsonDocument.Parse(responseContent);
-                queryDocuments.Add(queryDocument);
+                using var queryDocument = JsonDocument.Parse(responseContent);
                 ShellInterpreter.WriteLine(MessageService.GetString("command-query-fetched", new Dictionary<string, object> { { "count", queryDocument.RootElement.GetProperty("_count").ToString() } }));
                 var queryMetrics = response.Diagnostics.GetQueryMetrics();
                 if (queryMetrics != null)
@@ -520,13 +518,6 @@ internal class QueryCommand : CosmosCommand
         catch (Exception e)
         {
             throw new CommandException("query", e);
-        }
-        finally
-        {
-            foreach (var doc in queryDocuments)
-            {
-                doc.Dispose();
-            }
         }
     }
 

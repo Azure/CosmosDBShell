@@ -53,7 +53,7 @@ public class EmulatorDatabaseFixture : IAsyncLifetime
         await dbResponse.Database.CreateContainerIfNotExistsAsync(ContainerName, "/id");
 
         // Navigate to the database so tests can use ls, cd, etc.
-        await Shell.ExecuteCommandAsync($"cd {DatabaseName}", CancellationToken.None);
+        await Shell.ExecuteCommandAsync($"cd {DatabaseName}", TestContext.Current.CancellationToken);
     }
 
     public async ValueTask DisposeAsync()
