@@ -391,7 +391,10 @@ public class CommandStatementTests
 
         // Should have reported an error for the unexpected }
         Assert.NotEmpty(errors);
-        Assert.Contains(errors, e => e.Message.Contains("}") || e.Message.Contains("unexpected"));
+        var errorSummary = string.Join(", ", errors.Select(e => $"'{e.Message}' at {e.Start} len {e.Length}"));
+        Assert.True(
+            errors.Any(e => e.Message.Contains("}", StringComparison.Ordinal) || e.Message.Contains("unexpected", StringComparison.OrdinalIgnoreCase)),
+            $"Expected a parse error mentioning '}}' or 'unexpected'. Actual errors: [{errorSummary}]");
     }
 
     [Fact]

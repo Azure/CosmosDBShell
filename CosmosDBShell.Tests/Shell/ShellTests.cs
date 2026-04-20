@@ -26,11 +26,18 @@ public class ShellTests
     [Fact]
     public async Task TestCommandHelp()
     {
-        foreach (var cmd in ShellInterpreter.Instance.App.Commands.Values)
+        foreach (var cmd in ShellInterpreter.Instance.App.Commands.Values.DistinctBy(c => c.CommandName))
         {
             var state = await ShellInterpreter.Instance.ExecuteCommandAsync("help " + cmd.CommandName, TestContext.Current.CancellationToken);
             Assert.False(state.IsError, "Help for cmd '" + cmd.CommandName + "' failed.");
         }
+    }
+
+    [Fact]
+    public async Task TestClearAlias()
+    {
+        var state = await ShellInterpreter.Instance.ExecuteCommandAsync("clear", TestContext.Current.CancellationToken);
+        Assert.False(state.IsError);
     }
 
     [Fact]
@@ -69,7 +76,9 @@ public class ShellTests
             .InformationalVersion;
         if (!string.IsNullOrWhiteSpace(informationalVersion))
         {
-            Assert.Contains("+", actualVersion, StringComparison.Ordinal);
+            Assert.True(
+                !actualVersion.Contains('+'),
+                $"Expected version output to omit build metadata and match the display version contract. Actual version: '{actualVersion}'. Raw informational version: '{informationalVersion}'. Display version: '{expectedVersion}'.");
         }
     }
 

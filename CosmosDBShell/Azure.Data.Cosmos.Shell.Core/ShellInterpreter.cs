@@ -304,7 +304,7 @@ public partial class ShellInterpreter : IDisposable
         var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         if (!string.IsNullOrWhiteSpace(informationalVersion))
         {
-            return informationalVersion;
+            return informationalVersion.Split('+')[0];
         }
 
         return assembly.GetName().Version?.ToString() ?? "unknown";
@@ -966,6 +966,7 @@ public partial class ShellInterpreter : IDisposable
             lineEditor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.DownArrow);
 
             lineEditor.KeyBindings.Add<ClearCurrentLineCommand>(ConsoleKey.Escape);
+            lineEditor.KeyBindings.Add<ClearScreenCommand>(ConsoleKey.L, ConsoleModifiers.Control);
             lineEditor.KeyBindings.Add(ConsoleKey.Tab, () => new CosmosCompleteCommand(this, AutoComplete.Next));
             lineEditor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Control, () => new CosmosCompleteCommand(this, AutoComplete.Previous));
             foreach (var line in this.history)

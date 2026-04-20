@@ -45,23 +45,29 @@ error-invalid_bucket_value = Throughput bucket value '{ $bucket }' is invalid. V
 error-variable_not_set = Variable '{ $name }' is not set.
 error-mutually-exclusive-options = Options '-c' and '-k' cannot be used together.
 error-shell-not-initialized = Shell is not initialized
+error-unable_to_read_container = Unable to read container.
 
 help-usage = Usage: { $command }
+help-usage-heading = Usage
 help-arg = <ARG>
 help-arguments = Arguments:
+help-arguments-heading = Arguments
 help-optional = (Optional)
 help-options = Options:
+help-options-heading = Options
 help-description-not-found = description not found.
 help-commands = Commands:
 help-examples = Examples:
+help-examples-heading = Examples
+help-aliases = Aliases:
 
 command-help-description = Shows help information for commands
 command-help-description-command = The specific command to get help for
 command-help-description-details = Show detailed help information for each command
 command-help-description-plain = Disable styling and colors for script or limited terminals
 
-command-rmdb-description = Removes database or container
-command-rmdb-description-name = The database or container to remove.
+command-rmdb-description = Removes database
+command-rmdb-description-name = The database to remove.
 command-rmdb-description-force = Force to remove the database without confirmation.
 command-rmdb-error-not_allowed_in_container = { error-not_allowed_in_container }
 command-rmdb-error-database_not_found = Database { $db } not found.
@@ -90,9 +96,9 @@ command-rm-error-no_filter = Filter is missing.
 command-rm-warning-missing-partition-key = Warning: Cannot delete item with id '{ $id }' - missing partition key '{ $partitionKey }'
 command-rm-no-matches = No items matched the pattern '{ $pattern }' for key '{ $key }'
 
-command-query-description = Executes a query and returns the result
+command-query-description = Executes a query and returns matching results
 command-query-description-query = The query to execute
-command-query-description-max = Maximum Number of items
+command-query-description-max = Maximum number of items returned when querying items. Use 0 or a negative value to disable the limit.
 command-query-description-metrics = Show query metrics (possible values: Display (default), File (output to data json/csv))
 command-query-description-bucket = The throughput bucket to use for the query
 command-query-description-format = Output format (json, table, csv)
@@ -132,7 +138,8 @@ command-print-description-key = The Partition Key of the item to print
 command-print-description-format = Output format (json, table)
 command-print-description-database = The database containing the item to print
 command-print-description-container = The container containing the item to print
-command-print-error-item_not_found = Item not found. Status: { $status }
+command-print-error-item_not_found = Item with id '{ $id }' not found using partition key '{ $partitionKey }'. Verify the partition key value is correct.
+command-print-error-request_failed = Request failed for item '{ $id }'. (HTTP { $status })
 command-print-error-reading_item = Error reading item: { $message }
 
 command-mkitem-description = Creates items in container
@@ -180,16 +187,21 @@ command-indexpolicy-description-container = The container to read/update the ind
 command-indexpolicy-updated = Indexing policy updated successfully.
 command-indexpolicy-error_invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 
-command-ls-description = List current container.
+command-ls-description = List resources in the current context.
 command-ls-description-filter = The filter pattern.
-command-ls-description-max = Maximum Number of items
+command-ls-description-max = Maximum number of items returned when listing container items. Defaults to 100 if omitted. Use 0 or a negative value for no limit.
 command-ls-description-format = { command-query-description-format }
 command-ls-description-recursive = List items recursively
 command-ls-description-database = The database to list from
 command-ls-description-container = The container to list items from
-command-ls-description-key = The property to match against (default: id)
+command-ls-description-key = The property to match against (default: container partition key property)
 command-ls-container = Container { $container }
 command-ls-found_items = found { $count } items.
+command-results-limit_reached =
+    { $count ->
+        [one] Results limited to { $count } item. Use --max to change the limit or --max 0 for no limit.
+       *[other] Results limited to { $count } items. Use --max to change the limit or --max 0 for no limit.
+    }
 
 command-jq-description = Commandline JSON processor
 command-jq-description-args = Arguments for the jq command
@@ -199,6 +211,8 @@ command-ftab-description-take = Limit the number of rendered rows (Optional)
 command-ftab-description-sort = Sort rows by a field before rendering. Use field or field:asc|desc (Optional)
 command-ftab-description-colorize = Colorize terminal cells using field:value:style rules separated by ';' (Optional)
 command-ftab-description-format = Output format: default, markdown, or html (Optional)
+
+command-cls-description = Clears the console screen.
 
 command-exit-description = Exits cosmos db shell.
 
@@ -251,6 +265,8 @@ command-connect-info-read-regions = Read Regions
 command-connect-info-write-regions = Write Regions
 command-connect-info-location = Current Location
 command-connect-info-credential = Credential
+command-pwd-description = Shows the current shell location.
+command-pwd-not-connected = not connected
 command-connect-rbac-error =
   You need the 'Data Contributor' RBAC role permission to enable all
   Azure Databases Extension features for the selected account.
@@ -314,6 +330,7 @@ command-settings-description-format = Output format (json, table)
 command-settings-scale-heading = Scale
 command-settings-scale-usage = Based on usage, your container throughput will scale from { $min } RU/s (10% of max RU/s) - { $max } RU/s
 command-settings-title = Settings
+command-settings-na = N/A
 command-settings-ttl-label = Time to Live
 command-settings-Off = Off
 command-settings-On = On (no default)
@@ -436,6 +453,7 @@ statement_error_expected_after_loop = Expected statement after 'loop'
 statement_error_expected_def = Expected 'def'
 statement_error_expected_function_name = Expected function name
 statement_error_expected_parameter_name = Expected parameter name
+statement_error_expected_close_parenthesis = Expected ')'
 statement_error_expected_close_bracket = Expected ']'
 statement_error_expected_after_function_def = Expected statement after function definition
 statement_error_expected_return = Expected 'return'
@@ -443,13 +461,18 @@ statement_error_expected_break = Expected 'break'
 statement_error_expected_continue = Expected 'continue'
 statement_error_expected_open_brace = Expected '\u007B'
 statement_error_expected_close_brace = Expected '\u007D'
+statement_error_unexpected_close_brace = Unexpected '\u007D'
+statement_error_unexpected_end = Unexpected end of input
 statement_error_unexpected_end_parsing_command = Unexpected end of input when parsing command
 statement_error_expected_command_name = Expected command name
 statement_error_expected_option_name = Expected option name after '{$prefix}'
+statement_error_invalid_option_value = Invalid value for option '{ $option }'
 statement_error_expected_redirect_destination = Expected file name after '{$redirect}'
 statement_error_invalid_redirect_destination = Invalid destination for '{$redirect}' redirection
 statement_error_duplicate_out_redirect = Duplicate output redirection
 statement_error_duplicate_err_redirect = Duplicate error redirection
+
+json_error_empty_array_brackets = Empty array brackets are not allowed.
 
 # Binary operator error messages
 expression_error_null_boolean_left = Left operand evaluation returned null for boolean operation
@@ -507,6 +530,7 @@ help-category-management = Management
 help-category-management-styled = Management
 help-category-utilities = Utilities
 help-category-utilities-styled = Utilities
+help-error-FormatMutuallyExclusiveSetErrors = Conflicting options: { $option }. These cannot be used with { $incompat }.
 
 statement-if-description = Performs conditional processing in shell scripts.
 statement-if-syntax = if <expression> <statement> [[[ else <statement> ]]]
