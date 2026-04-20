@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Collections.Generic;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Data.Cosmos.Shell.Core;
@@ -52,7 +53,7 @@ internal class PrintCommand : CosmosCommand
 
         try
         {
-            var response = await container.ReadItemStreamAsync(this.Id, new PartitionKey(this.PartitionKey), cancellationToken: token);
+            using var response = await container.ReadItemStreamAsync(this.Id, new PartitionKey(this.PartitionKey), cancellationToken: token);
 
             if (response.IsSuccessStatusCode)
             {
@@ -63,9 +64,21 @@ internal class PrintCommand : CosmosCommand
                 var jsonDocument = System.Text.Json.JsonDocument.Parse(content);
                 commandState.Result = new ShellJson(jsonDocument.RootElement);
             }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                throw new CommandException("print", MessageService.GetString("command-print-error-item_not_found", new Dictionary<string, object>
+                {
+                    { "id", this.Id ?? "(null)" },
+                    { "partitionKey", this.PartitionKey ?? "(null)" },
+                }));
+            }
             else
             {
-                throw new CommandException("print", MessageService.GetArgsString("command-print-error-item_not_found", "status", response.StatusCode));
+                throw new CommandException("print", MessageService.GetString("command-print-error-request_failed", new Dictionary<string, object>
+                {
+                    { "id", this.Id ?? "(null)" },
+                    { "status", (int)response.StatusCode },
+                }));
             }
         }
         catch (CosmosException ex)
