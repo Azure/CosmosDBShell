@@ -21,6 +21,11 @@ internal class CosmosCommandAttribute : Attribute
     public string CommandName { get; }
 
     /// <summary>
+    /// Gets or sets alternate names that can invoke the same command.
+    /// </summary>
+    public string[] Aliases { get; set; } = [];
+
+    /// <summary>
     /// Gets or sets a value indicating whether this command is an external shell command.
     /// </summary>
     public bool External { get; set; }

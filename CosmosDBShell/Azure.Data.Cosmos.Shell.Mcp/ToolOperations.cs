@@ -297,7 +297,7 @@ internal class ToolOperations
         RequestContext<ListToolsRequestParams> requestContext,
         CancellationToken cancellationToken)
     {
-        var tools = ShellInterpreter.Instance.App.Commands.Select(cmd => ToolOperations.GetTool(cmd.Value)).ToList();
+        var tools = ShellInterpreter.Instance.App.Commands.Values.DistinctBy(c => c.CommandName).Select(ToolOperations.GetTool).ToList();
         var arguments = new JsonObject
         {
             {
