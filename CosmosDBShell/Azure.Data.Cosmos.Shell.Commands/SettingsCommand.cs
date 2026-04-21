@@ -19,6 +19,11 @@ using Spectre.Console;
 [CosmosExample("settings --database=MyDB --container=Products", Description = "Display container settings for a specific database and container")]
 internal class SettingsCommand : CosmosCommand
 {
+    /// <summary>
+    /// Cosmos DB substatus returned when no dedicated throughput offer exists for the current container.
+    /// </summary>
+    private const int ThroughputNotConfiguredSubStatusCode = 1003;
+
     private static readonly Regex PrincipalIdRegex = new("Request for (.*) is blocked because principal \\[(.*)\\] does not have required RBAC permissions to perform action \\[(.*)\\]");
 
     [CosmosOption("database", "db")]
@@ -96,6 +101,11 @@ internal class SettingsCommand : CosmosCommand
             if (TryGetPrincipialIdFromRbacException(e, out var id, out var request, out var permission))
             {
                 AskForRBacPermissions(id ?? string.Empty, request ?? string.Empty, permission ?? string.Empty);
+            }
+            else if (IsThroughputNotConfiguredException(e))
+            {
+                // No dedicated throughput is configured on this container - show N/A
+                AnsiConsole.MarkupLine($"[grey]{MessageService.GetString("command-settings-na")}[/]");
             }
             else
             {
@@ -250,6 +260,27 @@ internal class SettingsCommand : CosmosCommand
     {
         AnsiConsole.Markup($"[red]{MessageService.GetString("error")}[/] ");
         ShellInterpreter.WriteLine(MessageService.GetArgsString("command-settings-rbac-error", "id", principalId, "request", request, "permission", permission));
+    }
+
+    /// <summary>
+    /// Checks if the exception indicates that no dedicated throughput is configured on the container
+    /// (e.g., Serverless accounts, Emulators, or containers using shared database throughput).
+    /// </summary>
+    private static bool IsThroughputNotConfiguredException(Exception e)
+    {
+        if (e is not CosmosException cosmosEx ||
+            cosmosEx.StatusCode != System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        if ((int)cosmosEx.SubStatusCode == ThroughputNotConfiguredSubStatusCode)
+        {
+            // Cosmos DB uses this substatus when the container has no dedicated throughput offer.
+            return true;
+        }
+
+        return cosmosEx.Message.Contains("Throughput is not configured", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<CommandState> PrintOverviewAsync(CosmosClient client, CommandState commandState, CancellationToken token)
