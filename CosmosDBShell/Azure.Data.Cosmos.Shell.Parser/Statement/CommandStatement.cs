@@ -23,7 +23,7 @@ using Spectre.Console;
 /// - User-defined functions
 /// - External script files
 /// - Command options (-option or --option)
-/// - Output and error redirection (&gt;, err&gt;, &gt;&gt;, err&gt;&gt;).
+/// - Output and error redirection (&gt;, 2&gt;, &gt;&gt;, 2&gt;&gt;).
 /// </remarks>
 internal class CommandStatement : Statement
 {
@@ -63,7 +63,7 @@ internal class CommandStatement : Statement
     public string? OutputRedirect { get => this.OutRedirectDestToken?.Value; }
 
     /// <summary>
-    /// Gets or sets the error redirection token (err> or err>>).
+    /// Gets or sets the error redirection token (2&gt; or 2&gt;&gt;).
     /// </summary>
     public Token? ErrRedirectToken { get; set; }
 
@@ -73,7 +73,7 @@ internal class CommandStatement : Statement
     public Token? ErrRedirectDestToken { get; set; }
 
     /// <summary>
-    /// Gets a value indicating whether errors should be appended (err>>) rather than overwritten (err>).
+    /// Gets a value indicating whether errors should be appended (2&gt;&gt;) rather than overwritten (2&gt;).
     /// </summary>
     public bool AppendError { get => this.ErrRedirectToken?.Type == TokenType.RedirectAppendError; }
 

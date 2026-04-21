@@ -141,7 +141,7 @@ public class LexerTests
     }
 
     [Theory]
-    [InlineData("err>", TokenType.RedirectError, "err>")]
+    [InlineData("2>", TokenType.RedirectError, "2>")]
     [InlineData("&&", TokenType.And, "&&")]
     [InlineData("||", TokenType.Or, "||")]
     [InlineData("**", TokenType.Pow, "**")]
@@ -364,13 +364,13 @@ public class LexerTests
     public void NextToken_RedirectionOperators_ParseCorrectly()
     {
         // Arrange
-        var lexer = new Lexer("command > file.txt err> error.log");
+        var lexer = new Lexer("command > file.txt 2> error.log");
         var expectedTokens = new[]
         {
             (TokenType.Identifier, "command"),
             (TokenType.GreaterThan, ">"),
             (TokenType.Identifier, "file.txt"),
-            (TokenType.RedirectError, "err>"),
+            (TokenType.RedirectError, "2>"),
             (TokenType.Identifier, "error.log")
         };
 

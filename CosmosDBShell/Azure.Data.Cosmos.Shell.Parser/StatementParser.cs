@@ -143,7 +143,7 @@ internal class StatementParser
         => redirectToken.Type switch
         {
             TokenType.RedirectOutput or TokenType.RedirectAppendOutput => ">",
-            _ => "err>",
+            _ => "2>",
         };
 
     private static bool IsBinaryOperator(TokenType type)
@@ -970,7 +970,7 @@ internal class StatementParser
                 {
                     // In command context, '>' means output redirection and '>>' (two adjacent
                     // GreaterThan tokens) means append. Synthesize the appropriate redirect token
-                    // so the rest of the redirect handling works uniformly with err>/err>>.
+                    // so the rest of the redirect handling works uniformly with 2>/2>>.
                     var first = this.expressionParser.Current;
                     this.expressionParser.Advance();
                     if (!this.expressionParser.IsAtEnd &&

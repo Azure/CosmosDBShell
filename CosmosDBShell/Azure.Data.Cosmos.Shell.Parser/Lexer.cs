@@ -68,12 +68,12 @@ public enum TokenType
     RedirectAppendOutput,
 
     /// <summary>
-    /// Error output redirection operator token ('err>').
+    /// Error output redirection operator token ('2&gt;').
     /// </summary>
     RedirectError,
 
     /// <summary>
-    /// Error output redirection operator token ('err>>').
+    /// Error output redirection operator token ('2&gt;&gt;').
     /// </summary>
     RedirectAppendError,
 
@@ -290,6 +290,23 @@ internal class Lexer
             return this.ReadInterpolatedString(startPosition);
         }
 
+        // Check for stderr redirection: '2>>' or '2>' must be detected before
+        // generic number reading so that '2' followed immediately by '>' is not
+        // lexed as the number literal 2.
+        if (ch == '2' &&
+            this.position + 1 < this.input.Length &&
+            this.input[this.position + 1] == '>')
+        {
+            if (this.position + 2 < this.input.Length && this.input[this.position + 2] == '>')
+            {
+                this.Advance(3);
+                return new Token(TokenType.RedirectAppendError, "2>>", startPosition, 3);
+            }
+
+            this.Advance(2);
+            return new Token(TokenType.RedirectError, "2>", startPosition, 2);
+        }
+
         // Check for numbers first (before multi-character tokens)
         if (char.IsDigit(ch))
         {
@@ -410,21 +427,6 @@ internal class Lexer
     private bool TryReadMultiCharacterToken(int startPosition, out Token? token)
     {
         token = null;
-
-        if (this.LookAhead("err>>"))
-        {
-            this.Advance(5);
-            token = new Token(TokenType.RedirectAppendError, "err>>", startPosition, 5);
-            return true;
-        }
-
-        // Check for "err>"
-        if (this.LookAhead("err>"))
-        {
-            this.Advance(4);
-            token = new Token(TokenType.RedirectError, "err>", startPosition, 4);
-            return true;
-        }
 
         // Check for "&&" (logical and)
         if (this.LookAhead("&&"))

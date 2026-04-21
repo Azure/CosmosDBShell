@@ -250,7 +250,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_ErrorRedirection_ParsesCorrectly()
     {
-        var statement = ParseStatement("query \"SELECT * FROM c\" err> errors.log");
+        var statement = ParseStatement("query \"SELECT * FROM c\" 2> errors.log");
         var cmd = (CommandStatement)statement;
         Assert.NotNull(cmd.ErrRedirectToken);
         Assert.Equal("errors.log", cmd.ErrorRedirect);
@@ -259,7 +259,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_BothRedirections_ParsesCorrectly()
     {
-        var statement = ParseStatement("query \"SELECT * FROM c\" > results.json err> errors.log");
+        var statement = ParseStatement("query \"SELECT * FROM c\" > results.json 2> errors.log");
         var cmd = (CommandStatement)statement;
         Assert.Equal("results.json", cmd.OutputRedirect);
         Assert.Equal("errors.log", cmd.ErrorRedirect);
@@ -268,7 +268,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_RedirectionsInReverseOrder_ParsesCorrectly()
     {
-        var statement = ParseStatement("query \"SELECT * FROM c\" err> errors.log > results.json");
+        var statement = ParseStatement("query \"SELECT * FROM c\" 2> errors.log > results.json");
         var cmd = (CommandStatement)statement;
         Assert.Equal("errors.log", cmd.ErrorRedirect);
         Assert.Equal("results.json", cmd.OutputRedirect);
@@ -295,7 +295,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_MultipleArgumentsWithRedirection_ParsesCorrectly()
     {
-        var statement = ParseStatement("process file1.txt file2.txt file3.txt > output.log err> error.log");
+        var statement = ParseStatement("process file1.txt file2.txt file3.txt > output.log 2> error.log");
         var cmd = (CommandStatement)statement;
         Assert.Equal(3, cmd.Arguments.Count);
         Assert.Equal("output.log", cmd.OutputRedirect);
@@ -330,9 +330,9 @@ public class CommandStatementTests
 
     [Theory]
     [InlineData("command >")]
-    [InlineData("command err>")]
+    [InlineData("command 2>")]
     [InlineData("command > out.txt > out2.txt")]
-    [InlineData("command err> err.txt err> err2.txt")]
+    [InlineData("command 2> err.txt 2> err2.txt")]
     public void ParseCommandStatement_InvalidRedirection_ReportsErrors(string input)
     {
         var (_, errors) = ParseWithErrors(input);
@@ -342,7 +342,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_ComplexScenario_ParsesCorrectly()
     {
-        var statement = ParseStatement("query \"SELECT * FROM c WHERE id > 5\" --format:json -max:100 > \"results/output.json\" err> \"logs/errors.txt\"");
+        var statement = ParseStatement("query \"SELECT * FROM c WHERE id > 5\" --format:json -max:100 > \"results/output.json\" 2> \"logs/errors.txt\"");
         var cmd = (CommandStatement)statement;
         Assert.Equal("query", cmd.Name);
 
@@ -364,7 +364,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_ComplexScenario_ParsesAppendCorrectly()
     {
-        var statement = ParseStatement("query \"SELECT * FROM c WHERE id > 5\" --format:json -max:100 >> \"results/output.json\" err>> \"logs/errors.txt\"");
+        var statement = ParseStatement("query \"SELECT * FROM c WHERE id > 5\" --format:json -max:100 >> \"results/output.json\" 2>> \"logs/errors.txt\"");
         var cmd = (CommandStatement)statement;
         Assert.Equal("query", cmd.Name);
 

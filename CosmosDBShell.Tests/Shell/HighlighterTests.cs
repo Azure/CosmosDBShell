@@ -516,12 +516,12 @@ public class HighlighterTests
     {
         var highlighter = (IHighlighter)ShellInterpreter.Instance;
 
-        var res = highlighter.BuildHighlightedText("ls > output.txt err> error.txt") as Markup;
+        var res = highlighter.BuildHighlightedText("ls > output.txt 2> error.txt") as Markup;
         Assert.NotNull(res);
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
         Assert.True(segs.Count >= 5);
         Assert.Contains(">", segs.Select(s => s.Text));
-        Assert.Contains("err>", segs.Select(s => s.Text));
+        Assert.Contains("2>", segs.Select(s => s.Text));
         Assert.Contains("output.txt", segs.Select(s => s.Text));
         Assert.Contains("error.txt", segs.Select(s => s.Text));
 

@@ -314,7 +314,7 @@ public class StatementTests
     [Fact]
     public void ParseStatement_GreaterThanCombinedWithErrRedirect_BothPopulated()
     {
-        var stmt = ParseStatement("echo \"a\" > out.txt err> err.txt");
+        var stmt = ParseStatement("echo \"a\" > out.txt 2> err.txt");
         Assert.NotNull(stmt);
         var cmd = Assert.IsType<CommandStatement>(stmt);
         Assert.Equal("out.txt", cmd.OutputRedirect);
