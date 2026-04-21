@@ -85,14 +85,21 @@ internal class QueryCommand : CosmosCommand
     internal static List<JsonElement> CollectDocuments(IEnumerable<JsonElement> currentDocuments, JsonElement pageDocuments, int? maxItemCount)
     {
         var documents = currentDocuments.ToList();
-        foreach (var resultDocument in pageDocuments.EnumerateArray())
+
+        // Clone the entire page array once so the caller can safely dispose the
+        // per-page JsonDocument that owns pageDocuments. Per-element Clone()
+        // would allocate a fresh JsonDocument for every result, which is very
+        // expensive for large pages; cloning the page produces a single backing
+        // document whose elements we can reference directly.
+        var clonedPage = pageDocuments.Clone();
+        foreach (var resultDocument in clonedPage.EnumerateArray())
         {
             if (maxItemCount >= 0 && documents.Count >= maxItemCount)
             {
                 break;
             }
 
-            documents.Add(resultDocument.Clone());
+            documents.Add(resultDocument);
         }
 
         return documents;
