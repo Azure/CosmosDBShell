@@ -65,6 +65,13 @@ public class ShellTests
         var result = Assert.IsType<ShellJson>(state.Result);
         Assert.True(result.Value.TryGetProperty("version", out var versionProperty));
 
+        Assert.True(
+            result.Value.TryGetProperty("repository", out var repositoryProperty),
+            "Expected 'version' JSON payload to include a 'repository' field pointing at the public issue tracker.");
+        Assert.Equal(
+            ShellInterpreter.GetRepositoryUrl(typeof(ShellInterpreter).Assembly),
+            repositoryProperty.GetString());
+
         var expectedVersion = ShellInterpreter.GetDisplayVersion(typeof(ShellInterpreter).Assembly);
         var actualVersion = versionProperty.GetString();
 
