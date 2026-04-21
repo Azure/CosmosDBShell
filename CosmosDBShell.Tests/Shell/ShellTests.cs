@@ -106,6 +106,8 @@ public class ShellTests
 
             ShellInterpreter.Instance.StdOutRedirect = null;
             ShellInterpreter.Instance.ErrOutRedirect = null;
+            ShellInterpreter.Instance.AppendOutRedirection = false;
+            ShellInterpreter.Instance.AppendErrRedirection = false;
         }
     }
 
@@ -139,6 +141,8 @@ public class ShellTests
 
             ShellInterpreter.Instance.StdOutRedirect = null;
             ShellInterpreter.Instance.ErrOutRedirect = null;
+            ShellInterpreter.Instance.AppendOutRedirection = false;
+            ShellInterpreter.Instance.AppendErrRedirection = false;
         }
     }
 

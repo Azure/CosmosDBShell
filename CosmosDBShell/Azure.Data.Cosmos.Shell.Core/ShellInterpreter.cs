@@ -238,27 +238,45 @@ public partial class ShellInterpreter : IDisposable
     {
         var state = new CommandState();
         state.SetFormat(Environment.GetEnvironmentVariable("COSMOS_SHELL_FORMAT"));
+
+        // Snapshot redirect state so a '>' / '2>' on this command does not leak into
+        // the next command executed against this interpreter instance.
+        var savedStdOut = this.StdOutRedirect;
+        var savedAppendOut = this.AppendOutRedirection;
+        var savedErrOut = this.ErrOutRedirect;
+        var savedAppendErr = this.AppendErrRedirection;
+
         try
         {
-            state = await this.RunCommandAsync(state, command, token);
-        }
-        catch (TaskCanceledException)
-        {
-            return new CommandState();
-        }
-        catch (Exception e)
-        {
-            this.ReportExecutionError(e);
-            var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
-            return new ErrorCommandState(inner);
-        }
+            try
+            {
+                state = await this.RunCommandAsync(state, command, token);
+            }
+            catch (TaskCanceledException)
+            {
+                return new CommandState();
+            }
+            catch (Exception e)
+            {
+                this.ReportExecutionError(e);
+                var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
+                return new ErrorCommandState(inner);
+            }
 
-        if (token.IsCancellationRequested)
-        {
-            return state;
-        }
+            if (token.IsCancellationRequested)
+            {
+                return state;
+            }
 
-        return this.PrintState(state);
+            return this.PrintState(state);
+        }
+        finally
+        {
+            this.StdOutRedirect = savedStdOut;
+            this.AppendOutRedirection = savedAppendOut;
+            this.ErrOutRedirect = savedErrOut;
+            this.AppendErrRedirection = savedAppendErr;
+        }
     }
 
     /// <summary>

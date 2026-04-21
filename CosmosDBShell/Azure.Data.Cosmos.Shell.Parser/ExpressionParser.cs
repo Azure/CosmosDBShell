@@ -38,6 +38,32 @@ internal class ExpressionParser
 
     public bool IsAtEnd => this.currentToken == null || this.aborted;
 
+    /// <summary>
+    /// Returns the token immediately following <see cref="Current"/> without consuming it.
+    /// Returns null if the input is exhausted. Comments are skipped.
+    /// </summary>
+    public Token? Peek()
+    {
+        if (this.aborted)
+        {
+            return null;
+        }
+
+        Token? next;
+        do
+        {
+            next = this.lexer.NextToken();
+        }
+        while (next?.Type == TokenType.Comment);
+
+        if (next != null)
+        {
+            this.lexer.PutBackToken(next);
+        }
+
+        return next;
+    }
+
     public void Advance()
     {
         if (this.aborted)

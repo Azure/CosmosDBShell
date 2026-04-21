@@ -68,12 +68,16 @@ public enum TokenType
     RedirectAppendOutput,
 
     /// <summary>
-    /// Error output redirection operator token ('2&gt;').
+    /// Error output redirection operator token ('2&gt;'). Synthesized by the parser in command
+    /// context from a <see cref="Number"/> '2' token immediately followed by a
+    /// <see cref="GreaterThan"/> token.
     /// </summary>
     RedirectError,
 
     /// <summary>
-    /// Error output redirection operator token ('2&gt;&gt;').
+    /// Appending error redirection operator token ('2&gt;&gt;'). Synthesized by the parser in
+    /// command context from a <see cref="Number"/> '2' token immediately followed by two
+    /// adjacent <see cref="GreaterThan"/> tokens.
     /// </summary>
     RedirectAppendError,
 
@@ -290,24 +294,12 @@ internal class Lexer
             return this.ReadInterpolatedString(startPosition);
         }
 
-        // Check for stderr redirection: '2>>' or '2>' must be detected before
-        // generic number reading so that '2' followed immediately by '>' is not
-        // lexed as the number literal 2.
-        if (ch == '2' &&
-            this.position + 1 < this.input.Length &&
-            this.input[this.position + 1] == '>')
-        {
-            if (this.position + 2 < this.input.Length && this.input[this.position + 2] == '>')
-            {
-                this.Advance(3);
-                return new Token(TokenType.RedirectAppendError, "2>>", startPosition, 3);
-            }
-
-            this.Advance(2);
-            return new Token(TokenType.RedirectError, "2>", startPosition, 2);
-        }
-
-        // Check for numbers first (before multi-character tokens)
+        // Check for numbers first (before multi-character tokens).
+        // Note: the '2>' / '2>>' stderr redirection operators are recognized in the
+        // parser (in command context) by pairing a Number("2") token with an
+        // adjacent GreaterThan token. Doing that at lex time would break
+        // expressions like '2>3' by consuming the '2' as part of a redirect
+        // token instead of a numeric literal.
         if (char.IsDigit(ch))
         {
             return this.ReadNumber(startPosition);
