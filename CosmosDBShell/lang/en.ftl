@@ -363,6 +363,7 @@ command-version-description = Displays the version of Cosmos DB Shell.
 command-version = Cosmos Shell version: { $version }
 command-version-mcp = MCP running on port { $mcp_port}
 command-version-mcp-off = MCP server is off.
+command-version-repo = Report issues at [link={ $url }]{ $url }[/]
 
 help-RequiredWord = Required.
 help-ErrorsHeadingText = ERROR(S):

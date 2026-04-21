@@ -343,6 +343,10 @@ public partial class ShellInterpreter : IDisposable
             AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
         }
 
+        var repoUrl = "https://github.com/Azure/cosmosdbshell";
+        var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
+        AnsiConsole.MarkupLine(repoString);
+
         if (commandState != null)
         {
             var json = new Dictionary<string, object?>
@@ -351,6 +355,7 @@ public partial class ShellInterpreter : IDisposable
                 ["mcpEnabled"] = port != null,
                 ["mcpPort"] = port, // will be null if not enabled
                 ["mcpStatus"] = port != null ? "on" : "off",
+                ["repository"] = repoUrl,
             };
 
             var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
