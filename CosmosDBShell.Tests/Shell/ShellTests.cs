@@ -68,7 +68,9 @@ public class ShellTests
         Assert.True(
             result.Value.TryGetProperty("repository", out var repositoryProperty),
             "Expected 'version' JSON payload to include a 'repository' field pointing at the public issue tracker.");
-        Assert.Equal("https://github.com/Azure/cosmosdbshell", repositoryProperty.GetString());
+        Assert.Equal(
+            ShellInterpreter.GetRepositoryUrl(typeof(ShellInterpreter).Assembly),
+            repositoryProperty.GetString());
 
         var expectedVersion = ShellInterpreter.GetDisplayVersion(typeof(ShellInterpreter).Assembly);
         var actualVersion = versionProperty.GetString();

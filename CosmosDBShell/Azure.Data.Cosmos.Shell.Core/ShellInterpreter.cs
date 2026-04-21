@@ -310,6 +310,20 @@ public partial class ShellInterpreter : IDisposable
         return assembly.GetName().Version?.ToString() ?? "unknown";
     }
 
+    internal static string GetRepositoryUrl(Assembly assembly)
+    {
+        foreach (var attr in assembly.GetCustomAttributes<AssemblyMetadataAttribute>())
+        {
+            if (string.Equals(attr.Key, "RepositoryUrl", StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(attr.Value))
+            {
+                return attr.Value;
+            }
+        }
+
+        return string.Empty;
+    }
+
     internal static void ReportError(string message, params object[] par)
     {
         AnsiConsole.MarkupLine("[red]" + Markup.Escape(message) + "[/]", par);
@@ -343,9 +357,12 @@ public partial class ShellInterpreter : IDisposable
             AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
         }
 
-        var repoUrl = "https://github.com/Azure/cosmosdbshell";
-        var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
-        AnsiConsole.MarkupLine(repoString);
+        var repoUrl = GetRepositoryUrl(typeof(VersionCommand).Assembly);
+        if (!string.IsNullOrEmpty(repoUrl))
+        {
+            var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
+            AnsiConsole.MarkupLine(repoString);
+        }
 
         if (commandState != null)
         {

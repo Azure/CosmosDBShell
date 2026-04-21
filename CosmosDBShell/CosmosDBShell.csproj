@@ -41,6 +41,12 @@
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Expose RepositoryUrl to runtime code via [AssemblyMetadata] so
+         ShellInterpreter can surface it in 'version' output without duplicating the URL. -->
+    <AssemblyMetadata Include="RepositoryUrl" Value="$(RepositoryUrl)" />
+  </ItemGroup>
+
   <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'any'">
     <PublishSingleFile>false</PublishSingleFile>
   </PropertyGroup>
