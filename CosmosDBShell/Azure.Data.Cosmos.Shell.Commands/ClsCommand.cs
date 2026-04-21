@@ -14,7 +14,15 @@ internal class ClsCommand : CosmosCommand
 {
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
-        AnsiConsole.Clear();
+        try
+        {
+            AnsiConsole.Clear();
+        }
+        catch (IOException)
+        {
+            // No real console attached (e.g. running under a test host). Nothing to clear.
+        }
+
         return Task.FromResult(commandState);
     }
 }
