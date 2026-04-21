@@ -123,6 +123,14 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--cs <n>` | Colors: 0=off, 1=standard, 2=truecolor |
 | `--help` | Show help |
 
+## How to Contribute
+
+This project welcomes contributions and suggestions. To contribute, see these documents:
+
+- [Code of Conduct](./CODE_OF_CONDUCT.md)
+- [Security](./SECURITY.md)
+- [Contributing](./CONTRIBUTING.md)
+
 ## License
 
-Microsoft Corporation. All rights reserved.
+[MIT](LICENSE.md)
