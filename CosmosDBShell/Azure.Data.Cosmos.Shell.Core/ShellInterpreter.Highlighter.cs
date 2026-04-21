@@ -179,35 +179,41 @@ public partial class ShellInterpreter : IHighlighter
             if (commandStatement.OutRedirectToken != null && commandStatement.ErrRedirectToken != null)
             {
                 // Handle both redirects
-                var firstRedirect = commandStatement.OutRedirectToken.Start < commandStatement.ErrRedirectToken.Start
-                    ? commandStatement.OutRedirectToken
-                    : commandStatement.ErrRedirectToken;
-                var secondRedirect = firstRedirect == commandStatement.OutRedirectToken
-                    ? commandStatement.ErrRedirectToken
-                    : commandStatement.OutRedirectToken;
+                var first = commandStatement.OutRedirectToken.Start < commandStatement.ErrRedirectToken.Start
+                    ? (Op: commandStatement.OutRedirectToken, Dest: commandStatement.OutRedirectDestToken)
+                    : (Op: commandStatement.ErrRedirectToken, Dest: commandStatement.ErrRedirectDestToken);
+                var second = first.Op == commandStatement.OutRedirectToken
+                    ? (Op: commandStatement.ErrRedirectToken, Dest: commandStatement.ErrRedirectDestToken)
+                    : (Op: commandStatement.OutRedirectToken, Dest: commandStatement.OutRedirectDestToken);
 
-                this.AppendUpTo(firstRedirect.Start);
-                this.result.Append(Theme.FormatRedirection(firstRedirect.Value));
-                this.currentPosition = firstRedirect.End;
-
-                this.AppendUpTo(secondRedirect.Start);
-                this.result.Append(Theme.FormatRedirection(secondRedirect.Value));
-                this.currentPosition = secondRedirect.End;
+                this.RenderRedirection(first.Op, first.Dest);
+                this.RenderRedirection(second.Op, second.Dest);
             }
             else if (commandStatement.OutRedirectToken != null)
             {
-                this.AppendUpTo(commandStatement.OutRedirectToken.Start);
-                this.result.Append(Theme.FormatRedirection(commandStatement.OutRedirectToken.Value));
-                this.currentPosition = commandStatement.OutRedirectToken.End;
+                this.RenderRedirection(commandStatement.OutRedirectToken, commandStatement.OutRedirectDestToken);
             }
             else if (commandStatement.ErrRedirectToken != null)
             {
-                this.AppendUpTo(commandStatement.ErrRedirectToken.Start);
-                this.result.Append(Theme.FormatRedirection(commandStatement.ErrRedirectToken.Value));
-                this.currentPosition = commandStatement.ErrRedirectToken.End;
+                this.RenderRedirection(commandStatement.ErrRedirectToken, commandStatement.ErrRedirectDestToken);
             }
 
             this.currentCommand = null;
+        }
+
+        private void RenderRedirection(Token opToken, Token? destToken)
+        {
+            this.AppendUpTo(opToken.Start);
+            this.result.Append(Theme.FormatRedirection(opToken.Value));
+            this.currentPosition = opToken.End;
+
+            if (destToken != null)
+            {
+                this.AppendUpTo(destToken.Start);
+                var destText = this.text.Substring(destToken.Start, destToken.Length);
+                this.result.Append(Theme.FormatRedirectionDestination(destText));
+                this.currentPosition = destToken.End;
+            }
         }
 
         public void Visit(ConstantExpression constantExpression)
