@@ -56,12 +56,14 @@ public enum TokenType
     Assignment,
 
     /// <summary>
-    /// Output redirection operator token ('out>').
+    /// Output redirection operator token ('&gt;'). Synthesized by the parser from a
+    /// <see cref="GreaterThan"/> token appearing after a command's arguments.
     /// </summary>
     RedirectOutput,
 
     /// <summary>
-    /// Output redirection operator token ('out>>').
+    /// Appending output redirection operator token ('&gt;&gt;'). Synthesized by the parser from two
+    /// adjacent <see cref="GreaterThan"/> tokens appearing after a command's arguments.
     /// </summary>
     RedirectAppendOutput,
 
@@ -408,21 +410,6 @@ internal class Lexer
     private bool TryReadMultiCharacterToken(int startPosition, out Token? token)
     {
         token = null;
-
-        if (this.LookAhead("out>>"))
-        {
-            this.Advance(5);
-            token = new Token(TokenType.RedirectAppendOutput, "out>>", startPosition, 5);
-            return true;
-        }
-
-        // Check for "out>"
-        if (this.LookAhead("out>"))
-        {
-            this.Advance(4);
-            token = new Token(TokenType.RedirectOutput, "out>", startPosition, 4);
-            return true;
-        }
 
         if (this.LookAhead("err>>"))
         {

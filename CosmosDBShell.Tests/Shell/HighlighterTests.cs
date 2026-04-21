@@ -499,13 +499,16 @@ public class HighlighterTests
     {
         var highlighter = (IHighlighter)ShellInterpreter.Instance;
 
-        var res = highlighter.BuildHighlightedText("ls out> output.txt") as Markup;
+        var res = highlighter.BuildHighlightedText("ls > output.txt") as Markup;
         Assert.NotNull(res);
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
         Assert.True(segs.Count >= 2);
         Assert.Contains("ls", segs.Select(s => s.Text));
-        Assert.Contains("out>", segs.Select(s => s.Text));
-        Assert.Contains(" output.txt", segs.Select(s => s.Text));
+        Assert.Contains(">", segs.Select(s => s.Text));
+        Assert.Contains("output.txt", segs.Select(s => s.Text));
+
+        var dest = segs.First(s => s.Text == "output.txt");
+        Assert.True(dest.Style.Decoration.HasFlag(Decoration.Underline));
     }
 
     [Fact]
@@ -513,12 +516,20 @@ public class HighlighterTests
     {
         var highlighter = (IHighlighter)ShellInterpreter.Instance;
 
-        var res = highlighter.BuildHighlightedText("ls out> output.txt err> error.txt") as Markup;
+        var res = highlighter.BuildHighlightedText("ls > output.txt err> error.txt") as Markup;
         Assert.NotNull(res);
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
         Assert.True(segs.Count >= 5);
-        Assert.Contains("out>", segs.Select(s => s.Text));
+        Assert.Contains(">", segs.Select(s => s.Text));
         Assert.Contains("err>", segs.Select(s => s.Text));
+        Assert.Contains("output.txt", segs.Select(s => s.Text));
+        Assert.Contains("error.txt", segs.Select(s => s.Text));
+
+        foreach (var dest in new[] { "output.txt", "error.txt" })
+        {
+            var seg = segs.First(s => s.Text == dest);
+            Assert.True(seg.Style.Decoration.HasFlag(Decoration.Underline), $"Expected {dest} to be underlined.");
+        }
     }
 
     [Fact]

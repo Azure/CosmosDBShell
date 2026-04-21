@@ -23,7 +23,7 @@ using Spectre.Console;
 /// - User-defined functions
 /// - External script files
 /// - Command options (-option or --option)
-/// - Output and error redirection (out>, err>, out>>, err>>).
+/// - Output and error redirection (&gt;, err&gt;, &gt;&gt;, err&gt;&gt;).
 /// </remarks>
 internal class CommandStatement : Statement
 {
@@ -43,7 +43,7 @@ internal class CommandStatement : Statement
     public string Name { get => this.CommandToken.Value; }
 
     /// <summary>
-    /// Gets or sets the output redirection token (out> or out>>).
+    /// Gets or sets the output redirection token (&gt; or &gt;&gt;).
     /// </summary>
     public Token? OutRedirectToken { get; set; }
 
@@ -53,7 +53,7 @@ internal class CommandStatement : Statement
     public Token? OutRedirectDestToken { get; set; }
 
     /// <summary>
-    /// Gets a value indicating whether output should be appended (out>>) rather than overwritten (out>).
+    /// Gets a value indicating whether output should be appended (&gt;&gt;) rather than overwritten (&gt;).
     /// </summary>
     public bool AppendOutput { get => this.OutRedirectToken?.Type == TokenType.RedirectAppendOutput; }
 
@@ -139,6 +139,22 @@ internal class CommandStatement : Statement
     /// </summary>
     public override async Task<CommandState> RunAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
+        // Wire redirections onto the shell so both the command itself (if it inspects
+        // StdOutRedirect/ErrOutRedirect) and the post-execution PrintState honor them.
+        // Only assign when this statement declares its own redirect so values pre-set by
+        // the host are preserved.
+        if (this.OutRedirectToken != null)
+        {
+            shell.StdOutRedirect = this.OutputRedirect;
+            shell.AppendOutRedirection = this.AppendOutput;
+        }
+
+        if (this.ErrRedirectToken != null)
+        {
+            shell.ErrOutRedirect = this.ErrorRedirect;
+            shell.AppendErrRedirection = this.AppendError;
+        }
+
         if (shell.Functions.TryGetValue(this.Name, out var function))
         {
             var args = new List<string>();

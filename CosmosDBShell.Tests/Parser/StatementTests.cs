@@ -251,4 +251,84 @@ public class StatementTests
         // Second should be echo command
         Assert.IsType<CommandStatement>(pipeStmt.Statements[1]);
     }
+
+    [Fact]
+    public void ParseStatement_GreaterThan_ActsAsOutputRedirect()
+    {
+        var stmt = ParseStatement("echo \"FooBar\" >test.txt");
+        Assert.NotNull(stmt);
+        var cmd = Assert.IsType<CommandStatement>(stmt);
+        Assert.Equal("echo", cmd.Name);
+        Assert.NotNull(cmd.OutRedirectToken);
+        Assert.Equal(TokenType.RedirectOutput, cmd.OutRedirectToken!.Type);
+        Assert.Equal(">", cmd.OutRedirectToken.Value);
+        Assert.False(cmd.AppendOutput);
+        Assert.Equal("test.txt", cmd.OutputRedirect);
+    }
+
+    [Fact]
+    public void ParseStatement_DoubleGreaterThan_ActsAsAppendRedirect()
+    {
+        var stmt = ParseStatement("echo \"FooBar\" >>test.txt");
+        Assert.NotNull(stmt);
+        var cmd = Assert.IsType<CommandStatement>(stmt);
+        Assert.Equal("echo", cmd.Name);
+        Assert.NotNull(cmd.OutRedirectToken);
+        Assert.Equal(TokenType.RedirectAppendOutput, cmd.OutRedirectToken!.Type);
+        Assert.Equal(">>", cmd.OutRedirectToken.Value);
+        Assert.True(cmd.AppendOutput);
+        Assert.Equal("test.txt", cmd.OutputRedirect);
+    }
+
+    [Fact]
+    public void ParseStatement_GreaterThanWithSpace_ActsAsOutputRedirect()
+    {
+        var stmt = ParseStatement("echo \"FooBar\" > test.txt");
+        Assert.NotNull(stmt);
+        var cmd = Assert.IsType<CommandStatement>(stmt);
+        Assert.Equal("test.txt", cmd.OutputRedirect);
+        Assert.False(cmd.AppendOutput);
+    }
+
+    [Fact]
+    public void ParseStatement_GreaterThanWithQuotedFilename_HonorsDestination()
+    {
+        var stmt = ParseStatement("echo \"FooBar\" > \"some file.txt\"");
+        Assert.NotNull(stmt);
+        var cmd = Assert.IsType<CommandStatement>(stmt);
+        Assert.Equal("some file.txt", cmd.OutputRedirect);
+    }
+
+    [Fact]
+    public void ParseStatement_GreaterThanAfterOption_ActsAsOutputRedirect()
+    {
+        var stmt = ParseStatement("list -details > out.txt");
+        Assert.NotNull(stmt);
+        var cmd = Assert.IsType<CommandStatement>(stmt);
+        Assert.Equal("list", cmd.Name);
+        Assert.Single(cmd.Arguments);
+        Assert.IsType<CommandOption>(cmd.Arguments[0]);
+        Assert.Equal("out.txt", cmd.OutputRedirect);
+    }
+
+    [Fact]
+    public void ParseStatement_GreaterThanCombinedWithErrRedirect_BothPopulated()
+    {
+        var stmt = ParseStatement("echo \"a\" > out.txt err> err.txt");
+        Assert.NotNull(stmt);
+        var cmd = Assert.IsType<CommandStatement>(stmt);
+        Assert.Equal("out.txt", cmd.OutputRedirect);
+        Assert.Equal("err.txt", cmd.ErrorRedirect);
+    }
+
+    [Fact]
+    public void ParseStatement_GreaterThanWithSpaceBetween_IsNotAppend()
+    {
+        // '> >' (with space) must not collapse to '>>'. Parser treats the first '>' as the redirect
+        // operator and then fails on the second '>' because the destination is missing.
+        var lexer = new Lexer("echo \"a\" > > file.txt");
+        var parser = new StatementParser(lexer);
+        parser.ParseStatements();
+        Assert.NotEmpty(parser.Errors);
+    }
 }

@@ -142,7 +142,7 @@ internal class StatementParser
     private static string RedirectLabel(Token redirectToken)
         => redirectToken.Type switch
         {
-            TokenType.RedirectOutput or TokenType.RedirectAppendOutput => "out>",
+            TokenType.RedirectOutput or TokenType.RedirectAppendOutput => ">",
             _ => "err>",
         };
 
@@ -151,7 +151,8 @@ internal class StatementParser
         {
             TokenType.Plus => true,
 
-            // Note: Minus is NOT included because in command context, - starts an option
+            // Note: Minus is NOT included because in command context, - starts an option.
+            // Note: GreaterThan is NOT included because in command context, > starts an output redirection.
             TokenType.Multiply => true,
             TokenType.Divide => true,
             TokenType.Mod => true,
@@ -159,7 +160,6 @@ internal class StatementParser
             TokenType.Equal => true,
             TokenType.NotEqual => true,
             TokenType.LessThan => true,
-            TokenType.GreaterThan => true,
             TokenType.LessThanOrEqual => true,
             TokenType.GreaterThanOrEqual => true,
             TokenType.And => true,
@@ -860,6 +860,7 @@ internal class StatementParser
                    this.expressionParser.Current.Type != TokenType.Eol &&
                    this.expressionParser.Current.Type != TokenType.CloseBrace &&
                    this.expressionParser.Current.Type != TokenType.Pipe &&
+                   this.expressionParser.Current.Type != TokenType.GreaterThan &&
                    this.expressionParser.Current.Type != TokenType.RedirectOutput &&
                    this.expressionParser.Current.Type != TokenType.RedirectAppendOutput &&
                    this.expressionParser.Current.Type != TokenType.RedirectError &&
@@ -961,10 +962,40 @@ internal class StatementParser
                    (this.expressionParser.Current.Type == TokenType.RedirectOutput ||
                     this.expressionParser.Current.Type == TokenType.RedirectAppendOutput ||
                     this.expressionParser.Current.Type == TokenType.RedirectError ||
-                    this.expressionParser.Current.Type == TokenType.RedirectAppendError))
+                    this.expressionParser.Current.Type == TokenType.RedirectAppendError ||
+                    this.expressionParser.Current.Type == TokenType.GreaterThan))
             {
-                var redirectToken = this.expressionParser.Current;
-                this.expressionParser.Advance();
+                Token redirectToken;
+                if (this.expressionParser.Current.Type == TokenType.GreaterThan)
+                {
+                    // In command context, '>' means output redirection and '>>' (two adjacent
+                    // GreaterThan tokens) means append. Synthesize the appropriate redirect token
+                    // so the rest of the redirect handling works uniformly with err>/err>>.
+                    var first = this.expressionParser.Current;
+                    this.expressionParser.Advance();
+                    if (!this.expressionParser.IsAtEnd &&
+                        this.expressionParser.Current != null &&
+                        this.expressionParser.Current.Type == TokenType.GreaterThan &&
+                        this.expressionParser.Current.Start == first.End)
+                    {
+                        var second = this.expressionParser.Current;
+                        this.expressionParser.Advance();
+                        redirectToken = new Token(
+                            TokenType.RedirectAppendOutput,
+                            ">>",
+                            first.Start,
+                            second.End - first.Start);
+                    }
+                    else
+                    {
+                        redirectToken = new Token(TokenType.RedirectOutput, ">", first.Start, first.Length);
+                    }
+                }
+                else
+                {
+                    redirectToken = this.expressionParser.Current;
+                    this.expressionParser.Advance();
+                }
 
                 if (this.expressionParser.IsAtEnd || this.expressionParser.Current == null)
                 {

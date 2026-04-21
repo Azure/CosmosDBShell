@@ -57,6 +57,11 @@ internal static class Theme
         return $"[seagreen2]{Markup.Escape(v)}[/]";
     }
 
+    public static string FormatRedirectionDestination(string v)
+    {
+        return $"[seagreen2 underline]{Markup.Escape(v)}[/]";
+    }
+
     public static string FormatJsonProperty(string text)
     {
         return $"[cyan]{Markup.Escape(text)}[/]";
