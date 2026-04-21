@@ -31,7 +31,7 @@ jobs:
             **/*.csproj
 
       - name: Restore
-        run: dotnet restore CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --configfile .github/nuget.github.config
+        run: dotnet restore CosmosDBShell.Tests/CosmosDBShell.Tests.csproj
 
       - name: Build
         run: dotnet build CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --no-restore
@@ -84,12 +84,12 @@ jobs:
           sudo update-ca-certificates
 
       - name: Restore
-        run: dotnet restore CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --configfile .github/nuget.github.config
+        run: dotnet restore CosmosDBShell.Tests/CosmosDBShell.Tests.csproj
 
       - name: Build
         run: dotnet build CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --no-restore
 
       - name: Run emulator tests
         env:
-          COSMOS_EMULATOR_AVAILABLE: 'true'
+          COSMOS_EMULATOR_AVAILABLE: "true"
         run: dotnet test CosmosDBShell.Tests/ --filter "Category=Emulator" --no-build --no-restore
