@@ -34,7 +34,7 @@
     <PackageId>CosmosDBShell</PackageId>
     <Authors>Microsoft</Authors>
     <Description>Interactive Cosmos DB Shell CLI with MCP tooling integration.</Description>
-    <RepositoryUrl>https://msdata.visualstudio.com/CosmosDB/_git/CosmosDB-Shell</RepositoryUrl>
+    <RepositoryUrl>https://github.com/Azure/CosmosDBShell</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>cosmosdb;shell;cli;mcp</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
