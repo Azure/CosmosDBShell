@@ -105,7 +105,7 @@ jobs:
             $branchLabel = $branchLabel.Substring(0, 40).Trim('-')
           }
 
-          $packageVersion = "$assemblyVersion-preview.$branchLabel"
+          $packageVersion = "$assemblyVersion-preview"
           $fileVersion = "1.0.$runNumber.0"
           $infoVersion = "$packageVersion+${{ github.sha }}"
 

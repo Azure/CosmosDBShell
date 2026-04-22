@@ -113,6 +113,25 @@ extends:
                       return $value
                     }
 
+                    function Get-PackageVersionBase([string]$value) {
+                      if ([string]::IsNullOrWhiteSpace($value)) {
+                        return '1.0.0'
+                      }
+
+                      $core = ($value -split '[-+]')[0]
+                      $parts = $core -split '\.'
+
+                      if ($parts.Count -lt 3) {
+                        while ($parts.Count -lt 3) {
+                          $parts += '0'
+                        }
+                      } elseif ($parts.Count -gt 3) {
+                        $parts = $parts[0..2]
+                      }
+
+                      return (($parts | ForEach-Object { [string]([int]$_) }) -join '.')
+                    }
+
                     $buildNumber = "$(Build.BuildNumber)"
                     Write-Host "Build.BuildNumber=$buildNumber"
 
@@ -123,7 +142,8 @@ extends:
 
                     $version = Normalize-NuGetVersion $version
 
-                    $packageVersion = "$version-preview"
+                    $packageVersionBase = Get-PackageVersionBase $version
+                    $packageVersion = "$packageVersionBase-preview"
 
                     if ($buildNumber -ne $version) {
                       Write-Host "Updating Build.BuildNumber to normalized NuGet version: $version"
