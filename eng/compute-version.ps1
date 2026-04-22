@@ -58,9 +58,16 @@ if (-not (Test-Path $propsPath)) {
 }
 
 [xml]$props = Get-Content -LiteralPath $propsPath
-$versionPrefix = $props.Project.PropertyGroup.VersionPrefix
-if ([string]::IsNullOrWhiteSpace($versionPrefix)) {
+# Use XPath so the lookup stays correct even when Directory.Build.props grows
+# additional <PropertyGroup> elements (PowerShell would otherwise surface
+# PropertyGroup as an array and .VersionPrefix as System.Object[]).
+$versionNode = $props.SelectSingleNode('/Project/PropertyGroup/VersionPrefix')
+if ($null -eq $versionNode) {
     throw "VersionPrefix is not set in $propsPath."
+}
+$versionPrefix = $versionNode.InnerText
+if ([string]::IsNullOrWhiteSpace($versionPrefix)) {
+    throw "VersionPrefix is empty in $propsPath."
 }
 
 $prefixParts = $versionPrefix.Split('.') | ForEach-Object { [int]$_ }

@@ -87,18 +87,13 @@ extends:
                   useGlobalJson: true
                   performMultiLevelLookup: true
 
-              - task: onebranch.pipeline.version@1 # generates automatic version. For other versioning options check https://aka.ms/obpipelines/versioning
-                displayName: "Setup BuildNumber"
-                inputs:
-                  system: "RevisionCounter"
-                  major: "1"
-                  minor: "0"
-                  exclude_commit: true
-
+              # Note: onebranch.pipeline.version@1 was removed to avoid two Major.Minor
+              # sources of truth. Directory.Build.props drives Major.Minor via
+              # eng/compute-version.ps1, and Build.BuildId supplies the patch counter.
               - task: PowerShell@2
                 displayName: "Compute version properties"
                 inputs:
-                  filePath: "$(Build.SourcesDirectory)/eng/compute-version.ps1"
+                  filePath: '$(Build.SourcesDirectory)\eng\compute-version.ps1'
                   arguments: '-Patch $(Build.BuildId) -CommitSha "$(Build.SourceVersion)"'
                   pwsh: true
 
