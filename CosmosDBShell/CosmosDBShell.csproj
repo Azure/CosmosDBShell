@@ -34,10 +34,13 @@
     <PackageId>Microsoft.CosmosDBShell</PackageId>
     <Authors>Microsoft</Authors>
     <Description>Interactive Cosmos DB Shell CLI with MCP tooling integration.</Description>
+    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
+    <PackageProjectUrl>https://github.com/Azure/CosmosDBShell</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Azure/CosmosDBShell</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>cosmosdb;shell;cli;mcp</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
 
@@ -50,6 +53,12 @@
   <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'any'">
     <PublishSingleFile>false</PublishSingleFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\NOTICE.html" Pack="true" PackagePath="\" />
+    <None Include="..\LICENSE.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <None Remove="stylecop.json" />
