@@ -25,6 +25,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # GitVersion needs the full history to compute commit counts.
+          fetch-depth: 0
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
@@ -85,13 +88,28 @@ jobs:
           if-no-files-found: ignore
 
       - name: Compute version properties
-        if: github.event_name != 'pull_request'
         id: version
         shell: pwsh
         run: |
-          # Major.Minor is sourced from Directory.Build.props via eng/compute-version.ps1
-          # so GitHub Actions and the OneBranch pipeline stay in sync.
-          ./eng/compute-version.ps1 -Patch ${{ github.run_number }} -CommitSha "${{ github.sha }}"
+          # GitVersion.yml supplies Major.Minor via next-version and counts
+          # commits since it was last bumped. We build the final version
+          # string ourselves so it follows the Major.Minor.<commits>-preview
+          # format consistently across pipelines.
+          dotnet tool install --global GitVersion.Tool --version 6.0.5 | Out-Null
+          $env:PATH += [IO.Path]::PathSeparator + (Join-Path $env:USERPROFILE '.dotnet\tools')
+          $gv = dotnet-gitversion /output json | ConvertFrom-Json
+
+          $assemblyVersion = "$($gv.Major).$($gv.Minor).$($gv.CommitsSinceVersionSource)"
+          $packageVersion  = "$assemblyVersion-preview"
+          $fileVersion     = "$assemblyVersion.0"
+          $infoVersion     = "$packageVersion+${{ github.sha }}"
+
+          Write-Host "AssemblyVersion: $assemblyVersion"
+          Write-Host "PackageVersion:  $packageVersion"
+          "assembly_version=$assemblyVersion" >> $env:GITHUB_OUTPUT
+          "package_version=$packageVersion" >> $env:GITHUB_OUTPUT
+          "file_version=$fileVersion" >> $env:GITHUB_OUTPUT
+          "informational_version=$infoVersion" >> $env:GITHUB_OUTPUT
 
           $branchName = "${{ github.ref_name }}"
           $branchLabel = $branchName.ToLowerInvariant()
@@ -239,7 +257,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-pointer-${{ steps.version.outputs.artifact_suffix }}
-          path: out/nupkg/Microsoft.CosmosDBShell.${{ steps.version.outputs.package_version }}.nupkg
+          path: |
+            out/nupkg/Microsoft.CosmosDBShell.*.nupkg
+            !out/nupkg/Microsoft.CosmosDBShell.win-x64.*.nupkg
+            !out/nupkg/Microsoft.CosmosDBShell.linux-x64.*.nupkg
+            !out/nupkg/Microsoft.CosmosDBShell.linux-arm64.*.nupkg
+            !out/nupkg/Microsoft.CosmosDBShell.osx-x64.*.nupkg
+            !out/nupkg/Microsoft.CosmosDBShell.osx-arm64.*.nupkg
           if-no-files-found: error
 
       - name: Upload win-x64 package
@@ -247,7 +271,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-win-x64-${{ steps.version.outputs.artifact_suffix }}
-          path: out/nupkg/Microsoft.CosmosDBShell.win-x64.${{ steps.version.outputs.package_version }}.nupkg
+          path: out/nupkg/Microsoft.CosmosDBShell.win-x64.*.nupkg
           if-no-files-found: error
 
       - name: Upload linux-x64 package
@@ -255,7 +279,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-linux-x64-${{ steps.version.outputs.artifact_suffix }}
-          path: out/nupkg/Microsoft.CosmosDBShell.linux-x64.${{ steps.version.outputs.package_version }}.nupkg
+          path: out/nupkg/Microsoft.CosmosDBShell.linux-x64.*.nupkg
           if-no-files-found: error
 
       - name: Upload linux-arm64 package
@@ -263,7 +287,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-linux-arm64-${{ steps.version.outputs.artifact_suffix }}
-          path: out/nupkg/Microsoft.CosmosDBShell.linux-arm64.${{ steps.version.outputs.package_version }}.nupkg
+          path: out/nupkg/Microsoft.CosmosDBShell.linux-arm64.*.nupkg
           if-no-files-found: error
 
       - name: Upload osx-x64 package
@@ -271,7 +295,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-osx-x64-${{ steps.version.outputs.artifact_suffix }}
-          path: out/nupkg/Microsoft.CosmosDBShell.osx-x64.${{ steps.version.outputs.package_version }}.nupkg
+          path: out/nupkg/Microsoft.CosmosDBShell.osx-x64.*.nupkg
           if-no-files-found: error
 
       - name: Upload osx-arm64 package
@@ -279,5 +303,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-osx-arm64-${{ steps.version.outputs.artifact_suffix }}
-          path: out/nupkg/Microsoft.CosmosDBShell.osx-arm64.${{ steps.version.outputs.package_version }}.nupkg
+          path: out/nupkg/Microsoft.CosmosDBShell.osx-arm64.*.nupkg
           if-no-files-found: error
