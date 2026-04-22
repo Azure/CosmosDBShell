@@ -160,7 +160,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
         using var feedIterator = container.GetItemQueryStreamIterator("SELECT * FROM c", requestOptions: opt);
         var returnState = new CommandState();
-        returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOS_SHELL_FORMAT"));
+        returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
         var list = new List<JsonElement>();
         var limitReached = false;
         while (feedIterator.HasMoreResults)
