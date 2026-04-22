@@ -18,18 +18,17 @@
        forward slashes; the .NET tool installer does not find the file and
        reports the same error.
 
-    Pack is invoked once per RID by the SDK (driven by
-    ToolPackageRuntimeIdentifiers). AfterTargets="Pack" runs once per RID
-    with the corresponding PackageId/PackageVersion. We rewrite the .nupkg
-    to (a) place its payload under tools/<tfm>/<rid>/ and (b) normalize all
-    entry names to use forward slashes.
+    The target hooks AfterTargets="Pack" and operates on the exact .nupkg
+    files that NuGet's Pack target just produced (via @(NuGetPackOutput)).
+    For each one we rewrite, when needed, to (a) place the payload under
+    tools/<tfm>/<rid>/ and (b) normalize all entry names to use forward
+    slashes.
   -->
   <UsingTask TaskName="FixRidToolPackageLayout"
              TaskFactory="RoslynCodeTaskFactory"
              AssemblyFile="$([System.IO.Path]::Combine('$(MSBuildToolsPath)', 'Microsoft.Build.Tasks.Core.dll'))">
     <ParameterGroup>
-      <PackageDirectory ParameterType="System.String" Required="true" />
-      <PackageIdPrefix ParameterType="System.String" Required="true" />
+      <PackagePaths ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
       <ToolsTargetFramework ParameterType="System.String" Required="true" />
     </ParameterGroup>
     <Task>
@@ -39,7 +38,7 @@
       <Using Namespace="System.Linq" />
       <Code Type="Fragment" Language="cs">
         <![CDATA[
-          if (string.IsNullOrEmpty(PackageDirectory) || !Directory.Exists(PackageDirectory))
+          if (PackagePaths == null || PackagePaths.Length == 0)
           {
               return true;
           }
@@ -47,13 +46,19 @@
           string brokenPrefix = "tools/any/";
           string fixedPrefix = "tools/" + ToolsTargetFramework + "/";
 
-          // Scope by PackageId so each per-RID Pack invocation only touches
-          // its own nupkg — no cross-RID contention even when packs run in
-          // parallel.
-          var candidates = Directory.GetFiles(PackageDirectory, PackageIdPrefix + ".*.nupkg");
-
-          foreach (var packagePath in candidates)
+          foreach (var item in PackagePaths)
           {
+              var packagePath = item.ItemSpec;
+              if (string.IsNullOrEmpty(packagePath) || !File.Exists(packagePath))
+              {
+                  continue;
+              }
+
+              if (!string.Equals(Path.GetExtension(packagePath), ".nupkg", StringComparison.OrdinalIgnoreCase))
+              {
+                  continue;
+              }
+
               var pkgName = Path.GetFileName(packagePath);
 
               bool needsRewrite = false;
@@ -103,8 +108,21 @@
                   }
               }
 
-              File.Delete(packagePath);
-              File.Move(tempPath, packagePath);
+              // Atomic replacement: keep a short-lived backup in case the
+              // swap fails partway through, then remove it on success.
+              var backupPath = packagePath + ".fixlayout.bak";
+              if (File.Exists(backupPath))
+              {
+                  File.Delete(backupPath);
+              }
+
+              File.Replace(tempPath, packagePath, backupPath);
+
+              if (File.Exists(backupPath))
+              {
+                  File.Delete(backupPath);
+              }
+
               Log.LogMessage(MessageImportance.High,
                   $"FixRidToolPackageLayout: normalized entry paths (tools prefix and separators) in {pkgName}.");
           }
@@ -118,8 +136,17 @@
   <Target Name="FixDotnetToolRidPackageLayout"
           AfterTargets="Pack"
           Condition="'$(PackAsTool)' == 'true' and '$(TargetFramework)' != ''">
-    <FixRidToolPackageLayout PackageDirectory="$(PackageOutputPath)"
-                             PackageIdPrefix="$(PackageId)"
+    <!--
+      @(NuGetPackOutput) is populated by NuGet's Pack target and contains
+      the exact set of files produced by this specific Pack invocation
+      (typically the .nupkg plus .nuspec and symbols). Filtering to .nupkg
+      avoids any cross-invocation contention even if multiple RID packs
+      share an output directory.
+    -->
+    <ItemGroup>
+      <_FixLayoutPackages Include="@(NuGetPackOutput)" Condition="'%(Extension)' == '.nupkg'" />
+    </ItemGroup>
+    <FixRidToolPackageLayout PackagePaths="@(_FixLayoutPackages)"
                              ToolsTargetFramework="$(TargetFramework)" />
   </Target>
 </Project>
