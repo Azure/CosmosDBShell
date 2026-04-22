@@ -9,9 +9,9 @@ The credential type is determined by the first matching rule (top-to-bottom):
 | Priority | Condition | Credential Used |
 |----------|-----------|-----------------|
 | 1 | Endpoint is `localhost` or `127.0.0.1` | Emulator (well-known key) |
-| 2 | Connection string has `AccountKey`, or `COSMOS_SHELL_ACCOUNT_KEY` env provides a key | Account key |
+| 2 | Connection string has `AccountKey`, or `COSMOSDB_SHELL_ACCOUNT_KEY` env provides a key | Account key |
 | 3 | `--connect-vscode-credential` startup flag provided (startup only) | `VisualStudioCodeCredential` (falls back to next step) |
-| 4 | `COSMOS_SHELL_TOKEN` env var is set | Static access token |
+| 4 | `COSMOSDB_SHELL_TOKEN` env var is set | Static access token |
 | 5 | `--managed-identity` option provided | `ManagedIdentityCredential` |
 | 6 | `--tenant` or `--hint` option provided | `InteractiveBrowserCredential` (with `DeviceCodeCredential` fallback) |
 | 7 | Endpoint only (no additional arguments) | `DefaultAzureCredential` |
@@ -29,7 +29,7 @@ The `--authority-host` option is passed through to whichever credential is creat
 connect "AccountEndpoint=https://myaccount.documents.azure.com:443/;AccountKey=mykey;"
 
 # Key via environment variable
-export COSMOS_SHELL_ACCOUNT_KEY="myaccountkey"
+export COSMOSDB_SHELL_ACCOUNT_KEY="myaccountkey"
 connect https://myaccount.documents.azure.com:443/
 ```
 
@@ -85,31 +85,31 @@ For sovereign clouds or custom Entra environments, use `--authority-host`:
 connect https://myaccount.documents.azure.com:443/ --authority-host=https://login.microsoftonline.us/
 ```
 
-## COSMOS_SHELL_ACCOUNT_KEY Environment Variable
+## COSMOSDB_SHELL_ACCOUNT_KEY Environment Variable
 
 This environment variable provides an account key for authentication:
 
 ```bash
-export COSMOS_SHELL_ACCOUNT_KEY="myaccountkey"
+export COSMOSDB_SHELL_ACCOUNT_KEY="myaccountkey"
 ```
 
 If the connection string already contains an `AccountKey`, the environment variable is ignored.
 
-## COSMOS_SHELL_TOKEN Environment Variable
+## COSMOSDB_SHELL_TOKEN Environment Variable
 
 This environment variable provides a pre-obtained Entra ID access token (JWT) for authentication. This is intended for single-shot command execution where an external process handles token acquisition.
 
 ```bash
 # Obtain a token with the Cosmos DB RBAC scope, then pass it
-export COSMOS_SHELL_TOKEN=$(az account get-access-token --resource https://<account>.documents.azure.com --query accessToken -o tsv)
+export COSMOSDB_SHELL_TOKEN=$(az account get-access-token --resource https://<account>.documents.azure.com --query accessToken -o tsv)
 cosmos-shell --connect https://myaccount.documents.azure.com:443/ -c "cd mydb/mycont; ls -m 5"
 ```
 
 The token must be issued for the Cosmos DB RBAC scope (`https://<account>.documents.azure.com/.default`). The external process is responsible for obtaining a valid token with the correct scope and permissions.
 
-When `COSMOS_SHELL_TOKEN` is set, it takes priority over managed identity, interactive browser, and `DefaultAzureCredential` — but account keys (from the connection string or `COSMOS_SHELL_ACCOUNT_KEY`) still take priority over it.
+When `COSMOSDB_SHELL_TOKEN` is set, it takes priority over managed identity, interactive browser, and `DefaultAzureCredential` — but account keys (from the connection string or `COSMOSDB_SHELL_ACCOUNT_KEY`) still take priority over it.
 
-> **Security note:** Environment variable values may be visible to other processes on the system. This is standard practice for CI/CD token passing, but avoid setting `COSMOS_SHELL_TOKEN` in shared or untrusted environments.
+> **Security note:** Environment variable values may be visible to other processes on the system. This is standard practice for CI/CD token passing, but avoid setting `COSMOSDB_SHELL_TOKEN` in shared or untrusted environments.
 
 ## CLI Startup Options
 
@@ -121,7 +121,7 @@ cosmos-shell --connect https://myaccount.documents.azure.com:443/ --connect-mana
 cosmos-shell --connect https://localhost:8081
 ```
 
-The hidden `--connect-vscode-credential` flag enables `VisualStudioCodeCredential` authentication via the system broker. This is used by the VS Code extension and requires the Azure Resources extension to be signed in. If the credential is unavailable, the shell falls back to `COSMOS_SHELL_TOKEN` and then to subsequent credential steps.
+The hidden `--connect-vscode-credential` flag enables `VisualStudioCodeCredential` authentication via the system broker. This is used by the VS Code extension and requires the Azure Resources extension to be signed in. If the credential is unavailable, the shell falls back to `COSMOSDB_SHELL_TOKEN` and then to subsequent credential steps.
 
 ## Connection Info
 
@@ -163,15 +163,15 @@ In shared or production environments, this can lead to subtle problems. For exam
 For Cosmos Shell usage:
 
 - **Local development**: `DefaultAzureCredential` (endpoint-only connection) is a good default. It picks up your Azure CLI or VS Code session automatically.
-- **CI/CD pipelines**: Prefer explicit credential types — `--managed-identity` for Azure-hosted runners, or `COSMOS_SHELL_TOKEN` with a pre-obtained token.
+- **CI/CD pipelines**: Prefer explicit credential types — `--managed-identity` for Azure-hosted runners, or `COSMOSDB_SHELL_TOKEN` with a pre-obtained token.
 - **Shared VMs or containers**: Use `--managed-identity` or `--tenant` to avoid resolving to an unintended identity.
 
 ### Environment Variables
 
-Both `COSMOS_SHELL_ACCOUNT_KEY` and `COSMOS_SHELL_TOKEN` pass credentials through environment variables. Be aware of the following:
+Both `COSMOSDB_SHELL_ACCOUNT_KEY` and `COSMOSDB_SHELL_TOKEN` pass credentials through environment variables. Be aware of the following:
 
 - Environment variable values may be visible to **other processes** on the same system (e.g., via `/proc` on Linux or `ps eww` on macOS).
-- Values may persist in **shell history** if set inline (e.g., `export COSMOS_SHELL_ACCOUNT_KEY=...` in `.bash_history`).
+- Values may persist in **shell history** if set inline (e.g., `export COSMOSDB_SHELL_ACCOUNT_KEY=...` in `.bash_history`).
 - In CI/CD systems, use **masked secret variables** (Azure Pipelines secrets, GitHub Actions secrets) to prevent credentials from appearing in build logs.
 - Avoid setting credential environment variables in shared or multi-user environments.
 

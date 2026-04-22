@@ -96,7 +96,7 @@ public partial class ShellInterpreter : IDisposable
     {
         get
         {
-            var sep = Environment.GetEnvironmentVariable("COSMOS_SHELL_CSVSEP");
+            var sep = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_CSVSEP");
             if (!string.IsNullOrEmpty(sep))
             {
                 return sep[0];
@@ -237,7 +237,7 @@ public partial class ShellInterpreter : IDisposable
     public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token)
     {
         var state = new CommandState();
-        state.SetFormat(Environment.GetEnvironmentVariable("COSMOS_SHELL_FORMAT"));
+        state.SetFormat(Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
 
         // Snapshot redirect state so a '>' / '2>' on this command does not leak into
         // the next command executed against this interpreter instance.
@@ -538,7 +538,7 @@ public partial class ShellInterpreter : IDisposable
 
             if (accountKey == null)
             {
-                var envKey = Environment.GetEnvironmentVariable("COSMOS_SHELL_ACCOUNT_KEY");
+                var envKey = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_ACCOUNT_KEY");
                 if (!string.IsNullOrEmpty(envKey))
                 {
                     accountKey = envKey;
@@ -550,7 +550,7 @@ public partial class ShellInterpreter : IDisposable
         }
         else if (!hasKey)
         {
-            var envKey = Environment.GetEnvironmentVariable("COSMOS_SHELL_ACCOUNT_KEY");
+            var envKey = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_ACCOUNT_KEY");
             if (!string.IsNullOrEmpty(envKey))
             {
                 var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
@@ -627,8 +627,8 @@ public partial class ShellInterpreter : IDisposable
             }
         }
 
-        // Step 3: Static token from COSMOS_SHELL_TOKEN environment variable
-        var envToken = Environment.GetEnvironmentVariable("COSMOS_SHELL_TOKEN");
+        // Step 3: Static token from COSMOSDB_SHELL_TOKEN environment variable
+        var envToken = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_TOKEN");
         if (client == null && !string.IsNullOrEmpty(envToken))
         {
             WriteLine(MessageService.GetString("shell-connect-static-token-auth"));
