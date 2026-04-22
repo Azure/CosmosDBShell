@@ -24,7 +24,11 @@ parameters: # parameters are shown up in ADO UI in a build queue time
     default: true
 
 variables:
-  CDP_DEFINITION_BUILD_COUNT: $[counter('', 0)] # needed for onebranch.pipeline.version task https://aka.ms/obpipelines/versioning
+  # Dedicated patch counter. Must stay below UInt16.MaxValue (65535), which is
+  # the per-segment limit for .NET assembly versions. Build.BuildId cannot be
+  # used here because it already exceeds that range on this ADO instance.
+  # Bump the counter name (e.g. to -v2) if you ever need to reset it.
+  patchCounter: $[counter('cosmosdbshell-patch', 0)]
   system.debug: ${{ parameters.debug }}
 
   BuildSolution: $(Build.SourcesDirectory)\CosmosDBShell.sln
@@ -89,12 +93,12 @@ extends:
 
               # Note: onebranch.pipeline.version@1 was removed to avoid two Major.Minor
               # sources of truth. Directory.Build.props drives Major.Minor via
-              # eng/compute-version.ps1, and Build.BuildId supplies the patch counter.
+              # eng/compute-version.ps1, and $(patchCounter) supplies the patch counter.
               - task: PowerShell@2
                 displayName: "Compute version properties"
                 inputs:
                   filePath: '$(Build.SourcesDirectory)\eng\compute-version.ps1'
-                  arguments: '-Patch $(Build.BuildId) -CommitSha "$(Build.SourceVersion)"'
+                  arguments: '-Patch $(patchCounter) -CommitSha "$(Build.SourceVersion)"'
                   pwsh: true
 
               - task: DotNetCoreCLI@2
