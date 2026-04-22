@@ -1,2 +1,8 @@
 <Project>
+  <PropertyGroup>
+    <!-- Single source of truth for the package/assembly Major.Minor version.
+         Pipelines (GitHub Actions and OneBranch) read this value and append a
+         patch number plus pre-release suffix at build time. -->
+    <VersionPrefix>1.0</VersionPrefix>
+  </PropertyGroup>
 </Project>
