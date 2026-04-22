@@ -370,7 +370,42 @@ extends:
                       }
 
                       Remove-Item -Path $packagePath -Force
-                      [System.IO.Compression.ZipFile]::CreateFromDirectory($staged.FullName, $packagePath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+
+                      # NOTE: We intentionally avoid ZipFile.CreateFromDirectory here.
+                      # On Windows it writes zip entry names with backslashes, which
+                      # violates the ZIP spec and causes `dotnet tool install` to fail
+                      # with "DotnetToolSettings.xml was not found in the package".
+                      # Build the archive manually so every entry name uses forward
+                      # slashes regardless of OS path separators.
+                      $zipStream = [System.IO.File]::Create($packagePath)
+                      try {
+                        $zipArchive = New-Object System.IO.Compression.ZipArchive($zipStream, [System.IO.Compression.ZipArchiveMode]::Create)
+                        try {
+                          $rootPath = [System.IO.Path]::GetFullPath($staged.FullName)
+                          $files = Get-ChildItem -LiteralPath $staged.FullName -Recurse -File
+                          foreach ($file in $files) {
+                            $relative = [System.IO.Path]::GetRelativePath($rootPath, $file.FullName)
+                            $entryName = $relative -replace '\\', '/'
+                            $entry = $zipArchive.CreateEntry($entryName, [System.IO.Compression.CompressionLevel]::Optimal)
+                            $entry.LastWriteTime = $file.LastWriteTime
+                            $entryStream = $entry.Open()
+                            try {
+                              $fileStream = [System.IO.File]::OpenRead($file.FullName)
+                              try {
+                                $fileStream.CopyTo($entryStream)
+                              } finally {
+                                $fileStream.Dispose()
+                              }
+                            } finally {
+                              $entryStream.Dispose()
+                            }
+                          }
+                        } finally {
+                          $zipArchive.Dispose()
+                        }
+                      } finally {
+                        $zipStream.Dispose()
+                      }
                     }
 
               - task: PowerShell@2

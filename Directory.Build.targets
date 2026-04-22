@@ -5,17 +5,24 @@
   </PropertyGroup>
 
   <!--
-    Workaround for a .NET 10 SDK bug in PackAsTool RID-specific packaging.
+    Workaround for two packaging issues that prevent `dotnet tool install`
+    from consuming our .nupkg files:
 
-    When packing a DotnetToolRidPackage, the SDK writes the payload under
-    tools/any/<rid>/ instead of tools/<tfm>/<rid>/. The installer then fails
-    with: "DotnetToolSettings.xml was not found in the package".
+    1. .NET 10 SDK bug in PackAsTool RID-specific packaging: the SDK writes
+       the payload under tools/any/<rid>/ instead of tools/<tfm>/<rid>/. The
+       installer then fails with:
+       "DotnetToolSettings.xml was not found in the package".
+
+    2. On Windows, dotnet pack occasionally emits zip entry names with
+       backslashes ('tools\\net10.0\\<rid>\\...'). The ZIP spec requires
+       forward slashes; the .NET tool installer does not find the file and
+       reports the same error.
 
     Pack is invoked once per RID by the SDK (driven by
-    ToolPackageRuntimeIdentifiers). AfterTargets="Pack" therefore runs once
-    per RID with the corresponding PackageId/PackageVersion, and we rewrite
-    that single .nupkg to place its payload under tools/<tfm>/<rid>/, which
-    is what `dotnet tool install` expects.
+    ToolPackageRuntimeIdentifiers). AfterTargets="Pack" runs once per RID
+    with the corresponding PackageId/PackageVersion. We rewrite the .nupkg
+    to (a) place its payload under tools/<tfm>/<rid>/ and (b) normalize all
+    entry names to use forward slashes.
   -->
   <UsingTask TaskName="FixRidToolPackageLayout"
              TaskFactory="RoslynCodeTaskFactory"
@@ -53,6 +60,7 @@
               using (var zip = ZipFile.OpenRead(packagePath))
               {
                   needsRewrite = zip.Entries.Any(e =>
+                      e.FullName.IndexOf('\\') >= 0 ||
                       e.FullName.Replace('\\', '/').StartsWith(brokenPrefix, StringComparison.OrdinalIgnoreCase));
               }
 
@@ -98,7 +106,7 @@
               File.Delete(packagePath);
               File.Move(tempPath, packagePath);
               Log.LogMessage(MessageImportance.High,
-                  $"FixRidToolPackageLayout: rewrote '{brokenPrefix}' -> '{fixedPrefix}' in {pkgName}.");
+                  $"FixRidToolPackageLayout: normalized entry paths (tools prefix and separators) in {pkgName}.");
           }
 
           return true;
