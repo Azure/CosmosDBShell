@@ -3,4 +3,105 @@
     <RuntimeFrameworkVersion>10.0.4</RuntimeFrameworkVersion>
     <AspNetCoreRuntimeFrameworkVersion>10.0.4</AspNetCoreRuntimeFrameworkVersion>
   </PropertyGroup>
+
+  <!--
+    Workaround for a .NET 10 SDK bug in PackAsTool RID-specific packaging.
+
+    When packing a DotnetToolRidPackage, the SDK writes the payload under
+    tools/any/<rid>/ instead of tools/<tfm>/<rid>/. The installer then fails
+    with: "DotnetToolSettings.xml was not found in the package".
+
+    After Pack completes, scan the output folder and rewrite any affected
+    Microsoft.CosmosDBShell.<rid>.*.nupkg so its payload lives under
+    tools/<tfm>/<rid>/, which is what `dotnet tool install` expects.
+  -->
+  <UsingTask TaskName="FixRidToolPackageLayout"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <PackagePath ParameterType="System.String" Required="true" />
+      <ToolsTargetFramework ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.IO.Compression" />
+      <Using Namespace="System.Linq" />
+      <Code Type="Fragment" Language="cs">
+        <![CDATA[
+          if (string.IsNullOrEmpty(PackagePath) || !File.Exists(PackagePath))
+          {
+              return true;
+          }
+
+          string brokenPrefix = "tools/any/";
+          string fixedPrefix = "tools/" + ToolsTargetFramework + "/";
+          string pkgName = Path.GetFileName(PackagePath);
+
+          bool needsRewrite = false;
+          using (var zip = ZipFile.OpenRead(PackagePath))
+          {
+              needsRewrite = zip.Entries.Any(e =>
+                  e.FullName.Replace('\\', '/').StartsWith(brokenPrefix, StringComparison.OrdinalIgnoreCase));
+          }
+
+          if (!needsRewrite)
+          {
+              return true;
+          }
+
+          var tempPath = PackagePath + ".fixlayout.tmp";
+          if (File.Exists(tempPath))
+          {
+              File.Delete(tempPath);
+          }
+
+          using (var inZip = ZipFile.OpenRead(PackagePath))
+          using (var outStream = File.Create(tempPath))
+          using (var outZip = new ZipArchive(outStream, ZipArchiveMode.Create))
+          {
+              foreach (var entry in inZip.Entries)
+              {
+                  var normalized = entry.FullName.Replace('\\', '/');
+
+                  // Drop any existing package signature; rewriting invalidates it.
+                  if (string.Equals(normalized, ".signature.p7s", StringComparison.OrdinalIgnoreCase))
+                  {
+                      continue;
+                  }
+
+                  string newName = normalized.StartsWith(brokenPrefix, StringComparison.OrdinalIgnoreCase)
+                      ? fixedPrefix + normalized.Substring(brokenPrefix.Length)
+                      : normalized;
+
+                  var newEntry = outZip.CreateEntry(newName, CompressionLevel.Optimal);
+                  newEntry.LastWriteTime = entry.LastWriteTime;
+                  using (var src = entry.Open())
+                  using (var dst = newEntry.Open())
+                  {
+                      src.CopyTo(dst);
+                  }
+              }
+          }
+
+          File.Delete(PackagePath);
+          File.Move(tempPath, PackagePath);
+          Log.LogMessage(MessageImportance.High,
+              $"FixRidToolPackageLayout: rewrote '{brokenPrefix}' -> '{fixedPrefix}' in {pkgName}.");
+
+          return true;
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="FixDotnetToolRidPackageLayout"
+          AfterTargets="Pack"
+          Condition="'$(PackAsTool)' == 'true' and '$(TargetFramework)' != ''">
+    <PropertyGroup>
+      <_FixLayoutPackagePath>$([System.IO.Path]::Combine('$(PackageOutputPath)', '$(PackageId).$(PackageVersion).nupkg'))</_FixLayoutPackagePath>
+    </PropertyGroup>
+    <FixRidToolPackageLayout PackagePath="$(_FixLayoutPackagePath)"
+                             ToolsTargetFramework="$(TargetFramework)" />
+  </Target>
 </Project>
