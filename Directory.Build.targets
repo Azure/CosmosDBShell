@@ -11,15 +11,18 @@
     tools/any/<rid>/ instead of tools/<tfm>/<rid>/. The installer then fails
     with: "DotnetToolSettings.xml was not found in the package".
 
-    After Pack completes, scan the output folder and rewrite any affected
-    Microsoft.CosmosDBShell.<rid>.*.nupkg so its payload lives under
-    tools/<tfm>/<rid>/, which is what `dotnet tool install` expects.
+    Pack is invoked once per RID by the SDK (driven by
+    ToolPackageRuntimeIdentifiers). AfterTargets="Pack" therefore runs once
+    per RID with the corresponding PackageId/PackageVersion, and we rewrite
+    that single .nupkg to place its payload under tools/<tfm>/<rid>/, which
+    is what `dotnet tool install` expects.
   -->
   <UsingTask TaskName="FixRidToolPackageLayout"
              TaskFactory="RoslynCodeTaskFactory"
-             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+             AssemblyFile="$([System.IO.Path]::Combine('$(MSBuildToolsPath)', 'Microsoft.Build.Tasks.Core.dll'))">
     <ParameterGroup>
-      <PackagePath ParameterType="System.String" Required="true" />
+      <PackageDirectory ParameterType="System.String" Required="true" />
+      <PackageIdPrefix ParameterType="System.String" Required="true" />
       <ToolsTargetFramework ParameterType="System.String" Required="true" />
     </ParameterGroup>
     <Task>
@@ -29,65 +32,74 @@
       <Using Namespace="System.Linq" />
       <Code Type="Fragment" Language="cs">
         <![CDATA[
-          if (string.IsNullOrEmpty(PackagePath) || !File.Exists(PackagePath))
+          if (string.IsNullOrEmpty(PackageDirectory) || !Directory.Exists(PackageDirectory))
           {
               return true;
           }
 
           string brokenPrefix = "tools/any/";
           string fixedPrefix = "tools/" + ToolsTargetFramework + "/";
-          string pkgName = Path.GetFileName(PackagePath);
 
-          bool needsRewrite = false;
-          using (var zip = ZipFile.OpenRead(PackagePath))
-          {
-              needsRewrite = zip.Entries.Any(e =>
-                  e.FullName.Replace('\\', '/').StartsWith(brokenPrefix, StringComparison.OrdinalIgnoreCase));
-          }
+          // Scope by PackageId so each per-RID Pack invocation only touches
+          // its own nupkg — no cross-RID contention even when packs run in
+          // parallel.
+          var candidates = Directory.GetFiles(PackageDirectory, PackageIdPrefix + ".*.nupkg");
 
-          if (!needsRewrite)
+          foreach (var packagePath in candidates)
           {
-              return true;
-          }
+              var pkgName = Path.GetFileName(packagePath);
 
-          var tempPath = PackagePath + ".fixlayout.tmp";
-          if (File.Exists(tempPath))
-          {
-              File.Delete(tempPath);
-          }
-
-          using (var inZip = ZipFile.OpenRead(PackagePath))
-          using (var outStream = File.Create(tempPath))
-          using (var outZip = new ZipArchive(outStream, ZipArchiveMode.Create))
-          {
-              foreach (var entry in inZip.Entries)
+              bool needsRewrite = false;
+              using (var zip = ZipFile.OpenRead(packagePath))
               {
-                  var normalized = entry.FullName.Replace('\\', '/');
+                  needsRewrite = zip.Entries.Any(e =>
+                      e.FullName.Replace('\\', '/').StartsWith(brokenPrefix, StringComparison.OrdinalIgnoreCase));
+              }
 
-                  // Drop any existing package signature; rewriting invalidates it.
-                  if (string.Equals(normalized, ".signature.p7s", StringComparison.OrdinalIgnoreCase))
+              if (!needsRewrite)
+              {
+                  continue;
+              }
+
+              var tempPath = packagePath + ".fixlayout.tmp";
+              if (File.Exists(tempPath))
+              {
+                  File.Delete(tempPath);
+              }
+
+              using (var inZip = ZipFile.OpenRead(packagePath))
+              using (var outStream = File.Create(tempPath))
+              using (var outZip = new ZipArchive(outStream, ZipArchiveMode.Create))
+              {
+                  foreach (var entry in inZip.Entries)
                   {
-                      continue;
-                  }
+                      var normalized = entry.FullName.Replace('\\', '/');
 
-                  string newName = normalized.StartsWith(brokenPrefix, StringComparison.OrdinalIgnoreCase)
-                      ? fixedPrefix + normalized.Substring(brokenPrefix.Length)
-                      : normalized;
+                      // Drop any existing package signature; rewriting invalidates it.
+                      if (string.Equals(normalized, ".signature.p7s", StringComparison.OrdinalIgnoreCase))
+                      {
+                          continue;
+                      }
 
-                  var newEntry = outZip.CreateEntry(newName, CompressionLevel.Optimal);
-                  newEntry.LastWriteTime = entry.LastWriteTime;
-                  using (var src = entry.Open())
-                  using (var dst = newEntry.Open())
-                  {
-                      src.CopyTo(dst);
+                      string newName = normalized.StartsWith(brokenPrefix, StringComparison.OrdinalIgnoreCase)
+                          ? fixedPrefix + normalized.Substring(brokenPrefix.Length)
+                          : normalized;
+
+                      var newEntry = outZip.CreateEntry(newName, CompressionLevel.Optimal);
+                      newEntry.LastWriteTime = entry.LastWriteTime;
+                      using (var src = entry.Open())
+                      using (var dst = newEntry.Open())
+                      {
+                          src.CopyTo(dst);
+                      }
                   }
               }
-          }
 
-          File.Delete(PackagePath);
-          File.Move(tempPath, PackagePath);
-          Log.LogMessage(MessageImportance.High,
-              $"FixRidToolPackageLayout: rewrote '{brokenPrefix}' -> '{fixedPrefix}' in {pkgName}.");
+              File.Delete(packagePath);
+              File.Move(tempPath, packagePath);
+              Log.LogMessage(MessageImportance.High,
+                  $"FixRidToolPackageLayout: rewrote '{brokenPrefix}' -> '{fixedPrefix}' in {pkgName}.");
+          }
 
           return true;
         ]]>
@@ -98,10 +110,8 @@
   <Target Name="FixDotnetToolRidPackageLayout"
           AfterTargets="Pack"
           Condition="'$(PackAsTool)' == 'true' and '$(TargetFramework)' != ''">
-    <PropertyGroup>
-      <_FixLayoutPackagePath>$([System.IO.Path]::Combine('$(PackageOutputPath)', '$(PackageId).$(PackageVersion).nupkg'))</_FixLayoutPackagePath>
-    </PropertyGroup>
-    <FixRidToolPackageLayout PackagePath="$(_FixLayoutPackagePath)"
+    <FixRidToolPackageLayout PackageDirectory="$(PackageOutputPath)"
+                             PackageIdPrefix="$(PackageId)"
                              ToolsTargetFramework="$(TargetFramework)" />
   </Target>
 </Project>
