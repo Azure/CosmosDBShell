@@ -41,6 +41,7 @@
     <PackageTags>cosmosdb;shell;cli;mcp</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>Azure Cosmos DB Shell as a .NET tool with interactive navigation, query, scripting, and MCP server support. See https://github.com/Azure/CosmosDBShell/releases for version-specific release history.</PackageReleaseNotes>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
 
