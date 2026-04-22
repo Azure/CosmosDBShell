@@ -33,7 +33,7 @@
   <PropertyGroup>
     <PackageId>Microsoft.CosmosDBShell</PackageId>
     <Authors>Microsoft</Authors>
-    <Description>Interactive Cosmos DB Shell CLI with MCP tooling integration.</Description>
+    <Description>Azure Cosmos DB Shell is a .NET tool with interactive navigation, query, scripting, and MCP server support for Azure Cosmos DB databases.</Description>
     <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
     <PackageProjectUrl>https://github.com/Azure/CosmosDBShell</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Azure/CosmosDBShell</RepositoryUrl>
@@ -41,6 +41,7 @@
     <PackageTags>cosmosdb;shell;cli;mcp</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>See https://github.com/Azure/CosmosDBShell/releases for version-specific release history.</PackageReleaseNotes>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
 

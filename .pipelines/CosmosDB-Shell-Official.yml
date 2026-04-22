@@ -24,7 +24,11 @@ parameters: # parameters are shown up in ADO UI in a build queue time
     default: true
 
 variables:
-  CDP_DEFINITION_BUILD_COUNT: $[counter('', 0)] # needed for onebranch.pipeline.version task https://aka.ms/obpipelines/versioning
+  # Dedicated patch counter. Must stay below UInt16.MaxValue (65535), which is
+  # the per-segment limit for .NET assembly versions. Build.BuildId cannot be
+  # used here because it already exceeds that range on this ADO instance.
+  # Bump the counter name (e.g. to -v2) if you ever need to reset it.
+  patchCounter: $[counter('cosmosdbshell-patch', 0)]
   system.debug: ${{ parameters.debug }}
 
   BuildSolution: $(Build.SourcesDirectory)\CosmosDBShell.sln
@@ -87,66 +91,15 @@ extends:
                   useGlobalJson: true
                   performMultiLevelLookup: true
 
-              - task: onebranch.pipeline.version@1 # generates automatic version. For other versioning options check https://aka.ms/obpipelines/versioning
-                displayName: "Setup BuildNumber"
-                inputs:
-                  system: "RevisionCounter"
-                  major: "1"
-                  minor: "0"
-                  exclude_commit: true
-
+              # Note: onebranch.pipeline.version@1 was removed to avoid two Major.Minor
+              # sources of truth. Directory.Build.props drives Major.Minor via
+              # eng/compute-version.ps1, and $(patchCounter) supplies the patch counter.
               - task: PowerShell@2
                 displayName: "Compute version properties"
                 inputs:
-                  targetType: inline
-                  script: |
-                    function Normalize-NuGetVersion([string]$value) {
-                      if ([string]::IsNullOrWhiteSpace($value)) {
-                        return $value
-                      }
-
-                      if ($value -match '^(?<core>\d+(?:\.\d+)*)(?<suffix>[-+].*)?$') {
-                        $normalizedCore = (($Matches.core -split '\.') | ForEach-Object { [string]([int]$_) }) -join '.'
-                        return "$normalizedCore$($Matches.suffix)"
-                      }
-
-                      return $value
-                    }
-
-                    $buildNumber = "$(Build.BuildNumber)"
-                    Write-Host "Build.BuildNumber=$buildNumber"
-
-                    $version = $buildNumber
-                    if (-not ($version -match '^\d+(\.\d+){1,3}$')) {
-                      $version = "1.0.$(Build.BuildId)"
-                    }
-
-                    $version = Normalize-NuGetVersion $version
-
-                    $packageVersion = "$version-preview"
-
-                    if ($buildNumber -ne $version) {
-                      Write-Host "Updating Build.BuildNumber to normalized NuGet version: $version"
-                      Write-Host "##vso[build.updatebuildnumber]$version"
-                      $buildNumber = $version
-                    }
-
-                    $fileVersion = $version
-                    $parts = $fileVersion.Split('.')
-                    if ($parts.Count -eq 2) {
-                      $fileVersion = "$fileVersion.$(Build.BuildId).0"
-                    } elseif ($parts.Count -eq 3) {
-                      $fileVersion = "$fileVersion.$(Build.BuildId)"
-                    } elseif ($parts.Count -gt 4) {
-                      $fileVersion = ($parts[0..3] -join '.')
-                    }
-
-                    $infoVersion = "$packageVersion+$(Build.SourceVersion)"
-
-                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_Version]$version"
-                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_PackageVersion]$packageVersion"
-                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_FileVersion]$fileVersion"
-                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_InformationalVersion]$infoVersion"
+                  filePath: '$(Build.SourcesDirectory)\eng\compute-version.ps1'
+                  arguments: '-Patch $(patchCounter) -CommitSha "$(Build.SourceVersion)"'
+                  pwsh: true
 
               - task: DotNetCoreCLI@2
                 displayName: "DotNetCore restore"

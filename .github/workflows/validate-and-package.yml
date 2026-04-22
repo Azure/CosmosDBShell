@@ -89,8 +89,10 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $runNumber = [int]"${{ github.run_number }}"
-          $assemblyVersion = "1.0.$runNumber"
+          # Major.Minor is sourced from Directory.Build.props via eng/compute-version.ps1
+          # so GitHub Actions and the OneBranch pipeline stay in sync.
+          ./eng/compute-version.ps1 -Patch ${{ github.run_number }} -CommitSha "${{ github.sha }}"
+
           $branchName = "${{ github.ref_name }}"
           $branchLabel = $branchName.ToLowerInvariant()
           $branchLabel = $branchLabel -replace '[^0-9a-z-]', '-'
@@ -105,14 +107,6 @@ jobs:
             $branchLabel = $branchLabel.Substring(0, 40).Trim('-')
           }
 
-          $packageVersion = "$assemblyVersion-preview.$branchLabel"
-          $fileVersion = "1.0.$runNumber.0"
-          $infoVersion = "$packageVersion+${{ github.sha }}"
-
-          "assembly_version=$assemblyVersion" >> $env:GITHUB_OUTPUT
-          "package_version=$packageVersion" >> $env:GITHUB_OUTPUT
-          "file_version=$fileVersion" >> $env:GITHUB_OUTPUT
-          "informational_version=$infoVersion" >> $env:GITHUB_OUTPUT
           "branch_label=$branchLabel" >> $env:GITHUB_OUTPUT
           "artifact_suffix=$branchLabel-${{ github.run_number }}" >> $env:GITHUB_OUTPUT
 
