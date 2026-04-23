@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 // ------------------------------------------------------------
 
+using System.Reflection;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Lsp;
@@ -39,16 +40,40 @@ internal class Program
         {
             args = NormalizeArguments(args);
             SentenceBuilder.Factory = () => new LocalizableSentenceBuilder();
-            var parser = Parser.Default.ParseArguments<CosmosShellOptions>(args);
+
+            // Use a custom parser so we can render our own heading for --version
+            // (CommandLineParser's default output is "<product> <informationalVersion>",
+            // which prints the build-metadata SHA inline and duplicated when both
+            // /p:InformationalVersion and SourceLink's SourceRevisionId contribute
+            // metadata). HelpWriter=null disables the built-in help/version writer;
+            // we delegate back to HelpText.AutoBuild for --help and parse errors.
+            using var parser = new Parser(settings =>
+            {
+                settings.HelpWriter = null;
+            });
+            var parseResult = parser.ParseArguments<CosmosShellOptions>(args);
 
             // Handle parse errors
-            parser.WithNotParsed(errors =>
+            parseResult.WithNotParsed(errors =>
             {
-                Environment.ExitCode = 1;
-                return;
+                if (errors.IsVersion())
+                {
+                    WriteVersionHeading();
+                    return;
+                }
+
+                var helpText = errors.IsHelp()
+                    ? HelpText.AutoBuild(parseResult)
+                    : HelpText.AutoBuild(parseResult, h => HelpText.DefaultParsingErrorsHandler(parseResult, h), e => e);
+                ShellInterpreter.WriteLine(helpText.ToString());
+
+                if (!errors.IsHelp())
+                {
+                    Environment.ExitCode = 1;
+                }
             });
 
-            _ = await parser.WithParsedAsync(async o =>
+            _ = await parseResult.WithParsedAsync(async o =>
             {
                 if (o.StartLspServer)
                 {
@@ -240,6 +265,23 @@ internal class Program
             ShellInterpreter.Instance.Dispose();
             host?.Dispose();
         }
+    }
+
+    private static void WriteVersionHeading()
+    {
+        var assembly = typeof(Program).Assembly;
+        var product = assembly.GetCustomAttribute<AssemblyProductAttribute>()?.Product;
+        if (string.IsNullOrEmpty(product))
+        {
+            product = assembly.GetName().Name ?? "CosmosDBShell";
+        }
+
+        var version = ShellInterpreter.GetDisplayVersion(assembly);
+        var commit = ShellInterpreter.GetDisplayCommit(assembly);
+        var heading = string.IsNullOrEmpty(commit)
+            ? new HeadingInfo(product, version)
+            : new HeadingInfo(product, $"{version} ({commit})");
+        ShellInterpreter.WriteLine(heading.ToString());
     }
 
     private static string[] NormalizeArguments(string[] args)
