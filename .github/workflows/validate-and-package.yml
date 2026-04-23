@@ -26,8 +26,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # GitVersion needs the full history to compute commit counts.
-          fetch-depth: 0
+          # Non-PR runs need full history to compute commit counts.
+          fetch-depth: ${{ github.event_name != 'pull_request' && 0 || 1 }}
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
@@ -87,19 +87,40 @@ jobs:
           path: CosmosDBShell.Fuzzer/findings
           if-no-files-found: ignore
 
+      - name: Restore GitVersion tool
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet tool restore
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to restore the local GitVersion tool."
+          }
+
       - name: Compute version properties
+        if: github.event_name != 'pull_request'
         id: version
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+
           # GitVersion.yml supplies Major.Minor via next-version and counts
           # commits since it was last bumped. We build the final version
           # string ourselves so it follows the Major.Minor.<commits>-preview
           # format consistently across pipelines.
-          dotnet tool install --global GitVersion.Tool --version 6.0.5 | Out-Null
-          $env:PATH += [IO.Path]::PathSeparator + (Join-Path $env:USERPROFILE '.dotnet\tools')
-          $gv = dotnet-gitversion /output json | ConvertFrom-Json
+          $gitVersionJson = dotnet tool run dotnet-gitversion /output json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to compute version metadata with dotnet-gitversion."
+          }
 
-          $assemblyVersion = "$($gv.Major).$($gv.Minor).$($gv.CommitsSinceVersionSource)"
+          $gv = $gitVersionJson | ConvertFrom-Json
+
+          $commitsSinceVersionSource = [int]$gv.CommitsSinceVersionSource
+          if ($commitsSinceVersionSource -gt 65535) {
+            throw "CommitsSinceVersionSource ($commitsSinceVersionSource) exceeds the maximum .NET assembly version segment value of 65535. Bump next-version before generating assembly and file versions."
+          }
+
+          $assemblyVersion = "$($gv.Major).$($gv.Minor).$commitsSinceVersionSource"
           $packageVersion  = "$assemblyVersion-preview"
           $fileVersion     = "$assemblyVersion.0"
           $infoVersion     = "$packageVersion+${{ github.sha }}"

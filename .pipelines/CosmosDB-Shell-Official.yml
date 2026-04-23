@@ -106,9 +106,21 @@ extends:
                   targetType: inline
                   pwsh: true
                   script: |
-                    $gv = dotnet tool run dotnet-gitversion /output json | ConvertFrom-Json
+                    $ErrorActionPreference = 'Stop'
+                    $gitVersionJson = dotnet tool run dotnet-gitversion /output json
 
-                    $assemblyVersion = "$($gv.Major).$($gv.Minor).$($gv.CommitsSinceVersionSource)"
+                    if ($LASTEXITCODE -ne 0) {
+                      throw "dotnet-gitversion failed with exit code $LASTEXITCODE."
+                    }
+
+                    $gv = $gitVersionJson | ConvertFrom-Json
+
+                    $commitsSinceVersionSource = [int]$gv.CommitsSinceVersionSource
+                    if ($commitsSinceVersionSource -gt 65535) {
+                      throw "CommitsSinceVersionSource ($commitsSinceVersionSource) exceeds the maximum .NET assembly version segment value of 65535. Bump next-version before generating assembly and file versions."
+                    }
+
+                    $assemblyVersion = "$($gv.Major).$($gv.Minor).$commitsSinceVersionSource"
                     $packageVersion  = "$assemblyVersion-preview"
                     $fileVersion     = "$assemblyVersion.0"
                     $infoVersion     = "$packageVersion+$(Build.SourceVersion)"
