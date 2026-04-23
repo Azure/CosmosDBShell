@@ -89,6 +89,21 @@ public class ShellTests
         }
     }
 
+    [Theory]
+    [InlineData(null, "")]
+    [InlineData("", "")]
+    [InlineData("   ", "")]
+    [InlineData("1.0.149-preview", "")]
+    [InlineData("1.0.149-preview+", "")]
+    [InlineData("1.0.149-preview+abc123", "abc123")]
+    [InlineData("1.0.149-preview+abc123.abc123", "abc123")]
+    [InlineData("1.0.149-preview+abc123.def456", "abc123.def456")]
+    [InlineData("1.0.149-preview+abc123.abc123.def456", "abc123.def456")]
+    public void ExtractCommitMetadata_CollapsesDuplicatedSegments(string? informationalVersion, string expected)
+    {
+        Assert.Equal(expected, ShellInterpreter.ExtractCommitMetadata(informationalVersion));
+    }
+
     [Fact]
     public async Task TestEchoRedirectWritesFile()
     {

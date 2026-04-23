@@ -328,6 +328,48 @@ public partial class ShellInterpreter : IDisposable
         return assembly.GetName().Version?.ToString() ?? "unknown";
     }
 
+    internal static string GetDisplayCommit(Assembly assembly)
+    {
+        return ExtractCommitMetadata(assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion);
+    }
+
+    internal static string ExtractCommitMetadata(string? informationalVersion)
+    {
+        if (string.IsNullOrWhiteSpace(informationalVersion))
+        {
+            return string.Empty;
+        }
+
+        var plusIndex = informationalVersion.IndexOf('+');
+        if (plusIndex < 0 || plusIndex >= informationalVersion.Length - 1)
+        {
+            return string.Empty;
+        }
+
+        // Metadata may carry multiple dot-separated parts when the build pipeline
+        // sets /p:InformationalVersion=<pkg>+<sha> and the SDK target
+        // AddSourceRevisionToInformationalVersion then also appends the
+        // SourceRevisionId (producing "<sha>.<sha>"). Collapse identical repeats
+        // and preserve distinct segments joined by '.'.
+        var parts = informationalVersion[(plusIndex + 1)..]
+            .Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var distinct = new List<string>(parts.Length);
+        foreach (var part in parts)
+        {
+            if (distinct.Count == 0 || !string.Equals(distinct[^1], part, StringComparison.Ordinal))
+            {
+                distinct.Add(part);
+            }
+        }
+
+        return string.Join('.', distinct);
+    }
+
     internal static string GetRepositoryUrl(Assembly assembly)
     {
         foreach (var attr in assembly.GetCustomAttributes<AssemblyMetadataAttribute>())
