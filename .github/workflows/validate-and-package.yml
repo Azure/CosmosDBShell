@@ -23,11 +23,18 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout (PR)
+        if: github.event_name == 'pull_request'
         uses: actions/checkout@v4
         with:
-          # Non-PR runs need full history to compute commit counts.
-          fetch-depth: ${{ github.event_name != 'pull_request' && 0 || 1 }}
+          fetch-depth: 1
+
+      - name: Checkout (Non-PR)
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          # GitVersion needs full history to compute commit counts.
+          fetch-depth: 0
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
