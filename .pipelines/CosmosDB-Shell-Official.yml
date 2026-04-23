@@ -24,11 +24,6 @@ parameters: # parameters are shown up in ADO UI in a build queue time
     default: true
 
 variables:
-  # Dedicated patch counter. Must stay below UInt16.MaxValue (65535), which is
-  # the per-segment limit for .NET assembly versions. Build.BuildId cannot be
-  # used here because it already exceeds that range on this ADO instance.
-  # Bump the counter name (e.g. to -v2) if you ever need to reset it.
-  patchCounter: $[counter('cosmosdbshell-patch', 0)]
   system.debug: ${{ parameters.debug }}
 
   BuildSolution: $(Build.SourcesDirectory)\CosmosDBShell.sln
@@ -64,15 +59,23 @@ extends:
       #   suppressionFile: $(Build.SourcesDirectory)\.gdn\global.gdnsuppress
 
     stages:
+      # The 1ES Official template requires the build/package jobs to run on
+      # pool.type: windows (the managed OneBranch container pool); hosted
+      # pools are silently dropped from Official runs.
       - stage: build
         jobs:
           - job: main
             pool:
-              type: windows # read more about custom job pool types at https://aka.ms/obpipelines/yaml/jobs
+              type: windows # 1ES Official requires pool.type; hosted vmImage jobs are stripped.
 
             variables: # More settings at https://aka.ms/obpipelines/yaml/jobs
               ob_outputDirectory: '$(Build.SourcesDirectory)\out' # this directory is uploaded to pipeline artifacts, reddog and cloudvault. More info at https://aka.ms/obpipelines/artifacts
               ob_artifactBaseName: cosmos_shell_all # combined artifact with all RIDs for SDL scanning
+              # GitVersion needs full history to count commits. Using
+              # ob_git_fetchDepth lets OneBranch do the full clone in one shot
+              # instead of shallow-clone + --unshallow, which avoids a second
+              # fetch to github.com that the windows_build_container pool blocks.
+              ob_git_fetchDepth: -1
               OneES_SbomNugetSDLPath: out\nupkg
               # https://aka.ms/obpipelines/sdl
               ob_sdl_binskim_enabled: true
@@ -91,15 +94,50 @@ extends:
                   useGlobalJson: true
                   performMultiLevelLookup: true
 
-              # Note: onebranch.pipeline.version@1 was removed to avoid two Major.Minor
-              # sources of truth. Directory.Build.props drives Major.Minor via
-              # eng/compute-version.ps1, and $(patchCounter) supplies the patch counter.
+              - script: dotnet tool restore --configfile "$(Build.SourcesDirectory)\\.pipelines\\nuget.config"
+                displayName: "Dotnet Tools Restore"
+
+              # GitVersion is restored from the repo tool manifest so the
+              # build does not need to reach nuget.org from the Windows
+              # container pool.
               - task: PowerShell@2
-                displayName: "Compute version properties"
+                displayName: "Compute version with GitVersion"
                 inputs:
-                  filePath: '$(Build.SourcesDirectory)\eng\compute-version.ps1'
-                  arguments: '-Patch $(patchCounter) -CommitSha "$(Build.SourceVersion)"'
+                  targetType: inline
                   pwsh: true
+                  script: |
+                    $ErrorActionPreference = 'Stop'
+                    $gitVersionJson = dotnet tool run dotnet-gitversion /output json
+
+                    if ($LASTEXITCODE -ne 0) {
+                      throw "dotnet-gitversion failed with exit code $LASTEXITCODE."
+                    }
+
+                    $gv = $gitVersionJson | ConvertFrom-Json
+
+                    $commitsSinceVersionSource = [int]$gv.CommitsSinceVersionSource
+                    if ($commitsSinceVersionSource -gt 65535) {
+                      throw "CommitsSinceVersionSource ($commitsSinceVersionSource) exceeds the maximum .NET assembly version segment value of 65535. Bump next-version before generating assembly and file versions."
+                    }
+
+                    $assemblyVersion = "$($gv.Major).$($gv.Minor).$commitsSinceVersionSource"
+                    $packageVersion  = "$assemblyVersion-preview"
+                    $fileVersion     = "$assemblyVersion.0"
+                    $infoVersion     = "$packageVersion+$(Build.SourceVersion)"
+
+                    Write-Host "AssemblyVersion: $assemblyVersion"
+                    Write-Host "PackageVersion:  $packageVersion"
+
+                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_Version]$assemblyVersion"
+                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_PackageVersion]$packageVersion"
+                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_FileVersion]$fileVersion"
+                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_InformationalVersion]$infoVersion"
+
+              - task: onebranch.pipeline.version@1
+                displayName: "Update build number"
+                inputs:
+                  system: "Custom"
+                  customVersion: "$(CosmosDBShell_PackageVersion)"
 
               - task: DotNetCoreCLI@2
                 displayName: "DotNetCore restore"
@@ -186,7 +224,7 @@ extends:
               #     command: "publish"
               #     publishWebProjects: false
               #     projects: $(ReleaseProject)
-              #     arguments: '--configuration $(BuildConfiguration) -r any --output $(Build.SourcesDirectory)\out\any /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion)'
+              #     arguments: '--configuration $(BuildConfiguration) -r any --output $(Build.SourcesDirectory)\out\any'
               #     zipAfterPublish: false
 
               - task: onebranch.pipeline.signing@1
@@ -295,8 +333,8 @@ extends:
                       --no-build `
                       --no-restore `
                       --output $pkgDir `
-                      /p:Version=$(CosmosDBShell_Version) `
                       /p:PackageVersion=$(CosmosDBShell_PackageVersion) `
+                      /p:Version=$(CosmosDBShell_Version) `
                       /p:FileVersion=$(CosmosDBShell_FileVersion) `
                       /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) `
                       /p:ContinuousIntegrationBuild=true
@@ -464,6 +502,7 @@ extends:
                     Get-ChildItem -Path $pkgDir -Filter *.nupkg -File | Sort-Object Name | ForEach-Object {
                       Write-Host " - $($_.Name) [$($_.Length) bytes]"
                     }
+
               - ${{ if and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(parameters.publishNuget, true)) }}:
                   - task: NuGetCommand@2
                     displayName: "Push win-x64 NuGet package"
