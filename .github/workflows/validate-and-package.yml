@@ -23,14 +23,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout (PR)
-        if: github.event_name == 'pull_request'
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Checkout (Non-PR)
-        if: github.event_name != 'pull_request'
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           # GitVersion needs full history to compute commit counts.
@@ -47,7 +40,6 @@ jobs:
             **/*.csproj
 
       - name: Restore GitVersion tool
-        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -57,7 +49,6 @@ jobs:
           }
 
       - name: Compute version properties
-        if: github.event_name != 'pull_request'
         id: version
         shell: pwsh
         run: |
