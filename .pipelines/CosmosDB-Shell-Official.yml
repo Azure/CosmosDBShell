@@ -353,6 +353,10 @@ extends:
                     $pkgDir = "$(Build.SourcesDirectory)\out\nupkg"
                     $signStage = "$(Build.SourcesDirectory)\out\nupkg-payload"
 
+                    # Windows PowerShell 5.1 (.NET Framework) does not auto-load
+                    # System.IO.Compression, which owns ZipArchive / ZipArchiveMode.
+                    # FileSystem is also needed for ZipFile helpers used elsewhere.
+                    Add-Type -AssemblyName System.IO.Compression
                     Add-Type -AssemblyName System.IO.Compression.FileSystem
 
                     $stagedPackages = Get-ChildItem -Path $signStage -Directory -ErrorAction SilentlyContinue
@@ -370,7 +374,51 @@ extends:
                       }
 
                       Remove-Item -Path $packagePath -Force
-                      [System.IO.Compression.ZipFile]::CreateFromDirectory($staged.FullName, $packagePath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+
+                      # NOTE: We intentionally avoid ZipFile.CreateFromDirectory here.
+                      # On Windows it writes zip entry names with backslashes, which
+                      # violates the ZIP spec and causes `dotnet tool install` to fail
+                      # with "DotnetToolSettings.xml was not found in the package".
+                      # Build the archive manually so every entry name uses forward
+                      # slashes regardless of OS path separators.
+                      $rootPath = [System.IO.Path]::GetFullPath($staged.FullName)
+                      if (-not $rootPath.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+                        $rootPath = $rootPath + [System.IO.Path]::DirectorySeparatorChar
+                      }
+
+                      $zipStream = [System.IO.File]::Create($packagePath)
+                      try {
+                        $zipArchive = New-Object System.IO.Compression.ZipArchive($zipStream, [System.IO.Compression.ZipArchiveMode]::Create)
+                        try {
+                          $files = Get-ChildItem -LiteralPath $staged.FullName -Recurse -File
+                          foreach ($file in $files) {
+                            $fullPath = [System.IO.Path]::GetFullPath($file.FullName)
+                            if (-not $fullPath.StartsWith($rootPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+                              Write-Error "File outside of staged root: $fullPath"
+                              exit 1
+                            }
+                            $relative = $fullPath.Substring($rootPath.Length)
+                            $entryName = $relative -replace '\\', '/'
+                            $entry = $zipArchive.CreateEntry($entryName, [System.IO.Compression.CompressionLevel]::Optimal)
+                            $entry.LastWriteTime = $file.LastWriteTime
+                            $entryStream = $entry.Open()
+                            try {
+                              $fileStream = [System.IO.File]::OpenRead($file.FullName)
+                              try {
+                                $fileStream.CopyTo($entryStream)
+                              } finally {
+                                $fileStream.Dispose()
+                              }
+                            } finally {
+                              $entryStream.Dispose()
+                            }
+                          }
+                        } finally {
+                          $zipArchive.Dispose()
+                        }
+                      } finally {
+                        $zipStream.Dispose()
+                      }
                     }
 
               - task: PowerShell@2
