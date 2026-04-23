@@ -148,7 +148,6 @@ jobs:
           if-no-files-found: ignore
 
       - name: Publish runtime artifacts
-        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -176,7 +175,6 @@ jobs:
           }
 
       - name: Pack NuGet artifacts
-        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path out/nupkg -Force | Out-Null
@@ -195,7 +193,6 @@ jobs:
             /p:ContinuousIntegrationBuild=true
 
       - name: Validate NuGet package set
-        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           $pkgDir = Join-Path $pwd 'out/nupkg'
@@ -234,7 +231,6 @@ jobs:
           }
 
       - name: List packaged NuGet files
-        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           Get-ChildItem -Path out/nupkg -Filter *.nupkg -File | Sort-Object Name | ForEach-Object {
@@ -242,7 +238,6 @@ jobs:
           }
 
       - name: Write package install summary
-        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           $summary = $env:GITHUB_STEP_SUMMARY
@@ -272,7 +267,6 @@ jobs:
           $lines -join "`n" | Out-File -FilePath $summary -Encoding utf8 -Append
 
       - name: Upload pointer package
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-pointer-${{ steps.version.outputs.artifact_suffix }}
@@ -286,7 +280,6 @@ jobs:
           if-no-files-found: error
 
       - name: Upload win-x64 package
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-win-x64-${{ steps.version.outputs.artifact_suffix }}
@@ -294,7 +287,6 @@ jobs:
           if-no-files-found: error
 
       - name: Upload linux-x64 package
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-linux-x64-${{ steps.version.outputs.artifact_suffix }}
@@ -302,7 +294,6 @@ jobs:
           if-no-files-found: error
 
       - name: Upload linux-arm64 package
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-linux-arm64-${{ steps.version.outputs.artifact_suffix }}
@@ -310,7 +301,6 @@ jobs:
           if-no-files-found: error
 
       - name: Upload osx-x64 package
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-osx-x64-${{ steps.version.outputs.artifact_suffix }}
@@ -318,7 +308,6 @@ jobs:
           if-no-files-found: error
 
       - name: Upload osx-arm64 package
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-osx-arm64-${{ steps.version.outputs.artifact_suffix }}
