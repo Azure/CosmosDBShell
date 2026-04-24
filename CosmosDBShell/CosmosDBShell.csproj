@@ -15,7 +15,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <RootNamespace />
     <AssemblyName>CosmosDBShell</AssemblyName>
-    <Product>Microsoft.CosmosDBShell</Product>
+    <Product>CosmosDBShell</Product>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
 
     <!-- .NET Tool packaging -->
@@ -31,7 +31,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <PackageId>Microsoft.CosmosDBShell</PackageId>
+    <PackageId>CosmosDBShell</PackageId>
     <Authors>Microsoft</Authors>
     <Description>Azure Cosmos DB Shell is a .NET tool with interactive navigation, query, scripting, and MCP server support for Azure Cosmos DB databases.</Description>
     <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
