@@ -69,7 +69,7 @@ echo $name                # use
 echo $"Hello $name"       # interpolate
 ```
 
-Script args: `$0` = path, `$1`, `$2`... = arguments
+For script positional parameters, see [Writing and Running Scripts](#writing-and-running-scripts).
 
 ## Writing and Running Scripts
 
@@ -106,25 +106,25 @@ Script arguments are evaluated by the caller before the script starts. Use quote
 Use `-c` to run a command or script and exit:
 
 ```bash
-cosmos-shell -c "seed.csh \"AccountEndpoint=...;AccountKey=...\" mydb mycontainer"
+cosmosdbshell -c "seed.csh \"AccountEndpoint=...;AccountKey=...\" mydb mycontainer"
 ```
 
 Use `-k` to run a command or script and then stay in the interactive shell:
 
 ```bash
-cosmos-shell -k "seed.csh \"AccountEndpoint=...;AccountKey=...\" mydb mycontainer"
+cosmosdbshell -k "seed.csh \"AccountEndpoint=...;AccountKey=...\" mydb mycontainer"
 ```
 
 Startup connection options still belong to the shell process, not to the script:
 
 ```bash
-cosmos-shell -c "seed.csh mydb mycontainer" --connect "AccountEndpoint=...;AccountKey=..."
+cosmosdbshell -c "seed.csh mydb mycontainer" --connect "AccountEndpoint=...;AccountKey=..."
 ```
 
 If you want a value such as `--connect` to be passed to the script, put it inside the `-c` or `-k` command text:
 
 ```bash
-cosmos-shell -c "seed.csh --connect xyz"
+cosmosdbshell -c "seed.csh --connect xyz"
 ```
 
 ### Piped Input
@@ -132,13 +132,13 @@ cosmos-shell -c "seed.csh --connect xyz"
 When standard input is redirected, the shell reads it as command text. This is useful for running inline scripts:
 
 ```bash
-echo "connect \"AccountEndpoint=...;AccountKey=...\"; ls" | cosmos-shell
+echo "connect \"AccountEndpoint=...;AccountKey=...\"; ls" | cosmosdbshell
 ```
 
 To run a script file with parameters through piped input, pipe a script invocation:
 
 ```bash
-echo "seed.csh \"AccountEndpoint=...;AccountKey=...\" mydb mycontainer" | cosmos-shell
+echo "seed.csh \"AccountEndpoint=...;AccountKey=...\" mydb mycontainer" | cosmosdbshell
 ```
 
 Piping the contents of a script file directly runs those statements as standard input, so there is no script filename and no positional parameter list for that input stream. Use `-c`, `-k`, or pipe a script invocation when you need `$0`, `$1`, `$2`, and later parameters.

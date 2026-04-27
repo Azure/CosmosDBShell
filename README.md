@@ -129,10 +129,10 @@ Examples:
 
 ```bash
 # Run a script and exit. Script arguments become $1, $2, ... inside the script.
-cosmos-shell -c "seed.csh mydb mycontainer" --connect "AccountEndpoint=...;AccountKey=..."
+cosmosdbshell -c "seed.csh mydb mycontainer" --connect "AccountEndpoint=...;AccountKey=..."
 
 # Run a script from piped command text.
-echo "seed.csh mydb mycontainer" | cosmos-shell --connect "AccountEndpoint=...;AccountKey=..."
+echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
 ```
 
 ## How to Contribute
