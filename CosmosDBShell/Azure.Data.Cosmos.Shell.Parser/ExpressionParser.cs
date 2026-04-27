@@ -1224,7 +1224,8 @@ internal class ExpressionParser
             return null;
         }
 
-        if (this.Check(TokenType.Minus) && this.IsCommandOptionStart())
+        var commandWordParser = this.CreateCommandShellWordParser();
+        if (this.Check(TokenType.Minus) && commandWordParser.IsCommandOptionStart())
         {
             var optionStartToken = this.currentToken!;
             this.Advance();
@@ -1249,134 +1250,22 @@ internal class ExpressionParser
                 (this.currentToken.Type == TokenType.Colon || this.currentToken.Type == TokenType.Assignment))
             {
                 this.Advance(); // consume ':' or '='
-                optionValue = this.ParseCommandShellWord();
+                optionValue = commandWordParser.ParseShellWord();
             }
 
             return new CommandOption(optionStartToken, optionNameToken, optionValue);
         }
 
-        return this.ParseCommandShellWord();
+        return commandWordParser.ParseShellWord();
     }
 
-    private bool IsCommandOptionStart()
-    {
-        var minus = this.currentToken;
-        if (minus == null || minus.Type != TokenType.Minus)
-        {
-            return false;
-        }
-
-        var next = this.Peek();
-        if (next == null || next.Start != minus.End)
-        {
-            return false;
-        }
-
-        if (next.Type == TokenType.Identifier)
-        {
-            return true;
-        }
-
-        if (next.Type == TokenType.Minus)
-        {
-            var afterDoubleDash = this.PeekAt(1);
-            return afterDoubleDash != null &&
-                   afterDoubleDash.Type == TokenType.Identifier &&
-                   afterDoubleDash.Start == next.End;
-        }
-
-        return false;
-    }
-
-    private Expression? ParseCommandShellWord()
-    {
-        var firstToken = this.currentToken;
-        if (firstToken == null || this.IsAtEnd || this.Check(TokenType.CloseParenthesis))
-        {
-            return null;
-        }
-
-        if (this.IsShellWordExpressionStart(firstToken))
-        {
-            return this.ParsePrimary();
-        }
-
-        var peek = this.Peek();
-        bool extends = peek != null && peek.Start == firstToken.End && this.CanContinueShellWord(peek.Type);
-        if (!extends && this.IsPrimaryStandaloneToken(firstToken.Type))
-        {
-            return this.ParsePrimary();
-        }
-
-        var sb = new System.Text.StringBuilder();
-        sb.Append(firstToken.Value);
-        int endPos = firstToken.End;
-        this.Advance();
-
-        while (!this.IsAtEnd &&
-               this.currentToken != null &&
-               this.currentToken.Start == endPos &&
-               this.CanContinueShellWord(this.currentToken.Type))
-        {
-            var token = this.currentToken;
-            sb.Append(token.Value);
-            endPos = token.End;
-            this.Advance();
-        }
-
-        var wordText = sb.ToString();
-        var wordToken = new Token(TokenType.Identifier, wordText, firstToken.Start, endPos - firstToken.Start);
-        return new ConstantExpression(wordToken, new ShellText(wordText));
-    }
-
-    private bool IsShellWordExpressionStart(Token token)
-    {
-        switch (token.Type)
-        {
-            case TokenType.String:
-            case TokenType.InterpolatedString:
-            case TokenType.OpenParenthesis:
-            case TokenType.OpenBracket:
-            case TokenType.OpenBrace:
-                return true;
-            case TokenType.Identifier:
-                return token.Value.StartsWith('$');
-            default:
-                return false;
-        }
-    }
-
-    private bool IsPrimaryStandaloneToken(TokenType type)
-    {
-        switch (type)
-        {
-            case TokenType.Identifier:
-            case TokenType.Number:
-            case TokenType.Decimal:
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private bool CanContinueShellWord(TokenType type)
-    {
-        switch (type)
-        {
-            case TokenType.Identifier:
-            case TokenType.Number:
-            case TokenType.Decimal:
-            case TokenType.Colon:
-            case TokenType.Divide:
-            case TokenType.Plus:
-            case TokenType.Minus:
-            case TokenType.Multiply:
-            case TokenType.Mod:
-            case TokenType.Assignment:
-            case TokenType.Not:
-                return true;
-            default:
-                return false;
-        }
-    }
+    private CommandShellWordParser CreateCommandShellWordParser()
+        => new(
+            () => this.currentToken,
+            () => this.IsAtEnd,
+            () => this.Peek(),
+            offset => this.PeekAt(offset),
+            () => this.Advance(),
+            () => this.ParsePrimary(),
+            token => token.Type == TokenType.CloseParenthesis);
 }

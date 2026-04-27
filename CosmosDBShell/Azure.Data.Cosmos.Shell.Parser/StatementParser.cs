@@ -149,80 +149,16 @@ internal class StatementParser
             _ => redirectToken.Value,
         };
 
-    private static bool IsBinaryOperator(TokenType type)
-        => type switch
-        {
-            TokenType.Plus => true,
-
-            // Note: Minus is NOT included because in command context, - starts an option.
-            // Note: GreaterThan is NOT included because in command context, > starts an output redirection.
-            TokenType.Multiply => true,
-            TokenType.Divide => true,
-            TokenType.Mod => true,
-            TokenType.Pow => true,
-            TokenType.Equal => true,
-            TokenType.NotEqual => true,
-            TokenType.LessThan => true,
-            TokenType.LessThanOrEqual => true,
-            TokenType.GreaterThanOrEqual => true,
-            TokenType.And => true,
-            TokenType.Or => true,
-            TokenType.Xor => true,
-            _ => false,
-        };
-
-    private static bool IsShellWordExpressionStart(Token token)
-    {
-        switch (token.Type)
-        {
-            case TokenType.String:
-            case TokenType.InterpolatedString:
-            case TokenType.OpenParenthesis:
-            case TokenType.OpenBracket:
-            case TokenType.OpenBrace:
-                return true;
-            case TokenType.Identifier:
-                // $variable / $.path / $items[0] are handled in expression mode.
-                return token.Value.StartsWith('$');
-            default:
-                return false;
-        }
-    }
-
-    private static bool IsPrimaryStandaloneToken(TokenType type)
-    {
-        // Token kinds that ParsePrimaryExpression returns a typed value for on their own.
-        switch (type)
-        {
-            case TokenType.Identifier:
-            case TokenType.Number:
-            case TokenType.Decimal:
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private static bool CanContinueShellWord(TokenType type)
-    {
-        switch (type)
-        {
-            case TokenType.Identifier:
-            case TokenType.Number:
-            case TokenType.Decimal:
-            case TokenType.Colon:
-            case TokenType.Divide:
-            case TokenType.Plus:
-            case TokenType.Minus:
-            case TokenType.Multiply:
-            case TokenType.Mod:
-            case TokenType.Assignment:
-            case TokenType.Not:
-                return true;
-            default:
-                return false;
-        }
-    }
+    private static bool IsCommandTerminator(Token token)
+        => token.Type == TokenType.Semicolon ||
+           token.Type == TokenType.Eol ||
+           token.Type == TokenType.CloseBrace ||
+           token.Type == TokenType.Pipe ||
+           token.Type == TokenType.GreaterThan ||
+           token.Type == TokenType.RedirectOutput ||
+           token.Type == TokenType.RedirectAppendOutput ||
+           token.Type == TokenType.RedirectError ||
+           token.Type == TokenType.RedirectAppendError;
 
     /// <summary>
     /// Detects the start of a '2&gt;' or '2&gt;&gt;' stderr redirect in command context.
@@ -246,101 +182,15 @@ internal class StatementParser
                next.Start == current.End;
     }
 
-    /// <summary>
-    /// Detects whether a Minus token at the cursor begins a real CLI option such as
-    /// <c>-name</c> or <c>--name</c>. Required because in command mode <c>-</c> can also
-    /// start a positional shell word (for example <c>-5</c> or <c>-foo</c> as a literal).
-    /// True only when the next token is adjacent (no whitespace) and begins an identifier
-    /// (single dash) or a second adjacent Minus followed by an identifier (double dash).
-    /// </summary>
-    private bool IsCommandOptionStart()
-    {
-        var minus = this.expressionParser.Current;
-        if (minus == null || minus.Type != TokenType.Minus)
-        {
-            return false;
-        }
-
-        var next = this.expressionParser.Peek();
-        if (next == null || next.Start != minus.End)
-        {
-            return false;
-        }
-
-        // -name
-        if (next.Type == TokenType.Identifier)
-        {
-            return true;
-        }
-
-        // --name : second dash must be adjacent and followed by an adjacent identifier.
-        if (next.Type == TokenType.Minus)
-        {
-            var afterDoubleDash = this.expressionParser.PeekAt(1);
-            return afterDoubleDash != null &&
-                   afterDoubleDash.Type == TokenType.Identifier &&
-                   afterDoubleDash.Start == next.End;
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Parses a single command-mode argument as a "shell word".
-    /// A shell word is either an expression-mode escape (quoted/interpolated string,
-    /// $-variable, parenthesised expression, JSON array or object) or a maximal run of
-    /// adjacent simple tokens concatenated as raw text. This makes inputs like
-    /// <c>https://localhost:9922</c> and <c>--authority-host=https://login.microsoftonline.us/</c>
-    /// parse as a single argument without requiring quotes.
-    /// </summary>
-    private Expression ParseCommandShellWord()
-    {
-        var firstToken = this.expressionParser.Current;
-        if (firstToken == null)
-        {
-            return this.expressionParser.ParsePrimaryExpression();
-        }
-
-        // Expression-mode escapes: strings, interpolation, $-variables, (..), [..], {..}.
-        if (IsShellWordExpressionStart(firstToken))
-        {
-            return this.expressionParser.ParsePrimaryExpression();
-        }
-
-        // Single-token shell words fall back to ParsePrimaryExpression so that bare booleans,
-        // identifiers and numeric literals keep their existing typed semantics. Tokens that
-        // ParsePrimary can't represent on their own (e.g. a stray Minus) are emitted as a
-        // literal one-character shell word instead.
-        var peek = this.expressionParser.Peek();
-        bool extends = peek != null && peek.Start == firstToken.End && CanContinueShellWord(peek.Type);
-        if (!extends && IsPrimaryStandaloneToken(firstToken.Type))
-        {
-            return this.expressionParser.ParsePrimaryExpression();
-        }
-
-        // Multi-token shell word: concatenate adjacent simple tokens by their literal value.
-        var sb = new System.Text.StringBuilder();
-        sb.Append(firstToken.Value);
-        int endPos = firstToken.End;
-        this.expressionParser.Advance();
-
-        while (!this.expressionParser.IsAtEnd &&
-               this.expressionParser.Current != null &&
-               this.expressionParser.Current.Start == endPos &&
-               CanContinueShellWord(this.expressionParser.Current.Type))
-        {
-            var t = this.expressionParser.Current;
-            sb.Append(t.Value);
-            endPos = t.End;
-            this.expressionParser.Advance();
-        }
-
-        // Synthetic token spans the whole concatenated word so ToString() and source positions
-        // reflect the full literal rather than just the first token.
-        var wordText = sb.ToString();
-        var wordToken = new Token(TokenType.Identifier, wordText, firstToken.Start, endPos - firstToken.Start);
-        return new ConstantExpression(wordToken, new ShellText(wordText));
-    }
+    private CommandShellWordParser CreateCommandShellWordParser()
+        => new(
+            () => this.expressionParser.Current,
+            () => this.expressionParser.IsAtEnd,
+            () => this.expressionParser.Peek(),
+            offset => this.expressionParser.PeekAt(offset),
+            () => this.expressionParser.Advance(),
+            () => this.expressionParser.ParsePrimaryExpression(),
+            IsCommandTerminator);
 
     private void SkipWs()
     {
@@ -1041,12 +891,14 @@ internal class StatementParser
                    this.expressionParser.Current.Type != TokenType.RedirectAppendError &&
                    !this.IsStderrRedirectStart())
             {
+                var commandWordParser = this.CreateCommandShellWordParser();
+
                 // In command mode an argument is either a structured option (`-name`, `--name[=:]value`)
                 // or a "shell word": a maximal run of adjacent simple tokens concatenated as text.
                 // Strings, interpolated strings, $-variables and (expr)/[..]/{..} drop into expression
                 // mode unchanged so existing scripting features keep working.
                 if (this.expressionParser.Current.Type == TokenType.Minus &&
-                    this.IsCommandOptionStart())
+                    commandWordParser.IsCommandOptionStart())
                 {
                     var optionStartToken = this.expressionParser.Current;
                     this.expressionParser.Advance();
@@ -1085,7 +937,7 @@ internal class StatementParser
                         if (!this.expressionParser.IsAtEnd &&
                             this.expressionParser.Current != null)
                         {
-                            optionValue = this.ParseCommandShellWord();
+                            optionValue = commandWordParser.ParseShellWord();
 
                             if (optionValue == null)
                             {
@@ -1106,7 +958,12 @@ internal class StatementParser
                 }
                 else
                 {
-                    var arg = this.ParseCommandShellWord();
+                    var arg = commandWordParser.ParseShellWord();
+                    if (arg == null)
+                    {
+                        break;
+                    }
+
                     command.Arguments.Add(arg);
                 }
             }
