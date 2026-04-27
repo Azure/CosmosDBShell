@@ -134,8 +134,19 @@ internal sealed class CommandShellWordParser
             case TokenType.Minus:
             case TokenType.Multiply:
             case TokenType.Mod:
+            case TokenType.Pow:
             case TokenType.Assignment:
+            case TokenType.Equal:
             case TokenType.Not:
+            case TokenType.NotEqual:
+            case TokenType.LessThan:
+            case TokenType.GreaterThan:
+            case TokenType.LessThanOrEqual:
+            case TokenType.GreaterThanOrEqual:
+            case TokenType.And:
+            case TokenType.Or:
+            case TokenType.Xor:
+            case TokenType.Comma:
                 return true;
             default:
                 return false;

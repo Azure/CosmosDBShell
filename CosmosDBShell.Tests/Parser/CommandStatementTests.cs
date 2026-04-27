@@ -441,6 +441,27 @@ public class CommandStatementTests
     }
 
     [Fact]
+    public void ParseCommandStatement_OptionWithPaddedValue_ParsesAsSingleShellWord()
+    {
+        var statement = ParseStatement("connect --key=abc==");
+        var cmd = (CommandStatement)statement;
+        var option = Assert.Single(cmd.Arguments.OfType<CommandOption>());
+
+        Assert.Equal("key", option.Name);
+        Assert.Equal("abc==", option.Value?.ToString());
+    }
+
+    [Fact]
+    public void ParseCommandStatement_CommaSeparatedValue_ParsesAsSingleShellWord()
+    {
+        var statement = ParseStatement("echo red,green,blue");
+        var cmd = (CommandStatement)statement;
+
+        Assert.Single(cmd.Arguments);
+        Assert.Equal("red,green,blue", cmd.Arguments[0].ToString());
+    }
+
+    [Fact]
     public void ParseCommandStatement_NegativeNumberPositional_NotTreatedAsOption()
     {
         var statement = ParseStatement("echo -5");

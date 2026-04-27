@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 // ------------------------------------------------------------
 
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -79,6 +80,29 @@ public class ExpressionTests
         Assert.Single(command.Arguments);
         Assert.IsNotType<CommandOption>(command.Arguments[0]);
         Assert.Equal("-5", command.Arguments[0].ToString());
+    }
+
+    [Fact]
+    public void ParseExpression_CommandExpressionOptionWithPaddedValue_ParsesAsSingleShellWord()
+    {
+        var expr = ParseExpression("(connect --key=abc==)");
+        var parens = Assert.IsType<ParensExpression>(expr);
+        var command = Assert.IsType<CommandExpression>(parens.InnerExpression);
+        var option = Assert.Single(command.Arguments.OfType<CommandOption>());
+
+        Assert.Equal("key", option.Name);
+        Assert.Equal("abc==", option.Value?.ToString());
+    }
+
+    [Fact]
+    public void ParseExpression_CommandExpressionCommaSeparatedValue_ParsesAsSingleShellWord()
+    {
+        var expr = ParseExpression("(echo red,green,blue)");
+        var parens = Assert.IsType<ParensExpression>(expr);
+        var command = Assert.IsType<CommandExpression>(parens.InnerExpression);
+
+        Assert.Single(command.Arguments);
+        Assert.Equal("red,green,blue", command.Arguments[0].ToString());
     }
 
     #region Constant Expression Tests
