@@ -75,6 +75,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
         // Default behavior: list databases
         var list = new List<string>();
+        var completionList = new List<string>();
         await foreach (var database in EnumerateDatabasesAsync(state.Client))
         {
             if (!this.IsMatch(database.Id))
@@ -82,10 +83,13 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
                 continue;
             }
 
+            completionList.Add(database.Id.Trim());
             var cn = Markup.Escape(database.Id.Trim());
             list.Add(cn);
             AnsiConsole.MarkupLine($"[green]{cn}[/]");
         }
+
+        CosmosCompleteCommand.SetDatabases(state.Client, completionList);
 
         var result = new CommandState
         {
@@ -115,6 +119,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         await ValidateDatabaseExistsAsync(client, databaseName, "ls", token);
         var db = client.GetDatabase(databaseName);
         var list = new List<string>();
+        var completionList = new List<string>();
         await foreach (var container in EnumerateContainersAsync(db))
         {
             if (!this.IsMatch(container.Id))
@@ -122,10 +127,13 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
                 continue;
             }
 
+            completionList.Add(container.Id.Trim());
             var cn = Markup.Escape(container.Id.Trim());
             list.Add(cn);
             AnsiConsole.MarkupLine($"[magenta]{cn}[/]");
         }
+
+        CosmosCompleteCommand.SetContainers(client, databaseName, completionList);
 
         var result = new CommandState
         {

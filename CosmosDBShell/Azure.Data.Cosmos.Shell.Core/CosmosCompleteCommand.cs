@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Core;
 
+using System.Collections.Concurrent;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
@@ -16,21 +17,37 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
 {
     private const string Position = nameof(Position);
     private const string Index = nameof(Index);
+    private static readonly TimeSpan RefreshAfter = TimeSpan.FromSeconds(30);
 
-    private static string[]? databases = null;
-    private static string[]? containers = null;
+    private static readonly ConcurrentDictionary<string, CompletionCacheEntry> DatabaseCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, CompletionCacheEntry> ContainerCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, Task> RefreshTasks = new(StringComparer.OrdinalIgnoreCase);
+    private static long databaseCacheVersion;
+    private static long containerCacheVersion;
 
     private readonly ShellInterpreter shellInterpreter = shellInterpreter;
     private readonly AutoComplete kind = kind;
 
     public static void ClearDatabases()
     {
-        databases = null;
+        Interlocked.Increment(ref databaseCacheVersion);
+        DatabaseCache.Clear();
     }
 
     public static void ClearContainers()
     {
-        containers = null;
+        Interlocked.Increment(ref containerCacheVersion);
+        ContainerCache.Clear();
+    }
+
+    public static void SetDatabases(CosmosClient client, IEnumerable<string> names)
+    {
+        DatabaseCache[GetDatabaseCacheKey(client)] = new CompletionCacheEntry([.. names], DateTimeOffset.UtcNow);
+    }
+
+    public static void SetContainers(CosmosClient client, string databaseName, IEnumerable<string> names)
+    {
+        ContainerCache[GetContainerCacheKey(client, databaseName)] = new CompletionCacheEntry([.. names], DateTimeOffset.UtcNow);
     }
 
     public static string? GetCompletion(ShellInterpreter shellInterpreter, string word, AutoComplete kind)
@@ -73,13 +90,7 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
                     {
                         if (shellInterpreter.State is ConnectedState cs)
                         {
-#pragma warning disable VSTHRD002 // Synchronously waiting - required by RadLine LineEditorCommand.Execute
-                            databases ??= GetDatabasesAsync(cs).Result;
-#pragma warning restore VSTHRD002
-                            if (databases != null)
-                            {
-                                items.AddRange(databases);
-                            }
+                            items.AddRange(GetDatabases(cs));
                         }
                     }
 
@@ -87,13 +98,7 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
                     {
                         if (shellInterpreter.State is DatabaseState cs)
                         {
-#pragma warning disable VSTHRD002 // Synchronously waiting - required by RadLine LineEditorCommand.Execute
-                            containers ??= GetContainersAsync(cs).Result;
-#pragma warning restore VSTHRD002
-                            if (containers != null)
-                            {
-                                items.AddRange(containers);
-                            }
+                            items.AddRange(GetContainers(cs));
                         }
                     }
 
@@ -154,6 +159,84 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
         return matchingItems.FirstOrDefault();
     }
 
+    private static string[] GetDatabases(ConnectedState state)
+    {
+        var key = GetDatabaseCacheKey(state.Client);
+        var cached = DatabaseCache.GetValueOrDefault(key);
+        var cacheVersion = Volatile.Read(ref databaseCacheVersion);
+        QueueRefresh(key, cached, () => RefreshDatabasesAsync(state, key, cacheVersion));
+        return cached?.Items ?? [];
+    }
+
+    private static string[] GetContainers(DatabaseState state)
+    {
+        var key = GetContainerCacheKey(state.Client, state.DatabaseName);
+        var cached = ContainerCache.GetValueOrDefault(key);
+        var cacheVersion = Volatile.Read(ref containerCacheVersion);
+        QueueRefresh(key, cached, () => RefreshContainersAsync(state, key, cacheVersion));
+        return cached?.Items ?? [];
+    }
+
+    private static void QueueRefresh(string key, CompletionCacheEntry? cached, Func<Task> refresh)
+    {
+        if (cached != null && DateTimeOffset.UtcNow - cached.RefreshedAt < RefreshAfter)
+        {
+            return;
+        }
+
+        _ = RefreshTasks.GetOrAdd(key, static (_, refresh) => Task.Run(refresh), refresh);
+    }
+
+    private static async Task RefreshDatabasesAsync(ConnectedState state, string key, long cacheVersion)
+    {
+        try
+        {
+            var names = await GetDatabasesAsync(state);
+            if (cacheVersion == Volatile.Read(ref databaseCacheVersion))
+            {
+                DatabaseCache[key] = new CompletionCacheEntry(names, DateTimeOffset.UtcNow);
+            }
+        }
+        catch
+        {
+            return;
+        }
+        finally
+        {
+            RefreshTasks.TryRemove(key, out _);
+        }
+    }
+
+    private static async Task RefreshContainersAsync(DatabaseState state, string key, long cacheVersion)
+    {
+        try
+        {
+            var names = await GetContainersAsync(state);
+            if (cacheVersion == Volatile.Read(ref containerCacheVersion))
+            {
+                ContainerCache[key] = new CompletionCacheEntry(names, DateTimeOffset.UtcNow);
+            }
+        }
+        catch
+        {
+            return;
+        }
+        finally
+        {
+            RefreshTasks.TryRemove(key, out _);
+        }
+    }
+
+    private static string GetDatabaseCacheKey(CosmosClient client)
+    {
+        return client.Endpoint.ToString();
+    }
+
+    private static string GetContainerCacheKey(CosmosClient client, string databaseName)
+    {
+        return string.Join('|', client.Endpoint.ToString(), databaseName);
+    }
+
     private static async Task<string[]> GetDatabasesAsync(ConnectedState state)
     {
         var result = new List<string>();
@@ -205,4 +288,6 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
             }
         }
     }
+
+    private sealed record CompletionCacheEntry(string[] Items, DateTimeOffset RefreshedAt);
 }
