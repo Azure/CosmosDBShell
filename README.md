@@ -13,7 +13,9 @@ Lightweight CLI for Azure Cosmos DB.
 
 ## Quick Start
 
-**Requirements:** .NET SDK 10.0+
+**Requirements:** .NET SDK 10.0+.
+
+The .NET runtime alone is not enough for the commands below. `dotnet run` and `dotnet tool install` are SDK commands. To verify the SDK is installed, run `dotnet --list-sdks`.
 
 ```bash
 dotnet run --project CosmosDBShell
@@ -34,7 +36,7 @@ query "SELECT * FROM c"
 
 When consuming build artifacts (`*.nupkg`) from this repo, install as a .NET global tool.
 
-`dotnet tool install` for these packages requires .NET 10 because the tool packages target `net10.0`.
+`dotnet tool install` for these packages requires the .NET SDK 10.0+ because the tool packages target `net10.0`. Installing only the .NET runtime does not provide the `dotnet tool` command.
 
 1. Download the base tool package (`CosmosDBShell.<version>.nupkg`) and the package for your runtime to the same local folder.
 2. Install from that folder with `--add-source` using the base package ID `CosmosDBShell`.
