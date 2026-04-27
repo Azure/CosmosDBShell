@@ -82,6 +82,15 @@ namespace CosmosShell.Tests.Parser
             return Assert.IsType<CommandStatement>(stmt);
         }
 
+        private static CommandExpression ParseCommandExpression(string text)
+        {
+            var lexer = new Lexer(text);
+            var parser = new ExpressionParser(lexer);
+            var expr = parser.ParseExpression();
+            var parens = Assert.IsType<ParensExpression>(expr);
+            return Assert.IsType<CommandExpression>(parens.InnerExpression);
+        }
+
         private async Task<OptionBindingCommand> BindAsync(string text)
         {
             var stmt = Parse(text);
@@ -229,6 +238,32 @@ namespace CosmosShell.Tests.Parser
             Assert.True(shell.App.Commands.TryGetValue("optcmd", out var factory));
             var ex = await Assert.ThrowsAsync<CommandException>(async () => await stmt.CreateCommandAsync(factory, ShellInterpreter.Instance, new CommandState(), CancellationToken.None));
             Assert.Contains("requires a value", ex.Message);
+        }
+
+        [Fact]
+        public async Task UnknownOption_InCommandStatement_Throws()
+        {
+            var stmt = Parse("optcmd -unknown arg1");
+            Assert.True(shell.App.Commands.TryGetValue("optcmd", out var factory));
+
+            var ex = await Assert.ThrowsAsync<CommandException>(
+                async () => await stmt.CreateCommandAsync(factory, shell, new CommandState(), CancellationToken.None));
+
+            Assert.Contains("Unknown option", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("unknown", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public async Task UnknownOption_InCommandExpression_Throws()
+        {
+            var expr = ParseCommandExpression("(optcmd -unknown arg1)");
+            Assert.True(shell.App.Commands.TryGetValue("optcmd", out var factory));
+
+            var ex = await Assert.ThrowsAsync<CommandException>(
+                async () => await expr.CreateCommandAsync(factory, shell, new CommandState(), CancellationToken.None));
+
+            Assert.Contains("Unknown option", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("unknown", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
 
         [Fact]

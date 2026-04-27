@@ -216,7 +216,7 @@ internal class CommandStatement : Statement
 
             if (matchingProperty == null)
             {
-                continue; // Unknown option; ignore silently (could report later if desired)
+                throw new CommandException(this.Name, $"Unknown option '{rawName}'.");
             }
 
             var pi = matchingProperty.Prop;
