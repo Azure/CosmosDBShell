@@ -28,7 +28,7 @@ This document covers scripts and custom commands in Cosmos Shell.
 ### Strings
 
 | Type | Syntax | Notes |
-|------|--------|-------|
+| ------ | ------ | ----- |
 | Single-quoted | `'text'` | Literal, no escapes. Double `'` for quote: `'it''s'` |
 | Double-quoted | `"text"` | Escapes: `\n`, `\r`, `\t`, `\\`, `\"` |
 | Interpolated | `$"Hello $name"` | Variable substitution with `$var` |
@@ -44,7 +44,7 @@ $.items[0].id      # property and array access
 ## Types
 
 | Type | Example |
-|------|---------|
+| ------ | ------- |
 | String | `'text'` or `"with $var"` |
 | Number | `42`, `3.14` |
 | Boolean | `true`, `false` |
@@ -54,7 +54,7 @@ $.items[0].id      # property and array access
 ## Operators
 
 | Category | Operators |
-|----------|-----------|
+| -------- | --------- |
 | Arithmetic | `+` `-` `*` `/` `%` `**` |
 | Comparison | `<` `<=` `>` `>=` `==` `!=` |
 | Logical | `&&` `\|\|` `^` `!` |
@@ -69,7 +69,83 @@ echo $name                # use
 echo $"Hello $name"       # interpolate
 ```
 
-Script args: `$0` = path, `$1`, `$2`... = arguments
+For script positional parameters, see [Writing and Running Scripts](#writing-and-running-scripts).
+
+## Writing and Running Scripts
+
+Cosmos Shell scripts are plain text files, usually with a `.csh` extension. A script contains the same statements you can type in the interactive shell: commands, assignments, pipes, loops, functions, and `exec`.
+
+Example script:
+
+```bash
+# seed.csh
+connect $1
+cd $2/$3
+query "SELECT * FROM c"
+```
+
+Run a script by using the script path as the command name and placing script arguments after it:
+
+```bash
+seed.csh "AccountEndpoint=...;AccountKey=..." mydb mycontainer
+```
+
+Inside the script, positional parameters are available as variables:
+
+| Variable | Value |
+| -------- | ----- |
+| `$0` | Script path used to start the script |
+| `$1` | First script argument |
+| `$2` | Second script argument |
+| `$3`... | Additional script arguments |
+
+Script arguments are evaluated by the caller before the script starts. Use quotes for values with spaces, semicolons, or shell-significant characters such as connection strings.
+
+### Startup Execution
+
+Use `-c` to run a command or script and exit:
+
+```bash
+cosmosdbshell -c "seed.csh \"AccountEndpoint=...;AccountKey=...\" mydb mycontainer"
+```
+
+Use `-k` to run a command or script and then stay in the interactive shell:
+
+```bash
+cosmosdbshell -k "seed.csh \"AccountEndpoint=...;AccountKey=...\" mydb mycontainer"
+```
+
+Startup connection options still belong to the shell process, not to the script:
+
+```bash
+cosmosdbshell -c "seed.csh mydb mycontainer" --connect "AccountEndpoint=...;AccountKey=..."
+```
+
+If you want a value such as `--connect` to be passed to the script, put it inside the `-c` or `-k` command text:
+
+```bash
+cosmosdbshell -c "seed.csh --connect xyz"
+```
+
+### Piped Input
+
+When standard input is redirected, the shell reads it as command text. This is useful for running inline scripts:
+
+```bash
+echo "connect \"AccountEndpoint=...;AccountKey=...\"; ls" | cosmosdbshell
+```
+
+To run a script file with parameters through piped input, pipe a script invocation:
+
+```bash
+echo "seed.csh \"AccountEndpoint=...;AccountKey=...\" mydb mycontainer" | cosmosdbshell
+```
+
+Piping the contents of a script file directly runs those statements as standard input, so there is no script filename and no positional parameter list for that input stream. Use `-c`, `-k`, or pipe a script invocation when you need `$0`, `$1`, `$2`, and later parameters.
+
+### Script Scope
+
+Each script run gets its own variable scope. Variables from the caller are readable at script start, but assignments inside the script stay local to that script run and do not leak back to the caller.
 
 ## Control Flow
 

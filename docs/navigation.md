@@ -206,14 +206,14 @@ Start the shell with options to customize behavior:
 
 ```bash
 # Run a query and exit
-cosmos-shell -c "connect $CONN; cd mydb/mycont; ls -m 5"
+cosmosdbshell -c "connect $CONN; cd mydb/mycont; ls -m 5"
 
 # Start connected to a specific account
-cosmos-shell --connect "AccountEndpoint=...;AccountKey=..."
+cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
 
 # Start with MCP server enabled on the default port (6128)
-cosmos-shell --mcp
+cosmosdbshell --mcp
 
 # Start with MCP server enabled on a custom port
-cosmos-shell --mcp 5050
+cosmosdbshell --mcp 5050
 ```

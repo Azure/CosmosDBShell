@@ -7,7 +7,7 @@ The `connect` command and the `--connect` startup option support multiple authen
 The credential type is determined by the first matching rule (top-to-bottom):
 
 | Priority | Condition | Credential Used |
-|----------|-----------|-----------------|
+| -------- | --------- | --------------- |
 | 1 | Endpoint is `localhost` or `127.0.0.1` | Emulator (well-known key) |
 | 2 | Connection string has `AccountKey`, or `COSMOSDB_SHELL_ACCOUNT_KEY` env provides a key | Account key |
 | 3 | `--connect-vscode-credential` startup flag provided (startup only) | `VisualStudioCodeCredential` (falls back to next step) |
@@ -102,7 +102,7 @@ This environment variable provides a pre-obtained Entra ID access token (JWT) fo
 ```bash
 # Obtain a token with the Cosmos DB RBAC scope, then pass it
 export COSMOSDB_SHELL_TOKEN=$(az account get-access-token --resource https://<account>.documents.azure.com --query accessToken -o tsv)
-cosmos-shell --connect https://myaccount.documents.azure.com:443/ -c "cd mydb/mycont; ls -m 5"
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ -c "cd mydb/mycont; ls -m 5"
 ```
 
 The token must be issued for the Cosmos DB RBAC scope (`https://<account>.documents.azure.com/.default`). The external process is responsible for obtaining a valid token with the correct scope and permissions.
@@ -116,9 +116,9 @@ When `COSMOSDB_SHELL_TOKEN` is set, it takes priority over managed identity, int
 All connect options are also available as CLI startup arguments:
 
 ```bash
-cosmos-shell --connect https://myaccount.documents.azure.com:443/ --connect-tenant=<tenant-id>
-cosmos-shell --connect https://myaccount.documents.azure.com:443/ --connect-managed-identity=<client-id>
-cosmos-shell --connect https://localhost:8081
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-tenant=<tenant-id>
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-managed-identity=<client-id>
+cosmosdbshell --connect https://localhost:8081
 ```
 
 The hidden `--connect-vscode-credential` flag enables `VisualStudioCodeCredential` authentication via the system broker. This is used by the VS Code extension and requires the Azure Resources extension to be signed in. If the credential is unavailable, the shell falls back to `COSMOSDB_SHELL_TOKEN` and then to subsequent credential steps.
@@ -127,7 +127,7 @@ The hidden `--connect-vscode-credential` flag enables `VisualStudioCodeCredentia
 
 Run `connect` with no arguments to display the current connection info:
 
-```
+```text
 > connect
 Connection Information
  Account     myaccount
@@ -154,7 +154,7 @@ Account keys are acceptable when:
 - Running in a **CI/CD pipeline** where the key is stored in a secure secret store (e.g., Azure Key Vault, GitHub Actions secrets) and never written to logs.
 - Doing **local development** against a non-production account.
 
-### DefaultAzureCredential
+### DefaultAzureCredential Security
 
 `DefaultAzureCredential` is the most convenient option for development — it automatically tries multiple credential sources (Azure CLI, VS Code, managed identity, and others) until one succeeds. However, this convenience introduces unpredictability: you cannot guarantee which credential in the chain will be used at runtime.
 
