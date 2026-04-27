@@ -64,6 +64,49 @@ internal class ExpressionParser
         return next;
     }
 
+    /// <summary>
+    /// Returns the token at <paramref name="offset"/> positions ahead of <see cref="Current"/>
+    /// without consuming any tokens. <c>offset = 0</c> is the same as <see cref="Peek"/>.
+    /// Comments are skipped. Returns null if the input is exhausted before that offset.
+    /// </summary>
+    public Token? PeekAt(int offset)
+    {
+        if (this.aborted || offset < 0)
+        {
+            return null;
+        }
+
+        var pulled = new List<Token>();
+        Token? result = null;
+        for (int i = 0; i <= offset; i++)
+        {
+            Token? t;
+            do
+            {
+                t = this.lexer.NextToken();
+            }
+            while (t?.Type == TokenType.Comment);
+
+            if (t == null)
+            {
+                break;
+            }
+
+            pulled.Add(t);
+            if (i == offset)
+            {
+                result = t;
+            }
+        }
+
+        for (int i = pulled.Count - 1; i >= 0; i--)
+        {
+            this.lexer.PutBackToken(pulled[i]);
+        }
+
+        return result;
+    }
+
     public void Advance()
     {
         if (this.aborted)
@@ -1181,8 +1224,7 @@ internal class ExpressionParser
             return null;
         }
 
-        // Handle options (-opt or --opt)
-        if (this.Check(TokenType.Minus))
+        if (this.Check(TokenType.Minus) && this.IsCommandOptionStart())
         {
             var optionStartToken = this.currentToken!;
             this.Advance();
@@ -1207,128 +1249,134 @@ internal class ExpressionParser
                 (this.currentToken.Type == TokenType.Colon || this.currentToken.Type == TokenType.Assignment))
             {
                 this.Advance(); // consume ':' or '='
-                optionValue = this.ParseCommandArgument();
+                optionValue = this.ParseCommandShellWord();
             }
 
             return new CommandOption(optionStartToken, optionNameToken, optionValue);
         }
 
-        // Handle strings
-        if (this.Check(TokenType.String))
+        return this.ParseCommandShellWord();
+    }
+
+    private bool IsCommandOptionStart()
+    {
+        var minus = this.currentToken;
+        if (minus == null || minus.Type != TokenType.Minus)
         {
-            var token = this.currentToken!;
-            this.Advance();
-            return new ConstantExpression(token, new ShellText(token.Value));
+            return false;
         }
 
-        // Handle interpolated strings
-        if (this.Check(TokenType.InterpolatedString))
+        var next = this.Peek();
+        if (next == null || next.Start != minus.End)
         {
-            var token = this.currentToken!;
-            this.Advance();
-            return this.ParseInterpolatedStringExpression(token);
+            return false;
         }
 
-        // Handle numbers
-        if (this.Check(TokenType.Number))
+        if (next.Type == TokenType.Identifier)
         {
-            var token = this.currentToken!;
-            this.Advance();
-            if (int.TryParse(token.Value, out int intValue))
-            {
-                return new ConstantExpression(token, new ShellNumber(intValue));
-            }
-
-            return new ConstantExpression(token, new ShellIdentifier(token.Value));
+            return true;
         }
 
-        if (this.Check(TokenType.Decimal))
+        if (next.Type == TokenType.Minus)
         {
-            var token = this.currentToken!;
-            this.Advance();
-            if (double.TryParse(token.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double doubleValue))
-            {
-                return new ConstantExpression(token, new ShellDecimal(doubleValue));
-            }
-
-            return new ConstantExpression(token, new ShellIdentifier(token.Value));
+            var afterDoubleDash = this.PeekAt(1);
+            return afterDoubleDash != null &&
+                   afterDoubleDash.Type == TokenType.Identifier &&
+                   afterDoubleDash.Start == next.End;
         }
 
-        // Handle identifiers (including variables)
-        if (this.Check(TokenType.Identifier))
+        return false;
+    }
+
+    private Expression? ParseCommandShellWord()
+    {
+        var firstToken = this.currentToken;
+        if (firstToken == null || this.IsAtEnd || this.Check(TokenType.CloseParenthesis))
         {
-            var token = this.currentToken!;
-            this.Advance();
-
-            // Check for boolean literals
-            if (string.Equals(token.Value, "true", StringComparison.OrdinalIgnoreCase))
-            {
-                return new ConstantExpression(token, new ShellBool(true));
-            }
-
-            if (string.Equals(token.Value, "false", StringComparison.OrdinalIgnoreCase))
-            {
-                return new ConstantExpression(token, new ShellBool(false));
-            }
-
-            // Check for variables
-            if (token.Value.StartsWith("$") && token.Value.Length > 1)
-            {
-                var varValue = token.Value[1..]; // Remove leading $
-
-                if (varValue.StartsWith("."))
-                {
-                    // JSON path on piped result: $.name, $.[0], $.users[0].name
-                    return new JSonPathExpression(token, varValue);
-                }
-
-                // Check if variable contains property access (e.g., $script.name)
-                var dotIndex = varValue.IndexOf('.');
-                if (dotIndex > 0)
-                {
-                    // Variable with property access: $script.name -> path "script.name"
-                    return new JSonPathExpression(token, varValue);
-                }
-
-                // Check if variable contains array access (e.g., $items[0])
-                var bracketIndex = varValue.IndexOf('[');
-                if (bracketIndex > 0)
-                {
-                    // Variable with array access: $items[0] -> path "items[0]"
-                    return new JSonPathExpression(token, varValue);
-                }
-
-                // Simple variable: $myVar
-                return new VariableExpression(token, varValue);
-            }
-
-            return new ConstantExpression(token, new ShellIdentifier(token.Value));
+            return null;
         }
 
-        // Handle JSON arrays
-        if (this.Check(TokenType.OpenBracket))
-        {
-            return this.ParseJsonArray();
-        }
-
-        // Handle JSON objects
-        if (this.Check(TokenType.OpenBrace))
-        {
-            return this.ParseJsonExpression();
-        }
-
-        // Handle nested parentheses (sub-expressions)
-        if (this.Check(TokenType.OpenParenthesis))
+        if (this.IsShellWordExpressionStart(firstToken))
         {
             return this.ParsePrimary();
         }
 
-        // Unknown token - skip it
-        if (this.currentToken != null)
+        var peek = this.Peek();
+        bool extends = peek != null && peek.Start == firstToken.End && this.CanContinueShellWord(peek.Type);
+        if (!extends && this.IsPrimaryStandaloneToken(firstToken.Type))
         {
+            return this.ParsePrimary();
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append(firstToken.Value);
+        int endPos = firstToken.End;
+        this.Advance();
+
+        while (!this.IsAtEnd &&
+               this.currentToken != null &&
+               this.currentToken.Start == endPos &&
+               this.CanContinueShellWord(this.currentToken.Type))
+        {
+            var token = this.currentToken;
+            sb.Append(token.Value);
+            endPos = token.End;
             this.Advance();
         }
 
-        return null;
+        var wordText = sb.ToString();
+        var wordToken = new Token(TokenType.Identifier, wordText, firstToken.Start, endPos - firstToken.Start);
+        return new ConstantExpression(wordToken, new ShellText(wordText));
+    }
+
+    private bool IsShellWordExpressionStart(Token token)
+    {
+        switch (token.Type)
+        {
+            case TokenType.String:
+            case TokenType.InterpolatedString:
+            case TokenType.OpenParenthesis:
+            case TokenType.OpenBracket:
+            case TokenType.OpenBrace:
+                return true;
+            case TokenType.Identifier:
+                return token.Value.StartsWith('$');
+            default:
+                return false;
+        }
+    }
+
+    private bool IsPrimaryStandaloneToken(TokenType type)
+    {
+        switch (type)
+        {
+            case TokenType.Identifier:
+            case TokenType.Number:
+            case TokenType.Decimal:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private bool CanContinueShellWord(TokenType type)
+    {
+        switch (type)
+        {
+            case TokenType.Identifier:
+            case TokenType.Number:
+            case TokenType.Decimal:
+            case TokenType.Colon:
+            case TokenType.Divide:
+            case TokenType.Plus:
+            case TokenType.Minus:
+            case TokenType.Multiply:
+            case TokenType.Mod:
+            case TokenType.Assignment:
+            case TokenType.Not:
+                return true;
+            default:
+                return false;
+        }
     }
 }

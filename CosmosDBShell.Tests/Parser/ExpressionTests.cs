@@ -42,6 +42,45 @@ public class ExpressionTests
         return (expr, ex, lexer.Errors.Count);
     }
 
+    [Fact]
+    public void ParseExpression_CommandExpressionPlainUrl_ParsesAsSingleShellWord()
+    {
+        var expr = ParseExpression("(connect https://localhost:9922)");
+        var parens = Assert.IsType<ParensExpression>(expr);
+        var command = Assert.IsType<CommandExpression>(parens.InnerExpression);
+
+        Assert.Equal("connect", command.Name);
+        Assert.Single(command.Arguments);
+        Assert.IsNotType<CommandOption>(command.Arguments[0]);
+        Assert.Equal("https://localhost:9922", command.Arguments[0].ToString());
+    }
+
+    [Fact]
+    public void ParseExpression_CommandExpressionOptionWithUrl_ParsesAsSingleShellWord()
+    {
+        var expr = ParseExpression("(connect https://myaccount.documents.azure.com:443/ --authority-host=https://login.microsoftonline.us/)");
+        var parens = Assert.IsType<ParensExpression>(expr);
+        var command = Assert.IsType<CommandExpression>(parens.InnerExpression);
+
+        Assert.Equal(2, command.Arguments.Count);
+        Assert.Equal("https://myaccount.documents.azure.com:443/", command.Arguments[0].ToString());
+        var option = Assert.IsType<CommandOption>(command.Arguments[1]);
+        Assert.Equal("authority-host", option.Name);
+        Assert.Equal("https://login.microsoftonline.us/", option.Value?.ToString());
+    }
+
+    [Fact]
+    public void ParseExpression_CommandExpressionNegativeNumber_NotTreatedAsOption()
+    {
+        var expr = ParseExpression("(echo -5)");
+        var parens = Assert.IsType<ParensExpression>(expr);
+        var command = Assert.IsType<CommandExpression>(parens.InnerExpression);
+
+        Assert.Single(command.Arguments);
+        Assert.IsNotType<CommandOption>(command.Arguments[0]);
+        Assert.Equal("-5", command.Arguments[0].ToString());
+    }
+
     #region Constant Expression Tests
 
     [Fact]
