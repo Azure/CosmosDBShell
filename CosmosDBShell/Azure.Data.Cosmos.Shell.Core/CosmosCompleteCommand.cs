@@ -21,9 +21,11 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
 
     private static readonly ConcurrentDictionary<string, CompletionCacheEntry> DatabaseCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, CompletionCacheEntry> ContainerCache = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly ConcurrentDictionary<string, Task> RefreshTasks = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, long> DatabaseRefreshTasks = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, long> ContainerRefreshTasks = new(StringComparer.OrdinalIgnoreCase);
     private static long databaseCacheVersion;
     private static long containerCacheVersion;
+    private static long refreshTaskVersion;
 
     private readonly ShellInterpreter shellInterpreter = shellInterpreter;
     private readonly AutoComplete kind = kind;
@@ -32,22 +34,30 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
     {
         Interlocked.Increment(ref databaseCacheVersion);
         DatabaseCache.Clear();
+        DatabaseRefreshTasks.Clear();
     }
 
     public static void ClearContainers()
     {
         Interlocked.Increment(ref containerCacheVersion);
         ContainerCache.Clear();
+        ContainerRefreshTasks.Clear();
     }
 
     public static void SetDatabases(CosmosClient client, IEnumerable<string> names)
     {
-        DatabaseCache[GetDatabaseCacheKey(client)] = new CompletionCacheEntry([.. names], DateTimeOffset.UtcNow);
+        var key = GetDatabaseCacheKey(client);
+        Interlocked.Increment(ref databaseCacheVersion);
+        DatabaseCache[key] = new CompletionCacheEntry([.. names], DateTimeOffset.UtcNow);
+        DatabaseRefreshTasks.TryRemove(key, out _);
     }
 
     public static void SetContainers(CosmosClient client, string databaseName, IEnumerable<string> names)
     {
-        ContainerCache[GetContainerCacheKey(client, databaseName)] = new CompletionCacheEntry([.. names], DateTimeOffset.UtcNow);
+        var key = GetContainerCacheKey(client, databaseName);
+        Interlocked.Increment(ref containerCacheVersion);
+        ContainerCache[key] = new CompletionCacheEntry([.. names], DateTimeOffset.UtcNow);
+        ContainerRefreshTasks.TryRemove(key, out _);
     }
 
     public static string? GetCompletion(ShellInterpreter shellInterpreter, string word, AutoComplete kind)
@@ -164,7 +174,7 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
         var key = GetDatabaseCacheKey(state.Client);
         var cached = DatabaseCache.GetValueOrDefault(key);
         var cacheVersion = Volatile.Read(ref databaseCacheVersion);
-        QueueRefresh(key, cached, () => RefreshDatabasesAsync(state, key, cacheVersion));
+        QueueRefresh(DatabaseRefreshTasks, key, cached, () => RefreshDatabasesAsync(state, key, cacheVersion));
         return cached?.Items ?? [];
     }
 
@@ -173,18 +183,43 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
         var key = GetContainerCacheKey(state.Client, state.DatabaseName);
         var cached = ContainerCache.GetValueOrDefault(key);
         var cacheVersion = Volatile.Read(ref containerCacheVersion);
-        QueueRefresh(key, cached, () => RefreshContainersAsync(state, key, cacheVersion));
+        QueueRefresh(ContainerRefreshTasks, key, cached, () => RefreshContainersAsync(state, key, cacheVersion));
         return cached?.Items ?? [];
     }
 
-    private static void QueueRefresh(string key, CompletionCacheEntry? cached, Func<Task> refresh)
+    private static void QueueRefresh(
+        ConcurrentDictionary<string, long> refreshTasks,
+        string key,
+        CompletionCacheEntry? cached,
+        Func<Task> refresh)
     {
         if (cached != null && DateTimeOffset.UtcNow - cached.RefreshedAt < RefreshAfter)
         {
             return;
         }
 
-        _ = RefreshTasks.GetOrAdd(key, static (_, refresh) => Task.Run(refresh), refresh);
+        var registration = Interlocked.Increment(ref refreshTaskVersion);
+        if (!refreshTasks.TryAdd(key, registration))
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await refresh();
+            }
+            finally
+            {
+                RemoveRefreshTask(refreshTasks, key, registration);
+            }
+        });
+    }
+
+    private static void RemoveRefreshTask(ConcurrentDictionary<string, long> refreshTasks, string key, long registration)
+    {
+        ((ICollection<KeyValuePair<string, long>>)refreshTasks).Remove(new KeyValuePair<string, long>(key, registration));
     }
 
     private static async Task RefreshDatabasesAsync(ConnectedState state, string key, long cacheVersion)
@@ -201,10 +236,6 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
         {
             return;
         }
-        finally
-        {
-            RefreshTasks.TryRemove(key, out _);
-        }
     }
 
     private static async Task RefreshContainersAsync(DatabaseState state, string key, long cacheVersion)
@@ -220,10 +251,6 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
         catch
         {
             return;
-        }
-        finally
-        {
-            RefreshTasks.TryRemove(key, out _);
         }
     }
 

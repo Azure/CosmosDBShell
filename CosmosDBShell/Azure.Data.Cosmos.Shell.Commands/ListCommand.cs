@@ -78,13 +78,15 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var completionList = new List<string>();
         await foreach (var database in EnumerateDatabasesAsync(state.Client))
         {
+            var databaseName = database.Id.Trim();
+            completionList.Add(databaseName);
+
             if (!this.IsMatch(database.Id))
             {
                 continue;
             }
 
-            completionList.Add(database.Id.Trim());
-            var cn = Markup.Escape(database.Id.Trim());
+            var cn = Markup.Escape(databaseName);
             list.Add(cn);
             AnsiConsole.MarkupLine($"[green]{cn}[/]");
         }
@@ -122,13 +124,15 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var completionList = new List<string>();
         await foreach (var container in EnumerateContainersAsync(db))
         {
+            var containerName = container.Id.Trim();
+            completionList.Add(containerName);
+
             if (!this.IsMatch(container.Id))
             {
                 continue;
             }
 
-            completionList.Add(container.Id.Trim());
-            var cn = Markup.Escape(container.Id.Trim());
+            var cn = Markup.Escape(containerName);
             list.Add(cn);
             AnsiConsole.MarkupLine($"[magenta]{cn}[/]");
         }
