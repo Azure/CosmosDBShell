@@ -206,6 +206,11 @@ internal class ToolOperations
         return p;
     }
 
+    internal static string FormatOptionForHistory(Option option, object? value)
+    {
+        return $" --{option.Name[0]} {FormatParameter(value?.ToString())}";
+    }
+
     private static JsonObject CreatePropertySchema(Type propertyType, string? description, string[] names, object? defaultValue = null)
     {
         var schema = CreateTypeSchema(propertyType);
@@ -380,8 +385,7 @@ internal class ToolOperations
                                 convertedValue = Convert.ChangeType(par.Value, targetType);
                             }
 
-                            sb.Append(" /").Append(argument.Name[0]);
-                            sb.Append(' ').Append(FormatParameter(convertedValue?.ToString()));
+                            sb.Append(FormatOptionForHistory(argument, convertedValue));
                             property.SetValue(cmd, convertedValue);
                         }
                         catch (Exception ex)

@@ -56,4 +56,15 @@ public class ToolOperationsTests
         Assert.True(ToolOperations.MatchesArgumentName(databaseOption.Name, "DB"));
         Assert.True(ToolOperations.MatchesArgumentName(databaseOption.Name, "database"));
     }
+
+    [Fact]
+    public void FormatOptionForHistory_UsesDoubleDashPrefix()
+    {
+        var factory = new CommandRunner().Commands["query"];
+        var databaseOption = factory.Options.Single(option => option.Name[0] == "database");
+
+        var formattedOption = ToolOperations.FormatOptionForHistory(databaseOption, "Samples");
+
+        Assert.Equal(" --database Samples", formattedOption);
+    }
 }
