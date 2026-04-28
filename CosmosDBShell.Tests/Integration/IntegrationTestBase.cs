@@ -22,10 +22,9 @@ public abstract class IntegrationTestBase : IDisposable
         Shell = ShellInterpreter.CreateInstance();
     }
 
-    internal async Task<CommandState> RunScriptAsync(string script, CancellationToken cancellationToken = default)
+    internal async Task<CommandState> RunScriptAsync(string script)
     {
-        cancellationToken = cancellationToken == default ? TestContext.Current.CancellationToken : cancellationToken;
-        return await Shell.ExecuteCommandAsync(script, cancellationToken);
+        return await Shell.ExecuteCommandAsync(script, TestContext.Current.CancellationToken);
     }
 
     internal static JsonElement GetJson(CommandState state)
