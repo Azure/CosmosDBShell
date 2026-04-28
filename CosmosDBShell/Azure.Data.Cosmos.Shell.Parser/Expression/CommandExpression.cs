@@ -191,7 +191,7 @@ internal class CommandExpression : Expression
 
             if (matchingProperty == null)
             {
-                continue;
+                throw new CommandException(this.Name, $"Unknown option '{rawName}'.");
             }
 
             var pi = matchingProperty.Prop;

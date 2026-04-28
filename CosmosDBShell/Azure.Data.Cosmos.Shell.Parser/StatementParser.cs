@@ -149,27 +149,16 @@ internal class StatementParser
             _ => redirectToken.Value,
         };
 
-    private static bool IsBinaryOperator(TokenType type)
-        => type switch
-        {
-            TokenType.Plus => true,
-
-            // Note: Minus is NOT included because in command context, - starts an option.
-            // Note: GreaterThan is NOT included because in command context, > starts an output redirection.
-            TokenType.Multiply => true,
-            TokenType.Divide => true,
-            TokenType.Mod => true,
-            TokenType.Pow => true,
-            TokenType.Equal => true,
-            TokenType.NotEqual => true,
-            TokenType.LessThan => true,
-            TokenType.LessThanOrEqual => true,
-            TokenType.GreaterThanOrEqual => true,
-            TokenType.And => true,
-            TokenType.Or => true,
-            TokenType.Xor => true,
-            _ => false,
-        };
+    private static bool IsCommandTerminator(Token token)
+        => token.Type == TokenType.Semicolon ||
+           token.Type == TokenType.Eol ||
+           token.Type == TokenType.CloseBrace ||
+           token.Type == TokenType.Pipe ||
+           token.Type == TokenType.GreaterThan ||
+           token.Type == TokenType.RedirectOutput ||
+           token.Type == TokenType.RedirectAppendOutput ||
+           token.Type == TokenType.RedirectError ||
+           token.Type == TokenType.RedirectAppendError;
 
     /// <summary>
     /// Detects the start of a '2&gt;' or '2&gt;&gt;' stderr redirect in command context.
@@ -192,6 +181,16 @@ internal class StatementParser
                next.Type == TokenType.GreaterThan &&
                next.Start == current.End;
     }
+
+    private CommandShellWordParser CreateCommandShellWordParser()
+        => new(
+            () => this.expressionParser.Current,
+            () => this.expressionParser.IsAtEnd,
+            () => this.expressionParser.Peek(),
+            offset => this.expressionParser.PeekAt(offset),
+            () => this.expressionParser.Advance(),
+            () => this.expressionParser.ParsePrimaryExpression(),
+            IsCommandTerminator);
 
     private void SkipWs()
     {
@@ -892,7 +891,14 @@ internal class StatementParser
                    this.expressionParser.Current.Type != TokenType.RedirectAppendError &&
                    !this.IsStderrRedirectStart())
             {
-                if (this.expressionParser.Current.Type == TokenType.Minus)
+                var commandWordParser = this.CreateCommandShellWordParser();
+
+                // In command mode an argument is either a structured option (`-name`, `--name[=:]value`)
+                // or a "shell word": a maximal run of adjacent simple tokens concatenated as text.
+                // Strings, interpolated strings, $-variables and (expr)/[..]/{..} drop into expression
+                // mode unchanged so existing scripting features keep working.
+                if (this.expressionParser.Current.Type == TokenType.Minus &&
+                    commandWordParser.IsCommandOptionStart())
                 {
                     var optionStartToken = this.expressionParser.Current;
                     this.expressionParser.Advance();
@@ -931,18 +937,7 @@ internal class StatementParser
                         if (!this.expressionParser.IsAtEnd &&
                             this.expressionParser.Current != null)
                         {
-                            optionValue = this.expressionParser.ParsePrimaryExpression();
-
-                            if (optionValue != null &&
-                                !this.expressionParser.IsAtEnd &&
-                                this.expressionParser.Current != null &&
-                                IsBinaryOperator(this.expressionParser.Current.Type))
-                            {
-                                var opToken = this.expressionParser.Current;
-                                this.expressionParser.Advance();
-                                var right = this.expressionParser.ParseExpression();
-                                optionValue = new BinaryOperatorExpression(optionValue, opToken, right);
-                            }
+                            optionValue = commandWordParser.ParseShellWord();
 
                             if (optionValue == null)
                             {
@@ -963,20 +958,10 @@ internal class StatementParser
                 }
                 else
                 {
-                    // Parse primary expression first, then check if there's a binary operator following
-                    // This handles cases like "text" + $var while still treating separate args individually
-                    var arg = this.expressionParser.ParsePrimaryExpression();
-
-                    // If followed by an operator, we need to parse a full binary expression
-                    if (!this.expressionParser.IsAtEnd &&
-                        this.expressionParser.Current != null &&
-                        IsBinaryOperator(this.expressionParser.Current.Type))
+                    var arg = commandWordParser.ParseShellWord();
+                    if (arg == null)
                     {
-                        // Re-parse as full expression - the operator will combine with what follows
-                        var opToken = this.expressionParser.Current;
-                        this.expressionParser.Advance();
-                        var right = this.expressionParser.ParseExpression();
-                        arg = new BinaryOperatorExpression(arg, opToken, right);
+                        break;
                     }
 
                     command.Arguments.Add(arg);
