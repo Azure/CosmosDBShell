@@ -85,7 +85,14 @@ internal class QueryCommand : CosmosCommand
     internal static List<JsonElement> CollectDocuments(IEnumerable<JsonElement> currentDocuments, JsonElement pageDocuments, int? maxItemCount)
     {
         var documents = currentDocuments.ToList();
-        foreach (var resultDocument in pageDocuments.EnumerateArray())
+
+        // Clone the entire page array once so the caller can safely dispose the
+        // per-page JsonDocument that owns pageDocuments. Per-element Clone()
+        // would allocate a fresh JsonDocument for every result, which is very
+        // expensive for large pages; cloning the page produces a single backing
+        // document whose elements we can reference directly.
+        var clonedPage = pageDocuments.Clone();
+        foreach (var resultDocument in clonedPage.EnumerateArray())
         {
             if (maxItemCount >= 0 && documents.Count >= maxItemCount)
             {
@@ -114,50 +121,7 @@ internal class QueryCommand : CosmosCommand
         return pageDocuments.GetArrayLength() > remainingCapacity;
     }
 
-    private static void AddIndexTable(Table table, string title, JsonElement? jToken)
-    {
-        if (jToken == null || jToken.Value.ValueKind == JsonValueKind.Null || jToken.Value.ValueKind == JsonValueKind.Undefined)
-        {
-            table.AddRow($"[white]{title}[/]", $"[white]-[/]", $"[white]-[/]");
-            return;
-        }
-
-        if (jToken.Value.ValueKind == JsonValueKind.Array)
-        {
-            var arr = jToken.Value.EnumerateArray().ToList();
-            if (arr.Count == 0)
-            {
-                table.AddRow($"[white]{title}[/]", $"[white]-[/]", $"[white]-[/]");
-                return;
-            }
-
-            var i = 0;
-            while (i < arr.Count)
-            {
-                string col1 = arr[i].ToString();
-                i += 1;
-                string col2;
-                if (i < arr.Count)
-                {
-                    col2 = arr[i].ToString();
-                }
-                else
-                {
-                    col2 = "-";
-                }
-
-                i += 1;
-                table.AddRow($"[white]{title}[/]", $"[white]{col1}[/]", $"[white]{col2}[/]");
-            }
-        }
-    }
-
-    private static void GeneratePlainResultDocument(CommandState returnState, IEnumerable<JsonElement> documents)
-    {
-        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = documents.ToList() }));
-    }
-
-    private static List<Dictionary<string, object>> GetMetrics(ResponseMessage msg)
+    internal static List<Dictionary<string, object>> GetMetrics(ResponseMessage msg)
     {
         var queryMetrics = msg.Diagnostics.GetQueryMetrics();
         return BuildMetrics(queryMetrics?.TotalRequestCharge ?? 0, queryMetrics?.CumulativeMetrics);
@@ -272,12 +236,54 @@ internal class QueryCommand : CosmosCommand
         ];
     }
 
+    private static void AddIndexTable(Table table, string title, JsonElement? jToken)
+    {
+        if (jToken == null || jToken.Value.ValueKind == JsonValueKind.Null || jToken.Value.ValueKind == JsonValueKind.Undefined)
+        {
+            table.AddRow($"[white]{title}[/]", $"[white]-[/]", $"[white]-[/]");
+            return;
+        }
+
+        if (jToken.Value.ValueKind == JsonValueKind.Array)
+        {
+            var arr = jToken.Value.EnumerateArray().ToList();
+            if (arr.Count == 0)
+            {
+                table.AddRow($"[white]{title}[/]", $"[white]-[/]", $"[white]-[/]");
+                return;
+            }
+
+            var i = 0;
+            while (i < arr.Count)
+            {
+                string col1 = arr[i].ToString();
+                i += 1;
+                string col2;
+                if (i < arr.Count)
+                {
+                    col2 = arr[i].ToString();
+                }
+                else
+                {
+                    col2 = "-";
+                }
+
+                i += 1;
+                table.AddRow($"[white]{title}[/]", $"[white]{col1}[/]", $"[white]{col2}[/]");
+            }
+        }
+    }
+
+    private static void GeneratePlainResultDocument(CommandState returnState, IEnumerable<JsonElement> documents)
+    {
+        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = documents.ToList() }));
+    }
+
     private async Task<CommandState> ExecuteQueryAsync(Container container, ShellInterpreter shell, CancellationToken token)
     {
         var returnState = new CommandState();
         returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
         var aggregatedDocuments = new List<JsonElement>();
-        var queryDocuments = new List<JsonDocument>();
 
         try
         {
@@ -348,8 +354,7 @@ internal class QueryCommand : CosmosCommand
                     throw new CommandException("query", MessageService.GetString("command-query-error-empty_content"));
                 }
 
-                var queryDocument = JsonDocument.Parse(responseContent);
-                queryDocuments.Add(queryDocument);
+                using var queryDocument = JsonDocument.Parse(responseContent);
                 ShellInterpreter.WriteLine(MessageService.GetString("command-query-fetched", new Dictionary<string, object> { { "count", queryDocument.RootElement.GetProperty("_count").ToString() } }));
                 var queryMetrics = response.Diagnostics.GetQueryMetrics();
                 if (queryMetrics != null)
@@ -520,13 +525,6 @@ internal class QueryCommand : CosmosCommand
         catch (Exception e)
         {
             throw new CommandException("query", e);
-        }
-        finally
-        {
-            foreach (var doc in queryDocuments)
-            {
-                doc.Dispose();
-            }
         }
     }
 

@@ -76,7 +76,8 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
                     await db.DeleteAsync(cancellationToken: token);
                     UpdateStateAfterDelete(shell, client, database.Id);
                     CosmosCompleteCommand.ClearDatabases();
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", new Dictionary<string, object> { { "db", database.Id } }));
+                    var messageArguments = new Dictionary<string, object> { { "db", database.Id } };
+                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", messageArguments));
                 }
 
                 return 0;

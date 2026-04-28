@@ -243,48 +243,7 @@ internal class CommandStatement : Statement
                 var stringValue = evaluatedValue.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty;
 
                 var targetType = Nullable.GetUnderlyingType(pi.PropertyType) ?? pi.PropertyType;
-
-                if (targetType == typeof(bool))
-                {
-                    // Validate boolean string explicitly
-                    if (string.Equals(stringValue, "true", StringComparison.OrdinalIgnoreCase))
-                    {
-                        pi.SetValue(cmd, true);
-                    }
-                    else if (string.Equals(stringValue, "false", StringComparison.OrdinalIgnoreCase))
-                    {
-                        pi.SetValue(cmd, false);
-                    }
-                    else
-                    {
-                        throw new CommandException(this.Name, $"Invalid boolean value '{stringValue}' for option '{rawName}'. Expected 'true' or 'false'.");
-                    }
-                }
-                else if (targetType.IsEnum)
-                {
-                    if (Enum.TryParse(targetType, stringValue, ignoreCase: true, out var enumVal))
-                    {
-                        pi.SetValue(cmd, enumVal);
-                    }
-                    else
-                    {
-                        var validValues = string.Join(", ", Enum.GetNames(targetType));
-                        throw new CommandException(this.Name, $"Invalid value '{stringValue}' for option '{rawName}'. Valid values are: {validValues}");
-                    }
-                }
-                else
-                {
-                    // Convert string to target type (e.g., int, int?, etc.)
-                    try
-                    {
-                        var convertedValue = Convert.ChangeType(stringValue, targetType);
-                        pi.SetValue(cmd, convertedValue);
-                    }
-                    catch (Exception ex) when (ex is FormatException or OverflowException or InvalidCastException)
-                    {
-                        throw new CommandException(this.Name, $"Invalid value '{stringValue}' for option '{rawName}'. Expected a value of type '{targetType.Name}'.", ex);
-                    }
-                }
+                pi.SetValue(cmd, CommandOptionBinder.ConvertOptionValue(this.Name, rawName, stringValue, targetType));
             }
             else
             {
