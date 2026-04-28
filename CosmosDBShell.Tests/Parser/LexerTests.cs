@@ -141,8 +141,6 @@ public class LexerTests
     }
 
     [Theory]
-    [InlineData("out>", TokenType.RedirectOutput, "out>")]
-    [InlineData("err>", TokenType.RedirectError, "err>")]
     [InlineData("&&", TokenType.And, "&&")]
     [InlineData("||", TokenType.Or, "||")]
     [InlineData("**", TokenType.Pow, "**")]
@@ -364,18 +362,20 @@ public class LexerTests
     [Fact]
     public void NextToken_RedirectionOperators_ParseCorrectly()
     {
-        // Arrange
-        var lexer = new Lexer("command out> file.txt err> error.log");
+        // The lexer does not produce RedirectOutput/RedirectError tokens directly;
+        // those are synthesized by the parser in command context. At the lexer level
+        // '>' becomes GreaterThan and '2>' becomes Number("2") + GreaterThan.
+        var lexer = new Lexer("command > file.txt 2> error.log");
         var expectedTokens = new[]
         {
             (TokenType.Identifier, "command"),
-            (TokenType.RedirectOutput, "out>"),
+            (TokenType.GreaterThan, ">"),
             (TokenType.Identifier, "file.txt"),
-            (TokenType.RedirectError, "err>"),
-            (TokenType.Identifier, "error.log")
+            (TokenType.Number, "2"),
+            (TokenType.GreaterThan, ">"),
+            (TokenType.Identifier, "error.log"),
         };
 
-        // Act & Assert
         foreach (var (expectedType, expectedValue) in expectedTokens)
         {
             var token = lexer.NextToken();

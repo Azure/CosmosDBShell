@@ -142,31 +142,55 @@ internal class StatementParser
     private static string RedirectLabel(Token redirectToken)
         => redirectToken.Type switch
         {
-            TokenType.RedirectOutput or TokenType.RedirectAppendOutput => "out>",
-            _ => "err>",
+            TokenType.RedirectOutput => ">",
+            TokenType.RedirectAppendOutput => ">>",
+            TokenType.RedirectError => "2>",
+            TokenType.RedirectAppendError => "2>>",
+            _ => redirectToken.Value,
         };
 
-    private static bool IsBinaryOperator(TokenType type)
-        => type switch
+    private static bool IsCommandTerminator(Token token)
+        => token.Type == TokenType.Semicolon ||
+           token.Type == TokenType.Eol ||
+           token.Type == TokenType.CloseBrace ||
+           token.Type == TokenType.Pipe ||
+           token.Type == TokenType.GreaterThan ||
+           token.Type == TokenType.RedirectOutput ||
+           token.Type == TokenType.RedirectAppendOutput ||
+           token.Type == TokenType.RedirectError ||
+           token.Type == TokenType.RedirectAppendError;
+
+    /// <summary>
+    /// Detects the start of a '2&gt;' or '2&gt;&gt;' stderr redirect in command context.
+    /// True when <see cref="ExpressionParser.Current"/> is a Number token with value "2"
+    /// immediately (no whitespace) followed by a GreaterThan token. The '2' is not lexed
+    /// as part of the redirect so that expressions like '2&gt;3' still parse as comparisons.
+    /// </summary>
+    private bool IsStderrRedirectStart()
+    {
+        var current = this.expressionParser.Current;
+        if (current == null ||
+            current.Type != TokenType.Number ||
+            current.Value != "2")
         {
-            TokenType.Plus => true,
+            return false;
+        }
 
-            // Note: Minus is NOT included because in command context, - starts an option
-            TokenType.Multiply => true,
-            TokenType.Divide => true,
-            TokenType.Mod => true,
-            TokenType.Pow => true,
-            TokenType.Equal => true,
-            TokenType.NotEqual => true,
-            TokenType.LessThan => true,
-            TokenType.GreaterThan => true,
-            TokenType.LessThanOrEqual => true,
-            TokenType.GreaterThanOrEqual => true,
-            TokenType.And => true,
-            TokenType.Or => true,
-            TokenType.Xor => true,
-            _ => false,
-        };
+        var next = this.expressionParser.Peek();
+        return next != null &&
+               next.Type == TokenType.GreaterThan &&
+               next.Start == current.End;
+    }
+
+    private CommandShellWordParser CreateCommandShellWordParser()
+        => new(
+            () => this.expressionParser.Current,
+            () => this.expressionParser.IsAtEnd,
+            () => this.expressionParser.Peek(),
+            offset => this.expressionParser.PeekAt(offset),
+            () => this.expressionParser.Advance(),
+            () => this.expressionParser.ParsePrimaryExpression(),
+            IsCommandTerminator);
 
     private void SkipWs()
     {
@@ -860,12 +884,21 @@ internal class StatementParser
                    this.expressionParser.Current.Type != TokenType.Eol &&
                    this.expressionParser.Current.Type != TokenType.CloseBrace &&
                    this.expressionParser.Current.Type != TokenType.Pipe &&
+                   this.expressionParser.Current.Type != TokenType.GreaterThan &&
                    this.expressionParser.Current.Type != TokenType.RedirectOutput &&
                    this.expressionParser.Current.Type != TokenType.RedirectAppendOutput &&
                    this.expressionParser.Current.Type != TokenType.RedirectError &&
-                   this.expressionParser.Current.Type != TokenType.RedirectAppendError)
+                   this.expressionParser.Current.Type != TokenType.RedirectAppendError &&
+                   !this.IsStderrRedirectStart())
             {
-                if (this.expressionParser.Current.Type == TokenType.Minus)
+                var commandWordParser = this.CreateCommandShellWordParser();
+
+                // In command mode an argument is either a structured option (`-name`, `--name[=:]value`)
+                // or a "shell word": a maximal run of adjacent simple tokens concatenated as text.
+                // Strings, interpolated strings, $-variables and (expr)/[..]/{..} drop into expression
+                // mode unchanged so existing scripting features keep working.
+                if (this.expressionParser.Current.Type == TokenType.Minus &&
+                    commandWordParser.IsCommandOptionStart())
                 {
                     var optionStartToken = this.expressionParser.Current;
                     this.expressionParser.Advance();
@@ -904,18 +937,7 @@ internal class StatementParser
                         if (!this.expressionParser.IsAtEnd &&
                             this.expressionParser.Current != null)
                         {
-                            optionValue = this.expressionParser.ParsePrimaryExpression();
-
-                            if (optionValue != null &&
-                                !this.expressionParser.IsAtEnd &&
-                                this.expressionParser.Current != null &&
-                                IsBinaryOperator(this.expressionParser.Current.Type))
-                            {
-                                var opToken = this.expressionParser.Current;
-                                this.expressionParser.Advance();
-                                var right = this.expressionParser.ParseExpression();
-                                optionValue = new BinaryOperatorExpression(optionValue, opToken, right);
-                            }
+                            optionValue = commandWordParser.ParseShellWord();
 
                             if (optionValue == null)
                             {
@@ -936,20 +958,10 @@ internal class StatementParser
                 }
                 else
                 {
-                    // Parse primary expression first, then check if there's a binary operator following
-                    // This handles cases like "text" + $var while still treating separate args individually
-                    var arg = this.expressionParser.ParsePrimaryExpression();
-
-                    // If followed by an operator, we need to parse a full binary expression
-                    if (!this.expressionParser.IsAtEnd &&
-                        this.expressionParser.Current != null &&
-                        IsBinaryOperator(this.expressionParser.Current.Type))
+                    var arg = commandWordParser.ParseShellWord();
+                    if (arg == null)
                     {
-                        // Re-parse as full expression - the operator will combine with what follows
-                        var opToken = this.expressionParser.Current;
-                        this.expressionParser.Advance();
-                        var right = this.expressionParser.ParseExpression();
-                        arg = new BinaryOperatorExpression(arg, opToken, right);
+                        break;
                     }
 
                     command.Arguments.Add(arg);
@@ -961,10 +973,74 @@ internal class StatementParser
                    (this.expressionParser.Current.Type == TokenType.RedirectOutput ||
                     this.expressionParser.Current.Type == TokenType.RedirectAppendOutput ||
                     this.expressionParser.Current.Type == TokenType.RedirectError ||
-                    this.expressionParser.Current.Type == TokenType.RedirectAppendError))
+                    this.expressionParser.Current.Type == TokenType.RedirectAppendError ||
+                    this.expressionParser.Current.Type == TokenType.GreaterThan ||
+                    this.IsStderrRedirectStart()))
             {
-                var redirectToken = this.expressionParser.Current;
-                this.expressionParser.Advance();
+                Token redirectToken;
+                if (this.expressionParser.Current.Type == TokenType.GreaterThan)
+                {
+                    // In command context, '>' means output redirection and '>>' (two adjacent
+                    // GreaterThan tokens) means append. Synthesize the appropriate redirect token
+                    // so the rest of the redirect handling works uniformly with 2>/2>>.
+                    var first = this.expressionParser.Current;
+                    this.expressionParser.Advance();
+                    if (!this.expressionParser.IsAtEnd &&
+                        this.expressionParser.Current != null &&
+                        this.expressionParser.Current.Type == TokenType.GreaterThan &&
+                        this.expressionParser.Current.Start == first.End)
+                    {
+                        var second = this.expressionParser.Current;
+                        this.expressionParser.Advance();
+                        redirectToken = new Token(
+                            TokenType.RedirectAppendOutput,
+                            ">>",
+                            first.Start,
+                            second.End - first.Start);
+                    }
+                    else
+                    {
+                        redirectToken = new Token(TokenType.RedirectOutput, ">", first.Start, first.Length);
+                    }
+                }
+                else if (this.IsStderrRedirectStart())
+                {
+                    // '2' + adjacent '>' [+ adjacent '>'] -> RedirectError / RedirectAppendError.
+                    // Keeping the '2' out of the lexer avoids breaking expressions like '2>3'.
+                    var numberToken = this.expressionParser.Current;
+                    this.expressionParser.Advance();
+
+                    // Current is guaranteed to be the adjacent GreaterThan by IsStderrRedirectStart.
+                    var first = this.expressionParser.Current!;
+                    this.expressionParser.Advance();
+
+                    if (!this.expressionParser.IsAtEnd &&
+                        this.expressionParser.Current != null &&
+                        this.expressionParser.Current.Type == TokenType.GreaterThan &&
+                        this.expressionParser.Current.Start == first.End)
+                    {
+                        var second = this.expressionParser.Current;
+                        this.expressionParser.Advance();
+                        redirectToken = new Token(
+                            TokenType.RedirectAppendError,
+                            "2>>",
+                            numberToken.Start,
+                            second.End - numberToken.Start);
+                    }
+                    else
+                    {
+                        redirectToken = new Token(
+                            TokenType.RedirectError,
+                            "2>",
+                            numberToken.Start,
+                            first.End - numberToken.Start);
+                    }
+                }
+                else
+                {
+                    redirectToken = this.expressionParser.Current;
+                    this.expressionParser.Advance();
+                }
 
                 if (this.expressionParser.IsAtEnd || this.expressionParser.Current == null)
                 {

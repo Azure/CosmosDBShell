@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 // ------------------------------------------------------------
 
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -40,6 +41,68 @@ public class ExpressionTests
         Expression? expr = null;
         Exception? ex = Record.Exception(() => expr = parser.ParseExpression());
         return (expr, ex, lexer.Errors.Count);
+    }
+
+    [Fact]
+    public void ParseExpression_CommandExpressionPlainUrl_ParsesAsSingleShellWord()
+    {
+        var expr = ParseExpression("(connect https://localhost:9922)");
+        var parens = Assert.IsType<ParensExpression>(expr);
+        var command = Assert.IsType<CommandExpression>(parens.InnerExpression);
+
+        Assert.Equal("connect", command.Name);
+        Assert.Single(command.Arguments);
+        Assert.IsNotType<CommandOption>(command.Arguments[0]);
+        Assert.Equal("https://localhost:9922", command.Arguments[0].ToString());
+    }
+
+    [Fact]
+    public void ParseExpression_CommandExpressionOptionWithUrl_ParsesAsSingleShellWord()
+    {
+        var expr = ParseExpression("(connect https://myaccount.documents.azure.com:443/ --authority-host=https://login.microsoftonline.us/)");
+        var parens = Assert.IsType<ParensExpression>(expr);
+        var command = Assert.IsType<CommandExpression>(parens.InnerExpression);
+
+        Assert.Equal(2, command.Arguments.Count);
+        Assert.Equal("https://myaccount.documents.azure.com:443/", command.Arguments[0].ToString());
+        var option = Assert.IsType<CommandOption>(command.Arguments[1]);
+        Assert.Equal("authority-host", option.Name);
+        Assert.Equal("https://login.microsoftonline.us/", option.Value?.ToString());
+    }
+
+    [Fact]
+    public void ParseExpression_CommandExpressionNegativeNumber_NotTreatedAsOption()
+    {
+        var expr = ParseExpression("(echo -5)");
+        var parens = Assert.IsType<ParensExpression>(expr);
+        var command = Assert.IsType<CommandExpression>(parens.InnerExpression);
+
+        Assert.Single(command.Arguments);
+        Assert.IsNotType<CommandOption>(command.Arguments[0]);
+        Assert.Equal("-5", command.Arguments[0].ToString());
+    }
+
+    [Fact]
+    public void ParseExpression_CommandExpressionOptionWithPaddedValue_ParsesAsSingleShellWord()
+    {
+        var expr = ParseExpression("(connect --key=abc==)");
+        var parens = Assert.IsType<ParensExpression>(expr);
+        var command = Assert.IsType<CommandExpression>(parens.InnerExpression);
+        var option = Assert.Single(command.Arguments.OfType<CommandOption>());
+
+        Assert.Equal("key", option.Name);
+        Assert.Equal("abc==", option.Value?.ToString());
+    }
+
+    [Fact]
+    public void ParseExpression_CommandExpressionCommaSeparatedValue_ParsesAsSingleShellWord()
+    {
+        var expr = ParseExpression("(echo red,green,blue)");
+        var parens = Assert.IsType<ParensExpression>(expr);
+        var command = Assert.IsType<CommandExpression>(parens.InnerExpression);
+
+        Assert.Single(command.Arguments);
+        Assert.Equal("red,green,blue", command.Arguments[0].ToString());
     }
 
     #region Constant Expression Tests

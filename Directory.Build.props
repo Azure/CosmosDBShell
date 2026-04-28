@@ -1,2 +1,6 @@
 <Project>
+  <!-- CI restores GitVersion.Tool from the repo tool manifest and computes
+       Version, FileVersion, InformationalVersion, and PackageVersion from
+       GitVersion.yml. See .github/workflows/validate-and-package.yml and
+       .pipelines/CosmosDB-Shell-Official.yml. -->
 </Project>

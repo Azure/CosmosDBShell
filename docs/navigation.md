@@ -197,23 +197,23 @@ Start the shell with options to customize behavior:
 
 | Variable | Description |
 | -------- | ----------- |
-| `COSMOS_SHELL_TOKEN` | Pre-obtained Entra ID access token (JWT) for single-shot auth |
-| `COSMOS_SHELL_ACCOUNT_KEY` | Account key for authentication |
-| `COSMOS_SHELL_FORMAT` | Default output format |
-| `COSMOS_SHELL_CSVSEP` | CSV column separator |
+| `COSMOSDB_SHELL_TOKEN` | Pre-obtained Entra ID access token (JWT) for single-shot auth |
+| `COSMOSDB_SHELL_ACCOUNT_KEY` | Account key for authentication |
+| `COSMOSDB_SHELL_FORMAT` | Default output format |
+| `COSMOSDB_SHELL_CSVSEP` | CSV column separator |
 
 **Examples:**
 
 ```bash
 # Run a query and exit
-cosmos-shell -c "connect $CONN; cd mydb/mycont; ls -m 5"
+cosmosdbshell -c "connect $CONN; cd mydb/mycont; ls -m 5"
 
 # Start connected to a specific account
-cosmos-shell --connect "AccountEndpoint=...;AccountKey=..."
+cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
 
 # Start with MCP server enabled on the default port (6128)
-cosmos-shell --mcp
+cosmosdbshell --mcp
 
 # Start with MCP server enabled on a custom port
-cosmos-shell --mcp 5050
+cosmosdbshell --mcp 5050
 ```

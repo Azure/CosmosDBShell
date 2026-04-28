@@ -75,17 +75,23 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
         // Default behavior: list databases
         var list = new List<string>();
+        var completionList = new List<string>();
         await foreach (var database in EnumerateDatabasesAsync(state.Client))
         {
+            var databaseName = database.Id.Trim();
+            completionList.Add(databaseName);
+
             if (!this.IsMatch(database.Id))
             {
                 continue;
             }
 
-            var cn = Markup.Escape(database.Id.Trim());
+            var cn = Markup.Escape(databaseName);
             list.Add(cn);
             AnsiConsole.MarkupLine($"[green]{cn}[/]");
         }
+
+        CosmosCompleteCommand.SetDatabases(state.Client, completionList);
 
         var result = new CommandState
         {
@@ -115,17 +121,23 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         await ValidateDatabaseExistsAsync(client, databaseName, "ls", token);
         var db = client.GetDatabase(databaseName);
         var list = new List<string>();
+        var completionList = new List<string>();
         await foreach (var container in EnumerateContainersAsync(db))
         {
+            var containerName = container.Id.Trim();
+            completionList.Add(containerName);
+
             if (!this.IsMatch(container.Id))
             {
                 continue;
             }
 
-            var cn = Markup.Escape(container.Id.Trim());
+            var cn = Markup.Escape(containerName);
             list.Add(cn);
             AnsiConsole.MarkupLine($"[magenta]{cn}[/]");
         }
+
+        CosmosCompleteCommand.SetContainers(client, databaseName, completionList);
 
         var result = new CommandState
         {
@@ -160,7 +172,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
         using var feedIterator = container.GetItemQueryStreamIterator("SELECT * FROM c", requestOptions: opt);
         var returnState = new CommandState();
-        returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOS_SHELL_FORMAT"));
+        returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
         var list = new List<JsonElement>();
         var limitReached = false;
         while (feedIterator.HasMoreResults)

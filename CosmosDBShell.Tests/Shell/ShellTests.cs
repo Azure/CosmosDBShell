@@ -65,6 +65,13 @@ public class ShellTests
         var result = Assert.IsType<ShellJson>(state.Result);
         Assert.True(result.Value.TryGetProperty("version", out var versionProperty));
 
+        Assert.True(
+            result.Value.TryGetProperty("repository", out var repositoryProperty),
+            "Expected 'version' JSON payload to include a 'repository' field pointing at the public issue tracker.");
+        Assert.Equal(
+            ShellInterpreter.GetRepositoryUrl(typeof(ShellInterpreter).Assembly),
+            repositoryProperty.GetString());
+
         var expectedVersion = ShellInterpreter.GetDisplayVersion(typeof(ShellInterpreter).Assembly);
         var actualVersion = versionProperty.GetString();
 
@@ -82,5 +89,83 @@ public class ShellTests
         }
     }
 
+    [Theory]
+    [InlineData(null, "")]
+    [InlineData("", "")]
+    [InlineData("   ", "")]
+    [InlineData("1.0.149-preview", "")]
+    [InlineData("1.0.149-preview+", "")]
+    [InlineData("1.0.149-preview+abc123", "abc123")]
+    [InlineData("1.0.149-preview+abc123.abc123", "abc123")]
+    [InlineData("1.0.149-preview+abc123.def456", "abc123.def456")]
+    [InlineData("1.0.149-preview+abc123.abc123.def456", "abc123.def456")]
+    public void ExtractCommitMetadata_CollapsesDuplicatedSegments(string? informationalVersion, string expected)
+    {
+        Assert.Equal(expected, ShellInterpreter.ExtractCommitMetadata(informationalVersion));
+    }
+
+    [Fact]
+    public async Task TestEchoRedirectWritesFile()
+    {
+        var file = $"cosmosshell-test-{Guid.NewGuid():N}.txt";
+        try
+        {
+            var state = await ShellInterpreter.Instance.ExecuteCommandAsync(
+                $"echo \"FooBar\" >{file}",
+                TestContext.Current.CancellationToken);
+
+            Assert.False(state.IsError);
+            Assert.True(File.Exists(file), $"Expected redirected file to exist at {file}.");
+            var content = File.ReadAllText(file).TrimEnd('\r', '\n');
+            Assert.Equal("FooBar", content);
+        }
+        finally
+        {
+            if (File.Exists(file))
+            {
+                File.Delete(file);
+            }
+
+            ShellInterpreter.Instance.StdOutRedirect = null;
+            ShellInterpreter.Instance.ErrOutRedirect = null;
+            ShellInterpreter.Instance.AppendOutRedirection = false;
+            ShellInterpreter.Instance.AppendErrRedirection = false;
+        }
+    }
+
+    [Fact]
+    public async Task TestEchoAppendRedirectWritesFile()
+    {
+        var file = $"cosmosshell-test-{Guid.NewGuid():N}.txt";
+        try
+        {
+            var state1 = await ShellInterpreter.Instance.ExecuteCommandAsync(
+                $"echo \"line1\" >{file}",
+                TestContext.Current.CancellationToken);
+            Assert.False(state1.IsError);
+
+            var state2 = await ShellInterpreter.Instance.ExecuteCommandAsync(
+                $"echo \"line2\" >>{file}",
+                TestContext.Current.CancellationToken);
+            Assert.False(state2.IsError);
+
+            var content = File.ReadAllText(file);
+            Assert.Contains("line1", content);
+            Assert.Contains("line2", content);
+            Assert.True(content.IndexOf("line1", StringComparison.Ordinal) < content.IndexOf("line2", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (File.Exists(file))
+            {
+                File.Delete(file);
+            }
+
+            ShellInterpreter.Instance.StdOutRedirect = null;
+            ShellInterpreter.Instance.ErrOutRedirect = null;
+            ShellInterpreter.Instance.AppendOutRedirection = false;
+            ShellInterpreter.Instance.AppendErrRedirection = false;
+        }
+    }
 
 }

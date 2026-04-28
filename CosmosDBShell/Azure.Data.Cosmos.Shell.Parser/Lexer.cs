@@ -56,22 +56,28 @@ public enum TokenType
     Assignment,
 
     /// <summary>
-    /// Output redirection operator token ('out>').
+    /// Output redirection operator token ('&gt;'). Synthesized by the parser from a
+    /// <see cref="GreaterThan"/> token appearing after a command's arguments.
     /// </summary>
     RedirectOutput,
 
     /// <summary>
-    /// Output redirection operator token ('out>>').
+    /// Appending output redirection operator token ('&gt;&gt;'). Synthesized by the parser from two
+    /// adjacent <see cref="GreaterThan"/> tokens appearing after a command's arguments.
     /// </summary>
     RedirectAppendOutput,
 
     /// <summary>
-    /// Error output redirection operator token ('err>').
+    /// Error output redirection operator token ('2&gt;'). Synthesized by the parser in command
+    /// context from a <see cref="Number"/> '2' token immediately followed by a
+    /// <see cref="GreaterThan"/> token.
     /// </summary>
     RedirectError,
 
     /// <summary>
-    /// Error output redirection operator token ('err>>').
+    /// Appending error redirection operator token ('2&gt;&gt;'). Synthesized by the parser in
+    /// command context from a <see cref="Number"/> '2' token immediately followed by two
+    /// adjacent <see cref="GreaterThan"/> tokens.
     /// </summary>
     RedirectAppendError,
 
@@ -288,7 +294,12 @@ internal class Lexer
             return this.ReadInterpolatedString(startPosition);
         }
 
-        // Check for numbers first (before multi-character tokens)
+        // Check for numbers first (before multi-character tokens).
+        // Note: the '2>' / '2>>' stderr redirection operators are recognized in the
+        // parser (in command context) by pairing a Number("2") token with an
+        // adjacent GreaterThan token. Doing that at lex time would break
+        // expressions like '2>3' by consuming the '2' as part of a redirect
+        // token instead of a numeric literal.
         if (char.IsDigit(ch))
         {
             return this.ReadNumber(startPosition);
@@ -408,36 +419,6 @@ internal class Lexer
     private bool TryReadMultiCharacterToken(int startPosition, out Token? token)
     {
         token = null;
-
-        if (this.LookAhead("out>>"))
-        {
-            this.Advance(5);
-            token = new Token(TokenType.RedirectAppendOutput, "out>>", startPosition, 5);
-            return true;
-        }
-
-        // Check for "out>"
-        if (this.LookAhead("out>"))
-        {
-            this.Advance(4);
-            token = new Token(TokenType.RedirectOutput, "out>", startPosition, 4);
-            return true;
-        }
-
-        if (this.LookAhead("err>>"))
-        {
-            this.Advance(5);
-            token = new Token(TokenType.RedirectAppendError, "err>>", startPosition, 5);
-            return true;
-        }
-
-        // Check for "err>"
-        if (this.LookAhead("err>"))
-        {
-            this.Advance(4);
-            token = new Token(TokenType.RedirectError, "err>", startPosition, 4);
-            return true;
-        }
 
         // Check for "&&" (logical and)
         if (this.LookAhead("&&"))

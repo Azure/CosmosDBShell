@@ -13,7 +13,9 @@ Lightweight CLI for Azure Cosmos DB.
 
 ## Quick Start
 
-**Requirements:** .NET SDK 10.0+
+**Requirements:** .NET SDK 10.0+.
+
+The .NET runtime alone is not enough for the commands below. `dotnet run` and `dotnet tool install` are SDK commands. To verify the SDK is installed, run `dotnet --list-sdks`.
 
 ```bash
 dotnet run --project CosmosDBShell
@@ -34,31 +36,31 @@ query "SELECT * FROM c"
 
 When consuming build artifacts (`*.nupkg`) from this repo, install as a .NET global tool.
 
-`dotnet tool install` for these packages requires .NET 10 because the tool packages target `net10.0`.
+`dotnet tool install` for these packages requires the .NET SDK 10.0+ because the tool packages target `net10.0`. Installing only the .NET runtime does not provide the `dotnet tool` command.
 
-1. Download the base tool package (`Microsoft.CosmosDBShell.<version>.nupkg`) and the package for your runtime to the same local folder.
-2. Install from that folder with `--add-source` using the base package ID `Microsoft.CosmosDBShell`.
+1. Download the base tool package (`CosmosDBShell.<version>.nupkg`) and the package for your runtime to the same local folder.
+2. Install from that folder with `--add-source` using the base package ID `CosmosDBShell`.
 
 ### Runtime-specific package files
 
-- Linux x64: `Microsoft.CosmosDBShell.linux-x64.<version>.nupkg`
-- Linux ARM64: `Microsoft.CosmosDBShell.linux-arm64.<version>.nupkg`
-- macOS x64: `Microsoft.CosmosDBShell.osx-x64.<version>.nupkg`
-- macOS ARM64: `Microsoft.CosmosDBShell.osx-arm64.<version>.nupkg`
-- Windows x64: `Microsoft.CosmosDBShell.win-x64.<version>.nupkg`
+- Linux x64: `CosmosDBShell.linux-x64.<version>.nupkg`
+- Linux ARM64: `CosmosDBShell.linux-arm64.<version>.nupkg`
+- macOS x64: `CosmosDBShell.osx-x64.<version>.nupkg`
+- macOS ARM64: `CosmosDBShell.osx-arm64.<version>.nupkg`
+- Windows x64: `CosmosDBShell.win-x64.<version>.nupkg`
 
 ### Install command
 
 After placing the base package and the matching runtime package in the same folder, install with the base package ID:
 
 ```bash
-dotnet tool install --global Microsoft.CosmosDBShell --add-source /path/to/nupkgs --version <version>
+dotnet tool install --global CosmosDBShell --add-source /path/to/nupkgs --version <version>
 ```
 
 Windows PowerShell example:
 
 ```powershell
-dotnet tool install --global Microsoft.CosmosDBShell --add-source C:\path\to\nupkgs --version <version>
+dotnet tool install --global CosmosDBShell --add-source C:\path\to\nupkgs --version <version>
 ```
 
 ### Use, update, uninstall
@@ -86,7 +88,7 @@ dotnet tool list --global
 Then uninstall the tool by its package ID:
 
 ```bash
-dotnet tool uninstall --global Microsoft.CosmosDBShell
+dotnet tool uninstall --global CosmosDBShell
 ```
 
 ## Documentation
@@ -123,6 +125,24 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--cs <n>` | Colors: 0=off, 1=standard, 2=truecolor |
 | `--help` | Show help |
 
+Examples:
+
+```bash
+# Run a script and exit. Script arguments become $1, $2, ... inside the script.
+cosmosdbshell -c "seed.csh mydb mycontainer" --connect "AccountEndpoint=...;AccountKey=..."
+
+# Run a script from piped command text.
+echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
+```
+
+## How to Contribute
+
+This project welcomes contributions and suggestions. To contribute, see these documents:
+
+- [Code of Conduct](./CODE_OF_CONDUCT.md)
+- [Security](./SECURITY.md)
+- [Contributing](./CONTRIBUTING.md)
+
 ## License
 
-Microsoft Corporation. All rights reserved.
+[MIT](LICENSE.md)

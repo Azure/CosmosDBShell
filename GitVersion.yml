@@ -1,0 +1,13 @@
+# GitVersion configuration for CosmosDBShell.
+# Docs: https://gitversion.net/docs/reference/configuration
+#
+# We use GitVersion purely to read next-version (Major.Minor) and count
+# commits since it was last bumped. The pipelines construct the final
+# version string as "Major.Minor.<commits>-preview" from those values so
+# we get the exact format we want across GitHub Actions and OneBranch.
+#
+# To start a new release line, bump next-version (e.g. 1.1.0) and commit;
+# the commit counter resets automatically because it counts commits since
+# that change.
+
+next-version: 1.0.0

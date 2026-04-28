@@ -282,7 +282,7 @@ internal class QueryCommand : CosmosCommand
     private async Task<CommandState> ExecuteQueryAsync(Container container, ShellInterpreter shell, CancellationToken token)
     {
         var returnState = new CommandState();
-        returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOS_SHELL_FORMAT"));
+        returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
         var aggregatedDocuments = new List<JsonElement>();
 
         try

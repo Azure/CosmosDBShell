@@ -96,7 +96,7 @@ public partial class ShellInterpreter : IDisposable
     {
         get
         {
-            var sep = Environment.GetEnvironmentVariable("COSMOS_SHELL_CSVSEP");
+            var sep = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_CSVSEP");
             if (!string.IsNullOrEmpty(sep))
             {
                 return sep[0];
@@ -237,28 +237,46 @@ public partial class ShellInterpreter : IDisposable
     public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token)
     {
         var state = new CommandState();
-        state.SetFormat(Environment.GetEnvironmentVariable("COSMOS_SHELL_FORMAT"));
+        state.SetFormat(Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+
+        // Snapshot redirect state so a '>' / '2>' on this command does not leak into
+        // the next command executed against this interpreter instance.
+        var savedStdOut = this.StdOutRedirect;
+        var savedAppendOut = this.AppendOutRedirection;
+        var savedErrOut = this.ErrOutRedirect;
+        var savedAppendErr = this.AppendErrRedirection;
+
         try
         {
-            state = await this.RunCommandAsync(state, command, token);
-        }
-        catch (TaskCanceledException)
-        {
-            return new CommandState();
-        }
-        catch (Exception e)
-        {
-            this.ReportExecutionError(e);
-            var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
-            return new ErrorCommandState(inner);
-        }
+            try
+            {
+                state = await this.RunCommandAsync(state, command, token);
+            }
+            catch (TaskCanceledException)
+            {
+                return new CommandState();
+            }
+            catch (Exception e)
+            {
+                this.ReportExecutionError(e);
+                var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
+                return new ErrorCommandState(inner);
+            }
 
-        if (token.IsCancellationRequested)
-        {
-            return state;
-        }
+            if (token.IsCancellationRequested)
+            {
+                return state;
+            }
 
-        return this.PrintState(state);
+            return this.PrintState(state);
+        }
+        finally
+        {
+            this.StdOutRedirect = savedStdOut;
+            this.AppendOutRedirection = savedAppendOut;
+            this.ErrOutRedirect = savedErrOut;
+            this.AppendErrRedirection = savedAppendErr;
+        }
     }
 
     /// <summary>
@@ -310,6 +328,62 @@ public partial class ShellInterpreter : IDisposable
         return assembly.GetName().Version?.ToString() ?? "unknown";
     }
 
+    internal static string GetDisplayCommit(Assembly assembly)
+    {
+        return ExtractCommitMetadata(assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion);
+    }
+
+    internal static string ExtractCommitMetadata(string? informationalVersion)
+    {
+        if (string.IsNullOrWhiteSpace(informationalVersion))
+        {
+            return string.Empty;
+        }
+
+        var plusIndex = informationalVersion.IndexOf('+');
+        if (plusIndex < 0 || plusIndex >= informationalVersion.Length - 1)
+        {
+            return string.Empty;
+        }
+
+        // Metadata may carry multiple dot-separated parts when the build pipeline
+        // sets /p:InformationalVersion=<pkg>+<sha> and the SDK target
+        // AddSourceRevisionToInformationalVersion then also appends the
+        // SourceRevisionId (producing "<sha>.<sha>"). Collapse identical repeats
+        // and preserve distinct segments joined by '.'.
+        var parts = informationalVersion[(plusIndex + 1)..]
+            .Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var distinct = new List<string>(parts.Length);
+        foreach (var part in parts)
+        {
+            if (distinct.Count == 0 || !string.Equals(distinct[^1], part, StringComparison.Ordinal))
+            {
+                distinct.Add(part);
+            }
+        }
+
+        return string.Join('.', distinct);
+    }
+
+    internal static string GetRepositoryUrl(Assembly assembly)
+    {
+        foreach (var attr in assembly.GetCustomAttributes<AssemblyMetadataAttribute>())
+        {
+            if (string.Equals(attr.Key, "RepositoryUrl", StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(attr.Value))
+            {
+                return attr.Value;
+            }
+        }
+
+        return string.Empty;
+    }
+
     internal static void ReportError(string message, params object[] par)
     {
         AnsiConsole.MarkupLine("[red]" + Markup.Escape(message) + "[/]", par);
@@ -343,6 +417,13 @@ public partial class ShellInterpreter : IDisposable
             AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
         }
 
+        var repoUrl = GetRepositoryUrl(typeof(VersionCommand).Assembly);
+        if (!string.IsNullOrEmpty(repoUrl))
+        {
+            var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
+            AnsiConsole.MarkupLine(repoString);
+        }
+
         if (commandState != null)
         {
             var json = new Dictionary<string, object?>
@@ -351,6 +432,7 @@ public partial class ShellInterpreter : IDisposable
                 ["mcpEnabled"] = port != null,
                 ["mcpPort"] = port, // will be null if not enabled
                 ["mcpStatus"] = port != null ? "on" : "off",
+                ["repository"] = repoUrl,
             };
 
             var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
@@ -498,7 +580,7 @@ public partial class ShellInterpreter : IDisposable
 
             if (accountKey == null)
             {
-                var envKey = Environment.GetEnvironmentVariable("COSMOS_SHELL_ACCOUNT_KEY");
+                var envKey = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_ACCOUNT_KEY");
                 if (!string.IsNullOrEmpty(envKey))
                 {
                     accountKey = envKey;
@@ -510,7 +592,7 @@ public partial class ShellInterpreter : IDisposable
         }
         else if (!hasKey)
         {
-            var envKey = Environment.GetEnvironmentVariable("COSMOS_SHELL_ACCOUNT_KEY");
+            var envKey = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_ACCOUNT_KEY");
             if (!string.IsNullOrEmpty(envKey))
             {
                 var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
@@ -587,8 +669,8 @@ public partial class ShellInterpreter : IDisposable
             }
         }
 
-        // Step 3: Static token from COSMOS_SHELL_TOKEN environment variable
-        var envToken = Environment.GetEnvironmentVariable("COSMOS_SHELL_TOKEN");
+        // Step 3: Static token from COSMOSDB_SHELL_TOKEN environment variable
+        var envToken = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_TOKEN");
         if (client == null && !string.IsNullOrEmpty(envToken))
         {
             WriteLine(MessageService.GetString("shell-connect-static-token-auth"));

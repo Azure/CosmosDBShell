@@ -24,7 +24,6 @@ parameters: # parameters are shown up in ADO UI in a build queue time
     default: true
 
 variables:
-  CDP_DEFINITION_BUILD_COUNT: $[counter('', 0)] # needed for onebranch.pipeline.version task https://aka.ms/obpipelines/versioning
   system.debug: ${{ parameters.debug }}
 
   BuildSolution: $(Build.SourcesDirectory)\CosmosDBShell.sln
@@ -60,15 +59,23 @@ extends:
       #   suppressionFile: $(Build.SourcesDirectory)\.gdn\global.gdnsuppress
 
     stages:
+      # The 1ES Official template requires the build/package jobs to run on
+      # pool.type: windows (the managed OneBranch container pool); hosted
+      # pools are silently dropped from Official runs.
       - stage: build
         jobs:
           - job: main
             pool:
-              type: windows # read more about custom job pool types at https://aka.ms/obpipelines/yaml/jobs
+              type: windows # 1ES Official requires pool.type; hosted vmImage jobs are stripped.
 
             variables: # More settings at https://aka.ms/obpipelines/yaml/jobs
               ob_outputDirectory: '$(Build.SourcesDirectory)\out' # this directory is uploaded to pipeline artifacts, reddog and cloudvault. More info at https://aka.ms/obpipelines/artifacts
               ob_artifactBaseName: cosmos_shell_all # combined artifact with all RIDs for SDL scanning
+              # GitVersion needs full history to count commits. Using
+              # ob_git_fetchDepth lets OneBranch do the full clone in one shot
+              # instead of shallow-clone + --unshallow, which avoids a second
+              # fetch to github.com that the windows_build_container pool blocks.
+              ob_git_fetchDepth: -1
               OneES_SbomNugetSDLPath: out\nupkg
               # https://aka.ms/obpipelines/sdl
               ob_sdl_binskim_enabled: true
@@ -87,66 +94,50 @@ extends:
                   useGlobalJson: true
                   performMultiLevelLookup: true
 
-              - task: onebranch.pipeline.version@1 # generates automatic version. For other versioning options check https://aka.ms/obpipelines/versioning
-                displayName: "Setup BuildNumber"
-                inputs:
-                  system: "RevisionCounter"
-                  major: "1"
-                  minor: "0"
-                  exclude_commit: true
+              - script: dotnet tool restore --configfile "$(Build.SourcesDirectory)\\.pipelines\\nuget.config"
+                displayName: "Dotnet Tools Restore"
 
+              # GitVersion is restored from the repo tool manifest so the
+              # build does not need to reach nuget.org from the Windows
+              # container pool.
               - task: PowerShell@2
-                displayName: "Compute version properties"
+                displayName: "Compute version with GitVersion"
                 inputs:
                   targetType: inline
+                  pwsh: true
                   script: |
-                    function Normalize-NuGetVersion([string]$value) {
-                      if ([string]::IsNullOrWhiteSpace($value)) {
-                        return $value
-                      }
+                    $ErrorActionPreference = 'Stop'
+                    $gitVersionJson = dotnet tool run dotnet-gitversion /output json
 
-                      if ($value -match '^(?<core>\d+(?:\.\d+)*)(?<suffix>[-+].*)?$') {
-                        $normalizedCore = (($Matches.core -split '\.') | ForEach-Object { [string]([int]$_) }) -join '.'
-                        return "$normalizedCore$($Matches.suffix)"
-                      }
-
-                      return $value
+                    if ($LASTEXITCODE -ne 0) {
+                      throw "dotnet-gitversion failed with exit code $LASTEXITCODE."
                     }
 
-                    $buildNumber = "$(Build.BuildNumber)"
-                    Write-Host "Build.BuildNumber=$buildNumber"
+                    $gv = $gitVersionJson | ConvertFrom-Json
 
-                    $version = $buildNumber
-                    if (-not ($version -match '^\d+(\.\d+){1,3}$')) {
-                      $version = "1.0.$(Build.BuildId)"
+                    $commitsSinceVersionSource = [int]$gv.CommitsSinceVersionSource
+                    if ($commitsSinceVersionSource -gt 65535) {
+                      throw "CommitsSinceVersionSource ($commitsSinceVersionSource) exceeds the maximum .NET assembly version segment value of 65535. Bump next-version before generating assembly and file versions."
                     }
 
-                    $version = Normalize-NuGetVersion $version
+                    $assemblyVersion = "$($gv.Major).$($gv.Minor).$commitsSinceVersionSource"
+                    $packageVersion  = "$assemblyVersion-preview"
+                    $fileVersion     = "$assemblyVersion.0"
+                    $infoVersion     = "$packageVersion+$(Build.SourceVersion)"
 
-                    $packageVersion = "$version-preview"
+                    Write-Host "AssemblyVersion: $assemblyVersion"
+                    Write-Host "PackageVersion:  $packageVersion"
 
-                    if ($buildNumber -ne $version) {
-                      Write-Host "Updating Build.BuildNumber to normalized NuGet version: $version"
-                      Write-Host "##vso[build.updatebuildnumber]$version"
-                      $buildNumber = $version
-                    }
-
-                    $fileVersion = $version
-                    $parts = $fileVersion.Split('.')
-                    if ($parts.Count -eq 2) {
-                      $fileVersion = "$fileVersion.$(Build.BuildId).0"
-                    } elseif ($parts.Count -eq 3) {
-                      $fileVersion = "$fileVersion.$(Build.BuildId)"
-                    } elseif ($parts.Count -gt 4) {
-                      $fileVersion = ($parts[0..3] -join '.')
-                    }
-
-                    $infoVersion = "$packageVersion+$(Build.SourceVersion)"
-
-                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_Version]$version"
+                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_Version]$assemblyVersion"
                     Write-Host "##vso[task.setvariable variable=CosmosDBShell_PackageVersion]$packageVersion"
                     Write-Host "##vso[task.setvariable variable=CosmosDBShell_FileVersion]$fileVersion"
                     Write-Host "##vso[task.setvariable variable=CosmosDBShell_InformationalVersion]$infoVersion"
+
+              - task: onebranch.pipeline.version@1
+                displayName: "Update build number"
+                inputs:
+                  system: "Custom"
+                  customVersion: "$(CosmosDBShell_PackageVersion)"
 
               - task: DotNetCoreCLI@2
                 displayName: "DotNetCore restore"
@@ -233,7 +224,7 @@ extends:
               #     command: "publish"
               #     publishWebProjects: false
               #     projects: $(ReleaseProject)
-              #     arguments: '--configuration $(BuildConfiguration) -r any --output $(Build.SourcesDirectory)\out\any /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion)'
+              #     arguments: '--configuration $(BuildConfiguration) -r any --output $(Build.SourcesDirectory)\out\any'
               #     zipAfterPublish: false
 
               - task: onebranch.pipeline.signing@1
@@ -342,8 +333,8 @@ extends:
                       --no-build `
                       --no-restore `
                       --output $pkgDir `
-                      /p:Version=$(CosmosDBShell_Version) `
                       /p:PackageVersion=$(CosmosDBShell_PackageVersion) `
+                      /p:Version=$(CosmosDBShell_Version) `
                       /p:FileVersion=$(CosmosDBShell_FileVersion) `
                       /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) `
                       /p:ContinuousIntegrationBuild=true
@@ -357,6 +348,7 @@ extends:
                 condition: succeeded()
                 inputs:
                   targetType: inline
+                  pwsh: true
                   script: |
                     $pkgDir = "$(Build.SourcesDirectory)\out\nupkg"
                     $signStage = "$(Build.SourcesDirectory)\out\nupkg-payload"
@@ -366,10 +358,9 @@ extends:
                     }
 
                     New-Item -ItemType Directory -Path $signStage -Force | Out-Null
-                    Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-                    $ridPackages = Get-ChildItem -Path $pkgDir -Filter "Microsoft.CosmosDBShell.*.nupkg" -File -ErrorAction SilentlyContinue | Where-Object {
-                      $_.Name -match '^Microsoft\.CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
+                    $ridPackages = Get-ChildItem -Path $pkgDir -Filter "CosmosDBShell.*.nupkg" -File -ErrorAction SilentlyContinue | Where-Object {
+                      $_.Name -match '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
                     }
 
                     if (-not $ridPackages -or $ridPackages.Count -eq 0) {
@@ -396,11 +387,10 @@ extends:
                 condition: succeeded()
                 inputs:
                   targetType: inline
+                  pwsh: true
                   script: |
                     $pkgDir = "$(Build.SourcesDirectory)\out\nupkg"
                     $signStage = "$(Build.SourcesDirectory)\out\nupkg-payload"
-
-                    Add-Type -AssemblyName System.IO.Compression.FileSystem
 
                     $stagedPackages = Get-ChildItem -Path $signStage -Directory -ErrorAction SilentlyContinue
                     if (-not $stagedPackages -or $stagedPackages.Count -eq 0) {
@@ -428,11 +418,11 @@ extends:
                   script: |
                     $pkgDir = "$(Build.SourcesDirectory)\out\nupkg"
                     $ridPatterns = @(
-                      "Microsoft.CosmosDBShell.win-x64.*.nupkg",
-                      "Microsoft.CosmosDBShell.linux-x64.*.nupkg",
-                      "Microsoft.CosmosDBShell.linux-arm64.*.nupkg",
-                      "Microsoft.CosmosDBShell.osx-x64.*.nupkg",
-                      "Microsoft.CosmosDBShell.osx-arm64.*.nupkg"
+                      "CosmosDBShell.win-x64.*.nupkg",
+                      "CosmosDBShell.linux-x64.*.nupkg",
+                      "CosmosDBShell.linux-arm64.*.nupkg",
+                      "CosmosDBShell.osx-x64.*.nupkg",
+                      "CosmosDBShell.osx-arm64.*.nupkg"
                     )
 
                     foreach ($pattern in $ridPatterns) {
@@ -443,9 +433,9 @@ extends:
                       }
                     }
 
-                    $allPackages = Get-ChildItem -Path (Join-Path $pkgDir "Microsoft.CosmosDBShell.*.nupkg") -ErrorAction SilentlyContinue
+                    $allPackages = Get-ChildItem -Path (Join-Path $pkgDir "CosmosDBShell.*.nupkg") -ErrorAction SilentlyContinue
                     $pointerPackages = $allPackages | Where-Object {
-                      $_.Name -notmatch '^Microsoft\.CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
+                      $_.Name -notmatch '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
                     }
 
                     if (-not $pointerPackages -or $pointerPackages.Count -ne 1) {
@@ -454,7 +444,7 @@ extends:
                       exit 1
                     }
 
-                    $anyMatches = Get-ChildItem -Path (Join-Path $pkgDir "Microsoft.CosmosDBShell.any.*.nupkg") -ErrorAction SilentlyContinue
+                    $anyMatches = Get-ChildItem -Path (Join-Path $pkgDir "CosmosDBShell.any.*.nupkg") -ErrorAction SilentlyContinue
                     if ($anyMatches -and $anyMatches.Count -gt 0) {
                       $names = $anyMatches | ForEach-Object { $_.Name } | Sort-Object
                       Write-Error "Unexpected any-RID package(s) found: $($names -join ', ')"
@@ -512,12 +502,13 @@ extends:
                     Get-ChildItem -Path $pkgDir -Filter *.nupkg -File | Sort-Object Name | ForEach-Object {
                       Write-Host " - $($_.Name) [$($_.Length) bytes]"
                     }
+
               - ${{ if and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(parameters.publishNuget, true)) }}:
                   - task: NuGetCommand@2
                     displayName: "Push win-x64 NuGet package"
                     inputs:
                       command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\Microsoft.CosmosDBShell.win-x64.*.nupkg'
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg'
                       nuGetFeedType: "internal"
                       publishVstsFeed: "CosmosDB/CosmosDBShell"
                       allowPackageConflicts: true
@@ -526,7 +517,7 @@ extends:
                     displayName: "Push linux-x64 NuGet package"
                     inputs:
                       command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\Microsoft.CosmosDBShell.linux-x64.*.nupkg'
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg'
                       nuGetFeedType: "internal"
                       publishVstsFeed: "CosmosDB/CosmosDBShell"
                       allowPackageConflicts: true
@@ -535,7 +526,7 @@ extends:
                     displayName: "Push linux-arm64 NuGet package"
                     inputs:
                       command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\Microsoft.CosmosDBShell.linux-arm64.*.nupkg'
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg'
                       nuGetFeedType: "internal"
                       publishVstsFeed: "CosmosDB/CosmosDBShell"
                       allowPackageConflicts: true
@@ -544,7 +535,7 @@ extends:
                     displayName: "Push osx-x64 NuGet package"
                     inputs:
                       command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\Microsoft.CosmosDBShell.osx-x64.*.nupkg'
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg'
                       nuGetFeedType: "internal"
                       publishVstsFeed: "CosmosDB/CosmosDBShell"
                       allowPackageConflicts: true
@@ -553,7 +544,7 @@ extends:
                     displayName: "Push osx-arm64 NuGet package"
                     inputs:
                       command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\Microsoft.CosmosDBShell.osx-arm64.*.nupkg'
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg'
                       nuGetFeedType: "internal"
                       publishVstsFeed: "CosmosDB/CosmosDBShell"
                       allowPackageConflicts: true
@@ -562,7 +553,7 @@ extends:
                     displayName: "Push base NuGet package"
                     inputs:
                       command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\Microsoft.CosmosDBShell.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\Microsoft.CosmosDBShell.win-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\Microsoft.CosmosDBShell.linux-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\Microsoft.CosmosDBShell.linux-arm64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\Microsoft.CosmosDBShell.osx-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\Microsoft.CosmosDBShell.osx-arm64.*.nupkg'
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg'
                       nuGetFeedType: "internal"
                       publishVstsFeed: "CosmosDB/CosmosDBShell"
                       allowPackageConflicts: true

@@ -240,7 +240,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_OutputRedirection_ParsesCorrectly()
     {
-        var statement = ParseStatement("query \"SELECT * FROM c\" out> results.json");
+        var statement = ParseStatement("query \"SELECT * FROM c\" > results.json");
         var cmd = (CommandStatement)statement;
         Assert.Equal("query", cmd.Name);
         Assert.NotNull(cmd.OutRedirectToken);
@@ -250,7 +250,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_ErrorRedirection_ParsesCorrectly()
     {
-        var statement = ParseStatement("query \"SELECT * FROM c\" err> errors.log");
+        var statement = ParseStatement("query \"SELECT * FROM c\" 2> errors.log");
         var cmd = (CommandStatement)statement;
         Assert.NotNull(cmd.ErrRedirectToken);
         Assert.Equal("errors.log", cmd.ErrorRedirect);
@@ -259,7 +259,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_BothRedirections_ParsesCorrectly()
     {
-        var statement = ParseStatement("query \"SELECT * FROM c\" out> results.json err> errors.log");
+        var statement = ParseStatement("query \"SELECT * FROM c\" > results.json 2> errors.log");
         var cmd = (CommandStatement)statement;
         Assert.Equal("results.json", cmd.OutputRedirect);
         Assert.Equal("errors.log", cmd.ErrorRedirect);
@@ -268,7 +268,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_RedirectionsInReverseOrder_ParsesCorrectly()
     {
-        var statement = ParseStatement("query \"SELECT * FROM c\" err> errors.log out> results.json");
+        var statement = ParseStatement("query \"SELECT * FROM c\" 2> errors.log > results.json");
         var cmd = (CommandStatement)statement;
         Assert.Equal("errors.log", cmd.ErrorRedirect);
         Assert.Equal("results.json", cmd.OutputRedirect);
@@ -277,7 +277,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_OutputRedirectionWithQuotedFilename_ParsesCorrectly()
     {
-        var statement = ParseStatement("query \"SELECT * FROM c\" out> \"output file.json\"");
+        var statement = ParseStatement("query \"SELECT * FROM c\" > \"output file.json\"");
         var cmd = (CommandStatement)statement;
         Assert.Equal("output file.json", cmd.OutputRedirect);
     }
@@ -285,7 +285,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_RedirectionWithOptions_ParsesCorrectly()
     {
-        var statement = ParseStatement("query \"SELECT * FROM c\" -max:10 out> results.json");
+        var statement = ParseStatement("query \"SELECT * FROM c\" -max:10 > results.json");
         var cmd = (CommandStatement)statement;
         Assert.Equal("query", cmd.Name);
         Assert.Equal("10", cmd.Arguments.OfType<CommandOption>().First().Value?.ToString());
@@ -295,7 +295,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_MultipleArgumentsWithRedirection_ParsesCorrectly()
     {
-        var statement = ParseStatement("process file1.txt file2.txt file3.txt out> output.log err> error.log");
+        var statement = ParseStatement("process file1.txt file2.txt file3.txt > output.log 2> error.log");
         var cmd = (CommandStatement)statement;
         Assert.Equal(3, cmd.Arguments.Count);
         Assert.Equal("output.log", cmd.OutputRedirect);
@@ -305,7 +305,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_RedirectionBeforePipe_ParsesCorrectly()
     {
-        var parser = new StatementParser("query \"SELECT * FROM c\" out> temp.json | filter name");
+        var parser = new StatementParser("query \"SELECT * FROM c\" > temp.json | filter name");
         var statements = parser.ParseStatements();
         var pipe = Assert.IsType<PipeStatement>(statements.Single());
         var firstCmd = (CommandStatement)pipe.Statements[0];
@@ -317,22 +317,22 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_EmptyCommand_WithRedirection_ReportsError()
     {
-        var (_, errors) = ParseWithErrors("out> file.txt");
+        var (_, errors) = ParseWithErrors("> file.txt");
         Assert.NotEmpty(errors);
     }
 
     [Fact]
     public void ParseCommandStatement_RedirectionOnly_ReportsError()
     {
-        var (_, errors) = ParseWithErrors("out> output.txt");
+        var (_, errors) = ParseWithErrors("> output.txt");
         Assert.NotEmpty(errors);
     }
 
     [Theory]
-    [InlineData("command out>")]
-    [InlineData("command err>")]
-    [InlineData("command out> out.txt out> out2.txt")]
-    [InlineData("command err> err.txt err> err2.txt")]
+    [InlineData("command >")]
+    [InlineData("command 2>")]
+    [InlineData("command > out.txt > out2.txt")]
+    [InlineData("command 2> err.txt 2> err2.txt")]
     public void ParseCommandStatement_InvalidRedirection_ReportsErrors(string input)
     {
         var (_, errors) = ParseWithErrors(input);
@@ -342,7 +342,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_ComplexScenario_ParsesCorrectly()
     {
-        var statement = ParseStatement("query \"SELECT * FROM c WHERE id > 5\" --format:json -max:100 out> \"results/output.json\" err> \"logs/errors.txt\"");
+        var statement = ParseStatement("query \"SELECT * FROM c WHERE id > 5\" --format:json -max:100 > \"results/output.json\" 2> \"logs/errors.txt\"");
         var cmd = (CommandStatement)statement;
         Assert.Equal("query", cmd.Name);
 
@@ -364,7 +364,7 @@ public class CommandStatementTests
     [Fact]
     public void ParseCommandStatement_ComplexScenario_ParsesAppendCorrectly()
     {
-        var statement = ParseStatement("query \"SELECT * FROM c WHERE id > 5\" --format:json -max:100 out>> \"results/output.json\" err>> \"logs/errors.txt\"");
+        var statement = ParseStatement("query \"SELECT * FROM c WHERE id > 5\" --format:json -max:100 >> \"results/output.json\" 2>> \"logs/errors.txt\"");
         var cmd = (CommandStatement)statement;
         Assert.Equal("query", cmd.Name);
 
@@ -551,4 +551,102 @@ public class CommandStatementTests
             async () => await statement.RunAsync(shell, new CommandState(), CancellationToken.None));
     }
 
+    // ------------------------------------------------------------------
+    // Shell-word command-mode parsing (issue #7 family)
+    // ------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("connect https://localhost:9922", "https://localhost:9922")]
+    [InlineData("connect https://localhost:8081", "https://localhost:8081")]
+    [InlineData("connect http://127.0.0.1:8081/", "http://127.0.0.1:8081/")]
+    [InlineData("connect https://myaccount.documents.azure.com:443/", "https://myaccount.documents.azure.com:443/")]
+    public void ParseCommandStatement_PlainUrlArgument_ParsesAsSingleShellWord(string input, string expected)
+    {
+        var statement = ParseStatement(input);
+        var cmd = (CommandStatement)statement;
+        Assert.Equal("connect", cmd.Name);
+        Assert.Single(cmd.Arguments);
+        Assert.IsNotType<CommandOption>(cmd.Arguments[0]);
+        Assert.Equal(expected, cmd.Arguments[0].ToString());
+    }
+
+    [Fact]
+    public void ParseCommandStatement_OptionWithUrlValue_ParsesAsSingleShellWord()
+    {
+        var statement = ParseStatement("connect https://myaccount.documents.azure.com:443/ --authority-host=https://login.microsoftonline.us/");
+        var cmd = (CommandStatement)statement;
+
+        var positional = cmd.Arguments.Where(a => a is not CommandOption).ToList();
+        Assert.Single(positional);
+        Assert.Equal("https://myaccount.documents.azure.com:443/", positional[0].ToString());
+
+        var option = Assert.Single(cmd.Arguments.OfType<CommandOption>());
+        Assert.Equal("authority-host", option.Name);
+        Assert.Equal("https://login.microsoftonline.us/", option.Value?.ToString());
+    }
+
+    [Fact]
+    public void ParseCommandStatement_OptionWithPaddedValue_ParsesAsSingleShellWord()
+    {
+        var statement = ParseStatement("connect --key=abc==");
+        var cmd = (CommandStatement)statement;
+        var option = Assert.Single(cmd.Arguments.OfType<CommandOption>());
+
+        Assert.Equal("key", option.Name);
+        Assert.Equal("abc==", option.Value?.ToString());
+    }
+
+    [Fact]
+    public void ParseCommandStatement_CommaSeparatedValue_ParsesAsSingleShellWord()
+    {
+        var statement = ParseStatement("echo red,green,blue");
+        var cmd = (CommandStatement)statement;
+
+        Assert.Single(cmd.Arguments);
+        Assert.Equal("red,green,blue", cmd.Arguments[0].ToString());
+    }
+
+    [Fact]
+    public void ParseCommandStatement_NegativeNumberPositional_NotTreatedAsOption()
+    {
+        var statement = ParseStatement("echo -5");
+        var cmd = (CommandStatement)statement;
+        Assert.Equal("echo", cmd.Name);
+        Assert.Single(cmd.Arguments);
+        Assert.IsNotType<CommandOption>(cmd.Arguments[0]);
+        Assert.Equal("-5", cmd.Arguments[0].ToString());
+    }
+
+    [Fact]
+    public void ParseCommandStatement_OptionWithEqualsNegativeNumber_ParsesValueAsNegative()
+    {
+        var statement = ParseStatement("query \"SELECT 1\" --max=-5");
+        var cmd = (CommandStatement)statement;
+        var option = Assert.Single(cmd.Arguments.OfType<CommandOption>());
+        Assert.Equal("max", option.Name);
+        Assert.Equal("-5", option.Value?.ToString());
+    }
+
+    [Fact]
+    public void ParseCommandStatement_DashWithSpace_NotAnOption()
+    {
+        // A dash followed by whitespace is a literal shell word, not the start of an option.
+        var statement = ParseStatement("echo - foo");
+        var cmd = (CommandStatement)statement;
+        Assert.Equal(2, cmd.Arguments.Count);
+        Assert.IsNotType<CommandOption>(cmd.Arguments[0]);
+        Assert.Equal("-", cmd.Arguments[0].ToString());
+    }
+
+    [Fact]
+    public void ParseCommandStatement_VariableArgumentWithExpressionEscape_StillWorks()
+    {
+        // Explicit expression escapes via $var, $.path and (expr) keep their typed semantics.
+        var statement = ParseStatement("echo $message (1 + 2)");
+        var cmd = (CommandStatement)statement;
+        Assert.Equal("echo", cmd.Name);
+        Assert.Equal(2, cmd.Arguments.Count);
+        Assert.IsType<VariableExpression>(cmd.Arguments[0]);
+        Assert.IsType<ParensExpression>(cmd.Arguments[1]);
+    }
 }
