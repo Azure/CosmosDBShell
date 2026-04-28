@@ -7,6 +7,7 @@ namespace CosmosShell.Tests.Integration;
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
+using Azure.Data.Cosmos.Shell.Util;
 
 using Xunit.Sdk;
 
@@ -95,6 +96,49 @@ public class ShellProcessTests
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("quit-after-this", result.StdOut);
+    }
+
+    [Fact]
+    public async Task VersionOption_PrintsVersionAndExitsZero()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--version"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("CosmosDBShell", result.StdOut);
+    }
+
+    [Fact]
+    public async Task HelpOption_PrintsHelpAndExitsZero()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--help"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("--connect", result.StdOut, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("--version", result.StdOut, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "Emulator")]
+    public async Task ConnectOption_WithExecuteAndQuit_RunsCommandAgainstEmulator()
+    {
+        await EmulatorProbe.EnsureAvailableAsync();
+        var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(EmulatorTestBase.EmulatorEndpoint);
+
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--connect", connectionString, "-c", "connect"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Connected to account", result.StdOut, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("localhost", result.StdOut, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Current Location", result.StdOut, StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<ShellProcessResult> RunShellAsync(
