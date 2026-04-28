@@ -90,6 +90,7 @@ jobs:
         run: dotnet build CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --no-restore
 
       - name: Run emulator tests
-        env:
-          COSMOS_EMULATOR_AVAILABLE: "true"
-        run: dotnet test CosmosDBShell.Tests/ --filter "Category=Emulator" --no-build --no-restore
+        # CI should fail if the emulator service is not actually reachable. The
+        # MSBuild flag compiles emulator tests in "required" mode; local runs
+        # without it still skip emulator tests when no emulator is running.
+        run: dotnet test CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --filter "Category=Emulator" --no-restore -p:CosmosRequireEmulator=true

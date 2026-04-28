@@ -14,21 +14,17 @@ using Xunit.Sdk;
 /// </summary>
 internal static class EmulatorProbe
 {
-    private const string EnvVarName = "COSMOS_EMULATOR_AVAILABLE";
+#if COSMOS_REQUIRE_EMULATOR
+    private const bool RequireEmulatorTests = true;
+#else
+    private const bool RequireEmulatorTests = false;
+#endif
 
     /// <summary>
-    /// Returns <c>true</c> if the emulator appears to be reachable, either because the
-    /// <c>COSMOS_EMULATOR_AVAILABLE</c> environment variable is set to <c>true</c> or because
-    /// the emulator endpoint responds to an HTTP GET.
+    /// Returns <c>true</c> only if the emulator endpoint responds to an HTTP GET.
     /// </summary>
     public static async Task<bool> IsAvailableAsync()
     {
-        var envVar = Environment.GetEnvironmentVariable(EnvVarName);
-        if (string.Equals(envVar, "true", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
         try
         {
             using var handler = new HttpClientHandler();
@@ -48,14 +44,27 @@ internal static class EmulatorProbe
     }
 
     /// <summary>
-    /// Throws a <see cref="SkipException"/> if the emulator is not available, so that the
-    /// current test is skipped rather than failing.
+    /// Skips the current test when the emulator is optional, or fails early with a clear
+    /// exception when the test run was compiled with <c>CosmosRequireEmulator=true</c>.
     /// </summary>
     public static async Task EnsureAvailableAsync()
     {
         if (!await IsAvailableAsync())
         {
+            if (RequireEmulatorTests)
+            {
+                throw new EmulatorUnavailableException();
+            }
+
             throw SkipException.ForSkip("Cosmos DB emulator not available");
+        }
+    }
+
+    private sealed class EmulatorUnavailableException : Exception
+    {
+        public EmulatorUnavailableException()
+            : base("Cosmos DB emulator is required for this test run, but https://localhost:8081 did not respond.")
+        {
         }
     }
 }
