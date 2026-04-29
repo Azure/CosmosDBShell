@@ -41,6 +41,7 @@ error-unknown_option = Unknown option '{ $option }'
 error-missing_value = Option value expected for '{ $option }'
 error-missing_required_argument = Missing required argument '{ $arg }'
 error-invalid_output_format = Output format '{ $format }' is invalid.
+error-request_timeout = The request timed out while communicating with Azure Cosmos DB. Check your network connection and try again. Run with --verbose to show full diagnostics.
 error-invalid_bucket_value = Throughput bucket value '{ $bucket }' is invalid. Valid range is 0-5.
 error-variable_not_set = Variable '{ $name }' is not set.
 error-mutually-exclusive-options = Options '-c' and '-k' cannot be used together.
