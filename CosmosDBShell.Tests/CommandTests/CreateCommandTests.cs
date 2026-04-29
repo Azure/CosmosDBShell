@@ -7,10 +7,26 @@ namespace CosmosShell.Tests.CommandTests;
 using Azure.Data.Cosmos;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 
 public class CreateCommandTests
 {
+    [Fact]
+    public async Task MkCon_PositionalPartitionKeyMissing_UsesCustomErrorMessage()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var parser = new StatementParser("mkcon Products");
+        var statements = parser.ParseStatements();
+        var statement = Assert.Single(statements);
+
+        var exception = await Assert.ThrowsAsync<CommandException>(
+            () => statement.RunAsync(shell, new CommandState(), CancellationToken.None));
+
+        Assert.DoesNotContain("Missing required parameter", exception.Message);
+        Assert.Contains("mkcon name /pk", exception.Message);
+    }
+
     [Fact]
     public async Task CreateContainer_MissingPartitionKey_MessageIncludesExampleAndDocs()
     {
@@ -24,7 +40,7 @@ public class CreateCommandTests
         var exception = await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(shell, new CommandState(), string.Empty, CancellationToken.None));
 
         Assert.Contains("/pk", exception.Message);
-        Assert.Contains("create container Products /pk", exception.Message);
+        Assert.Contains("create container name /pk", exception.Message);
         Assert.Contains("https://github.com/Azure/CosmosDBShell/blob/main/docs/commands.md#create", exception.Message);
     }
 
@@ -39,8 +55,7 @@ public class CreateCommandTests
 
         var exception = Assert.Throws<CommandException>(() => command.CreateContainerProperties(null!));
 
-        Assert.Contains("/pk", exception.Message);
-        Assert.Contains("https://github.com/Azure/CosmosDBShell/blob/main/docs/commands.md#mkcon", exception.Message);
+        Assert.Contains("mkcon name /pk", exception.Message);
     }
 
     [Fact]
@@ -55,7 +70,6 @@ public class CreateCommandTests
         var exception = Assert.Throws<CommandException>(() => command.CreateContainerProperties(null!));
 
         Assert.Contains("must start with a forward slash", exception.Message);
-        Assert.Contains("/pk", exception.Message);
-        Assert.Contains("https://github.com/Azure/CosmosDBShell/blob/main/docs/commands.md#mkcon", exception.Message);
+        Assert.Contains("mkcon name /pk", exception.Message);
     }
 }

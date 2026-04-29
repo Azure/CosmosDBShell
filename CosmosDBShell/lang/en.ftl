@@ -175,8 +175,8 @@ command-mkcon-description-scale = Container scale (manual or auto)
 command-mkcon-description-ru = Database Max RU/s (default: 1000)
 command-mkcon-description-database = The database where the container should be created
 command-mkcon-CreatedContainer = Created container { $container }
-command-mkcon-error_partition_key_empty = Partition key path cannot be empty. Use a path that starts with '/', for example: /pk. Learn more: https://github.com/Azure/CosmosDBShell/blob/main/docs/commands.md#mkcon
-command-mkcon-error_partition_key_slash = Partition key path must start with a forward slash (/), for example: /pk. Learn more: https://github.com/Azure/CosmosDBShell/blob/main/docs/commands.md#mkcon
+command-mkcon-error_partition_key_empty = Partition key path cannot be empty. Provide a path that starts with '/', for example: mkcon name /pk.
+command-mkcon-error_partition_key_slash = Partition key path must start with a forward slash (/), for example: mkcon name /pk.
 command-mkcon-error_invalid_index_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-mkcon-description-index_policy = The indexing policy as a JSON string. Follows the Cosmos DB indexing policy schema.
 
@@ -239,7 +239,7 @@ command-create-description-database = The database for the create operation
 command-create-description-container = The container for creating items
 command-create-description-index_policy = { command-mkcon-description-index_policy }
 command-create-error-container_name_required = Create container requires a container name.
-command-create-error-partition_key_required = Create container requires a partition key path that starts with '/', for example: create container Products /pk. Learn more: https://github.com/Azure/CosmosDBShell/blob/main/docs/commands.md#create
+command-create-error-partition_key_required = Create container requires a partition key path that starts with '/', for example: create container name /pk. Learn more: https://github.com/Azure/CosmosDBShell/blob/main/docs/commands.md#create
 command-create-error-database_name_required = Create database requires a database name.
 command-create-error-invalid_item_type = { command-delete-error-invalid_item_type }
 
