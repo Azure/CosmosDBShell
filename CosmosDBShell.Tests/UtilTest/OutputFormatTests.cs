@@ -46,6 +46,40 @@ public class OutputFormatTests
         Assert.Equal("\"id\";\"Hello\";\"Answer\"" + Environment.NewLine + "\"12\";\"World\";\"53\"", output.TrimEnd());
     }
 
+    [Fact]
+    void TestTable()
+    {
+        var input = "{ \"id\": 12, \"Hello\": \"World\", \"Answer\": 53 }";
+        var element = JsonSerializer.Deserialize<JsonElement>(input);
+
+        var commandState = new CommandState();
+        commandState.Result = new ShellJson(element);
+        commandState.OutputFormat = OutputFormat.Table;
+
+        var output = commandState.GenerateOutputText();
+
+        Assert.Contains("id", output);
+        Assert.Contains("Hello", output);
+        Assert.Contains("Answer", output);
+        Assert.Contains("World", output);
+        Assert.Contains("---", output);
+        Assert.DoesNotContain("\"", output);
+    }
+
+    [Fact]
+    void TestSetFormatTable()
+    {
+        var commandState = new CommandState();
+        commandState.SetFormat("table");
+        Assert.Equal(OutputFormat.Table, commandState.OutputFormat);
+
+        commandState.SetFormat("TABLE");
+        Assert.Equal(OutputFormat.Table, commandState.OutputFormat);
+
+        commandState.SetFormat("tbl");
+        Assert.Equal(OutputFormat.Table, commandState.OutputFormat);
+    }
+
     private string StripWS(string input)
     {
         var sb = new StringBuilder();
