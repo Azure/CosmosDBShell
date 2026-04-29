@@ -252,6 +252,10 @@ public partial class ShellInterpreter : IDisposable
             {
                 state = await this.RunCommandAsync(state, command, token);
             }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                return new CommandState();
+            }
             catch (TaskCanceledException)
             {
                 return new CommandState();
@@ -549,7 +553,7 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
-    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false)
+    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, CancellationToken token = default)
     {
         Uri? authorityHostUri = null;
         if (!string.IsNullOrWhiteSpace(authorityHost))
@@ -611,7 +615,12 @@ public partial class ShellInterpreter : IDisposable
             AccountProperties keyProps;
             try
             {
-                keyProps = await client.ReadAccountAsync();
+                keyProps = await client.ReadAccountAsync().WaitAsync(token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
             }
             catch (Exception ex)
             {
@@ -650,10 +659,15 @@ public partial class ShellInterpreter : IDisposable
 
             try
             {
-                var vscProps = await client.ReadAccountAsync();
+                var vscProps = await client.ReadAccountAsync().WaitAsync(token);
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", vscProps.Id));
                 this.Connect(client);
                 return;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
             }
             catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
             {
@@ -688,7 +702,12 @@ public partial class ShellInterpreter : IDisposable
             AccountProperties tokenProps;
             try
             {
-                tokenProps = await client.ReadAccountAsync();
+                tokenProps = await client.ReadAccountAsync().WaitAsync(token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
             }
             catch (Exception ex)
             {
@@ -718,7 +737,12 @@ public partial class ShellInterpreter : IDisposable
             AccountProperties miProps;
             try
             {
-                miProps = await client.ReadAccountAsync();
+                miProps = await client.ReadAccountAsync().WaitAsync(token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
             }
             catch (Exception ex)
             {
@@ -761,10 +785,15 @@ public partial class ShellInterpreter : IDisposable
 
             try
             {
-                var entraProps = await client.ReadAccountAsync();
+                var entraProps = await client.ReadAccountAsync().WaitAsync(token);
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", entraProps.Id));
                 this.Connect(client);
                 return;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
             }
             catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
             {
@@ -796,7 +825,12 @@ public partial class ShellInterpreter : IDisposable
                 AccountProperties dcProps;
                 try
                 {
-                    dcProps = await client.ReadAccountAsync();
+                    dcProps = await client.ReadAccountAsync().WaitAsync(token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    client.Dispose();
+                    throw;
                 }
                 catch (Exception dcEx)
                 {
@@ -829,10 +863,15 @@ public partial class ShellInterpreter : IDisposable
 
             try
             {
-                var dacProps = await client.ReadAccountAsync();
+                var dacProps = await client.ReadAccountAsync().WaitAsync(token);
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", dacProps.Id));
                 this.Connect(client);
                 return;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
             }
             catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
             {

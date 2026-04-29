@@ -82,7 +82,7 @@ internal partial class ConnectCommand : CosmosCommand
 
         try
         {
-            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId);
+            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, token: token);
             var returnState = new CommandState
             {
                 IsPrinted = true,
@@ -94,6 +94,10 @@ internal partial class ConnectCommand : CosmosCommand
             });
             returnState.Result = new ShellJson(resultElement);
             return returnState;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception e)
         {
@@ -144,7 +148,7 @@ internal partial class ConnectCommand : CosmosCommand
 
         var client = connectedState.Client;
 
-        var acc = await client.ReadAccountAsync();
+        var acc = await client.ReadAccountAsync().WaitAsync(token);
         AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-connect-info-title")}[/]");
 
         var table = new Table();
