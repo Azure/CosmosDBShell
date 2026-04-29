@@ -162,13 +162,8 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         }
 
         var containerResponse = await container.ReadContainerAsync(cancellationToken: token);
-        var partitionKeyPath = containerResponse.Resource.PartitionKeyPath;
-
-        // Remove the leading '/' to get the property name
-        var partitionKeyPropertyName = partitionKeyPath.TrimStart('/');
-
-        // Determine which key to match against (partition key by default, or custom key if specified)
-        var matchKeyPropertyName = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyName : this.Key;
+        var partitionKeyPropertyNames = GetPartitionKeyPropertyNames(containerResponse.Resource.PartitionKeyPaths);
+        var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
 
         using var feedIterator = container.GetItemQueryStreamIterator("SELECT * FROM c", requestOptions: opt);
         var returnState = new CommandState();
@@ -186,11 +181,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
                 // Check if pattern matches
                 bool shouldList = this.matcher == null || this.Filter == "*"; // No filter or wildcard = list all
 
-                if (!shouldList && TryGetNestedProperty(element, matchKeyPropertyName, out var matchKeyElement))
-                {
-                    var matchKeyValue = GetValueAsString(matchKeyElement);
-                    shouldList = this.matcher!.Match(matchKeyValue);
-                }
+                shouldList = shouldList || MatchesAnyPath(element, matchKeyPropertyNames, this.matcher!);
 
                 if (shouldList)
                 {
@@ -218,6 +209,27 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         }
 
         return returnState;
+    }
+
+    internal static string[] GetPartitionKeyPropertyNames(IEnumerable<string> partitionKeyPaths)
+    {
+        return partitionKeyPaths
+            .Select(path => path.TrimStart('/'))
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToArray();
+    }
+
+    internal static bool MatchesAnyPath(JsonElement element, IEnumerable<string> propertyPaths, PatternMatcher matcher)
+    {
+        foreach (var propertyPath in propertyPaths)
+        {
+            if (TryGetNestedProperty(element, propertyPath, out var matchKeyElement) && matcher.Match(GetValueAsString(matchKeyElement)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool IsMatch(string item)
