@@ -10,6 +10,10 @@ shell-connect-static-token-expiry = Expires in { $timespan } (expiration: { $exp
 shell-connect-vscode-credential-auth = Connecting with Visual Studio Code credential...
 shell-connect-vscode-credential-fallback = Visual Studio Code credential unavailable, falling back...
 shell-connect-devicecode-fallback = Browser authentication failed, falling back to device code authentication...
+history-search-reverse = reverse-i-search
+history-search-forward = forward-i-search
+history-search-failed-reverse = failed reverse-i-search
+history-search-failed-forward = failed forward-i-search
 
 yes_char = Y
 no_char = N

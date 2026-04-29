@@ -28,6 +28,15 @@ public partial class ShellInterpreter : IHighlighter
     /// <inheritdoc/>
     IRenderable IHighlighter.BuildHighlightedText(string text)
     {
+        return new Markup(this.BuildHighlightedMarkup(text));
+    }
+
+    /// <summary>
+    /// Builds the syntax-highlighted Spectre.Console markup string for the given shell input.
+    /// Returns escaped plain text on parse errors.
+    /// </summary>
+    internal string BuildHighlightedMarkup(string text)
+    {
         var parser = new StatementParser(text);
         Statement? statement = null;
 
@@ -49,7 +58,7 @@ public partial class ShellInterpreter : IHighlighter
                 statement.Accept(highlighter);
                 var result = highlighter.GetResult();
                 this.oldHighlightStatement = statement;
-                return new Markup(result);
+                return result;
             }
             catch
             {
@@ -66,7 +75,7 @@ public partial class ShellInterpreter : IHighlighter
                     this.oldHighlightedText = text;
                     this.oldHighlightStatement.Accept(highlighter);
                     var result = highlighter.GetResult();
-                    return new Markup(result);
+                    return result;
                 }
             }
             catch
@@ -77,7 +86,7 @@ public partial class ShellInterpreter : IHighlighter
 #pragma warning restore CZ0001 // Empty Catch Clause
 
         // fall back to non highlighted text in case of any errors.
-        return new Markup(Markup.Escape(text));
+        return Markup.Escape(text);
     }
 
     private void ClearHighlightStatement()

@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.KeyBindings;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
@@ -109,6 +110,8 @@ public partial class ShellInterpreter : IDisposable
     internal Dictionary<string, DefStatement> Functions { get; } = [];
 
     internal string HistoryFile { get; private set; }
+
+    internal IReadOnlyList<string> History => this.history;
 
     internal string? LastBuffer { get; set; }
 
@@ -1049,6 +1052,18 @@ public partial class ShellInterpreter : IDisposable
 
             lineEditor.KeyBindings.Add<ClearCurrentLineCommand>(ConsoleKey.Escape);
             lineEditor.KeyBindings.Add<ClearScreenCommand>(ConsoleKey.L, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<MoveToStartOfLineCommand>(ConsoleKey.A, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<MoveToEndOfLineCommand>(ConsoleKey.E, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<DeleteToStartOfLineCommand>(ConsoleKey.U, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<DeleteToEndOfLineCommand>(ConsoleKey.K, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<DeletePreviousWordCommand>(ConsoleKey.W, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.P, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.N, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<MoveCursorLeftCommand>(ConsoleKey.B, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<MoveCursorRightCommand>(ConsoleKey.F, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add(ConsoleKey.D, ConsoleModifiers.Control, () => new ExitShellCommand(this));
+            lineEditor.KeyBindings.Add(ConsoleKey.R, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this));
+            lineEditor.KeyBindings.Add(ConsoleKey.S, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this, startsForward: true));
             lineEditor.KeyBindings.Add(ConsoleKey.Tab, () => new CosmosCompleteCommand(this, AutoComplete.Next));
             lineEditor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Control, () => new CosmosCompleteCommand(this, AutoComplete.Previous));
             foreach (var line in this.history)
