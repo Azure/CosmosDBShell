@@ -178,8 +178,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         while (feedIterator.HasMoreResults)
         {
             var response = await feedIterator.ReadNextAsync(token);
-            using var streamReader = new StreamReader(response.Content);
-            var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync());
+            using var queryDocument = await ReadQueryResponseAsync(response, token);
 
             foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
             {
@@ -194,7 +193,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
                 if (shouldList)
                 {
-                    list.Add(element);
+                    list.Add(element.Clone());
                 }
 
                 if (ResultLimit.IsLimitReached(list.Count, effectiveMaxItemCount))
@@ -218,6 +217,46 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         }
 
         return returnState;
+    }
+
+    internal static async Task<JsonDocument> ReadQueryResponseAsync(ResponseMessage response, CancellationToken token)
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = response.Content != null
+                ? await ReadResponseContentAsync(response.Content, token)
+                : string.Empty;
+            var message = string.IsNullOrWhiteSpace(response.ErrorMessage) ? errorContent : response.ErrorMessage;
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                message = MessageService.GetString("command-ls-error-request_failed", new Dictionary<string, object>
+                {
+                    { "statusCode", (int)response.StatusCode },
+                    { "status", response.StatusCode },
+                });
+            }
+
+            throw new CommandException("ls", message);
+        }
+
+        if (response.Content == null)
+        {
+            throw new CommandException("ls", MessageService.GetString("command-ls-error-no_content_stream"));
+        }
+
+        var responseContent = await ReadResponseContentAsync(response.Content, token);
+        if (string.IsNullOrWhiteSpace(responseContent))
+        {
+            throw new CommandException("ls", MessageService.GetString("command-ls-error-empty_content"));
+        }
+
+        return JsonDocument.Parse(responseContent);
+    }
+
+    private static async Task<string> ReadResponseContentAsync(Stream content, CancellationToken token)
+    {
+        using var streamReader = new StreamReader(content);
+        return await streamReader.ReadToEndAsync(token);
     }
 
     private bool IsMatch(string item)
