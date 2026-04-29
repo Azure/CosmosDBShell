@@ -25,6 +25,7 @@ internal class ReverseSearchHistoryCommand(ShellInterpreter shell, bool startsFo
         var accepted = false;
         var isForwardSearch = this.startsForward;
         var promptRow = TryGetCursorTop();
+        var restoreControlCHandling = TrySetTreatControlCAsInput(true, out var originalTreatControlCAsInput);
 
         try
         {
@@ -94,6 +95,11 @@ internal class ReverseSearchHistoryCommand(ShellInterpreter shell, bool startsFo
         }
         finally
         {
+            if (restoreControlCHandling)
+            {
+                TrySetTreatControlCAsInput(originalTreatControlCAsInput, out _);
+            }
+
             ClearLine(promptRow);
         }
 
@@ -123,8 +129,8 @@ internal class ReverseSearchHistoryCommand(ShellInterpreter shell, bool startsFo
     {
         try
         {
-            var width = Math.Max(Console.WindowWidth, Console.BufferWidth);
-            if (width <= 0)
+            var width = TryGetLineWidth();
+            if (!width.HasValue || width.Value <= 0)
             {
                 Console.Write('\r');
                 return;
@@ -132,7 +138,7 @@ internal class ReverseSearchHistoryCommand(ShellInterpreter shell, bool startsFo
 
             var row = promptRow ?? Console.CursorTop;
             Console.SetCursorPosition(0, row);
-            Console.Write(new string(' ', width - 1));
+            Console.Write(new string(' ', width.Value));
             Console.SetCursorPosition(0, row);
         }
         catch (IOException)
@@ -179,6 +185,26 @@ internal class ReverseSearchHistoryCommand(ShellInterpreter shell, bool startsFo
         catch (InvalidOperationException)
         {
             return null;
+        }
+    }
+
+    private static bool TrySetTreatControlCAsInput(bool value, out bool originalValue)
+    {
+        try
+        {
+            originalValue = Console.TreatControlCAsInput;
+            Console.TreatControlCAsInput = value;
+            return true;
+        }
+        catch (IOException)
+        {
+            originalValue = false;
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            originalValue = false;
+            return false;
         }
     }
 }
