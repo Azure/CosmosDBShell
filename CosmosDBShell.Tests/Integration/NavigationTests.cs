@@ -82,6 +82,64 @@ public class NavigationTests : EmulatorFixtureTestBase
         Assert.False(state.IsError);
     }
 
+    [Fact]
+    public async Task Cd_RelativeNameFromContainer_ErrorsAndStaysInPlace()
+    {
+        // Repro for AzureCosmosDB/cosmosdb-shell-preview#26: from /db/container,
+        // 'cd <name>' previously silently stayed in the current container instead
+        // of raising an error. The path goes beyond the /database/container
+        // hierarchy so cd must reject it.
+        await NavigateToRootAsync();
+        await ExecuteAsync($"cd {Fixture.DatabaseName}/{Fixture.ContainerName}");
+
+        var state = await ExecuteAsync("cd nonexistent-database");
+        Assert.True(state.IsError, "cd should fail when a relative name from a container would exceed /database/container");
+
+        var pwdOutput = await ExecuteWithOutputAsync("pwd");
+        Assert.Contains(Fixture.DatabaseName, pwdOutput);
+        Assert.Contains(Fixture.ContainerName, pwdOutput);
+    }
+
+    [Fact]
+    public async Task Cd_DotDotThenSibling_FromContainerReturnsToDatabase()
+    {
+        // Sanity check that the documented escape hatch ('cd ..' first, then
+        // navigate) keeps working after the relative-name fix.
+        await NavigateToRootAsync();
+        await ExecuteAsync($"cd {Fixture.DatabaseName}/{Fixture.ContainerName}");
+
+        var state = await ExecuteAsync("cd ..");
+        Assert.False(state.IsError, FormatError(state));
+
+        var pwdOutput = await ExecuteWithOutputAsync("pwd");
+        Assert.Contains(Fixture.DatabaseName, pwdOutput);
+        Assert.DoesNotContain(Fixture.ContainerName, pwdOutput);
+    }
+
+    [Fact]
+    public async Task Cd_AbsolutePathFromContainer_NavigatesToDatabase()
+    {
+        await NavigateToRootAsync();
+        await ExecuteAsync($"cd {Fixture.DatabaseName}/{Fixture.ContainerName}");
+
+        var state = await ExecuteAsync($"cd /{Fixture.DatabaseName}");
+        Assert.False(state.IsError, FormatError(state));
+
+        var pwdOutput = await ExecuteWithOutputAsync("pwd");
+        Assert.Contains(Fixture.DatabaseName, pwdOutput);
+        Assert.DoesNotContain(Fixture.ContainerName, pwdOutput);
+    }
+
+    [Fact]
+    public async Task Cd_TooManySegmentsFromDatabase_Errors()
+    {
+        await NavigateToRootAsync();
+        await ExecuteAsync($"cd {Fixture.DatabaseName}");
+
+        var state = await ExecuteAsync("cd extra/too-deep");
+        Assert.True(state.IsError, "cd should fail when a relative path from a database would exceed /database/container");
+    }
+
     private async Task NavigateToRootAsync()
     {
         var state = await ExecuteAsync("cd");

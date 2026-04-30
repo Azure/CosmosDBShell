@@ -293,6 +293,7 @@ command-cd-error-cant_change_inside_container = Can't change from in a container
 command-cd-error-database_does_not_exist = Database '{ $db }' not found.
 command-cd-error-container_does_not_exist = Container '{ $container }' not found.
 command-cd-error-item_and_options = Cannot specify both path and --database/--container options.
+command-cd-error-path_too_deep = '{ $path }' goes beyond the /database/container hierarchy. Use 'cd ..' to go up first, or use an absolute path like '/database/container'.
 
 command-cat-description = Displays a file
 command-cat-description-path = The path of the file to view.
