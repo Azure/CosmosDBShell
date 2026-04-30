@@ -48,6 +48,7 @@ When consuming build artifacts (`*.nupkg`) from this repo, install as a .NET glo
 - macOS x64: `CosmosDBShell.osx-x64.<version>.nupkg`
 - macOS ARM64: `CosmosDBShell.osx-arm64.<version>.nupkg`
 - Windows x64: `CosmosDBShell.win-x64.<version>.nupkg`
+- Windows ARM64: `CosmosDBShell.win-arm64.<version>.nupkg`
 
 ### Install command
 

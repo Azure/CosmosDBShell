@@ -182,6 +182,15 @@ extends:
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
+                displayName: "DotNetCore publish (Windows ARM64)"
+                inputs:
+                  command: "publish"
+                  publishWebProjects: false
+                  projects: $(ReleaseProject)
+                  arguments: '--configuration $(BuildConfiguration) -r win-arm64 --output $(Build.SourcesDirectory)\out\win-arm64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
+                  zipAfterPublish: false
+
+              - task: DotNetCoreCLI@2
                 displayName: "DotNetCore publish (MacOS)"
                 inputs:
                   command: "publish"
@@ -360,7 +369,7 @@ extends:
                     New-Item -ItemType Directory -Path $signStage -Force | Out-Null
 
                     $ridPackages = Get-ChildItem -Path $pkgDir -Filter "CosmosDBShell.*.nupkg" -File -ErrorAction SilentlyContinue | Where-Object {
-                      $_.Name -match '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
+                      $_.Name -match '^CosmosDBShell\.(win-x64|win-arm64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
                     }
 
                     if (-not $ridPackages -or $ridPackages.Count -eq 0) {
@@ -419,6 +428,7 @@ extends:
                     $pkgDir = "$(Build.SourcesDirectory)\out\nupkg"
                     $ridPatterns = @(
                       "CosmosDBShell.win-x64.*.nupkg",
+                      "CosmosDBShell.win-arm64.*.nupkg",
                       "CosmosDBShell.linux-x64.*.nupkg",
                       "CosmosDBShell.linux-arm64.*.nupkg",
                       "CosmosDBShell.osx-x64.*.nupkg",
@@ -435,7 +445,7 @@ extends:
 
                     $allPackages = Get-ChildItem -Path (Join-Path $pkgDir "CosmosDBShell.*.nupkg") -ErrorAction SilentlyContinue
                     $pointerPackages = $allPackages | Where-Object {
-                      $_.Name -notmatch '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
+                      $_.Name -notmatch '^CosmosDBShell\.(win-x64|win-arm64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
                     }
 
                     if (-not $pointerPackages -or $pointerPackages.Count -ne 1) {
@@ -514,6 +524,15 @@ extends:
                       allowPackageConflicts: true
 
                   - task: NuGetCommand@2
+                    displayName: "Push win-arm64 NuGet package"
+                    inputs:
+                      command: "push"
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-arm64.*.nupkg'
+                      nuGetFeedType: "internal"
+                      publishVstsFeed: "CosmosDB/CosmosDBShell"
+                      allowPackageConflicts: true
+
+                  - task: NuGetCommand@2
                     displayName: "Push linux-x64 NuGet package"
                     inputs:
                       command: "push"
@@ -553,7 +572,7 @@ extends:
                     displayName: "Push base NuGet package"
                     inputs:
                       command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg'
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-arm64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg'
                       nuGetFeedType: "internal"
                       publishVstsFeed: "CosmosDB/CosmosDBShell"
                       allowPackageConflicts: true
@@ -587,6 +606,8 @@ extends:
               matrix:
                 win_x64:
                   RuntimeId: win-x64
+                win_arm64:
+                  RuntimeId: win-arm64
                 osx_x64:
                   RuntimeId: osx-x64
                 osx_arm64:
