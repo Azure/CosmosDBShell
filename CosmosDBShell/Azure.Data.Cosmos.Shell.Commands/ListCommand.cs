@@ -202,6 +202,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         }
 
         returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = list }));
+        returnState.IsPrinted = list.Count == 0;
         AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object> { { "count", "[white]" + list.Count + "[/]" } }));
         if (limitReached && effectiveMaxItemCount.HasValue)
         {

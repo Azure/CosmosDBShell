@@ -74,15 +74,26 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
 
     public ContainerProperties CreateContainerProperties(Database db)
     {
-        var keys = (this.PartitionKey ?? string.Empty).Split(",").ToList();
+        var keys = (this.PartitionKey ?? string.Empty).Split(",", StringSplitOptions.TrimEntries).ToList();
         if (string.IsNullOrEmpty(keys[0]))
         {
             throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_empty"));
         }
 
-        if (!keys[0].StartsWith("/"))
+        if (keys.Any(key => !key.StartsWith("/")))
         {
             throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_slash"));
+        }
+
+        if (keys.Count > 1)
+        {
+            var hpkProperties = new ContainerProperties(this.Name, keys);
+            if (this.UniqueKey != null)
+            {
+                AddUniqueKeyPolicy(hpkProperties, this.UniqueKey);
+            }
+
+            return hpkProperties;
         }
 
         var def = db.DefineContainer(this.Name, keys[0]);
@@ -99,13 +110,18 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         }
 
         var cp = def.Build();
-        if (keys.Count > 1)
+        return cp;
+    }
+
+    private static void AddUniqueKeyPolicy(ContainerProperties properties, string uniqueKey)
+    {
+        var key = new UniqueKey();
+        foreach (var uk in uniqueKey.Split("/").Select(s => "/" + s))
         {
-            keys.RemoveAt(0);
-            cp.PartitionKeyPaths = keys;
+            key.Paths.Add(uk);
         }
 
-        return cp;
+        properties.UniqueKeyPolicy.UniqueKeys.Add(key);
     }
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitDatabaseStateAsync(DatabaseState state, ShellInterpreter shell, CancellationToken token)
