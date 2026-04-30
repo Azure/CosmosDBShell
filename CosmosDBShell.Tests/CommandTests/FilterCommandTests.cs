@@ -100,6 +100,47 @@ public class FilterCommandTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_NormalizesTextResult_ToJsonString()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = "1" })),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = "type",
+        };
+
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+
+        var json = Assert.IsType<ShellJson>(result.Result);
+        Assert.Equal(JsonValueKind.String, json.Value.ValueKind);
+        Assert.Equal("object", json.Value.GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_NormalizesBooleanResult_ToJsonBoolean()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = "1" })),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = "true",
+        };
+
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+
+        var json = Assert.IsType<ShellJson>(result.Result);
+        Assert.Equal(JsonValueKind.True, json.Value.ValueKind);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ThrowsWhenInputMissing()
     {
         var shell = ShellInterpreter.CreateInstance();

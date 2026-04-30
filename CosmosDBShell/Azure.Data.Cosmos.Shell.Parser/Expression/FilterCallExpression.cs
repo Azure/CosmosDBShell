@@ -40,9 +40,9 @@ internal class FilterCallExpression : Expression
 
         return this.Name switch
         {
-            "length" => EvaluateLength(currentJson),
-            "keys" => EvaluateKeys(currentJson),
-            "type" => EvaluateType(currentJson),
+            "length" => EvaluateLength(currentJson, this.Arguments.Count, this.Name),
+            "keys" => EvaluateKeys(currentJson, this.Arguments.Count, this.Name),
+            "type" => EvaluateType(currentJson, this.Arguments.Count, this.Name),
             "contains" => await this.EvaluateContainsAsync(interpreter, currentState, currentJson, cancellationToken),
             "map" => await this.EvaluateMapAsync(interpreter, currentJson, cancellationToken),
             "select" => await this.EvaluateSelectAsync(interpreter, currentJson, cancellationToken),
@@ -54,6 +54,24 @@ internal class FilterCallExpression : Expression
     public override void Accept(IAstVisitor visitor)
     {
         visitor.Visit(this);
+    }
+
+    private static ShellObject EvaluateLength(JsonElement currentJson, int argumentCount, string name)
+    {
+        RequireArgumentCount(argumentCount, name, 0);
+        return EvaluateLength(currentJson);
+    }
+
+    private static ShellObject EvaluateKeys(JsonElement currentJson, int argumentCount, string name)
+    {
+        RequireArgumentCount(argumentCount, name, 0);
+        return EvaluateKeys(currentJson);
+    }
+
+    private static ShellObject EvaluateType(JsonElement currentJson, int argumentCount, string name)
+    {
+        RequireArgumentCount(argumentCount, name, 0);
+        return EvaluateType(currentJson);
     }
 
     private static ShellObject EvaluateLength(JsonElement currentJson)
@@ -93,6 +111,14 @@ internal class FilterCallExpression : Expression
         };
 
         return new ShellText(value);
+    }
+
+    private static void RequireArgumentCount(int actual, string name, int expected)
+    {
+        if (actual != expected)
+        {
+            throw new InvalidOperationException($"Builtin '{name}' expects {expected} argument(s)");
+        }
     }
 
     private async Task<ShellObject> EvaluateContainsAsync(ShellInterpreter interpreter, CommandState currentState, JsonElement currentJson, CancellationToken cancellationToken)
@@ -176,9 +202,6 @@ internal class FilterCallExpression : Expression
 
     private void RequireArgumentCount(int expected)
     {
-        if (this.Arguments.Count != expected)
-        {
-            throw new InvalidOperationException($"Builtin '{this.Name}' expects {expected} argument(s)");
-        }
+        RequireArgumentCount(this.Arguments.Count, this.Name, expected);
     }
 }

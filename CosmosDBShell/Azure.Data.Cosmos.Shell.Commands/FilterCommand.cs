@@ -11,7 +11,7 @@ using Azure.Data.Cosmos.Shell.Util;
 [CosmosCommand("filter")]
 [CosmosExample("query \"SELECT * FROM c\" | filter '.items[0]'", Description = "Extract the first query result")]
 [CosmosExample("query \"SELECT * FROM c\" | filter '.items | map({id, status})'", Description = "Project selected fields from query results")]
-[CosmosExample("ls | filter 'length'", Description = "Count the number of piped results")]
+[CosmosExample("ls | filter '.items | length'", Description = "Count listed items")]
 [CosmosExample("query \"SELECT * FROM c\" | filter '.items[] | .id'", Description = "Extract ids from each item")]
 internal class FilterCommand : CosmosCommand
 {
@@ -50,9 +50,13 @@ internal class FilterCommand : CosmosCommand
         {
             commandState.Result = new ShellJson(FilterExpressionUtilities.ToJsonArray(sequence.Elements));
         }
-        else
+        else if (result is ShellJson)
         {
             commandState.Result = result;
+        }
+        else
+        {
+            commandState.Result = new ShellJson(FilterExpressionUtilities.ToJsonElement(result));
         }
 
         commandState.IsPrinted = false;

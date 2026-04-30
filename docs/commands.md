@@ -312,7 +312,7 @@ Arguments:
 
 Native JSON filter and transformation command.
 
-```
+```text
 Usage: filter expression
 
 Arguments:
@@ -320,9 +320,18 @@ Arguments:
 ```
 
 Notes:
+
 - `filter` uses the built-in filter expression language documented in `docs/filter-v1-spec.md`.
 - `filter` keeps structured JSON results in the shell pipeline.
 - `jq` remains available as the external full-featured option when installed.
+
+Examples:
+
+```text
+ls | filter '.items | length'
+ls | filter '.items | map({"Volcano Name": .["Volcano Name"], Country})'
+query "SELECT * FROM c" | filter '.documents | select(.status == "active")'
+```
 
 ### ftab
 

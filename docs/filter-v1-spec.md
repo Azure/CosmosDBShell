@@ -118,6 +118,8 @@ primary-expression = path-expression
 path-expression    = '.' , { path-segment } ;
 
 path-segment       = '.' , identifier , [ '?' ]
+                   | '.' , string-literal , [ '?' ]
+                   | '[' , string-literal , ']' , [ '?' ]
                    | '[' , integer-literal , ']' , [ '?' ]
                    | '[' , ']' , [ '?' ] ;
 
@@ -162,6 +164,8 @@ Examples:
 - `.id`
 - `.items`
 - `.metadata.status`
+- `.["Volcano Name"]`
+- `."Volcano Name"`
 
 ### Optional Property Access
 

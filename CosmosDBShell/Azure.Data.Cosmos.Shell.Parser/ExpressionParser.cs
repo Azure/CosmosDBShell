@@ -1381,6 +1381,23 @@ internal class ExpressionParser
             {
                 var openBracket = this.Current;
                 this.Advance();
+
+                if (this.Check(TokenType.String))
+                {
+                    var propertyToken = this.Current;
+                    this.Advance();
+                    var propertyCloseBracket = this.Consume(TokenType.CloseBracket, "Expected ']'");
+                    bool optionalProperty = this.TryConsumeQuestion();
+                    end = propertyCloseBracket.Start + propertyCloseBracket.Length;
+                    if (optionalProperty && this.lastNonNullToken != null)
+                    {
+                        end = this.lastNonNullToken.Start + this.lastNonNullToken.Length;
+                    }
+
+                    segments.Add(new FilterPropertySegment(propertyToken?.Value ?? string.Empty, optionalProperty));
+                    continue;
+                }
+
                 if (this.Check(TokenType.CloseBracket))
                 {
                     var closeBracket = this.Current;
@@ -1407,6 +1424,21 @@ internal class ExpressionParser
                 }
 
                 segments.Add(new FilterIndexSegment(index, optionalIndex));
+                continue;
+            }
+
+            if (this.Check(TokenType.String))
+            {
+                var token = this.currentToken;
+                this.Advance();
+                bool optionalProperty = this.TryConsumeQuestion();
+                end = token!.Start + token.Length;
+                if (optionalProperty && this.lastNonNullToken != null)
+                {
+                    end = this.lastNonNullToken.Start + this.lastNonNullToken.Length;
+                }
+
+                segments.Add(new FilterPropertySegment(token.Value, optionalProperty));
                 continue;
             }
 

@@ -16,6 +16,22 @@ internal static class FilterExpressionUtilities
 
     public static JsonElement ToJsonElement(ShellObject shellObject)
     {
+        switch (shellObject)
+        {
+            case ShellJson shellJson:
+                return shellJson.Value.Clone();
+            case ShellText shellText:
+                return JsonSerializer.SerializeToElement(shellText.Text);
+            case ShellNumber shellNumber:
+                return JsonSerializer.SerializeToElement(shellNumber.Value);
+            case ShellDecimal shellDecimal:
+                return JsonSerializer.SerializeToElement(shellDecimal.Value);
+            case ShellBool shellBool:
+                return JsonSerializer.SerializeToElement(shellBool.Value);
+            case ShellSequence shellSequence:
+                return ToJsonArray(shellSequence.Elements);
+        }
+
         var value = shellObject.ConvertShellObject(DataType.Json);
         if (value is JsonElement jsonElement)
         {

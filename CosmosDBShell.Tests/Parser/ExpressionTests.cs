@@ -559,6 +559,15 @@ public class ExpressionTests
     }
 
     [Fact]
+    public void ParseExpression_FilterQuotedPropertyPath_ReturnsFilterPathExpression()
+    {
+        var expr = ParseExpression(".[\"Volcano Name\"]");
+        var path = Assert.IsType<FilterPathExpression>(expr);
+        var segment = Assert.IsType<FilterPropertySegment>(Assert.Single(path.Segments));
+        Assert.Equal("Volcano Name", segment.Name);
+    }
+
+    [Fact]
     public void ParseExpression_FilterBuiltinCall_ReturnsFilterCallExpression()
     {
         var expr = ParseExpression("map(.id)");
@@ -594,6 +603,45 @@ public class ExpressionTests
     }
 
     [Fact]
+    public async Task EvaluateExpression_FilterQuotedPropertyPath_ReturnsPropertyValue()
+    {
+        var result = await EvaluateExpressionWithJsonAsync(".[\"Volcano Name\"]", new Dictionary<string, object?> { ["Volcano Name"] = "Abu" });
+        var json = Assert.IsType<ShellJson>(result);
+        Assert.Equal("Abu", json.Value.GetString());
+    }
+
+    [Fact]
+    public async Task EvaluateExpression_FilterDotQuotedPropertyPath_ReturnsPropertyValue()
+    {
+        var result = await EvaluateExpressionWithJsonAsync(".\"Volcano Name\"", new Dictionary<string, object?> { ["Volcano Name"] = "Abu" });
+        var json = Assert.IsType<ShellJson>(result);
+        Assert.Equal("Abu", json.Value.GetString());
+    }
+
+    [Fact]
+    public async Task EvaluateExpression_FilterMapProjection_WithQuotedPropertyPath_ReturnsProjectedArray()
+    {
+        var result = await EvaluateExpressionWithJsonAsync(
+            ".items | map({\"Volcano Name\": .[\"Volcano Name\"], Country})",
+            new
+            {
+                items = new[]
+                {
+                    new Dictionary<string, object?> { ["Volcano Name"] = "Abu", ["Country"] = "Japan", ["Region"] = "Honshu-Japan" },
+                    new Dictionary<string, object?> { ["Volcano Name"] = "Acamarachi", ["Country"] = "Chile", ["Region"] = "Chile-N" },
+                },
+            });
+
+        var json = Assert.IsType<ShellJson>(result);
+        Assert.Equal(JsonValueKind.Array, json.Value.ValueKind);
+        Assert.Equal("Abu", json.Value[0].GetProperty("Volcano Name").GetString());
+        Assert.Equal("Japan", json.Value[0].GetProperty("Country").GetString());
+        Assert.False(json.Value[0].TryGetProperty("Region", out _));
+        Assert.Equal("Acamarachi", json.Value[1].GetProperty("Volcano Name").GetString());
+        Assert.Equal("Chile", json.Value[1].GetProperty("Country").GetString());
+    }
+
+    [Fact]
     public async Task EvaluateExpression_FilterPipeLength_ReturnsCount()
     {
         var result = await EvaluateExpressionWithJsonAsync(".items | length", new { items = new[] { 1, 2, 3 } });
@@ -609,6 +657,42 @@ public class ExpressionTests
         Assert.Equal(JsonValueKind.Array, json.Value.ValueKind);
         Assert.Equal("b", json.Value[0].GetString());
         Assert.Equal("a", json.Value[1].GetString());
+    }
+
+    [Fact]
+    public async Task EvaluateExpression_FilterMapType_ReturnsStringArray()
+    {
+        var result = await EvaluateExpressionWithJsonAsync(".items | map(type)", new { items = new object?[] { "active", 42, true } });
+        var json = Assert.IsType<ShellJson>(result);
+        Assert.Equal(JsonValueKind.Array, json.Value.ValueKind);
+        Assert.Equal("string", json.Value[0].GetString());
+        Assert.Equal("number", json.Value[1].GetString());
+        Assert.Equal("boolean", json.Value[2].GetString());
+    }
+
+    [Fact]
+    public async Task EvaluateExpression_FilterContains_WithStringLiteral_ReturnsTrue()
+    {
+        var result = await EvaluateExpressionWithJsonAsync(".tags | contains(\"prod\")", new { tags = new[] { "dev", "prod" } });
+        var shellBool = Assert.IsType<ShellBool>(result);
+        Assert.True(shellBool.Value);
+    }
+
+    [Fact]
+    public async Task EvaluateExpression_FilterContains_WithBooleanLiteral_ReturnsTrue()
+    {
+        var result = await EvaluateExpressionWithJsonAsync(".flags | contains(true)", new { flags = new[] { false, true } });
+        var shellBool = Assert.IsType<ShellBool>(result);
+        Assert.True(shellBool.Value);
+    }
+
+    [Theory]
+    [InlineData("length(.items)")]
+    [InlineData("keys(.items)")]
+    [InlineData("type(.items)")]
+    public async Task EvaluateExpression_FilterZeroArgumentBuiltin_WithArgument_Throws(string expression)
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(() => EvaluateExpressionWithJsonAsync(expression, new { items = new[] { 1, 2, 3 } }));
     }
 
     [Fact]
