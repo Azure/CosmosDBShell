@@ -41,6 +41,7 @@ error-unknown_option = Unknown option '{ $option }'
 error-missing_value = Option value expected for '{ $option }'
 error-missing_required_argument = Missing required argument '{ $arg }'
 error-invalid_output_format = Output format '{ $format }' is invalid.
+error-request_timeout = The request timed out while communicating with Azure Cosmos DB. Check your network connection and try again. Run with --verbose to show full diagnostics.
 error-invalid_bucket_value = Throughput bucket value '{ $bucket }' is invalid. Valid range is 0-5.
 error-variable_not_set = Variable '{ $name }' is not set.
 error-mutually-exclusive-options = Options '-c' and '-k' cannot be used together.
@@ -175,8 +176,8 @@ command-mkcon-description-scale = Container scale (manual or auto)
 command-mkcon-description-ru = Database Max RU/s (default: 1000)
 command-mkcon-description-database = The database where the container should be created
 command-mkcon-CreatedContainer = Created container { $container }
-command-mkcon-error_partition_key_empty = Partition key cannot be empty.
-command-mkcon-error_partition_key_slash = Partition key must start with a forward slash (/).
+command-mkcon-error_partition_key_empty = Partition key path cannot be empty. Provide a path that starts with '/', for example: mkcon name /pk.
+command-mkcon-error_partition_key_slash = Partition key path must start with a forward slash (/), for example: mkcon name /pk.
 command-mkcon-error_invalid_index_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-mkcon-description-index_policy = The indexing policy as a JSON string. Follows the Cosmos DB indexing policy schema.
 
@@ -239,7 +240,7 @@ command-create-description-database = The database for the create operation
 command-create-description-container = The container for creating items
 command-create-description-index_policy = { command-mkcon-description-index_policy }
 command-create-error-container_name_required = Create container requires a container name.
-command-create-error-partition_key_required = Create container requires a partition key.
+command-create-error-partition_key_required = Create container requires a partition key path that starts with '/', for example: create container name /pk. Learn more: https://github.com/Azure/CosmosDBShell/blob/main/docs/commands.md#create
 command-create-error-database_name_required = Create database requires a database name.
 command-create-error-invalid_item_type = { command-delete-error-invalid_item_type }
 

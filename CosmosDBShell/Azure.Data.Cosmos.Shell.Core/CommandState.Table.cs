@@ -160,5 +160,77 @@ public partial class CommandState
 
             return sb.ToString();
         }
+
+        public string ToGridString()
+        {
+            var rows = this.Rows;
+            var cols = this.Columns;
+            if (rows == 0 || cols == 0)
+            {
+                return string.Empty;
+            }
+
+            var widths = new int[cols];
+            for (int j = 0; j < cols; j++)
+            {
+                for (int i = 0; i < rows; i++)
+                {
+                    var cell = UnescapeCSV(this[i, j]);
+                    if (cell.Length > widths[j])
+                    {
+                        widths[j] = cell.Length;
+                    }
+                }
+            }
+
+            var sb = new StringBuilder();
+            for (int i = 0; i < rows; i++)
+            {
+                for (int j = 0; j < cols; j++)
+                {
+                    if (j > 0)
+                    {
+                        sb.Append("  ");
+                    }
+
+                    var cell = UnescapeCSV(this[i, j]);
+                    sb.Append(cell.PadRight(widths[j]));
+                }
+
+                sb.AppendLine();
+
+                if (i == 0 && rows > 1)
+                {
+                    for (int j = 0; j < cols; j++)
+                    {
+                        if (j > 0)
+                        {
+                            sb.Append("  ");
+                        }
+
+                        sb.Append(new string('-', widths[j]));
+                    }
+
+                    sb.AppendLine();
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        private static string UnescapeCSV(string? value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+            {
+                return value[1..^1].Replace("\"\"", "\"");
+            }
+
+            return value;
+        }
     }
 }

@@ -265,9 +265,11 @@ public partial class ShellInterpreter : IDisposable
             {
                 return new CommandState();
             }
-            catch (TaskCanceledException)
+            catch (TaskCanceledException e)
             {
-                return new CommandState();
+                var shellException = new ShellException(CommandException.GetDisplayMessage(e), e);
+                this.ReportExecutionError(shellException);
+                return new ErrorCommandState(shellException);
             }
             catch (Exception e)
             {

@@ -184,7 +184,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $rids = @('win-x64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
+          $rids = @('win-x64', 'win-arm64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
           foreach ($rid in $rids) {
             dotnet restore CosmosDBShell/CosmosDBShell.csproj `
               -r $rid
@@ -231,6 +231,7 @@ jobs:
           $pkgDir = Join-Path $pwd 'out/nupkg'
           $ridPatterns = @(
             'CosmosDBShell.win-x64.*.nupkg',
+            'CosmosDBShell.win-arm64.*.nupkg',
             'CosmosDBShell.linux-x64.*.nupkg',
             'CosmosDBShell.linux-arm64.*.nupkg',
             'CosmosDBShell.osx-x64.*.nupkg',
@@ -247,7 +248,7 @@ jobs:
 
           $allPackages = Get-ChildItem -Path (Join-Path $pkgDir 'CosmosDBShell.*.nupkg') -ErrorAction SilentlyContinue
           $pointerPackages = $allPackages | Where-Object {
-            $_.Name -notmatch '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
+            $_.Name -notmatch '^CosmosDBShell\.(win-x64|win-arm64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
           }
 
           if (-not $pointerPackages -or $pointerPackages.Count -ne 1) {
@@ -286,6 +287,7 @@ jobs:
             'Artifacts:',
             ('- `CosmosDBShell-pointer-' + $artifactSuffix + '`'),
             ('- `CosmosDBShell-win-x64-' + $artifactSuffix + '`'),
+            ('- `CosmosDBShell-win-arm64-' + $artifactSuffix + '`'),
             ('- `CosmosDBShell-linux-x64-' + $artifactSuffix + '`'),
             ('- `CosmosDBShell-linux-arm64-' + $artifactSuffix + '`'),
             ('- `CosmosDBShell-osx-x64-' + $artifactSuffix + '`'),
@@ -306,6 +308,7 @@ jobs:
           path: |
             out/nupkg/CosmosDBShell.*.nupkg
             !out/nupkg/CosmosDBShell.win-x64.*.nupkg
+            !out/nupkg/CosmosDBShell.win-arm64.*.nupkg
             !out/nupkg/CosmosDBShell.linux-x64.*.nupkg
             !out/nupkg/CosmosDBShell.linux-arm64.*.nupkg
             !out/nupkg/CosmosDBShell.osx-x64.*.nupkg
@@ -317,6 +320,13 @@ jobs:
         with:
           name: CosmosDBShell-win-x64-${{ steps.version.outputs.artifact_suffix }}
           path: out/nupkg/CosmosDBShell.win-x64.*.nupkg
+          if-no-files-found: error
+
+      - name: Upload win-arm64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: CosmosDBShell-win-arm64-${{ steps.version.outputs.artifact_suffix }}
+          path: out/nupkg/CosmosDBShell.win-arm64.*.nupkg
           if-no-files-found: error
 
       - name: Upload linux-x64 package

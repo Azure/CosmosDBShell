@@ -34,7 +34,7 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
     [CosmosParameter("name")]
     public string? Name { get; init; }
 
-    [CosmosParameter("partition_key", IsRequired = true)]
+    [CosmosParameter("partition_key", IsRequired = true, RequiredErrorKey = "command-mkcon-error_partition_key_empty")]
     public string? PartitionKey { get; init; }
 
     [CosmosParameter("unique_key", IsRequired = false)]
