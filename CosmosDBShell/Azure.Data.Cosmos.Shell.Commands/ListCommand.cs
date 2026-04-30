@@ -177,7 +177,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var limitReached = false;
         while (feedIterator.HasMoreResults)
         {
-            var response = await feedIterator.ReadNextAsync(token);
+            using var response = await feedIterator.ReadNextAsync(token);
             using var queryDocument = await ReadQueryResponseAsync(response, token);
 
             foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
