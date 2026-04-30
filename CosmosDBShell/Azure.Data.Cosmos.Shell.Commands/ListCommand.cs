@@ -170,7 +170,8 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         // Determine which key to match against (partition key by default, or custom key if specified)
         var matchKeyPropertyName = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyName : this.Key;
 
-        using var feedIterator = container.GetItemQueryStreamIterator("SELECT * FROM c", requestOptions: opt);
+        var queryText = BuildItemQueryText(effectiveMaxItemCount, this.Filter);
+        using var feedIterator = container.GetItemQueryStreamIterator(queryText, requestOptions: opt);
         var returnState = new CommandState();
         returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
         var list = new List<JsonElement>();
@@ -223,5 +224,28 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
     private bool IsMatch(string item)
     {
         return this.matcher == null || this.matcher.Match(item);
+    }
+
+    /// <summary>
+    /// Builds the SQL text for listing items in a container. When the caller
+    /// supplies a finite limit and there is no client-side filter that could
+    /// discard rows, switches to <c>SELECT TOP n * FROM c</c> so the server
+    /// stops scanning once the requested number of rows has been produced.
+    /// With a filter the server cannot honor the cap (the substring match is
+    /// applied in the shell against the partition or custom key), so we fall
+    /// back to <c>SELECT * FROM c</c> and rely on the existing client-side
+    /// break to stop paging.
+    /// </summary>
+    internal static string BuildItemQueryText(int? effectiveMaxItemCount, string? filter)
+    {
+        // 'filter == "*"' is treated by ExecuteAsync as "match everything"
+        // (no PatternMatcher is created), so it is safe to push TOP to the server.
+        bool hasClientSideFilter = !string.IsNullOrEmpty(filter) && filter != "*";
+        if (effectiveMaxItemCount.HasValue && !hasClientSideFilter)
+        {
+            return $"SELECT TOP {effectiveMaxItemCount.Value} * FROM c";
+        }
+
+        return "SELECT * FROM c";
     }
 }
