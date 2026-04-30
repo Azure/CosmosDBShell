@@ -115,7 +115,8 @@ internal class Program
 
                 if (o.ConnectionString != null)
                 {
-                    var connectToken = ShellInterpreter.TokenSource.Token;
+                    using var connectTokenSource = ShellInterpreter.UserCancellationTokenSource;
+                    var connectToken = connectTokenSource.Token;
                     try
                     {
                         await ShellInterpreter.Instance.ConnectAsync(

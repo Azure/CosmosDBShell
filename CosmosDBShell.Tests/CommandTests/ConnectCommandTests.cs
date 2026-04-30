@@ -17,7 +17,7 @@ public class ConnectCommandTests
         await cancellationTokenSource.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => shell.ConnectAsync(
-            "AccountEndpoint=https://example.documents.azure.com:443/;AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;",
+            "AccountEndpoint=https://127.0.0.1:1/;AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;",
             mode: ConnectionMode.Gateway,
             token: cancellationTokenSource.Token));
     }

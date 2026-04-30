@@ -148,6 +148,7 @@ internal partial class ConnectCommand : CosmosCommand
 
         var client = connectedState.Client;
 
+        token.ThrowIfCancellationRequested();
         var acc = await client.ReadAccountAsync().WaitAsync(token);
         AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-connect-info-title")}[/]");
 
