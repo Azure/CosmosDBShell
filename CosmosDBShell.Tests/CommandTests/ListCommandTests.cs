@@ -54,4 +54,33 @@ public class ListCommandTests
     {
         Assert.Equal("SELECT TOP 5 * FROM c", ListCommand.BuildItemQueryText(5, string.Empty));
     }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("*", false)]
+    [InlineData("active", true)]
+    public void HasClientSideFilter_ClassifiesFilter(string? filter, bool expected)
+    {
+        Assert.Equal(expected, ListCommand.HasClientSideFilter(filter));
+    }
+
+    [Fact]
+    public void ShouldReportLimitReached_ServerSideTopReportsWhenCapHitWithoutContinuation()
+    {
+        Assert.True(ListCommand.ShouldReportLimitReached(currentCount: 10, effectiveMaxItemCount: 10, usesServerSideTop: true, iteratorHasMoreResults: false));
+    }
+
+    [Fact]
+    public void ShouldReportLimitReached_ClientSideQueryRequiresContinuation()
+    {
+        Assert.False(ListCommand.ShouldReportLimitReached(currentCount: 10, effectiveMaxItemCount: 10, usesServerSideTop: false, iteratorHasMoreResults: false));
+        Assert.True(ListCommand.ShouldReportLimitReached(currentCount: 10, effectiveMaxItemCount: 10, usesServerSideTop: false, iteratorHasMoreResults: true));
+    }
+
+    [Fact]
+    public void ShouldReportLimitReached_BelowCapDoesNotReport()
+    {
+        Assert.False(ListCommand.ShouldReportLimitReached(currentCount: 9, effectiveMaxItemCount: 10, usesServerSideTop: true, iteratorHasMoreResults: true));
+    }
 }

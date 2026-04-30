@@ -44,7 +44,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
-        this.matcher = string.IsNullOrEmpty(this.Filter) ? null : new PatternMatcher(this.Filter);
+        this.matcher = HasClientSideFilter(this.Filter) ? new PatternMatcher(this.Filter!) : null;
         return await shell.State.AcceptAsync(this, shell, token) ?? new CommandState();
     }
 
@@ -171,6 +171,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var matchKeyPropertyName = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyName : this.Key;
 
         var queryText = BuildItemQueryText(effectiveMaxItemCount, this.Filter);
+        var usesServerSideTop = effectiveMaxItemCount.HasValue && !HasClientSideFilter(this.Filter);
         using var feedIterator = container.GetItemQueryStreamIterator(queryText, requestOptions: opt);
         var returnState = new CommandState();
         returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
@@ -185,7 +186,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
             {
                 // Check if pattern matches
-                bool shouldList = this.matcher == null || this.Filter == "*"; // No filter or wildcard = list all
+                bool shouldList = this.matcher == null;
 
                 if (!shouldList && TryGetNestedProperty(element, matchKeyPropertyName, out var matchKeyElement))
                 {
@@ -200,7 +201,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
                 if (ResultLimit.IsLimitReached(list.Count, effectiveMaxItemCount))
                 {
-                    limitReached = feedIterator.HasMoreResults;
+                    limitReached = ShouldReportLimitReached(list.Count, effectiveMaxItemCount, usesServerSideTop, feedIterator.HasMoreResults);
                     break;
                 }
             }
@@ -238,14 +239,21 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
     /// </summary>
     internal static string BuildItemQueryText(int? effectiveMaxItemCount, string? filter)
     {
-        // 'filter == "*"' is treated by ExecuteAsync as "match everything"
-        // (no PatternMatcher is created), so it is safe to push TOP to the server.
-        bool hasClientSideFilter = !string.IsNullOrEmpty(filter) && filter != "*";
-        if (effectiveMaxItemCount.HasValue && !hasClientSideFilter)
+        if (effectiveMaxItemCount.HasValue && !HasClientSideFilter(filter))
         {
             return $"SELECT TOP {effectiveMaxItemCount.Value} * FROM c";
         }
 
         return "SELECT * FROM c";
+    }
+
+    internal static bool HasClientSideFilter(string? filter)
+    {
+        return !string.IsNullOrEmpty(filter) && filter != "*";
+    }
+
+    internal static bool ShouldReportLimitReached(int currentCount, int? effectiveMaxItemCount, bool usesServerSideTop, bool iteratorHasMoreResults)
+    {
+        return ResultLimit.IsLimitReached(currentCount, effectiveMaxItemCount) && (usesServerSideTop || iteratorHasMoreResults);
     }
 }
