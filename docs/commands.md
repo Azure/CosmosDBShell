@@ -190,8 +190,12 @@ Usage: mkcon name partition_key [unique_key]
 
 Arguments:
     name            The container to create
-    partition_key   The partition key path
+    partition_key   The partition key path. For hierarchical partition keys, use comma-separated paths such as /tenantId,/userId,/sessionId
     [unique_key]    Unique key paths (Optional)
+
+Examples:
+    mkcon Products /categoryId
+    mkcon Orders /customerId,/orderId
 ```
 
 ### rmdb
