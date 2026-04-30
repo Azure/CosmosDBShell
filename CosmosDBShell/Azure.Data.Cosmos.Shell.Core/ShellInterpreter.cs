@@ -252,9 +252,15 @@ public partial class ShellInterpreter : IDisposable
             {
                 state = await this.RunCommandAsync(state, command, token);
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
                 return new CommandState();
+            }
+            catch (TaskCanceledException e)
+            {
+                var shellException = new ShellException(CommandException.GetDisplayMessage(e), e);
+                this.ReportExecutionError(shellException);
+                return new ErrorCommandState(shellException);
             }
             catch (Exception e)
             {

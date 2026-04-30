@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Core;
 
+using System.Net;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Util;
 
@@ -57,13 +58,73 @@ public class CommandException : ShellException
         return $"{this.Command}: {base.ToString()}";
     }
 
-    private static string GetMessage(Exception exception)
+    internal static string GetDisplayMessage(Exception exception)
     {
+        if (IsRequestTimeout(exception))
+        {
+            return GetRequestTimeoutMessage();
+        }
+
         if (exception.InnerException != null)
         {
-            return string.Format("{0} ({1})", exception.Message, exception.InnerException.Message);
+            return string.Format("{0} ({1})", exception.Message, GetDisplayMessage(exception.InnerException));
         }
 
         return exception.Message;
+    }
+
+    internal static string GetDisplayMessage(HttpStatusCode statusCode, string fallbackMessage)
+    {
+        return IsRequestTimeoutStatusCode(statusCode) ? GetRequestTimeoutMessage() : fallbackMessage;
+    }
+
+    internal static CommandException FromResponseStatus(string command, HttpStatusCode statusCode, string message)
+    {
+        var displayMessage = GetDisplayMessage(statusCode, message);
+        if (!string.Equals(displayMessage, message, StringComparison.Ordinal))
+        {
+            return new CommandException(command, displayMessage, new Exception(message));
+        }
+
+        return new CommandException(command, displayMessage);
+    }
+
+    private static string GetMessage(Exception exception)
+    {
+        return GetDisplayMessage(exception);
+    }
+
+    private static string GetRequestTimeoutMessage()
+    {
+        return MessageService.GetString("error-request_timeout");
+    }
+
+    private static bool IsRequestTimeout(Exception exception)
+    {
+        if (exception is CosmosException cosmosException && IsRequestTimeoutStatusCode(cosmosException.StatusCode))
+        {
+            return true;
+        }
+
+        if (exception is OperationCanceledException && LooksLikeCosmosTimeout(exception.Message))
+        {
+            return true;
+        }
+
+        return exception.InnerException != null && IsRequestTimeout(exception.InnerException);
+    }
+
+    private static bool IsRequestTimeoutStatusCode(HttpStatusCode statusCode)
+    {
+        return statusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.GatewayTimeout;
+    }
+
+    private static bool LooksLikeCosmosTimeout(string message)
+    {
+        return message.Contains("Cancellation Token has expired", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("CosmosOperationCanceledException", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("request timed out", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("ReceiveTimeout", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("https://aka.ms/cosmosdb-tsg-request-timeout", StringComparison.OrdinalIgnoreCase);
     }
 }
