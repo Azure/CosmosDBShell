@@ -114,6 +114,11 @@ public partial class CommandState
                         return ResultToTable([.. tDocuments.EnumerateArray()]).ToGridString();
                     }
 
+                    if (json.TryGetProperty("items", out var tItems) && tItems.ValueKind == JsonValueKind.Array)
+                    {
+                        return ResultToTable([.. tItems.EnumerateArray()]).ToGridString();
+                    }
+
                     return ResultToTable([json]).ToGridString();
                 }
 

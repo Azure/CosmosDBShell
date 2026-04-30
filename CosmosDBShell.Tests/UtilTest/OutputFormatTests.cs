@@ -67,6 +67,33 @@ public class OutputFormatTests
     }
 
     [Fact]
+    void TestTableItems()
+    {
+        var input = """
+        {
+            "items": [
+                { "id": 12, "name": "alpha", "answer": 53 },
+                { "id": 13, "name": "beta" }
+            ]
+        }
+        """;
+        var element = JsonSerializer.Deserialize<JsonElement>(input);
+
+        var commandState = new CommandState();
+        commandState.Result = new ShellJson(element);
+        commandState.OutputFormat = OutputFormat.Table;
+
+        var output = commandState.GenerateOutputText();
+        var lines = output.TrimEnd('\r', '\n').Split(Environment.NewLine);
+
+        Assert.Equal(4, lines.Length);
+        Assert.Equal("id  name   answer", lines[0]);
+        Assert.Equal("--  -----  ------", lines[1]);
+        Assert.Equal("12  alpha  53    ", lines[2]);
+        Assert.Equal("13  beta         ", lines[3]);
+    }
+
+    [Fact]
     void TestSetFormatTable()
     {
         var commandState = new CommandState();
