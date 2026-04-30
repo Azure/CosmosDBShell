@@ -3,4 +3,13 @@
        Version, FileVersion, InformationalVersion, and PackageVersion from
        GitVersion.yml. See .github/workflows/validate-and-package.yml and
        .pipelines/CosmosDB-Shell-Official.yml. -->
+
+  <!-- Default version suffix for the preview phase. CI overrides Version and
+       InformationalVersion explicitly (both already include "-preview"); this
+       only affects local/dev builds where no Version is passed in, so the
+       embedded executable still shows "<x.y.z>-preview". Remove this once the
+       preview phase is over. -->
+  <PropertyGroup>
+    <VersionSuffix Condition=" '$(VersionSuffix)' == '' ">preview</VersionSuffix>
+  </PropertyGroup>
 </Project>
