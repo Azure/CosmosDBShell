@@ -136,7 +136,13 @@ jobs:
         run: dotnet restore CosmosDBShell.sln
 
       - name: Build solution
-        run: dotnet build CosmosDBShell.sln --configuration $env:BUILD_CONFIGURATION --no-restore
+        run: >-
+          dotnet build CosmosDBShell.sln
+          --configuration $env:BUILD_CONFIGURATION
+          --no-restore
+          /p:Version=${{ steps.version.outputs.assembly_version }}
+          /p:FileVersion=${{ steps.version.outputs.file_version }}
+          /p:InformationalVersion=${{ steps.version.outputs.informational_version }}
         shell: pwsh
 
       - name: Test solution
