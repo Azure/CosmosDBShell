@@ -202,7 +202,6 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         }
 
         returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = list }));
-        returnState.IsPrinted = list.Count == 0;
         AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object> { { "count", "[white]" + list.Count + "[/]" } }));
         if (limitReached && effectiveMaxItemCount.HasValue)
         {
@@ -210,27 +209,6 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         }
 
         return returnState;
-    }
-
-    internal static string[] GetPartitionKeyPropertyNames(IEnumerable<string> partitionKeyPaths)
-    {
-        return partitionKeyPaths
-            .Select(path => path.TrimStart('/'))
-            .Where(path => !string.IsNullOrWhiteSpace(path))
-            .ToArray();
-    }
-
-    internal static bool MatchesAnyPath(JsonElement element, IEnumerable<string> propertyPaths, PatternMatcher matcher)
-    {
-        foreach (var propertyPath in propertyPaths)
-        {
-            if (TryGetNestedProperty(element, propertyPath, out var matchKeyElement) && matcher.Match(GetValueAsString(matchKeyElement)))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private bool IsMatch(string item)

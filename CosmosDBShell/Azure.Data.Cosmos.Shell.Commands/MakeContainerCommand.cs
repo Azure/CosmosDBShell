@@ -116,7 +116,7 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
     private static void AddUniqueKeyPolicy(ContainerProperties properties, string uniqueKey)
     {
         var key = new UniqueKey();
-        foreach (var uk in uniqueKey.Split("/").Select(s => "/" + s))
+        foreach (var uk in uniqueKey.Split(",", StringSplitOptions.TrimEntries).Where(static path => !string.IsNullOrWhiteSpace(path)))
         {
             key.Paths.Add(uk);
         }

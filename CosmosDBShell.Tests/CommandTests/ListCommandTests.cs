@@ -5,7 +5,7 @@
 namespace CosmosShell.Tests.CommandTests;
 
 using System.Text.Json;
-using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Util;
 
 public class ListCommandTests
@@ -13,7 +13,7 @@ public class ListCommandTests
     [Fact]
     public void GetPartitionKeyPropertyNames_ReturnsAllHierarchicalPaths()
     {
-        var paths = ListCommand.GetPartitionKeyPropertyNames(["/tenantId", "/userId", "/sessionId"]);
+        var paths = CosmosCommand.GetPartitionKeyPropertyNames(["/tenantId", "/userId", "/sessionId"]);
 
         Assert.Equal(["tenantId", "userId", "sessionId"], paths);
     }
@@ -30,7 +30,7 @@ public class ListCommandTests
         }
         """);
 
-        var isMatch = ListCommand.MatchesAnyPath(
+        var isMatch = CosmosCommand.MatchesAnyPath(
             document.RootElement,
             ["tenantId", "userId", "sessionId"],
             new PatternMatcher("user-b"));
@@ -53,7 +53,7 @@ public class ListCommandTests
         }
         """);
 
-        var isMatch = ListCommand.MatchesAnyPath(
+        var isMatch = CosmosCommand.MatchesAnyPath(
             document.RootElement,
             ["tenant/id", "user/id"],
             new PatternMatcher("tenant-a"));
@@ -72,7 +72,7 @@ public class ListCommandTests
         }
         """);
 
-        var isMatch = ListCommand.MatchesAnyPath(
+        var isMatch = CosmosCommand.MatchesAnyPath(
             document.RootElement,
             ["tenantId", "userId"],
             new PatternMatcher("session-c"));

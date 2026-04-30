@@ -112,7 +112,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
         // Get container properties to find the partition key paths
         var containerResponse = await container.ReadContainerAsync(cancellationToken: token);
-        var partitionKeyPropertyNames = ListCommand.GetPartitionKeyPropertyNames(containerResponse.Resource.PartitionKeyPaths);
+        var partitionKeyPropertyNames = GetPartitionKeyPropertyNames(containerResponse.Resource.PartitionKeyPaths);
 
         // Determine which key to match against (partition key by default, or custom key if specified)
         var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
@@ -150,7 +150,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
                         // Check if pattern matches (if matcher is set)
                         bool shouldDelete = this.matcher == null; // No pattern = delete all
-                        if (!shouldDelete && ListCommand.MatchesAnyPath(item, matchKeyPropertyNames, this.matcher!))
+                        if (!shouldDelete && MatchesAnyPath(item, matchKeyPropertyNames, this.matcher!))
                         {
                             shouldDelete = true;
                         }
@@ -183,7 +183,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 {
                     // Check if pattern matches (if matcher is set)
                     bool shouldDelete = this.matcher == null; // No pattern = delete all
-                    if (!shouldDelete && ListCommand.MatchesAnyPath(itemsArray, matchKeyPropertyNames, this.matcher!))
+                    if (!shouldDelete && MatchesAnyPath(itemsArray, matchKeyPropertyNames, this.matcher!))
                     {
                         shouldDelete = true;
                     }
@@ -257,7 +257,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                     }
 
                     // Check if pattern matches
-                    bool shouldDelete = ListCommand.MatchesAnyPath(element, matchKeyPropertyNames, this.matcher);
+                    bool shouldDelete = MatchesAnyPath(element, matchKeyPropertyNames, this.matcher);
 
                     if (shouldDelete)
                     {

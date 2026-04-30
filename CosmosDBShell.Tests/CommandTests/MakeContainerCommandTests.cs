@@ -51,4 +51,20 @@ public class MakeContainerCommandTests
 
         Assert.Equal("mkcon", exception.Command);
     }
+
+    [Fact]
+    public void CreateContainerProperties_HierarchicalPartitionKey_WithUniqueKeyKeepsUniqueKeyPaths()
+    {
+        var command = new MakeContainerCommand
+        {
+            Name = "HpkItems",
+            PartitionKey = "/tenantId,/userId",
+            UniqueKey = "/email,/externalId",
+        };
+
+        var properties = command.CreateContainerProperties(null!);
+
+        var uniqueKey = Assert.Single(properties.UniqueKeyPolicy.UniqueKeys);
+        Assert.Equal(["/email", "/externalId"], uniqueKey.Paths);
+    }
 }

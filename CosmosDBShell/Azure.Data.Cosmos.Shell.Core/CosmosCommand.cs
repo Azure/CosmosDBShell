@@ -296,7 +296,19 @@ internal abstract class CosmosCommand
                 builder.Add(element.GetString());
                 break;
             case JsonValueKind.Number:
-                builder.Add(element.GetDouble());
+                if (element.TryGetInt32(out int intValue))
+                {
+                    builder.Add(intValue);
+                }
+                else if (element.TryGetInt64(out long longValue))
+                {
+                    builder.Add(longValue);
+                }
+                else
+                {
+                    builder.Add(element.GetDouble());
+                }
+
                 break;
             case JsonValueKind.True:
                 builder.Add(true);
@@ -311,6 +323,27 @@ internal abstract class CosmosCommand
                 builder.Add(element.GetRawText());
                 break;
         }
+    }
+
+    internal static string[] GetPartitionKeyPropertyNames(IEnumerable<string> partitionKeyPaths)
+    {
+        return partitionKeyPaths
+            .Select(path => path.TrimStart('/'))
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToArray();
+    }
+
+    internal static bool MatchesAnyPath(JsonElement element, IEnumerable<string> propertyPaths, PatternMatcher matcher)
+    {
+        foreach (var propertyPath in propertyPaths)
+        {
+            if (TryGetNestedProperty(element, propertyPath, out var matchKeyElement) && matcher.Match(GetValueAsString(matchKeyElement)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
