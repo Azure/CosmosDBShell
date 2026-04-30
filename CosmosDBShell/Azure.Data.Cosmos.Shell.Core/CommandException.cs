@@ -78,6 +78,17 @@ public class CommandException : ShellException
         return IsRequestTimeoutStatusCode(statusCode) ? GetRequestTimeoutMessage() : fallbackMessage;
     }
 
+    internal static CommandException FromResponseStatus(string command, HttpStatusCode statusCode, string message)
+    {
+        var displayMessage = GetDisplayMessage(statusCode, message);
+        if (!string.Equals(displayMessage, message, StringComparison.Ordinal))
+        {
+            return new CommandException(command, displayMessage, new Exception(message));
+        }
+
+        return new CommandException(command, displayMessage);
+    }
+
     private static string GetMessage(Exception exception)
     {
         return GetDisplayMessage(exception);

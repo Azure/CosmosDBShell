@@ -339,8 +339,7 @@ internal class QueryCommand : CosmosCommand
                         });
                     }
 
-                    message = CommandException.GetDisplayMessage(response.StatusCode, message);
-                    throw new CommandException("query", message);
+                    throw CommandException.FromResponseStatus("query", response.StatusCode, message);
                 }
 
                 if (response.Content == null)

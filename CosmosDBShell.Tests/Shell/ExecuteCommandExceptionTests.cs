@@ -90,6 +90,21 @@ public class ExecuteCommandExceptionTests
     }
 
     [Fact]
+    public void CommandException_ResponseStatusTimeout_PreservesRawMessageForVerboseDiagnostics()
+    {
+        var exception = CommandException.FromResponseStatus(
+            "query",
+            System.Net.HttpStatusCode.RequestTimeout,
+            "raw timeout body with CosmosDiagnostics");
+
+        Assert.Contains("request timed out", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("CosmosDiagnostics", exception.Message);
+        Assert.NotNull(exception.InnerException);
+        Assert.Equal("raw timeout body with CosmosDiagnostics", exception.InnerException.Message);
+        Assert.Contains("CosmosDiagnostics", exception.ToString());
+    }
+
+    [Fact]
     public async Task ExecuteCommandAsync_ShellException_PreservesExceptionInErrorState()
     {
         using var interpreter = CreateInterpreter();
