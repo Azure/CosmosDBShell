@@ -44,7 +44,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
-        this.matcher = string.IsNullOrEmpty(this.Filter) ? null : new PatternMatcher(this.Filter);
+        this.matcher = HasClientSideFilter(this.Filter) ? new PatternMatcher(this.Filter!) : null;
         return await shell.State.AcceptAsync(this, shell, token) ?? new CommandState();
     }
 
@@ -165,7 +165,9 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var partitionKeyPropertyNames = GetPartitionKeyPropertyNames(containerResponse.Resource.PartitionKeyPaths);
         var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
 
-        using var feedIterator = container.GetItemQueryStreamIterator("SELECT * FROM c", requestOptions: opt);
+        var queryText = BuildItemQueryText(effectiveMaxItemCount, this.Filter);
+        var usesServerSideTop = effectiveMaxItemCount.HasValue && !HasClientSideFilter(this.Filter);
+        using var feedIterator = container.GetItemQueryStreamIterator(queryText, requestOptions: opt);
         var returnState = new CommandState();
         returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
         var list = new List<JsonElement>();
@@ -178,7 +180,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
             {
                 // Check if pattern matches
-                bool shouldList = this.matcher == null || this.Filter == "*"; // No filter or wildcard = list all
+                bool shouldList = this.matcher == null;
 
                 shouldList = shouldList || MatchesAnyPath(element, matchKeyPropertyNames, this.matcher!);
 
@@ -189,7 +191,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
                 if (ResultLimit.IsLimitReached(list.Count, effectiveMaxItemCount))
                 {
-                    limitReached = feedIterator.HasMoreResults;
+                    limitReached = ShouldReportLimitReached(list.Count, effectiveMaxItemCount, usesServerSideTop, feedIterator.HasMoreResults);
                     break;
                 }
             }
@@ -253,5 +255,35 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
     private bool IsMatch(string item)
     {
         return this.matcher == null || this.matcher.Match(item);
+    }
+
+    /// <summary>
+    /// Builds the SQL text for listing items in a container. When the caller
+    /// supplies a finite limit and there is no client-side filter that could
+    /// discard rows, switches to <c>SELECT TOP n * FROM c</c> so the server
+    /// stops scanning once the requested number of rows has been produced.
+    /// With a filter the server cannot honor the cap (the substring match is
+    /// applied in the shell against the partition or custom key), so we fall
+    /// back to <c>SELECT * FROM c</c> and rely on the existing client-side
+    /// break to stop paging.
+    /// </summary>
+    internal static string BuildItemQueryText(int? effectiveMaxItemCount, string? filter)
+    {
+        if (effectiveMaxItemCount.HasValue && !HasClientSideFilter(filter))
+        {
+            return $"SELECT TOP {effectiveMaxItemCount.Value} * FROM c";
+        }
+
+        return "SELECT * FROM c";
+    }
+
+    internal static bool HasClientSideFilter(string? filter)
+    {
+        return !string.IsNullOrEmpty(filter) && filter != "*";
+    }
+
+    internal static bool ShouldReportLimitReached(int currentCount, int? effectiveMaxItemCount, bool usesServerSideTop, bool iteratorHasMoreResults)
+    {
+        return ResultLimit.IsLimitReached(currentCount, effectiveMaxItemCount) && (usesServerSideTop || iteratorHasMoreResults);
     }
 }

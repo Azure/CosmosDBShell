@@ -12,8 +12,85 @@ using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 
+/// <summary>
+/// Unit tests for <see cref="ListCommand"/>. Covers <see cref="ListCommand.BuildItemQueryText"/>
+/// (which pushes the per-request limit down to the server with <c>SELECT TOP n</c>
+/// when no client-side filter is in play), the hierarchical-partition-key
+/// helpers on <see cref="CosmosCommand"/>, and the <c>ls</c>-specific
+/// <see cref="ListCommand.ReadQueryResponseAsync"/> error mapping.
+/// </summary>
 public class ListCommandTests
 {
+    [Fact]
+    public void BuildItemQueryText_NoLimit_NoFilter_UsesUnbounded()
+    {
+        Assert.Equal("SELECT * FROM c", ListCommand.BuildItemQueryText(null, null));
+    }
+
+    [Fact]
+    public void BuildItemQueryText_WithLimit_NoFilter_UsesTop()
+    {
+        Assert.Equal("SELECT TOP 25 * FROM c", ListCommand.BuildItemQueryText(25, null));
+    }
+
+    [Fact]
+    public void BuildItemQueryText_WithLimit_WildcardFilter_UsesTop()
+    {
+        // '*' is treated by ListCommand as "no filtering", so it is safe to
+        // push the cap to the server.
+        Assert.Equal("SELECT TOP 10 * FROM c", ListCommand.BuildItemQueryText(10, "*"));
+    }
+
+    [Fact]
+    public void BuildItemQueryText_WithLimit_SubstringFilter_StaysUnbounded()
+    {
+        // A substring filter is applied in the shell against the partition or
+        // custom key, so capping server-side rows would silently drop matching
+        // items. Keep paging client-side.
+        Assert.Equal("SELECT * FROM c", ListCommand.BuildItemQueryText(10, "active"));
+    }
+
+    [Fact]
+    public void BuildItemQueryText_NoLimit_SubstringFilter_StaysUnbounded()
+    {
+        Assert.Equal("SELECT * FROM c", ListCommand.BuildItemQueryText(null, "active"));
+    }
+
+    [Fact]
+    public void BuildItemQueryText_EmptyFilter_TreatedAsNoFilter()
+    {
+        Assert.Equal("SELECT TOP 5 * FROM c", ListCommand.BuildItemQueryText(5, string.Empty));
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("*", false)]
+    [InlineData("active", true)]
+    public void HasClientSideFilter_ClassifiesFilter(string? filter, bool expected)
+    {
+        Assert.Equal(expected, ListCommand.HasClientSideFilter(filter));
+    }
+
+    [Fact]
+    public void ShouldReportLimitReached_ServerSideTopReportsWhenCapHitWithoutContinuation()
+    {
+        Assert.True(ListCommand.ShouldReportLimitReached(currentCount: 10, effectiveMaxItemCount: 10, usesServerSideTop: true, iteratorHasMoreResults: false));
+    }
+
+    [Fact]
+    public void ShouldReportLimitReached_ClientSideQueryRequiresContinuation()
+    {
+        Assert.False(ListCommand.ShouldReportLimitReached(currentCount: 10, effectiveMaxItemCount: 10, usesServerSideTop: false, iteratorHasMoreResults: false));
+        Assert.True(ListCommand.ShouldReportLimitReached(currentCount: 10, effectiveMaxItemCount: 10, usesServerSideTop: false, iteratorHasMoreResults: true));
+    }
+
+    [Fact]
+    public void ShouldReportLimitReached_BelowCapDoesNotReport()
+    {
+        Assert.False(ListCommand.ShouldReportLimitReached(currentCount: 9, effectiveMaxItemCount: 10, usesServerSideTop: true, iteratorHasMoreResults: true));
+    }
+
     [Fact]
     public void GetPartitionKeyPropertyNames_ReturnsAllHierarchicalPaths()
     {
