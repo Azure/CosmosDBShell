@@ -95,25 +95,25 @@ public class NavigationTests : EmulatorFixtureTestBase
         var state = await ExecuteAsync("cd nonexistent-database");
         Assert.True(state.IsError, "cd should fail when a relative name from a container would exceed /database/container");
 
-        var pwdOutput = await ExecuteWithOutputAsync("pwd");
-        Assert.Contains(Fixture.DatabaseName, pwdOutput);
-        Assert.Contains(Fixture.ContainerName, pwdOutput);
+        var currentLocation = await GetCurrentLocationAsync();
+        Assert.Contains(Fixture.DatabaseName, currentLocation);
+        Assert.Contains(Fixture.ContainerName, currentLocation);
     }
 
     [Fact]
-    public async Task Cd_DotDotThenSibling_FromContainerReturnsToDatabase()
+    public async Task Cd_DotDot_FromContainerReturnsToDatabase()
     {
-        // Sanity check that the documented escape hatch ('cd ..' first, then
-        // navigate) keeps working after the relative-name fix.
+        // Sanity check that the documented escape hatch ('cd ..' first) keeps
+        // working after the relative-name fix.
         await NavigateToRootAsync();
         await ExecuteAsync($"cd {Fixture.DatabaseName}/{Fixture.ContainerName}");
 
         var state = await ExecuteAsync("cd ..");
         Assert.False(state.IsError, FormatError(state));
 
-        var pwdOutput = await ExecuteWithOutputAsync("pwd");
-        Assert.Contains(Fixture.DatabaseName, pwdOutput);
-        Assert.DoesNotContain(Fixture.ContainerName, pwdOutput);
+        var currentLocation = await GetCurrentLocationAsync();
+        Assert.Contains(Fixture.DatabaseName, currentLocation);
+        Assert.DoesNotContain(Fixture.ContainerName, currentLocation);
     }
 
     [Fact]
@@ -125,9 +125,9 @@ public class NavigationTests : EmulatorFixtureTestBase
         var state = await ExecuteAsync($"cd /{Fixture.DatabaseName}");
         Assert.False(state.IsError, FormatError(state));
 
-        var pwdOutput = await ExecuteWithOutputAsync("pwd");
-        Assert.Contains(Fixture.DatabaseName, pwdOutput);
-        Assert.DoesNotContain(Fixture.ContainerName, pwdOutput);
+        var currentLocation = await GetCurrentLocationAsync();
+        Assert.Contains(Fixture.DatabaseName, currentLocation);
+        Assert.DoesNotContain(Fixture.ContainerName, currentLocation);
     }
 
     [Fact]
@@ -144,5 +144,14 @@ public class NavigationTests : EmulatorFixtureTestBase
     {
         var state = await ExecuteAsync("cd");
         Assert.False(state.IsError, FormatError(state));
+    }
+
+    private async Task<string> GetCurrentLocationAsync()
+    {
+        var state = await ExecuteAsync("pwd");
+        Assert.False(state.IsError, FormatError(state));
+
+        var json = IntegrationTestBase.GetJson(state);
+        return Assert.IsType<string>(json.GetProperty("currentLocation").GetString());
     }
 }

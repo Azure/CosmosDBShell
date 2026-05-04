@@ -74,8 +74,9 @@ cd ../../OtherDb/OtherCont   # switch database and container
 
 The Cosmos DB hierarchy has at most two levels (`/database/container`). Paths
 that resolve below that depth are rejected with an error. From inside a
-container, plain names like `cd customers` do not navigate to a sibling — use
-`cd ..` first or an absolute path such as `cd /customers`.
+container, plain names like `cd customers` do not navigate to a sibling
+container. Use `cd ../customers` or a fully qualified absolute path such as
+`cd /MyDatabase/customers`.
 
 **Navigation patterns:**
 
