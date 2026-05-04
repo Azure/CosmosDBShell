@@ -2,22 +2,16 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 // ------------------------------------------------------------
 
+using System.CommandLine;
+using System.CommandLine.Parsing;
 using System.Reflection;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Lsp;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Util;
-using CommandLine;
-using CommandLine.Text;
 using Microsoft.Azure.Cosmos;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using OmniSharp.Extensions.LanguageServer.Protocol.Client.Capabilities;
-using OmniSharp.Extensions.LanguageServer.Protocol.Document;
-using OmniSharp.Extensions.LanguageServer.Protocol.Window;
-using OmniSharp.Extensions.LanguageServer.Server;
 using Spectre.Console;
 
 internal class Program
@@ -39,233 +33,253 @@ internal class Program
         try
         {
             args = NormalizeArguments(args);
-            SentenceBuilder.Factory = () => new LocalizableSentenceBuilder();
 
-            // Use a custom parser so we can render our own heading for --version
-            // (CommandLineParser's default output is "<product> <informationalVersion>",
-            // which prints the build-metadata SHA inline and duplicated when both
-            // /p:InformationalVersion and SourceLink's SourceRevisionId contribute
-            // metadata). HelpWriter=null disables the built-in help/version writer;
-            // we delegate back to HelpText.AutoBuild for --help and parse errors.
-            using var parser = new Parser(settings =>
+            // --help / --version handled manually so we can render our own
+            // localized usage and version heading.
+            if (args.Any(a => a is "--help" or "-h" or "-?" or "/?" or "/h"))
             {
-                settings.HelpWriter = null;
-            });
-            var parseResult = parser.ParseArguments<CosmosShellOptions>(args);
+                ShellInterpreter.WriteLine(BuildHelpText());
+                return;
+            }
 
-            // Handle parse errors
-            parseResult.WithNotParsed(errors =>
+            if (args.Any(a => a is "--version"))
             {
-                if (errors.IsVersion())
+                WriteVersionHeading();
+                return;
+            }
+
+            var (rootCommand, optionMap) = BuildRootCommand();
+            var parseResult = rootCommand.Parse(args);
+
+            if (parseResult.Errors.Count > 0)
+            {
+                foreach (var error in parseResult.Errors)
                 {
-                    WriteVersionHeading();
-                    return;
+                    ShellInterpreter.WriteLine(error.Message);
                 }
 
-                var helpText = errors.IsHelp()
-                    ? HelpText.AutoBuild(parseResult)
-                    : HelpText.AutoBuild(parseResult, h => HelpText.DefaultParsingErrorsHandler(parseResult, h), e => e);
-                ShellInterpreter.WriteLine(helpText.ToString());
+                ShellInterpreter.WriteLine(BuildHelpText());
+                Environment.ExitCode = 1;
+                return;
+            }
 
-                if (!errors.IsHelp())
+            var o = new CosmosShellOptions
+            {
+                ColorSystem = parseResult.GetValueForOption(optionMap.ColorSystem),
+                ExecuteAndQuit = parseResult.GetValueForOption(optionMap.ExecuteAndQuit),
+                ExecuteAndContinue = parseResult.GetValueForOption(optionMap.ExecuteAndContinue),
+                ClearHistory = parseResult.GetValueForOption(optionMap.ClearHistory),
+                ConnectionString = parseResult.GetValueForOption(optionMap.ConnectionString),
+                ConnectionMode = parseResult.GetValueForOption(optionMap.ConnectionMode),
+                ConnectTenant = parseResult.GetValueForOption(optionMap.ConnectTenant),
+                ConnectHint = parseResult.GetValueForOption(optionMap.ConnectHint),
+                ConnectAuthorityHost = parseResult.GetValueForOption(optionMap.ConnectAuthorityHost),
+                ConnectManagedIdentity = parseResult.GetValueForOption(optionMap.ConnectManagedIdentity),
+                ConnectVSCodeCredential = parseResult.GetValueForOption(optionMap.ConnectVSCodeCredential),
+                StartLspServer = parseResult.GetValueForOption(optionMap.StartLspServer),
+                LspStdio = parseResult.GetValueForOption(optionMap.LspStdio),
+                Verbose = parseResult.GetValueForOption(optionMap.Verbose),
+            };
+
+            // --mcp supports an optional value: when the option is present without
+            // an integer, fall back to the default port.
+            var mcpResult = parseResult.FindResultFor(optionMap.McpPort);
+            if (mcpResult is not null)
+            {
+                var mcpValue = parseResult.GetValueForOption(optionMap.McpPort);
+                o.McpPort = mcpValue ?? DefaultMcpPort;
+            }
+
+            if (o.StartLspServer)
+            {
+                // Already handled above, but keep for completeness
+                var server = await LspServer.CreateLanguageServerAsync();
+                await server.WaitForExit;
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(o.ExecuteAndQuit) && !string.IsNullOrWhiteSpace(o.ExecuteAndContinue))
+            {
+                Environment.ExitCode = 1;
+                ShellInterpreter.WriteLine(MessageService.GetString("error-mutually-exclusive-options"));
+                return;
+            }
+
+            var executeAndQuitCommand = string.IsNullOrWhiteSpace(o.ExecuteAndQuit) ? null : o.ExecuteAndQuit;
+            var executeAndContinueCommand = string.IsNullOrWhiteSpace(o.ExecuteAndContinue) ? null : o.ExecuteAndContinue;
+            var explicitCommand = executeAndContinueCommand ?? executeAndQuitCommand;
+
+            if (o.ClearHistory)
+            {
+                if (File.Exists(ShellInterpreter.Instance.HistoryFile))
+                {
+                    File.Delete(ShellInterpreter.Instance.HistoryFile);
+                }
+
+                ShellInterpreter.WriteLine(MessageService.GetString("shell-hisory_file_deleted"));
+                return;
+            }
+
+            AnsiConsole.Profile.Capabilities.ColorSystem = o.ColorSystem switch
+            {
+                1 => ColorSystem.Standard,
+                2 => ColorSystem.TrueColor,
+                _ => ColorSystem.NoColors,
+            };
+            ShellInterpreter.Instance.Options = o;
+
+            if (o.ConnectionString != null)
+            {
+                using var connectTokenSource = ShellInterpreter.UserCancellationTokenSource;
+                var connectToken = connectTokenSource.Token;
+                try
+                {
+                    await ShellInterpreter.Instance.ConnectAsync(
+                        o.ConnectionString,
+                        o.ConnectHint,
+                        o.ConnectionMode,
+                        tenantId: o.ConnectTenant,
+                        authorityHost: o.ConnectAuthorityHost,
+                        managedIdentityClientId: o.ConnectManagedIdentity,
+                        useVSCodeCredential: o.ConnectVSCodeCredential,
+                        token: connectToken);
+                }
+                catch (OperationCanceledException) when (connectToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception ex)
                 {
                     Environment.ExitCode = 1;
-                }
-            });
-
-            _ = await parseResult.WithParsedAsync(async o =>
-            {
-                if (o.StartLspServer)
-                {
-                    // Already handled above, but keep for completeness
-                    var server = await LspServer.CreateLanguageServerAsync();
-                    await server.WaitForExit;
-                    return;
-                }
-
-                if (!string.IsNullOrWhiteSpace(o.ExecuteAndQuit) && !string.IsNullOrWhiteSpace(o.ExecuteAndContinue))
-                {
-                    Environment.ExitCode = 1;
-                    ShellInterpreter.WriteLine(MessageService.GetString("error-mutually-exclusive-options"));
-                    return;
-                }
-
-                var executeAndQuitCommand = string.IsNullOrWhiteSpace(o.ExecuteAndQuit) ? null : o.ExecuteAndQuit;
-                var executeAndContinueCommand = string.IsNullOrWhiteSpace(o.ExecuteAndContinue) ? null : o.ExecuteAndContinue;
-                var explicitCommand = executeAndContinueCommand ?? executeAndQuitCommand;
-
-                if (o.ClearHistory)
-                {
-                    if (File.Exists(ShellInterpreter.Instance.HistoryFile))
+                    if (ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id, out var permission))
                     {
-                        File.Delete(ShellInterpreter.Instance.HistoryFile);
-                    }
-
-                    ShellInterpreter.WriteLine(MessageService.GetString("shell-hisory_file_deleted"));
-                    return;
-                }
-
-                AnsiConsole.Profile.Capabilities.ColorSystem = o.ColorSystem switch
-                {
-                    1 => ColorSystem.Standard,
-                    2 => ColorSystem.TrueColor,
-                    _ => ColorSystem.NoColors,
-                };
-                ShellInterpreter.Instance.Options = o;
-
-                if (o.ConnectionString != null)
-                {
-                    using var connectTokenSource = ShellInterpreter.UserCancellationTokenSource;
-                    var connectToken = connectTokenSource.Token;
-                    try
-                    {
-                        await ShellInterpreter.Instance.ConnectAsync(
-                            o.ConnectionString,
-                            o.ConnectHint,
-                            o.ConnectionMode,
-                            tenantId: o.ConnectTenant,
-                            authorityHost: o.ConnectAuthorityHost,
-                            managedIdentityClientId: o.ConnectManagedIdentity,
-                            useVSCodeCredential: o.ConnectVSCodeCredential,
-                            token: connectToken);
-                    }
-                    catch (OperationCanceledException) when (connectToken.IsCancellationRequested)
-                    {
+                        ConnectCommand.AskForRBacPermissions(id ?? string.Empty, permission ?? string.Empty);
                         return;
                     }
-                    catch (Exception ex)
+
+                    ShellInterpreter.WriteLine(ex.Message);
+                    return;
+                }
+            }
+
+            // Start MCP server if requested
+            Task? hostTask = null;
+
+            if (o.McpPort is int mcpPort)
+            {
+                if (mcpPort <= 0)
+                {
+                    AnsiConsole.WriteLine(MessageService.GetString("mcp-error-invalid-port"));
+                    Environment.ExitCode = 1;
+                    return;
+                }
+
+                try
+                {
+                    host = McpServer.CreateHost(o);
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-creating-server", "message", Markup.Escape(ex.Message)));
+                    Environment.ExitCode = 1;
+                    return;
+                }
+
+                if (host != null)
+                {
+                    ShellInterpreter.Instance.McpPort = mcpPort;
+                    hostTask = Task.Run(async () =>
                     {
-                        Environment.ExitCode = 1;
-                        if (ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id, out var permission))
+                        try
                         {
-                            ConnectCommand.AskForRBacPermissions(id ?? string.Empty, permission ?? string.Empty);
-                            return;
+                            var token = CancellationToken.None;
+                            await host.StartAsync(token);
+                            await host.WaitForShutdownAsync(token);
                         }
-
-                        ShellInterpreter.WriteLine(ex.Message);
-                        return;
-                    }
-                }
-
-                // Start MCP server if requested
-                Task? hostTask = null;
-
-                if (o.McpPort is int mcpPort)
-                {
-                    if (mcpPort <= 0)
-                    {
-                        AnsiConsole.WriteLine(MessageService.GetString("mcp-error-invalid-port"));
-                        Environment.ExitCode = 1;
-                        return;
-                    }
-
-                    try
-                    {
-                        host = McpServer.CreateHost(o);
-                    }
-                    catch (Exception ex)
-                    {
-                        AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-creating-server", "message", Markup.Escape(ex.Message)));
-                        Environment.ExitCode = 1;
-                        return;
-                    }
-
-                    if (host != null)
-                    {
-                        ShellInterpreter.Instance.McpPort = mcpPort;
-                        hostTask = Task.Run(async () =>
+                        catch (Exception ex)
                         {
-                            try
-                            {
-                                var token = CancellationToken.None;
-                                await host.StartAsync(token);
-                                await host.WaitForShutdownAsync(token);
-                            }
-                            catch (Exception ex)
-                            {
-                                AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-server-failed-start", "message", Markup.Escape(ex.Message)));
-                                Environment.ExitCode = 1;
-                            }
-                        });
-                    }
-                }
-
-                if (Console.IsInputRedirected)
-                {
-                    // Read entire stdin (script)
-                    var script = await Console.In.ReadToEndAsync() + Environment.NewLine;
-                    if (!string.IsNullOrWhiteSpace(script))
-                    {
-                        var state = await ShellInterpreter.Instance.ExecuteCommandAsync(script, default);
-                        if (state.IsError)
-                        {
+                            AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-server-failed-start", "message", Markup.Escape(ex.Message)));
                             Environment.ExitCode = 1;
-                            if (executeAndContinueCommand is null)
-                            {
-                                return;
-                            }
                         }
-
-                        // If user only wants to execute piped script then quit (unless -k / ExecuteAndContinue)
-                        if (executeAndContinueCommand is null && executeAndQuitCommand is null)
-                        {
-                            // Stop host gracefully before returning
-                            if (host != null)
-                            {
-                                await host.StopAsync();
-                            }
-
-                            return;
-                        }
-                    }
+                    });
                 }
+            }
 
-                if (explicitCommand is not null)
+            if (Console.IsInputRedirected)
+            {
+                // Read entire stdin (script)
+                var script = await Console.In.ReadToEndAsync() + Environment.NewLine;
+                if (!string.IsNullOrWhiteSpace(script))
                 {
-                    var state = await ShellInterpreter.Instance.ExecuteCommandAsync(explicitCommand, default);
+                    var state = await ShellInterpreter.Instance.ExecuteCommandAsync(script, default);
                     if (state.IsError)
                     {
                         Environment.ExitCode = 1;
                         if (executeAndContinueCommand is null)
                         {
-                            // Stop host gracefully before returning
-                            if (host != null)
-                            {
-                                await host.StopAsync();
-                            }
-
-                            // Wait for the host task to complete
-                            if (hostTask != null)
-                            {
-                                await hostTask;
-                            }
-
                             return;
                         }
                     }
 
-                    if (executeAndContinueCommand is not null)
+                    // If user only wants to execute piped script then quit (unless -k / ExecuteAndContinue)
+                    if (executeAndContinueCommand is null && executeAndQuitCommand is null)
                     {
-                        await ShellInterpreter.Instance.RunAsync();
+                        // Stop host gracefully before returning
+                        if (host != null)
+                        {
+                            await host.StopAsync();
+                        }
+
+                        return;
                     }
                 }
-                else
+            }
+
+            if (explicitCommand is not null)
+            {
+                var state = await ShellInterpreter.Instance.ExecuteCommandAsync(explicitCommand, default);
+                if (state.IsError)
+                {
+                    Environment.ExitCode = 1;
+                    if (executeAndContinueCommand is null)
+                    {
+                        // Stop host gracefully before returning
+                        if (host != null)
+                        {
+                            await host.StopAsync();
+                        }
+
+                        // Wait for the host task to complete
+                        if (hostTask != null)
+                        {
+                            await hostTask;
+                        }
+
+                        return;
+                    }
+                }
+
+                if (executeAndContinueCommand is not null)
                 {
                     await ShellInterpreter.Instance.RunAsync();
                 }
+            }
+            else
+            {
+                await ShellInterpreter.Instance.RunAsync();
+            }
 
-                // Stop the host gracefully before the task completes
-                if (host != null)
-                {
-                    await host.StopAsync();
-                }
+            // Stop the host gracefully before the task completes
+            if (host != null)
+            {
+                await host.StopAsync();
+            }
 
-                // Wait for the host task to complete
-                if (hostTask != null)
-                {
-                    await hostTask;
-                }
-            });
+            // Wait for the host task to complete
+            if (hostTask != null)
+            {
+                await hostTask;
+            }
         }
         finally
         {
@@ -286,82 +300,221 @@ internal class Program
         var version = ShellInterpreter.GetDisplayVersion(assembly);
         var commit = ShellInterpreter.GetDisplayCommit(assembly);
         var heading = string.IsNullOrEmpty(commit)
-            ? new HeadingInfo(product, version)
-            : new HeadingInfo(product, $"{version} ({commit})");
-        ShellInterpreter.WriteLine(heading.ToString());
+            ? $"{product} {version}"
+            : $"{product} {version} ({commit})";
+        ShellInterpreter.WriteLine(heading);
     }
 
-    private static string[] NormalizeArguments(string[] args)
+    /// <summary>
+    /// Pre-processes argv before <see cref="System.CommandLine"/> sees it:
+    ///   1. Translates Windows-style <c>/c</c>/<c>/k</c> switches into their
+    ///      POSIX equivalents (<c>-c</c>/<c>-k</c>).
+    ///   2. Once <c>-c</c> or <c>-k</c> is encountered, the rest of the
+    ///      command line is collapsed into a single string value, so users
+    ///      don't have to quote multi-word commands:
+    ///         CosmosDBShell -c help mkitem
+    ///      becomes
+    ///         CosmosDBShell -c "help mkitem"
+    ///      App-level options must therefore come before <c>-c</c>/<c>-k</c>.
+    /// </summary>
+    internal static string[] NormalizeArguments(string[] args)
     {
-        var normalizedArguments = new List<string>(args.Length);
+        var result = new List<string>(args.Length);
 
         for (int index = 0; index < args.Length; index++)
         {
             var argument = args[index];
-            if (argument == "--mcp")
+
+            // Translate /c, /k, /C, /K to -c / -k early so all later checks
+            // can treat them uniformly.
+            if (argument is "/c" or "/C")
             {
-                if (index + 1 < args.Length && !args[index + 1].StartsWith("-", StringComparison.Ordinal))
+                argument = "-c";
+            }
+            else if (argument is "/k" or "/K")
+            {
+                argument = "-k";
+            }
+
+            if (argument is "-c" or "-k")
+            {
+                result.Add(argument);
+                if (index + 1 < args.Length)
                 {
-                    normalizedArguments.Add(argument);
-                    normalizedArguments.Add(args[++index]);
-                    continue;
+                    result.Add(string.Join(' ', args.Skip(index + 1)));
                 }
 
-                normalizedArguments.Add($"--mcp={DefaultMcpPort}");
+                return [.. result];
+            }
+
+            result.Add(argument);
+        }
+
+        return [.. result];
+    }
+
+    private static (RootCommand Command, OptionMap Map) BuildRootCommand()
+    {
+        var colorSystem = new Option<int>("--cs", () => 2, MessageService.GetString("help-ColorSystem"));
+
+        var executeAndQuit = new Option<string?>("-c", MessageService.GetString("help-ExecuteAndQuit"));
+        var executeAndContinue = new Option<string?>("-k", MessageService.GetString("help-ExecuteAndContinue"));
+
+        var clearHistory = new Option<bool>("--clearhistory", MessageService.GetString("help-ClearHistory"));
+        var connectionString = new Option<string?>("--connect", MessageService.GetString("help-ConnectionString"));
+
+        var connectionMode = new Option<ConnectionMode?>(
+            "--connect-mode",
+            parseArgument: argResult =>
+            {
+                if (argResult.Tokens.Count == 0)
+                {
+                    return null;
+                }
+
+                var token = argResult.Tokens[0].Value;
+                if (Enum.TryParse<ConnectionMode>(token, ignoreCase: true, out var mode))
+                {
+                    return mode;
+                }
+
+                argResult.ErrorMessage = MessageService.GetArgsString(
+                    "help-error-BadFormatConversionError2",
+                    "option",
+                    "--connect-mode");
+                return null;
+            },
+            isDefault: true,
+            description: MessageService.GetString("help-ConnectionMode"));
+
+        var connectTenant = new Option<string?>("--connect-tenant", MessageService.GetString("help-ConnectTenant"));
+        var connectHint = new Option<string?>("--connect-hint", MessageService.GetString("help-ConnectHint"));
+        var connectAuthorityHost = new Option<string?>("--connect-authority-host", MessageService.GetString("help-ConnectAuthorityHost"));
+        var connectManagedIdentity = new Option<string?>("--connect-managed-identity", MessageService.GetString("help-ConnectManagedIdentity"));
+        var connectVSCodeCredential = new Option<bool>("--connect-vscode-credential", MessageService.GetString("help-ConnectVSCodeCredential"))
+        {
+            IsHidden = true,
+        };
+
+        var mcpPort = new Option<int?>("--mcp", MessageService.GetString("help-McpPort"))
+        {
+            Arity = ArgumentArity.ZeroOrOne,
+        };
+
+        var startLspServer = new Option<bool>("--lsp", MessageService.GetString("help-EnableLspServer"));
+        var lspStdio = new Option<bool>("--stdio", MessageService.GetString("help-EnableLspServer"))
+        {
+            IsHidden = true,
+        };
+        var verbose = new Option<bool>("--verbose", MessageService.GetString("help-Verbose"));
+
+        var root = new RootCommand("Cosmos DB Shell")
+        {
+            colorSystem,
+            executeAndQuit,
+            executeAndContinue,
+            clearHistory,
+            connectionString,
+            connectionMode,
+            connectTenant,
+            connectHint,
+            connectAuthorityHost,
+            connectManagedIdentity,
+            connectVSCodeCredential,
+            mcpPort,
+            startLspServer,
+            lspStdio,
+            verbose,
+        };
+
+        var map = new OptionMap(
+            colorSystem,
+            executeAndQuit,
+            executeAndContinue,
+            clearHistory,
+            connectionString,
+            connectionMode,
+            connectTenant,
+            connectHint,
+            connectAuthorityHost,
+            connectManagedIdentity,
+            connectVSCodeCredential,
+            mcpPort,
+            startLspServer,
+            lspStdio,
+            verbose);
+
+        return (root, map);
+    }
+
+    private static string BuildHelpText()
+    {
+        var (rootCommand, _) = BuildRootCommand();
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine(MessageService.GetString("help-UsageHeadingText"));
+        builder.AppendLine();
+
+        foreach (var symbol in rootCommand.Options)
+        {
+            if (symbol.IsHidden)
+            {
                 continue;
             }
 
-            normalizedArguments.Add(argument);
+            var aliases = string.Join(", ", symbol.Aliases);
+            builder.AppendLine($"  {aliases,-32} {symbol.Description}");
         }
 
-        return [.. normalizedArguments];
+        return builder.ToString();
     }
+
+    private sealed record OptionMap(
+        Option<int> ColorSystem,
+        Option<string?> ExecuteAndQuit,
+        Option<string?> ExecuteAndContinue,
+        Option<bool> ClearHistory,
+        Option<string?> ConnectionString,
+        Option<ConnectionMode?> ConnectionMode,
+        Option<string?> ConnectTenant,
+        Option<string?> ConnectHint,
+        Option<string?> ConnectAuthorityHost,
+        Option<string?> ConnectManagedIdentity,
+        Option<bool> ConnectVSCodeCredential,
+        Option<int?> McpPort,
+        Option<bool> StartLspServer,
+        Option<bool> LspStdio,
+        Option<bool> Verbose);
 
     public class CosmosShellOptions
     {
-        [Option("cs", Required = false, HelpText = "ColorSystem", ResourceType = typeof(LocalizableSentenceBuilder))]
         public int ColorSystem { get; set; } = 2;
 
-        [Option('c', Required = false, HelpText = "ExecuteAndQuit", ResourceType = typeof(LocalizableSentenceBuilder))]
         public string? ExecuteAndQuit { get; set; }
 
-        [Option('k', Required = false, HelpText = "ExecuteAndContinue", ResourceType = typeof(LocalizableSentenceBuilder))]
         public string? ExecuteAndContinue { get; set; }
 
-        [Option("clearhistory", Required = false, HelpText = "ClearHistory", ResourceType = typeof(LocalizableSentenceBuilder))]
         public bool ClearHistory { get; set; }
 
-        [Option("connect", Required = false, HelpText = "ConnectionString", ResourceType = typeof(LocalizableSentenceBuilder))]
         public string? ConnectionString { get; set; }
 
-        [Option("connect-mode", Required = false, HelpText = "ConnectionMode", ResourceType = typeof(LocalizableSentenceBuilder))]
         public ConnectionMode? ConnectionMode { get; set; }
 
-        [Option("connect-tenant", Required = false, HelpText = "ConnectTenant", ResourceType = typeof(LocalizableSentenceBuilder))]
         public string? ConnectTenant { get; set; }
 
-        [Option("connect-hint", Required = false, HelpText = "ConnectHint", ResourceType = typeof(LocalizableSentenceBuilder))]
         public string? ConnectHint { get; set; }
 
-        [Option("connect-authority-host", Required = false, HelpText = "ConnectAuthorityHost", ResourceType = typeof(LocalizableSentenceBuilder))]
         public string? ConnectAuthorityHost { get; set; }
 
-        [Option("connect-managed-identity", Required = false, HelpText = "ConnectManagedIdentity", ResourceType = typeof(LocalizableSentenceBuilder))]
         public string? ConnectManagedIdentity { get; set; }
 
-        [Option("connect-vscode-credential", Required = false, HelpText = "ConnectVSCodeCredential", ResourceType = typeof(LocalizableSentenceBuilder), Hidden = true)]
         public bool ConnectVSCodeCredential { get; set; }
 
-        [Option("mcp", Required = false, HelpText = "McpPort", ResourceType = typeof(LocalizableSentenceBuilder))]
         public int? McpPort { get; set; }
 
-        [Option("lsp", Required = false, HelpText = "EnableLspServer", ResourceType = typeof(LocalizableSentenceBuilder))]
         public bool StartLspServer { get; set; }
 
-        [Option("stdio", Required = false, HelpText = "EnableLspServer", ResourceType = typeof(LocalizableSentenceBuilder), Hidden = true)]
         public bool LspStdio { get; set; }
 
-        [Option("verbose", Required = false, HelpText = "Verbose", ResourceType = typeof(LocalizableSentenceBuilder))]
         public bool Verbose { get; set; }
     }
 }
