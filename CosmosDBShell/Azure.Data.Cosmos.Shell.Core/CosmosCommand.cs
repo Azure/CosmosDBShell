@@ -404,22 +404,40 @@ internal abstract class CosmosCommand
         var trimmed = rawValue.Trim();
         if (LooksLikeJsonLiteral(trimmed))
         {
-            using var doc = JsonDocument.Parse(trimmed);
-            var root = doc.RootElement;
-            if (root.ValueKind == JsonValueKind.Array)
+            // Container/object literals must be valid JSON: rejecting them is
+            // the whole point of this check, so let the JsonException surface.
+            // Scalar candidates (digits, '-', or unquoted bool/null words),
+            // however, can be ambiguous: '001', '-svc', and similar are valid
+            // string partition keys even though they look numeric. Fall back
+            // to a string PartitionKey when JSON parsing fails for those.
+            JsonDocument? doc = null;
+            try
             {
-                return CreatePartitionKey(root.EnumerateArray());
+                doc = JsonDocument.Parse(trimmed);
+            }
+            catch (JsonException) when (trimmed[0] is not ('[' or '{' or '"'))
+            {
+                return new PartitionKey(rawValue);
             }
 
-            // Reject object-shaped JSON: a JSON object cannot represent a
-            // partition key value. Surface this as a JsonException so callers
-            // can translate it into their localized invalid-PK message.
-            if (root.ValueKind == JsonValueKind.Object)
+            using (doc)
             {
-                throw new JsonException("Partition key cannot be a JSON object.");
-            }
+                var root = doc.RootElement;
+                if (root.ValueKind == JsonValueKind.Array)
+                {
+                    return CreatePartitionKey(root.EnumerateArray());
+                }
 
-            return CreatePartitionKey(root);
+                // Reject object-shaped JSON: a JSON object cannot represent a
+                // partition key value. Surface this as a JsonException so callers
+                // can translate it into their localized invalid-PK message.
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    throw new JsonException("Partition key cannot be a JSON object.");
+                }
+
+                return CreatePartitionKey(root);
+            }
         }
 
         return new PartitionKey(rawValue);

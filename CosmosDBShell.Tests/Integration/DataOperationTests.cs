@@ -282,6 +282,14 @@ public class DataOperationTests : EmulatorFixtureTestBase
     }
 
     [Fact]
+    public async Task Patch_RemoveRejectsEmptyStringValueArgument()
+    {
+        var state = await ExecuteAsync("patch remove item item /field \"\"");
+        Assert.True(state.IsError);
+        Assert.Equal("Patch operation 'remove' does not take a value.", IntegrationTestBase.GetErrorMessage(state));
+    }
+
+    [Fact]
     public async Task Query_SelectAll_ReturnsItems()
     {
         var id = $"query-{Guid.NewGuid():N}";

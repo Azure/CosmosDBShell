@@ -167,7 +167,7 @@ internal class PatchCommand : CosmosCommand
         switch (op)
         {
             case "remove":
-                if (!string.IsNullOrEmpty(value))
+                if (value is not null)
                 {
                     throw new CommandException(
                         "patch",
