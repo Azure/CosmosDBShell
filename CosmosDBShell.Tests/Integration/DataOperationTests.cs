@@ -77,6 +77,41 @@ public class DataOperationTests : EmulatorFixtureTestBase
     }
 
     [Fact]
+    public async Task Replace_RejectsNonStringId()
+    {
+        var payload = JsonSerializer.Serialize(new { id = 123, name = "invalid" });
+
+        var state = await ExecuteAsync($"replace '{payload}'");
+
+        Assert.True(state.IsError);
+        Assert.Equal("Each item must include a non-empty 'id' property.", IntegrationTestBase.GetErrorMessage(state));
+    }
+
+    [Fact]
+    public async Task Replace_ArrayWithEtag_ReturnsError()
+    {
+        var id = $"replace-etag-array-{Guid.NewGuid():N}";
+        var payload = JsonSerializer.Serialize(new[] { new { id, name = "value" } });
+
+        var state = await ExecuteAsync($"replace '{payload}' --etag=etag-value");
+
+        Assert.True(state.IsError);
+        Assert.Equal("The --etag option can only be used when replacing a single item.", IntegrationTestBase.GetErrorMessage(state));
+    }
+
+    [Fact]
+    public async Task Replace_ArrayFailures_ReturnsErrorState()
+    {
+        var id = $"replace-array-failure-{Guid.NewGuid():N}";
+        var payload = JsonSerializer.Serialize(new[] { new { id, name = "missing" } });
+
+        var state = await ExecuteAsync($"replace '{payload}'");
+
+        Assert.True(state.IsError);
+        Assert.Equal("Failed to replace 1 of 1 items.", IntegrationTestBase.GetErrorMessage(state));
+    }
+
+    [Fact]
     public async Task Patch_UpdatesField()
     {
         var id = $"patch-{Guid.NewGuid():N}";
@@ -169,6 +204,50 @@ public class DataOperationTests : EmulatorFixtureTestBase
         var item = JsonDocument.Parse(output).RootElement;
         Assert.True(item.GetProperty("enabled").GetBoolean());
         Assert.Equal(7, item.GetProperty("score").GetInt32());
+    }
+
+    [Fact]
+    public async Task PatchAndReplace_HierarchicalPartitionKey_Succeed()
+    {
+        var containerName = $"hpk{Guid.NewGuid():N}";
+        var id = $"hpk-item-{Guid.NewGuid():N}";
+
+        await ExecuteAsync("cd");
+        await ExecuteAsync($"cd {Fixture.DatabaseName}");
+
+        try
+        {
+            var createState = await ExecuteAsync($"mkcon {containerName} /tenant,/pk");
+            Assert.False(createState.IsError, FormatError(createState));
+
+            var navigateState = await ExecuteAsync($"cd {containerName}");
+            Assert.False(navigateState.IsError, FormatError(navigateState));
+
+            var original = JsonSerializer.Serialize(new { id, tenant = "tenant-1", pk = 7, name = "before" });
+            var createItemState = await ExecuteAsync($"mkitem '{original}'");
+            Assert.False(createItemState.IsError, FormatError(createItemState));
+
+            var patchState = await ExecuteAsync($"patch set {id} '[\"tenant-1\",7]' /name patched");
+            Assert.False(patchState.IsError, FormatError(patchState));
+
+            var replaced = JsonSerializer.Serialize(new { id, tenant = "tenant-1", pk = 7, name = "replaced" });
+            var replaceState = await ExecuteAsync($"replace '{replaced}'");
+            Assert.False(replaceState.IsError, FormatError(replaceState));
+
+            var output = await ExecuteWithOutputAsync($"query \"SELECT * FROM c WHERE c.id = '{id}'\"");
+            var queryJson = JsonDocument.Parse(output).RootElement;
+            var items = queryJson.GetProperty("items");
+            Assert.Equal(1, items.GetArrayLength());
+            Assert.Equal("replaced", items[0].GetProperty("name").GetString());
+        }
+        finally
+        {
+            await ExecuteAsync("cd");
+            await ExecuteAsync($"cd {Fixture.DatabaseName}");
+            await ExecuteAsync($"rmcon {containerName} true");
+            await ExecuteAsync("cd");
+            await ExecuteAsync($"cd {Fixture.DatabaseName}/{Fixture.ContainerName}");
+        }
     }
 
     [Fact]

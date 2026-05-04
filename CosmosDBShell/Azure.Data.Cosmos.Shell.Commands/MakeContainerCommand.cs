@@ -101,7 +101,6 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         var cp = def.Build();
         if (keys.Count > 1)
         {
-            keys.RemoveAt(0);
             cp.PartitionKeyPaths = keys;
         }
 

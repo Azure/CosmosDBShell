@@ -213,7 +213,7 @@ internal class MakeItemCommand : CosmosCommand
                         {
                             ShellInterpreter.WriteLine(
                                 MessageService.GetArgsString(
-                                    "command-mkitem-created-all-failed",
+                                    "command-mkitem-upserted-all-failed",
                                     "count",
                                     failCount));
                         }

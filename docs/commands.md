@@ -154,14 +154,14 @@ Arguments:
     [data]      JSON object or array of objects to replace (Optional)
 
 Options:
-    -etag       Optional ETag for optimistic concurrency control
+    -etag       Optional ETag for optimistic concurrency control (single item only)
     -database, -db
                Override database name (Optional)
     -container, -con
                Override container name (Optional)
 ```
 
-`replace` fails when the target item does not already exist.
+`replace` derives the partition key from the item JSON and supports hierarchical partition key containers. The `--etag` option is only supported for single-object input because each item has its own ETag. `replace` fails when the target item does not already exist.
 
 ### patch
 
@@ -173,7 +173,7 @@ Usage: patch op id pk path [value] [-etag <ARG>] [-database <ARG>] [-container <
 Arguments:
     op          Patch operation: set, add, replace, remove, or incr
     id          Item ID
-    pk          Partition key value
+    pk          Partition key value. Use a JSON literal for typed keys, or a JSON array for hierarchical partition keys.
     path        JSON path to the target field (must start with '/')
     [value]     Value for the operation (omit for 'remove')
 
@@ -214,10 +214,13 @@ The `value` argument is parsed as JSON when it looks like a JSON literal. Otherw
 
 Quoting rules follow the shell: wrap values that contain spaces or shell metacharacters in quotes. Use single quotes around JSON object/array literals so the shell does not try to interpret them.
 
+The `pk` argument follows the same JSON-literal typing for numbers, booleans, and null. For hierarchical partition keys, pass the key components as a JSON array, for example `'["tenant-1","order-42"]'`.
+
 #### Examples
 
 ```bash
 patch set order-42 customer-7 /status active
+patch set order-42 '["tenant-1","customer-7"]' /status active
 patch set order-42 customer-7 /count 42
 patch set order-42 customer-7 /name "Ada Lovelace"
 patch incr order-42 customer-7 /viewCount 1

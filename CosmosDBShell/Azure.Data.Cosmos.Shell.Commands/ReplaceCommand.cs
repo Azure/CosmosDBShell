@@ -53,9 +53,9 @@ internal class ReplaceCommand : CosmosCommand
             token);
 
         var containerResponse = await container.ReadContainerAsync(cancellationToken: token);
-        var partitionKeyPath = containerResponse.Resource.PartitionKeyPath.TrimStart('/');
+        var partitionKeyPaths = GetPartitionKeyPaths(containerResponse.Resource);
 
-        await ReplaceItemsAsync(container, partitionKeyPath, jsonOpt, this.ETag, token);
+        await ReplaceItemsAsync(container, partitionKeyPaths, jsonOpt, this.ETag, token);
 
         return new CommandState
         {
@@ -63,7 +63,7 @@ internal class ReplaceCommand : CosmosCommand
         };
     }
 
-    private static async Task ReplaceItemsAsync(Container container, string partitionKeyPath, string jsonInput, string? etag, CancellationToken token)
+    private static async Task ReplaceItemsAsync(Container container, IReadOnlyList<string> partitionKeyPaths, string jsonInput, string? etag, CancellationToken token)
     {
         try
         {
@@ -72,11 +72,16 @@ internal class ReplaceCommand : CosmosCommand
 
             if (root.ValueKind == JsonValueKind.Array)
             {
-                await ReplaceArrayAsync(container, partitionKeyPath, root, etag, token);
+                if (!string.IsNullOrEmpty(etag))
+                {
+                    throw new CommandException("replace", MessageService.GetString("command-replace-error-etag_array_not_supported"));
+                }
+
+                await ReplaceArrayAsync(container, partitionKeyPaths, root, token);
                 return;
             }
 
-            await ReplaceOneAsync(container, partitionKeyPath, root, etag, token, printSuccess: true);
+            await ReplaceOneAsync(container, partitionKeyPaths, root, etag, token, printSuccess: true);
         }
         catch (JsonException ex)
         {
@@ -84,7 +89,7 @@ internal class ReplaceCommand : CosmosCommand
         }
     }
 
-    private static async Task ReplaceArrayAsync(Container container, string partitionKeyPath, JsonElement arrayRoot, string? etag, CancellationToken token)
+    private static async Task ReplaceArrayAsync(Container container, IReadOnlyList<string> partitionKeyPaths, JsonElement arrayRoot, CancellationToken token)
     {
         int successCount = 0;
         int failCount = 0;
@@ -94,7 +99,7 @@ internal class ReplaceCommand : CosmosCommand
         {
             try
             {
-                var itemCharge = await ReplaceOneAsync(container, partitionKeyPath, element, etag, token, printSuccess: false);
+                var itemCharge = await ReplaceOneAsync(container, partitionKeyPaths, element, etag: null, token, printSuccess: false);
                 charge += itemCharge;
                 successCount++;
             }
@@ -117,27 +122,40 @@ internal class ReplaceCommand : CosmosCommand
         {
             ShellInterpreter.WriteLine(MessageService.GetArgsString("command-replace-all-failed", "count", failCount));
         }
+
+        if (failCount > 0)
+        {
+            throw new CommandException(
+                "replace",
+                MessageService.GetArgsString(
+                    "command-replace-error-array_failed",
+                    "failed",
+                    failCount,
+                    "total",
+                    successCount + failCount));
+        }
     }
 
-    private static async Task<double> ReplaceOneAsync(Container container, string partitionKeyPath, JsonElement item, string? etag, CancellationToken token, bool printSuccess)
+    private static async Task<double> ReplaceOneAsync(Container container, IReadOnlyList<string> partitionKeyPaths, JsonElement item, string? etag, CancellationToken token, bool printSuccess)
     {
         if (item.ValueKind != JsonValueKind.Object)
         {
             throw new CommandException("replace", MessageService.GetString("command-replace-error-invalid_item"));
         }
 
-        if (!item.TryGetProperty("id", out var idElement) || string.IsNullOrEmpty(idElement.GetString()))
+        if (!item.TryGetProperty("id", out var idElement) || idElement.ValueKind != JsonValueKind.String || string.IsNullOrEmpty(idElement.GetString()))
         {
             throw new CommandException("replace", MessageService.GetString("command-replace-error-missing_id"));
         }
 
-        if (!TryGetNestedProperty(item, partitionKeyPath, out var pkElement))
+        var id = idElement.GetString();
+        if (!TryCreatePartitionKeyFromItem(item, partitionKeyPaths, out var missingPath, out var partitionKey))
         {
             throw new CommandException(
                 "replace",
                 MessageService.GetString(
                     "command-replace-error-missing_partition_key",
-                    new Dictionary<string, object> { { "path", partitionKeyPath } }));
+                    new Dictionary<string, object> { { "path", missingPath ?? string.Join(", ", partitionKeyPaths) } }));
         }
 
         var requestOptions = string.IsNullOrEmpty(etag)
@@ -146,7 +164,7 @@ internal class ReplaceCommand : CosmosCommand
 
         try
         {
-            var response = await container.ReplaceItemAsync(item, idElement.GetString(), CreatePartitionKey(pkElement), requestOptions, token);
+            var response = await container.ReplaceItemAsync(item, id, partitionKey, requestOptions, token);
             if (response.StatusCode != System.Net.HttpStatusCode.OK)
             {
                 throw new CommandException("replace", MessageService.GetArgsString("command-replace-error-status-returned", "status", response.StatusCode.ToString()));
@@ -163,14 +181,14 @@ internal class ReplaceCommand : CosmosCommand
         {
             throw new CommandException(
                 "replace",
-                MessageService.GetString("command-replace-error-not_found", new Dictionary<string, object> { { "id", idElement.GetString() ?? string.Empty } }),
+                MessageService.GetString("command-replace-error-not_found", new Dictionary<string, object> { { "id", id ?? string.Empty } }),
                 ce);
         }
         catch (CosmosException ce) when (ce.StatusCode == System.Net.HttpStatusCode.PreconditionFailed)
         {
             throw new CommandException(
                 "replace",
-                MessageService.GetString("command-replace-error-etag_mismatch", new Dictionary<string, object> { { "id", idElement.GetString() ?? string.Empty } }),
+                MessageService.GetString("command-replace-error-etag_mismatch", new Dictionary<string, object> { { "id", id ?? string.Empty } }),
                 ce);
         }
         catch (CosmosException ce)
