@@ -155,7 +155,7 @@ extends:
                 displayName: "DotNetCore build with RoslynAnalyzers"
                 inputs:
                   userProvideBuildInfo: "msBuildInfo"
-                  msBuildCommandline: "dotnet.exe build $(BuildSolution) --no-restore --configuration $(BuildConfiguration)"
+                  msBuildCommandline: "dotnet.exe build $(BuildSolution) --no-restore --configuration $(BuildConfiguration) /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion)"
 
               - task: DotNetCoreCLI@2
                 displayName: "DotNetCore test"

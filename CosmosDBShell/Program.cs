@@ -115,6 +115,8 @@ internal class Program
 
                 if (o.ConnectionString != null)
                 {
+                    using var connectTokenSource = ShellInterpreter.UserCancellationTokenSource;
+                    var connectToken = connectTokenSource.Token;
                     try
                     {
                         await ShellInterpreter.Instance.ConnectAsync(
@@ -124,7 +126,12 @@ internal class Program
                             tenantId: o.ConnectTenant,
                             authorityHost: o.ConnectAuthorityHost,
                             managedIdentityClientId: o.ConnectManagedIdentity,
-                            useVSCodeCredential: o.ConnectVSCodeCredential);
+                            useVSCodeCredential: o.ConnectVSCodeCredential,
+                            token: connectToken);
+                    }
+                    catch (OperationCanceledException) when (connectToken.IsCancellationRequested)
+                    {
+                        return;
                     }
                     catch (Exception ex)
                     {

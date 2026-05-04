@@ -110,15 +110,12 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
 
-        // Get container properties to find the partition key path
+        // Get container properties to find the partition key paths
         var containerResponse = await container.ReadContainerAsync(cancellationToken: token);
-        var partitionKeyPath = containerResponse.Resource.PartitionKeyPath;
-
-        // Remove the leading '/' to get the property name
-        var partitionKeyPropertyName = partitionKeyPath.TrimStart('/');
+        var partitionKeyPropertyNames = GetPartitionKeyPropertyNames(containerResponse.Resource.PartitionKeyPaths);
 
         // Determine which key to match against (partition key by default, or custom key if specified)
-        var matchKeyPropertyName = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyName : this.Key;
+        var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
 
         var totalCount = 0;
 
@@ -147,16 +144,15 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 foreach (var item in itemsArray.EnumerateArray())
                 {
                     if (item.TryGetProperty("id", out var idElement) &&
-                        TryGetNestedProperty(item, partitionKeyPropertyName, out var pkElement))
+                        TryGetPartitionKeyElements(item, partitionKeyPropertyNames, out var pkElements))
                     {
                         var id = idElement.GetString();
 
                         // Check if pattern matches (if matcher is set)
                         bool shouldDelete = this.matcher == null; // No pattern = delete all
-                        if (!shouldDelete && TryGetNestedProperty(item, matchKeyPropertyName, out var matchKeyElement))
+                        if (!shouldDelete && MatchesAnyPath(item, matchKeyPropertyNames, this.matcher!))
                         {
-                            var matchKeyValue = GetValueAsString(matchKeyElement);
-                            shouldDelete = this.matcher!.Match(matchKeyValue);
+                            shouldDelete = true;
                         }
                         else if (!shouldDelete && this.Pattern == "*")
                         {
@@ -168,7 +164,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         {
                             try
                             {
-                                await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElement), cancellationToken: token);
+                                await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElements), cancellationToken: token);
                                 totalCount++;
                             }
                             catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -183,14 +179,13 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             {
                 // Single item from pipe
                 if (itemsArray.TryGetProperty("id", out var idElement) &&
-                    TryGetNestedProperty(itemsArray, partitionKeyPropertyName, out var pkElement))
+                    TryGetPartitionKeyElements(itemsArray, partitionKeyPropertyNames, out var pkElements))
                 {
                     // Check if pattern matches (if matcher is set)
                     bool shouldDelete = this.matcher == null; // No pattern = delete all
-                    if (!shouldDelete && TryGetNestedProperty(itemsArray, matchKeyPropertyName, out var matchKeyElement))
+                    if (!shouldDelete && MatchesAnyPath(itemsArray, matchKeyPropertyNames, this.matcher!))
                     {
-                        var matchKeyValue = GetValueAsString(matchKeyElement);
-                        shouldDelete = this.matcher!.Match(matchKeyValue);
+                        shouldDelete = true;
                     }
                     else if (!shouldDelete && this.Pattern == "*")
                     {
@@ -205,7 +200,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         {
                             try
                             {
-                                await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElement), cancellationToken: token);
+                                await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElements), cancellationToken: token);
                                 totalCount++;
                             }
                             catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -248,7 +243,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         continue;
                     }
 
-                    if (!TryGetNestedProperty(element, partitionKeyPropertyName, out var pkElement))
+                    if (!TryGetPartitionKeyElements(element, partitionKeyPropertyNames, out var pkElements))
                     {
                         AnsiConsole.MarkupLine(
                             MessageService.GetString(
@@ -256,24 +251,19 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                                 new Dictionary<string, object>
                                 {
                                     { "id", id },
-                                    { "partitionKey", partitionKeyPropertyName },
+                                    { "partitionKey", string.Join(',', partitionKeyPropertyNames) },
                                 }));
                         continue;
                     }
 
                     // Check if pattern matches
-                    bool shouldDelete = false;
-                    if (TryGetNestedProperty(element, matchKeyPropertyName, out var matchKeyElement))
-                    {
-                        var matchKeyValue = GetValueAsString(matchKeyElement);
-                        shouldDelete = this.matcher.Match(matchKeyValue);
-                    }
+                    bool shouldDelete = MatchesAnyPath(element, matchKeyPropertyNames, this.matcher);
 
                     if (shouldDelete)
                     {
                         try
                         {
-                            await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElement), cancellationToken: token);
+                            await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElements), cancellationToken: token);
                             totalCount++;
                         }
                         catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -300,10 +290,27 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                     new Dictionary<string, object>
                     {
                         { "pattern", this.Pattern ?? "pipe input" },
-                        { "key", matchKeyPropertyName },
+                        { "key", string.Join(',', matchKeyPropertyNames) },
                     }));
         }
 
         return new ExitCode(0);
+    }
+
+    internal static bool TryGetPartitionKeyElements(JsonElement element, IEnumerable<string> partitionKeyPropertyNames, out List<JsonElement> partitionKeyElements)
+    {
+        partitionKeyElements = [];
+        foreach (var partitionKeyPropertyName in partitionKeyPropertyNames)
+        {
+            if (!TryGetNestedProperty(element, partitionKeyPropertyName, out var partitionKeyElement))
+            {
+                partitionKeyElements = [];
+                return false;
+            }
+
+            partitionKeyElements.Add(partitionKeyElement);
+        }
+
+        return partitionKeyElements.Count > 0;
     }
 }
