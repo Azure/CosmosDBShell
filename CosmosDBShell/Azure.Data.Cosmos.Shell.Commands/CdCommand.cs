@@ -165,7 +165,13 @@ internal class CdCommand : CosmosCommand
         };
     }
 
-    private static (string? Database, string? Container) ParsePath(string? path, State currentState)
+    /// <summary>
+    /// Resolves a 'cd' path against the current shell state and either returns
+    /// the target (database, container) pair or throws
+    /// <see cref="CommandException"/> when the input cannot be resolved within
+    /// the /database/container hierarchy.
+    /// </summary>
+    internal static (string? Database, string? Container) ParsePath(string? path, State currentState)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -224,6 +230,20 @@ internal class CdCommand : CosmosCommand
             {
                 resolvedSegments.Add(segment);
             }
+        }
+
+        // The Cosmos DB hierarchy has at most two levels: /database/container.
+        // Reject inputs that would resolve to a deeper path (for example
+        // 'cd customers' from inside /db/container, or 'cd a/b' from inside
+        // /db). Without this check the implementation silently truncated extra
+        // segments and stayed in the current container.
+        if (resolvedSegments.Count > 2)
+        {
+            throw new CommandException(
+                "cd",
+                MessageService.GetString(
+                    "command-cd-error-path_too_deep",
+                    new Dictionary<string, object> { { "path", path } }));
         }
 
         return resolvedSegments.Count switch

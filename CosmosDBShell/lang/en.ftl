@@ -255,6 +255,9 @@ command-ls-description-container = The container to list items from
 command-ls-description-key = The property to match against (default: container partition key property)
 command-ls-container = Container { $container }
 command-ls-found_items = found { $count } items.
+command-ls-error-request_failed = List request failed with status code { $statusCode } ({ $status }).
+command-ls-error-no_content_stream = The list request completed, but Cosmos DB returned no response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
+command-ls-error-empty_content = The list request completed, but Cosmos DB returned an empty response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
 command-results-limit_reached =
     { $count ->
         [one] Results limited to { $count } item. Use --max to change the limit or --max 0 for no limit.
@@ -352,6 +355,7 @@ command-cd-error-cant_change_inside_container = Can't change from in a container
 command-cd-error-database_does_not_exist = Database '{ $db }' not found.
 command-cd-error-container_does_not_exist = Container '{ $container }' not found.
 command-cd-error-item_and_options = Cannot specify both path and --database/--container options.
+command-cd-error-path_too_deep = '{ $path }' goes beyond the /database/container hierarchy. Use 'cd ..' to go up first, or use an absolute path like '/database/container'.
 
 command-cat-description = Displays a file
 command-cat-description-path = The path of the file to view.
