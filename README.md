@@ -130,7 +130,11 @@ Examples:
 
 ```bash
 # Run a script and exit. Script arguments become $1, $2, ... inside the script.
-cosmosdbshell -c "seed.csh mydb mycontainer" --connect "AccountEndpoint=...;AccountKey=..."
+cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c "seed.csh mydb mycontainer"
+
+# -c also accepts an unquoted command tail; everything after -c becomes the
+# command, so app-level options (like --connect) must come BEFORE -c.
+cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c seed.csh mydb mycontainer
 
 # Run a script from piped command text.
 echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."

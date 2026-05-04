@@ -396,8 +396,8 @@ help-error-SetValueExceptionError = Error setting value to option '{ $option }':
 help-error-MissingGroupOptionError = At least one option from group '{ $option }"' ({ $req_options }) is required.
 help-error-GroupOptionAmbiguityError= Both SetName and Group are not allowed in option: ({ $option })
 
-help-ExecuteAndContinue = Executes the specified command and keeps the shell running (for example: /k "help").
-help-ExecuteAndQuit = Executes the specified command and exits the shell (for example: /c "help").
+help-ExecuteAndContinue = Executes the specified command and keeps the shell running. Everything after -k (or /k) is taken as the command, so quoting is optional (for example: -k help mkitem).
+help-ExecuteAndQuit = Executes the specified command and exits the shell. Everything after -c (or /c) is taken as the command, so quoting is optional (for example: -c help mkitem).
 help-ColorSystem = ColorSystem to use.(0=off, 1=standard, 2=true color)
 help-ClearHistory = Clears command history and exits.
 help-ConnectionString = The endpoint URL or connection string to connect to.
