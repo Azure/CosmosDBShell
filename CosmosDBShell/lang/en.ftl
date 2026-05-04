@@ -391,6 +391,7 @@ help-SentenceMutuallyExclusiveSetErrors =
 help-error-BadFormatTokenError = Token '{ $token }' is not recognized.
 help-error-MissingValueOptionError = Option '{ $option }' has no value.
 help-error-UnknownOptionError = Option '{ $option }' is unknown.
+help-error-UnknownArgumentError = Unrecognized argument '{ $argument }'.
 help-error-MissingRequiredOptionError1 = A required value not bound to option name is missing.
 help-error-MissingRequiredOptionError2 = Required option '{ $option }' is missing.
 help-error-BadFormatConversionError1 = A value not bound to option name is defined with a bad format.

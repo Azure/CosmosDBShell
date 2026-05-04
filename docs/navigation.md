@@ -186,7 +186,7 @@ Start the shell with options to customize behavior:
 | Option | Description |
 | ------ | ----------- |
 | `-c <cmd>` | Execute command and exit. Everything after `-c` is taken as the command, so app-level options must come before `-c`. Windows-style `/c` is also accepted. |
-| `-k <cmd>` | Execute command and stay in shell. Everything after `-k` is taken as the command. Windows-style `/k` is also accepted. |
+| `-k <cmd>` | Execute command and stay in shell. Everything after `-k` is taken as the command, so app-level options must come before `-k`. Windows-style `/k` is also accepted. |
 | `--connect <str>` | Connect with this connection string or endpoint on startup |
 | `--connect-mode <mode>` | Connection mode at startup: 'direct' or 'gateway' |
 | `--connect-tenant <id>` | Entra ID tenant ID at startup |

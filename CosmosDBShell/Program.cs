@@ -232,6 +232,14 @@ internal class Program
                         Environment.ExitCode = 1;
                         if (executeAndContinueCommand is null)
                         {
+                            // Stop host gracefully before returning so the
+                            // background MCP host task does not keep running
+                            // against a disposed IHost.
+                            if (host != null)
+                            {
+                                await host.StopAsync();
+                            }
+
                             return;
                         }
                     }
@@ -539,10 +547,14 @@ internal class Program
     private sealed class LocalizedCliResources : System.CommandLine.LocalizationResources
     {
         public override string UnrecognizedCommandOrArgument(string arg) =>
-            MessageService.GetArgsString("help-error-UnknownOptionError", "option", arg);
+            arg.StartsWith('-')
+                ? MessageService.GetArgsString("help-error-UnknownOptionError", "option", arg)
+                : MessageService.GetArgsString("help-error-UnknownArgumentError", "argument", arg);
 
         public override string UnrecognizedArgument(string unrecognizedArg, IReadOnlyCollection<string> allowedValues) =>
-            MessageService.GetArgsString("help-error-UnknownOptionError", "option", unrecognizedArg);
+            unrecognizedArg.StartsWith('-')
+                ? MessageService.GetArgsString("help-error-UnknownOptionError", "option", unrecognizedArg)
+                : MessageService.GetArgsString("help-error-UnknownArgumentError", "argument", unrecognizedArg);
 
         public override string ExpectsOneArgument(System.CommandLine.Parsing.SymbolResult symbolResult) =>
             MessageService.GetArgsString("help-error-MissingValueOptionError", "option", symbolResult.Symbol.Name);
