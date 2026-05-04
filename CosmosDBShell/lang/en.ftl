@@ -369,6 +369,10 @@ command-version-repo = Report issues at [link={ $url }]{ $url }[/]
 help-RequiredWord = Required.
 help-ErrorsHeadingText = ERROR(S):
 help-UsageHeadingText  = USAGE:
+help-UsageSynopsis = { $command } [options] [-c|-k <command>...]
+help-CommandTailNote = Everything after -c / -k (or /c, /k) is taken as the shell command, so app-level options must come before -c / -k.
+help-HelpOptionDescription = Show this help text and exit.
+help-VersionOptionDescription = Show product version and exit.
 help-OptionGroupWord = Group
 help-HelpCommandScreenText = Display this help screen.
 help-HelpCommandMoreText = Display more information on a specific command.

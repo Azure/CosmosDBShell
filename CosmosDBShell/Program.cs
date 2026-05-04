@@ -460,9 +460,8 @@ internal class Program
         var builder = new System.Text.StringBuilder();
         builder.AppendLine(MessageService.GetString("help-UsageHeadingText"));
         var product = typeof(Program).Assembly.GetName().Name ?? "CosmosDBShell";
-        builder.AppendLine($"  {product.ToLowerInvariant()} [options] [-c|-k <command>...]");
-        builder.AppendLine("  Everything after -c / -k (or /c, /k) is taken as the shell command,");
-        builder.AppendLine("  so app-level options must come before -c / -k.");
+        builder.AppendLine("  " + MessageService.GetArgsString("help-UsageSynopsis", "command", product.ToLowerInvariant()));
+        builder.AppendLine("  " + MessageService.GetString("help-CommandTailNote"));
         builder.AppendLine();
 
         foreach (var symbol in rootCommand.Options)
@@ -479,8 +478,8 @@ internal class Program
         // --help / --version are intercepted before parsing, so they are not
         // declared as Option<T>. Surface them in the rendered help anyway so
         // users can discover them.
-        builder.AppendLine($"  {"--help, -h, -?",-32} Show this help text and exit.");
-        builder.AppendLine($"  {"--version",-32} Show product version and exit.");
+        builder.AppendLine($"  {"--help, -h, -?",-32} {MessageService.GetString("help-HelpOptionDescription")}");
+        builder.AppendLine($"  {"--version",-32} {MessageService.GetString("help-VersionOptionDescription")}");
 
         return builder.ToString();
     }
