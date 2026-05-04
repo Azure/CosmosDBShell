@@ -67,4 +67,36 @@ public class MakeContainerCommandTests
         var uniqueKey = Assert.Single(properties.UniqueKeyPolicy.UniqueKeys);
         Assert.Equal(["/email", "/externalId"], uniqueKey.Paths);
     }
+
+    [Fact]
+    public void CreateContainerProperties_SinglePartitionKey_WithSingleUniqueKey()
+    {
+        var command = new MakeContainerCommand
+        {
+            Name = "Users",
+            PartitionKey = "/userId",
+            UniqueKey = "/email",
+        };
+
+        var properties = command.CreateContainerProperties(null!);
+
+        var uniqueKey = Assert.Single(properties.UniqueKeyPolicy.UniqueKeys);
+        Assert.Equal(["/email"], uniqueKey.Paths);
+    }
+
+    [Fact]
+    public void CreateContainerProperties_SinglePartitionKey_WithCommaSeparatedUniqueKeys()
+    {
+        var command = new MakeContainerCommand
+        {
+            Name = "Users",
+            PartitionKey = "/userId",
+            UniqueKey = "/email,/externalId",
+        };
+
+        var properties = command.CreateContainerProperties(null!);
+
+        var uniqueKey = Assert.Single(properties.UniqueKeyPolicy.UniqueKeys);
+        Assert.Equal(["/email", "/externalId"], uniqueKey.Paths);
+    }
 }

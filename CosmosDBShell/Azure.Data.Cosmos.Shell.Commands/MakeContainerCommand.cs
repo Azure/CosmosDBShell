@@ -96,20 +96,12 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
             return hpkProperties;
         }
 
-        var def = db.DefineContainer(this.Name, keys[0]);
+        var cp = new ContainerProperties(this.Name, keys[0]);
         if (this.UniqueKey != null)
         {
-            var key = def.WithUniqueKey();
-
-            foreach (var uk in (this.UniqueKey ?? string.Empty).Split("/").Select(s => "/" + s))
-            {
-                key = key.Path(uk);
-            }
-
-            def = key.Attach();
+            AddUniqueKeyPolicy(cp, this.UniqueKey);
         }
 
-        var cp = def.Build();
         return cp;
     }
 
