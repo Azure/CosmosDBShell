@@ -59,6 +59,29 @@ public class DataOperationTests : EmulatorFixtureTestBase
     }
 
     [Fact]
+    public async Task CreateItem_ForceAndUpsert_ReplaceExistingItem()
+    {
+        var id = $"create-force-{Guid.NewGuid():N}";
+        var original = JsonSerializer.Serialize(new { id, name = "before" });
+        var forceUpdated = JsonSerializer.Serialize(new { id, name = "force" });
+        var upsertUpdated = JsonSerializer.Serialize(new { id, name = "upsert" });
+
+        await ExecuteAsync($"create item '{original}'");
+
+        var forceOutput = await ExecuteWithOutputAsync($"create item '{forceUpdated}' --force");
+        var forceJson = JsonDocument.Parse(forceOutput).RootElement;
+        Assert.Equal("success", forceJson.GetProperty("result").GetString());
+
+        var upsertOutput = await ExecuteWithOutputAsync($"create item '{upsertUpdated}' --upsert");
+        var upsertJson = JsonDocument.Parse(upsertOutput).RootElement;
+        Assert.Equal("success", upsertJson.GetProperty("result").GetString());
+
+        var output = await ExecuteWithOutputAsync($"print {id} {id}");
+        var item = JsonDocument.Parse(output).RootElement;
+        Assert.Equal("upsert", item.GetProperty("name").GetString());
+    }
+
+    [Fact]
     public async Task Replace_UpdatesExistingItem()
     {
         var id = $"replace-{Guid.NewGuid():N}";

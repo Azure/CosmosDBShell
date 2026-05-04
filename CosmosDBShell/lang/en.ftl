@@ -295,6 +295,7 @@ command-create-description-data = JSON data for the item to create
 command-create-description-database = The database for the create operation
 command-create-description-container = The container for creating items
 command-create-description-index_policy = { command-mkcon-description-index_policy }
+command-create-description-force = { command-mkitem-description-force }
 command-create-error-container_name_required = Create container requires a container name.
 command-create-error-partition_key_required = Create container requires a partition key path that starts with '/', for example: create container name /pk. Learn more: https://github.com/Azure/CosmosDBShell/blob/main/docs/commands.md#create
 command-create-error-database_name_required = Create database requires a database name.

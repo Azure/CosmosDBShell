@@ -331,12 +331,16 @@ Arguments:
 Create item, container, or database.
 
 ```text
-Usage: create item [name] [partition_key]
+Usage: create item [name] [partition_key] [-force]
 
 Arguments:
     item            Object type: item, container, or database
-    [name]          Container or database name (Optional)
+    [name]          JSON data for item, or container/database name (Optional)
     [partition_key] Partition key for container (Optional)
+
+Options:
+    -force, -upsert
+                    Create or replace items when creating an item (upsert behavior)
 ```
 
 ### delete
