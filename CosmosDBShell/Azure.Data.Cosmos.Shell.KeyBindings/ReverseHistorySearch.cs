@@ -91,10 +91,48 @@ internal static class ReverseHistorySearch
     public static string FormatSearchPromptMarkup(string query, string match, bool hasMatch, bool isForwardSearch, ShellInterpreter? syntaxHighlighter, int? maxWidth)
     {
         var prefix = GetSearchPrefix(query, hasMatch, isForwardSearch);
-        var plainPrefix = $"({prefix})`{query}`: ";
+        var displayedQuery = TruncateQueryForPrompt(query, prefix, maxWidth);
+        var plainPrefix = $"({prefix})`{displayedQuery}`: ";
         int? maxMatchLength = maxWidth.HasValue ? Math.Max(0, maxWidth.Value - plainPrefix.Length) : null;
         var renderedMatch = HighlightMatch(TruncateMatch(match, query, hasMatch, maxMatchLength), query, hasMatch, syntaxHighlighter);
-        return $"({prefix})`{Markup.Escape(query)}`: {renderedMatch}";
+        return $"({prefix})`{Markup.Escape(displayedQuery)}`: {renderedMatch}";
+    }
+
+    /// <summary>
+    /// Ensures the rendered prompt prefix `({prefix})`{query}`: ` fits inside
+    /// <paramref name="maxWidth"/>. If the user's query is too long, the
+    /// returned string is shortened with an ellipsis so the whole prompt
+    /// stays on a single console row (<see cref="ReverseSearchHistoryCommand"/>'s
+    /// `ClearLine` only clears one row).
+    /// </summary>
+    private static string TruncateQueryForPrompt(string query, string prefix, int? maxWidth)
+    {
+        if (!maxWidth.HasValue)
+        {
+            return query;
+        }
+
+        // Layout: "(" + prefix + ")`" + query + "`: " minimum match budget.
+        const string Ellipsis = "...";
+        const int MinMatchBudget = 1;
+        var fixedOverhead = 1 + prefix.Length + 2 + 3; // "(", prefix, ")`", "`: "
+        var queryBudget = maxWidth.Value - fixedOverhead - MinMatchBudget;
+        if (queryBudget < 0)
+        {
+            queryBudget = 0;
+        }
+
+        if (query.Length <= queryBudget)
+        {
+            return query;
+        }
+
+        if (queryBudget <= Ellipsis.Length)
+        {
+            return query[..queryBudget];
+        }
+
+        return string.Concat(query.AsSpan(0, queryBudget - Ellipsis.Length), Ellipsis);
     }
 
     private static string GetSearchPrefix(string query, bool hasMatch, bool isForwardSearch)

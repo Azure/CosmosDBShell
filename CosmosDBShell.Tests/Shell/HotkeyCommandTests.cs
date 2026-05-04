@@ -562,6 +562,25 @@ public class HotkeyCommandTests
         Assert.Contains("[underline yellow]needle[/]", prompt);
     }
 
+    [Fact]
+    public void ReverseSearch_FormatSearchPromptMarkup_TruncatesLongQueryToFitMaxWidth()
+    {
+        const int MaxWidth = 40;
+        var longQuery = new string('a', 100);
+        var prompt = ReverseHistorySearch.FormatSearchPromptMarkup(
+            longQuery,
+            "match",
+            hasMatch: true,
+            isForwardSearch: false,
+            syntaxHighlighter: null,
+            maxWidth: MaxWidth);
+
+        var text = string.Concat(new Markup(prompt).GetSegments(AnsiConsole.Console).Select(s => s.Text));
+
+        Assert.True(text.Length <= MaxWidth, $"Prompt length {text.Length} exceeded max {MaxWidth}: '{text}'");
+        Assert.Contains("...", text);
+    }
+
     private static LineEditorContext CreateContext(string content, int position)
     {
         var buffer = new LineBuffer(content);

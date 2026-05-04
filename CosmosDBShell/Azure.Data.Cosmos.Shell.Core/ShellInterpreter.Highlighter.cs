@@ -58,6 +58,7 @@ public partial class ShellInterpreter : IHighlighter
                 statement.Accept(highlighter);
                 var result = highlighter.GetResult();
                 this.oldHighlightStatement = statement;
+                this.oldHighlightedText = text;
                 return result;
             }
             catch
@@ -92,6 +93,7 @@ public partial class ShellInterpreter : IHighlighter
     private void ClearHighlightStatement()
     {
         this.oldHighlightStatement = null;
+        this.oldHighlightedText = null;
     }
 
     internal class HighlightingVisitor : IAstVisitor
