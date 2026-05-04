@@ -24,7 +24,8 @@ public class ListCommandTests
             () => ListCommand.ReadQueryResponseAsync(response, CancellationToken.None));
 
         Assert.Equal("ls", exception.Command);
-        Assert.Contains("content stream", exception.Message);
+        Assert.Contains("no response body", exception.Message);
+        Assert.Contains("not an empty-container result", exception.Message);
         Assert.DoesNotContain("Value cannot be null", exception.Message);
     }
 
@@ -40,7 +41,8 @@ public class ListCommandTests
             () => ListCommand.ReadQueryResponseAsync(response, CancellationToken.None));
 
         Assert.Equal("ls", exception.Command);
-        Assert.Contains("content is empty", exception.Message);
+        Assert.Contains("empty response body", exception.Message);
+        Assert.Contains("not an empty-container result", exception.Message);
     }
 
     [Fact]
