@@ -20,6 +20,11 @@ internal class Program
 
     public static async Task Main(string[] args)
     {
+        // Normalize argv first so that any --lsp/--stdio token that is part
+        // of a -c/-k command tail is absorbed as command text and does not
+        // accidentally trigger LSP mode.
+        args = NormalizeArguments(args);
+
         // Handle LSP mode early, before any other code can write to stdout.
         // The LSP protocol requires exclusive access to stdin/stdout.
         if (args.Contains("--lsp") || args.Contains("--stdio"))
@@ -32,8 +37,6 @@ internal class Program
         IHost? host = null;
         try
         {
-            args = NormalizeArguments(args);
-
             // --help / --version handled manually so we can render our own
             // localized usage and version heading.
             if (args.Any(a => a is "--help" or "-h" or "-?" or "/?" or "/h"))
@@ -49,7 +52,11 @@ internal class Program
             }
 
             var (rootCommand, optionMap) = BuildRootCommand();
-            var parseResult = rootCommand.Parse(args);
+            var configuration = new System.CommandLine.CommandLineConfiguration(
+                rootCommand,
+                resources: new LocalizedCliResources());
+            var parser = new System.CommandLine.Parsing.Parser(configuration);
+            var parseResult = parser.Parse(args);
 
             if (parseResult.Errors.Count > 0)
             {
@@ -452,6 +459,10 @@ internal class Program
         var (rootCommand, _) = BuildRootCommand();
         var builder = new System.Text.StringBuilder();
         builder.AppendLine(MessageService.GetString("help-UsageHeadingText"));
+        var product = typeof(Program).Assembly.GetName().Name ?? "CosmosDBShell";
+        builder.AppendLine($"  {product.ToLowerInvariant()} [options] [-c|-k <command>...]");
+        builder.AppendLine("  Everything after -c / -k (or /c, /k) is taken as the shell command,");
+        builder.AppendLine("  so app-level options must come before -c / -k.");
         builder.AppendLine();
 
         foreach (var symbol in rootCommand.Options)
@@ -464,6 +475,12 @@ internal class Program
             var aliases = string.Join(", ", symbol.Aliases);
             builder.AppendLine($"  {aliases,-32} {symbol.Description}");
         }
+
+        // --help / --version are intercepted before parsing, so they are not
+        // declared as Option<T>. Surface them in the rendered help anyway so
+        // users can discover them.
+        builder.AppendLine($"  {"--help, -h, -?",-32} Show this help text and exit.");
+        builder.AppendLine($"  {"--version",-32} Show product version and exit.");
 
         return builder.ToString();
     }
@@ -484,6 +501,34 @@ internal class Program
         Option<bool> StartLspServer,
         Option<bool> LspStdio,
         Option<bool> Verbose);
+
+    /// <summary>
+    /// Maps the most common <c>System.CommandLine</c> parse error messages
+    /// to the existing <c>help-error-*</c> entries in <c>en.ftl</c> so the
+    /// localized help/error strings authored for the previous parser are not
+    /// silently lost. Anything not overridden falls back to the default
+    /// English text from <see cref="System.CommandLine.LocalizationResources"/>.
+    /// </summary>
+    private sealed class LocalizedCliResources : System.CommandLine.LocalizationResources
+    {
+        public override string UnrecognizedCommandOrArgument(string arg) =>
+            MessageService.GetArgsString("help-error-UnknownOptionError", "option", arg);
+
+        public override string UnrecognizedArgument(string unrecognizedArg, IReadOnlyCollection<string> allowedValues) =>
+            MessageService.GetArgsString("help-error-UnknownOptionError", "option", unrecognizedArg);
+
+        public override string ExpectsOneArgument(System.CommandLine.Parsing.SymbolResult symbolResult) =>
+            MessageService.GetArgsString("help-error-MissingValueOptionError", "option", symbolResult.Symbol.Name);
+
+        public override string NoArgumentProvided(System.CommandLine.Parsing.SymbolResult symbolResult) =>
+            MessageService.GetArgsString("help-error-MissingValueOptionError", "option", symbolResult.Symbol.Name);
+
+        public override string RequiredArgumentMissing(System.CommandLine.Parsing.SymbolResult symbolResult) =>
+            MessageService.GetArgsString("help-error-MissingRequiredOptionError2", "option", symbolResult.Symbol.Name);
+
+        public override string ArgumentConversionCannotParseForOption(string value, string optionName, Type expectedType) =>
+            MessageService.GetArgsString("help-error-BadFormatConversionError2", "option", optionName);
+    }
 
     public class CosmosShellOptions
     {
