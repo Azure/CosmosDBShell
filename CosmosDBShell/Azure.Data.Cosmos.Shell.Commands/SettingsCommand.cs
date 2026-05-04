@@ -109,7 +109,7 @@ internal class SettingsCommand : CosmosCommand
             }
             else
             {
-                AnsiConsole.MarkupLine($"[red]{Markup.Escape(e.Message)}[/]");
+                AnsiConsole.MarkupLine($"[red]{Markup.Escape(CommandException.GetDisplayMessage(e))}[/]");
             }
         }
 
@@ -132,7 +132,7 @@ internal class SettingsCommand : CosmosCommand
             }
             else
             {
-                AnsiConsole.MarkupLine($"[red]{Markup.Escape(e.Message)}[/]");
+                AnsiConsole.MarkupLine($"[red]{Markup.Escape(CommandException.GetDisplayMessage(e))}[/]");
             }
 
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));

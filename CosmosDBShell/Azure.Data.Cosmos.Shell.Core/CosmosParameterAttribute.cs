@@ -21,4 +21,11 @@ internal class CosmosParameterAttribute : Attribute
     public bool IsRequired { get; set; }
 
     public ParameterType ParameterType { get; set; } = ParameterType.Unknown;
+
+    /// <summary>
+    /// Optional Fluent localization key resolved via <see cref="MessageService"/> when the
+    /// parameter is required but missing. When unset, a generic "Missing required parameter"
+    /// message is used.
+    /// </summary>
+    public string? RequiredErrorKey { get; set; }
 }

@@ -10,6 +10,7 @@ using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 /// <summary>
 /// Represents a command invocation as an expression, allowing commands to be used
@@ -225,40 +226,7 @@ internal class CommandExpression : Expression
                 var stringValue = evaluatedValue.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty;
 
                 var targetType = Nullable.GetUnderlyingType(pi.PropertyType) ?? pi.PropertyType;
-
-                if (targetType == typeof(bool))
-                {
-                    if (string.Equals(stringValue, "true", StringComparison.OrdinalIgnoreCase))
-                    {
-                        pi.SetValue(cmd, true);
-                    }
-                    else if (string.Equals(stringValue, "false", StringComparison.OrdinalIgnoreCase))
-                    {
-                        pi.SetValue(cmd, false);
-                    }
-                    else
-                    {
-                        throw new CommandException(this.Name, $"Invalid boolean value '{stringValue}' for option '{rawName}'. Expected 'true' or 'false'.");
-                    }
-                }
-                else if (targetType.IsEnum)
-                {
-                    if (Enum.TryParse(targetType, stringValue, ignoreCase: true, out var enumVal))
-                    {
-                        pi.SetValue(cmd, enumVal);
-                    }
-                    else
-                    {
-                        var validValues = string.Join(", ", Enum.GetNames(targetType));
-                        throw new CommandException(this.Name, $"Invalid value '{stringValue}' for option '{rawName}'. Valid values are: {validValues}");
-                    }
-                }
-                else
-                {
-                    // Convert string to target type (e.g., int, int?, etc.)
-                    var convertedValue = Convert.ChangeType(stringValue, targetType);
-                    pi.SetValue(cmd, convertedValue);
-                }
+                pi.SetValue(cmd, CommandOptionBinder.ConvertOptionValue(this.Name, rawName, stringValue, targetType));
             }
             else
             {
@@ -310,7 +278,10 @@ internal class CommandExpression : Expression
             {
                 if (attr.IsRequired)
                 {
-                    throw new CommandException(this.Name, $"Missing required parameter: {prop.Name}");
+                    var message = !string.IsNullOrEmpty(attr.RequiredErrorKey)
+                        ? MessageService.GetString(attr.RequiredErrorKey)
+                        : $"Missing required parameter: {prop.Name}";
+                    throw new CommandException(this.Name, message);
                 }
 
                 break;

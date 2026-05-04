@@ -45,6 +45,7 @@ error-unknown_option = Unknown option '{ $option }'
 error-missing_value = Option value expected for '{ $option }'
 error-missing_required_argument = Missing required argument '{ $arg }'
 error-invalid_output_format = Output format '{ $format }' is invalid.
+error-request_timeout = The request timed out while communicating with Azure Cosmos DB. Check your network connection and try again. Run with --verbose to show full diagnostics.
 error-invalid_bucket_value = Throughput bucket value '{ $bucket }' is invalid. Valid range is 0-5.
 error-variable_not_set = Variable '{ $name }' is not set.
 error-mutually-exclusive-options = Options '-c' and '-k' cannot be used together.
@@ -179,8 +180,8 @@ command-mkcon-description-scale = Container scale (manual or auto)
 command-mkcon-description-ru = Database Max RU/s (default: 1000)
 command-mkcon-description-database = The database where the container should be created
 command-mkcon-CreatedContainer = Created container { $container }
-command-mkcon-error_partition_key_empty = Partition key cannot be empty.
-command-mkcon-error_partition_key_slash = Partition key must start with a forward slash (/).
+command-mkcon-error_partition_key_empty = Partition key path cannot be empty. Provide a path that starts with '/', for example: mkcon name /pk.
+command-mkcon-error_partition_key_slash = Partition key path must start with a forward slash (/), for example: mkcon name /pk.
 command-mkcon-error_invalid_index_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-mkcon-description-index_policy = The indexing policy as a JSON string. Follows the Cosmos DB indexing policy schema.
 
@@ -201,6 +202,9 @@ command-ls-description-container = The container to list items from
 command-ls-description-key = The property to match against (default: container partition key property)
 command-ls-container = Container { $container }
 command-ls-found_items = found { $count } items.
+command-ls-error-request_failed = List request failed with status code { $statusCode } ({ $status }).
+command-ls-error-no_content_stream = The list request completed, but Cosmos DB returned no response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
+command-ls-error-empty_content = The list request completed, but Cosmos DB returned an empty response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
 command-results-limit_reached =
     { $count ->
         [one] Results limited to { $count } item. Use --max to change the limit or --max 0 for no limit.
@@ -243,7 +247,7 @@ command-create-description-database = The database for the create operation
 command-create-description-container = The container for creating items
 command-create-description-index_policy = { command-mkcon-description-index_policy }
 command-create-error-container_name_required = Create container requires a container name.
-command-create-error-partition_key_required = Create container requires a partition key.
+command-create-error-partition_key_required = Create container requires a partition key path that starts with '/', for example: create container name /pk. Learn more: https://github.com/Azure/CosmosDBShell/blob/main/docs/commands.md#create
 command-create-error-database_name_required = Create database requires a database name.
 command-create-error-invalid_item_type = { command-delete-error-invalid_item_type }
 
@@ -296,6 +300,7 @@ command-cd-error-cant_change_inside_container = Can't change from in a container
 command-cd-error-database_does_not_exist = Database '{ $db }' not found.
 command-cd-error-container_does_not_exist = Container '{ $container }' not found.
 command-cd-error-item_and_options = Cannot specify both path and --database/--container options.
+command-cd-error-path_too_deep = '{ $path }' goes beyond the /database/container hierarchy. Use 'cd ..' to go up first, or use an absolute path like '/database/container'.
 
 command-cat-description = Displays a file
 command-cat-description-path = The path of the file to view.

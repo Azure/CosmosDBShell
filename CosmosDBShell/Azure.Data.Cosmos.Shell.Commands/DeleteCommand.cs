@@ -33,15 +33,13 @@ internal class DeleteCommand : CosmosCommand
         var item = (this.Item ?? string.Empty).ToUpperInvariant();
         if (CreateCommand.IsItem(item))
         {
-            await shell.State.AcceptAsync(
-                new RmCommand()
-                {
-                    Pattern = this.Pattern,
-                    Database = this.Database,
-                    Container = this.Container,
-                },
-                commandState,
-                token);
+            var rmCommand = new RmCommand()
+            {
+                Pattern = this.Pattern,
+                Database = this.Database,
+                Container = this.Container,
+            };
+            await rmCommand.ExecuteAsync(shell, commandState, commandText, token);
         }
         else if (CreateCommand.IsContainer(item))
         {

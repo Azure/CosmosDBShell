@@ -1,0 +1,96 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    name: Offline Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            global.json
+            Directory.Packages.props
+            **/*.csproj
+
+      - name: Restore
+        run: dotnet restore CosmosDBShell.Tests/CosmosDBShell.Tests.csproj
+
+      - name: Build
+        run: dotnet build CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --no-restore
+
+      - name: Run offline tests
+        run: dotnet test CosmosDBShell.Tests/ --filter "Category!=Emulator" --no-build --no-restore
+
+  emulator-tests:
+    name: Emulator Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      cosmosdb:
+        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+        ports:
+          - 8081:8081
+        env:
+          PROTOCOL: https
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            global.json
+            Directory.Packages.props
+            **/*.csproj
+
+      - name: Wait for Cosmos DB Emulator
+        run: |
+          echo "Waiting for Cosmos DB Emulator to start..."
+          for i in $(seq 1 90); do
+            if curl -ks https://localhost:8081/ > /dev/null 2>&1; then
+              echo "Emulator is ready."
+              exit 0
+            fi
+            echo "Attempt $i: Emulator not ready yet..."
+            sleep 1
+          done
+          echo "Emulator did not start in time."
+          exit 1
+
+      - name: Trust Cosmos DB Emulator Certificate
+        run: |
+          curl -k https://localhost:8081/_explorer/emulator.pem > ~/emulatorcert.crt
+          sudo cp ~/emulatorcert.crt /usr/local/share/ca-certificates/
+          sudo update-ca-certificates
+
+      - name: Restore
+        run: dotnet restore CosmosDBShell.Tests/CosmosDBShell.Tests.csproj
+
+      - name: Build
+        run: dotnet build CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --no-restore
+
+      - name: Run emulator tests
+        # CI should fail if the emulator service is not actually reachable. The
+        # MSBuild flag compiles emulator tests in "required" mode; local runs
+        # without it still skip emulator tests when no emulator is running.
+        run: dotnet test CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --filter "Category=Emulator" --no-restore -p:CosmosRequireEmulator=true

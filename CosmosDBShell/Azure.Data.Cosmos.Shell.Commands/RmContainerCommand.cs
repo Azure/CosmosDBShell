@@ -82,7 +82,7 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
             if (containerProperty.Id == this.Name)
             {
                 var c = client.GetContainer(databaseName, this.Name);
-                if (ShellInterpreter.Confirm("command-rmcon-confirm_container_deletion") || this.Force == true)
+                if (this.Force == true || ShellInterpreter.Confirm("command-rmcon-confirm_container_deletion"))
                 {
                     await c.DeleteContainerAsync(cancellationToken: token);
                     CosmosCompleteCommand.ClearContainers();

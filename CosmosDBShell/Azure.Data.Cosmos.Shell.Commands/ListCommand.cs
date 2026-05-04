@@ -44,7 +44,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
-        this.matcher = string.IsNullOrEmpty(this.Filter) ? null : new PatternMatcher(this.Filter);
+        this.matcher = HasClientSideFilter(this.Filter) ? new PatternMatcher(this.Filter!) : null;
         return await shell.State.AcceptAsync(this, shell, token) ?? new CommandState();
     }
 
@@ -162,44 +162,36 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         }
 
         var containerResponse = await container.ReadContainerAsync(cancellationToken: token);
-        var partitionKeyPath = containerResponse.Resource.PartitionKeyPath;
+        var partitionKeyPropertyNames = GetPartitionKeyPropertyNames(containerResponse.Resource.PartitionKeyPaths);
+        var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
 
-        // Remove the leading '/' to get the property name
-        var partitionKeyPropertyName = partitionKeyPath.TrimStart('/');
-
-        // Determine which key to match against (partition key by default, or custom key if specified)
-        var matchKeyPropertyName = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyName : this.Key;
-
-        using var feedIterator = container.GetItemQueryStreamIterator("SELECT * FROM c", requestOptions: opt);
+        var queryText = BuildItemQueryText(effectiveMaxItemCount, this.Filter);
+        var usesServerSideTop = effectiveMaxItemCount.HasValue && !HasClientSideFilter(this.Filter);
+        using var feedIterator = container.GetItemQueryStreamIterator(queryText, requestOptions: opt);
         var returnState = new CommandState();
         returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
         var list = new List<JsonElement>();
         var limitReached = false;
         while (feedIterator.HasMoreResults)
         {
-            var response = await feedIterator.ReadNextAsync(token);
-            using var streamReader = new StreamReader(response.Content);
-            var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync());
+            using var response = await feedIterator.ReadNextAsync(token);
+            using var queryDocument = await ReadQueryResponseAsync(response, token);
 
             foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
             {
                 // Check if pattern matches
-                bool shouldList = this.matcher == null || this.Filter == "*"; // No filter or wildcard = list all
+                bool shouldList = this.matcher == null;
 
-                if (!shouldList && TryGetNestedProperty(element, matchKeyPropertyName, out var matchKeyElement))
-                {
-                    var matchKeyValue = GetValueAsString(matchKeyElement);
-                    shouldList = this.matcher!.Match(matchKeyValue);
-                }
+                shouldList = shouldList || MatchesAnyPath(element, matchKeyPropertyNames, this.matcher!);
 
                 if (shouldList)
                 {
-                    list.Add(element);
+                    list.Add(element.Clone());
                 }
 
                 if (ResultLimit.IsLimitReached(list.Count, effectiveMaxItemCount))
                 {
-                    limitReached = feedIterator.HasMoreResults;
+                    limitReached = ShouldReportLimitReached(list.Count, effectiveMaxItemCount, usesServerSideTop, feedIterator.HasMoreResults);
                     break;
                 }
             }
@@ -220,8 +212,78 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         return returnState;
     }
 
+    internal static async Task<JsonDocument> ReadQueryResponseAsync(ResponseMessage response, CancellationToken token)
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = response.Content != null
+                ? await ReadResponseContentAsync(response.Content, token)
+                : string.Empty;
+            var message = string.IsNullOrWhiteSpace(response.ErrorMessage) ? errorContent : response.ErrorMessage;
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                message = MessageService.GetString("command-ls-error-request_failed", new Dictionary<string, object>
+                {
+                    { "statusCode", (int)response.StatusCode },
+                    { "status", response.StatusCode },
+                });
+            }
+
+            throw new CommandException("ls", message);
+        }
+
+        if (response.Content == null)
+        {
+            throw new CommandException("ls", MessageService.GetString("command-ls-error-no_content_stream"));
+        }
+
+        var responseContent = await ReadResponseContentAsync(response.Content, token);
+        if (string.IsNullOrWhiteSpace(responseContent))
+        {
+            throw new CommandException("ls", MessageService.GetString("command-ls-error-empty_content"));
+        }
+
+        return JsonDocument.Parse(responseContent);
+    }
+
+    private static async Task<string> ReadResponseContentAsync(Stream content, CancellationToken token)
+    {
+        using var streamReader = new StreamReader(content);
+        return await streamReader.ReadToEndAsync(token);
+    }
+
     private bool IsMatch(string item)
     {
         return this.matcher == null || this.matcher.Match(item);
+    }
+
+    /// <summary>
+    /// Builds the SQL text for listing items in a container. When the caller
+    /// supplies a finite limit and there is no client-side filter that could
+    /// discard rows, switches to <c>SELECT TOP n * FROM c</c> so the server
+    /// stops scanning once the requested number of rows has been produced.
+    /// With a filter the server cannot honor the cap (the substring match is
+    /// applied in the shell against the partition or custom key), so we fall
+    /// back to <c>SELECT * FROM c</c> and rely on the existing client-side
+    /// break to stop paging.
+    /// </summary>
+    internal static string BuildItemQueryText(int? effectiveMaxItemCount, string? filter)
+    {
+        if (effectiveMaxItemCount.HasValue && !HasClientSideFilter(filter))
+        {
+            return $"SELECT TOP {effectiveMaxItemCount.Value} * FROM c";
+        }
+
+        return "SELECT * FROM c";
+    }
+
+    internal static bool HasClientSideFilter(string? filter)
+    {
+        return !string.IsNullOrEmpty(filter) && filter != "*";
+    }
+
+    internal static bool ShouldReportLimitReached(int currentCount, int? effectiveMaxItemCount, bool usesServerSideTop, bool iteratorHasMoreResults)
+    {
+        return ResultLimit.IsLimitReached(currentCount, effectiveMaxItemCount) && (usesServerSideTop || iteratorHasMoreResults);
     }
 }

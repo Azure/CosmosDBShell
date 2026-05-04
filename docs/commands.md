@@ -72,6 +72,12 @@ Examples:
     cd                    # return to root
 ```
 
+The Cosmos DB hierarchy has at most two levels (`/database/container`), so
+paths that would resolve below `/database/container` are rejected. From
+inside a container, plain names like `cd customers` do not navigate to a
+sibling container; use `cd ../customers` or a fully qualified absolute path
+such as `cd /MyDb/customers`. See [Navigation](navigation.md) for more.
+
 ### pwd
 
 Show the current shell location.
@@ -190,8 +196,12 @@ Usage: mkcon name partition_key [unique_key]
 
 Arguments:
     name            The container to create
-    partition_key   The partition key path
+    partition_key   The partition key path. For hierarchical partition keys, use comma-separated paths such as /tenantId,/userId,/sessionId
     [unique_key]    Unique key paths (Optional)
+
+Examples:
+    mkcon Products /categoryId
+    mkcon Orders /customerId,/orderId
 ```
 
 ### rmdb
