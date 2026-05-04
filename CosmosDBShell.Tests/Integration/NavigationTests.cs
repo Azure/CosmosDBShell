@@ -138,6 +138,13 @@ public class NavigationTests : EmulatorFixtureTestBase
 
         var state = await ExecuteAsync("cd extra/too-deep");
         Assert.True(state.IsError, "cd should fail when a relative path from a database would exceed /database/container");
+
+        // The shell must stay on the original database after the failure;
+        // a partial-state-change regression should not pass this test.
+        var currentLocation = await GetCurrentLocationAsync();
+        Assert.Contains(Fixture.DatabaseName, currentLocation);
+        Assert.DoesNotContain("extra", currentLocation);
+        Assert.DoesNotContain("too-deep", currentLocation);
     }
 
     private async Task NavigateToRootAsync()

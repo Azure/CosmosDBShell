@@ -72,6 +72,12 @@ Examples:
     cd                    # return to root
 ```
 
+The Cosmos DB hierarchy has at most two levels (`/database/container`), so
+paths that would resolve below `/database/container` are rejected. From
+inside a container, plain names like `cd customers` do not navigate to a
+sibling container; use `cd ../customers` or a fully qualified absolute path
+such as `cd /MyDb/customers`. See [Navigation](navigation.md) for more.
+
 ### pwd
 
 Show the current shell location.
