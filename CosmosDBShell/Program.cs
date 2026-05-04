@@ -26,8 +26,12 @@ internal class Program
         args = NormalizeArguments(args);
 
         // Handle LSP mode early, before any other code can write to stdout.
-        // The LSP protocol requires exclusive access to stdin/stdout.
-        if (args.Contains("--lsp") || args.Contains("--stdio"))
+        // The LSP protocol requires exclusive access to stdin/stdout. Only
+        // inspect the prefix before -c / -k so that a command tail of literally
+        // "--lsp" or "--stdio" is forwarded to the shell command rather than
+        // accidentally starting the LSP server.
+        var preCommandLsp = TakePreCommandArgs(args);
+        if (preCommandLsp.Any(a => a is "--lsp" or "--stdio"))
         {
             var server = await LspServer.CreateLanguageServerAsync();
             await server.WaitForExit;
@@ -38,14 +42,18 @@ internal class Program
         try
         {
             // --help / --version handled manually so we can render our own
-            // localized usage and version heading.
-            if (args.Any(a => a is "--help" or "-h" or "-?" or "/?" or "/h"))
+            // localized usage and version heading. Only inspect the prefix
+            // before -c / -k so that a command tail of literally "--help" or
+            // "--version" (e.g. `-c --help`) is forwarded to the shell command
+            // instead of intercepted here.
+            var preCommandArgs = TakePreCommandArgs(args);
+            if (preCommandArgs.Any(a => a is "--help" or "-h" or "-?" or "/?" or "/h"))
             {
                 ShellInterpreter.WriteLine(BuildHelpText());
                 return;
             }
 
-            if (args.Any(a => a is "--version"))
+            if (preCommandArgs.Any(a => a is "--version"))
             {
                 WriteVersionHeading();
                 return;
@@ -358,6 +366,26 @@ internal class Program
         }
 
         return [.. result];
+    }
+
+    /// <summary>
+    /// Returns the argv prefix that precedes the first <c>-c</c> / <c>-k</c>
+    /// (already normalized from <c>/c</c>, <c>/k</c>). Anything from the
+    /// command marker onward is the consume-rest command tail and must not
+    /// be inspected for app-level flags such as <c>--help</c>, <c>--version</c>,
+    /// <c>--lsp</c>, or <c>--stdio</c>.
+    /// </summary>
+    internal static string[] TakePreCommandArgs(string[] args)
+    {
+        for (int index = 0; index < args.Length; index++)
+        {
+            if (args[index] is "-c" or "-k")
+            {
+                return args.Take(index).ToArray();
+            }
+        }
+
+        return args;
     }
 
     private static (RootCommand Command, OptionMap Map) BuildRootCommand()

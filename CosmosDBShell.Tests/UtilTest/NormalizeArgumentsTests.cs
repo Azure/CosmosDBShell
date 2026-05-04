@@ -80,4 +80,34 @@ public class NormalizeArgumentsTests
             ["-c", "seed.csh", "--connect", "xyz"]);
         Assert.Equal(["-c", "seed.csh --connect xyz"], result);
     }
+
+    [Fact]
+    public void TakePreCommandArgs_ReturnsEverythingBeforeDashC()
+    {
+        var result = Program.TakePreCommandArgs(
+            ["--verbose", "-c", "help"]);
+        Assert.Equal(["--verbose"], result);
+    }
+
+    [Fact]
+    public void TakePreCommandArgs_ReturnsEverythingBeforeDashK()
+    {
+        var result = Program.TakePreCommandArgs(
+            ["--connect", "ep", "-k", "help"]);
+        Assert.Equal(["--connect", "ep"], result);
+    }
+
+    [Fact]
+    public void TakePreCommandArgs_NoCommandMarker_ReturnsAll()
+    {
+        var input = new[] { "--connect", "endpoint", "--verbose" };
+        Assert.Equal(input, Program.TakePreCommandArgs(input));
+    }
+
+    [Fact]
+    public void TakePreCommandArgs_DashCFirst_ReturnsEmpty()
+    {
+        var result = Program.TakePreCommandArgs(["-c", "--help"]);
+        Assert.Empty(result);
+    }
 }
