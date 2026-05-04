@@ -80,9 +80,11 @@ internal partial class ConnectCommand : CosmosCommand
             }
         }
 
+        var connectTokenSource = ShellInterpreter.UserCancellationTokenSource;
+        var connectToken = connectTokenSource.Token;
         try
         {
-            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, token: token);
+            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, token: connectToken);
             var returnState = new CommandState
             {
                 IsPrinted = true,
@@ -95,9 +97,9 @@ internal partial class ConnectCommand : CosmosCommand
             returnState.Result = new ShellJson(resultElement);
             return returnState;
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        catch (OperationCanceledException) when (connectToken.IsCancellationRequested)
         {
-            throw;
+            return commandState;
         }
         catch (Exception e)
         {

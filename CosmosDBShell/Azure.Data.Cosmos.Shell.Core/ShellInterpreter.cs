@@ -232,7 +232,15 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     public void CancelPrompt()
     {
-        currentTokenSource?.Cancel();
+        try
+        {
+            currentTokenSource?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            currentTokenSource = null;
+        }
+
         this.editorCancelTokenSource.Cancel();
         this.editorCancelTokenSource = new CancellationTokenSource();
     }

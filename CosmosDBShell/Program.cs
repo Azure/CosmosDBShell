@@ -115,7 +115,7 @@ internal class Program
 
                 if (o.ConnectionString != null)
                 {
-                    using var connectTokenSource = ShellInterpreter.UserCancellationTokenSource;
+                    var connectTokenSource = ShellInterpreter.UserCancellationTokenSource;
                     var connectToken = connectTokenSource.Token;
                     try
                     {

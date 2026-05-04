@@ -21,4 +21,15 @@ public class ConnectCommandTests
             mode: ConnectionMode.Gateway,
             token: cancellationTokenSource.Token));
     }
+
+    [Fact]
+    public void CancelPrompt_AfterDisposedCurrentTokenSource_DoesNotThrow()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using (ShellInterpreter.UserCancellationTokenSource)
+        {
+        }
+
+        shell.CancelPrompt();
+    }
 }
