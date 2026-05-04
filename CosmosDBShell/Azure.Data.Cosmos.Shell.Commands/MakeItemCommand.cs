@@ -166,7 +166,7 @@ internal class MakeItemCommand : CosmosCommand
                                     "status",
                                     ce.StatusCode.ToString(),
                                     "message",
-                                    ce.Message));
+                                    CommandException.GetDisplayMessage(ce)));
                         }
                     }
 
@@ -232,7 +232,7 @@ internal class MakeItemCommand : CosmosCommand
                                 "status",
                                 ce.StatusCode.ToString(),
                                 "message",
-                                ce.Message),
+                                CommandException.GetDisplayMessage(ce)),
                             ce);
                     }
                 }

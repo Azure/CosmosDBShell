@@ -52,6 +52,59 @@ public class ExecuteCommandExceptionTests
     }
 
     [Fact]
+    public void CommandException_CosmosTimeoutCancellation_UsesFriendlyMessage()
+    {
+        var exception = new OperationCanceledException(
+            "The operation was canceled." + Environment.NewLine +
+            "Cancellation Token has expired: True. Learn more at: https://aka.ms/cosmosdb-tsg-request-timeout" + Environment.NewLine +
+            "CosmosDiagnostics: {\"Summary\":{\"DirectCalls\":{\"(410, 20001)\":3}}}");
+
+        var commandException = new CommandException("query", exception);
+
+        Assert.Contains("request timed out", commandException.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("--verbose", commandException.Message);
+        Assert.DoesNotContain("CosmosDiagnostics", commandException.Message);
+        Assert.DoesNotContain("Cancellation Token has expired", commandException.Message);
+    }
+
+    [Fact]
+    public void CommandException_NestedCosmosTimeoutCancellation_UsesFriendlyMessage()
+    {
+        var timeout = new OperationCanceledException("A client transport error occurred: The request timed out while waiting for a server response. ReceiveTimeout");
+        var exception = new InvalidOperationException("Outer failure", timeout);
+
+        var commandException = new CommandException("connect", exception);
+
+        Assert.Contains("request timed out", commandException.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ReceiveTimeout", commandException.Message);
+        Assert.DoesNotContain("Outer failure", commandException.Message);
+    }
+
+    [Fact]
+    public void CommandException_HttpTimeoutStatus_UsesFriendlyMessage()
+    {
+        var message = CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, "raw timeout body");
+
+        Assert.Contains("request timed out", message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("raw timeout body", message);
+    }
+
+    [Fact]
+    public void CommandException_ResponseStatusTimeout_PreservesRawMessageForVerboseDiagnostics()
+    {
+        var exception = CommandException.FromResponseStatus(
+            "query",
+            System.Net.HttpStatusCode.RequestTimeout,
+            "raw timeout body with CosmosDiagnostics");
+
+        Assert.Contains("request timed out", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("CosmosDiagnostics", exception.Message);
+        Assert.NotNull(exception.InnerException);
+        Assert.Equal("raw timeout body with CosmosDiagnostics", exception.InnerException.Message);
+        Assert.Contains("CosmosDiagnostics", exception.ToString());
+    }
+
+    [Fact]
     public async Task ExecuteCommandAsync_ShellException_PreservesExceptionInErrorState()
     {
         using var interpreter = CreateInterpreter();
