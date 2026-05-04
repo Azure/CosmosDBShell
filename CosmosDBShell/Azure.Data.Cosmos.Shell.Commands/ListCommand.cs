@@ -162,13 +162,8 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         }
 
         var containerResponse = await container.ReadContainerAsync(cancellationToken: token);
-        var partitionKeyPath = containerResponse.Resource.PartitionKeyPath;
-
-        // Remove the leading '/' to get the property name
-        var partitionKeyPropertyName = partitionKeyPath.TrimStart('/');
-
-        // Determine which key to match against (partition key by default, or custom key if specified)
-        var matchKeyPropertyName = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyName : this.Key;
+        var partitionKeyPropertyNames = GetPartitionKeyPropertyNames(containerResponse.Resource.PartitionKeyPaths);
+        var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
 
         using var feedIterator = container.GetItemQueryStreamIterator("SELECT * FROM c", requestOptions: opt);
         var returnState = new CommandState();
@@ -185,11 +180,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
                 // Check if pattern matches
                 bool shouldList = this.matcher == null || this.Filter == "*"; // No filter or wildcard = list all
 
-                if (!shouldList && TryGetNestedProperty(element, matchKeyPropertyName, out var matchKeyElement))
-                {
-                    var matchKeyValue = GetValueAsString(matchKeyElement);
-                    shouldList = this.matcher!.Match(matchKeyValue);
-                }
+                shouldList = shouldList || MatchesAnyPath(element, matchKeyPropertyNames, this.matcher!);
 
                 if (shouldList)
                 {
