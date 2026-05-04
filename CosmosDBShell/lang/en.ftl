@@ -165,6 +165,7 @@ command-mkitem-upserted-all-failed = Failed to upsert all { $count } items
 command-mkitem-created-all-failed = Failed to create all { $count } items
 command-mkitem-error-creation-failed = Failed to create item: { $status } - { $message }
 command-mkitem-error-status-returned = Item creation returned: { $status }
+command-mkitem-error-array_failed = Failed to write { $failed } of { $total } items.
 
 command-replace-description = Replaces existing items in a container
 command-replace-description-data = JSON data for the item to replace
@@ -300,6 +301,7 @@ command-create-error-container_name_required = Create container requires a conta
 command-create-error-partition_key_required = Create container requires a partition key path that starts with '/', for example: create container name /pk. Learn more: https://github.com/Azure/CosmosDBShell/blob/main/docs/commands.md#create
 command-create-error-database_name_required = Create database requires a database name.
 command-create-error-invalid_item_type = { command-delete-error-invalid_item_type }
+command-create-error-force_only_for_items = The --force/--upsert option is only valid for `create item`.
 
 command-connect-description = Connect command.
 command-connect-description-connectionString = The account connection string can be a plain url with browser access token or a full connection string with AccountEndpoint and AccountKey values.

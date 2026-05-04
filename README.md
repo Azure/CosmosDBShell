@@ -7,7 +7,7 @@ Lightweight CLI for Azure Cosmos DB.
 - Connect via Entra ID, connection string, or Azure CLI/Developer tools
 - Navigate with `ls` and `cd` (Account -> Databases -> Containers -> Items)
 - Inspect the current location with `pwd`
-- Create, query, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `rm`
+- Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
 - Pipelines and scripting with variables, loops, functions
 - MCP server for AI/tool integration
 

@@ -248,6 +248,22 @@ internal class MakeItemCommand : CosmosCommand
                                 "count",
                                 failCount));
                     }
+
+                    // Bulk write summary is informational; signal the caller
+                    // when one or more items failed so scripted callers don't
+                    // treat a partial/total failure as success.
+                    if (failCount > 0)
+                    {
+                        var totalCount = createdCount + replacedCount + failCount;
+                        throw new CommandException(
+                            "mkitem",
+                            MessageService.GetArgsString(
+                                "command-mkitem-error-array_failed",
+                                "failed",
+                                failCount,
+                                "total",
+                                totalCount));
+                    }
                 }
                 else
                 {

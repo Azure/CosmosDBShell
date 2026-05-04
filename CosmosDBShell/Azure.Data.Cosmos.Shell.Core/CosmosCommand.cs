@@ -288,7 +288,18 @@ internal abstract class CosmosCommand
                     builder.Add(element.GetString());
                     break;
                 case JsonValueKind.Number:
-                    builder.Add(element.GetDouble());
+                    // Use the most precise numeric type available so 64-bit
+                    // integer key components above 2^53 are not silently
+                    // rounded by GetDouble().
+                    if (element.TryGetInt64(out var longValue))
+                    {
+                        builder.Add(longValue);
+                    }
+                    else
+                    {
+                        builder.Add(element.GetDouble());
+                    }
+
                     break;
                 case JsonValueKind.True:
                     builder.Add(true);
@@ -320,12 +331,21 @@ internal abstract class CosmosCommand
         if (LooksLikeJsonLiteral(trimmed))
         {
             using var doc = JsonDocument.Parse(trimmed);
-            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+            var root = doc.RootElement;
+            if (root.ValueKind == JsonValueKind.Array)
             {
-                return CreatePartitionKey(doc.RootElement.EnumerateArray());
+                return CreatePartitionKey(root.EnumerateArray());
             }
 
-            return CreatePartitionKey(doc.RootElement);
+            // Reject object-shaped JSON: a JSON object cannot represent a
+            // partition key value. Surface this as a JsonException so callers
+            // can translate it into their localized invalid-PK message.
+            if (root.ValueKind == JsonValueKind.Object)
+            {
+                throw new JsonException("Partition key cannot be a JSON object.");
+            }
+
+            return CreatePartitionKey(root);
         }
 
         return new PartitionKey(rawValue);
@@ -384,7 +404,7 @@ internal abstract class CosmosCommand
         }
 
         var first = trimmed[0];
-        if (first == '[' || first == '"' || first == '-' || char.IsDigit(first))
+        if (first == '[' || first == '{' || first == '"' || first == '-' || char.IsDigit(first))
         {
             return true;
         }
