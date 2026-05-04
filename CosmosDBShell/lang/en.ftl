@@ -151,6 +151,7 @@ command-mkitem-description = Creates items in container
 command-mkitem-description-data = JSON data for the item to create
 command-mkitem-description-database = The database where items should be created
 command-mkitem-description-container = The container where items should be created
+command-mkitem-description-force = Create or replace items (upsert behavior)
 command-mkitem-created-success = Successfully created item (RU charge: { $charge })
 command-mkitem-created-multiple = Successfully created { $count } { $count ->
     [one] item
@@ -160,9 +161,65 @@ command-mkitem-created-partial = Created { $success } { $success ->
     [one] item
     *[other] items
 }, { $failed } failed (RU charge: { $charge })
+command-mkitem-upserted-created = Successfully created item (RU charge: { $charge })
+command-mkitem-upserted-replaced = Successfully replaced item (RU charge: { $charge })
+command-mkitem-upserted-multiple = Upserted items: { $created } created, { $replaced } replaced (RU charge: { $charge })
+command-mkitem-upserted-partial = Upserted items: { $created } created, { $replaced } replaced, { $failed } failed (RU charge: { $charge })
+command-mkitem-upserted-all-failed = Failed to upsert all { $count } items
 command-mkitem-created-all-failed = Failed to create all { $count } items
 command-mkitem-error-creation-failed = Failed to create item: { $status } - { $message }
 command-mkitem-error-status-returned = Item creation returned: { $status }
+command-mkitem-error-array_failed = Failed to write { $failed } of { $total } items.
+
+command-replace-description = Replaces existing items in a container
+command-replace-description-data = JSON data for the item to replace
+command-replace-description-database = The database containing the items to replace
+command-replace-description-container = The container containing the items to replace
+command-replace-description-etag = Optional ETag for optimistic concurrency control
+command-replace-success-single = Successfully replaced item (RU charge: { $charge })
+command-replace-success-multiple = Successfully replaced { $count } { $count ->
+    [one] item
+    *[other] items
+} (RU charge: { $charge })
+command-replace-success-partial = Replaced { $success } { $success ->
+    [one] item
+    *[other] items
+}, { $failed } failed (RU charge: { $charge })
+command-replace-all-failed = Failed to replace all { $count } items
+command-replace-error-invalid_item = Each item must be a JSON object.
+command-replace-error-missing_id = Each item must include a non-empty 'id' property.
+command-replace-error-missing_partition_key = Each item must include partition key property '{ $path }'.
+command-replace-error-status-returned = Item replacement returned: { $status }
+command-replace-error-replace-failed = Failed to replace item: { $status } - { $message }
+command-replace-error-not_found = Item '{ $id }' not found.
+command-replace-error-etag_mismatch = Item '{ $id }' was modified since it was last read (ETag mismatch).
+command-replace-error-etag_array_not_supported = The --etag option can only be used when replacing a single item.
+command-replace-error-array_failed = Failed to replace { $failed } of { $total } items.
+
+command-patch-description = Applies a single patch operation to an item
+command-patch-description-id = The ID of the item to patch
+command-patch-description-op = Patch operation: set, add, replace, remove, or incr
+command-patch-description-pk = The partition key of the item to patch
+command-patch-description-path = JSON path to the field to patch (must start with '/')
+command-patch-description-value = Value for the operation (omit for 'remove')
+command-patch-description-database = The database containing the item to patch
+command-patch-description-container = The container containing the item to patch
+command-patch-description-etag = Optional ETag for optimistic concurrency control
+command-patch-success = Successfully patched item (RU charge: { $charge })
+command-patch-error-missing_id = Item ID is required.
+command-patch-error-missing_pk = Partition key is required.
+command-patch-error-invalid_pk_json = Partition key must be a JSON scalar value or a JSON array of values for hierarchical partition keys.
+command-patch-error-missing_op = Patch operation is required. Supported: set, add, replace, remove, incr.
+command-patch-error-missing_path = Patch path is required.
+command-patch-error-invalid_path = Patch path must start with '/'.
+command-patch-error-missing_value_for_op = Patch operation '{ $op }' requires a value.
+command-patch-error-unexpected_value_for_remove = Patch operation 'remove' does not take a value.
+command-patch-error-increment_number = Increment patch operation requires a numeric value.
+command-patch-error-unsupported_op = Unsupported patch operation '{ $op }'. Usage: patch <op> <id> <pk> <path> [value]. Supported operations: set, add, replace, remove, incr.
+command-patch-error-status-returned = Patch operation returned: { $status }
+command-patch-error-failed = Failed to patch item: { $status } - { $message }
+command-patch-error-not_found = Item '{ $id }' not found.
+command-patch-error-etag_mismatch = Item '{ $id }' was modified since it was last read (ETag mismatch).
 
 
 command-mkdb-description = Creates new database
@@ -246,10 +303,12 @@ command-create-description-data = JSON data for the item to create
 command-create-description-database = The database for the create operation
 command-create-description-container = The container for creating items
 command-create-description-index_policy = { command-mkcon-description-index_policy }
+command-create-description-force = { command-mkitem-description-force }
 command-create-error-container_name_required = Create container requires a container name.
 command-create-error-partition_key_required = Create container requires a partition key path that starts with '/', for example: create container name /pk. Learn more: https://github.com/Azure/CosmosDBShell/blob/main/docs/commands.md#create
 command-create-error-database_name_required = Create database requires a database name.
 command-create-error-invalid_item_type = { command-delete-error-invalid_item_type }
+command-create-error-force_only_for_items = The --force/--upsert option is only valid for `create item`.
 
 command-connect-description = Connect command.
 command-connect-description-connectionString = The account connection string can be a plain url with browser access token or a full connection string with AccountEndpoint and AccountKey values.

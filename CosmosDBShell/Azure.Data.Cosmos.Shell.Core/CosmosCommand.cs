@@ -347,6 +347,166 @@ internal abstract class CosmosCommand
     }
 
     /// <summary>
+    /// Creates a PartitionKey from multiple JSON components, preserving each component type.
+    /// </summary>
+    /// <param name="elements">The JSON elements containing partition key component values.</param>
+    /// <returns>A PartitionKey with the supplied component values.</returns>
+    protected static PartitionKey CreatePartitionKey(IEnumerable<JsonElement> elements)
+    {
+        var builder = new PartitionKeyBuilder();
+        foreach (var element in elements)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.String:
+                    builder.Add(element.GetString());
+                    break;
+                case JsonValueKind.Number:
+                    // Use the most precise numeric type available so 64-bit
+                    // integer key components above 2^53 are not silently
+                    // rounded by GetDouble().
+                    if (element.TryGetInt64(out var longValue))
+                    {
+                        builder.Add(longValue);
+                    }
+                    else
+                    {
+                        builder.Add(element.GetDouble());
+                    }
+
+                    break;
+                case JsonValueKind.True:
+                    builder.Add(true);
+                    break;
+                case JsonValueKind.False:
+                    builder.Add(false);
+                    break;
+                case JsonValueKind.Null:
+                    builder.AddNullValue();
+                    break;
+                default:
+                    builder.Add(element.GetRawText());
+                    break;
+            }
+        }
+
+        return builder.Build();
+    }
+
+    /// <summary>
+    /// Creates a PartitionKey from a shell argument. JSON scalar literals preserve their
+    /// JSON type, and JSON arrays represent hierarchical partition key components.
+    /// </summary>
+    /// <param name="rawValue">The raw shell argument value.</param>
+    /// <returns>A typed PartitionKey.</returns>
+    protected static PartitionKey CreatePartitionKeyFromArgument(string rawValue)
+    {
+        var trimmed = rawValue.Trim();
+        if (LooksLikeJsonLiteral(trimmed))
+        {
+            // Container/object literals must be valid JSON: rejecting them is
+            // the whole point of this check, so let the JsonException surface.
+            // Scalar candidates (digits, '-', or unquoted bool/null words),
+            // however, can be ambiguous: '001', '-svc', and similar are valid
+            // string partition keys even though they look numeric. Fall back
+            // to a string PartitionKey when JSON parsing fails for those.
+            JsonDocument? doc = null;
+            try
+            {
+                doc = JsonDocument.Parse(trimmed);
+            }
+            catch (JsonException) when (trimmed[0] is not ('[' or '{' or '"'))
+            {
+                return new PartitionKey(rawValue);
+            }
+
+            using (doc)
+            {
+                var root = doc.RootElement;
+                if (root.ValueKind == JsonValueKind.Array)
+                {
+                    return CreatePartitionKey(root.EnumerateArray());
+                }
+
+                // Reject object-shaped JSON: a JSON object cannot represent a
+                // partition key value. Surface this as a JsonException so callers
+                // can translate it into their localized invalid-PK message.
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    throw new JsonException("Partition key cannot be a JSON object.");
+                }
+
+                return CreatePartitionKey(root);
+            }
+        }
+
+        return new PartitionKey(rawValue);
+    }
+
+    /// <summary>
+    /// Gets normalized partition key paths from container metadata.
+    /// </summary>
+    /// <param name="properties">The container properties.</param>
+    /// <returns>Partition key paths without leading slashes.</returns>
+    protected static IReadOnlyList<string> GetPartitionKeyPaths(ContainerProperties properties)
+    {
+        if (properties.PartitionKeyPaths is { Count: > 0 })
+        {
+            return properties.PartitionKeyPaths.Select(path => path.TrimStart('/')).ToArray();
+        }
+
+        return string.IsNullOrWhiteSpace(properties.PartitionKeyPath)
+            ? []
+            : [properties.PartitionKeyPath.TrimStart('/')];
+    }
+
+    /// <summary>
+    /// Creates a PartitionKey from an item using the container partition key definition.
+    /// </summary>
+    /// <param name="item">The item JSON.</param>
+    /// <param name="partitionKeyPaths">The normalized partition key paths.</param>
+    /// <param name="missingPath">The missing path when the method returns false.</param>
+    /// <param name="partitionKey">The resulting partition key.</param>
+    /// <returns>True if all key components were found; otherwise false.</returns>
+    protected static bool TryCreatePartitionKeyFromItem(JsonElement item, IReadOnlyList<string> partitionKeyPaths, out string? missingPath, out PartitionKey partitionKey)
+    {
+        var components = new List<JsonElement>();
+        foreach (var path in partitionKeyPaths)
+        {
+            if (!TryGetNestedProperty(item, path, out var keyComponent))
+            {
+                missingPath = path;
+                partitionKey = default;
+                return false;
+            }
+
+            components.Add(keyComponent);
+        }
+
+        missingPath = null;
+        partitionKey = components.Count == 1 ? CreatePartitionKey(components[0]) : CreatePartitionKey(components);
+        return true;
+    }
+
+    private static bool LooksLikeJsonLiteral(string trimmed)
+    {
+        if (trimmed.Length == 0)
+        {
+            return false;
+        }
+
+        var first = trimmed[0];
+        if (first == '[' || first == '{' || first == '"' || first == '-' || char.IsDigit(first))
+        {
+            return true;
+        }
+
+        return string.Equals(trimmed, "true", StringComparison.Ordinal)
+            || string.Equals(trimmed, "false", StringComparison.Ordinal)
+            || string.Equals(trimmed, "null", StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Tries to get a property value from a JSON element, supporting nested paths like "nested/prop".
     /// </summary>
     /// <param name="element">The JSON element to search.</param>

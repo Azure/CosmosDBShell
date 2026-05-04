@@ -72,4 +72,42 @@ public class CreateCommandTests
         Assert.Contains("must start with a forward slash", exception.Message);
         Assert.Contains("mkcon name /pk", exception.Message);
     }
+
+    [Fact]
+    public async Task CreateContainer_WithForce_ThrowsForceOnlyForItems()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var command = new CreateCommand
+        {
+            Item = "container",
+            Name = "Products",
+            PartitionKey = "/pk",
+            Force = true,
+        };
+
+        var exception = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), string.Empty, CancellationToken.None));
+
+        Assert.Equal("create", exception.Command);
+        Assert.Contains("--force/--upsert", exception.Message);
+        Assert.Contains("create item", exception.Message);
+    }
+
+    [Fact]
+    public async Task CreateDatabase_WithForce_ThrowsForceOnlyForItems()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var command = new CreateCommand
+        {
+            Item = "database",
+            Name = "MyDb",
+            Force = true,
+        };
+
+        var exception = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), string.Empty, CancellationToken.None));
+
+        Assert.Equal("create", exception.Command);
+        Assert.Contains("--force/--upsert", exception.Message);
+    }
 }

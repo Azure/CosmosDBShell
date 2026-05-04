@@ -173,6 +173,7 @@ These commands accept and process piped JSON:
 | Command | Pipe behavior |
 | ------- | ------------- |
 | `mkitem` | Creates item(s) from piped JSON |
+| `replace` | Replaces existing item(s) using id and partition key from piped JSON |
 | `echo` | Outputs piped value or extracts path |
 | `cd` | Can use path to select target |
 | `delete` | Deletes item specified by piped JSON |
