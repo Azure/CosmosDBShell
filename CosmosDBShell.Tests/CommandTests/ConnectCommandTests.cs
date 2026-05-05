@@ -74,7 +74,8 @@ public class ConnectCommandTests
         var statement = Assert.IsType<CommandStatement>(Assert.Single(parser.ParseStatements()));
 
         Assert.True(CommandFactory.TryCreateFactory(typeof(ConnectCommand), out var factory));
-        var command = await statement.CreateCommandAsync(factory, ShellInterpreter.CreateInstance(), new CommandState(), CancellationToken.None);
+        using var shell = ShellInterpreter.CreateInstance();
+        var command = await statement.CreateCommandAsync(factory, shell, new CommandState(), CancellationToken.None);
         return Assert.IsType<ConnectCommand>(command);
     }
 }
