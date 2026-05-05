@@ -216,8 +216,8 @@ Start the shell with options to customize behavior:
 | `--connect-authority-host <url>` | Authority host URL at startup |
 | `--connect-managed-identity <id>` | User-assigned managed identity client ID at startup |
 | `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
-| `--cs <n>` | Color scheme: 0=off, 1=standard, 2=truecolor |
-| `--clearhistory` | Clear command history on start |
+| `--color-system <n>` | Color scheme: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
+| `--clear-history` | Clear command history on start |
 | `--help` | Show usage information |
 | `--version` | Show version |
 

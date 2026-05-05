@@ -398,12 +398,17 @@ internal class Program
 
     private static (RootCommand Command, OptionMap Map) BuildRootCommand()
     {
-        var colorSystem = new Option<int>("--cs", () => 2, MessageService.GetString("help-ColorSystem"));
+        var colorSystem = new Option<int>(
+            aliases: ["--color-system", "--cs"],
+            getDefaultValue: () => 2,
+            description: MessageService.GetString("help-ColorSystem"));
 
         var executeAndQuit = new Option<string?>("-c", MessageService.GetString("help-ExecuteAndQuit"));
         var executeAndContinue = new Option<string?>("-k", MessageService.GetString("help-ExecuteAndContinue"));
 
-        var clearHistory = new Option<bool>("--clearhistory", MessageService.GetString("help-ClearHistory"));
+        var clearHistory = new Option<bool>(
+            aliases: ["--clear-history", "--clearhistory"],
+            description: MessageService.GetString("help-ClearHistory"));
         var connectionString = new Option<string?>("--connect", MessageService.GetString("help-ConnectionString"));
 
         var connectionMode = new Option<ConnectionMode?>(
