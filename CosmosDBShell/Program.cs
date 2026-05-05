@@ -497,30 +497,62 @@ internal class Program
 
     private static string BuildHelpText()
     {
-        var (rootCommand, _) = BuildRootCommand();
-        var builder = new System.Text.StringBuilder();
-        builder.AppendLine(MessageService.GetString("help-UsageHeadingText"));
-        var product = typeof(Program).Assembly.GetName().Name ?? "CosmosDBShell";
-        builder.AppendLine("  " + MessageService.GetArgsString("help-UsageSynopsis", "command", product.ToLowerInvariant()));
-        builder.AppendLine("  " + MessageService.GetString("help-CommandTailNote"));
-        builder.AppendLine();
+        var (rootCommand, map) = BuildRootCommand();
+        var product = (typeof(Program).Assembly.GetName().Name ?? "CosmosDBShell").ToLowerInvariant();
 
-        foreach (var symbol in rootCommand.Options)
+        // Per-option value placeholder shown after the alias list.
+        var placeholders = new Dictionary<System.CommandLine.Option, string>
         {
-            if (symbol.IsHidden)
+            [map.ExecuteAndQuit] = "<command>...",
+            [map.ExecuteAndContinue] = "<command>...",
+            [map.ColorSystem] = "<n>",
+            [map.ConnectionString] = "<endpoint>",
+            [map.ConnectionMode] = "<direct|gateway>",
+            [map.ConnectTenant] = "<id>",
+            [map.ConnectHint] = "<hint>",
+            [map.ConnectAuthorityHost] = "<url>",
+            [map.ConnectManagedIdentity] = "<id>",
+            [map.McpPort] = "[<port>]",
+        };
+
+        var rows = new List<(string Label, string? Description)>();
+        foreach (var option in rootCommand.Options)
+        {
+            if (option.IsHidden)
             {
                 continue;
             }
 
-            var aliases = string.Join(", ", symbol.Aliases);
-            builder.AppendLine($"  {aliases,-32} {symbol.Description}");
+            var label = string.Join(", ", option.Aliases);
+            if (placeholders.TryGetValue((System.CommandLine.Option)option, out var placeholder))
+            {
+                label = $"{label} {placeholder}";
+            }
+
+            rows.Add((label, option.Description));
         }
 
         // --help / --version are intercepted before parsing, so they are not
-        // declared as Option<T>. Surface them in the rendered help anyway so
-        // users can discover them.
-        builder.AppendLine($"  {"--help, -h, -?",-32} {MessageService.GetString("help-HelpOptionDescription")}");
-        builder.AppendLine($"  {"--version",-32} {MessageService.GetString("help-VersionOptionDescription")}");
+        // declared as Option<T>. Surface them in the rendered help so users
+        // can discover them.
+        rows.Add(("--help, -h, -?", MessageService.GetString("help-HelpOptionDescription")));
+        rows.Add(("--version", MessageService.GetString("help-VersionOptionDescription")));
+
+        var width = rows.Max(r => r.Label.Length);
+
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine(MessageService.GetString("help-UsageHeadingText"));
+        builder.AppendLine("  " + MessageService.GetArgsString("help-UsageSynopsis", "command", product));
+        builder.AppendLine();
+        builder.AppendLine(MessageService.GetString("help-OptionsHeadingText"));
+        foreach (var (label, description) in rows)
+        {
+            builder.AppendLine($"  {label.PadRight(width)}  {description}");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine(MessageService.GetString("help-NotesHeadingText"));
+        builder.AppendLine("  " + MessageService.GetString("help-CommandTailNote"));
 
         return builder.ToString();
     }
