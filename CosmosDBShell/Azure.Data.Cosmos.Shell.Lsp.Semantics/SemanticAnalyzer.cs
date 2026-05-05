@@ -134,7 +134,7 @@ public sealed class SemanticAnalyzer
     {
         // Collect valid option names (case-insensitive) including all aliases
         var valid = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var opt in factory.Options)
+        foreach (var opt in factory.AllOptions)
         {
             foreach (var n in opt.Name)
             {
@@ -186,7 +186,7 @@ public sealed class SemanticAnalyzer
                 continue;
             }
 
-            var optDef = factory.Options.FirstOrDefault(o => o.MatchesArgument(optName));
+            var optDef = factory.AllOptions.FirstOrDefault(o => o.MatchesArgument(optName));
             if (optDef != null)
             {
                 if (optDef.IsBool && optExpr.Value != null)

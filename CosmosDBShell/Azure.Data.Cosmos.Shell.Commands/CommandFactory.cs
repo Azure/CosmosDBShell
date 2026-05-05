@@ -55,6 +55,11 @@ internal class CommandFactory(Type commandType, CosmosCommandAttribute attr)
     public List<Option> Options { get; } = [];
 
     /// <summary>
+    /// Gets all options for the command, including options hidden from public surfaces.
+    /// </summary>
+    internal List<Option> AllOptions { get; } = [];
+
+    /// <summary>
     /// Gets a value indicating whether the command is external.
     /// </summary>
     public bool IsExternal { get => attr.External; }
@@ -112,7 +117,13 @@ internal class CommandFactory(Type commandType, CosmosCommandAttribute attr)
             var optattr = p.GetCustomAttribute<CosmosOptionAttribute>();
             if (optattr != null)
             {
-                factory.Options.Add(new Option(p, optattr));
+                var option = new Option(p, optattr);
+                factory.AllOptions.Add(option);
+
+                if (!optattr.Hidden)
+                {
+                    factory.Options.Add(option);
+                }
             }
         }
 
@@ -141,7 +152,7 @@ internal class CommandFactory(Type commandType, CosmosCommandAttribute attr)
     /// <returns>True if the option exists; otherwise, false.</returns>
     internal bool HasOption(string optionName)
     {
-        foreach (var opt in this.Options)
+        foreach (var opt in this.AllOptions)
         {
             if (opt.MatchesArgument(optionName))
             {

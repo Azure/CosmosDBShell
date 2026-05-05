@@ -4,7 +4,10 @@
 
 namespace CosmosShell.Tests.CommandTests;
 
+using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Lsp.Semantics;
+using Azure.Data.Cosmos.Shell.Parser;
 using Microsoft.Azure.Cosmos;
 
 public class ConnectCommandTests
@@ -20,5 +23,58 @@ public class ConnectCommandTests
             "AccountEndpoint=https://127.0.0.1:1/;AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;",
             mode: ConnectionMode.Gateway,
             token: cancellationTokenSource.Token));
+    }
+
+    [Fact]
+    public async Task ConnectCommand_VSCodeCredentialOption_BindsHiddenInteractiveFlag()
+    {
+        var command = await BindConnectCommandAsync("connect https://example.documents.azure.com:443/ -vscode-credential");
+
+        Assert.Equal("https://example.documents.azure.com:443/", command.ConnectionString);
+        Assert.True(command.UseVSCodeCredential);
+    }
+
+    [Fact]
+    public async Task ConnectCommand_StartupVSCodeCredentialOptionAlias_BindsHiddenInteractiveFlag()
+    {
+        var command = await BindConnectCommandAsync("connect https://example.documents.azure.com:443/ --connect-vscode-credential");
+
+        Assert.Equal("https://example.documents.azure.com:443/", command.ConnectionString);
+        Assert.True(command.UseVSCodeCredential);
+    }
+
+    [Fact]
+    public void ConnectCommand_VSCodeCredentialOption_IsHiddenButKnownToCommandMetadata()
+    {
+        Assert.True(CommandFactory.TryCreateFactory(typeof(ConnectCommand), out var factory));
+
+        Assert.DoesNotContain(factory.Options, option => option.MatchesArgument("vscode-credential"));
+        Assert.Contains(factory.AllOptions, option => option.MatchesArgument("vscode-credential"));
+        Assert.True(factory.HasOption("vscode-credential"));
+
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(shell.App.IsOptionPrefix("connect", "vscode-credential"));
+    }
+
+    [Fact]
+    public void ConnectCommand_VSCodeCredentialOption_DoesNotProduceUnknownOptionDiagnostic()
+    {
+        const string CommandText = "connect https://example.documents.azure.com:443/ -vscode-credential";
+        var parser = new StatementParser(CommandText);
+        var statements = parser.ParseStatements();
+
+        var model = new SemanticAnalyzer().Analyze(statements, CommandText);
+
+        Assert.DoesNotContain(model.Diagnostics, diagnostic => diagnostic.Code == "SEM002");
+    }
+
+    private static async Task<ConnectCommand> BindConnectCommandAsync(string commandText)
+    {
+        var parser = new StatementParser(commandText);
+        var statement = Assert.IsType<CommandStatement>(Assert.Single(parser.ParseStatements()));
+
+        Assert.True(CommandFactory.TryCreateFactory(typeof(ConnectCommand), out var factory));
+        var command = await statement.CreateCommandAsync(factory, ShellInterpreter.CreateInstance(), new CommandState(), CancellationToken.None);
+        return Assert.IsType<ConnectCommand>(command);
     }
 }

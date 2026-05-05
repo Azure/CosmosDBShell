@@ -18,4 +18,6 @@ internal class CosmosOptionAttribute : Attribute
     public string[] Names { get; }
 
     public object? DefaultValue { get; set; }
+
+    public bool Hidden { get; set; }
 }

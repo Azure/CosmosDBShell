@@ -56,7 +56,7 @@ internal class CommandRunner
                 return true;
             }
 
-            return factory.Options.Any(o => o.Name.Any(optionName => optionName.StartsWith(name, StringComparison.OrdinalIgnoreCase)));
+            return factory.AllOptions.Any(o => o.Name.Any(optionName => optionName.StartsWith(name, StringComparison.OrdinalIgnoreCase)));
         }
 
         return false;
