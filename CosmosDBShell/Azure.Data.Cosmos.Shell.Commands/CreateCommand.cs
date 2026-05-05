@@ -46,6 +46,9 @@ internal class CreateCommand : CosmosCommand
     [CosmosOption("index_policy", "ip")]
     public string? IndexPolicy { get; init; }
 
+    [CosmosOption("force", "upsert")]
+    public bool? Force { get; init; }
+
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         var item = (this.Item ?? string.Empty).ToUpper();
@@ -56,8 +59,16 @@ internal class CreateCommand : CosmosCommand
                 Data = this.Name, // For items, "name" parameter contains the JSON data
                 Database = this.Database,
                 Container = this.Container,
+                Force = this.Force,
             };
             return await mkItemCmd.ExecuteAsync(shell, commandState, commandText, token);
+        }
+
+        // --force / --upsert is only meaningful for `create item`. Reject it
+        // up front for database/container so the flag isn't silently ignored.
+        if (this.Force == true)
+        {
+            throw new CommandException("create", MessageService.GetString("command-create-error-force_only_for_items"));
         }
 
         if (IsContainer(item))

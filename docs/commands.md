@@ -82,7 +82,7 @@ such as `cd /MyDb/customers`. See [Navigation](navigation.md) for more.
 
 Show the current shell location.
 
-```
+```text
 Usage: pwd
 ```
 
@@ -133,8 +133,118 @@ Arguments:
 Create items in container (reads JSON from pipe).
 
 ```text
-Usage: mkitem
+Usage: mkitem [-force] [data]
+
+Arguments:
+    [data]      JSON data for the item to create or upsert (Optional)
+
+Options:
+    -force, -upsert
+               Create or replace items (upsert behavior)
+    -database, -db
+               Override database name (Optional)
+    -container, -con
+               Override container name (Optional)
 ```
+
+When `--force` is specified, `mkitem` performs upsert behavior (create if missing, replace if existing).
+
+### replace
+
+Replace existing items in container (reads JSON from argument or pipe).
+
+```text
+Usage: replace [data] [-etag <ARG>] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    [data]      JSON object or array of objects to replace (Optional)
+
+Options:
+    -etag       Optional ETag for optimistic concurrency control (single item only)
+    -database, -db
+               Override database name (Optional)
+    -container, -con
+               Override container name (Optional)
+```
+
+`replace` derives the partition key from the item JSON and supports hierarchical partition key containers. The `--etag` option is only supported for single-object input because each item has its own ETag. `replace` fails when the target item does not already exist.
+
+### patch
+
+Apply a single partial update to an existing item, identified by `id` and partition key.
+
+```text
+Usage: patch op id pk path [value] [-etag <ARG>] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    op          Patch operation: set, add, replace, remove, or incr
+    id          Item ID
+    pk          Partition key value. Use a JSON literal for typed keys, or a JSON array for hierarchical partition keys.
+    path        JSON path to the target field (must start with '/')
+    [value]     Value for the operation (omit for 'remove')
+
+Options:
+    -etag       Optional ETag for optimistic concurrency control
+    -database, -db
+               Override database name (Optional)
+    -container, -con
+               Override container name (Optional)
+```
+
+#### Operations
+
+|Op|Requires value|Behavior|
+|-|-|-|
+|`set`|Yes|Sets the field at `path`. Creates the field if it does not exist. Safest default for changing a value.|
+|`add`|Yes|Cosmos JSON-Patch `add`. For object properties this looks like `set`. For array indices it inserts at the index, shifting existing elements. Use `/-` to append to the end of an array.|
+|`replace`|Yes|Replaces the value at `path`. Fails if the field does not already exist.|
+|`remove`|No|Deletes the field at `path`. Must not be given a `value`.|
+|`incr`|Yes (numeric)|Adds the numeric value (positive or negative) to the existing numeric value at `path`. The target must be a number.|
+
+The alias `increment` is also accepted for `incr`.
+
+#### Value typing
+
+The `value` argument is parsed as JSON when it looks like a JSON literal. Otherwise it is sent as a plain string. This makes typed values feel natural in the shell:
+
+|You write|Sent as|
+|-|-|
+|`active`|`"active"` (string)|
+|`42`|`42` (number)|
+|`3.14`|`3.14` (number)|
+|`true` / `false`|boolean|
+|`null`|JSON null|
+|`"hello world"`|`"hello world"` (string with spaces)|
+|`'{"x":1}'`|object `{ "x": 1 }`|
+|`'[1,2,3]'`|array `[1, 2, 3]`|
+
+Quoting rules follow the shell: wrap values that contain spaces or shell metacharacters in quotes. Use single quotes around JSON object/array literals so the shell does not try to interpret them.
+
+The `pk` argument follows the same JSON-literal typing for numbers, booleans, and null. For hierarchical partition keys, pass the key components as a JSON array, for example `'["tenant-1","order-42"]'`.
+
+#### Examples
+
+```bash
+patch set order-42 customer-7 /status active
+patch set order-42 '["tenant-1","customer-7"]' /status active
+patch set order-42 customer-7 /count 42
+patch set order-42 customer-7 /name "Ada Lovelace"
+patch incr order-42 customer-7 /viewCount 1
+patch incr order-42 customer-7 /stock -2
+patch remove order-42 customer-7 /oldField
+patch add order-42 customer-7 /tags/0 urgent      # inserts "urgent" at index 0, shifting existing tags right
+patch add order-42 customer-7 /tags/- archived    # appends "archived" to the end of the tags array
+patch replace order-42 customer-7 /profile/email "ada@example.com"
+patch set order-42 customer-7 /name "Ada Lovelace" --etag="<etag-from-read>"
+```
+
+#### Errors
+
+- Missing item: `Item '<id>' not found.`
+- ETag mismatch when `--etag` is supplied: `Item '<id>' was modified since it was last read (ETag mismatch).`
+- `replace` against a missing field, or `incr` against a non-numeric field, surfaces a Cosmos `BadRequest` with the underlying reason.
+- `remove` with a `value` argument is rejected up front.
+- `incr` with a non-numeric value is rejected up front.
 
 ### rm
 
@@ -231,12 +341,16 @@ Arguments:
 Create item, container, or database.
 
 ```text
-Usage: create item [name] [partition_key]
+Usage: create item [name] [partition_key] [-force]
 
 Arguments:
     item            Object type: item, container, or database
-    [name]          Container or database name (Optional)
+    [name]          JSON data for item, or container/database name (Optional)
     [partition_key] Partition key for container (Optional)
+
+Options:
+    -force, -upsert
+                    Create or replace items when creating an item (upsert behavior)
 ```
 
 ### delete

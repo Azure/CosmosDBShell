@@ -173,11 +173,33 @@ These commands accept and process piped JSON:
 | Command | Pipe behavior |
 | ------- | ------------- |
 | `mkitem` | Creates item(s) from piped JSON |
+| `replace` | Replaces existing item(s) using id and partition key from piped JSON |
 | `echo` | Outputs piped value or extracts path |
 | `cd` | Can use path to select target |
 | `delete` | Deletes item specified by piped JSON |
 | `jq` | Filters/transforms piped JSON |
 | `ftab` | Formats piped JSON as table |
+
+## Keyboard Shortcuts
+
+Available at the interactive prompt:
+
+| Shortcut | Action |
+| -------- | ------ |
+| `Up` / `Down` | Previous / next history entry |
+| `Ctrl+P` / `Ctrl+N` | Previous / next history entry |
+| `Ctrl+B` / `Ctrl+F` | Move cursor left / right |
+| `Tab` / `Ctrl+Tab` | Next / previous completion |
+| `Esc` | Clear current line |
+| `Ctrl+L` | Clear screen |
+| `Ctrl+A` | Move cursor to start of line |
+| `Ctrl+E` | Move cursor to end of line |
+| `Ctrl+U` | Delete text before cursor |
+| `Ctrl+K` | Delete text after cursor |
+| `Ctrl+W` | Delete previous word |
+| `Ctrl+D` | Exit shell when prompt is empty; otherwise delete character under cursor |
+| `Ctrl+R` | Reverse search history (type to filter, repeat for older matches, Enter accepts, Esc/Ctrl+G/Ctrl+C cancels) |
+| `Ctrl+S` | Forward search history (type to filter, repeat for newer matches, Enter accepts, Esc/Ctrl+G/Ctrl+C cancels) |
 
 ## CLI Arguments
 
