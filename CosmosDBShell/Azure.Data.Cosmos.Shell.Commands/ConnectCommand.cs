@@ -15,6 +15,7 @@ using Spectre.Console;
 [CosmosCommand("connect")]
 [CosmosExample("connect", Description = "Show current connection information and mode")]
 [CosmosExample("connect \"AccountEndpoint=https://myaccount.documents.azure.com:443/;AccountKey=mykey;\"", Description = "Connect using connection string with account key")]
+[CosmosExample("connect --emulator", Description = "Connect to the local Cosmos DB Emulator on https://localhost:8081 (probes HTTPS then HTTP)")]
 [CosmosExample("connect https://localhost:8081", Description = "Connect to the local Cosmos DB Emulator (uses well-known key and gateway mode)")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -hint=user@contoso.com", Description = "Connect using Entra ID authentication with login hint")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -mode=gateway", Description = "Connect using Entra ID with gateway connection mode")]
@@ -46,10 +47,13 @@ internal partial class ConnectCommand : CosmosCommand
     [CosmosOption("vscode-credential", "connect-vscode-credential", Hidden = true)]
     public bool UseVSCodeCredential { get; init; }
 
+    [CosmosOption("emulator", "e")]
+    public bool Emulator { get; init; }
+
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
-        // If no connection string provided, show current connection info
-        if (this.ConnectionString is null)
+        // If no connection string and not using --emulator, show current connection info
+        if (this.ConnectionString is null && !this.Emulator)
         {
             return await PrintConnectionInfoAsync(shell, commandState, token);
         }
@@ -85,12 +89,14 @@ internal partial class ConnectCommand : CosmosCommand
 
         try
         {
-            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, token: token);
+            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, forceEmulator: this.Emulator, token: token);
             var returnState = new CommandState
             {
                 IsPrinted = true,
             };
-            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(this.ConnectionString);
+            var endpoint = this.ConnectionString is null
+                ? null
+                : ParsedDocDBConnectionString.ExtractEndpoint(this.ConnectionString);
             var resultElement = JsonSerializer.SerializeToElement(new Dictionary<string, string?>
             {
                 ["connected state"] = endpoint,

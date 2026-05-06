@@ -567,7 +567,7 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
-    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, CancellationToken token = default)
+    internal async Task ConnectAsync(string? connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, bool forceEmulator = false, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
 
@@ -583,8 +583,25 @@ public partial class ShellInterpreter : IDisposable
         CosmosClient? client = null;
 
         // Step 1: Resolve account key (from connection string, env variable, or emulator well-known key)
-        bool isEmulator = ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString);
-        if (isEmulator)
+        if (forceEmulator)
+        {
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                connectionString = "https://localhost:8081/";
+            }
+            else if (!ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString))
+            {
+                throw new ShellException(MessageService.GetString("command-connect-emulator-non_local"));
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new ShellException(MessageService.GetString("command-connect-error-no_endpoint"));
+        }
+
+        bool isEmulator = forceEmulator || ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString);
+        if (isEmulator && !forceEmulator)
         {
             WriteLine(MessageService.GetString("command-connect-emulator-detected"));
         }
@@ -625,26 +642,21 @@ public partial class ShellInterpreter : IDisposable
         {
             WriteLine(MessageService.GetString("shell-connect-key-auth"));
             var keyMode = mode ?? (isEmulator ? ConnectionMode.Gateway : ConnectionMode.Direct);
-            var keyOptions = CreateClientOptions(connectionString, keyMode);
-            client = new CosmosClient(connectionString, keyOptions);
 
-            AccountProperties keyProps;
-            try
-            {
-                keyProps = await ReadAccountAsync(client, token);
-            }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
-            {
-                client.Dispose();
-                throw;
-            }
-            catch (Exception ex)
-            {
-                client.Dispose();
-                throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
-            }
+            (CosmosClient connectedClient, AccountProperties keyProps, string finalEndpoint) = await ConnectWithAccountKeyAsync(
+                connectionString,
+                keyMode,
+                isEmulator,
+                token);
+            client = connectedClient;
 
             WriteLine(MessageService.GetArgsString("command-connect-connected", "account", keyProps.Id));
+
+            if (isEmulator)
+            {
+                ReportEmulatorProtocol(finalEndpoint);
+            }
+
             this.Connect(client);
             return;
         }
@@ -901,6 +913,104 @@ public partial class ShellInterpreter : IDisposable
     {
         token.ThrowIfCancellationRequested();
         return await client.ReadAccountAsync().WaitAsync(token);
+    }
+
+    /// <summary>
+    /// Connects with an account key, with an emulator-only HTTPS to HTTP fallback when the
+    /// underlying TLS handshake fails. Returns the live client, the account properties, and
+    /// the endpoint that was actually used.
+    /// </summary>
+    private static async Task<(CosmosClient Client, AccountProperties Properties, string Endpoint)> ConnectWithAccountKeyAsync(
+        string connectionString,
+        ConnectionMode keyMode,
+        bool isEmulator,
+        CancellationToken token)
+    {
+        var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
+        var keyOptions = CreateClientOptions(connectionString, keyMode);
+        var client = new CosmosClient(connectionString, keyOptions);
+
+        try
+        {
+            var properties = await ReadAccountAsync(client, token);
+            return (client, properties, endpoint);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            client.Dispose();
+            throw;
+        }
+        catch (Exception ex)
+        {
+            client.Dispose();
+
+            if (isEmulator && IsTlsHandshakeFailure(ex) &&
+                Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) &&
+                endpointUri.Scheme == Uri.UriSchemeHttps)
+            {
+                var httpEndpoint = new UriBuilder(endpointUri) { Scheme = Uri.UriSchemeHttp, Port = endpointUri.Port }.Uri.ToString();
+                WriteLine(MessageService.GetString("command-connect-emulator-https_failed"));
+
+                var fallbackConnectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(
+                    httpEndpoint,
+                    ParsedDocDBConnectionString.TryParseDocDBConnectionString(connectionString, out var parsed) ? parsed?.MasterKey : null);
+                var fallbackOptions = CreateClientOptions(fallbackConnectionString, keyMode);
+                var fallbackClient = new CosmosClient(fallbackConnectionString, fallbackOptions);
+                try
+                {
+                    var fallbackProperties = await ReadAccountAsync(fallbackClient, token);
+                    return (fallbackClient, fallbackProperties, httpEndpoint);
+                }
+                catch
+                {
+                    fallbackClient.Dispose();
+                    throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
+                }
+            }
+
+            throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
+        }
+    }
+
+    /// <summary>
+    /// Detects TLS handshake / certificate-validation failures in the exception chain. Used to
+    /// decide whether an emulator HTTPS attempt should fall back to HTTP.
+    /// </summary>
+    private static bool IsTlsHandshakeFailure(Exception ex)
+    {
+        for (var current = ex; current != null; current = current.InnerException)
+        {
+            if (current is System.Security.Authentication.AuthenticationException)
+            {
+                return true;
+            }
+
+            if (current is System.Net.Http.HttpRequestException &&
+                current.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void ReportEmulatorProtocol(string endpoint)
+    {
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
+        {
+            return;
+        }
+
+        if (uri.Scheme == Uri.UriSchemeHttps)
+        {
+            WriteLine(MessageService.GetArgsString("command-connect-emulator-using_https", "endpoint", endpoint));
+        }
+        else
+        {
+            WriteLine(MessageService.GetArgsString("command-connect-emulator-using_http", "endpoint", endpoint));
+            WriteLine(MessageService.GetString("command-connect-emulator-http_tip"));
+        }
     }
 
     /// <summary>

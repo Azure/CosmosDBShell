@@ -121,6 +121,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--connect-hint <email>` | Login hint for interactive login |
 | `--connect-authority-host <uri>` | Authority host (e.g. sovereign clouds) |
 | `--connect-managed-identity <id>` | Use a user-assigned managed identity |
+| `--connect-emulator` | Connect to the local Cosmos DB Emulator (HTTPS, with HTTP fallback) |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
 | `--verbose` | Print full exception details |
 | `--cs <n>` | Colors: 0=off, 1=standard, 2=truecolor |

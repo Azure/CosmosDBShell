@@ -33,6 +33,8 @@ public class LocalizableSentenceBuilder : SentenceBuilder
 
     public static string ConnectVSCodeCredential => MessageService.GetString("help-ConnectVSCodeCredential");
 
+    public static string ConnectEmulator => MessageService.GetString("help-ConnectEmulator");
+
     public static string Command => MessageService.GetString("help-cmd");
 
     public static string EnableMcpServer => MessageService.GetString("help-EnableMcpServer");

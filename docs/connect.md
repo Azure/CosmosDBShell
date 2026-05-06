@@ -36,9 +36,18 @@ connect https://myaccount.documents.azure.com:443/
 ### Emulator
 
 ```bash
-# Plain URL — automatically uses well-known emulator key + gateway mode
+# Shortcut: assumes https://localhost:8081/, well-known key, gateway mode,
+# and falls back to HTTP if the TLS handshake fails.
+connect --emulator
+
+# Equivalent at startup
+cosmosdbshell --connect-emulator
+
+# Or pass an explicit emulator endpoint
 connect https://localhost:8081
 ```
+
+After a successful emulator connection the shell prints the protocol that was actually used (HTTPS or HTTP). When HTTP is used the shell points to the Docker emulator's `--protocol [https|http]` flag, which lets you skip TLS certificate setup.
 
 ### Managed Identity (User-Assigned)
 

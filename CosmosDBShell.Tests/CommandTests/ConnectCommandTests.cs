@@ -68,6 +68,44 @@ public class ConnectCommandTests
         Assert.DoesNotContain(model.Diagnostics, diagnostic => diagnostic.Code == "SEM002");
     }
 
+    [Fact]
+    public async Task ConnectCommand_EmulatorOption_BindsFlag()
+    {
+        var command = await BindConnectCommandAsync("connect --emulator");
+
+        Assert.Null(command.ConnectionString);
+        Assert.True(command.Emulator);
+    }
+
+    [Fact]
+    public async Task ConnectCommand_EmulatorShortOption_BindsFlag()
+    {
+        var command = await BindConnectCommandAsync("connect -e");
+
+        Assert.True(command.Emulator);
+    }
+
+    [Fact]
+    public async Task ConnectCommand_EmulatorWithExplicitEndpoint_BindsBoth()
+    {
+        var command = await BindConnectCommandAsync("connect --emulator https://localhost:9000/");
+
+        Assert.Equal("https://localhost:9000/", command.ConnectionString);
+        Assert.True(command.Emulator);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_EmulatorAgainstNonLocalEndpoint_Throws()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+
+        var ex = await Assert.ThrowsAsync<ShellException>(() => shell.ConnectAsync(
+            "https://contoso.documents.azure.com:443/",
+            forceEmulator: true,
+            token: CancellationToken.None));
+        Assert.Contains("emulator", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static async Task<ConnectCommand> BindConnectCommandAsync(string commandText)
     {
         var parser = new StatementParser(commandText);

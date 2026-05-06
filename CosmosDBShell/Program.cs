@@ -113,7 +113,7 @@ internal class Program
                 };
                 ShellInterpreter.Instance.Options = o;
 
-                if (o.ConnectionString != null)
+                if (o.ConnectionString != null || o.ConnectEmulator)
                 {
                     using var connectTokenSource = ShellInterpreter.UserCancellationTokenSource;
                     var connectToken = connectTokenSource.Token;
@@ -127,6 +127,7 @@ internal class Program
                             authorityHost: o.ConnectAuthorityHost,
                             managedIdentityClientId: o.ConnectManagedIdentity,
                             useVSCodeCredential: o.ConnectVSCodeCredential,
+                            forceEmulator: o.ConnectEmulator,
                             token: connectToken);
                     }
                     catch (OperationCanceledException) when (connectToken.IsCancellationRequested)
@@ -351,6 +352,9 @@ internal class Program
 
         [Option("connect-vscode-credential", Required = false, HelpText = "ConnectVSCodeCredential", ResourceType = typeof(LocalizableSentenceBuilder), Hidden = true)]
         public bool ConnectVSCodeCredential { get; set; }
+
+        [Option("connect-emulator", Required = false, HelpText = "ConnectEmulator", ResourceType = typeof(LocalizableSentenceBuilder))]
+        public bool ConnectEmulator { get; set; }
 
         [Option("mcp", Required = false, HelpText = "McpPort", ResourceType = typeof(LocalizableSentenceBuilder))]
         public int? McpPort { get; set; }
