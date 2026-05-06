@@ -144,6 +144,19 @@ This project welcomes contributions and suggestions. To contribute, see these do
 - [Security](./SECURITY.md)
 - [Contributing](./CONTRIBUTING.md)
 
+## Telemetry
+
+**Azure Cosmos DB Shell does not collect any telemetry.** The CLI does not emit usage data, crash reports, or diagnostic information to Microsoft or any third party. There is no opt-out switch because there is nothing to opt out of — no telemetry SDK is bundled, and no network calls are made other than the requests you explicitly issue against your Azure Cosmos DB account (or local emulator) and, when interactive sign-in is used, the Microsoft Entra ID endpoints required to obtain a token.
+
+**Server-side data collected by Azure.** When you connect the Shell to an Azure Cosmos DB account, every request you send (read, query, create, replace, patch, delete, container/database management, etc.) is processed by the Azure Cosmos DB service. As with any client (SDKs, REST, Data Explorer, or this Shell), the service records operational data on the backend so that you and Microsoft can monitor, bill, and support the account. This includes:
+
+- **Platform metrics and resource logs** — request counts, RU/s consumption, latency, status codes, partition key statistics, throttling events, and similar signals available through Azure Monitor. See [Monitor Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/monitor) and [Monitor data reference](https://learn.microsoft.com/azure/cosmos-db/monitor-reference).
+- **Diagnostic logs** — `DataPlaneRequests`, `QueryRuntimeStatistics`, `ControlPlaneRequests`, and other categories, but only if you enable diagnostic settings on the account and route them to a Log Analytics workspace, storage account, or event hub. See [Monitor data by using diagnostic settings](https://learn.microsoft.com/azure/cosmos-db/monitor-resource-logs).
+- **Activity log** — control-plane operations against the account (created/updated/deleted resources) recorded by Azure Resource Manager. See [Azure activity log](https://learn.microsoft.com/azure/azure-monitor/essentials/activity-log).
+- **Authentication telemetry** — interactive Entra ID sign-ins are recorded by Microsoft Entra (sign-in logs), independent of Azure Cosmos DB.
+
+This server-side collection is a property of the Azure Cosmos DB service itself, not of this Shell, and the same data would be recorded if the same operations were issued from any other client. It is governed by the [Microsoft Privacy Statement](https://go.microsoft.com/fwlink/?LinkID=521839), the [Microsoft Product Terms](https://www.microsoft.com/licensing/terms/), and the [Azure Trust Center](https://www.microsoft.com/trust-center). For details on what is logged, retention, and how to control it for your account, review the Azure Cosmos DB monitoring documentation linked above.
+
 ## License
 
 [MIT](LICENSE.md)
