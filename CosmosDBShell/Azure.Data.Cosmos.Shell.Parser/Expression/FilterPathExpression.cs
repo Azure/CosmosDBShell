@@ -104,6 +104,8 @@ internal class FilterPathExpression : Expression
                             {
                                 next.Add(item.Clone());
                             }
+
+                            sequence = true;
                         }
                         else if (iterateSegment.Optional)
                         {
@@ -114,7 +116,6 @@ internal class FilterPathExpression : Expression
                             throw new InvalidOperationException($"Cannot iterate over {value.ValueKind}");
                         }
 
-                        sequence = true;
                         break;
                 }
             }

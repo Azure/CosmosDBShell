@@ -500,7 +500,10 @@ json_error_unclosed_array_bracket = Unclosed array bracket.
 json_error_result_evaluation_null = Result evaluation returned null.
 
 expression_error_no_more_tokens = No more tokens
+expression_error_expected_open_paren = Expected '('
 expression_error_expected_close_paren = Expected ')' after expression
+expression_error_expected_close_bracket = Expected ']'
+expression_error_expected_array_index = Expected array index
 expression_error_invalid_number = Invalid number format: {$value}
 expression_error_unexpected_end = Unexpected end of expression
 expression_error_unexpected_token = Unexpected token: {$type} '{$value}'

@@ -275,14 +275,19 @@ jobs:
             exit 1
           }
 
-      - name: Remove pointer package from distributable artifacts
+      - name: Validate pointer package is available for upload
         if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           $pkgDir = Join-Path $pwd 'out/nupkg'
-          Get-ChildItem -Path (Join-Path $pkgDir 'CosmosDBShell.*.nupkg') -ErrorAction SilentlyContinue | Where-Object {
-            $_.Name -notmatch '^CosmosDBShell\.(win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
-          } | Remove-Item -Force
+          $pointerPackages = Get-ChildItem -Path (Join-Path $pkgDir 'CosmosDBShell.*.nupkg') -ErrorAction SilentlyContinue | Where-Object {
+            $_.Name -notmatch '^CosmosDBShell\.(win-x64|win-arm64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
+          }
+
+          if (-not $pointerPackages) {
+            Write-Error 'Expected a pointer package in out/nupkg, but none was found.'
+            exit 1
+          }
 
       - name: List packaged NuGet files
         if: github.event_name != 'pull_request'

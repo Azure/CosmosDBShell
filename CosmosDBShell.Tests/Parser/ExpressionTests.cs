@@ -18,7 +18,7 @@ public class ExpressionTests
     {
         var lexer = new Lexer(input);
         var parser = new ExpressionParser(lexer);
-        return parser.ParseExpression();
+        return parser.ParseFilterExpression();
     }
 
     private async Task<ShellObject> EvaluateExpressionAsync(string input)

@@ -38,7 +38,7 @@ internal class FilterCommand : CosmosCommand
 
         var lexer = new Lexer(this.ExpressionText);
         var parser = new ExpressionParser(lexer);
-        var expression = parser.ParseExpression();
+        var expression = parser.ParseFilterExpression();
 
         if (lexer.Errors.HasErrors)
         {

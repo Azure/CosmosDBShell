@@ -172,6 +172,23 @@ internal class ExpressionParser
             return this.CreateAbortExpression();
         }
 
+        return this.ParseOr();
+    }
+
+    /// <summary>
+    /// Parses an expression that allows the jq-style filter pipe operator (<c>|</c>) at the
+    /// top level. This is used by the <c>filter</c> command's expression argument; the regular
+    /// <see cref="ParseExpression"/> entry point intentionally stops at the outer pipe so it
+    /// does not swallow shell-level <c>|</c> separators in assignments, conditions, etc.
+    /// </summary>
+    public Expression ParseFilterExpression()
+    {
+        this.Initialize();
+        if (this.aborted)
+        {
+            return this.CreateAbortExpression();
+        }
+
         return this.ParsePipeExpression();
     }
 
@@ -1351,7 +1368,7 @@ internal class ExpressionParser
     private Expression ParseFilterCallExpression(Token nameToken)
     {
         var arguments = new List<Expression>();
-        this.Consume(TokenType.OpenParenthesis, "Expected '('");
+        this.Consume(TokenType.OpenParenthesis, MessageService.GetString("expression_error_expected_open_paren"));
 
         while (!this.IsAtEnd && !this.Check(TokenType.CloseParenthesis))
         {
@@ -1365,7 +1382,7 @@ internal class ExpressionParser
             break;
         }
 
-        var closeToken = this.Consume(TokenType.CloseParenthesis, "Expected ')'");
+        var closeToken = this.Consume(TokenType.CloseParenthesis, MessageService.GetString("expression_error_expected_close_paren"));
         return new FilterCallExpression(nameToken, arguments, (closeToken.Start + closeToken.Length) - nameToken.Start);
     }
 
@@ -1386,15 +1403,15 @@ internal class ExpressionParser
                 {
                     var propertyToken = this.Current;
                     this.Advance();
-                    var propertyCloseBracket = this.Consume(TokenType.CloseBracket, "Expected ']'");
-                    bool optionalProperty = this.TryConsumeQuestion();
+                    var propertyCloseBracket = this.Consume(TokenType.CloseBracket, MessageService.GetString("expression_error_expected_close_bracket"));
+                    var questionToken = this.TryConsumeQuestion();
                     end = propertyCloseBracket.Start + propertyCloseBracket.Length;
-                    if (optionalProperty && this.lastNonNullToken != null)
+                    if (questionToken != null)
                     {
-                        end = this.lastNonNullToken.Start + this.lastNonNullToken.Length;
+                        end = questionToken.Start + questionToken.Length;
                     }
 
-                    segments.Add(new FilterPropertySegment(propertyToken?.Value ?? string.Empty, optionalProperty));
+                    segments.Add(new FilterPropertySegment(propertyToken?.Value ?? string.Empty, questionToken != null));
                     continue;
                 }
 
@@ -1402,28 +1419,28 @@ internal class ExpressionParser
                 {
                     var closeBracket = this.Current;
                     this.Advance();
-                    bool optionalIterate = this.TryConsumeQuestion();
+                    var questionToken = this.TryConsumeQuestion();
                     end = (closeBracket?.Start ?? openBracket?.Start ?? end) + (closeBracket?.Length ?? 1);
-                    if (optionalIterate && this.lastNonNullToken != null)
+                    if (questionToken != null)
                     {
-                        end = this.lastNonNullToken.Start + this.lastNonNullToken.Length;
+                        end = questionToken.Start + questionToken.Length;
                     }
 
-                    segments.Add(new FilterIterateSegment(optionalIterate));
+                    segments.Add(new FilterIterateSegment(questionToken != null));
                     continue;
                 }
 
-                var indexToken = this.Consume(TokenType.Number, "Expected array index");
+                var indexToken = this.Consume(TokenType.Number, MessageService.GetString("expression_error_expected_array_index"));
                 int index = int.TryParse(indexToken.Value, out var parsedIndex) ? parsedIndex : 0;
-                var indexedCloseBracket = this.Consume(TokenType.CloseBracket, "Expected ']'");
-                bool optionalIndex = this.TryConsumeQuestion();
+                var indexedCloseBracket = this.Consume(TokenType.CloseBracket, MessageService.GetString("expression_error_expected_close_bracket"));
+                var indexQuestionToken = this.TryConsumeQuestion();
                 end = indexedCloseBracket.Start + indexedCloseBracket.Length;
-                if (optionalIndex && this.lastNonNullToken != null)
+                if (indexQuestionToken != null)
                 {
-                    end = this.lastNonNullToken.Start + this.lastNonNullToken.Length;
+                    end = indexQuestionToken.Start + indexQuestionToken.Length;
                 }
 
-                segments.Add(new FilterIndexSegment(index, optionalIndex));
+                segments.Add(new FilterIndexSegment(index, indexQuestionToken != null));
                 continue;
             }
 
@@ -1431,14 +1448,14 @@ internal class ExpressionParser
             {
                 var token = this.currentToken;
                 this.Advance();
-                bool optionalProperty = this.TryConsumeQuestion();
+                var questionToken = this.TryConsumeQuestion();
                 end = token!.Start + token.Length;
-                if (optionalProperty && this.lastNonNullToken != null)
+                if (questionToken != null)
                 {
-                    end = this.lastNonNullToken.Start + this.lastNonNullToken.Length;
+                    end = questionToken.Start + questionToken.Length;
                 }
 
-                segments.Add(new FilterPropertySegment(token.Value, optionalProperty));
+                segments.Add(new FilterPropertySegment(token.Value, questionToken != null));
                 continue;
             }
 
@@ -1446,11 +1463,11 @@ internal class ExpressionParser
             {
                 var token = this.currentToken;
                 this.Advance();
-                this.AddDotIdentifierSegments(token, segments);
+                var questionToken = this.AddDotIdentifierSegments(token, segments);
                 end = token.Start + token.Length;
-                if (this.lastNonNullToken != null && this.lastNonNullToken.Type == TokenType.Question)
+                if (questionToken != null)
                 {
-                    end = this.lastNonNullToken.Start + this.lastNonNullToken.Length;
+                    end = questionToken.Start + questionToken.Length;
                 }
 
                 continue;
@@ -1462,12 +1479,12 @@ internal class ExpressionParser
         return new FilterPathExpression(firstToken, segments, end - firstToken.Start);
     }
 
-    private void AddDotIdentifierSegments(Token token, List<FilterPathSegment> segments)
+    private Token? AddDotIdentifierSegments(Token token, List<FilterPathSegment> segments)
     {
         var value = token.Value;
         if (value == ".")
         {
-            return;
+            return null;
         }
 
         var parts = value.Split('.', StringSplitOptions.RemoveEmptyEntries);
@@ -1476,20 +1493,28 @@ internal class ExpressionParser
             segments.Add(new FilterPropertySegment(part, false));
         }
 
-        if (parts.Length > 0 && this.TryConsumeQuestion())
+        if (parts.Length > 0)
         {
-            segments[^1] = ((FilterPropertySegment)segments[^1]) with { Optional = true };
+            var questionToken = this.TryConsumeQuestion();
+            if (questionToken != null)
+            {
+                segments[^1] = ((FilterPropertySegment)segments[^1]) with { Optional = true };
+                return questionToken;
+            }
         }
+
+        return null;
     }
 
-    private bool TryConsumeQuestion()
+    private Token? TryConsumeQuestion()
     {
         if (this.Check(TokenType.Question))
         {
+            var token = this.Current;
             this.Advance();
-            return true;
+            return token;
         }
 
-        return false;
+        return null;
     }
 }

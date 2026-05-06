@@ -9,9 +9,11 @@ using System.Text.Json;
 
 internal static class FilterExpressionUtilities
 {
+    private static readonly JsonDocument NullJsonDocument = JsonDocument.Parse("null");
+
     public static JsonElement NullElement()
     {
-        return JsonSerializer.SerializeToElement<object?>(null);
+        return NullJsonDocument.RootElement;
     }
 
     public static JsonElement ToJsonElement(ShellObject shellObject)
@@ -43,7 +45,7 @@ internal static class FilterExpressionUtilities
 
     public static JsonElement ToJsonArray(IEnumerable<JsonElement> elements)
     {
-        return JsonSerializer.SerializeToElement(elements.Select(static e => e.Clone()).ToArray());
+        return JsonSerializer.SerializeToElement(elements.ToArray());
     }
 
     public static bool JsonEquals(JsonElement left, JsonElement right)
@@ -60,7 +62,7 @@ internal static class FilterExpressionUtilities
             JsonValueKind.False => right.ValueKind == JsonValueKind.False,
             JsonValueKind.Number => left.GetDecimal() == right.GetDecimal(),
             JsonValueKind.String => string.Equals(left.GetString(), right.GetString(), StringComparison.Ordinal),
-            JsonValueKind.Array => left.EnumerateArray().Select(static e => e.Clone()).SequenceEqual(right.EnumerateArray().Select(static e => e.Clone()), JsonElementComparer.Instance),
+            JsonValueKind.Array => left.EnumerateArray().SequenceEqual(right.EnumerateArray(), JsonElementComparer.Instance),
             JsonValueKind.Object => ObjectEquals(left, right),
             _ => left.GetRawText() == right.GetRawText(),
         };

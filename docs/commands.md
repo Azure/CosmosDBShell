@@ -454,7 +454,7 @@ Examples:
 ```text
 ls | filter '.items | length'
 ls | filter '.items | map({"Volcano Name": .["Volcano Name"], Country})'
-query "SELECT * FROM c" | filter '.documents | select(.status == "active")'
+query "SELECT * FROM c" | filter '.items | select(.status == "active")'
 ```
 
 ### ftab
