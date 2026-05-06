@@ -233,6 +233,28 @@ public class ParseDocDBConnectionTests
         Assert.True(ParsedDocDBConnectionString.IsLocalEmulatorEndpoint("AccountEndpoint=https://localhost:8081/;"));
     }
 
+    [Theory]
+    [InlineData("https://notlocalhost.com/")]
+    [InlineData("https://localhost.contoso.com/")]
+    [InlineData("https://contoso.localhost.com/")]
+    [InlineData("https://10.127.0.0.1.example.com/")]
+    [InlineData("AccountEndpoint=https://notlocalhost.com/;")]
+    [InlineData("AccountEndpoint=https://contoso.documents.azure.com:443/;AccountKey=k;")]
+    public void TestIsLocalEmulatorEndpoint_NonLocalHostsAreRejected(string input)
+    {
+        Assert.False(ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(input));
+    }
+
+    [Theory]
+    [InlineData("https://localhost:8081/")]
+    [InlineData("https://LOCALHOST:8081/")]
+    [InlineData("https://127.0.0.1:8081/")]
+    [InlineData("http://[::1]:8081/")]
+    public void TestIsLocalEmulatorEndpoint_LoopbackHostsAreAccepted(string input)
+    {
+        Assert.True(ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(input));
+    }
+
     [Fact]
     public void TestPlainLocalhostUrlNotParsedAsConnectionString()
     {

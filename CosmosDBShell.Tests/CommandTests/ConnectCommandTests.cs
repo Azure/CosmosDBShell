@@ -9,6 +9,7 @@ using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Lsp.Semantics;
 using Azure.Data.Cosmos.Shell.Parser;
 using Microsoft.Azure.Cosmos;
+using System.Net.Http;
 
 public class ConnectCommandTests
 {
@@ -104,6 +105,36 @@ public class ConnectCommandTests
             forceEmulator: true,
             token: CancellationToken.None));
         Assert.Contains("emulator", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void IsTlsHandshakeFailure_DetectsAuthenticationException()
+    {
+        var ex = new HttpRequestException("send failed", new System.Security.Authentication.AuthenticationException("inner"));
+        Assert.True(ShellInterpreter.IsTlsHandshakeFailure(ex));
+    }
+
+    [Fact]
+    public void IsTlsHandshakeFailure_DetectsResetSocket()
+    {
+        var ex = new HttpRequestException("send failed", new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionReset));
+        Assert.True(ShellInterpreter.IsTlsHandshakeFailure(ex));
+    }
+
+    [Fact]
+    public void IsTlsHandshakeFailure_IgnoresGenericHttpRequestException()
+    {
+        // No type-based marker => not a TLS handshake failure (was previously matched by the
+        // brittle "SSL" message substring check).
+        var ex = new HttpRequestException("Connection refused (SSL inside the message text only)");
+        Assert.False(ShellInterpreter.IsTlsHandshakeFailure(ex));
+    }
+
+    [Fact]
+    public void IsTlsHandshakeFailure_IgnoresUnrelatedSocketErrors()
+    {
+        var ex = new HttpRequestException("send failed", new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.HostUnreachable));
+        Assert.False(ShellInterpreter.IsTlsHandshakeFailure(ex));
     }
 
     private static async Task<ConnectCommand> BindConnectCommandAsync(string commandText)

@@ -15,7 +15,7 @@ using Spectre.Console;
 [CosmosCommand("connect")]
 [CosmosExample("connect", Description = "Show current connection information and mode")]
 [CosmosExample("connect \"AccountEndpoint=https://myaccount.documents.azure.com:443/;AccountKey=mykey;\"", Description = "Connect using connection string with account key")]
-[CosmosExample("connect --emulator", Description = "Connect to the local Cosmos DB Emulator on https://localhost:8081 (probes HTTPS then HTTP)")]
+[CosmosExample("connect --emulator", Description = "Connect to the local Cosmos DB Emulator on https://localhost:8081 (falls back to HTTP if the TLS handshake fails)")]
 [CosmosExample("connect https://localhost:8081", Description = "Connect to the local Cosmos DB Emulator (uses well-known key and gateway mode)")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -hint=user@contoso.com", Description = "Connect using Entra ID authentication with login hint")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -mode=gateway", Description = "Connect using Entra ID with gateway connection mode")]

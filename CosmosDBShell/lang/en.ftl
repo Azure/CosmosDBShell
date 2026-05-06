@@ -325,6 +325,7 @@ command-connect-connected = Connected to account '{ $account }'
 command-connect-emulator-detected = Emulator endpoint detected, using well-known account key and gateway mode.
 command-connect-emulator-non_local = --emulator can only be used with a local endpoint (localhost or 127.0.0.1).
 command-connect-emulator-https_failed = HTTPS handshake failed for emulator endpoint, retrying over HTTP...
+command-connect-emulator-fallback-failed = Emulator HTTPS connect failed and the HTTP fallback also failed. See inner exceptions for the original TLS error and the fallback error.
 command-connect-emulator-using_https = Connected to emulator over HTTPS at { $endpoint }.
 command-connect-emulator-using_http = Connected to emulator over HTTP at { $endpoint }.
 command-connect-emulator-http_tip = Tip: the Cosmos DB emulator Docker image accepts --protocol [https|http]; passing --protocol http skips TLS certificate setup.

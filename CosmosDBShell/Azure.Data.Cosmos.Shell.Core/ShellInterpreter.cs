@@ -961,10 +961,19 @@ public partial class ShellInterpreter : IDisposable
                     var fallbackProperties = await ReadAccountAsync(fallbackClient, token);
                     return (fallbackClient, fallbackProperties, httpEndpoint);
                 }
-                catch
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
                     fallbackClient.Dispose();
-                    throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
+                    throw;
+                }
+                catch (Exception fallbackEx)
+                {
+                    fallbackClient.Dispose();
+                    var aggregated = new AggregateException(
+                        MessageService.GetString("command-connect-emulator-fallback-failed"),
+                        ex,
+                        fallbackEx);
+                    throw new ShellException(MessageService.GetString("error-connection_failed"), aggregated);
                 }
             }
 
@@ -974,21 +983,26 @@ public partial class ShellInterpreter : IDisposable
 
     /// <summary>
     /// Detects TLS handshake / certificate-validation failures in the exception chain. Used to
-    /// decide whether an emulator HTTPS attempt should fall back to HTTP.
+    /// decide whether an emulator HTTPS attempt should fall back to HTTP. Uses type-based checks
+    /// so the decision is not affected by localized exception messages.
     /// </summary>
-    private static bool IsTlsHandshakeFailure(Exception ex)
+    internal static bool IsTlsHandshakeFailure(Exception ex)
     {
         for (var current = ex; current != null; current = current.InnerException)
         {
-            if (current is System.Security.Authentication.AuthenticationException)
+            switch (current)
             {
-                return true;
-            }
-
-            if (current is System.Net.Http.HttpRequestException &&
-                current.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
+                case System.Security.Authentication.AuthenticationException:
+                case System.Security.Cryptography.CryptographicException:
+                    return true;
+                case System.Net.Sockets.SocketException socketEx
+                    when socketEx.SocketErrorCode is
+                        System.Net.Sockets.SocketError.ConnectionReset or
+                        System.Net.Sockets.SocketError.ConnectionAborted:
+                    // The TLS layer typically surfaces handshake failures from a non-TLS server
+                    // as a reset/aborted socket while the request is still in the TLS handshake
+                    // phase, before any HTTP exchange has happened.
+                    return true;
             }
         }
 

@@ -64,8 +64,33 @@ public class ParsedDocDBConnectionString
             return false;
         }
 
-        return connectionStringOrEndpoint.Contains("localhost", StringComparison.OrdinalIgnoreCase)
-            || connectionStringOrEndpoint.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase);
+        // Resolve to a clean endpoint URL whether the input is a full connection string
+        // ("AccountEndpoint=...;...") or a plain URL.
+        string? endpoint;
+        if (TryParseDocDBConnectionString(connectionStringOrEndpoint, out var parsed))
+        {
+            endpoint = parsed!.Endpoint;
+        }
+        else if (IsPlainUrl(connectionStringOrEndpoint))
+        {
+            endpoint = connectionStringOrEndpoint;
+        }
+        else
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        if (string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return System.Net.IPAddress.TryParse(uri.Host, out var ip) && System.Net.IPAddress.IsLoopback(ip);
     }
 
     /// <summary>
