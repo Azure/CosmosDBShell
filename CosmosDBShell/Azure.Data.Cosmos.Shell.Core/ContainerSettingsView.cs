@@ -11,4 +11,6 @@ internal sealed record ContainerSettingsView(
     int? MinThroughput,
     int? MaxThroughput,
     ThroughputAvailability Throughput,
-    string? ThroughputErrorMessage);
+    string? ThroughputErrorMessage,
+    string? GeospatialType,
+    ContainerFullTextPolicyView? FullTextPolicy);

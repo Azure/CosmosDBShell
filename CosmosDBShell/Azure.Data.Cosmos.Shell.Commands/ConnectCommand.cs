@@ -173,7 +173,7 @@ internal partial class ConnectCommand : CosmosCommand
 
         if (connectedState.ArmContext != null)
         {
-            table.AddRow("ARM Account", $"[white]{connectedState.ArmContext.AccountResourceId}[/]");
+            table.AddRow(MessageService.GetString("command-connect-info-arm-account"), $"[white]{connectedState.ArmContext.AccountResourceId}[/]");
         }
 
         // Display the connection mode

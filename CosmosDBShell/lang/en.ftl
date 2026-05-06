@@ -52,6 +52,8 @@ error-mutually-exclusive-options = Options '-c' and '-k' cannot be used together
 error-shell-not-initialized = Shell is not initialized
 error-unable_to_read_container = Unable to read container.
 error-arm-context-required = Database and container resource operations require Azure Resource Manager context. Reconnect with Entra ID and provide --subscription, --resource-group, and --account, or use an identity that can discover the Cosmos DB account through ARM.
+error-arm-context-incomplete = Provide subscription, resource group, and account name together to use an explicit Azure Resource Manager account context.
+error-arm-context-ambiguous = Multiple Cosmos DB Azure Resource Manager accounts match the connected endpoint. Reconnect and provide subscription, resource group, and account name explicitly.
 
 help-usage = Usage: { $command }
 help-usage-heading = Usage
@@ -330,6 +332,7 @@ command-connect-switching = Disconnecting from '{ $endpoint }'...
 command-connect-not_connected = Not connected to any Cosmos DB account.
 command-connect-info-title = Connection Information
 command-connect-info-account = Account
+command-connect-info-arm-account = ARM Account
 command-connect-info-endpoint = Endpoint
 command-connect-info-mode = Connection Mode
 command-connect-info-read-regions = Read Regions

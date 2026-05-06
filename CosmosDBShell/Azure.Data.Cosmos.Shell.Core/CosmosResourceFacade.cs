@@ -24,7 +24,7 @@ internal static class CosmosResourceFacade
     {
         if (state.ArmContext is { } arm)
         {
-            await foreach (var database in CosmosArmResourceProvider.GetDatabasesAsync(arm))
+            await foreach (var database in CosmosArmResourceProvider.GetDatabasesAsync(arm, token))
             {
                 token.ThrowIfCancellationRequested();
                 yield return database.Data.Resource.DatabaseName;
@@ -48,7 +48,7 @@ internal static class CosmosResourceFacade
     {
         if (state.ArmContext is { } arm)
         {
-            await foreach (var container in CosmosArmResourceProvider.GetContainersAsync(arm, databaseName))
+            await foreach (var container in CosmosArmResourceProvider.GetContainersAsync(arm, databaseName, token))
             {
                 token.ThrowIfCancellationRequested();
                 yield return container.Data.Resource.ContainerName;
@@ -210,7 +210,18 @@ internal static class CosmosResourceFacade
         }
 
         var response = await state.Client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
-        return response.Resource?.PartitionKeyPaths?.ToArray() ?? [];
+        var properties = response.Resource;
+        if (properties == null)
+        {
+            return [];
+        }
+
+        if (properties.PartitionKeyPaths is { Count: > 0 } paths)
+        {
+            return [.. paths];
+        }
+
+        return string.IsNullOrEmpty(properties.PartitionKeyPath) ? [] : [properties.PartitionKeyPath];
     }
 
     public static async Task<ContainerSettingsView> GetContainerSettingsAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
@@ -247,7 +258,9 @@ internal static class CosmosResourceFacade
                 min,
                 max,
                 throughputAvailability,
-                throughputError);
+                throughputError,
+                GeospatialType: null,
+                FullTextPolicy: null);
         }
 
         var dpResponse = await state.Client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
@@ -272,6 +285,22 @@ internal static class CosmosResourceFacade
             dpError = ex.Message;
         }
 
+        string? geospatialType = properties.GeospatialConfig?.GeospatialType switch
+        {
+            GeospatialType.Geography => "Geography",
+            GeospatialType.Geometry => "Geometry",
+            _ => null,
+        };
+
+        ContainerFullTextPolicyView? fullTextView = null;
+        if (properties.FullTextPolicy is { } fullTextPolicy)
+        {
+            var paths = fullTextPolicy.FullTextPaths is null
+                ? Array.Empty<ContainerFullTextPathView>()
+                : fullTextPolicy.FullTextPaths.Select(p => new ContainerFullTextPathView(p.Path, p.Language)).ToArray();
+            fullTextView = new ContainerFullTextPolicyView(fullTextPolicy.DefaultLanguage, paths);
+        }
+
         return new ContainerSettingsView(
             properties.Id,
             properties.PartitionKeyPaths?.ToArray() ?? (properties.PartitionKeyPath != null ? [properties.PartitionKeyPath] : []),
@@ -279,7 +308,9 @@ internal static class CosmosResourceFacade
             dpMin,
             dpMax,
             dpAvailability,
-            dpError);
+            dpError,
+            geospatialType,
+            fullTextView);
     }
 
     public static async Task<string> GetIndexingPolicyJsonAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
@@ -334,4 +365,3 @@ internal static class CosmosResourceFacade
         return ThroughputProperties.CreateAutoscaleThroughput(ru);
     }
 }
-

@@ -83,9 +83,19 @@ internal class SettingsCommand : CosmosCommand
         switch (view.Throughput)
         {
             case ThroughputAvailability.Available:
-                AnsiConsole.MarkupLine(MessageService.GetArgsString("command-settings-scale-usage", "min", view.MinThroughput ?? 0, "max", view.MaxThroughput ?? 0));
-                mcpTable["minThroughput"] = view.MinThroughput ?? 0;
-                mcpTable["maxThroughput"] = view.MaxThroughput ?? 0;
+                var minDisplay = view.MinThroughput?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? MessageService.GetString("command-settings-na");
+                var maxDisplay = view.MaxThroughput?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? MessageService.GetString("command-settings-na");
+                AnsiConsole.MarkupLine(MessageService.GetArgsString("command-settings-scale-usage", "min", minDisplay, "max", maxDisplay));
+                if (view.MinThroughput.HasValue)
+                {
+                    mcpTable["minThroughput"] = view.MinThroughput.Value;
+                }
+
+                if (view.MaxThroughput.HasValue)
+                {
+                    mcpTable["maxThroughput"] = view.MaxThroughput.Value;
+                }
+
                 break;
             case ThroughputAvailability.NotConfigured:
                 AnsiConsole.MarkupLine($"[grey]{MessageService.GetString("command-settings-na")}[/]");
@@ -125,9 +135,51 @@ internal class SettingsCommand : CosmosCommand
         }
 
         table.AddRow(MessageService.GetString("command-settings-ttl-label"), $"[white]{ttl}[/]");
+
+        if (view.GeospatialType is { } geospatialType)
+        {
+            string geospatialLabel = string.Equals(geospatialType, "Geography", StringComparison.OrdinalIgnoreCase)
+                ? MessageService.GetString("command-settings-geospatial-geography")
+                : MessageService.GetString("command-settings-geospatial-geometry");
+            table.AddRow(MessageService.GetString("command-settings-geospatial-label"), $"[white]{geospatialLabel}[/]");
+            mcpTable["geospatialType"] = geospatialType;
+        }
+
         table.AddRow(MessageService.GetString("command-settings-partition-key-label"), $"[white]{string.Join(',', view.PartitionKeyPaths)}[/]");
         table.HideHeaders();
         AnsiConsole.Write(table);
+
+        // Full Text Policy section - only emitted when known
+        if (view.FullTextPolicy is { } fullText)
+        {
+            AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-fulltext-title")}[/]");
+
+            var fullTextTable = new Table();
+            fullTextTable.AddColumns(string.Empty, string.Empty);
+
+            var defaultLanguage = string.IsNullOrEmpty(fullText.DefaultLanguage)
+                ? MessageService.GetString("command-settings-na")
+                : fullText.DefaultLanguage;
+            fullTextTable.AddRow(
+                MessageService.GetString("command-settings-fulltext-default-language-label"),
+                $"[white]{defaultLanguage}[/]");
+
+            var mcpPaths = new List<Dictionary<string, object?>>();
+            foreach (var path in fullText.Paths)
+            {
+                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), $"[white]{path.Path}[/]");
+                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-language-label"), $"[white]{path.Language}[/]");
+                mcpPaths.Add(new Dictionary<string, object?>
+                {
+                    { "path", path.Path },
+                    { "language", path.Language },
+                });
+            }
+
+            mcpTable["fullTextPolicy"] = mcpPaths;
+            fullTextTable.HideHeaders();
+            AnsiConsole.Write(fullTextTable);
+        }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
         commandState.IsPrinted = true;

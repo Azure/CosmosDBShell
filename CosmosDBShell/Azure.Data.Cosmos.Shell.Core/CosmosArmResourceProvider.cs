@@ -41,7 +41,7 @@ internal static class CosmosArmResourceProvider
         {
             if (!hasSubscription || !hasResourceGroup || !hasAccount)
             {
-                throw new InvalidOperationException("Provide --subscription, --resource-group, and --account together to use explicit ARM account context.");
+                throw new ShellException(MessageService.GetString("error-arm-context-incomplete"));
             }
 
             return await CreateExplicitContextAsync(armClient, dataPlaneEndpoint, subscriptionId!, resourceGroupName!, accountName!, token);
@@ -65,40 +65,38 @@ internal static class CosmosArmResourceProvider
     public static async Task<CosmosDBSqlDatabaseResource> GetDatabaseAsync(ArmCosmosContext context, string databaseName, CancellationToken token)
     {
         var response = await context.Account.GetCosmosDBSqlDatabases().GetIfExistsAsync(databaseName, token);
-        var database = response.Value;
-        if (database == null)
+        if (!response.HasValue || response.Value is null)
         {
             throw new RequestFailedException((int)HttpStatusCode.NotFound, $"Database '{databaseName}' was not found.");
         }
 
-        return database;
+        return response.Value;
     }
 
     public static async Task<CosmosDBSqlContainerResource> GetContainerAsync(ArmCosmosContext context, string databaseName, string containerName, CancellationToken token)
     {
         var database = await GetDatabaseAsync(context, databaseName, token);
         var response = await database.GetCosmosDBSqlContainers().GetIfExistsAsync(containerName, token);
-        var container = response.Value;
-        if (container == null)
+        if (!response.HasValue || response.Value is null)
         {
             throw new RequestFailedException((int)HttpStatusCode.NotFound, $"Container '{containerName}' was not found in database '{databaseName}'.");
         }
 
-        return container;
+        return response.Value;
     }
 
-    public static async IAsyncEnumerable<CosmosDBSqlDatabaseResource> GetDatabasesAsync(ArmCosmosContext context)
+    public static async IAsyncEnumerable<CosmosDBSqlDatabaseResource> GetDatabasesAsync(ArmCosmosContext context, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token = default)
     {
-        await foreach (var database in context.Account.GetCosmosDBSqlDatabases().GetAllAsync())
+        await foreach (var database in context.Account.GetCosmosDBSqlDatabases().GetAllAsync(token))
         {
             yield return database;
         }
     }
 
-    public static async IAsyncEnumerable<CosmosDBSqlContainerResource> GetContainersAsync(ArmCosmosContext context, string databaseName)
+    public static async IAsyncEnumerable<CosmosDBSqlContainerResource> GetContainersAsync(ArmCosmosContext context, string databaseName, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token = default)
     {
-        var database = await GetDatabaseAsync(context, databaseName, CancellationToken.None);
-        await foreach (var container in database.GetCosmosDBSqlContainers().GetAllAsync())
+        var database = await GetDatabaseAsync(context, databaseName, token);
+        await foreach (var container in database.GetCosmosDBSqlContainers().GetAllAsync(cancellationToken: token))
         {
             yield return container;
         }
@@ -213,7 +211,7 @@ internal static class CosmosArmResourceProvider
         where T : IPersistableModel<T>
     {
         var model = ModelReaderWriter.Read<T>(BinaryData.FromString(json), ModelReaderWriterOptions.Json);
-        if (model == null)
+        if (model is null)
         {
             throw new InvalidOperationException("Unable to read ARM model JSON.");
         }
@@ -240,39 +238,55 @@ internal static class CosmosArmResourceProvider
 
     private static async Task<ArmCosmosContext?> DiscoverContextAsync(ArmClient armClient, Uri dataPlaneEndpoint, CancellationToken token)
     {
-        var matches = new List<CosmosDBAccountResource>();
+        CosmosDBAccountResource? singleMatch = null;
+        bool multipleMatches = false;
 
         await foreach (var subscription in armClient.GetSubscriptions().GetAllAsync(token))
         {
             await foreach (var account in subscription.GetCosmosDBAccountsAsync(token))
             {
-                if (EndpointEquals(dataPlaneEndpoint, new Uri(account.Data.DocumentEndpoint)))
+                if (!EndpointEquals(dataPlaneEndpoint, new Uri(account.Data.DocumentEndpoint)))
                 {
-                    matches.Add(account);
+                    continue;
                 }
+
+                if (singleMatch is null)
+                {
+                    singleMatch = account;
+                    continue;
+                }
+
+                // We already have one match; finding a second is enough to know the discovery
+                // is ambiguous, so stop scanning further subscriptions/accounts.
+                multipleMatches = true;
+                break;
+            }
+
+            if (multipleMatches)
+            {
+                break;
             }
         }
 
-        if (matches.Count == 0)
+        if (multipleMatches)
+        {
+            throw new ShellException(MessageService.GetString("error-arm-context-ambiguous"));
+        }
+
+        if (singleMatch is null)
         {
             return null;
         }
 
-        if (matches.Count > 1)
-        {
-            throw new InvalidOperationException("Multiple Cosmos DB ARM accounts match the connected endpoint. Reconnect with --subscription, --resource-group, and --account.");
-        }
-
-        var match = matches[0];
-        var id = match.Id;
+        var id = singleMatch.Id;
         return new ArmCosmosContext(
             armClient,
             id,
             id.SubscriptionId ?? string.Empty,
             id.ResourceGroupName ?? string.Empty,
-            match.Data.Name,
-            new Uri(match.Data.DocumentEndpoint),
-            match);
+            singleMatch.Data.Name,
+            new Uri(singleMatch.Data.DocumentEndpoint),
+            singleMatch);
     }
 
     private static void ValidateEndpoint(Uri dataPlaneEndpoint, Uri armEndpoint)
