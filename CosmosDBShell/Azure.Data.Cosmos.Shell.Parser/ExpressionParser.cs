@@ -14,6 +14,7 @@ internal class ExpressionParser
     private bool initialized = false;
     private Token? lastNonNullToken;
     private bool aborted = false;
+    private bool inFilterMode = false;
 
     public ExpressionParser(Lexer lexer)
     {
@@ -189,7 +190,16 @@ internal class ExpressionParser
             return this.CreateAbortExpression();
         }
 
-        return this.ParsePipeExpression();
+        var previous = this.inFilterMode;
+        this.inFilterMode = true;
+        try
+        {
+            return this.ParsePipeExpression();
+        }
+        finally
+        {
+            this.inFilterMode = previous;
+        }
     }
 
     public Expression ParsePrimaryExpression()
@@ -668,7 +678,7 @@ internal class ExpressionParser
                 return new ConstantExpression(token, new ShellJson(FilterExpressionUtilities.NullElement()));
             }
 
-            if (token.Value.StartsWith(".", StringComparison.Ordinal))
+            if (this.inFilterMode && token.Value.StartsWith(".", StringComparison.Ordinal))
             {
                 return this.ParseFilterPathExpression(token);
             }
@@ -699,12 +709,12 @@ internal class ExpressionParser
                 return new VariableExpression(token, varValue);
             }
 
-            if (this.Check(TokenType.OpenParenthesis))
+            if (this.inFilterMode && this.Check(TokenType.OpenParenthesis))
             {
                 return this.ParseFilterCallExpression(token);
             }
 
-            if (this.IsFilterZeroArgBuiltin(token.Value))
+            if (this.inFilterMode && this.IsFilterZeroArgBuiltin(token.Value))
             {
                 return new FilterCallExpression(token, []);
             }
