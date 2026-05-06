@@ -244,6 +244,45 @@ extends:
                   files_to_sign: "**/*.exe;**/*.dll"
                   search_root: '$(Build.SourcesDirectory)\out'
 
+              - task: PowerShell@2
+                displayName: "Zip signed RID publish folders"
+                condition: succeeded()
+                inputs:
+                  targetType: inline
+                  pwsh: true
+                  script: |
+                    $ErrorActionPreference = 'Stop'
+                    $version = "$(CosmosDBShell_PackageVersion)"
+                    $outDir  = "$(Build.SourcesDirectory)\out"
+                    $zipDir  = Join-Path $outDir 'zip'
+                    New-Item -ItemType Directory -Path $zipDir -Force | Out-Null
+
+                    $rids = @('win-x64', 'win-arm64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
+                    foreach ($rid in $rids) {
+                      $ridDir = Join-Path $outDir $rid
+                      if (-not (Test-Path $ridDir)) {
+                        Write-Warning "Skipping $rid — publish folder not found at $ridDir."
+                        continue
+                      }
+
+                      $zipPath = Join-Path $zipDir ("cosmosdbshell_{0}_{1}.zip" -f $rid, $version)
+                      if (Test-Path $zipPath) {
+                        Remove-Item -Path $zipPath -Force
+                      }
+
+                      Write-Host "Creating $zipPath"
+                      [System.IO.Compression.ZipFile]::CreateFromDirectory(
+                        $ridDir,
+                        $zipPath,
+                        [System.IO.Compression.CompressionLevel]::Optimal,
+                        $false)
+                    }
+
+                    Write-Host "Generated archives:"
+                    Get-ChildItem -Path $zipDir -Filter *.zip | Sort-Object Name | ForEach-Object {
+                      Write-Host " - $($_.Name) [$($_.Length) bytes]"
+                    }
+
               - task: DotNetCoreCLI@2
                 displayName: "Build Fuzzer"
                 inputs:
