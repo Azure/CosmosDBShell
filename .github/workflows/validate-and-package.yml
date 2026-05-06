@@ -142,9 +142,9 @@ jobs:
           dotnet build CosmosDBShell.sln
           --configuration $env:BUILD_CONFIGURATION
           --no-restore
-          /p:Version=${{ steps.version.outputs.assembly_version }}
-          /p:FileVersion=${{ steps.version.outputs.file_version }}
-          /p:InformationalVersion=${{ steps.version.outputs.informational_version }}
+          $(if ('${{ steps.version.outputs.assembly_version }}') { "/p:Version=${{ steps.version.outputs.assembly_version }}" })
+          $(if ('${{ steps.version.outputs.file_version }}') { "/p:FileVersion=${{ steps.version.outputs.file_version }}" })
+          $(if ('${{ steps.version.outputs.informational_version }}') { "/p:InformationalVersion=${{ steps.version.outputs.informational_version }}" })
         shell: pwsh
 
       - name: Test solution
