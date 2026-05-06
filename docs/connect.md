@@ -20,6 +20,21 @@ The credential type is determined by the first matching rule (top-to-bottom):
 
 The `--authority-host` option is passed through to whichever credential is created (priorities 3-6). It does not affect which credential type is selected.
 
+## Azure Resource Manager Context
+
+Database and container resource operations (listing, navigating to, creating, deleting, and reading settings for databases and containers) prefer Azure Resource Manager (ARM) when an ARM context is attached. Item operations always use the Cosmos DB data plane.
+
+ARM context is attached only for Entra ID credential flows: `VisualStudioCodeCredential`, `ManagedIdentityCredential`, `InteractiveBrowserCredential`, `DeviceCodeCredential`, and `DefaultAzureCredential`. Account-key connections, emulator connections, and `COSMOSDB_SHELL_TOKEN` connections do not attach ARM context, so resource operations fall back to the Cosmos DB data plane.
+
+When ARM context is attached, the shell can discover the ARM account by matching the connected data-plane endpoint across accessible subscriptions. For deterministic startup, especially in CI/CD or multi-subscription environments, provide the coordinates explicitly:
+
+```bash
+connect https://myaccount.documents.azure.com:443/ --tenant=<tenant-id> --subscription=<subscription-id> --resource-group=<resource-group> --account=<account-name>
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-tenant=<tenant-id> --connect-subscription=<subscription-id> --connect-resource-group=<resource-group> --connect-account=<account-name>
+```
+
+When ARM is in use, the identity needs data-plane RBAC for item operations and Azure management-plane permissions for database/container resources, such as Cosmos DB Operator or equivalent scoped permissions on the account. When falling back to the data plane (account-key, emulator, static token), the connection's existing data-plane authority is used for all commands.
+
 ## Examples
 
 ### Account Key
@@ -118,6 +133,7 @@ All connect options are also available as CLI startup arguments:
 ```bash
 cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-tenant=<tenant-id>
 cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-managed-identity=<client-id>
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-subscription=<subscription-id> --connect-resource-group=<resource-group> --connect-account=<account-name>
 cosmosdbshell --connect https://localhost:8081
 ```
 

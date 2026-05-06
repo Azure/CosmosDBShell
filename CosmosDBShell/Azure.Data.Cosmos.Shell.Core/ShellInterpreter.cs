@@ -567,7 +567,7 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
-    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, CancellationToken token = default)
+    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, string? subscriptionId = null, string? resourceGroupName = null, string? accountName = null, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
 
@@ -677,7 +677,8 @@ public partial class ShellInterpreter : IDisposable
             {
                 var vscProps = await ReadAccountAsync(client, token);
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", vscProps.Id));
-                this.Connect(client);
+                var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(vscCredential, client.Endpoint, subscriptionId, resourceGroupName, accountName, token);
+                this.Connect(client, armContext);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -767,7 +768,8 @@ public partial class ShellInterpreter : IDisposable
             }
 
             WriteLine(MessageService.GetArgsString("command-connect-connected", "account", miProps.Id));
-            this.Connect(client);
+            var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, accountName, token);
+            this.Connect(client, armContext);
             return;
         }
 
@@ -803,7 +805,8 @@ public partial class ShellInterpreter : IDisposable
             {
                 var entraProps = await ReadAccountAsync(client, token);
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", entraProps.Id));
-                this.Connect(client);
+                var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(browserCredential, client.Endpoint, subscriptionId, resourceGroupName, accountName, token);
+                this.Connect(client, armContext);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -855,7 +858,8 @@ public partial class ShellInterpreter : IDisposable
                 }
 
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", dcProps.Id));
-                this.Connect(client);
+                var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(deviceCodeCredential, client.Endpoint, subscriptionId, resourceGroupName, accountName, token);
+                this.Connect(client, armContext);
                 return;
             }
         }
@@ -881,7 +885,8 @@ public partial class ShellInterpreter : IDisposable
             {
                 var dacProps = await ReadAccountAsync(client, token);
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", dacProps.Id));
-                this.Connect(client);
+                var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(dacCredential, client.Endpoint, subscriptionId, resourceGroupName, accountName, token);
+                this.Connect(client, armContext);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -906,10 +911,10 @@ public partial class ShellInterpreter : IDisposable
     /// <summary>
     /// Connects to a client & disposes old state.
     /// </summary>
-    internal void Connect(CosmosClient client)
+    internal void Connect(CosmosClient client, ArmCosmosContext? armContext = null)
     {
         this.State?.Dispose();
-        this.State = new ConnectedState(client);
+        this.State = new ConnectedState(client, armContext);
         CosmosCompleteCommand.ClearDatabases();
         CosmosCompleteCommand.ClearContainers();
     }

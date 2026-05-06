@@ -267,9 +267,9 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
     private static async Task<string[]> GetDatabasesAsync(ConnectedState state)
     {
         var result = new List<string>();
-        await foreach (var database in EnumerateDatabasesAsync(state.Client))
+        await foreach (var name in CosmosResourceFacade.GetDatabaseNamesAsync(state, CancellationToken.None))
         {
-            result.Add(database.Id);
+            result.Add(name);
         }
 
         return [.. result];
@@ -278,42 +278,12 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
     private static async Task<string[]> GetContainersAsync(DatabaseState state)
     {
         var result = new List<string>();
-        await foreach (var container in EnumerateContainersAsync(state.Client.GetDatabase(state.DatabaseName)))
+        await foreach (var name in CosmosResourceFacade.GetContainerNamesAsync(state, state.DatabaseName, CancellationToken.None))
         {
-            result.Add(container.Id);
+            result.Add(name);
         }
 
         return [.. result];
-    }
-
-    private static async IAsyncEnumerable<DatabaseProperties> EnumerateDatabasesAsync(CosmosClient client)
-    {
-        using var feedIterator = client.GetDatabaseQueryIterator<DatabaseProperties>("SELECT * FROM c");
-        await foreach (var item in EnumerateFeedAsync(feedIterator))
-        {
-            yield return item;
-        }
-    }
-
-    private static async IAsyncEnumerable<ContainerProperties> EnumerateContainersAsync(Database database)
-    {
-        using var feedIterator = database.GetContainerQueryIterator<ContainerProperties>("SELECT * FROM c");
-        await foreach (var item in EnumerateFeedAsync(feedIterator))
-        {
-            yield return item;
-        }
-    }
-
-    private static async IAsyncEnumerable<T> EnumerateFeedAsync<T>(FeedIterator<T> feedIterator)
-    {
-        while (feedIterator.HasMoreResults)
-        {
-            var response = await feedIterator.ReadNextAsync();
-            foreach (var container in response)
-            {
-                yield return container;
-            }
-        }
     }
 
     private sealed record CompletionCacheEntry(string[] Items, DateTimeOffset RefreshedAt);

@@ -6,6 +6,8 @@
     <PackageVersion Include="Azure.Core" Version="1.52.0" />
     <PackageVersion Include="Azure.Identity" Version="1.20.0" />
     <PackageVersion Include="Azure.Identity.Broker" Version="1.5.0" />
+    <PackageVersion Include="Azure.ResourceManager" Version="1.13.2" />
+    <PackageVersion Include="Azure.ResourceManager.CosmosDB" Version="1.4.0-beta.13" />
     <PackageVersion Include="CommandLineParser" Version="2.9.1" />
     <PackageVersion Include="coverlet.collector" Version="8.0.0" />
     <PackageVersion Include="Fluent.Net" Version="1.0.63" />
@@ -23,6 +25,7 @@
     <PackageVersion Include="SharpFuzz" Version="2.2.0" />
     <PackageVersion Include="Spectre.Console.Cli" Version="0.49.1" />
     <PackageVersion Include="StyleCop.Analyzers" Version="1.2.0-beta.556" />
+    <PackageVersion Include="System.ClientModel" Version="1.10.0" />
     <PackageVersion Include="System.Text.Json" Version="10.0.2" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />

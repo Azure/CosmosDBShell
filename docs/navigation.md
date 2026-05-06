@@ -215,6 +215,9 @@ Start the shell with options to customize behavior:
 | `--connect-hint <hint>` | Login hint for browser auth at startup |
 | `--connect-authority-host <url>` | Authority host URL at startup |
 | `--connect-managed-identity <id>` | User-assigned managed identity client ID at startup |
+| `--connect-subscription <id>` | Azure subscription ID for database/container ARM operations at startup |
+| `--connect-resource-group <name>` | Azure resource group name for database/container ARM operations at startup |
+| `--connect-account <name>` | Cosmos DB account name for database/container ARM operations at startup |
 | `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
 | `--cs <n>` | Color scheme: 0=off, 1=standard, 2=truecolor |
 | `--clearhistory` | Clear command history on start |
@@ -238,6 +241,9 @@ cosmosdbshell -c "connect $CONN; cd mydb/mycont; ls -m 5"
 
 # Start connected to a specific account
 cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
+
+# Start connected with explicit ARM account context
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-subscription <subscription-id> --connect-resource-group <resource-group> --connect-account <account-name>
 
 # Start with MCP server enabled on the default port (6128)
 cosmosdbshell --mcp
