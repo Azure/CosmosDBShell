@@ -83,7 +83,7 @@ internal class PrintCommand : CosmosCommand
         }
         catch (CosmosException ex)
         {
-            throw new CommandException("print", MessageService.GetArgsString("command-print-error-reading_item", "message", ex.Message));
+            throw new CommandException("print", MessageService.GetArgsString("command-print-error-reading_item", "message", CommandException.GetDisplayMessage(ex)), ex);
         }
 
         return commandState;

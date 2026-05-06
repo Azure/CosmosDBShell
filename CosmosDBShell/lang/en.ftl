@@ -10,6 +10,10 @@ shell-connect-static-token-expiry = Expires in { $timespan } (expiration: { $exp
 shell-connect-vscode-credential-auth = Connecting with Visual Studio Code credential...
 shell-connect-vscode-credential-fallback = Visual Studio Code credential unavailable, falling back...
 shell-connect-devicecode-fallback = Browser authentication failed, falling back to device code authentication...
+history-search-reverse = reverse-i-search
+history-search-forward = forward-i-search
+history-search-failed-reverse = failed reverse-i-search
+history-search-failed-forward = failed forward-i-search
 
 yes_char = Y
 no_char = N
@@ -41,6 +45,7 @@ error-unknown_option = Unknown option '{ $option }'
 error-missing_value = Option value expected for '{ $option }'
 error-missing_required_argument = Missing required argument '{ $arg }'
 error-invalid_output_format = Output format '{ $format }' is invalid.
+error-request_timeout = The request timed out while communicating with Azure Cosmos DB. Check your network connection and try again. Run with --verbose to show full diagnostics.
 error-invalid_bucket_value = Throughput bucket value '{ $bucket }' is invalid. Valid range is 0-5.
 error-variable_not_set = Variable '{ $name }' is not set.
 error-mutually-exclusive-options = Options '-c' and '-k' cannot be used together.
@@ -146,6 +151,7 @@ command-mkitem-description = Creates items in container
 command-mkitem-description-data = JSON data for the item to create
 command-mkitem-description-database = The database where items should be created
 command-mkitem-description-container = The container where items should be created
+command-mkitem-description-force = Create or replace items (upsert behavior)
 command-mkitem-created-success = Successfully created item (RU charge: { $charge })
 command-mkitem-created-multiple = Successfully created { $count } { $count ->
     [one] item
@@ -155,9 +161,65 @@ command-mkitem-created-partial = Created { $success } { $success ->
     [one] item
     *[other] items
 }, { $failed } failed (RU charge: { $charge })
+command-mkitem-upserted-created = Successfully created item (RU charge: { $charge })
+command-mkitem-upserted-replaced = Successfully replaced item (RU charge: { $charge })
+command-mkitem-upserted-multiple = Upserted items: { $created } created, { $replaced } replaced (RU charge: { $charge })
+command-mkitem-upserted-partial = Upserted items: { $created } created, { $replaced } replaced, { $failed } failed (RU charge: { $charge })
+command-mkitem-upserted-all-failed = Failed to upsert all { $count } items
 command-mkitem-created-all-failed = Failed to create all { $count } items
 command-mkitem-error-creation-failed = Failed to create item: { $status } - { $message }
 command-mkitem-error-status-returned = Item creation returned: { $status }
+command-mkitem-error-array_failed = Failed to write { $failed } of { $total } items.
+
+command-replace-description = Replaces existing items in a container
+command-replace-description-data = JSON data for the item to replace
+command-replace-description-database = The database containing the items to replace
+command-replace-description-container = The container containing the items to replace
+command-replace-description-etag = Optional ETag for optimistic concurrency control
+command-replace-success-single = Successfully replaced item (RU charge: { $charge })
+command-replace-success-multiple = Successfully replaced { $count } { $count ->
+    [one] item
+    *[other] items
+} (RU charge: { $charge })
+command-replace-success-partial = Replaced { $success } { $success ->
+    [one] item
+    *[other] items
+}, { $failed } failed (RU charge: { $charge })
+command-replace-all-failed = Failed to replace all { $count } items
+command-replace-error-invalid_item = Each item must be a JSON object.
+command-replace-error-missing_id = Each item must include a non-empty 'id' property.
+command-replace-error-missing_partition_key = Each item must include partition key property '{ $path }'.
+command-replace-error-status-returned = Item replacement returned: { $status }
+command-replace-error-replace-failed = Failed to replace item: { $status } - { $message }
+command-replace-error-not_found = Item '{ $id }' not found.
+command-replace-error-etag_mismatch = Item '{ $id }' was modified since it was last read (ETag mismatch).
+command-replace-error-etag_array_not_supported = The --etag option can only be used when replacing a single item.
+command-replace-error-array_failed = Failed to replace { $failed } of { $total } items.
+
+command-patch-description = Applies a single patch operation to an item
+command-patch-description-id = The ID of the item to patch
+command-patch-description-op = Patch operation: set, add, replace, remove, or incr
+command-patch-description-pk = The partition key of the item to patch
+command-patch-description-path = JSON path to the field to patch (must start with '/')
+command-patch-description-value = Value for the operation (omit for 'remove')
+command-patch-description-database = The database containing the item to patch
+command-patch-description-container = The container containing the item to patch
+command-patch-description-etag = Optional ETag for optimistic concurrency control
+command-patch-success = Successfully patched item (RU charge: { $charge })
+command-patch-error-missing_id = Item ID is required.
+command-patch-error-missing_pk = Partition key is required.
+command-patch-error-invalid_pk_json = Partition key must be a JSON scalar value or a JSON array of values for hierarchical partition keys.
+command-patch-error-missing_op = Patch operation is required. Supported: set, add, replace, remove, incr.
+command-patch-error-missing_path = Patch path is required.
+command-patch-error-invalid_path = Patch path must start with '/'.
+command-patch-error-missing_value_for_op = Patch operation '{ $op }' requires a value.
+command-patch-error-unexpected_value_for_remove = Patch operation 'remove' does not take a value.
+command-patch-error-increment_number = Increment patch operation requires a numeric value.
+command-patch-error-unsupported_op = Unsupported patch operation '{ $op }'. Usage: patch <op> <id> <pk> <path> [value]. Supported operations: set, add, replace, remove, incr.
+command-patch-error-status-returned = Patch operation returned: { $status }
+command-patch-error-failed = Failed to patch item: { $status } - { $message }
+command-patch-error-not_found = Item '{ $id }' not found.
+command-patch-error-etag_mismatch = Item '{ $id }' was modified since it was last read (ETag mismatch).
 
 
 command-mkdb-description = Creates new database
@@ -175,8 +237,8 @@ command-mkcon-description-scale = Container scale (manual or auto)
 command-mkcon-description-ru = Database Max RU/s (default: 1000)
 command-mkcon-description-database = The database where the container should be created
 command-mkcon-CreatedContainer = Created container { $container }
-command-mkcon-error_partition_key_empty = Partition key cannot be empty.
-command-mkcon-error_partition_key_slash = Partition key must start with a forward slash (/).
+command-mkcon-error_partition_key_empty = Partition key path cannot be empty. Provide a path that starts with '/', for example: mkcon name /pk.
+command-mkcon-error_partition_key_slash = Partition key path must start with a forward slash (/), for example: mkcon name /pk.
 command-mkcon-error_invalid_index_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-mkcon-description-index_policy = The indexing policy as a JSON string. Follows the Cosmos DB indexing policy schema.
 
@@ -197,6 +259,9 @@ command-ls-description-container = The container to list items from
 command-ls-description-key = The property to match against (default: container partition key property)
 command-ls-container = Container { $container }
 command-ls-found_items = found { $count } items.
+command-ls-error-request_failed = List request failed with status code { $statusCode } ({ $status }).
+command-ls-error-no_content_stream = The list request completed, but Cosmos DB returned no response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
+command-ls-error-empty_content = The list request completed, but Cosmos DB returned an empty response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
 command-results-limit_reached =
     { $count ->
         [one] Results limited to { $count } item. Use --max to change the limit or --max 0 for no limit.
@@ -243,10 +308,12 @@ command-create-description-data = JSON data for the item to create
 command-create-description-database = The database for the create operation
 command-create-description-container = The container for creating items
 command-create-description-index_policy = { command-mkcon-description-index_policy }
+command-create-description-force = { command-mkitem-description-force }
 command-create-error-container_name_required = Create container requires a container name.
-command-create-error-partition_key_required = Create container requires a partition key.
+command-create-error-partition_key_required = Create container requires a partition key path that starts with '/', for example: create container name /pk. Learn more: https://github.com/Azure/CosmosDBShell/blob/main/docs/commands.md#create
 command-create-error-database_name_required = Create database requires a database name.
 command-create-error-invalid_item_type = { command-delete-error-invalid_item_type }
+command-create-error-force_only_for_items = The --force/--upsert option is only valid for `create item`.
 
 command-connect-description = Connect command.
 command-connect-description-connectionString = The account connection string can be a plain url with browser access token or a full connection string with AccountEndpoint and AccountKey values.
@@ -297,6 +364,7 @@ command-cd-error-cant_change_inside_container = Can't change from in a container
 command-cd-error-database_does_not_exist = Database '{ $db }' not found.
 command-cd-error-container_does_not_exist = Container '{ $container }' not found.
 command-cd-error-item_and_options = Cannot specify both path and --database/--container options.
+command-cd-error-path_too_deep = '{ $path }' goes beyond the /database/container hierarchy. Use 'cd ..' to go up first, or use an absolute path like '/database/container'.
 
 command-cat-description = Displays a file
 command-cat-description-path = The path of the file to view.

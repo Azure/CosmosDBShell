@@ -297,7 +297,10 @@ internal class CommandStatement : Statement
             {
                 if (attr.IsRequired)
                 {
-                    throw new CommandException(this.Name, $"Missing required parameter: {prop.Name}");
+                    var message = !string.IsNullOrEmpty(attr.RequiredErrorKey)
+                        ? MessageService.GetString(attr.RequiredErrorKey)
+                        : $"Missing required parameter: {prop.Name}";
+                    throw new CommandException(this.Name, message);
                 }
 
                 break;

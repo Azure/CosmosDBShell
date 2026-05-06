@@ -339,7 +339,7 @@ internal class QueryCommand : CosmosCommand
                         });
                     }
 
-                    throw new CommandException("query", message);
+                    throw CommandException.FromResponseStatus("query", response.StatusCode, message);
                 }
 
                 if (response.Content == null)
@@ -518,9 +518,13 @@ internal class QueryCommand : CosmosCommand
 
             return returnState;
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (OperationCanceledException e)
         {
-            throw new CommandException("query", e.Message);
+            throw new CommandException("query", e);
         }
         catch (Exception e)
         {

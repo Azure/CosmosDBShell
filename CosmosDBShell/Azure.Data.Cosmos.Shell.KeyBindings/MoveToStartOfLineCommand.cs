@@ -2,15 +2,14 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //------------------------------------------------------------
 
-namespace Azure.Data.Cosmos.Shell.Core;
+namespace Azure.Data.Cosmos.Shell.KeyBindings;
 
 using RadLine;
-using Spectre.Console;
 
-internal class ClearScreenCommand : LineEditorCommand
+internal class MoveToStartOfLineCommand : LineEditorCommand
 {
     public override void Execute(LineEditorContext context)
     {
-        AnsiConsole.Clear();
+        context.Buffer.MoveHome();
     }
 }

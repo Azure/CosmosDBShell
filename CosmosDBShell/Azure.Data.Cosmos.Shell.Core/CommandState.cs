@@ -51,6 +51,10 @@ public partial class CommandState
         {
             this.OutputFormat = OutputFormat.JSon;
         }
+        else if (string.Equals(outputFormat, "table", StringComparison.OrdinalIgnoreCase) || string.Equals(outputFormat, "tbl", StringComparison.OrdinalIgnoreCase))
+        {
+            this.OutputFormat = OutputFormat.Table;
+        }
         else
         {
             throw new ShellException(MessageService.GetString("error-invalid_output_format", new Dictionary<string, object> { { "format", outputFormat } }));
@@ -102,6 +106,23 @@ public partial class CommandState
 
                 var table = ResultToTable(json.EnumerateArray().ToArray());
                 return table.ToString();
+            case OutputFormat.Table:
+                if (json.ValueKind == JsonValueKind.Object)
+                {
+                    if (json.TryGetProperty("documents", out var tDocuments) && json.TryGetProperty("queryMetrics", out _))
+                    {
+                        return ResultToTable([.. tDocuments.EnumerateArray()]).ToGridString();
+                    }
+
+                    if (json.TryGetProperty("items", out var tItems) && tItems.ValueKind == JsonValueKind.Array)
+                    {
+                        return ResultToTable([.. tItems.EnumerateArray()]).ToGridString();
+                    }
+
+                    return ResultToTable([json]).ToGridString();
+                }
+
+                return ResultToTable(json.EnumerateArray().ToArray()).ToGridString();
             default:
                 throw new InvalidOperationException("OutputFormat invalid " + this.OutputFormat);
         }

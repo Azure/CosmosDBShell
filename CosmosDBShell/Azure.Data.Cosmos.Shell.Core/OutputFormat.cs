@@ -18,4 +18,9 @@ public enum OutputFormat
     /// Output in CSV format.
     /// </summary>
     CSV,
+
+    /// <summary>
+    /// Output as an aligned text table.
+    /// </summary>
+    Table,
 }

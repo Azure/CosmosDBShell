@@ -12,6 +12,7 @@ using global::Azure.Data.Cosmos.Shell.States;
 
 [CosmosCommand("mkitem")]
 [CosmosExample("mkitem '{\"id\":\"1\",\"name\":\"Product\"}'", Description = "Create a single item from JSON string")]
+[CosmosExample("mkitem --force '{\"id\":\"1\",\"name\":\"Updated Product\"}'", Description = "Create or replace a single item")]
 [CosmosExample("echo '{\"id\":\"2\",\"price\":99.99}' | mkitem", Description = "Create item from piped input")]
 [CosmosExample("mkitem '{\"id\":\"3\",\"status\":\"active\"}' --database=MyDB --container=Items", Description = "Create item in specific database and container")]
 internal class MakeItemCommand : CosmosCommand
@@ -26,6 +27,9 @@ internal class MakeItemCommand : CosmosCommand
 
     [CosmosOption("container", "con")]
     public string? Container { get; init; }
+
+    [CosmosOption("force", "upsert")]
+    public bool? Force { get; init; }
 
     public static object ParseJson(string json)
     {
@@ -57,7 +61,7 @@ internal class MakeItemCommand : CosmosCommand
             "mkitem",
             token);
 
-        await CreateItemAsync(container, commandState, jsonOpt, token);
+        await WriteItemAsync(container, commandState, jsonOpt, this.Force == true, token);
 
         var returnState = new CommandState();
         returnState.Result = new ShellJson(SuccessDocument.RootElement.Clone());
@@ -122,7 +126,7 @@ internal class MakeItemCommand : CosmosCommand
         }
     }
 
-    private static async Task CreateItemAsync(Container container, CommandState commandState, string? jsonOpt, CancellationToken token)
+    private static async Task WriteItemAsync(Container container, CommandState commandState, string? jsonOpt, bool force, CancellationToken token)
     {
         if (!string.IsNullOrEmpty(jsonOpt))
         {
@@ -133,19 +137,26 @@ internal class MakeItemCommand : CosmosCommand
 
                 if (root.ValueKind == JsonValueKind.Array)
                 {
-                    // Create an item for each array element
-                    int successCount = 0;
+                    int createdCount = 0;
+                    int replacedCount = 0;
                     int failCount = 0;
                     double charge = 0.0;
                     foreach (var element in root.EnumerateArray())
                     {
                         try
                         {
-                            var result = await container.CreateItemAsync(element, cancellationToken: token);
+                            ItemResponse<JsonElement> result = force
+                                ? await container.UpsertItemAsync(element, cancellationToken: token)
+                                : await container.CreateItemAsync(element, cancellationToken: token);
                             charge += result.RequestCharge;
+
                             if (result.StatusCode == System.Net.HttpStatusCode.Created)
                             {
-                                successCount++;
+                                createdCount++;
+                            }
+                            else if (force && result.StatusCode == System.Net.HttpStatusCode.OK)
+                            {
+                                replacedCount++;
                             }
                             else
                             {
@@ -166,28 +177,64 @@ internal class MakeItemCommand : CosmosCommand
                                     "status",
                                     ce.StatusCode.ToString(),
                                     "message",
-                                    ce.Message));
+                                    CommandException.GetDisplayMessage(ce)));
                         }
                     }
 
-                    // Print summary
-                    if (successCount > 0 && failCount == 0)
+                    if (force)
+                    {
+                        if ((createdCount + replacedCount) > 0 && failCount == 0)
+                        {
+                            ShellInterpreter.WriteLine(
+                                MessageService.GetArgsString(
+                                    "command-mkitem-upserted-multiple",
+                                    "created",
+                                    createdCount,
+                                    "replaced",
+                                    replacedCount,
+                                    "charge",
+                                    charge.ToString("F2")));
+                        }
+                        else if ((createdCount + replacedCount) > 0)
+                        {
+                            ShellInterpreter.WriteLine(
+                                MessageService.GetArgsString(
+                                    "command-mkitem-upserted-partial",
+                                    "created",
+                                    createdCount,
+                                    "replaced",
+                                    replacedCount,
+                                    "failed",
+                                    failCount,
+                                    "charge",
+                                    charge.ToString("F2")));
+                        }
+                        else
+                        {
+                            ShellInterpreter.WriteLine(
+                                MessageService.GetArgsString(
+                                    "command-mkitem-upserted-all-failed",
+                                    "count",
+                                    failCount));
+                        }
+                    }
+                    else if (createdCount > 0 && failCount == 0)
                     {
                         ShellInterpreter.WriteLine(
                             MessageService.GetArgsString(
                                 "command-mkitem-created-multiple",
                                 "count",
-                                successCount,
+                                createdCount,
                                 "charge",
                                 charge.ToString("F2")));
                     }
-                    else if (successCount > 0 && failCount > 0)
+                    else if (createdCount > 0 && failCount > 0)
                     {
                         ShellInterpreter.WriteLine(
                             MessageService.GetArgsString(
                                 "command-mkitem-created-partial",
                                 "success",
-                                successCount,
+                                createdCount,
                                 "failed",
                                 failCount,
                                 "charge",
@@ -201,17 +248,43 @@ internal class MakeItemCommand : CosmosCommand
                                 "count",
                                 failCount));
                     }
+
+                    // Bulk write summary is informational; signal the caller
+                    // when one or more items failed so scripted callers don't
+                    // treat a partial/total failure as success.
+                    if (failCount > 0)
+                    {
+                        var totalCount = createdCount + replacedCount + failCount;
+                        throw new CommandException(
+                            "mkitem",
+                            MessageService.GetArgsString(
+                                "command-mkitem-error-array_failed",
+                                "failed",
+                                failCount,
+                                "total",
+                                totalCount));
+                    }
                 }
                 else
                 {
-                    // Single object - create one item
                     try
                     {
-                        var result = await container.CreateItemAsync(root, cancellationToken: token);
+                        ItemResponse<JsonElement> result = force
+                            ? await container.UpsertItemAsync(root, cancellationToken: token)
+                            : await container.CreateItemAsync(root, cancellationToken: token);
+
                         if (result.StatusCode == System.Net.HttpStatusCode.Created)
                         {
+                            var key = force ? "command-mkitem-upserted-created" : "command-mkitem-created-success";
                             ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                                "command-mkitem-created-success",
+                                key,
+                                "charge",
+                                result.RequestCharge.ToString("F2")));
+                        }
+                        else if (force && result.StatusCode == System.Net.HttpStatusCode.OK)
+                        {
+                            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                                "command-mkitem-upserted-replaced",
                                 "charge",
                                 result.RequestCharge.ToString("F2")));
                         }
@@ -232,7 +305,7 @@ internal class MakeItemCommand : CosmosCommand
                                 "status",
                                 ce.StatusCode.ToString(),
                                 "message",
-                                ce.Message),
+                                CommandException.GetDisplayMessage(ce)),
                             ce);
                     }
                 }

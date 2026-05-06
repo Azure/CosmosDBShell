@@ -7,7 +7,7 @@ Lightweight CLI for Azure Cosmos DB.
 - Connect via Entra ID, connection string, or Azure CLI/Developer tools
 - Navigate with `ls` and `cd` (Account -> Databases -> Containers -> Items)
 - Inspect the current location with `pwd`
-- Create, query, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `rm`
+- Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
 - Pipelines and scripting with variables, loops, functions
 - MCP server for AI/tool integration
 
@@ -48,6 +48,7 @@ When consuming build artifacts (`*.nupkg`) from this repo, install as a .NET glo
 - macOS x64: `CosmosDBShell.osx-x64.<version>.nupkg`
 - macOS ARM64: `CosmosDBShell.osx-arm64.<version>.nupkg`
 - Windows x64: `CosmosDBShell.win-x64.<version>.nupkg`
+- Windows ARM64: `CosmosDBShell.win-arm64.<version>.nupkg`
 
 ### Install command
 

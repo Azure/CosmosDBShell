@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.KeyBindings;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
@@ -92,6 +93,15 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    internal static CancellationTokenSource UserCancellationTokenSource
+    {
+        get
+        {
+            currentTokenSource?.Dispose();
+            return currentTokenSource = new CancellationTokenSource();
+        }
+    }
+
     internal static char CSVSeparator
     {
         get
@@ -109,6 +119,8 @@ public partial class ShellInterpreter : IDisposable
     internal Dictionary<string, DefStatement> Functions { get; } = [];
 
     internal string HistoryFile { get; private set; }
+
+    internal IReadOnlyList<string> History => this.history;
 
     internal string? LastBuffer { get; set; }
 
@@ -252,9 +264,15 @@ public partial class ShellInterpreter : IDisposable
             {
                 state = await this.RunCommandAsync(state, command, token);
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
                 return new CommandState();
+            }
+            catch (TaskCanceledException e)
+            {
+                var shellException = new ShellException(CommandException.GetDisplayMessage(e), e);
+                this.ReportExecutionError(shellException);
+                return new ErrorCommandState(shellException);
             }
             catch (Exception e)
             {
@@ -549,8 +567,10 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
-    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false)
+    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, CancellationToken token = default)
     {
+        token.ThrowIfCancellationRequested();
+
         Uri? authorityHostUri = null;
         if (!string.IsNullOrWhiteSpace(authorityHost))
         {
@@ -611,7 +631,12 @@ public partial class ShellInterpreter : IDisposable
             AccountProperties keyProps;
             try
             {
-                keyProps = await client.ReadAccountAsync();
+                keyProps = await ReadAccountAsync(client, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
             }
             catch (Exception ex)
             {
@@ -650,10 +675,15 @@ public partial class ShellInterpreter : IDisposable
 
             try
             {
-                var vscProps = await client.ReadAccountAsync();
+                var vscProps = await ReadAccountAsync(client, token);
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", vscProps.Id));
                 this.Connect(client);
                 return;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
             }
             catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
             {
@@ -688,7 +718,12 @@ public partial class ShellInterpreter : IDisposable
             AccountProperties tokenProps;
             try
             {
-                tokenProps = await client.ReadAccountAsync();
+                tokenProps = await ReadAccountAsync(client, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
             }
             catch (Exception ex)
             {
@@ -718,7 +753,12 @@ public partial class ShellInterpreter : IDisposable
             AccountProperties miProps;
             try
             {
-                miProps = await client.ReadAccountAsync();
+                miProps = await ReadAccountAsync(client, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
             }
             catch (Exception ex)
             {
@@ -761,10 +801,15 @@ public partial class ShellInterpreter : IDisposable
 
             try
             {
-                var entraProps = await client.ReadAccountAsync();
+                var entraProps = await ReadAccountAsync(client, token);
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", entraProps.Id));
                 this.Connect(client);
                 return;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
             }
             catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
             {
@@ -796,7 +841,12 @@ public partial class ShellInterpreter : IDisposable
                 AccountProperties dcProps;
                 try
                 {
-                    dcProps = await client.ReadAccountAsync();
+                    dcProps = await ReadAccountAsync(client, token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    client.Dispose();
+                    throw;
                 }
                 catch (Exception dcEx)
                 {
@@ -829,10 +879,15 @@ public partial class ShellInterpreter : IDisposable
 
             try
             {
-                var dacProps = await client.ReadAccountAsync();
+                var dacProps = await ReadAccountAsync(client, token);
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", dacProps.Id));
                 this.Connect(client);
                 return;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
             }
             catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
             {
@@ -840,6 +895,12 @@ public partial class ShellInterpreter : IDisposable
                 throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
             }
         }
+    }
+
+    private static async Task<AccountProperties> ReadAccountAsync(CosmosClient client, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        return await client.ReadAccountAsync().WaitAsync(token);
     }
 
     /// <summary>
@@ -1049,6 +1110,18 @@ public partial class ShellInterpreter : IDisposable
 
             lineEditor.KeyBindings.Add<ClearCurrentLineCommand>(ConsoleKey.Escape);
             lineEditor.KeyBindings.Add<ClearScreenCommand>(ConsoleKey.L, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<MoveToStartOfLineCommand>(ConsoleKey.A, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<MoveToEndOfLineCommand>(ConsoleKey.E, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<DeleteToStartOfLineCommand>(ConsoleKey.U, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<DeleteToEndOfLineCommand>(ConsoleKey.K, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<DeletePreviousWordCommand>(ConsoleKey.W, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.P, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.N, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<MoveCursorLeftCommand>(ConsoleKey.B, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add<MoveCursorRightCommand>(ConsoleKey.F, ConsoleModifiers.Control);
+            lineEditor.KeyBindings.Add(ConsoleKey.D, ConsoleModifiers.Control, () => new ExitShellCommand(this));
+            lineEditor.KeyBindings.Add(ConsoleKey.R, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this));
+            lineEditor.KeyBindings.Add(ConsoleKey.S, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this, startsForward: true));
             lineEditor.KeyBindings.Add(ConsoleKey.Tab, () => new CosmosCompleteCommand(this, AutoComplete.Next));
             lineEditor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Control, () => new CosmosCompleteCommand(this, AutoComplete.Previous));
             foreach (var line in this.history)
