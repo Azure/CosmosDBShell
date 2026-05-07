@@ -232,13 +232,7 @@ internal class Program
                         Environment.ExitCode = 1;
                         if (executeAndContinueCommand is null)
                         {
-                            // Stop host gracefully before returning so the
-                            // background MCP host task does not keep running
-                            // against a disposed IHost.
-                            if (host != null)
-                            {
-                                await host.StopAsync();
-                            }
+                            await StopHostAsync(host, hostTask);
 
                             return;
                         }
@@ -247,11 +241,7 @@ internal class Program
                     // If user only wants to execute piped script then quit (unless -k / ExecuteAndContinue)
                     if (executeAndContinueCommand is null && executeAndQuitCommand is null)
                     {
-                        // Stop host gracefully before returning
-                        if (host != null)
-                        {
-                            await host.StopAsync();
-                        }
+                        await StopHostAsync(host, hostTask);
 
                         return;
                     }
@@ -266,17 +256,7 @@ internal class Program
                     Environment.ExitCode = 1;
                     if (executeAndContinueCommand is null)
                     {
-                        // Stop host gracefully before returning
-                        if (host != null)
-                        {
-                            await host.StopAsync();
-                        }
-
-                        // Wait for the host task to complete
-                        if (hostTask != null)
-                        {
-                            await hostTask;
-                        }
+                        await StopHostAsync(host, hostTask);
 
                         return;
                     }
@@ -292,17 +272,7 @@ internal class Program
                 await ShellInterpreter.Instance.RunAsync();
             }
 
-            // Stop the host gracefully before the task completes
-            if (host != null)
-            {
-                await host.StopAsync();
-            }
-
-            // Wait for the host task to complete
-            if (hostTask != null)
-            {
-                await hostTask;
-            }
+            await StopHostAsync(host, hostTask);
         }
         finally
         {
@@ -326,6 +296,21 @@ internal class Program
             ? $"{product} {version}"
             : $"{product} {version} ({commit})";
         ShellInterpreter.WriteLine(heading);
+    }
+
+    private static async Task StopHostAsync(IHost? host, Task? hostTask)
+    {
+        if (host != null)
+        {
+            await host.StopAsync();
+        }
+
+        if (hostTask != null)
+        {
+#pragma warning disable VSTHRD003 // hostTask is created by this process via Task.Run for the MCP host loop.
+            await hostTask;
+#pragma warning restore VSTHRD003
+        }
     }
 
     /// <summary>
@@ -432,7 +417,6 @@ internal class Program
                     "--connect-mode");
                 return null;
             },
-            isDefault: true,
             description: MessageService.GetString("help-ConnectionMode"));
 
         var connectTenant = new Option<string?>("--connect-tenant", MessageService.GetString("help-ConnectTenant"));
@@ -594,16 +578,23 @@ internal class Program
                 : MessageService.GetArgsString("help-error-UnknownArgumentError", "argument", unrecognizedArg);
 
         public override string ExpectsOneArgument(System.CommandLine.Parsing.SymbolResult symbolResult) =>
-            MessageService.GetArgsString("help-error-MissingValueOptionError", "option", symbolResult.Symbol.Name);
+            MessageService.GetArgsString("help-error-MissingValueOptionError", "option", GetDisplayName(symbolResult));
 
         public override string NoArgumentProvided(System.CommandLine.Parsing.SymbolResult symbolResult) =>
-            MessageService.GetArgsString("help-error-MissingValueOptionError", "option", symbolResult.Symbol.Name);
+            MessageService.GetArgsString("help-error-MissingValueOptionError", "option", GetDisplayName(symbolResult));
 
         public override string RequiredArgumentMissing(System.CommandLine.Parsing.SymbolResult symbolResult) =>
-            MessageService.GetArgsString("help-error-MissingRequiredOptionError2", "option", symbolResult.Symbol.Name);
+            MessageService.GetArgsString("help-error-MissingRequiredOptionError2", "option", GetDisplayName(symbolResult));
 
         public override string ArgumentConversionCannotParseForOption(string value, string optionName, Type expectedType) =>
             MessageService.GetArgsString("help-error-BadFormatConversionError2", "option", optionName);
+
+        private static string GetDisplayName(System.CommandLine.Parsing.SymbolResult symbolResult)
+        {
+            return symbolResult.Symbol is System.CommandLine.Option option && option.Aliases.Count > 0
+                ? option.Aliases.First()
+                : symbolResult.Symbol.Name;
+        }
     }
 
     public class CosmosShellOptions
