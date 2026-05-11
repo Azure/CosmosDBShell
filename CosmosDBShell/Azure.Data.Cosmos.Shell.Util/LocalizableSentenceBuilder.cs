@@ -43,6 +43,8 @@ public class LocalizableSentenceBuilder : SentenceBuilder
 
     public static string Verbose => MessageService.GetString("help-Verbose");
 
+    public static string Theme => MessageService.GetString("help-Theme");
+
     public override Func<string> RequiredWord => () => MessageService.GetString("help-RequiredWord");
 
     public override Func<string> ErrorsHeadingText => () => MessageService.GetString("help-ErrorsHeadingText");

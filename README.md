@@ -124,6 +124,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
 | `--verbose` | Print full exception details |
 | `--cs <n>` | Colors: 0=off, 1=standard, 2=truecolor |
+| `--theme <name>` | Color theme profile to apply at startup (`default`, `light`, `dark`, `monochrome`). Falls back to `COSMOSDB_SHELL_THEME`. |
 | `--help` | Show help |
 
 Examples:
@@ -134,6 +135,33 @@ cosmosdbshell -c "seed.csh mydb mycontainer" --connect "AccountEndpoint=...;Acco
 
 # Run a script from piped command text.
 echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
+```
+
+## Theming
+
+The shell ships with four built-in color profiles that can be selected at startup or swapped at runtime:
+
+| Profile | Best for |
+| ------- | -------- |
+| `default` | Dark terminal backgrounds (alias for `dark`). |
+| `dark` | Dark terminal backgrounds. |
+| `light` | Light terminal backgrounds (uses darker hues for brackets and literals so they remain readable on white). |
+| `monochrome` | No color escapes; only `bold`/`dim`/`underline`. Useful for screen readers, monochrome terminals, or piping to a log file. |
+
+All profiles use only the standard ANSI 16 color names, so the shell follows the terminal's configured palette (Solarized, Dracula, Campbell, …).
+
+```bash
+# Pick a profile at startup.
+cosmosdbshell --theme=light
+
+# Or via environment variable (the --theme flag wins if both are set).
+export COSMOSDB_SHELL_THEME=monochrome
+cosmosdbshell
+
+# Inspect or switch at runtime.
+CS > theme list
+CS > theme show light       # preview a profile without switching
+CS > theme use light        # switch for the rest of the session
 ```
 
 ## How to Contribute
