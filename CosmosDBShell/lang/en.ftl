@@ -110,7 +110,7 @@ command-query-description-format = Output format (json, table, csv)
 command-query-description-database = The database to query against
 command-query-description-container = The container to query against
 command-query-fetched = Fetched { $count } documents.
-command-query-request_charge = Request Charge: [white]{ $charge } RUs[/]
+command-query-request_charge = Request Charge: { $charge } RUs
 command-query-document_header = Document
 command-query-count_header = Count
 command-query-size_header = Size
@@ -578,8 +578,8 @@ expression_error_null_xor = Operand evaluation returned null for XOR operation
 expression_error_unsupported_operator = Binary operator { $operator } is not supported
 
 # MCP Server messages
-mcp-error-creating-server = Error creating MCP server: [red]{ $message }[/]
-mcp-error-server-failed-start = MCP server failed to start: [red]{ $message }[/]
+mcp-error-creating-server = Error creating MCP server: { $message }
+mcp-error-server-failed-start = MCP server failed to start: { $message }
 
 
 # Statements
@@ -587,9 +587,7 @@ help-statements = Statements
 help-example = Example
 help-syntax = Syntax
 help-available-commands = Available Commands
-help-available-commands-styled = [bold]Available Commands[/]
-help-control-flow-statements = Control Flow Statements:
-help-control-flow-statements-styled = [bold]Control Flow Statements[/]
+help-control-flow-statements = Control Flow Statements
 help-list-of-available-commands = List of available commands
 help-category-connection = Connection
 help-category-connection-styled = Connection

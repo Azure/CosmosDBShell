@@ -427,7 +427,7 @@ internal class HelpCommand : CosmosCommand
         else
         {
             // Create a nice header for the commands list
-            var headerPanel = new Panel(MessageService.GetString("help-available-commands-styled"))
+            var headerPanel = new Panel(Theme.FormatHelpHeader(MessageService.GetString("help-available-commands")))
             {
                 Border = BoxBorder.Rounded,
                 BorderStyle = Style.Parse("green"),
@@ -754,7 +754,7 @@ internal class HelpCommand : CosmosCommand
 
         if (plain)
         {
-            ShellInterpreter.WriteLine(MessageService.GetString("help-control-flow-statements"));
+            ShellInterpreter.WriteLine(MessageService.GetString("help-control-flow-statements") + ":");
             ShellInterpreter.WriteLine();
             foreach (var s in statements.OrderBy(s => s.Name))
             {
@@ -769,7 +769,7 @@ internal class HelpCommand : CosmosCommand
         }
         else
         {
-            var stmtPanel = new Panel(MessageService.GetString("help-control-flow-statements-styled"))
+            var stmtPanel = new Panel(Theme.FormatHelpHeader(MessageService.GetString("help-control-flow-statements")))
             {
                 Border = BoxBorder.Rounded,
                 BorderStyle = Style.Parse("green"),
