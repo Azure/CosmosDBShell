@@ -174,6 +174,24 @@ public class HighlighterTests
     }
 
     [Fact]
+    public void TestInterpolatedExpressionWithEscapesRoundTrips()
+    {
+        // The cooked content of an interpolated string collapses escape sequences
+        // (e.g. \" -> "), so an inner Lexer that walks the cooked text would emit
+        // token positions that drift relative to the outer source. Verify that an
+        // interpolation containing an inner string literal with a backslash escape
+        // still renders the visible characters in their original positions.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var input = "echo \"$( \\\"a\\nb\\\" )\"";
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+
+        var rendered = string.Concat(res.GetSegments(AnsiConsole.Console).Select(s => s.Text));
+        Assert.Equal(input, rendered);
+    }
+
+    [Fact]
     public void TestExpressionHighlight()
     {
         var highlighter = (IHighlighter)ShellInterpreter.Instance;

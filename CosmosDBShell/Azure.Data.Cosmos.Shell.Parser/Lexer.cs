@@ -217,7 +217,14 @@ internal class Lexer
     private readonly string input;
     private readonly Stack<Token> putBackTokens;
     private readonly int positionOffset;
-    private readonly Dictionary<Token, int[]> interpolatedStringSourceMaps = new();
+
+    // Use reference equality on the Token key. Token is a record (value equality),
+    // so two distinct tokens with identical Type/Value/Start/Length would otherwise
+    // collide as map keys. Reference equality guarantees that only the exact token
+    // instance produced by ReadInterpolatedString / ReadDoubleQuotedString in this
+    // lexer can retrieve its source map.
+    private readonly Dictionary<Token, int[]> interpolatedStringSourceMaps = new(ReferenceEqualityComparer.Instance);
+
     private int position;
     private Token? lastToken;
 
@@ -244,6 +251,18 @@ internal class Lexer
     public List<Token> Comments { get; } = new();
 
     public ErrorList Errors { get; } = new ErrorList();
+
+    /// <summary>
+    /// Gets the raw input string this lexer is reading. Combined with
+    /// <see cref="PositionOffset"/>, callers can recover the original outer-source
+    /// substring underlying any token position produced by this lexer.
+    /// </summary>
+    internal string RawInput => this.input;
+
+    /// <summary>
+    /// Gets the position offset added to every produced token's <c>Start</c> value.
+    /// </summary>
+    internal int PositionOffset => this.positionOffset;
 
     /// <summary>
     /// Returns the per-character source-position mapping recorded for a previously produced

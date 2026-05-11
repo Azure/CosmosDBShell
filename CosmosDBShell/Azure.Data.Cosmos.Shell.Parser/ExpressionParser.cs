@@ -799,22 +799,53 @@ internal class ExpressionParser
                 // Parse the expression
                 if (!string.IsNullOrWhiteSpace(exprContent))
                 {
-                    // Pass the absolute outer position of the first char inside the
-                    // parentheses as the lexer's positionOffset, so tokens produced
-                    // for the nested expression carry positions relative to the outer
-                    // source buffer (required for syntax highlighting).
+                    // The cooked <c>exprContent</c> can drift from the outer source whenever
+                    // the interpolated string contains escape sequences (for example a
+                    // string literal inside the interpolation: $( "a\nb" )). To keep token
+                    // positions from the inner lexer correct in those cases, lex the raw
+                    // outer-source slice that produced this content instead of the cooked
+                    // text. The slice runs from the absolute position of the first inner
+                    // character to one past the absolute position of the last inner
+                    // character (the position immediately before the closing ')').
+                    if (sourceMap != null && this.lexer.RawInput.Length > 0)
+                    {
+                        var rawStartOuter = OuterPos(startExprPos);
+                        var rawEndOuter = OuterPos(position - 2) + 1;
+                        var lexerOriginStart = this.lexer.PositionOffset;
+                        var rawStart = rawStartOuter - lexerOriginStart;
+                        var rawEnd = rawEndOuter - lexerOriginStart;
+                        if (rawStart >= 0 && rawEnd >= rawStart && rawEnd <= this.lexer.RawInput.Length)
+                        {
+                            var rawSlice = this.lexer.RawInput.Substring(rawStart, rawEnd - rawStart);
+                            var rawLexer = new Lexer(rawSlice, rawStartOuter);
+                            var rawParser = new ExpressionParser(rawLexer);
+                            var expr = rawParser.ParseExpression();
+
+                            if (rawLexer.Errors.Count > 0)
+                            {
+                                this.lexer.Errors.AddRange(rawLexer.Errors);
+                            }
+
+                            expressions.Add(expr);
+                            continue;
+                        }
+                    }
+
+                    // Fallback path: no source map (synthetic token) or the raw slice could
+                    // not be located. Lex the cooked content with a single fixed offset.
+                    // Token positions may drift through escape sequences but stay correct
+                    // for escape-free interpolations, which covers the common case.
                     var innerOffset = OuterPos(startExprPos);
                     var exprLexer = new Lexer(exprContent, innerOffset);
                     var exprParser = new ExpressionParser(exprLexer);
-                    var expr = exprParser.ParseExpression();
+                    var expr2 = exprParser.ParseExpression();
 
-                    // Merge nested errors
                     if (exprLexer.Errors.Count > 0)
                     {
                         this.lexer.Errors.AddRange(exprLexer.Errors);
                     }
 
-                    expressions.Add(expr);
+                    expressions.Add(expr2);
                 }
             }
             else if (char.IsLetter(content[position]) || content[position] == '_')
