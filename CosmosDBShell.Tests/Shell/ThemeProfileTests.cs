@@ -183,6 +183,80 @@ public class ThemeProfileTests
         Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("command-theme-use-missing-name")));
     }
 
+    /// <summary>
+    /// Regression: every built-in profile must produce well-balanced Spectre markup
+    /// for every <c>Theme.Format*</c> helper. Caught the original monochrome bug
+    /// where an "open tag only" accessor combined with a hardcoded <c>[/]</c> emitted
+    /// a stray closing tag that crashed Spectre's markup parser.
+    /// </summary>
+    [Theory]
+    [InlineData("default")]
+    [InlineData("light")]
+    [InlineData("dark")]
+    [InlineData("monochrome")]
+    public void Format_ProducesParseableMarkup_ForEveryProfile(string name)
+    {
+        Assert.True(ThemeProfiles.TryGet(name, out var profile));
+
+        var saved = Theme.Current;
+        try
+        {
+            Theme.Apply(profile);
+
+            var samples = new (string Role, string Markup)[]
+            {
+                ("FormatCommand", Theme.FormatCommand("connect")),
+                ("FormatUnknownCommand", Theme.FormatUnknownCommand("nope")),
+                ("FormatScriptPath", Theme.FormatScriptPath("seed.csh")),
+                ("FormatArgumentName", Theme.FormatArgumentName("--max")),
+                ("ConnectedStatePromt", Theme.ConnectedStatePromt("CS >")),
+                ("DatabaseNamePromt", Theme.DatabaseNamePromt("MyDb")),
+                ("ContainerNamePromt", Theme.ContainerNamePromt("MyContainer")),
+                ("FormatRedirection", Theme.FormatRedirection(">>")),
+                ("FormatRedirectionDestination", Theme.FormatRedirectionDestination("out.json")),
+                ("FormatJsonProperty", Theme.FormatJsonProperty("\"id\"")),
+                ("FormatJsonBracket", Theme.FormatJsonBracket(":")),
+                ("FormatJsonString", Theme.FormatJsonString("\"hello\"")),
+                ("FormatJsonNumber", Theme.FormatJsonNumber("42")),
+                ("FormatJsonBoolean", Theme.FormatJsonBoolean("true")),
+                ("FormatJsonNull", Theme.FormatJsonNull("null")),
+                ("FormatStringLiteral", Theme.FormatStringLiteral("\"hello\"")),
+                ("FormatNumberLiteral", Theme.FormatNumberLiteral("42")),
+                ("FormatBooleanLiteral", Theme.FormatBooleanLiteral("true")),
+                ("FormatKeyword", Theme.FormatKeyword("if")),
+                ("FormatError", Theme.FormatError("oops")),
+                ("FormatOperator", Theme.FormatOperator("+")),
+                ("FormatTableValue", Theme.FormatTableValue("West US")),
+                ("FormatTableValueRaw", Theme.FormatTableValueRaw("123")),
+                ("FormatWarning", Theme.FormatWarning("careful")),
+                ("FormatDirectory", Theme.FormatDirectory("docs")),
+                ("FormatMuted", Theme.FormatMuted("2026-05-11")),
+                ("FormatHelpHeader", Theme.FormatHelpHeader("Connection")),
+                ("FormatHelpName", Theme.FormatHelpName("--theme")),
+                ("FormatHelpDescription", Theme.FormatHelpDescription("Switches the active color theme.")),
+                ("FormatBracket(0)", Theme.FormatBracket("{", 0)),
+                ("FormatBracket(1)", Theme.FormatBracket("[", 1)),
+                ("FormatBracket(2)", Theme.FormatBracket("(", 2)),
+            };
+
+            foreach (var (role, markup) in samples)
+            {
+                try
+                {
+                    _ = new Spectre.Console.Markup(markup);
+                }
+                catch (Exception ex)
+                {
+                    Assert.Fail($"Profile '{name}' produced unparseable markup for {role}: '{markup}'. {ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            Theme.Apply(saved);
+        }
+    }
+
     private static void AssertStyle(string slot, string value, string profile)
     {
         if (string.IsNullOrEmpty(value))
