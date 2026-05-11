@@ -44,5 +44,7 @@ public static class LocalizableSentenceBuilder
 
     public static string Verbose => MessageService.GetString("help-Verbose");
 
+    public static string Theme => MessageService.GetString("help-Theme");
+
     public static string UsageHeadingText => MessageService.GetString("help-UsageHeadingText");
 }

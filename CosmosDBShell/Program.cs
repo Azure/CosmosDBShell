@@ -94,6 +94,7 @@ internal class Program
                 StartLspServer = parseResult.GetValueForOption(optionMap.StartLspServer),
                 LspStdio = parseResult.GetValueForOption(optionMap.LspStdio),
                 Verbose = parseResult.GetValueForOption(optionMap.Verbose),
+                Theme = parseResult.GetValueForOption(optionMap.Theme),
             };
 
             // --mcp supports an optional value: when the option is present without
@@ -141,6 +142,9 @@ internal class Program
                 2 => ColorSystem.TrueColor,
                 _ => ColorSystem.NoColors,
             };
+
+            ApplyTheme(o.Theme);
+
             ShellInterpreter.Instance.Options = o;
 
             if (o.ConnectionString != null)
@@ -439,6 +443,7 @@ internal class Program
             IsHidden = true,
         };
         var verbose = new Option<bool>("--verbose", MessageService.GetString("help-Verbose"));
+        var theme = new Option<string?>("--theme", MessageService.GetString("help-Theme"));
 
         var root = new RootCommand("Cosmos DB Shell")
         {
@@ -457,6 +462,7 @@ internal class Program
             startLspServer,
             lspStdio,
             verbose,
+            theme,
         };
 
         var map = new OptionMap(
@@ -474,7 +480,8 @@ internal class Program
             mcpPort,
             startLspServer,
             lspStdio,
-            verbose);
+            verbose,
+            theme);
 
         return (root, map);
     }
@@ -497,6 +504,7 @@ internal class Program
             [map.ConnectAuthorityHost] = "<url>",
             [map.ConnectManagedIdentity] = "<id>",
             [map.McpPort] = "[<port>]",
+            [map.Theme] = "<name>",
         };
 
         var rows = new List<(string Label, string? Description)>();
@@ -541,6 +549,36 @@ internal class Program
         return builder.ToString();
     }
 
+    /// <summary>
+    /// Resolves the requested theme profile and applies it via <see cref="Theme.Apply"/>.
+    /// Resolution order: explicit <c>--theme</c> flag, then <c>COSMOSDB_SHELL_THEME</c>
+    /// environment variable, then the built-in default. Unknown names emit a warning
+    /// to stderr and fall back to the default profile.
+    /// </summary>
+    private static void ApplyTheme(string? themeFromCli)
+    {
+        var requested = !string.IsNullOrWhiteSpace(themeFromCli)
+            ? themeFromCli
+            : Environment.GetEnvironmentVariable("COSMOSDB_SHELL_THEME");
+
+        if (string.IsNullOrWhiteSpace(requested))
+        {
+            return;
+        }
+
+        if (!ThemeProfiles.TryGet(requested, out var profile))
+        {
+            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                "warning-unknown-theme",
+                "name",
+                requested,
+                "themes",
+                string.Join(", ", ThemeProfiles.All.Keys)));
+        }
+
+        Theme.Apply(profile);
+    }
+
     private sealed record OptionMap(
         Option<int> ColorSystem,
         Option<string?> ExecuteAndQuit,
@@ -556,7 +594,8 @@ internal class Program
         Option<int?> McpPort,
         Option<bool> StartLspServer,
         Option<bool> LspStdio,
-        Option<bool> Verbose);
+        Option<bool> Verbose,
+        Option<string?> Theme);
 
     /// <summary>
     /// Maps the most common <c>System.CommandLine</c> parse error messages
@@ -628,5 +667,7 @@ internal class Program
         public bool LspStdio { get; set; }
 
         public bool Verbose { get; set; }
+
+        public string? Theme { get; set; }
     }
 }

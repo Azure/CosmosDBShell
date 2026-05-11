@@ -9,121 +9,104 @@ using Spectre.Console;
 /// Provides formatting utilities for shell themes and prompts.
 /// </summary>
 /// <remarks>
-/// All colors used here are the standard ANSI 16 color names (<c>black</c>, <c>maroon</c>,
+/// <para>All colors are read from <see cref="Current"/>, a swappable
+/// <see cref="ThemeOptions"/> instance. Replacing it with <see cref="Apply"/>
+/// reskins the entire shell at runtime. Defaults come from
+/// <see cref="ThemeProfiles.Default"/>.</para>
+/// <para>Profiles use the standard ANSI 16 color names (<c>black</c>, <c>maroon</c>,
 /// <c>green</c>, <c>olive</c>, <c>navy</c>, <c>purple</c>, <c>teal</c>, <c>silver</c>,
 /// <c>grey</c>, <c>red</c>, <c>lime</c>, <c>yellow</c>, <c>blue</c>, <c>fuchsia</c>,
-/// <c>aqua</c>, <c>white</c>). These map to the terminal's configured 16-color palette,
-/// so the shell's appearance follows the user's terminal theme. Spectre's <c>cyan</c>
-/// and <c>magenta</c> are <em>not</em> in this set — they resolve to fixed 256-color
-/// indices and bypass terminal theming, so we use <c>aqua</c>/<c>fuchsia</c> instead.
+/// <c>aqua</c>, <c>white</c>) so the shell follows the terminal's configured
+/// 16-color palette. Spectre's <c>cyan</c> and <c>magenta</c> are <em>not</em> in
+/// this set — they resolve to fixed 256-color indices and bypass terminal theming,
+/// so we use <c>aqua</c>/<c>fuchsia</c> instead.</para>
 /// </remarks>
 internal static class Theme
 {
-    /// <summary>Color used for known shell command names and script paths.</summary>
-    public const string CommandColorName = "yellow";
+    /// <summary>
+    /// Gets the active theme. Mutated by <see cref="Apply"/>; defaults to
+    /// <see cref="ThemeProfiles.Default"/>.
+    /// </summary>
+    public static ThemeOptions Current { get; private set; } = ThemeProfiles.Default;
 
-    /// <summary>Color used for unknown command names (always rendered bold).</summary>
-    public const string UnknownCommandColorName = "red";
+    // Backward-compatible color-name aliases so existing call sites that interpolate
+    // [Theme.XColorName]...[/] keep working. New code should call the Format* helpers
+    // instead so they automatically pick up theme changes.
+    public static string CommandColorName => Current.CommandColor;
 
-    /// <summary>Color used for known argument/option names.</summary>
-    public const string ArgumentNameColorName = "green";
+    public static string UnknownCommandColorName => Current.UnknownCommandStyle;
 
-    /// <summary>Color used for the connected prompt and JSON property names.</summary>
-    public const string ConnectedPromptColorName = "aqua";
+    public static string ArgumentNameColorName => Current.ArgumentNameColor;
 
-    /// <summary>Color used for database names in the prompt and listings.</summary>
-    public const string DatabaseNameColorName = "green";
+    public static string ConnectedPromptColorName => Current.ConnectedPromptColor;
 
-    /// <summary>Color used for container names in the prompt and listings.</summary>
-    public const string ContainerNameColorName = "fuchsia";
+    public static string DatabaseNameColorName => Current.DatabaseNameColor;
 
-    /// <summary>Color used for output redirection operators.</summary>
-    public const string RedirectionColorName = "green";
+    public static string ContainerNameColorName => Current.ContainerNameColor;
 
-    /// <summary>Color used for JSON property names in syntax-highlighted output.</summary>
-    public const string JsonPropertyColorName = "aqua";
+    public static string RedirectionColorName => Current.RedirectionColor;
 
-    /// <summary>Color used for JSON punctuation (comma, colon).</summary>
-    public const string JsonPunctuationColorName = "yellow";
+    public static string JsonPropertyColorName => Current.JsonPropertyColor;
 
-    /// <summary>Color used for JSON and shell string/number/boolean/null literals.</summary>
-    public const string LiteralColorName = "fuchsia";
+    public static string JsonPunctuationColorName => Current.JsonPunctuationColor;
 
-    /// <summary>Color used for shell keywords (e.g. <c>if</c>, <c>while</c>).</summary>
-    public const string KeywordColorName = "purple";
+    public static string LiteralColorName => Current.LiteralColor;
 
-    /// <summary>Color used for error markers.</summary>
-    public const string ErrorColorName = "red";
+    public static string KeywordColorName => Current.KeywordColor;
 
-    /// <summary>Color used for operators in shell expressions.</summary>
-    public const string OperatorColorName = "blue";
+    public static string ErrorColorName => Current.ErrorColor;
 
-    /// <summary>Color used for table header values rendered in plain reports.</summary>
-    public const string TableValueColorName = "white";
+    public static string OperatorColorName => Current.OperatorColor;
 
-    /// <summary>Color used for warning/notice text (e.g. throughput unavailable).</summary>
-    public const string WarningColorName = "yellow";
+    public static string TableValueColorName => Current.TableValueColor;
 
-    /// <summary>Color used for directory entries.</summary>
-    public const string DirectoryColorName = "blue";
+    public static string WarningColorName => Current.WarningColor;
 
-    /// <summary>Color used for muted/secondary metadata (timestamps, indices).</summary>
-    public const string MutedColorName = "grey";
+    public static string DirectoryColorName => Current.DirectoryColor;
 
-    /// <summary>Color used for help bullet markers and similar accents.</summary>
-    public const string HelpAccentColorName = "aqua";
+    public static string MutedColorName => Current.MutedColor;
 
-    /// <summary>Color used for help section text and ordinals.</summary>
-    public const string HelpSecondaryColorName = "silver";
+    public static string HelpAccentColorName => Current.HelpAccentColor;
 
-    /// <summary>Color used for placeholder syntax (<c>&lt;name&gt;</c>) in help text.</summary>
-    public const string HelpPlaceholderColorName = "yellow";
+    public static string HelpPlaceholderColorName => Current.HelpPlaceholderColor;
 
-    /// <summary>Color used for variable sigils in help text.</summary>
-    public const string HelpVariableColorName = "green";
+    public static string HelpVariableColorName => Current.HelpVariableColor;
 
-    /// <summary>Color used for help section rule titles.</summary>
-    public const string HelpRuleColorName = "yellow";
-
-    /// <summary>Pre-formatted markup open tag for known commands.</summary>
-    public const string CommandColor = "[" + CommandColorName + "]";
+    /// <summary>Gets the pre-formatted markup open tag for known commands.</summary>
+    public static string CommandColor => OpenTag(Current.CommandColor);
 
     /// <summary>
-    /// Colors used for paired brackets ({}, [], ()) cycled by nesting depth, similar to
-    /// the "bracket pair colorization" feature in modern editors. The cycle is shared
-    /// across bracket types so that a single visual depth counter spans every kind of
-    /// pair. All entries are ANSI-16 colors so the cycle follows the terminal theme.
+    /// Replaces the active theme. Subsequent calls to any <c>Format*</c> helper or
+    /// color-name accessor will use values from <paramref name="options"/>.
     /// </summary>
-    private static readonly string[] BracketDepthColors =
+    public static void Apply(ThemeOptions options)
     {
-        "yellow",
-        "fuchsia",
-        "aqua",
-    };
+        Current = options ?? throw new ArgumentNullException(nameof(options));
+    }
 
     public static string FormatUnknownCommand(string command)
     {
-        return $"[bold {UnknownCommandColorName}]{Markup.Escape(command)}[/]";
+        return Wrap(Current.UnknownCommandStyle, Markup.Escape(command));
     }
 
     public static string FormatCommand(string command)
     {
-        return $"{CommandColor}{Markup.Escape(command)}[/]";
+        return Wrap(Current.CommandColor, Markup.Escape(command));
     }
 
     public static string FormatScriptPath(string command)
     {
-        return $"{Theme.CommandColor}{Markup.Escape(command)}[/]";
+        return Wrap(Current.CommandColor, Markup.Escape(command));
     }
 
     public static string FormatArgumentName(string command)
     {
-        return $"[{ArgumentNameColorName}]{Markup.Escape(command)}[/]";
+        return Wrap(Current.ArgumentNameColor, Markup.Escape(command));
     }
 
     public static string ConnectedStatePromt(string prompt)
     {
-        return $"[{ConnectedPromptColorName}]{Markup.Escape(prompt)}[/]";
+        return Wrap(Current.ConnectedPromptColor, Markup.Escape(prompt));
     }
 
     public static string DisconnectedStatePromt(string prompt)
@@ -133,32 +116,33 @@ internal static class Theme
 
     public static string DatabaseNamePromt(string db)
     {
-        return $"[{DatabaseNameColorName}]{Markup.Escape(db)}[/]";
+        return Wrap(Current.DatabaseNameColor, Markup.Escape(db));
     }
 
     public static string ContainerNamePromt(string cn)
     {
-        return $"[{ContainerNameColorName}]{Markup.Escape(cn)}[/]";
+        return Wrap(Current.ContainerNameColor, Markup.Escape(cn));
     }
 
     public static string FormatRedirection(string v)
     {
-        return $"[{RedirectionColorName}]{Markup.Escape(v)}[/]";
+        return Wrap(Current.RedirectionColor, Markup.Escape(v));
     }
 
     public static string FormatRedirectionDestination(string v)
     {
-        return $"[{RedirectionColorName} underline]{Markup.Escape(v)}[/]";
+        var style = string.IsNullOrEmpty(Current.RedirectionColor) ? "underline" : Current.RedirectionColor + " underline";
+        return Wrap(style, Markup.Escape(v));
     }
 
     public static string FormatJsonProperty(string text)
     {
-        return $"[{JsonPropertyColorName}]{Markup.Escape(text)}[/]";
+        return Wrap(Current.JsonPropertyColor, Markup.Escape(text));
     }
 
     public static string FormatJsonBracket(string text)
     {
-        return $"[{JsonPunctuationColorName}]{Markup.Escape(text)}[/]";
+        return Wrap(Current.JsonPunctuationColor, Markup.Escape(text));
     }
 
     /// <summary>
@@ -172,7 +156,8 @@ internal static class Theme
             depth = 0;
         }
 
-        return BracketDepthColors[depth % BracketDepthColors.Length];
+        var cycle = Current.BracketCycle;
+        return cycle[depth % cycle.Length];
     }
 
     /// <summary>
@@ -182,32 +167,32 @@ internal static class Theme
     /// </summary>
     public static string FormatBracket(string text, int depth)
     {
-        return $"[{GetBracketColor(depth)}]{Markup.Escape(text)}[/]";
+        return Wrap(GetBracketColor(depth), Markup.Escape(text));
     }
 
     public static string FormatJsonString(string text)
     {
-        return $"[{LiteralColorName}]{Markup.Escape(text)}[/]";
+        return Wrap(Current.LiteralColor, Markup.Escape(text));
     }
 
     public static string FormatJsonNumber(string text)
     {
-        return $"[{LiteralColorName}]{Markup.Escape(text)}[/]";
+        return Wrap(Current.LiteralColor, Markup.Escape(text));
     }
 
     public static string FormatJsonBoolean(string text)
     {
-        return $"[{LiteralColorName}]{Markup.Escape(text)}[/]";
+        return Wrap(Current.LiteralColor, Markup.Escape(text));
     }
 
     public static string FormatJsonNull(string text)
     {
-        return $"[{LiteralColorName}]{Markup.Escape(text)}[/]";
+        return Wrap(Current.LiteralColor, Markup.Escape(text));
     }
 
     internal static string FormatStringLiteral(string text)
     {
-        return $"[{LiteralColorName}]{Markup.Escape(text)}[/]";
+        return Wrap(Current.LiteralColor, Markup.Escape(text));
     }
 
     internal static string FormatNumberLiteral(string v)
@@ -222,17 +207,17 @@ internal static class Theme
 
     internal static string FormatKeyword(string value)
     {
-        return $"[{KeywordColorName}]{Markup.Escape(value)}[/]";
+        return Wrap(Current.KeywordColor, Markup.Escape(value));
     }
 
     internal static string FormatError(string value)
     {
-        return $"[{ErrorColorName}]{Markup.Escape(value)}[/]";
+        return Wrap(Current.ErrorColor, Markup.Escape(value));
     }
 
     internal static string FormatOperator(string value)
     {
-        return $"[{OperatorColorName}]{Markup.Escape(value)}[/]";
+        return Wrap(Current.OperatorColor, Markup.Escape(value));
     }
 
     /// <summary>
@@ -241,7 +226,7 @@ internal static class Theme
     /// </summary>
     internal static string FormatTableValue(string value)
     {
-        return $"[{TableValueColorName}]{Markup.Escape(value)}[/]";
+        return Wrap(Current.TableValueColor, Markup.Escape(value));
     }
 
     /// <summary>
@@ -251,42 +236,41 @@ internal static class Theme
     /// </summary>
     internal static string FormatTableValueRaw(string markup)
     {
-        return $"[{TableValueColorName}]{markup}[/]";
+        return Wrap(Current.TableValueColor, markup);
     }
 
     /// <summary>Wraps text in the warning/notice color.</summary>
     internal static string FormatWarning(string value)
     {
-        return $"[{WarningColorName}]{Markup.Escape(value)}[/]";
+        return Wrap(Current.WarningColor, Markup.Escape(value));
     }
 
     /// <summary>Wraps text in the directory color (used by <c>dir</c> output).</summary>
     internal static string FormatDirectory(string value)
     {
-        return $"[{DirectoryColorName}]{Markup.Escape(value)}[/]";
+        return Wrap(Current.DirectoryColor, Markup.Escape(value));
     }
 
     /// <summary>Wraps text in the muted color (used for timestamps and other metadata).</summary>
     internal static string FormatMuted(string value)
     {
-        return $"[{MutedColorName}]{Markup.Escape(value)}[/]";
+        return Wrap(Current.MutedColor, Markup.Escape(value));
     }
 
     /// <summary>
-    /// Wraps a help section/category header in <c>[bold]</c> with no foreground color.
-    /// Bright/light foreground colors (aqua, cyan, silver, white) become unreadable on
-    /// light terminal backgrounds, so we let the terminal's default foreground handle
-    /// contrast in both light and dark themes.
+    /// Wraps a help section/category header using the active
+    /// <see cref="ThemeOptions.HelpHeaderStyle"/>. The default profile uses
+    /// <c>[bold]</c> with no foreground color so headers fall through to the
+    /// terminal's default foreground in both light and dark themes.
     /// </summary>
     internal static string FormatHelpHeader(string value)
     {
-        return $"[bold]{Markup.Escape(value)}[/]";
+        return Wrap(Current.HelpHeaderStyle, Markup.Escape(value));
     }
 
     /// <summary>
-    /// Wraps help body text (descriptions, command summaries) in unstyled escaped text so
-    /// the terminal's default foreground is used. See <see cref="FormatHelpHeader"/> for
-    /// rationale.
+    /// Wraps help body text (descriptions, command summaries) in unstyled escaped
+    /// text so the terminal's default foreground is used.
     /// </summary>
     internal static string FormatHelpDescription(string value)
     {
@@ -294,12 +278,31 @@ internal static class Theme
     }
 
     /// <summary>
-    /// Wraps a help-line name token (parameter, option, or syntax element) in
-    /// <c>[bold]</c> so it stands out against descriptions while remaining readable on
-    /// any terminal background.
+    /// Wraps a help-line name token (parameter, option, or syntax element) using the
+    /// active <see cref="ThemeOptions.HelpNameStyle"/>.
     /// </summary>
     internal static string FormatHelpName(string value)
     {
-        return $"[bold]{Markup.Escape(value)}[/]";
+        return Wrap(Current.HelpNameStyle, Markup.Escape(value));
+    }
+
+    /// <summary>
+    /// Returns <c>[style]content[/]</c> when <paramref name="style"/> is non-empty,
+    /// otherwise just <paramref name="content"/>. Centralizing the empty-style branch
+    /// here lets profiles disable a color slot entirely (see
+    /// <see cref="ThemeProfiles.Monochrome"/>).
+    /// </summary>
+    private static string Wrap(string style, string content)
+    {
+        return string.IsNullOrEmpty(style) ? content : $"[{style}]{content}[/]";
+    }
+
+    /// <summary>
+    /// Returns the open tag <c>[style]</c> for inline markup builders, or empty
+    /// string when <paramref name="style"/> is empty. Used by <see cref="CommandColor"/>.
+    /// </summary>
+    private static string OpenTag(string style)
+    {
+        return string.IsNullOrEmpty(style) ? string.Empty : $"[{style}]";
     }
 }
