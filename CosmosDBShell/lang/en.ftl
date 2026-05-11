@@ -503,6 +503,7 @@ command-theme-saved = Saved theme '{ $name }' to { $path }
 command-theme-save-missing-name = 'theme save' requires a theme name.
 command-theme-save-exists = File already exists: { $path }. Pass --force to overwrite.
 command-theme-save-failed = Failed to save theme to { $path }: { $message }
+command-theme-save-hint-reload = Run 'theme reload' to register the new file (or 'theme load { $name }' to register and switch to it).
 command-theme-reloaded = Reloaded { $count } theme(s) from { $directory }
 
 theme-file-error-parse = Failed to parse theme file '{ $source }': { $details }

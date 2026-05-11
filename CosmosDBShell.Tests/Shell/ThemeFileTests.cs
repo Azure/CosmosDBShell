@@ -174,21 +174,67 @@ public class ThemeFileTests
         var path = Path.Combine(Path.GetTempPath(), $"cosmos-theme-{Guid.NewGuid():N}.toml");
         try
         {
-            ThemeFile.Save("round-trip", modified, ThemeProfiles.Default, path, description: "smoke", extends: "default");
+            ThemeFile.Save("round-trip", modified, path, description: "smoke");
             var text = File.ReadAllText(path);
 
-            // Save should omit slots that match the baseline so the file stays minimal.
-            Assert.DoesNotContain("command =", text);
-            Assert.Contains("literal =", text);
-            Assert.Contains("bracket_cycle =", text);
-            Assert.Contains("help_header =", text);
+            // Save now writes the full theme self-contained, so every slot appears
+            // and no 'extends' line is emitted. The file does not depend on any
+            // other profile being present at load time.
+            Assert.Contains("command = ", text);
+            Assert.Contains("literal = ", text);
+            Assert.Contains("bracket_cycle = ", text);
+            Assert.Contains("help_header = ", text);
+            Assert.DoesNotContain("extends ", text);
 
             var result = ThemeFile.Load(path, LookupBuiltIn);
             Assert.Equal("round-trip", result.Name);
             Assert.Equal("smoke", result.Description);
             Assert.Equal("purple", result.Options.LiteralColor);
+            Assert.Equal("fuchsia", result.Options.ContainerNameColor);
             Assert.Equal("bold underline", result.Options.HelpHeaderStyle);
             Assert.Equal(new[] { "yellow", "fuchsia", "purple" }, result.Options.BracketCycle);
+
+            // Slots that match the default still round-trip cleanly because they're
+            // written explicitly.
+            Assert.Equal(ThemeProfiles.Default.CommandColor, result.Options.CommandColor);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public void Save_WithoutExtends_ProducesSelfContainedFile()
+    {
+        // A saved file should load even when no base profiles are available
+        // (lookup returns null for everything). The current behavior is "extends
+        // defaults to 'default'", so a custom lookup that knows nothing must still
+        // be able to load the file's own values for every populated slot.
+        var path = Path.Combine(Path.GetTempPath(), $"cosmos-theme-{Guid.NewGuid():N}.toml");
+        try
+        {
+            ThemeFile.Save("standalone", ThemeProfiles.Light, path);
+
+            // Use a baseline-only-empty lookup that maps "default" to an empty
+            // ThemeOptions record. Nothing in the saved file relies on default's
+            // contents because every slot is written explicitly.
+            var emptyDefault = new ThemeOptions
+            {
+                CommandColor = string.Empty,
+                ConnectedPromptColor = string.Empty,
+                DatabaseNameColor = string.Empty,
+                ContainerNameColor = string.Empty,
+                LiteralColor = string.Empty,
+                BracketCycle = new[] { string.Empty },
+            };
+            var result = ThemeFile.Load(path, name => name == "default" ? emptyDefault : null);
+
+            Assert.Equal(ThemeProfiles.Light.LiteralColor, result.Options.LiteralColor);
+            Assert.Equal(ThemeProfiles.Light.BracketCycle, result.Options.BracketCycle);
         }
         finally
         {
