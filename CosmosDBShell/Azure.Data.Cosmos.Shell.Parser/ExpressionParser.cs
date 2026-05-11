@@ -671,6 +671,41 @@ internal class ExpressionParser
         var content = token.Value; // The content without the quotes
         var position = 0;
 
+        // Mapping from each character index in the cooked <c>content</c> to its absolute
+        // position in the original outer source buffer (accounting for escape sequences).
+        // Available for tokens produced by the same lexer that owns this parser; falls back
+        // to <c>null</c> for synthetic interpolated string tokens produced elsewhere.
+        var sourceMap = this.lexer.GetInterpolatedStringSourceMap(token);
+
+        // Returns the absolute outer source position for the given content index. When no
+        // mapping is available (defensive fallback) callers degrade to the surrounding
+        // interpolated string token's position.
+        int OuterPos(int contentIndex)
+        {
+            if (sourceMap != null && contentIndex >= 0 && contentIndex < sourceMap.Count)
+            {
+                return sourceMap[contentIndex];
+            }
+
+            return token.Start;
+        }
+
+        // Builds a synthetic identifier token spanning a slice of the outer source text
+        // for sub-expressions extracted from the interpolated string (variable references
+        // and the like). Using accurate positions allows the syntax highlighter and other
+        // tooling to operate on these nodes without consulting the cooked content.
+        Token MakeOuterToken(string value, int contentStart, int contentEnd)
+        {
+            if (sourceMap == null || contentEnd <= contentStart)
+            {
+                return token;
+            }
+
+            var startOuter = OuterPos(contentStart);
+            var endOuter = OuterPos(contentEnd - 1) + 1;
+            return new Token(TokenType.Identifier, value, startOuter, Math.Max(0, endOuter - startOuter));
+        }
+
         while (position < content.Length)
         {
             // Find the next interpolation
@@ -764,7 +799,12 @@ internal class ExpressionParser
                 // Parse the expression
                 if (!string.IsNullOrWhiteSpace(exprContent))
                 {
-                    var exprLexer = new Lexer(exprContent);
+                    // Pass the absolute outer position of the first char inside the
+                    // parentheses as the lexer's positionOffset, so tokens produced
+                    // for the nested expression carry positions relative to the outer
+                    // source buffer (required for syntax highlighting).
+                    var innerOffset = OuterPos(startExprPos);
+                    var exprLexer = new Lexer(exprContent, innerOffset);
                     var exprParser = new ExpressionParser(exprLexer);
                     var expr = exprParser.ParseExpression();
 
@@ -797,14 +837,19 @@ internal class ExpressionParser
                 var varName = content.Substring(startVarPos, position - startVarPos);
                 if (!string.IsNullOrEmpty(varName))
                 {
+                    // Span the synthetic token from the leading '$' through the last
+                    // character of the variable name so the AST node carries an accurate
+                    // outer-source range.
+                    var varToken = MakeOuterToken(varName, dollarIndex, position);
+
                     // Check if it contains property access or array access
                     if (varName.Contains('.') || varName.Contains('['))
                     {
-                        expressions.Add(new JSonPathExpression(token, varName));
+                        expressions.Add(new JSonPathExpression(varToken, varName));
                     }
                     else
                     {
-                        expressions.Add(new VariableExpression(token, varName));
+                        expressions.Add(new VariableExpression(varToken, varName));
                     }
                 }
             }
@@ -822,7 +867,8 @@ internal class ExpressionParser
                 var varName = content.Substring(startVarPos, position - startVarPos);
                 if (!string.IsNullOrEmpty(varName))
                 {
-                    expressions.Add(new VariableExpression(token, varName));
+                    var varToken = MakeOuterToken(varName, dollarIndex, position);
+                    expressions.Add(new VariableExpression(varToken, varName));
                 }
             }
             else

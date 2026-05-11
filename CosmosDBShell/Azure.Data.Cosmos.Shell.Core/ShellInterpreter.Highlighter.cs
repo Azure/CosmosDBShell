@@ -529,19 +529,57 @@ public partial class ShellInterpreter : IHighlighter
 
         public void Visit(InterpolatedStringExpression interpolatedStringExpression)
         {
-            // Interpolation sub-expressions inside "$(...)" are produced by a separate
-            // Lexer over the interior content (see ExpressionParser.ParseInterpolatedStringExpression),
-            // so their Start/Length positions live in that inner sub-buffer rather than
-            // in this.text. Recursing into them here would cause AppendUpTo/Substring to
-            // index into the wrong buffer and smear characters from the beginning of the
-            // outer line into the rendered output. Render the entire interpolated string
-            // as a single string literal token instead.
+            // The interpolated string is rendered as a string-literal background; any
+            // sub-expressions that carry accurate outer-source positions (variable
+            // references and "$(...)" interpolations whose tokens have been produced with
+            // the appropriate Lexer position offset) are visited in place so they pick up
+            // their dedicated colors. Sub-expressions whose positions don't lie within the
+            // interpolated string's outer span are treated as literal text — this covers
+            // the ConstantExpression placeholders the parser emits for raw text chunks
+            // between interpolations, which still carry the surrounding string token's
+            // position.
             this.AppendUpTo(interpolatedStringExpression.Start);
-            var content = this.text.Substring(
-                interpolatedStringExpression.Start,
-                Math.Min(interpolatedStringExpression.Length, this.text.Length - interpolatedStringExpression.Start));
-            this.result.Append(Theme.FormatStringLiteral(content));
-            this.currentPosition = interpolatedStringExpression.Start + interpolatedStringExpression.Length;
+
+            var endPos = Math.Min(
+                interpolatedStringExpression.Start + interpolatedStringExpression.Length,
+                this.text.Length);
+
+            var interpolations = new List<Expression>();
+            foreach (var expr in interpolatedStringExpression.Expressions)
+            {
+                if (expr is ConstantExpression)
+                {
+                    continue;
+                }
+
+                if (expr.Start <= interpolatedStringExpression.Start || expr.Start >= endPos)
+                {
+                    continue;
+                }
+
+                interpolations.Add(expr);
+            }
+
+            interpolations.Sort((a, b) => a.Start.CompareTo(b.Start));
+
+            foreach (var expr in interpolations)
+            {
+                if (expr.Start > this.currentPosition)
+                {
+                    var chunk = this.text.Substring(this.currentPosition, expr.Start - this.currentPosition);
+                    this.result.Append(Theme.FormatStringLiteral(chunk));
+                    this.currentPosition = expr.Start;
+                }
+
+                expr.Accept(this);
+            }
+
+            if (this.currentPosition < endPos)
+            {
+                var chunk = this.text.Substring(this.currentPosition, endPos - this.currentPosition);
+                this.result.Append(Theme.FormatStringLiteral(chunk));
+                this.currentPosition = endPos;
+            }
         }
 
         // Statement visitors
