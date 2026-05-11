@@ -72,14 +72,14 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             else
             {
                 client.ClientOptions.ThroughputBucket = this.Bucket;
-                AnsiConsole.MarkupLine(MessageService.GetString("command-bucket-switched_bucket", new Dictionary<string, object> { { "bucket", "[white]" + client.ClientOptions.ThroughputBucket + "[/]" } }));
+                AnsiConsole.MarkupLine(MessageService.GetString("command-bucket-switched_bucket", new Dictionary<string, object> { { "bucket", "[" + Theme.TableValueColorName + "]" + client.ClientOptions.ThroughputBucket + "[/]" } }));
             }
         }
         else
         {
             if (client.ClientOptions.ThroughputBucket.HasValue)
             {
-                AnsiConsole.MarkupLine(MessageService.GetString("command-bucket-currrent", new Dictionary<string, object> { { "bucket", "[white]" + client.ClientOptions.ThroughputBucket + "[/]" } }));
+                AnsiConsole.MarkupLine(MessageService.GetString("command-bucket-currrent", new Dictionary<string, object> { { "bucket", "[" + Theme.TableValueColorName + "]" + client.ClientOptions.ThroughputBucket + "[/]" } }));
             }
             else
             {
