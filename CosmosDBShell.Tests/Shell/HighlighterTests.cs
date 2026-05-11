@@ -117,6 +117,23 @@ public class HighlighterTests
     }
 
     [Fact]
+    public void TestInterpolatedExpressionDoesNotDuplicateText()
+    {
+        // Regression: nested expressions inside $(...) carry positions from a separate
+        // sub-Lexer, so recursing into them while indexing this.text used to smear
+        // characters from the start of the line into the rendered output. The full
+        // visible text must round-trip exactly through the highlighter.
+        var input = "echo \"$(3+5)\"\"$(3+5)\"";
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+        var rendered = string.Concat(res.GetSegments(AnsiConsole.Console).Select(s => s.Text));
+
+        Assert.Equal(input, rendered);
+    }
+
+    [Fact]
     public void TestExpressionHighlight()
     {
         var highlighter = (IHighlighter)ShellInterpreter.Instance;

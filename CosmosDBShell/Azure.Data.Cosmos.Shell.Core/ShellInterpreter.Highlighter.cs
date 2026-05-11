@@ -529,12 +529,19 @@ public partial class ShellInterpreter : IHighlighter
 
         public void Visit(InterpolatedStringExpression interpolatedStringExpression)
         {
-            foreach (var expr in interpolatedStringExpression.Expressions)
-            {
-                expr.Accept(this);
-            }
-
-            this.AppendUpTo(interpolatedStringExpression.Start + interpolatedStringExpression.Length);
+            // Interpolation sub-expressions inside "$(...)" are produced by a separate
+            // Lexer over the interior content (see ExpressionParser.ParseInterpolatedStringExpression),
+            // so their Start/Length positions live in that inner sub-buffer rather than
+            // in this.text. Recursing into them here would cause AppendUpTo/Substring to
+            // index into the wrong buffer and smear characters from the beginning of the
+            // outer line into the rendered output. Render the entire interpolated string
+            // as a single string literal token instead.
+            this.AppendUpTo(interpolatedStringExpression.Start);
+            var content = this.text.Substring(
+                interpolatedStringExpression.Start,
+                Math.Min(interpolatedStringExpression.Length, this.text.Length - interpolatedStringExpression.Start));
+            this.result.Append(Theme.FormatStringLiteral(content));
+            this.currentPosition = interpolatedStringExpression.Start + interpolatedStringExpression.Length;
         }
 
         // Statement visitors
