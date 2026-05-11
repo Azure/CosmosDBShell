@@ -154,7 +154,7 @@ internal class HelpCommand : CosmosCommand
             // Styled output
             if (!string.IsNullOrEmpty(cmd.Description))
             {
-                AnsiConsole.MarkupLine($"{INDENT}[bold {Theme.ConnectedPromptColorName}]{Markup.Escape(cmd.Description)}[/]");
+                AnsiConsole.MarkupLine($"{INDENT}{Theme.FormatHelpHeader(cmd.Description)}");
             }
 
             if (cmd.Aliases.Count > 0)
@@ -171,7 +171,7 @@ internal class HelpCommand : CosmosCommand
         {
             foreach (var p in cmd.Options)
             {
-                AnsiConsole.Markup(INDENT + "[[[" + Theme.HelpSecondaryColorName + "]-" + Markup.Escape(p.Name.FirstOrDefault() ?? string.Empty) + "[/]");
+                AnsiConsole.Markup(INDENT + "[[" + Theme.FormatHelpName("-" + (p.Name.FirstOrDefault() ?? string.Empty)));
 
                 if (!p.PropertyInfo.PropertyType.IsAssignableFrom(typeof(bool)))
                 {
@@ -194,11 +194,11 @@ internal class HelpCommand : CosmosCommand
 
                 if (p.IsRequired)
                 {
-                    AnsiConsole.Markup(INDENT + $"[{Theme.HelpSecondaryColorName}]{Markup.Escape(name)}[/] ");
+                    AnsiConsole.Markup(INDENT + Theme.FormatHelpName(name) + " ");
                 }
                 else
                 {
-                    AnsiConsole.Markup(INDENT + $"[[[{Theme.HelpSecondaryColorName}]{Markup.Escape(name)}[/]]] ");
+                    AnsiConsole.Markup(INDENT + "[[" + Theme.FormatHelpName(name) + "]] ");
                 }
             }
 
@@ -219,8 +219,8 @@ internal class HelpCommand : CosmosCommand
                 {
                     var paramName = p.Name.FirstOrDefault() ?? string.Empty;
                     var nameDisplay = !p.IsRequired
-                        ? $"[{Theme.HelpSecondaryColorName}]{Markup.Escape($"[{paramName}]")}[/]"
-                        : $"[{Theme.HelpSecondaryColorName}]{Markup.Escape(paramName)}[/]";
+                        ? "[[" + Theme.FormatHelpName(paramName) + "]]"
+                        : Theme.FormatHelpName(paramName);
 
                     var descDisplay = string.Empty;
                     if (!p.IsRequired)
@@ -231,11 +231,11 @@ internal class HelpCommand : CosmosCommand
                     var argHelp = p.GetDescription(cmd.CommandName);
                     if (!string.IsNullOrEmpty(argHelp))
                     {
-                        descDisplay += $"[{Theme.TableValueColorName}]{Markup.Escape(argHelp)}[/]";
+                        descDisplay += Theme.FormatHelpDescription(argHelp);
                     }
                     else
                     {
-                        descDisplay += $"[{Theme.ErrorColorName}]{MessageService.GetString("error")}[/] {Markup.Escape(MessageService.GetString("help-description-not-found"))}";
+                        descDisplay += $"[{Theme.ErrorColorName}]{MessageService.GetString("error")}[/] {Theme.FormatHelpDescription(MessageService.GetString("help-description-not-found"))}";
                     }
 
                     table.AddRow(INDENT + nameDisplay, descDisplay);
@@ -272,10 +272,10 @@ internal class HelpCommand : CosmosCommand
 
                 var argHelp = p.GetDescription(cmd.CommandName);
                 var descDisplay = !string.IsNullOrEmpty(argHelp)
-                    ? $"[{Theme.TableValueColorName}]{Markup.Escape(argHelp)}[/]"
-                    : $"[{Theme.ErrorColorName}]{MessageService.GetString("error")}[/] {Markup.Escape(MessageService.GetString("help-description-not-found"))}";
+                    ? Theme.FormatHelpDescription(argHelp)
+                    : $"[{Theme.ErrorColorName}]{MessageService.GetString("error")}[/] {Theme.FormatHelpDescription(MessageService.GetString("help-description-not-found"))}";
 
-                table.AddRow(INDENT + $"[{Theme.HelpSecondaryColorName}]{Markup.Escape(sb.ToString())}[/]", descDisplay);
+                table.AddRow(INDENT + Theme.FormatHelpName(sb.ToString()), descDisplay);
             }
 
             AnsiConsole.Write(table);
@@ -291,11 +291,11 @@ internal class HelpCommand : CosmosCommand
                 var (example, description) = examples[i];
                 if (!string.IsNullOrWhiteSpace(description))
                 {
-                    AnsiConsole.MarkupLine(INDENT + $"[{Theme.HelpAccentColorName}]\u25b6[/] [{Theme.HelpSecondaryColorName}]{i + 1}. {Markup.Escape(description)}[/]");
+                    AnsiConsole.MarkupLine(INDENT + $"[{Theme.HelpAccentColorName}]\u25b6[/] {i + 1}. {Theme.FormatHelpDescription(description)}");
                 }
                 else
                 {
-                    AnsiConsole.MarkupLine(INDENT + $"[{Theme.HelpAccentColorName}]\u25b6[/] [{Theme.HelpSecondaryColorName}]{i + 1}.[/]");
+                    AnsiConsole.MarkupLine(INDENT + $"[{Theme.HelpAccentColorName}]\u25b6[/] {i + 1}.");
                 }
 
                 var parser = new StatementParser(example);
@@ -567,7 +567,7 @@ internal class HelpCommand : CosmosCommand
             return;
         }
 
-        AnsiConsole.MarkupLine(INDENT + $"[bold {Theme.ConnectedPromptColorName}]{categoryName}[/]");
+        AnsiConsole.MarkupLine(INDENT + Theme.FormatHelpHeader(categoryName));
         ShellInterpreter.WriteLine();
 
         var table = new Table()
@@ -578,7 +578,7 @@ internal class HelpCommand : CosmosCommand
 
         foreach (var cmd in commands)
         {
-            table.AddRow(INDENT + $"{Theme.CommandColor}{cmd.CommandName}[/]", $"[{Theme.HelpSecondaryColorName}]{Markup.Escape(cmd.Description ?? string.Empty)}[/]");
+            table.AddRow(INDENT + $"{Theme.CommandColor}{cmd.CommandName}[/]", Theme.FormatHelpDescription(cmd.Description ?? string.Empty));
         }
 
         AnsiConsole.Write(table);
@@ -627,7 +627,7 @@ internal class HelpCommand : CosmosCommand
         // Use consistent styling with command help
         if (!string.IsNullOrWhiteSpace(s.Description))
         {
-            AnsiConsole.MarkupLine($"{INDENT}[bold {Theme.ConnectedPromptColorName}]{Markup.Escape(s.Description)}[/]");
+            AnsiConsole.MarkupLine($"{INDENT}{Theme.FormatHelpHeader(s.Description)}");
         }
 
         ShellInterpreter.WriteLine();
@@ -715,7 +715,7 @@ internal class HelpCommand : CosmosCommand
             return;
         }
 
-        var stmtPanel = new Panel($"[bold {Theme.TableValueColorName}]Control Flow Statements[/]")
+        var stmtPanel = new Panel($"[bold]Control Flow Statements[/]")
         {
             Border = BoxBorder.Rounded,
             BorderStyle = Style.Parse("green"),
@@ -733,7 +733,7 @@ internal class HelpCommand : CosmosCommand
         foreach (var s in statements.OrderBy(s => s.Name))
         {
             var desc = !string.IsNullOrWhiteSpace(s.Description)
-                ? $"[{Theme.HelpSecondaryColorName}]{Markup.Escape(s.Description)}[/]"
+                ? Theme.FormatHelpDescription(s.Description)
                 : string.Empty;
 
             table.AddRow(INDENT + Theme.FormatKeyword(s.Name), desc);
@@ -786,7 +786,7 @@ internal class HelpCommand : CosmosCommand
             foreach (var s in statements.OrderBy(s => s.Name))
             {
                 var desc = !string.IsNullOrWhiteSpace(s.Description)
-                    ? $"[{Theme.HelpSecondaryColorName}]{Markup.Escape(s.Description)}[/]"
+                    ? Theme.FormatHelpDescription(s.Description)
                     : string.Empty;
 
                 table.AddRow(INDENT + Theme.FormatKeyword(s.Name), desc);
@@ -841,7 +841,7 @@ internal class HelpCommand : CosmosCommand
 
     private static void WriteSectionHeader(string title)
     {
-        var rule = new Rule($"[{Theme.HelpRuleColorName}]{Markup.Escape(title)}[/]")
+        var rule = new Rule(Theme.FormatHelpHeader(title))
         {
             Justification = Justify.Left,
             Style = Style.Parse("grey"),

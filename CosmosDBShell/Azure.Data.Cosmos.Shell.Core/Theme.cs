@@ -271,4 +271,35 @@ internal static class Theme
     {
         return $"[{MutedColorName}]{Markup.Escape(value)}[/]";
     }
+
+    /// <summary>
+    /// Wraps a help section/category header in <c>[bold]</c> with no foreground color.
+    /// Bright/light foreground colors (aqua, cyan, silver, white) become unreadable on
+    /// light terminal backgrounds, so we let the terminal's default foreground handle
+    /// contrast in both light and dark themes.
+    /// </summary>
+    internal static string FormatHelpHeader(string value)
+    {
+        return $"[bold]{Markup.Escape(value)}[/]";
+    }
+
+    /// <summary>
+    /// Wraps help body text (descriptions, command summaries) in unstyled escaped text so
+    /// the terminal's default foreground is used. See <see cref="FormatHelpHeader"/> for
+    /// rationale.
+    /// </summary>
+    internal static string FormatHelpDescription(string value)
+    {
+        return Markup.Escape(value);
+    }
+
+    /// <summary>
+    /// Wraps a help-line name token (parameter, option, or syntax element) in
+    /// <c>[bold]</c> so it stands out against descriptions while remaining readable on
+    /// any terminal background.
+    /// </summary>
+    internal static string FormatHelpName(string value)
+    {
+        return $"[bold]{Markup.Escape(value)}[/]";
+    }
 }
