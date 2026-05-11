@@ -1,0 +1,69 @@
+// ------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+// ------------------------------------------------------------
+
+using System.Text.Json;
+
+using Azure.Data.Cosmos.Shell.Core;
+
+namespace CosmosShell.Tests.UtilTest;
+
+public class JsonOutputHighlighterTests
+{
+    [Fact]
+    public void Primitives_AreColoredByType()
+    {
+        var element = JsonSerializer.Deserialize<JsonElement>("{ \"name\": \"alice\", \"age\": 42, \"active\": true, \"nick\": null }");
+
+        var markup = JsonOutputHighlighter.BuildMarkup(element);
+
+        // Property name uses the JSON property color (cyan).
+        Assert.Contains("[cyan]\"name\"[/]", markup);
+
+        // Each value type uses its dedicated helper from Theme.
+        Assert.Contains("[violet]\"alice\"[/]", markup);
+        Assert.Contains("[violet]42[/]", markup);
+        Assert.Contains("[violet]true[/]", markup);
+        Assert.Contains("[violet]null[/]", markup);
+
+        // Brackets and separators use the bracket color (yellow).
+        Assert.Contains("[yellow]{[/]", markup);
+        Assert.Contains("[yellow]}[/]", markup);
+        Assert.Contains("[yellow]:[/]", markup);
+        Assert.Contains("[yellow],[/]", markup);
+    }
+
+    [Fact]
+    public void NestedObjectsAndArrays_AreIndented()
+    {
+        var element = JsonSerializer.Deserialize<JsonElement>("{ \"items\": [1, 2] }");
+
+        var markup = JsonOutputHighlighter.BuildMarkup(element);
+
+        // Two-space indentation matching Utf8JsonWriter(Indented=true).
+        Assert.Contains("\n  [cyan]\"items\"[/]", markup);
+        Assert.Contains("\n    [violet]1[/]", markup);
+        Assert.Contains("\n    [violet]2[/]", markup);
+    }
+
+    [Fact]
+    public void EmptyObjectAndArray_RenderInline()
+    {
+        var emptyObject = JsonSerializer.Deserialize<JsonElement>("{}");
+        var emptyArray = JsonSerializer.Deserialize<JsonElement>("[]");
+
+        Assert.Equal("[yellow]{[/][yellow]}[/]", JsonOutputHighlighter.BuildMarkup(emptyObject));
+        Assert.Equal("[yellow][[[/][yellow]]][/]", JsonOutputHighlighter.BuildMarkup(emptyArray));
+    }
+
+    [Fact]
+    public void StringValues_AreJsonAndMarkupEscaped()
+    {
+        var element = JsonSerializer.Deserialize<JsonElement>("{ \"q\": \"a\\\"b\" }");
+
+        var markup = JsonOutputHighlighter.BuildMarkup(element);
+
+        // The embedded quote stays JSON-escaped inside the markup token.
+        Assert.Contains("[violet]\"a\\u0022b\"[/]", markup);
+    }
+}

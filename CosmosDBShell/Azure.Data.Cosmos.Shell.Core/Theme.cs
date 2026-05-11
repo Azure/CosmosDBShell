@@ -72,6 +72,26 @@ internal static class Theme
         return $"[yellow]{Markup.Escape(text)}[/]";
     }
 
+    public static string FormatJsonString(string text)
+    {
+        return $"[violet]{Markup.Escape(text)}[/]";
+    }
+
+    public static string FormatJsonNumber(string text)
+    {
+        return $"[violet]{Markup.Escape(text)}[/]";
+    }
+
+    public static string FormatJsonBoolean(string text)
+    {
+        return $"[violet]{Markup.Escape(text)}[/]";
+    }
+
+    public static string FormatJsonNull(string text)
+    {
+        return $"[violet]{Markup.Escape(text)}[/]";
+    }
+
     internal static string FormatStringLiteral(string text)
     {
         return $"[violet]{Markup.Escape(text)}[/]";

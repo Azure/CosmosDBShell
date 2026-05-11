@@ -951,6 +951,21 @@ public partial class ShellInterpreter : IDisposable
 
             if (state.Result?.DataType == Parser.DataType.Json)
             {
+                // When writing JSON to the terminal (not redirected to a file), apply
+                // syntax highlighting using the configured Spectre.Console theme. File
+                // redirection still receives plain text so downstream tooling and tests
+                // are unaffected.
+                if (state.OutputFormat == OutputFormat.JSon && string.IsNullOrEmpty(this.StdOutRedirect))
+                {
+                    var element = (JsonElement?)state.Result.ConvertShellObject(Parser.DataType.Json);
+                    if (element.HasValue)
+                    {
+                        AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
+                        state.Result = null;
+                        return state;
+                    }
+                }
+
                 output = state.GenerateOutputText();
             }
             else
