@@ -96,6 +96,7 @@
     <PackageReference Include="RadLine" />
     <PackageReference Include="Azure.Core" />
     <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="Tomlyn" />
     <PackageReference Include="StyleCop.Analyzers">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
