@@ -18,6 +18,16 @@ using global::Azure.ResourceManager.CosmosDB.Models;
 
 internal static class CosmosArmResourceProvider
 {
+    // Known limitation: when the connection has no token credential (account key,
+    // COSMOSDB_SHELL_TOKEN, emulator), no ARM context is attached and the resource
+    // facade falls back to the data plane. For a real Azure Cosmos DB account that
+    // is configured with strict native data-plane RBAC, that fallback path will fail
+    // for control-plane operations (mkdb/mkcon/rmdb/rmcon/indexpolicy) regardless of
+    // the static credential supplied. Resolving this would require either prompting
+    // the user to associate the account with an Azure subscription or extending the
+    // connection-string flow to capture (subscription, resource group, account) so
+    // an ARM context can be built without a token credential. See vscode-cosmosdb
+    // PR #3016 for the analogous gap in the VS Code extension.
     public static async Task<ArmCosmosContext?> TryCreateContextAsync(
         TokenCredential? credential,
         Uri dataPlaneEndpoint,
