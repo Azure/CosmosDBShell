@@ -143,7 +143,7 @@ internal partial class ConnectCommand : CosmosCommand
     /// </summary>
     internal static void PrintConnectUsageHint(ShellInterpreter shell)
     {
-        AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected-usage-header"));
+        AnsiConsole.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-header")));
 
         if (shell.App.Commands.TryGetValue("connect", out var factory))
         {
@@ -163,7 +163,7 @@ internal partial class ConnectCommand : CosmosCommand
             }
         }
 
-        AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected-usage-footer"));
+        AnsiConsole.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-footer")));
     }
 
     private static async Task<CommandState> PrintConnectionInfoAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
