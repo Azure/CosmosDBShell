@@ -72,9 +72,6 @@ internal static class Theme
 
     public static string HelpVariableColorName => Current.HelpVariableColor;
 
-    /// <summary>Gets the pre-formatted markup open tag for known commands.</summary>
-    public static string CommandColor => OpenTag(Current.CommandColor);
-
     /// <summary>
     /// Replaces the active theme. Subsequent calls to any <c>Format*</c> helper or
     /// color-name accessor will use values from <paramref name="options"/>.
@@ -295,14 +292,5 @@ internal static class Theme
     private static string Wrap(string style, string content)
     {
         return string.IsNullOrEmpty(style) ? content : $"[{style}]{content}[/]";
-    }
-
-    /// <summary>
-    /// Returns the open tag <c>[style]</c> for inline markup builders, or empty
-    /// string when <paramref name="style"/> is empty. Used by <see cref="CommandColor"/>.
-    /// </summary>
-    private static string OpenTag(string style)
-    {
-        return string.IsNullOrEmpty(style) ? string.Empty : $"[{style}]";
     }
 }

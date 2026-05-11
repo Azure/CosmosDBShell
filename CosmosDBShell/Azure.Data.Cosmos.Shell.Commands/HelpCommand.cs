@@ -164,7 +164,7 @@ internal class HelpCommand : CosmosCommand
 
             ShellInterpreter.WriteLine();
             WriteSectionHeader(MessageService.GetString("help-usage-heading"));
-            AnsiConsole.Markup(INDENT + $"{Theme.CommandColor}{Markup.Escape(cmd.CommandName)}[/] ");
+            AnsiConsole.Markup(INDENT + Theme.FormatCommand(cmd.CommandName) + " ");
         }
 
         if (!plain && cmd?.Options != null)
@@ -578,7 +578,7 @@ internal class HelpCommand : CosmosCommand
 
         foreach (var cmd in commands)
         {
-            table.AddRow(INDENT + $"{Theme.CommandColor}{cmd.CommandName}[/]", Theme.FormatHelpDescription(cmd.Description ?? string.Empty));
+            table.AddRow(INDENT + Theme.FormatCommand(cmd.CommandName), Theme.FormatHelpDescription(cmd.Description ?? string.Empty));
         }
 
         AnsiConsole.Write(table);
