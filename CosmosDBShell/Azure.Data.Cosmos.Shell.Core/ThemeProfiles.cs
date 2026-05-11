@@ -90,15 +90,12 @@ internal static class ThemeProfiles
     /// Resolves a theme by name. Returns <c>true</c> on success; on unknown name returns
     /// <c>false</c> and emits the <see cref="Default"/> profile via <paramref name="profile"/>.
     /// </summary>
+    /// <remarks>
+    /// Delegates to <see cref="ThemeRegistry.Instance"/> so file-loaded themes are
+    /// found alongside the built-ins.
+    /// </remarks>
     public static bool TryGet(string? name, out ThemeOptions profile)
     {
-        if (!string.IsNullOrWhiteSpace(name) && All.TryGetValue(name, out var match))
-        {
-            profile = match;
-            return true;
-        }
-
-        profile = Default;
-        return false;
+        return ThemeRegistry.Instance.TryGet(name, out profile);
     }
 }

@@ -164,6 +164,46 @@ CS > theme show light       # preview a profile without switching
 CS > theme use light        # switch for the rest of the session
 ```
 
+### Custom themes
+
+Place TOML files under `~/.cosmosdbshell/themes/` (Windows: `%USERPROFILE%\.cosmosdbshell\themes`). They are scanned at startup and appear alongside the built-ins in `theme list` and `--theme=<name>`. Files may shadow built-ins by name (a warning is emitted).
+
+A theme file overlays a base profile via `extends` (defaults to `default`). Only the keys you want to change are required:
+
+```toml
+name        = "solarized-light"
+description = "Solarized-style light palette"
+extends     = "default"
+
+[colors]
+literal           = "purple"
+container_name    = "purple"
+connected_prompt  = "navy"
+json_property     = "navy"
+help_accent       = "navy"
+directory         = "navy"
+operator          = "navy"
+bracket_cycle     = ["purple", "maroon", "navy"]
+
+[styles]
+help_header     = "bold"
+unknown_command = "bold red"
+```
+
+Allowed values are the standard ANSI 16 color names (`black`, `maroon`, `green`, `olive`, `navy`, `purple`, `teal`, `silver`, `grey`, `red`, `lime`, `yellow`, `blue`, `fuchsia`, `aqua`, `white`) optionally combined with style modifiers (`bold`, `dim`, `italic`, `underline`, `strikethrough`). Empty string means "use the terminal's default foreground".
+
+Runtime commands for working with files:
+
+```bash
+CS > theme load ./my-theme.toml         # load and switch to a file ad-hoc
+CS > theme save my-theme                # write the active theme to ~/.cosmosdbshell/themes/my-theme.toml
+CS > theme save my-theme ./out.toml     # save to a custom path
+CS > theme save my-theme --force        # overwrite an existing file
+CS > theme reload                       # rescan the user themes directory
+```
+
+`theme save` only writes slots that differ from the `default` profile, keeping files minimal.
+
 ## How to Contribute
 
 This project welcomes contributions and suggestions. To contribute, see these documents:

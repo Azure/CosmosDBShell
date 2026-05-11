@@ -328,6 +328,17 @@ internal class Program
     /// </summary>
     private static void ApplyTheme(string? themeFromCli)
     {
+        // Always scan the user themes directory so file-loaded themes are visible
+        // to --theme, the COSMOSDB_SHELL_THEME env var, and the in-shell `theme`
+        // command. Failures are surfaced as warnings, never fatal.
+        var registry = ThemeRegistry.Instance;
+        registry.ResetToBuiltIns();
+        registry.LoadFromDirectory(ThemeFile.DefaultUserThemesDirectory());
+        foreach (var warning in registry.Warnings)
+        {
+            ShellInterpreter.WriteLine(warning);
+        }
+
         var requested = !string.IsNullOrWhiteSpace(themeFromCli)
             ? themeFromCli
             : Environment.GetEnvironmentVariable("COSMOSDB_SHELL_THEME");
@@ -344,7 +355,7 @@ internal class Program
                 "name",
                 requested,
                 "themes",
-                string.Join(", ", ThemeProfiles.All.Keys)));
+                string.Join(", ", registry.All.Keys)));
         }
 
         Theme.Apply(profile);
