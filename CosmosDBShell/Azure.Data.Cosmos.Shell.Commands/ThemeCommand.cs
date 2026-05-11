@@ -79,6 +79,25 @@ internal class ThemeCommand : CosmosCommand
         return "custom";
     }
 
+    /// <summary>
+    /// Resolves a user-supplied theme reference. If the argument looks like a path
+    /// (contains a directory separator or matches an existing file), it is treated
+    /// as a file path. Otherwise it is resolved as a name in the user themes
+    /// directory: <c>~/.cosmosdbshell/themes/&lt;name&gt;.toml</c>.
+    /// </summary>
+    private static string ResolveThemePath(string requested)
+    {
+        if (requested.Contains('/') || requested.Contains('\\') || File.Exists(requested))
+        {
+            return requested;
+        }
+
+        var withExtension = requested.EndsWith(".toml", StringComparison.OrdinalIgnoreCase)
+            ? requested
+            : requested + ".toml";
+        return System.IO.Path.Combine(ThemeFile.DefaultUserThemesDirectory(), withExtension);
+    }
+
     private CommandState RunCurrent(CommandState commandState)
     {
         var name = ResolveActiveName();
@@ -195,13 +214,15 @@ internal class ThemeCommand : CosmosCommand
 
     private CommandState RunLoad(CommandState commandState)
     {
-        var path = string.IsNullOrWhiteSpace(this.Name) ? this.Path : this.Name;
-        if (string.IsNullOrWhiteSpace(path))
+        var requested = string.IsNullOrWhiteSpace(this.Name) ? this.Path : this.Name;
+        if (string.IsNullOrWhiteSpace(requested))
         {
             var message = MessageService.GetString("command-theme-load-missing-path");
             AnsiConsole.MarkupLine(message);
             return new ErrorCommandState(new CommandException("theme", message));
         }
+
+        var path = ResolveThemePath(requested);
 
         try
         {
@@ -262,13 +283,14 @@ internal class ThemeCommand : CosmosCommand
 
         try
         {
-            ThemeFile.Save(this.Name, Theme.Current, ThemeProfiles.Default, path);
+            ThemeFile.Save(this.Name, Theme.Current, path);
             AnsiConsole.MarkupLine(MessageService.GetArgsString(
                 "command-theme-saved",
                 "name",
                 this.Name,
                 "path",
                 System.IO.Path.GetFullPath(path)));
+            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString("command-theme-save-hint-reload", "name", this.Name)));
             commandState.IsPrinted = true;
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {

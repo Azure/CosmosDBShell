@@ -181,11 +181,11 @@ internal static class ThemeFile
     }
 
     /// <summary>
-    /// Writes <paramref name="options"/> to <paramref name="path"/> as TOML.
-    /// Slots that match <paramref name="baseline"/> are omitted, keeping the file
-    /// minimal. Pass <see cref="ThemeProfiles.Default"/> for the typical case.
+    /// Writes <paramref name="options"/> to <paramref name="path"/> as a self-contained
+    /// TOML file. Every slot is written explicitly; no <c>extends</c> line is emitted,
+    /// so the file does not depend on any other profile being present at load time.
     /// </summary>
-    public static void Save(string name, ThemeOptions options, ThemeOptions baseline, string path, string? description = null, string extends = "default")
+    public static void Save(string name, ThemeOptions options, string path, string? description = null)
     {
         var sb = new System.Text.StringBuilder();
         sb.Append("name        = ").AppendLine(QuoteString(name));
@@ -194,14 +194,35 @@ internal static class ThemeFile
             sb.Append("description = ").AppendLine(QuoteString(description));
         }
 
-        sb.Append("extends     = ").AppendLine(QuoteString(extends));
         sb.AppendLine();
 
-        // Fold bracket_cycle into the [colors] section so the file never has two
-        // [colors] headers (TOML rejects duplicate tables).
-        var bracketLine = RenderBracketCycleLine(options, baseline);
-        AppendSection(sb, "colors", ColorSlots, options, baseline, bracketLine);
-        AppendSection(sb, "styles", StyleSlots, options, baseline);
+        sb.AppendLine("[colors]");
+        foreach (var (key, accessors) in ColorSlots.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        {
+            sb.Append(key).Append(" = ").AppendLine(QuoteString(accessors.Get(options)));
+        }
+
+        sb.Append("bracket_cycle = [");
+        for (var i = 0; i < options.BracketCycle.Length; i++)
+        {
+            if (i > 0)
+            {
+                sb.Append(", ");
+            }
+
+            sb.Append(QuoteString(options.BracketCycle[i]));
+        }
+
+        sb.AppendLine("]");
+        sb.AppendLine();
+
+        sb.AppendLine("[styles]");
+        foreach (var (key, accessors) in StyleSlots.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        {
+            sb.Append(key).Append(" = ").AppendLine(QuoteString(accessors.Get(options)));
+        }
+
+        sb.AppendLine();
 
         var fullPath = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(fullPath);
@@ -303,60 +324,6 @@ internal static class ThemeFile
                     string.Join(", ", ThemePalette.AnsiSixteen)));
             }
         }
-    }
-
-    private static void AppendSection(
-        System.Text.StringBuilder sb,
-        string sectionName,
-        IReadOnlyDictionary<string, (Func<ThemeOptions, string> Get, Func<ThemeOptions, string, ThemeOptions> With)> slots,
-        ThemeOptions options,
-        ThemeOptions baseline,
-        string? extraLine = null)
-    {
-        var differences = slots
-            .Where(kv => !string.Equals(kv.Value.Get(options), kv.Value.Get(baseline), StringComparison.Ordinal))
-            .ToList();
-
-        if (differences.Count == 0 && string.IsNullOrEmpty(extraLine))
-        {
-            return;
-        }
-
-        sb.Append('[').Append(sectionName).AppendLine("]");
-        foreach (var (key, accessors) in differences.OrderBy(kv => kv.Key, StringComparer.Ordinal))
-        {
-            sb.Append(key).Append(" = ").AppendLine(QuoteString(accessors.Get(options)));
-        }
-
-        if (!string.IsNullOrEmpty(extraLine))
-        {
-            sb.AppendLine(extraLine);
-        }
-
-        sb.AppendLine();
-    }
-
-    private static string? RenderBracketCycleLine(ThemeOptions options, ThemeOptions baseline)
-    {
-        if (options.BracketCycle.SequenceEqual(baseline.BracketCycle, StringComparer.Ordinal))
-        {
-            return null;
-        }
-
-        var sb = new System.Text.StringBuilder();
-        sb.Append("bracket_cycle = [");
-        for (var i = 0; i < options.BracketCycle.Length; i++)
-        {
-            if (i > 0)
-            {
-                sb.Append(", ");
-            }
-
-            sb.Append(QuoteString(options.BracketCycle[i]));
-        }
-
-        sb.Append(']');
-        return sb.ToString();
     }
 
     private static string QuoteString(string value)
