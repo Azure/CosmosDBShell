@@ -17,22 +17,22 @@ public class JsonOutputHighlighterTests
 
         var markup = JsonOutputHighlighter.BuildMarkup(element);
 
-        // Property name uses the JSON property color (cyan).
-        Assert.Contains("[cyan]\"name\"[/]", markup);
+        // Property name uses the JSON property color from Theme.
+        Assert.Contains($"[{Theme.JsonPropertyColorName}]\"name\"[/]", markup);
 
-        // Each value type uses its dedicated helper from Theme.
-        Assert.Contains("[violet]\"alice\"[/]", markup);
-        Assert.Contains("[violet]42[/]", markup);
-        Assert.Contains("[violet]true[/]", markup);
-        Assert.Contains("[violet]null[/]", markup);
+        // Each value type uses its dedicated helper from Theme (all literal colors).
+        Assert.Contains($"[{Theme.LiteralColorName}]\"alice\"[/]", markup);
+        Assert.Contains($"[{Theme.LiteralColorName}]42[/]", markup);
+        Assert.Contains($"[{Theme.LiteralColorName}]true[/]", markup);
+        Assert.Contains($"[{Theme.LiteralColorName}]null[/]", markup);
 
         // Outer braces use the depth-0 bracket color; comma and colon use the
         // shared punctuation color.
         var depth0 = Theme.GetBracketColor(0);
         Assert.Contains($"[{depth0}]{{[/]", markup);
         Assert.Contains($"[{depth0}]}}[/]", markup);
-        Assert.Contains("[yellow]:[/]", markup);
-        Assert.Contains("[yellow],[/]", markup);
+        Assert.Contains($"[{Theme.JsonPunctuationColorName}]:[/]", markup);
+        Assert.Contains($"[{Theme.JsonPunctuationColorName}],[/]", markup);
     }
 
     [Fact]
@@ -43,9 +43,9 @@ public class JsonOutputHighlighterTests
         var markup = JsonOutputHighlighter.BuildMarkup(element);
 
         // Two-space indentation matching Utf8JsonWriter(Indented=true).
-        Assert.Contains("\n  [cyan]\"items\"[/]", markup);
-        Assert.Contains("\n    [violet]1[/]", markup);
-        Assert.Contains("\n    [violet]2[/]", markup);
+        Assert.Contains($"\n  [{Theme.JsonPropertyColorName}]\"items\"[/]", markup);
+        Assert.Contains($"\n    [{Theme.LiteralColorName}]1[/]", markup);
+        Assert.Contains($"\n    [{Theme.LiteralColorName}]2[/]", markup);
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class JsonOutputHighlighterTests
         var markup = JsonOutputHighlighter.BuildMarkup(element);
 
         // The embedded quote stays JSON-escaped inside the markup token.
-        Assert.Contains("[violet]\"a\\u0022b\"[/]", markup);
+        Assert.Contains($"[{Theme.LiteralColorName}]\"a\\u0022b\"[/]", markup);
     }
 
     [Fact]
