@@ -568,7 +568,7 @@ internal class HelpCommand : CosmosCommand
             return;
         }
 
-        AnsiConsole.MarkupLine(INDENT + $"[bold cyan]{categoryName}[/]");
+        AnsiConsole.MarkupLine(INDENT + $"[bold {Theme.ConnectedPromptColorName}]{categoryName}[/]");
         ShellInterpreter.WriteLine();
 
         var table = new Table()
@@ -628,7 +628,7 @@ internal class HelpCommand : CosmosCommand
         // Use consistent styling with command help
         if (!string.IsNullOrWhiteSpace(s.Description))
         {
-            AnsiConsole.MarkupLine($"{INDENT}[bold cyan]{Markup.Escape(s.Description)}[/]");
+            AnsiConsole.MarkupLine($"{INDENT}[bold {Theme.ConnectedPromptColorName}]{Markup.Escape(s.Description)}[/]");
         }
 
         ShellInterpreter.WriteLine();
