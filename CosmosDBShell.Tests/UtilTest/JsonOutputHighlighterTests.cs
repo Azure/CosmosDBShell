@@ -26,9 +26,11 @@ public class JsonOutputHighlighterTests
         Assert.Contains("[violet]true[/]", markup);
         Assert.Contains("[violet]null[/]", markup);
 
-        // Brackets and separators use the bracket color (yellow).
-        Assert.Contains("[yellow]{[/]", markup);
-        Assert.Contains("[yellow]}[/]", markup);
+        // Outer braces use the depth-0 bracket color; comma and colon use the
+        // shared punctuation color.
+        var depth0 = Theme.GetBracketColor(0);
+        Assert.Contains($"[{depth0}]{{[/]", markup);
+        Assert.Contains($"[{depth0}]}}[/]", markup);
         Assert.Contains("[yellow]:[/]", markup);
         Assert.Contains("[yellow],[/]", markup);
     }
@@ -52,8 +54,9 @@ public class JsonOutputHighlighterTests
         var emptyObject = JsonSerializer.Deserialize<JsonElement>("{}");
         var emptyArray = JsonSerializer.Deserialize<JsonElement>("[]");
 
-        Assert.Equal("[yellow]{[/][yellow]}[/]", JsonOutputHighlighter.BuildMarkup(emptyObject));
-        Assert.Equal("[yellow][[[/][yellow]]][/]", JsonOutputHighlighter.BuildMarkup(emptyArray));
+        var depth0 = Theme.GetBracketColor(0);
+        Assert.Equal($"[{depth0}]{{[/][{depth0}]}}[/]", JsonOutputHighlighter.BuildMarkup(emptyObject));
+        Assert.Equal($"[{depth0}][[[/][{depth0}]]][/]", JsonOutputHighlighter.BuildMarkup(emptyArray));
     }
 
     [Fact]
@@ -65,5 +68,23 @@ public class JsonOutputHighlighterTests
 
         // The embedded quote stays JSON-escaped inside the markup token.
         Assert.Contains("[violet]\"a\\u0022b\"[/]", markup);
+    }
+
+    [Fact]
+    public void NestedBrackets_CycleColorsByDepth()
+    {
+        // Depth 0 -> '{', depth 1 -> '[', depth 2 -> '{' (next nested object).
+        var element = JsonSerializer.Deserialize<JsonElement>("{ \"a\": [ { \"b\": 1 } ] }");
+
+        var markup = JsonOutputHighlighter.BuildMarkup(element);
+
+        Assert.Contains($"[{Theme.GetBracketColor(0)}]{{[/]", markup);
+        Assert.Contains($"[{Theme.GetBracketColor(1)}][[[/]", markup);
+        Assert.Contains($"[{Theme.GetBracketColor(2)}]{{[/]", markup);
+
+        // Closing brackets should use the same color as their matching opener.
+        Assert.Contains($"[{Theme.GetBracketColor(2)}]}}[/]", markup);
+        Assert.Contains($"[{Theme.GetBracketColor(1)}]]][/]", markup);
+        Assert.Contains($"[{Theme.GetBracketColor(0)}]}}[/]", markup);
     }
 }

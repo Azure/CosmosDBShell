@@ -57,12 +57,12 @@ internal static class JsonOutputHighlighter
         var enumerator = element.EnumerateObject();
         if (!enumerator.MoveNext())
         {
-            sb.Append(Theme.FormatJsonBracket("{"));
-            sb.Append(Theme.FormatJsonBracket("}"));
+            sb.Append(Theme.FormatBracket("{", indent));
+            sb.Append(Theme.FormatBracket("}", indent));
             return;
         }
 
-        sb.Append(Theme.FormatJsonBracket("{"));
+        sb.Append(Theme.FormatBracket("{", indent));
         sb.Append('\n');
 
         var first = true;
@@ -86,7 +86,7 @@ internal static class JsonOutputHighlighter
 
         sb.Append('\n');
         AppendIndent(sb, indent);
-        sb.Append(Theme.FormatJsonBracket("}"));
+        sb.Append(Theme.FormatBracket("}", indent));
     }
 
     private static void WriteArray(StringBuilder sb, JsonElement element, int indent)
@@ -94,12 +94,12 @@ internal static class JsonOutputHighlighter
         var enumerator = element.EnumerateArray();
         if (!enumerator.MoveNext())
         {
-            sb.Append(Theme.FormatJsonBracket("["));
-            sb.Append(Theme.FormatJsonBracket("]"));
+            sb.Append(Theme.FormatBracket("[", indent));
+            sb.Append(Theme.FormatBracket("]", indent));
             return;
         }
 
-        sb.Append(Theme.FormatJsonBracket("["));
+        sb.Append(Theme.FormatBracket("[", indent));
         sb.Append('\n');
 
         var first = true;
@@ -120,7 +120,7 @@ internal static class JsonOutputHighlighter
 
         sb.Append('\n');
         AppendIndent(sb, indent);
-        sb.Append(Theme.FormatJsonBracket("]"));
+        sb.Append(Theme.FormatBracket("]", indent));
     }
 
     private static void AppendIndent(StringBuilder sb, int level)

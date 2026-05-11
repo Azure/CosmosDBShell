@@ -104,6 +104,12 @@ public partial class ShellInterpreter : IHighlighter
         private int currentPosition;
         private string? currentCommand;
 
+        // Tracks the current paired-bracket nesting level so that '{', '[', '(' and their
+        // closing counterparts can be colored using <see cref="Theme.GetBracketColor"/>.
+        // The counter is shared across bracket types, mirroring the rainbow bracket
+        // behavior found in modern editors.
+        private int bracketDepth;
+
         public HighlightingVisitor(string text, ShellInterpreter interpreter)
         {
             this.text = text;
@@ -294,7 +300,17 @@ public partial class ShellInterpreter : IHighlighter
 
         public void Visit(ParensExpression parensExpression)
         {
+            // Color the parentheses using the current bracket depth so they participate
+            // in the same rainbow cycle as JSON braces and brackets.
+            var parenDepth = this.bracketDepth;
+
+            this.AppendToken(parensExpression.LParToken, Theme.FormatBracket(parensExpression.LParToken.Value, parenDepth));
+
+            this.bracketDepth = parenDepth + 1;
             parensExpression.InnerExpression.Accept(this);
+            this.bracketDepth = parenDepth;
+
+            this.AppendToken(parensExpression.RParToken, Theme.FormatBracket(parensExpression.RParToken.Value, parenDepth));
         }
 
         public void Visit(JsonExpression jsonExpression)
@@ -303,14 +319,20 @@ public partial class ShellInterpreter : IHighlighter
             var startPos = jsonExpression.Start;
             this.AppendUpTo(startPos);
 
+            // Color the opening brace using the current bracket depth, then increment
+            // so nested braces/brackets/parens use the next color in the cycle.
+            var braceDepth = this.bracketDepth;
+
             // Find and highlight the opening brace
             var openBracePos = this.text.IndexOf('{', this.currentPosition);
             if (openBracePos >= 0 && openBracePos < jsonExpression.Start + jsonExpression.Length)
             {
                 this.AppendUpTo(openBracePos);
-                this.result.Append(Theme.FormatJsonBracket("{"));
+                this.result.Append(Theme.FormatBracket("{", braceDepth));
                 this.currentPosition = openBracePos + 1;
             }
+
+            this.bracketDepth = braceDepth + 1;
 
             // Process the properties
             foreach (var property in jsonExpression.Properties)
@@ -389,12 +411,15 @@ public partial class ShellInterpreter : IHighlighter
                 }
             }
 
+            // Restore depth so the closing brace matches its opener color.
+            this.bracketDepth = braceDepth;
+
             // Find and highlight the closing brace
             var endBracePos = this.text.LastIndexOf('}', jsonExpression.Start + jsonExpression.Length - 1);
             if (endBracePos >= 0 && endBracePos >= this.currentPosition)
             {
                 this.AppendUpTo(endBracePos);
-                this.result.Append(Theme.FormatJsonBracket("}"));
+                this.result.Append(Theme.FormatBracket("}", braceDepth));
                 this.currentPosition = endBracePos + 1;
             }
         }
@@ -405,14 +430,20 @@ public partial class ShellInterpreter : IHighlighter
             var startPos = jsonArrayExpression.Start;
             this.AppendUpTo(startPos);
 
+            // Color the opening bracket using the current bracket depth, then increment
+            // so nested braces/brackets/parens use the next color in the cycle.
+            var bracketDepthForPair = this.bracketDepth;
+
             // Find and highlight the opening bracket
             var openBracketPos = this.text.IndexOf('[', this.currentPosition);
             if (openBracketPos >= 0 && openBracketPos < jsonArrayExpression.Start + jsonArrayExpression.Length)
             {
                 this.AppendUpTo(openBracketPos);
-                this.result.Append(Theme.FormatJsonBracket("["));
+                this.result.Append(Theme.FormatBracket("[", bracketDepthForPair));
                 this.currentPosition = openBracketPos + 1;
             }
+
+            this.bracketDepth = bracketDepthForPair + 1;
 
             // Process each element in the array
             for (int i = 0; i < jsonArrayExpression.Expressions.Count; i++)
@@ -435,13 +466,16 @@ public partial class ShellInterpreter : IHighlighter
                 }
             }
 
+            // Restore depth so the closing bracket matches its opener color.
+            this.bracketDepth = bracketDepthForPair;
+
             // Find and highlight the closing bracket
             var closeBracketPos = this.text.IndexOf(']', this.currentPosition);
             if (closeBracketPos >= 0 && closeBracketPos < jsonArrayExpression.Start + jsonArrayExpression.Length)
             {
                 // AppendUpTo preserves any whitespace before the closing bracket
                 this.AppendUpTo(closeBracketPos);
-                this.result.Append(Theme.FormatJsonBracket("]"));
+                this.result.Append(Theme.FormatBracket("]", bracketDepthForPair));
                 this.currentPosition = closeBracketPos + 1;
             }
 
