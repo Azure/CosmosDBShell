@@ -135,11 +135,43 @@ internal partial class ConnectCommand : CosmosCommand
         ShellInterpreter.WriteLine(MessageService.GetArgsString("command-connect-rbac-error", "id", principalId, "permission", permission));
     }
 
+    /// <summary>
+    /// Prints a short usage block with examples taken from the <see cref="CosmosExampleAttribute"/>
+    /// metadata on this command. Shown when the user runs <c>connect</c> without arguments while
+    /// disconnected so the available authentication options are discoverable without having to know
+    /// about <c>help connect</c> (see issue #81).
+    /// </summary>
+    internal static void PrintConnectUsageHint(ShellInterpreter shell)
+    {
+        AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected-usage-header"));
+
+        if (shell.App.Commands.TryGetValue("connect", out var factory))
+        {
+            foreach (var (example, description) in factory.ExamplesWithDescriptions)
+            {
+                if (string.IsNullOrWhiteSpace(example) || example == "connect")
+                {
+                    // Skip the no-arg example — that's the one the user just ran.
+                    continue;
+                }
+
+                AnsiConsole.MarkupLine($"  [lightyellow3]{Markup.Escape(example)}[/]");
+                if (!string.IsNullOrWhiteSpace(description))
+                {
+                    AnsiConsole.MarkupLine($"    [dim]{Markup.Escape(description)}[/]");
+                }
+            }
+        }
+
+        AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected-usage-footer"));
+    }
+
     private static async Task<CommandState> PrintConnectionInfoAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
         if (shell.State is not ConnectedState connectedState)
         {
             AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected"));
+            PrintConnectUsageHint(shell);
             commandState.IsPrinted = true;
             var notConnectedJson = new Dictionary<string, object?>
             {

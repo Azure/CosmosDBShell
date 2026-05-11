@@ -464,6 +464,15 @@ public partial class ShellInterpreter : IDisposable
         var result = 0;
         this.PrintVersion(null);
         WriteLine(MessageService.GetString("shell-ready"));
+
+        // First-run hint: if the shell starts without a connection, point users at
+        // the `connect` command. Otherwise users can land at the prompt with no
+        // obvious next step (see issue #81).
+        if (this.State is DisconnectedState)
+        {
+            AnsiConsole.MarkupLine("[yellow]" + Markup.Escape(MessageService.GetString("shell-not_connected_hint")) + "[/]");
+        }
+
         while (this.IsRunning)
         {
             this.StdOutRedirect = null;
