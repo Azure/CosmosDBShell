@@ -61,7 +61,6 @@ public class CosmosArmResourceProviderTests
     [InlineData("sub", null, null)]
     [InlineData(null, "rg", null)]
     [InlineData(null, null, "acc")]
-    [InlineData("sub", "rg", null)]
     [InlineData("sub", null, "acc")]
     [InlineData(null, "rg", "acc")]
     [InlineData(" ", "rg", "acc")]
@@ -77,6 +76,15 @@ public class CosmosArmResourceProviderTests
             token: TestContext.Current.CancellationToken));
 
         Assert.Equal(MessageService.GetString("error-arm-context-incomplete"), ex.Message);
+    }
+
+    [Theory]
+    [InlineData("https://mikkrg.documents.azure.com:443/", "mikkrg")]
+    [InlineData("https://account.documents.azure.us:443/", "account")]
+    [InlineData("https://localhost:8081/", "localhost")]
+    public void GetAccountNameFromEndpoint_UsesFirstHostSegment(string endpoint, string expectedAccountName)
+    {
+        Assert.Equal(expectedAccountName, CosmosArmResourceProvider.GetAccountNameFromEndpoint(new Uri(endpoint)));
     }
 
     [Fact]

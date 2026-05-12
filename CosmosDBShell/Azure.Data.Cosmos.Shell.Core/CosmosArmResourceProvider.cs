@@ -54,12 +54,13 @@ internal static class CosmosArmResourceProvider
 
         if (hasSubscription || hasResourceGroup || hasAccount)
         {
-            if (!hasSubscription || !hasResourceGroup || !hasAccount)
+            if (!hasSubscription || !hasResourceGroup)
             {
                 throw new ShellException(MessageService.GetString("error-arm-context-incomplete"));
             }
 
-            return await CreateExplicitContextAsync(armClient, dataPlaneEndpoint, subscriptionId!, resourceGroupName!, accountName!, token);
+            var resolvedAccountName = hasAccount ? accountName! : GetAccountNameFromEndpoint(dataPlaneEndpoint);
+            return await CreateExplicitContextAsync(armClient, dataPlaneEndpoint, subscriptionId!, resourceGroupName!, resolvedAccountName, token);
         }
 
         return await DiscoverContextAsync(armClient, dataPlaneEndpoint, token);
@@ -113,6 +114,13 @@ internal static class CosmosArmResourceProvider
         }
 
         return ArmEnvironment.AzurePublicCloud;
+    }
+
+    internal static string GetAccountNameFromEndpoint(Uri dataPlaneEndpoint)
+    {
+        var host = dataPlaneEndpoint.Host;
+        var firstDot = host.IndexOf('.', StringComparison.Ordinal);
+        return firstDot > 0 ? host[..firstDot] : host;
     }
 
     public static ArmCosmosContext RequireContext(ArmCosmosContext? context, string commandName)

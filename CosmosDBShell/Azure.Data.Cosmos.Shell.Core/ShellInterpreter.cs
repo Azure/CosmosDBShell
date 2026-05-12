@@ -953,8 +953,8 @@ public partial class ShellInterpreter : IDisposable
     /// When the user explicitly supplied <paramref name="subscriptionId"/>,
     /// <paramref name="resourceGroupName"/>, or <paramref name="accountName"/>, any
     /// failure bubbles up because the user explicitly requested ARM. Otherwise the
-    /// failure is logged as a warning and discovery returns <c>null</c>; data-plane
-    /// commands keep working and resource commands surface a clear error themselves.
+    /// failure is logged as a warning and discovery returns <c>null</c>; database
+    /// and container commands continue through the data-plane resource strategy.
     /// </summary>
     private async Task<ArmCosmosContext?> TryDiscoverArmContextAsync(
         TokenCredential credential,
