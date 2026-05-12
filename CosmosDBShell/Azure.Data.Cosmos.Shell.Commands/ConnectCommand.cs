@@ -147,19 +147,29 @@ internal partial class ConnectCommand : CosmosCommand
 
         if (shell.App.Commands.TryGetValue("connect", out var factory))
         {
+            const int MaxExamples = 2;
+            var shown = 0;
             foreach (var (example, description) in factory.ExamplesWithDescriptions)
             {
+                if (shown >= MaxExamples)
+                {
+                    break;
+                }
+
                 if (string.IsNullOrWhiteSpace(example) || example == "connect")
                 {
                     // Skip the no-arg example — that's the one the user just ran.
                     continue;
                 }
 
-                AnsiConsole.MarkupLine($"  [lightyellow3]{Markup.Escape(example)}[/]");
+                var highlighted = shell.BuildHighlightedMarkup(example);
+                AnsiConsole.MarkupLine($"  {highlighted}");
                 if (!string.IsNullOrWhiteSpace(description))
                 {
-                    AnsiConsole.MarkupLine($"    [dim]{Markup.Escape(description)}[/]");
+                    AnsiConsole.MarkupLine($"    [silver]{Markup.Escape(description)}[/]");
                 }
+
+                shown++;
             }
         }
 
