@@ -494,6 +494,24 @@ public class HotkeyCommandTests
     }
 
     [Fact]
+    public void ReverseSearch_FormatSearchPromptMarkup_MonochromeUsesUnderlineOnly()
+    {
+        var saved = Theme.Current;
+        try
+        {
+            Theme.Apply(ThemeProfiles.Monochrome);
+
+            var prompt = ReverseHistorySearch.FormatSearchPromptMarkup("que", "select query foo", hasMatch: true);
+
+            Assert.Equal("(reverse-i-search)`que`: select [underline]que[/]ry foo", prompt);
+        }
+        finally
+        {
+            Theme.Apply(saved);
+        }
+    }
+
+    [Fact]
     public void ReverseSearch_FormatSearchPromptMarkup_FailedState_DoesNotHighlight()
     {
         var prompt = ReverseHistorySearch.FormatSearchPromptMarkup("missing", string.Empty, hasMatch: false);

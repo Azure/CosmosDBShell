@@ -83,7 +83,7 @@ internal class SettingsCommand : CosmosCommand
         var mcpTable = new Dictionary<string, object?>();
 
         // Scale section - fail gracefully if it cannot be read
-        AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-scale-heading")}[/]");
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-scale-heading")));
 
         try
         {
@@ -105,11 +105,11 @@ internal class SettingsCommand : CosmosCommand
             else if (IsThroughputNotConfiguredException(e))
             {
                 // No dedicated throughput is configured on this container - show N/A
-                AnsiConsole.MarkupLine($"[{Theme.MutedColorName}]{MessageService.GetString("command-settings-na")}[/]");
+                AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
             }
             else
             {
-                AnsiConsole.MarkupLine($"[{Theme.ErrorColorName}]{Markup.Escape(CommandException.GetDisplayMessage(e))}[/]");
+                AnsiConsole.MarkupLine(Theme.FormatError(CommandException.GetDisplayMessage(e)));
             }
         }
 
@@ -124,7 +124,7 @@ internal class SettingsCommand : CosmosCommand
         }
         catch (Exception e)
         {
-            AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-title")}[/]");
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-title")));
             AnsiConsole.Markup("\t");
             if (TryGetPrincipialIdFromRbacException(e, out var id, out var request, out var permission))
             {
@@ -132,7 +132,7 @@ internal class SettingsCommand : CosmosCommand
             }
             else
             {
-                AnsiConsole.MarkupLine($"[{Theme.ErrorColorName}]{Markup.Escape(CommandException.GetDisplayMessage(e))}[/]");
+                AnsiConsole.MarkupLine(Theme.FormatError(CommandException.GetDisplayMessage(e)));
             }
 
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
@@ -142,9 +142,9 @@ internal class SettingsCommand : CosmosCommand
 
         if (resource == null)
         {
-            AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-title")}[/]");
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-title")));
             AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine($"[{Theme.WarningColorName}]{MessageService.GetString("command-settings-not-available")}[/]");
+            AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-settings-not-available")));
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
             commandState.IsPrinted = true;
             return commandState;
@@ -154,7 +154,7 @@ internal class SettingsCommand : CosmosCommand
         mcpTable["partitionKey"] = resource.PartitionKeyPaths;
         mcpTable["analyticalTTL"] = resource.AnalyticalStoreTimeToLiveInSeconds;
 
-        AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-title")}[/]");
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-title")));
 
         var table = new Table();
         table.AddColumns(string.Empty, string.Empty);
@@ -177,7 +177,7 @@ internal class SettingsCommand : CosmosCommand
                   resource.AnalyticalStoreTimeToLiveInSeconds);
         }
 
-        table.AddRow(MessageService.GetString("command-settings-ttl-label"), $"[{Theme.TableValueColorName}]{ttl}[/]");
+        table.AddRow(MessageService.GetString("command-settings-ttl-label"), Theme.FormatTableValue(ttl));
 
         string label;
         switch (resource.GeospatialConfig.GeospatialType)
@@ -192,13 +192,13 @@ internal class SettingsCommand : CosmosCommand
                 break;
         }
 
-        table.AddRow(MessageService.GetString("command-settings-geospatial-label"), $"[{Theme.TableValueColorName}]{label}[/]");
-        table.AddRow(MessageService.GetString("command-settings-partition-key-label"), $"[{Theme.TableValueColorName}]{string.Join(',', resource.PartitionKeyPaths)}[/]");
+        table.AddRow(MessageService.GetString("command-settings-geospatial-label"), Theme.FormatTableValue(label));
+        table.AddRow(MessageService.GetString("command-settings-partition-key-label"), Theme.FormatTableValue(string.Join(',', resource.PartitionKeyPaths)));
         table.HideHeaders();
         AnsiConsole.Write(table);
 
         // Full Text Policy section - show N/A if unset
-        AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-fulltext-title")}[/]");
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-fulltext-title")));
 
         if (resource.FullTextPolicy != null)
         {
@@ -208,14 +208,14 @@ internal class SettingsCommand : CosmosCommand
             string defaultLanguage = resource.FullTextPolicy.DefaultLanguage;
             table.AddRow(
                 MessageService.GetString("command-settings-fulltext-default-language-label"),
-                $"[{Theme.TableValueColorName}]{(string.IsNullOrEmpty(defaultLanguage) ? MessageService.GetString("command-settings-na") : defaultLanguage)}[/]");
+                Theme.FormatTableValue(string.IsNullOrEmpty(defaultLanguage) ? MessageService.GetString("command-settings-na") : defaultLanguage));
 
             var fullTextPaths = new List<Dictionary<string, object?>>();
 
             foreach (var path in resource.FullTextPolicy.FullTextPaths)
             {
-                table.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), $"[{Theme.TableValueColorName}]{path.Path}[/]");
-                table.AddRow(MessageService.GetString("command-settings-fulltext-language-label"), $"[{Theme.TableValueColorName}]{path.Language}[/]");
+                table.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), Theme.FormatTableValue(path.Path));
+                table.AddRow(MessageService.GetString("command-settings-fulltext-language-label"), Theme.FormatTableValue(path.Language));
 
                 fullTextPaths.Add(new Dictionary<string, object?>
                 {
@@ -231,7 +231,7 @@ internal class SettingsCommand : CosmosCommand
         else
         {
             AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine($"[{Theme.MutedColorName}]{MessageService.GetString("command-settings-na")}[/]");
+            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
@@ -258,7 +258,7 @@ internal class SettingsCommand : CosmosCommand
 
     private static void AskForRBacPermissions(string principalId, string request, string permission)
     {
-        AnsiConsole.Markup($"[{Theme.ErrorColorName}]{MessageService.GetString("error")}[/] ");
+        AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
         ShellInterpreter.WriteLine(MessageService.GetArgsString("command-settings-rbac-error", "id", principalId, "request", request, "permission", permission));
     }
 
@@ -287,12 +287,12 @@ internal class SettingsCommand : CosmosCommand
     {
         var acc = await client.ReadAccountAsync();
 
-        AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-overview")}[/]");
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-overview")));
 
         var table = new Table();
         table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
-        table.AddRow(MessageService.GetString("command-settings-account_id"), $"[{Theme.TableValueColorName}]{acc.Id}[/]", MessageService.GetString("command-settings-read_locations"), $"[{Theme.TableValueColorName}]{string.Join(", ", acc.ReadableRegions.Select(location => location.Name))}[/]");
-        table.AddRow(MessageService.GetString("command-settings-uri"), $"[{Theme.TableValueColorName}]{client.Endpoint}[/]", MessageService.GetString("command-settings-write_locations"), $"[{Theme.TableValueColorName}]{string.Join(", ", acc.WritableRegions.Select(location => location.Name))}[/]");
+        table.AddRow(MessageService.GetString("command-settings-account_id"), Theme.FormatTableValue(acc.Id), MessageService.GetString("command-settings-read_locations"), Theme.FormatTableValue(string.Join(", ", acc.ReadableRegions.Select(location => location.Name))));
+        table.AddRow(MessageService.GetString("command-settings-uri"), Theme.FormatTableValue(client.Endpoint.ToString()), MessageService.GetString("command-settings-write_locations"), Theme.FormatTableValue(string.Join(", ", acc.WritableRegions.Select(location => location.Name))));
         table.HideHeaders();
         AnsiConsole.Write(table);
 

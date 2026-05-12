@@ -408,7 +408,7 @@ internal class FtabCommand : CosmosCommand
         var table = new Table();
         foreach (var header in headers)
         {
-            table.AddColumn(new TableColumn($"[bold]{Markup.Escape(header)}[/]"));
+            table.AddColumn(new TableColumn(Theme.FormatSectionHeader(header)));
         }
 
         foreach (var row in rows)

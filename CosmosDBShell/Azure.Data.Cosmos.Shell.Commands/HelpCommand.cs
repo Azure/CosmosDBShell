@@ -67,7 +67,7 @@ internal class HelpCommand : CosmosCommand
             }
 
             // Neither command nor statement
-            AnsiConsole.Markup($"[{Theme.ErrorColorName}]{MessageService.GetString("error")}[/] ");
+            AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
             ShellInterpreter.WriteLine(MessageService.GetString("error-command-not-found", MessageService.Args("command", cmdStr)));
             return new ErrorCommandState(new CommandException("help", cmdStr + " not found."));
         }
@@ -235,7 +235,7 @@ internal class HelpCommand : CosmosCommand
                     }
                     else
                     {
-                        descDisplay += $"[{Theme.ErrorColorName}]{MessageService.GetString("error")}[/] {Theme.FormatHelpDescription(MessageService.GetString("help-description-not-found"))}";
+                        descDisplay += Theme.FormatError(MessageService.GetString("error")) + " " + Theme.FormatHelpDescription(MessageService.GetString("help-description-not-found"));
                     }
 
                     table.AddRow(INDENT + nameDisplay, descDisplay);
@@ -273,7 +273,7 @@ internal class HelpCommand : CosmosCommand
                 var argHelp = p.GetDescription(cmd.CommandName);
                 var descDisplay = !string.IsNullOrEmpty(argHelp)
                     ? Theme.FormatHelpDescription(argHelp)
-                    : $"[{Theme.ErrorColorName}]{MessageService.GetString("error")}[/] {Theme.FormatHelpDescription(MessageService.GetString("help-description-not-found"))}";
+                    : Theme.FormatError(MessageService.GetString("error")) + " " + Theme.FormatHelpDescription(MessageService.GetString("help-description-not-found"));
 
                 table.AddRow(INDENT + Theme.FormatHelpName(sb.ToString()), descDisplay);
             }
@@ -291,11 +291,11 @@ internal class HelpCommand : CosmosCommand
                 var (example, description) = examples[i];
                 if (!string.IsNullOrWhiteSpace(description))
                 {
-                    AnsiConsole.MarkupLine(INDENT + $"[{Theme.HelpAccentColorName}]\u25b6[/] {i + 1}. {Theme.FormatHelpDescription(description)}");
+                    AnsiConsole.MarkupLine(INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}. {Theme.FormatHelpDescription(description)}");
                 }
                 else
                 {
-                    AnsiConsole.MarkupLine(INDENT + $"[{Theme.HelpAccentColorName}]\u25b6[/] {i + 1}.");
+                    AnsiConsole.MarkupLine(INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}.");
                 }
 
                 var parser = new StatementParser(example);
@@ -715,7 +715,7 @@ internal class HelpCommand : CosmosCommand
             return;
         }
 
-        var stmtPanel = new Panel($"[bold]Control Flow Statements[/]")
+        var stmtPanel = new Panel(Theme.FormatSectionHeader("Control Flow Statements"))
         {
             Border = BoxBorder.Rounded,
             BorderStyle = Style.Parse("green"),
