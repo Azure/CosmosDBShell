@@ -108,6 +108,7 @@ internal static class ThemeFile
     public static ThemeFileResult Parse(string text, string sourceLabel, Func<string, ThemeOptions?> baseLookup)
     {
         var warnings = new List<string>();
+        var errors = new List<string>();
 
         if (!Toml.TryToModel(text, out TomlTable? model, out var diagnostics))
         {
@@ -123,6 +124,17 @@ internal static class ThemeFile
         var description = ReadString(model, "description");
         var extends = ReadString(model, "extends") ?? "default";
 
+        // Detect the trivial self-cycle here; deeper cycles are handled by ThemeRegistry.
+        if (string.Equals(extends, name, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ThemeLoadException(MessageService.GetArgsString(
+                "theme-file-error-extends-self",
+                "source",
+                sourceLabel,
+                "name",
+                name));
+        }
+
         var baseOptions = baseLookup(extends)
             ?? throw new ThemeLoadException(MessageService.GetArgsString(
                 "theme-file-error-extends-unknown",
@@ -132,8 +144,8 @@ internal static class ThemeFile
                 extends));
 
         var built = baseOptions;
-        built = ApplyTable(built, model, "colors", ColorSlots, sourceLabel, warnings, ValidateColorValue);
-        built = ApplyTable(built, model, "styles", StyleSlots, sourceLabel, warnings, ValidateStyleValue);
+        built = ApplyTable(built, model, "colors", ColorSlots, sourceLabel, warnings, errors, TryValidateColorValue);
+        built = ApplyTable(built, model, "styles", StyleSlots, sourceLabel, warnings, errors, TryValidateStyleValue);
 
         if (model.TryGetValue("colors", out var colorsObj) && colorsObj is TomlTable colorsTable && colorsTable.TryGetValue("bracket_cycle", out var cycleObj))
         {
@@ -142,18 +154,43 @@ internal static class ThemeFile
                 var cycle = array.Select(item => item?.ToString() ?? string.Empty).ToArray();
                 if (cycle.Length == 0)
                 {
-                    throw new ThemeLoadException(MessageService.GetArgsString(
+                    errors.Add(MessageService.GetArgsString(
                         "theme-file-error-empty-bracket-cycle",
                         "source",
                         sourceLabel));
                 }
-
-                foreach (var color in cycle)
+                else
                 {
-                    ValidateColorValue("bracket_cycle", color, sourceLabel);
-                }
+                    var anyInvalid = false;
+                    foreach (var color in cycle)
+                    {
+                        if (!TryValidateColorValue("bracket_cycle", color, sourceLabel, errors))
+                        {
+                            anyInvalid = true;
+                        }
+                    }
 
-                built = built with { BracketCycle = cycle };
+                    if (!anyInvalid)
+                    {
+                        built = built with { BracketCycle = cycle };
+
+                        if (cycle.Length == 1)
+                        {
+                            warnings.Add(MessageService.GetArgsString(
+                                "theme-file-warning-bracket-cycle-single",
+                                "source",
+                                sourceLabel));
+                        }
+
+                        if (cycle.Distinct(StringComparer.OrdinalIgnoreCase).Count() < cycle.Length)
+                        {
+                            warnings.Add(MessageService.GetArgsString(
+                                "theme-file-warning-bracket-cycle-duplicates",
+                                "source",
+                                sourceLabel));
+                        }
+                    }
+                }
             }
             else
             {
@@ -164,17 +201,9 @@ internal static class ThemeFile
             }
         }
 
-        // Detect over-deep extends by re-resolving via the registry surface (handled
-        // by ThemeRegistry; here we just emit a warning if the immediate base name
-        // matches the just-loaded name to catch the trivial self-cycle case).
-        if (string.Equals(extends, name, StringComparison.OrdinalIgnoreCase))
+        if (errors.Count > 0)
         {
-            throw new ThemeLoadException(MessageService.GetArgsString(
-                "theme-file-error-extends-self",
-                "source",
-                sourceLabel,
-                "name",
-                name));
+            throw new ThemeLoadException(string.Join(Environment.NewLine, errors));
         }
 
         return new ThemeFileResult(name, description, extends, built, sourceLabel, warnings);
@@ -261,7 +290,8 @@ internal static class ThemeFile
         IReadOnlyDictionary<string, (Func<ThemeOptions, string> Get, Func<ThemeOptions, string, ThemeOptions> With)> slots,
         string sourceLabel,
         List<string> warnings,
-        Action<string, string, string> validateValue)
+        List<string> errors,
+        Func<string, string, string, List<string>, bool> tryValidateValue)
     {
         if (!model.TryGetValue(sectionName, out var sectionObj) || sectionObj is not TomlTable section)
         {
@@ -289,7 +319,11 @@ internal static class ThemeFile
             }
 
             var value = entry.Value as string ?? entry.Value?.ToString() ?? string.Empty;
-            validateValue(entry.Key, value, sourceLabel);
+            if (!tryValidateValue(entry.Key, value, sourceLabel, errors))
+            {
+                continue;
+            }
+
             accumulator = slot.With(accumulator, value);
         }
 
@@ -301,17 +335,22 @@ internal static class ThemeFile
         return model.TryGetValue(key, out var value) ? value as string ?? value?.ToString() : null;
     }
 
-    private static void ValidateColorValue(string key, string value, string sourceLabel)
+    private static bool TryValidateColorValue(string key, string value, string sourceLabel, List<string> errors)
     {
         if (string.IsNullOrEmpty(value))
         {
-            return;
+            return true;
         }
 
         var tokens = value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (tokens.Length != 1 || !ThemePalette.IsAnsiSixteen(tokens[0]))
+        if (tokens.Length == 1 && ThemePalette.IsAnsiSixteen(tokens[0]))
         {
-            throw new ThemeLoadException(MessageService.GetArgsString(
+            return true;
+        }
+
+        var suggestion = tokens.Length == 1 ? ThemePalette.SuggestColor(tokens[0]) : null;
+        errors.Add(suggestion is null
+            ? MessageService.GetArgsString(
                 "theme-file-error-invalid-color",
                 "source",
                 sourceLabel,
@@ -320,19 +359,33 @@ internal static class ThemeFile
                 "value",
                 value,
                 "allowed",
-                string.Join(", ", ThemePalette.AnsiSixteen)));
-        }
+                string.Join(", ", ThemePalette.AnsiSixteen))
+            : MessageService.GetArgsString(
+                "theme-file-error-invalid-color-suggested",
+                "source",
+                sourceLabel,
+                "key",
+                key,
+                "value",
+                value,
+                "allowed",
+                string.Join(", ", ThemePalette.AnsiSixteen),
+                "suggestion",
+                suggestion));
+        return false;
     }
 
-    private static void ValidateStyleValue(string key, string value, string sourceLabel)
+    private static bool TryValidateStyleValue(string key, string value, string sourceLabel, List<string> errors)
     {
         if (string.IsNullOrEmpty(value))
         {
-            return;
+            return true;
         }
 
         var tokens = value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var colorCount = 0;
+        string? badToken = null;
+        var tooManyColors = false;
         foreach (var token in tokens)
         {
             if (ThemePalette.IsAnsiSixteen(token))
@@ -340,7 +393,8 @@ internal static class ThemeFile
                 colorCount++;
                 if (colorCount > 1)
                 {
-                    ThrowInvalidStyle(key, value, sourceLabel);
+                    tooManyColors = true;
+                    break;
                 }
 
                 continue;
@@ -348,25 +402,45 @@ internal static class ThemeFile
 
             if (!ThemePalette.IsModifier(token))
             {
-                ThrowInvalidStyle(key, value, sourceLabel);
+                badToken = token;
+                break;
             }
         }
-    }
 
-    private static void ThrowInvalidStyle(string key, string value, string sourceLabel)
-    {
-        throw new ThemeLoadException(MessageService.GetArgsString(
-            "theme-file-error-invalid-style",
-            "source",
-            sourceLabel,
-            "key",
-            key,
-            "value",
-            value,
-            "colors",
-            string.Join(", ", ThemePalette.AnsiSixteen),
-            "modifiers",
-            string.Join(", ", ThemePalette.Modifiers)));
+        if (badToken is null && !tooManyColors)
+        {
+            return true;
+        }
+
+        var suggestion = badToken is null ? null : ThemePalette.SuggestColorOrModifier(badToken);
+        errors.Add(suggestion is null
+            ? MessageService.GetArgsString(
+                "theme-file-error-invalid-style",
+                "source",
+                sourceLabel,
+                "key",
+                key,
+                "value",
+                value,
+                "colors",
+                string.Join(", ", ThemePalette.AnsiSixteen),
+                "modifiers",
+                string.Join(", ", ThemePalette.Modifiers))
+            : MessageService.GetArgsString(
+                "theme-file-error-invalid-style-suggested",
+                "source",
+                sourceLabel,
+                "key",
+                key,
+                "value",
+                value,
+                "colors",
+                string.Join(", ", ThemePalette.AnsiSixteen),
+                "modifiers",
+                string.Join(", ", ThemePalette.Modifiers),
+                "suggestion",
+                suggestion));
+        return false;
     }
 
     private static string QuoteString(string value)

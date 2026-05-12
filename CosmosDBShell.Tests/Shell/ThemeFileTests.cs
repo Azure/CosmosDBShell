@@ -117,6 +117,85 @@ public class ThemeFileTests
     }
 
     [Fact]
+    public void Parse_AggregatesMultipleInvalidValues()
+    {
+        var toml = """
+            name = "many-bad"
+
+            [colors]
+            literal = "lightyellow3"
+            error   = "magneta"
+
+            [styles]
+            unknown_command = "bld"
+            """;
+
+        var ex = Assert.Throws<ThemeLoadException>(() => ThemeFile.Parse(toml, "memory://many.toml", LookupBuiltIn));
+        Assert.Contains("literal", ex.Message);
+        Assert.Contains("error", ex.Message);
+        Assert.Contains("unknown_command", ex.Message);
+    }
+
+    [Fact]
+    public void Parse_SuggestsClosestColor()
+    {
+        var toml = """
+            name = "typo"
+
+            [colors]
+            literal = "purpel"
+            """;
+
+        var ex = Assert.Throws<ThemeLoadException>(() => ThemeFile.Parse(toml, "memory://typo.toml", LookupBuiltIn));
+        Assert.Contains("Did you mean 'purple'", ex.Message);
+    }
+
+    [Fact]
+    public void Parse_SuggestsClosestStyleToken()
+    {
+        var toml = """
+            name = "typo-style"
+
+            [styles]
+            unknown_command = "bld red"
+            """;
+
+        var ex = Assert.Throws<ThemeLoadException>(() => ThemeFile.Parse(toml, "memory://typo-style.toml", LookupBuiltIn));
+        Assert.Contains("Did you mean 'bold'", ex.Message);
+    }
+
+    [Fact]
+    public void Parse_WarnsOnSingleEntryBracketCycle()
+    {
+        var toml = """
+            name = "single-cycle"
+
+            [colors]
+            bracket_cycle = ["yellow"]
+            """;
+
+        var result = ThemeFile.Parse(toml, "memory://single-cycle.toml", LookupBuiltIn);
+
+        Assert.Contains(result.Warnings, w => w.Contains("only one bracket_cycle color"));
+        Assert.Equal(new[] { "yellow" }, result.Options.BracketCycle);
+    }
+
+    [Fact]
+    public void Parse_WarnsOnDuplicateBracketCycle()
+    {
+        var toml = """
+            name = "dup-cycle"
+
+            [colors]
+            bracket_cycle = ["yellow", "yellow", "aqua"]
+            """;
+
+        var result = ThemeFile.Parse(toml, "memory://dup-cycle.toml", LookupBuiltIn);
+
+        Assert.Contains(result.Warnings, w => w.Contains("duplicate bracket_cycle"));
+    }
+
+    [Fact]
     public void Parse_RejectsUnknownExtends()
     {
         var toml = """
