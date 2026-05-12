@@ -994,12 +994,9 @@ public partial class ShellInterpreter : IDisposable
             // they explicitly opted into ARM via --subscription/--resource-group/--account.
             throw;
         }
-        catch (Exception ex) when (!explicitlyRequested)
+        catch (Exception) when (!explicitlyRequested)
         {
-            WriteLine(MessageService.GetArgsString(
-                "shell-connect-arm-discovery-failed",
-                "message",
-                ex.Message));
+            WriteLine(MessageService.GetString("shell-connect-arm-discovery-failed"));
             return null;
         }
     }
