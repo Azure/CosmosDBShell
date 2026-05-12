@@ -142,16 +142,24 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         await ValidateDatabaseExistsAsync(state, databaseName, "mkcon", token);
 
         var partitionKeyPaths = this.GetPartitionKeyPaths();
-        var containerName = await CosmosResourceFacade.CreateContainerAsync(
-            state,
-            databaseName,
-            this.Name ?? string.Empty,
-            partitionKeyPaths,
-            this.UniqueKey,
-            this.IndexPolicy,
-            this.Scale,
-            this.MaxRU,
-            token);
+        string containerName;
+        try
+        {
+            containerName = await CosmosResourceFacade.CreateContainerAsync(
+                state,
+                databaseName,
+                this.Name ?? string.Empty,
+                partitionKeyPaths,
+                this.UniqueKey,
+                this.IndexPolicy,
+                this.Scale,
+                this.MaxRU,
+                token);
+        }
+        catch (InvalidIndexingPolicyJsonException ex)
+        {
+            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_invalid_index_policy"), ex);
+        }
 
         CosmosCompleteCommand.ClearContainers();
         ShellInterpreter.WriteLine(MessageService.GetString("command-mkcon-CreatedContainer", new Dictionary<string, object> { { "container", containerName } }));

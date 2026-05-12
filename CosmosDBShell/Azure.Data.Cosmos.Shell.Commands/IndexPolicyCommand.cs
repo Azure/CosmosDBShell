@@ -85,7 +85,15 @@ internal class IndexPolicyCommand : CosmosCommand, IStateVisitor<CommandState, S
 
     private static async Task<CommandState> ReadIndexPolicyAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
     {
-        var json = await CosmosResourceFacade.GetIndexingPolicyJsonAsync(state, databaseName, containerName, token);
+        string json;
+        try
+        {
+            json = await CosmosResourceFacade.GetIndexingPolicyJsonAsync(state, databaseName, containerName, token);
+        }
+        catch (IndexPolicyMissingException ex)
+        {
+            throw new CommandException("indexpolicy", MessageService.GetString("command-indexpolicy-error_no_policy"), ex);
+        }
 
         ShellInterpreter.WriteLine(json);
 

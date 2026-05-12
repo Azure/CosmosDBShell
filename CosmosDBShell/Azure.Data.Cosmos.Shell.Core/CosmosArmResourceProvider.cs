@@ -34,6 +34,7 @@ internal static class CosmosArmResourceProvider
         string? subscriptionId,
         string? resourceGroupName,
         string? accountName,
+        Uri? authorityHost,
         CancellationToken token)
     {
         if (credential == null)
@@ -41,7 +42,11 @@ internal static class CosmosArmResourceProvider
             return null;
         }
 
-        var armClient = new ArmClient(credential);
+        var armOptions = new ArmClientOptions
+        {
+            Environment = ResolveArmEnvironment(authorityHost, dataPlaneEndpoint),
+        };
+        var armClient = new ArmClient(credential, defaultSubscriptionId: null, options: armOptions);
 
         var hasSubscription = !string.IsNullOrWhiteSpace(subscriptionId);
         var hasResourceGroup = !string.IsNullOrWhiteSpace(resourceGroupName);
@@ -58,6 +63,56 @@ internal static class CosmosArmResourceProvider
         }
 
         return await DiscoverContextAsync(armClient, dataPlaneEndpoint, token);
+    }
+
+    /// <summary>
+    /// Maps a credential authority host (or, when absent, the data-plane Cosmos
+    /// endpoint suffix) to the matching <see cref="ArmEnvironment"/>. Falls back
+    /// to <see cref="ArmEnvironment.AzurePublicCloud"/> when the host does not
+    /// look like a known sovereign cloud, which preserves the prior default.
+    /// </summary>
+    internal static ArmEnvironment ResolveArmEnvironment(Uri? authorityHost, Uri dataPlaneEndpoint)
+    {
+        var host = authorityHost?.Host;
+        if (!string.IsNullOrEmpty(host))
+        {
+            if (host.EndsWith("login.microsoftonline.us", StringComparison.OrdinalIgnoreCase))
+            {
+                return ArmEnvironment.AzureGovernment;
+            }
+
+            if (host.EndsWith("login.chinacloudapi.cn", StringComparison.OrdinalIgnoreCase) ||
+                host.EndsWith("login.partner.microsoftonline.cn", StringComparison.OrdinalIgnoreCase))
+            {
+                return ArmEnvironment.AzureChina;
+            }
+
+            if (host.EndsWith("login.microsoftonline.de", StringComparison.OrdinalIgnoreCase))
+            {
+                return ArmEnvironment.AzureGermany;
+            }
+        }
+
+        // Fall back to inspecting the Cosmos endpoint suffix when the user did not
+        // pass --authority-host (sovereign-cloud users typically still use the
+        // default authority on a sovereign endpoint).
+        var endpointHost = dataPlaneEndpoint.Host;
+        if (endpointHost.EndsWith(".documents.azure.us", StringComparison.OrdinalIgnoreCase))
+        {
+            return ArmEnvironment.AzureGovernment;
+        }
+
+        if (endpointHost.EndsWith(".documents.azure.cn", StringComparison.OrdinalIgnoreCase))
+        {
+            return ArmEnvironment.AzureChina;
+        }
+
+        if (endpointHost.EndsWith(".documents.microsoftazure.de", StringComparison.OrdinalIgnoreCase))
+        {
+            return ArmEnvironment.AzureGermany;
+        }
+
+        return ArmEnvironment.AzurePublicCloud;
     }
 
     public static ArmCosmosContext RequireContext(ArmCosmosContext? context, string commandName)
@@ -131,7 +186,7 @@ internal static class CosmosArmResourceProvider
         string containerName,
         IReadOnlyList<string> partitionKeyPaths,
         string? uniqueKey,
-        string? indexPolicyJson,
+        CosmosDBIndexingPolicy? indexingPolicy,
         string? scale,
         int? maxRu,
         CancellationToken token)
@@ -162,9 +217,9 @@ internal static class CosmosArmResourceProvider
             resource.UniqueKeys.Add(armUniqueKey);
         }
 
-        if (!string.IsNullOrWhiteSpace(indexPolicyJson))
+        if (indexingPolicy is not null)
         {
-            resource.IndexingPolicy = ReadArmModel<CosmosDBIndexingPolicy>(indexPolicyJson);
+            resource.IndexingPolicy = indexingPolicy;
         }
 
         var content = new CosmosDBSqlContainerCreateOrUpdateContent(context.Account.Data.Location, resource)

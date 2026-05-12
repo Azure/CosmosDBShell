@@ -677,7 +677,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 var vscProps = await ReadAccountAsync(client, token);
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", vscProps.Id));
-                var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(vscCredential, client.Endpoint, subscriptionId, resourceGroupName, accountName, token);
+                var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(vscCredential, client.Endpoint, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
                 this.Connect(client, armContext);
                 return;
             }
@@ -768,7 +768,7 @@ public partial class ShellInterpreter : IDisposable
             }
 
             WriteLine(MessageService.GetArgsString("command-connect-connected", "account", miProps.Id));
-            var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, accountName, token);
+            var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
             this.Connect(client, armContext);
             return;
         }
@@ -805,7 +805,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 var entraProps = await ReadAccountAsync(client, token);
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", entraProps.Id));
-                var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(browserCredential, client.Endpoint, subscriptionId, resourceGroupName, accountName, token);
+                var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(browserCredential, client.Endpoint, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
                 this.Connect(client, armContext);
                 return;
             }
@@ -858,7 +858,7 @@ public partial class ShellInterpreter : IDisposable
                 }
 
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", dcProps.Id));
-                var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(deviceCodeCredential, client.Endpoint, subscriptionId, resourceGroupName, accountName, token);
+                var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(deviceCodeCredential, client.Endpoint, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
                 this.Connect(client, armContext);
                 return;
             }
@@ -885,7 +885,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 var dacProps = await ReadAccountAsync(client, token);
                 WriteLine(MessageService.GetArgsString("command-connect-connected", "account", dacProps.Id));
-                var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(dacCredential, client.Endpoint, subscriptionId, resourceGroupName, accountName, token);
+                var armContext = await CosmosArmResourceProvider.TryCreateContextAsync(dacCredential, client.Endpoint, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
                 this.Connect(client, armContext);
                 return;
             }

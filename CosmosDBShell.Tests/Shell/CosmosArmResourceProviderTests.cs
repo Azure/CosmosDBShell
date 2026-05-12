@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Azure.Core;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Util;
+using Azure.ResourceManager;
 
 /// <summary>
 /// Selector-style tests for <see cref="CosmosArmResourceProvider.TryCreateContextAsync"/>.
@@ -32,6 +33,7 @@ public class CosmosArmResourceProviderTests
             subscriptionId: null,
             resourceGroupName: null,
             accountName: null,
+            authorityHost: null,
             token: TestContext.Current.CancellationToken);
 
         Assert.Null(context);
@@ -49,6 +51,7 @@ public class CosmosArmResourceProviderTests
             subscriptionId: "sub",
             resourceGroupName: "rg",
             accountName: "acc",
+            authorityHost: null,
             token: TestContext.Current.CancellationToken);
 
         Assert.Null(context);
@@ -70,6 +73,7 @@ public class CosmosArmResourceProviderTests
             subscriptionId: subscription,
             resourceGroupName: resourceGroup,
             accountName: account,
+            authorityHost: null,
             token: TestContext.Current.CancellationToken));
 
         Assert.Equal(MessageService.GetString("error-arm-context-incomplete"), ex.Message);
@@ -83,6 +87,25 @@ public class CosmosArmResourceProviderTests
         Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("error-arm-context-incomplete")));
         Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("error-arm-context-ambiguous")));
         Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("error-arm-context-required")));
+    }
+
+    [Theory]
+    [InlineData("https://login.microsoftonline.us/", "https://example.documents.azure.com:443/", "https://management.usgovcloudapi.net/")]
+    [InlineData("https://login.chinacloudapi.cn/", "https://example.documents.azure.com:443/", "https://management.chinacloudapi.cn/")]
+    [InlineData("https://login.microsoftonline.de/", "https://example.documents.azure.com:443/", "https://management.microsoftazure.de/")]
+    [InlineData(null, "https://example.documents.azure.us:443/", "https://management.usgovcloudapi.net/")]
+    [InlineData(null, "https://example.documents.azure.cn:443/", "https://management.chinacloudapi.cn/")]
+    [InlineData(null, "https://example.documents.microsoftazure.de:443/", "https://management.microsoftazure.de/")]
+    [InlineData(null, "https://example.documents.azure.com:443/", "https://management.azure.com/")]
+    [InlineData("https://login.microsoftonline.com/", "https://example.documents.azure.com:443/", "https://management.azure.com/")]
+    public void ResolveArmEnvironment_PicksMatchingCloud(string? authorityHost, string dataPlaneEndpoint, string expectedArmEndpoint)
+    {
+        var authority = authorityHost is null ? null : new Uri(authorityHost);
+        var endpoint = new Uri(dataPlaneEndpoint);
+
+        var environment = CosmosArmResourceProvider.ResolveArmEnvironment(authority, endpoint);
+
+        Assert.Equal(new Uri(expectedArmEndpoint), environment.Endpoint);
     }
 
     private sealed class NoOpTokenCredential : TokenCredential

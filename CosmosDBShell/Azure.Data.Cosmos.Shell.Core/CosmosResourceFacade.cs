@@ -20,6 +20,8 @@ using Newtonsoft.Json;
 /// </summary>
 internal static class CosmosResourceFacade
 {
+    private static readonly System.Text.Json.JsonSerializerOptions IndentedJsonOptions = new() { WriteIndented = true };
+
     public static async IAsyncEnumerable<string> GetDatabaseNamesAsync(ConnectedState state, [EnumeratorCancellation] CancellationToken token)
     {
         if (state.ArmContext is { } arm)
@@ -147,7 +149,20 @@ internal static class CosmosResourceFacade
     {
         if (state.ArmContext is { } arm)
         {
-            var resource = await CosmosArmResourceProvider.CreateContainerAsync(arm, databaseName, containerName, partitionKeyPaths, uniqueKey, indexPolicyJson, scale, maxRu, token);
+            CosmosDBIndexingPolicy? parsedIndex = null;
+            if (!string.IsNullOrWhiteSpace(indexPolicyJson))
+            {
+                try
+                {
+                    parsedIndex = CosmosArmResourceProvider.ReadArmModel<CosmosDBIndexingPolicy>(indexPolicyJson);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    throw new InvalidIndexingPolicyJsonException(ex);
+                }
+            }
+
+            var resource = await CosmosArmResourceProvider.CreateContainerAsync(arm, databaseName, containerName, partitionKeyPaths, uniqueKey, parsedIndex, scale, maxRu, token);
             return resource.Data.Resource.ContainerName;
         }
 
@@ -168,8 +183,7 @@ internal static class CosmosResourceFacade
 
         if (!string.IsNullOrWhiteSpace(indexPolicyJson))
         {
-            var policy = JsonConvert.DeserializeObject<IndexingPolicy>(indexPolicyJson)
-                ?? throw new InvalidOperationException("Unable to parse indexing policy JSON.");
+            var policy = ParseIndexingPolicy(indexPolicyJson);
             props.IndexingPolicy = policy;
         }
 
@@ -319,14 +333,14 @@ internal static class CosmosResourceFacade
         {
             var resource = await CosmosArmResourceProvider.GetContainerAsync(arm, databaseName, containerName, token);
             var indexingPolicy = resource.Data.Resource.IndexingPolicy
-                ?? throw new InvalidOperationException("Container has no indexing policy.");
-            return CosmosArmResourceProvider.WriteArmModel(indexingPolicy);
+                ?? throw new IndexPolicyMissingException();
+            return IndentJson(CosmosArmResourceProvider.WriteArmModel(indexingPolicy));
         }
 
         var response = await state.Client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
         var policy = response.Resource?.IndexingPolicy
-            ?? throw new InvalidOperationException("Container has no indexing policy.");
-        return JsonConvert.SerializeObject(policy);
+            ?? throw new IndexPolicyMissingException();
+        return JsonConvert.SerializeObject(policy, Formatting.Indented);
     }
 
     public static async Task<string> ReplaceIndexingPolicyAsync(ConnectedState state, string databaseName, string containerName, string indexPolicyJson, CancellationToken token)
@@ -334,23 +348,57 @@ internal static class CosmosResourceFacade
         if (state.ArmContext is { } arm)
         {
             var resource = await CosmosArmResourceProvider.GetContainerAsync(arm, databaseName, containerName, token);
-            var indexingPolicy = CosmosArmResourceProvider.ReadArmModel<CosmosDBIndexingPolicy>(indexPolicyJson);
+            CosmosDBIndexingPolicy indexingPolicy;
+            try
+            {
+                indexingPolicy = CosmosArmResourceProvider.ReadArmModel<CosmosDBIndexingPolicy>(indexPolicyJson);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                throw new InvalidIndexingPolicyJsonException(ex);
+            }
+
             var data = resource.Data.Resource;
             data.IndexingPolicy = indexingPolicy;
             var content = new CosmosDBSqlContainerCreateOrUpdateContent(resource.Data.Location, data);
             var response = await resource.UpdateAsync(WaitUntil.Completed, content, token);
             var updated = response.Value.Data.Resource.IndexingPolicy;
-            return CosmosArmResourceProvider.WriteArmModel(updated);
+            return IndentJson(CosmosArmResourceProvider.WriteArmModel(updated));
         }
 
         var container = state.Client.GetDatabase(databaseName).GetContainer(containerName);
         var current = await container.ReadContainerAsync(cancellationToken: token);
         var props = current.Resource;
-        var policy = JsonConvert.DeserializeObject<IndexingPolicy>(indexPolicyJson)
-            ?? throw new InvalidOperationException("Unable to parse indexing policy JSON.");
+        var policy = ParseIndexingPolicy(indexPolicyJson);
         props.IndexingPolicy = policy;
         var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
-        return JsonConvert.SerializeObject(replaced.Resource?.IndexingPolicy ?? policy);
+        return JsonConvert.SerializeObject(replaced.Resource?.IndexingPolicy ?? policy, Formatting.Indented);
+    }
+
+    private static IndexingPolicy ParseIndexingPolicy(string indexPolicyJson)
+    {
+        try
+        {
+            return JsonConvert.DeserializeObject<IndexingPolicy>(indexPolicyJson)
+                ?? throw new InvalidIndexingPolicyJsonException();
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidIndexingPolicyJsonException(ex);
+        }
+    }
+
+    private static string IndentJson(string compact)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(compact);
+            return System.Text.Json.JsonSerializer.Serialize(doc.RootElement, IndentedJsonOptions);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return compact;
+        }
     }
 
     private static ThroughputProperties CreateThroughputProperties(string? scale, int? maxRu)

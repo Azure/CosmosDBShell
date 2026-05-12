@@ -251,6 +251,7 @@ command-indexpolicy-description-database = The database containing the container
 command-indexpolicy-description-container = The container to read/update the indexing policy for
 command-indexpolicy-updated = Indexing policy updated successfully.
 command-indexpolicy-error_invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
+command-indexpolicy-error_no_policy = The container has no indexing policy configured.
 
 command-ls-description = List resources in the current context.
 command-ls-description-filter = The filter pattern.
