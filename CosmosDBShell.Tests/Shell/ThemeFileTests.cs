@@ -87,6 +87,36 @@ public class ThemeFileTests
     }
 
     [Fact]
+    public void Parse_RejectsModifierInColorSlot()
+    {
+        var toml = """
+            name = "bad-color"
+
+            [colors]
+            literal = "bold purple"
+            """;
+
+        var ex = Assert.Throws<ThemeLoadException>(() => ThemeFile.Parse(toml, "memory://bad-color.toml", LookupBuiltIn));
+        Assert.Contains("literal", ex.Message);
+        Assert.Contains("bold purple", ex.Message);
+    }
+
+    [Fact]
+    public void Parse_RejectsMultipleColorsInStyleSlot()
+    {
+        var toml = """
+            name = "bad-style"
+
+            [styles]
+            unknown_command = "bold red yellow"
+            """;
+
+        var ex = Assert.Throws<ThemeLoadException>(() => ThemeFile.Parse(toml, "memory://bad-style.toml", LookupBuiltIn));
+        Assert.Contains("unknown_command", ex.Message);
+        Assert.Contains("bold red yellow", ex.Message);
+    }
+
+    [Fact]
     public void Parse_RejectsUnknownExtends()
     {
         var toml = """

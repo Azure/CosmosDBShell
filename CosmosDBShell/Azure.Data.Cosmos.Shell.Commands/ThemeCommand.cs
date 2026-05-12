@@ -21,6 +21,7 @@ using Spectre.Console;
 [CosmosExample("theme show light", Description = "Print a sample using the light theme without switching to it")]
 [CosmosExample("theme use light", Description = "Switch the active theme for the rest of the session")]
 [CosmosExample("theme load ./my-theme.toml", Description = "Load a theme from a TOML file and switch to it")]
+[CosmosExample("theme validate ./my-theme.toml", Description = "Validate a theme TOML file without loading it")]
 [CosmosExample("theme save my-theme", Description = "Save the active theme as ~/.cosmosdbshell/themes/my-theme.toml")]
 [CosmosExample("theme reload", Description = "Re-scan the user themes directory")]
 internal class ThemeCommand : CosmosCommand
@@ -48,6 +49,7 @@ internal class ThemeCommand : CosmosCommand
             "show" => Task.FromResult(this.RunShow(commandState)),
             "use" or "set" => Task.FromResult(this.RunUse(commandState)),
             "load" => Task.FromResult(this.RunLoad(commandState)),
+            "validate" => Task.FromResult(this.RunValidate(commandState)),
             "save" => Task.FromResult(this.RunSave(commandState)),
             "reload" => Task.FromResult(this.RunReload(commandState)),
             _ => Task.FromResult(this.RunUnknownAction(commandState, action)),
@@ -307,6 +309,56 @@ internal class ThemeCommand : CosmosCommand
         }
     }
 
+    private CommandState RunValidate(CommandState commandState)
+    {
+        var requested = string.IsNullOrWhiteSpace(this.Name) ? this.Path : this.Name;
+        if (string.IsNullOrWhiteSpace(requested))
+        {
+            var message = MessageService.GetString("command-theme-validate-missing-path");
+            AnsiConsole.MarkupLine(message);
+            return new ErrorCommandState(new CommandException("theme", message));
+        }
+
+        var path = ResolveThemePath(requested);
+
+        try
+        {
+            var result = ThemeRegistry.Instance.ValidateFile(path);
+            AnsiConsole.MarkupLine(MessageService.GetArgsString(
+                "command-theme-validated",
+                "name",
+                result.Name,
+                "path",
+                result.Source));
+            foreach (var warning in result.Warnings)
+            {
+                AnsiConsole.MarkupLine(Theme.FormatWarning(warning));
+            }
+
+            commandState.IsPrinted = true;
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                valid = true,
+                name = result.Name,
+                path = result.Source,
+                description = result.Description,
+                warnings = result.Warnings,
+            }));
+            return commandState;
+        }
+        catch (ThemeLoadException ex)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatError(ex.Message));
+            return new ErrorCommandState(new CommandException("theme", ex.Message));
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            var message = MessageService.GetArgsString("command-theme-load-not-found", "path", path);
+            AnsiConsole.MarkupLine(Theme.FormatError(message));
+            return new ErrorCommandState(new CommandException("theme", message));
+        }
+    }
+
     private CommandState RunReload(CommandState commandState)
     {
         var registry = ThemeRegistry.Instance;
@@ -342,7 +394,7 @@ internal class ThemeCommand : CosmosCommand
             "action",
             action,
             "actions",
-            "list, show, use, load, save, reload");
+            "list, show, use, load, validate, save, reload");
         AnsiConsole.MarkupLine(message);
         return new ErrorCommandState(new CommandException("theme", message));
     }

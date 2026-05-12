@@ -190,12 +190,13 @@ help_header     = "bold"
 unknown_command = "bold red"
 ```
 
-Allowed values are the standard ANSI 16 color names (`black`, `maroon`, `green`, `olive`, `navy`, `purple`, `teal`, `silver`, `grey`, `red`, `lime`, `yellow`, `blue`, `fuchsia`, `aqua`, `white`) optionally combined with style modifiers (`bold`, `dim`, `italic`, `underline`, `strikethrough`). Empty string means "use the terminal's default foreground".
+Color values must be empty or one standard ANSI 16 color name (`black`, `maroon`, `green`, `olive`, `navy`, `purple`, `teal`, `silver`, `grey`, `red`, `lime`, `yellow`, `blue`, `fuchsia`, `aqua`, `white`). Style values may combine modifiers (`bold`, `dim`, `italic`, `underline`, `strikethrough`, `invert`, `conceal`, `slowblink`, `rapidblink`) with at most one ANSI 16 color. Empty string means "use the terminal's default foreground".
 
 Runtime commands for working with files:
 
 ```bash
 CS > theme load ./my-theme.toml         # load and switch to a file ad-hoc
+CS > theme validate ./my-theme.toml     # validate a file without loading or switching
 CS > theme save my-theme                # write the active theme to ~/.cosmosdbshell/themes/my-theme.toml
 CS > theme save my-theme ./out.toml     # save to a custom path
 CS > theme save my-theme --force        # overwrite an existing file
