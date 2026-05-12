@@ -298,6 +298,15 @@ public partial class ShellInterpreter : IHighlighter
             binaryOperatorExpression.Right.Accept(this);
         }
 
+        public void Visit(FilterPipeExpression filterPipeExpression)
+        {
+            filterPipeExpression.Left.Accept(this);
+            this.AppendUpTo(filterPipeExpression.PipeToken.Start);
+            this.result.Append(Theme.FormatJsonBracket(filterPipeExpression.PipeToken.Value));
+            this.currentPosition = filterPipeExpression.PipeToken.End;
+            filterPipeExpression.Right.Accept(this);
+        }
+
         public void Visit(ParensExpression parensExpression)
         {
             // Color the parentheses using the current bracket depth so they participate
@@ -488,6 +497,11 @@ public partial class ShellInterpreter : IHighlighter
             this.AppendUpTo(jSonPathExpression.Start + jSonPathExpression.Length);
         }
 
+        public void Visit(FilterPathExpression filterPathExpression)
+        {
+            this.AppendUpTo(filterPathExpression.Start + filterPathExpression.Length);
+        }
+
         public void Visit(VariableExpression variableExpression)
         {
             this.AppendUpTo(variableExpression.Start + variableExpression.Length);
@@ -525,6 +539,18 @@ public partial class ShellInterpreter : IHighlighter
             }
 
             this.currentCommand = previousCommand;
+        }
+
+        public void Visit(FilterCallExpression filterCallExpression)
+        {
+            this.AppendUpTo(filterCallExpression.NameToken.Start);
+            this.result.Append(Theme.FormatCommand(filterCallExpression.NameToken.Value));
+            this.currentPosition = filterCallExpression.NameToken.End;
+
+            foreach (var argument in filterCallExpression.Arguments)
+            {
+                argument.Accept(this);
+            }
         }
 
         public void Visit(InterpolatedStringExpression interpolatedStringExpression)

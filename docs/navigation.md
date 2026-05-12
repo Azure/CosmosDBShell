@@ -177,6 +177,7 @@ These commands accept and process piped JSON:
 | `echo` | Outputs piped value or extracts path |
 | `cd` | Can use path to select target |
 | `delete` | Deletes item specified by piped JSON |
+| `filter` | Filters/transforms piped JSON with the native filter language |
 | `jq` | Filters/transforms piped JSON |
 | `ftab` | Formats piped JSON as table |
 

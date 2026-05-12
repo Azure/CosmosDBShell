@@ -270,6 +270,11 @@ command-results-limit_reached =
 
 command-jq-description = Commandline JSON processor
 command-jq-description-args = Arguments for the jq command
+command-filter-description = Filter and transform piped JSON with the native filter expression language
+command-filter-description-expression = Filter expression to evaluate against the piped JSON input
+command-filter-error-no_expression = Filter expression is missing.
+command-filter-error-no_input = The filter command requires piped JSON input.
+command-filter-error-invalid_input = The filter command can only process JSON input.
 command-ftab-description = Render piped JSON as a table
 command-ftab-description-fields = Comma-separated field names to include in the table (Optional)
 command-ftab-description-take = Limit the number of rendered rows (Optional)
@@ -495,7 +500,10 @@ json_error_unclosed_array_bracket = Unclosed array bracket.
 json_error_result_evaluation_null = Result evaluation returned null.
 
 expression_error_no_more_tokens = No more tokens
+expression_error_expected_open_paren = Expected '('
 expression_error_expected_close_paren = Expected ')' after expression
+expression_error_expected_close_bracket = Expected ']'
+expression_error_expected_array_index = Expected array index
 expression_error_invalid_number = Invalid number format: {$value}
 expression_error_unexpected_end = Unexpected end of expression
 expression_error_unexpected_token = Unexpected token: {$type} '{$value}'

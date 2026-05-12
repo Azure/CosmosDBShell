@@ -17,7 +17,7 @@ internal abstract class Expression
     public static Expression Parse(Lexer lexer)
     {
         var parser = new ExpressionParser(lexer);
-        return parser.ParseExpression();
+        return parser.ParseFilterExpression();
     }
 
     /// <summary>
