@@ -266,6 +266,14 @@ internal static class Theme
     }
 
     /// <summary>
+    /// Wraps a non-help section header using the same theme slot as help headers.
+    /// </summary>
+    internal static string FormatSectionHeader(string value)
+    {
+        return Wrap(Current.HelpHeaderStyle, Markup.Escape(value));
+    }
+
+    /// <summary>
     /// Wraps help body text (descriptions, command summaries) in unstyled escaped
     /// text so the terminal's default foreground is used.
     /// </summary>
@@ -281,6 +289,22 @@ internal static class Theme
     internal static string FormatHelpName(string value)
     {
         return Wrap(Current.HelpNameStyle, Markup.Escape(value));
+    }
+
+    /// <summary>
+    /// Wraps short help accents, such as example bullets, using the active accent color.
+    /// </summary>
+    internal static string FormatHelpAccent(string value)
+    {
+        return Wrap(Current.HelpAccentColor, Markup.Escape(value));
+    }
+
+    /// <summary>
+    /// Returns the style used to emphasize matches in interactive search prompts.
+    /// </summary>
+    internal static string SearchMatchStyle()
+    {
+        return string.IsNullOrEmpty(Current.WarningColor) ? "underline" : "underline " + Current.WarningColor;
     }
 
     /// <summary>

@@ -202,7 +202,7 @@ CS > theme save my-theme --force        # overwrite an existing file
 CS > theme reload                       # rescan the user themes directory
 ```
 
-`theme save` only writes slots that differ from the `default` profile, keeping files minimal.
+`theme save` writes a self-contained theme file with every color and style slot populated, so the saved file can be moved or edited without depending on another custom profile.
 
 ## How to Contribute
 

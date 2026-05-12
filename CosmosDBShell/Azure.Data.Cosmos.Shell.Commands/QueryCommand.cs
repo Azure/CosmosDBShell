@@ -240,7 +240,7 @@ internal class QueryCommand : CosmosCommand
     {
         if (jToken == null || jToken.Value.ValueKind == JsonValueKind.Null || jToken.Value.ValueKind == JsonValueKind.Undefined)
         {
-            table.AddRow($"[{Theme.TableValueColorName}]{title}[/]", $"[{Theme.TableValueColorName}]-[/]", $"[{Theme.TableValueColorName}]-[/]");
+            table.AddRow(Theme.FormatTableValue(title), Theme.FormatTableValue("-"), Theme.FormatTableValue("-"));
             return;
         }
 
@@ -249,7 +249,7 @@ internal class QueryCommand : CosmosCommand
             var arr = jToken.Value.EnumerateArray().ToList();
             if (arr.Count == 0)
             {
-                table.AddRow($"[{Theme.TableValueColorName}]{title}[/]", $"[{Theme.TableValueColorName}]-[/]", $"[{Theme.TableValueColorName}]-[/]");
+                table.AddRow(Theme.FormatTableValue(title), Theme.FormatTableValue("-"), Theme.FormatTableValue("-"));
                 return;
             }
 
@@ -269,7 +269,7 @@ internal class QueryCommand : CosmosCommand
                 }
 
                 i += 1;
-                table.AddRow($"[{Theme.TableValueColorName}]{title}[/]", $"[{Theme.TableValueColorName}]{col1}[/]", $"[{Theme.TableValueColorName}]{col2}[/]");
+                table.AddRow(Theme.FormatTableValue(title), Theme.FormatTableValue(col1), Theme.FormatTableValue(col2));
             }
         }
     }
@@ -450,24 +450,24 @@ internal class QueryCommand : CosmosCommand
                     var table = new Table();
                     table.AddColumns(MessageService.GetString("command-query-document_header"), MessageService.GetString("command-query-count_header"), MessageService.GetString("command-query-size_header"));
 
-                    table.AddRow(MessageService.GetString("command-query-retrieved"), $"[{Theme.TableValueColorName}]{Fmt("Retrieved document count")}[/]", $"[{Theme.TableValueColorName}]{Fmt("Retrieved document size")}[/]");
-                    table.AddRow(MessageService.GetString("command-query-output"), $"[{Theme.TableValueColorName}]{Fmt("Output document count")}[/]", $"[{Theme.TableValueColorName}]{Fmt("Output document size")}[/]");
+                    table.AddRow(MessageService.GetString("command-query-retrieved"), Theme.FormatTableValue(Fmt("Retrieved document count")), Theme.FormatTableValue(Fmt("Retrieved document size")));
+                    table.AddRow(MessageService.GetString("command-query-output"), Theme.FormatTableValue(Fmt("Output document count")), Theme.FormatTableValue(Fmt("Output document size")));
                     AnsiConsole.Write(table);
 
                     table = new Table();
                     table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
                     table.HideHeaders();
-                    table.AddRow(MessageService.GetString("command-query-document_load"), $"[{Theme.TableValueColorName}]{Fmt("Document load time")}[/]", MessageService.GetString("command-query-document_write"), $"[{Theme.TableValueColorName}]{Fmt("Document write time")}[/]");
-                    table.AddRow(MessageService.GetString("command-query-query_preparation"), $"[{Theme.TableValueColorName}]{Fmt("Query preparation time")}[/]", MessageService.GetString("command-query-runtime_execution"), $"[{Theme.TableValueColorName}]{Fmt("Runtime execution time")}[/]");
-                    table.AddRow(MessageService.GetString("command-query-vm_execution"), $"[{Theme.TableValueColorName}]{Fmt("VMExecution execution time")}[/]");
+                    table.AddRow(MessageService.GetString("command-query-document_load"), Theme.FormatTableValue(Fmt("Document load time")), MessageService.GetString("command-query-document_write"), Theme.FormatTableValue(Fmt("Document write time")));
+                    table.AddRow(MessageService.GetString("command-query-query_preparation"), Theme.FormatTableValue(Fmt("Query preparation time")), MessageService.GetString("command-query-runtime_execution"), Theme.FormatTableValue(Fmt("Runtime execution time")));
+                    table.AddRow(MessageService.GetString("command-query-vm_execution"), Theme.FormatTableValue(Fmt("VMExecution execution time")));
                     table.AddEmptyRow();
-                    table.AddRow(MessageService.GetString("command-query-total"), $"[{Theme.TableValueColorName}]{Fmt("Total time")}[/]");
+                    table.AddRow(MessageService.GetString("command-query-total"), Theme.FormatTableValue(Fmt("Total time")));
                     AnsiConsole.MarkupLine(MessageService.GetString("command-query-time_label"));
                     AnsiConsole.Write(table);
 
                     table = new Table();
                     table.AddColumns(MessageService.GetString("command-query-index_hit_ratio"), MessageService.GetString("command-query-index_lookup_time"));
-                    table.AddRow($"[{Theme.TableValueColorName}]{Fmt("Index hit ratio")}[/]", $"[{Theme.TableValueColorName}]{Fmt("Index lookup time")}[/]");
+                    table.AddRow(Theme.FormatTableValue(Fmt("Index hit ratio")), Theme.FormatTableValue(Fmt("Index lookup time")));
                     AnsiConsole.Write(table);
 
                     if (response.IndexMetrics != null)
