@@ -20,6 +20,12 @@ no_char = N
 
 error = Error:
 error-connection_failed = Failed to connect to the Cosmos DB account.
+error-emulator_connection_failed =
+    Could not reach the Cosmos DB emulator at { $endpoint }.
+    Make sure the emulator is running and reachable.
+    If the protocol is wrong, try { $alternate } (the Linux emulator defaults to HTTP).
+    The emulator container's protocol is set with --protocol [https|http].
+    See: https://learn.microsoft.com/en-us/azure/cosmos-db/emulator-linux
 error-command-not-found = '{ $command }' is not recognized as an internal or external command, operable program or batch file.
 error-shell-not-initialized = Shell is not initialized
 error-start_process = Failed to start the process.
