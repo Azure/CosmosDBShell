@@ -197,6 +197,8 @@ Runtime commands for working with files:
 ```bash
 CS > theme load ./my-theme.toml         # load and switch to a file ad-hoc
 CS > theme validate ./my-theme.toml     # validate a file without loading or switching
+CS > theme validate ~/.cosmosdbshell/themes  # validate every TOML file in a directory
+CS > theme validate my-theme --strict   # treat warnings as errors
 CS > theme save my-theme                # write the active theme to ~/.cosmosdbshell/themes/my-theme.toml
 CS > theme save my-theme ./out.toml     # save to a custom path
 CS > theme save my-theme --force        # overwrite an existing file

@@ -184,6 +184,13 @@ public class ThemeProfileTests
         Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("command-theme-validated")));
         Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("command-theme-validate-missing-path")));
         Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("theme-file-error-invalid-style")));
+        Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("theme-file-error-invalid-color-suggested")));
+        Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("theme-file-error-invalid-style-suggested")));
+        Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("theme-file-warning-bracket-cycle-single")));
+        Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("theme-file-warning-bracket-cycle-duplicates")));
+        Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("command-theme-validate-summary")));
+        Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("command-theme-validate-no-files")));
+        Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("command-theme-validate-strict-failed")));
     }
 
     /// <summary>

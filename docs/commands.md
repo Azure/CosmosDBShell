@@ -114,6 +114,7 @@ Arguments:
 
 Options:
     -force, -f  Overwrite an existing file when saving
+    -strict     Treat warnings as errors during validate
 ```
 
 Examples:
@@ -124,11 +125,13 @@ theme show light
 theme use light
 theme load ./my-theme.toml
 theme validate ./my-theme.toml
+theme validate ~/.cosmosdbshell/themes
+theme validate my-theme --strict
 theme save my-theme --force
 theme reload
 ```
 
-`theme validate` parses a TOML file and reports warnings without registering it or switching the active theme. Color values must be empty or one ANSI 16 color name. Style values may combine modifiers with at most one ANSI 16 color.
+`theme validate` parses a TOML file and reports warnings without registering it or switching the active theme. When the argument is a directory it validates every `*.toml` file in that directory and prints a per-file summary. With no argument it scans the user themes directory (`~/.cosmosdbshell/themes`). The validator collects every issue in a single pass so that multiple typos can be fixed at once, and suggests the closest valid token when an unknown color or modifier is used. It also warns on bracket cycles that have only one color or contain duplicates. Pass `--strict` to fail when any warnings are present. Color values must be empty or one ANSI 16 color name. Style values may combine modifiers with at most one ANSI 16 color.
 
 ## Data Operations
 

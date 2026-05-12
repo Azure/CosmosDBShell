@@ -38,6 +38,9 @@ internal class ThemeCommand : CosmosCommand
     [CosmosOption("force", "f")]
     public bool Force { get; init; }
 
+    [CosmosOption("strict")]
+    public bool Strict { get; init; }
+
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         var action = (this.Action ?? "current").Trim().ToLowerInvariant();
@@ -314,13 +317,25 @@ internal class ThemeCommand : CosmosCommand
         var requested = string.IsNullOrWhiteSpace(this.Name) ? this.Path : this.Name;
         if (string.IsNullOrWhiteSpace(requested))
         {
-            var message = MessageService.GetString("command-theme-validate-missing-path");
-            AnsiConsole.MarkupLine(message);
-            return new ErrorCommandState(new CommandException("theme", message));
+            return this.RunValidateDirectory(commandState, ThemeFile.DefaultUserThemesDirectory());
+        }
+
+        if (Directory.Exists(requested))
+        {
+            return this.RunValidateDirectory(commandState, requested);
         }
 
         var path = ResolveThemePath(requested);
+        if (Directory.Exists(path))
+        {
+            return this.RunValidateDirectory(commandState, path);
+        }
 
+        return this.RunValidateFile(commandState, path);
+    }
+
+    private CommandState RunValidateFile(CommandState commandState, string path)
+    {
         try
         {
             var result = ThemeRegistry.Instance.ValidateFile(path);
@@ -333,6 +348,18 @@ internal class ThemeCommand : CosmosCommand
             foreach (var warning in result.Warnings)
             {
                 AnsiConsole.MarkupLine(Theme.FormatWarning(warning));
+            }
+
+            if (this.Strict && result.Warnings.Count > 0)
+            {
+                var strictMessage = MessageService.GetArgsString(
+                    "command-theme-validate-strict-failed",
+                    "name",
+                    result.Name,
+                    "count",
+                    result.Warnings.Count);
+                AnsiConsole.MarkupLine(Theme.FormatError(strictMessage));
+                return new ErrorCommandState(new CommandException("theme", strictMessage));
             }
 
             commandState.IsPrinted = true;
@@ -357,6 +384,99 @@ internal class ThemeCommand : CosmosCommand
             AnsiConsole.MarkupLine(Theme.FormatError(message));
             return new ErrorCommandState(new CommandException("theme", message));
         }
+    }
+
+    private CommandState RunValidateDirectory(CommandState commandState, string directory)
+    {
+        var files = ThemeFile.EnumerateThemeFiles(directory);
+        if (files.Length == 0)
+        {
+            var emptyMessage = MessageService.GetArgsString("command-theme-validate-no-files", "directory", directory);
+            AnsiConsole.MarkupLine(Theme.FormatMuted(emptyMessage));
+            commandState.IsPrinted = true;
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                directory,
+                files = Array.Empty<object>(),
+                valid = 0,
+                invalid = 0,
+            }));
+            return commandState;
+        }
+
+        var fileResults = new List<Dictionary<string, object?>>();
+        var validCount = 0;
+        var invalidCount = 0;
+
+        foreach (var file in files)
+        {
+            var entry = new Dictionary<string, object?>
+            {
+                ["path"] = file,
+            };
+
+            try
+            {
+                var result = ThemeRegistry.Instance.ValidateFile(file);
+                var failedStrict = this.Strict && result.Warnings.Count > 0;
+
+                entry["name"] = result.Name;
+                entry["valid"] = !failedStrict;
+                entry["warnings"] = result.Warnings;
+
+                if (failedStrict)
+                {
+                    invalidCount++;
+                    AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2717")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
+                }
+                else
+                {
+                    validCount++;
+                    AnsiConsole.MarkupLine($"  {Theme.FormatHelpAccent("\u2713")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
+                }
+
+                foreach (var warning in result.Warnings)
+                {
+                    AnsiConsole.MarkupLine("    " + Theme.FormatWarning(warning));
+                }
+            }
+            catch (Exception ex) when (ex is ThemeLoadException || ex is FileNotFoundException || ex is DirectoryNotFoundException)
+            {
+                invalidCount++;
+                entry["valid"] = false;
+                entry["error"] = ex.Message;
+                AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2717")} {Markup.Escape(System.IO.Path.GetFileName(file))}");
+                AnsiConsole.MarkupLine("    " + Theme.FormatError(ex.Message));
+            }
+
+            fileResults.Add(entry);
+        }
+
+        var summary = MessageService.GetArgsString(
+            "command-theme-validate-summary",
+            "valid",
+            validCount,
+            "total",
+            files.Length,
+            "directory",
+            directory);
+        AnsiConsole.MarkupLine(summary);
+
+        commandState.IsPrinted = true;
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
+        {
+            directory,
+            files = fileResults,
+            valid = validCount,
+            invalid = invalidCount,
+        }));
+
+        if (invalidCount > 0)
+        {
+            return new ErrorCommandState(new CommandException("theme", summary));
+        }
+
+        return commandState;
     }
 
     private CommandState RunReload(CommandState commandState)

@@ -50,4 +50,80 @@ internal static class ThemePalette
     {
         return !string.IsNullOrEmpty(token) && ModifiersSet.Contains(token);
     }
+
+    /// <summary>
+    /// Returns the closest valid ANSI 16 color name to <paramref name="token"/>, or
+    /// <c>null</c> when no candidate is similar enough to be useful.
+    /// </summary>
+    public static string? SuggestColor(string token)
+    {
+        return SuggestNearest(token, AnsiSixteen);
+    }
+
+    /// <summary>
+    /// Returns the closest valid ANSI 16 color name or modifier to <paramref name="token"/>,
+    /// or <c>null</c> when no candidate is similar enough to be useful.
+    /// </summary>
+    public static string? SuggestColorOrModifier(string token)
+    {
+        return SuggestNearest(token, AnsiSixteen.Concat(Modifiers));
+    }
+
+    private static string? SuggestNearest(string token, IEnumerable<string> candidates)
+    {
+        if (string.IsNullOrEmpty(token))
+        {
+            return null;
+        }
+
+        var lower = token.ToLowerInvariant();
+        string? best = null;
+        var bestDistance = int.MaxValue;
+        foreach (var candidate in candidates)
+        {
+            var distance = LevenshteinDistance(lower, candidate);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = candidate;
+            }
+        }
+
+        var maxAcceptable = Math.Max(1, token.Length / 2);
+        return bestDistance <= maxAcceptable ? best : null;
+    }
+
+    private static int LevenshteinDistance(string s, string t)
+    {
+        if (s.Length == 0)
+        {
+            return t.Length;
+        }
+
+        if (t.Length == 0)
+        {
+            return s.Length;
+        }
+
+        var prev = new int[t.Length + 1];
+        var curr = new int[t.Length + 1];
+        for (var j = 0; j <= t.Length; j++)
+        {
+            prev[j] = j;
+        }
+
+        for (var i = 1; i <= s.Length; i++)
+        {
+            curr[0] = i;
+            for (var j = 1; j <= t.Length; j++)
+            {
+                var cost = s[i - 1] == t[j - 1] ? 0 : 1;
+                curr[j] = Math.Min(Math.Min(curr[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+            }
+
+            (prev, curr) = (curr, prev);
+        }
+
+        return prev[t.Length];
+    }
 }
