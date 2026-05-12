@@ -38,4 +38,16 @@ internal static class ThemePalette
         return !string.IsNullOrEmpty(token)
             && (AnsiSixteenSet.Contains(token) || ModifiersSet.Contains(token));
     }
+
+    /// <summary>Returns <c>true</c> when <paramref name="token"/> is an ANSI 16 color.</summary>
+    public static bool IsAnsiSixteen(string token)
+    {
+        return !string.IsNullOrEmpty(token) && AnsiSixteenSet.Contains(token);
+    }
+
+    /// <summary>Returns <c>true</c> when <paramref name="token"/> is an allowed style modifier.</summary>
+    public static bool IsModifier(string token)
+    {
+        return !string.IsNullOrEmpty(token) && ModifiersSet.Contains(token);
+    }
 }

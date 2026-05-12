@@ -156,6 +156,26 @@ public class ThemeRegistryTests
         Assert.Equal("purple", resolved.LiteralColor);
     }
 
+    [Fact]
+    public void ValidateFile_DoesNotRegisterTheme()
+    {
+        using var dir = new TempDirectory();
+        var path = Path.Combine(dir.Path, "preview.toml");
+        File.WriteAllText(path,
+            """
+            name = "preview"
+
+            [colors]
+            literal = "purple"
+            """);
+
+        var registry = new ThemeRegistry();
+        var result = registry.ValidateFile(path);
+
+        Assert.Equal("preview", result.Name);
+        Assert.False(registry.TryGet("preview", out _));
+    }
+
     private sealed class TempDirectory : IDisposable
     {
         public TempDirectory()

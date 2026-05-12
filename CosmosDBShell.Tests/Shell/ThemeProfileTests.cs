@@ -181,6 +181,9 @@ public class ThemeProfileTests
         Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("command-theme-unknown")));
         Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("command-theme-unknown-action")));
         Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("command-theme-use-missing-name")));
+        Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("command-theme-validated")));
+        Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("command-theme-validate-missing-path")));
+        Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString("theme-file-error-invalid-style")));
     }
 
     /// <summary>

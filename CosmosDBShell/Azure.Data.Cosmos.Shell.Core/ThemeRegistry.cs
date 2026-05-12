@@ -184,6 +184,14 @@ internal sealed class ThemeRegistry
         return result;
     }
 
+    /// <summary>
+    /// Validates a single theme file without registering it or changing the active theme.
+    /// </summary>
+    public ThemeFileResult ValidateFile(string path)
+    {
+        return ThemeFile.Load(path, name => this.TryLookupOptions(name));
+    }
+
     private ThemeOptions? TryLookupOptions(string name)
     {
         return this.entries.TryGetValue(name, out var registration) ? registration.Options : null;

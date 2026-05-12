@@ -132,8 +132,8 @@ internal static class ThemeFile
                 extends));
 
         var built = baseOptions;
-        built = ApplyTable(built, model, "colors", ColorSlots, sourceLabel, warnings);
-        built = ApplyTable(built, model, "styles", StyleSlots, sourceLabel, warnings);
+        built = ApplyTable(built, model, "colors", ColorSlots, sourceLabel, warnings, ValidateColorValue);
+        built = ApplyTable(built, model, "styles", StyleSlots, sourceLabel, warnings, ValidateStyleValue);
 
         if (model.TryGetValue("colors", out var colorsObj) && colorsObj is TomlTable colorsTable && colorsTable.TryGetValue("bracket_cycle", out var cycleObj))
         {
@@ -150,7 +150,7 @@ internal static class ThemeFile
 
                 foreach (var color in cycle)
                 {
-                    ValidateValue("bracket_cycle", color, sourceLabel);
+                    ValidateColorValue("bracket_cycle", color, sourceLabel);
                 }
 
                 built = built with { BracketCycle = cycle };
@@ -260,7 +260,8 @@ internal static class ThemeFile
         string sectionName,
         IReadOnlyDictionary<string, (Func<ThemeOptions, string> Get, Func<ThemeOptions, string, ThemeOptions> With)> slots,
         string sourceLabel,
-        List<string> warnings)
+        List<string> warnings,
+        Action<string, string, string> validateValue)
     {
         if (!model.TryGetValue(sectionName, out var sectionObj) || sectionObj is not TomlTable section)
         {
@@ -288,7 +289,7 @@ internal static class ThemeFile
             }
 
             var value = entry.Value as string ?? entry.Value?.ToString() ?? string.Empty;
-            ValidateValue(entry.Key, value, sourceLabel);
+            validateValue(entry.Key, value, sourceLabel);
             accumulator = slot.With(accumulator, value);
         }
 
@@ -300,7 +301,7 @@ internal static class ThemeFile
         return model.TryGetValue(key, out var value) ? value as string ?? value?.ToString() : null;
     }
 
-    private static void ValidateValue(string key, string value, string sourceLabel)
+    private static void ValidateColorValue(string key, string value, string sourceLabel)
     {
         if (string.IsNullOrEmpty(value))
         {
@@ -308,22 +309,64 @@ internal static class ThemeFile
         }
 
         var tokens = value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length != 1 || !ThemePalette.IsAnsiSixteen(tokens[0]))
+        {
+            throw new ThemeLoadException(MessageService.GetArgsString(
+                "theme-file-error-invalid-color",
+                "source",
+                sourceLabel,
+                "key",
+                key,
+                "value",
+                value,
+                "allowed",
+                string.Join(", ", ThemePalette.AnsiSixteen)));
+        }
+    }
+
+    private static void ValidateStyleValue(string key, string value, string sourceLabel)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return;
+        }
+
+        var tokens = value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var colorCount = 0;
         foreach (var token in tokens)
         {
-            if (!ThemePalette.IsAllowedToken(token))
+            if (ThemePalette.IsAnsiSixteen(token))
             {
-                throw new ThemeLoadException(MessageService.GetArgsString(
-                    "theme-file-error-invalid-color",
-                    "source",
-                    sourceLabel,
-                    "key",
-                    key,
-                    "value",
-                    value,
-                    "allowed",
-                    string.Join(", ", ThemePalette.AnsiSixteen)));
+                colorCount++;
+                if (colorCount > 1)
+                {
+                    ThrowInvalidStyle(key, value, sourceLabel);
+                }
+
+                continue;
+            }
+
+            if (!ThemePalette.IsModifier(token))
+            {
+                ThrowInvalidStyle(key, value, sourceLabel);
             }
         }
+    }
+
+    private static void ThrowInvalidStyle(string key, string value, string sourceLabel)
+    {
+        throw new ThemeLoadException(MessageService.GetArgsString(
+            "theme-file-error-invalid-style",
+            "source",
+            sourceLabel,
+            "key",
+            key,
+            "value",
+            value,
+            "colors",
+            string.Join(", ", ThemePalette.AnsiSixteen),
+            "modifiers",
+            string.Join(", ", ThemePalette.Modifiers)));
     }
 
     private static string QuoteString(string value)
