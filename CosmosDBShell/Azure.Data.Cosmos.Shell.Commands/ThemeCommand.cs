@@ -64,9 +64,9 @@ internal class ThemeCommand : CosmosCommand
         var message = MessageService.GetArgsString(
             "command-theme-unknown",
             "name",
-            requested,
+            Markup.Escape(requested),
             "themes",
-            string.Join(", ", ThemeRegistry.Instance.All.Keys));
+            string.Join(", ", ThemeRegistry.Instance.All.Keys.Select(Markup.Escape)));
         AnsiConsole.MarkupLine(message);
         return new ErrorCommandState(new CommandException("theme", message));
     }
@@ -106,7 +106,7 @@ internal class ThemeCommand : CosmosCommand
     private CommandState RunCurrent(CommandState commandState)
     {
         var name = ResolveActiveName();
-        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-theme-active", "name", name));
+        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-theme-active", "name", Markup.Escape(name)));
         commandState.IsPrinted = true;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { active = name }));
         return commandState;
@@ -153,7 +153,7 @@ internal class ThemeCommand : CosmosCommand
         try
         {
             Theme.Apply(profile);
-            AnsiConsole.MarkupLine(MessageService.GetArgsString("command-theme-sample-heading", "name", profileName.ToLowerInvariant()));
+            AnsiConsole.MarkupLine(MessageService.GetArgsString("command-theme-sample-heading", "name", Markup.Escape(profileName.ToLowerInvariant())));
 
             var table = new Table().HideHeaders();
             table.AddColumn(string.Empty);
@@ -211,7 +211,7 @@ internal class ThemeCommand : CosmosCommand
 
         Theme.Apply(profile);
         var name = this.Name.ToLowerInvariant();
-        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-theme-applied", "name", name));
+        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-theme-applied", "name", Markup.Escape(name)));
         commandState.IsPrinted = true;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { applied = name }));
         return commandState;
@@ -236,9 +236,9 @@ internal class ThemeCommand : CosmosCommand
             AnsiConsole.MarkupLine(MessageService.GetArgsString(
                 "command-theme-loaded",
                 "name",
-                result.Name,
+                Markup.Escape(result.Name),
                 "path",
-                result.Source));
+                Markup.Escape(result.Source)));
             foreach (var warning in result.Warnings)
             {
                 AnsiConsole.MarkupLine(Theme.FormatWarning(warning));
@@ -292,9 +292,9 @@ internal class ThemeCommand : CosmosCommand
             AnsiConsole.MarkupLine(MessageService.GetArgsString(
                 "command-theme-saved",
                 "name",
-                this.Name,
+                Markup.Escape(this.Name),
                 "path",
-                System.IO.Path.GetFullPath(path)));
+                Markup.Escape(System.IO.Path.GetFullPath(path))));
             AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString("command-theme-save-hint-reload", "name", this.Name)));
             commandState.IsPrinted = true;
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
@@ -342,9 +342,9 @@ internal class ThemeCommand : CosmosCommand
             AnsiConsole.MarkupLine(MessageService.GetArgsString(
                 "command-theme-validated",
                 "name",
-                result.Name,
+                Markup.Escape(result.Name),
                 "path",
-                result.Source));
+                Markup.Escape(result.Source)));
             foreach (var warning in result.Warnings)
             {
                 AnsiConsole.MarkupLine(Theme.FormatWarning(warning));
@@ -459,7 +459,7 @@ internal class ThemeCommand : CosmosCommand
             "total",
             files.Length,
             "directory",
-            directory);
+            Markup.Escape(directory));
         AnsiConsole.MarkupLine(summary);
 
         commandState.IsPrinted = true;
@@ -491,7 +491,7 @@ internal class ThemeCommand : CosmosCommand
             "count",
             loaded,
             "directory",
-            directory));
+            Markup.Escape(directory)));
         foreach (var warning in registry.Warnings)
         {
             AnsiConsole.MarkupLine(Theme.FormatWarning(warning));
@@ -512,9 +512,9 @@ internal class ThemeCommand : CosmosCommand
         var message = MessageService.GetArgsString(
             "command-theme-unknown-action",
             "action",
-            action,
+            Markup.Escape(action),
             "actions",
-            "list, show, use, load, validate, save, reload");
+            "current, list, show, use (alias: set), load, validate, save, reload");
         AnsiConsole.MarkupLine(message);
         return new ErrorCommandState(new CommandException("theme", message));
     }

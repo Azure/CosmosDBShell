@@ -168,7 +168,7 @@ internal class Program
                     }
                     catch (Exception ex)
                     {
-                        AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-creating-server", "message", Markup.Escape(ex.Message)));
+                        AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-creating-server", "message", ex.Message));
                         Environment.ExitCode = 1;
                         return;
                     }
@@ -186,7 +186,7 @@ internal class Program
                             }
                             catch (Exception ex)
                             {
-                                AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-server-failed-start", "message", Markup.Escape(ex.Message)));
+                                AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-server-failed-start", "message", ex.Message));
                                 Environment.ExitCode = 1;
                             }
                         });

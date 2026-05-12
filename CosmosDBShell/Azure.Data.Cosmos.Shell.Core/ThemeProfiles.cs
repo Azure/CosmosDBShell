@@ -39,9 +39,11 @@ internal static class ThemeProfiles
 
     /// <summary>
     /// Same defaults as <see cref="Default"/>; provided as an explicit profile so
-    /// users can opt in by name.
+    /// users can opt in by name. Constructed with <c>Default with { }</c> so it
+    /// is a distinct instance from <see cref="Default"/> — this is required for
+    /// <see cref="ThemeCommand"/>'s reference-equality lookup of the active name.
     /// </summary>
-    public static ThemeOptions Dark { get; } = Default;
+    public static ThemeOptions Dark { get; } = Default with { };
 
     /// <summary>
     /// No colors anywhere — only <c>[bold]</c>/<c>[dim]</c>/<c>[underline]</c>
