@@ -51,6 +51,17 @@ public class ThemeProfileTests
         Assert.Same(ThemeProfiles.Default, profile);
     }
 
+    [Fact]
+    public void Dark_IsDistinctInstanceFromDefault()
+    {
+        // Regression for Copilot review on PR #83: ResolveActiveName uses ReferenceEquals
+        // to map the active ThemeOptions back to a name. If Dark and Default share a
+        // reference, applying `dark` is reported as `default` and `theme list` marks
+        // the wrong entry active. Field values may match — only the instance must differ.
+        Assert.NotSame(ThemeProfiles.Default, ThemeProfiles.Dark);
+        Assert.Equal(ThemeProfiles.Default, ThemeProfiles.Dark);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
