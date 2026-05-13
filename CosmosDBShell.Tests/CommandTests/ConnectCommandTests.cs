@@ -78,6 +78,10 @@ public class ConnectCommandTests
         Assert.Contains("http://localhost:8081/", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("--protocol [https|http]", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("https://learn.microsoft.com/en-us/azure/cosmos-db/emulator-linux", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("docker ps", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("http://localhost:8080/alive", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("docker run", message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

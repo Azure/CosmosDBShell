@@ -643,7 +643,7 @@ public partial class ShellInterpreter : IDisposable
                 client.Dispose();
                 if (isEmulator)
                 {
-                    throw new ShellException(GetLocalEmulatorConnectionFailureMessage(client.Endpoint));
+                    throw new ShellException(GetLocalEmulatorConnectionFailureMessage(client.Endpoint), ex);
                 }
 
                 throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
