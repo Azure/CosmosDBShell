@@ -88,7 +88,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
             var cn = Markup.Escape(databaseName);
             list.Add(cn);
-            AnsiConsole.MarkupLine($"[green]{cn}[/]");
+            AnsiConsole.MarkupLine(Theme.DatabaseNamePromt(databaseName));
         }
 
         CosmosCompleteCommand.SetDatabases(state.Client, completionList);
@@ -134,7 +134,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
             var cn = Markup.Escape(containerName);
             list.Add(cn);
-            AnsiConsole.MarkupLine($"[magenta]{cn}[/]");
+            AnsiConsole.MarkupLine(Theme.ContainerNamePromt(containerName));
         }
 
         CosmosCompleteCommand.SetContainers(client, databaseName, completionList);
@@ -203,7 +203,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         }
 
         returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = list }));
-        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object> { { "count", "[white]" + list.Count + "[/]" } }));
+        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object> { { "count", Theme.FormatTableValue(list.Count.ToString()) } }));
         if (limitReached && effectiveMaxItemCount.HasValue)
         {
             AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));

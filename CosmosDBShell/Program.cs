@@ -111,6 +111,9 @@ internal class Program
                     2 => ColorSystem.TrueColor,
                     _ => ColorSystem.NoColors,
                 };
+
+                ApplyTheme(o.Theme);
+
                 ShellInterpreter.Instance.Options = o;
 
                 if (o.ConnectionString != null)
@@ -165,7 +168,7 @@ internal class Program
                     }
                     catch (Exception ex)
                     {
-                        AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-creating-server", "message", Markup.Escape(ex.Message)));
+                        AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-creating-server", "message", ex.Message));
                         Environment.ExitCode = 1;
                         return;
                     }
@@ -183,7 +186,7 @@ internal class Program
                             }
                             catch (Exception ex)
                             {
-                                AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-server-failed-start", "message", Markup.Escape(ex.Message)));
+                                AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-server-failed-start", "message", ex.Message));
                                 Environment.ExitCode = 1;
                             }
                         });
@@ -317,6 +320,47 @@ internal class Program
         return [.. normalizedArguments];
     }
 
+    /// <summary>
+    /// Resolves the requested theme profile and applies it via <see cref="Theme.Apply"/>.
+    /// Resolution order: explicit <c>--theme</c> flag, then <c>COSMOSDB_SHELL_THEME</c>
+    /// environment variable, then the built-in default. Unknown names emit a warning
+    /// to stderr and fall back to the default profile.
+    /// </summary>
+    private static void ApplyTheme(string? themeFromCli)
+    {
+        // Always scan the user themes directory so file-loaded themes are visible
+        // to --theme, the COSMOSDB_SHELL_THEME env var, and the in-shell `theme`
+        // command. Failures are surfaced as warnings, never fatal.
+        var registry = ThemeRegistry.Instance;
+        registry.ResetToBuiltIns();
+        registry.LoadFromDirectory(ThemeFile.DefaultUserThemesDirectory());
+        foreach (var warning in registry.Warnings)
+        {
+            ShellInterpreter.WriteLine(warning);
+        }
+
+        var requested = !string.IsNullOrWhiteSpace(themeFromCli)
+            ? themeFromCli
+            : Environment.GetEnvironmentVariable("COSMOSDB_SHELL_THEME");
+
+        if (string.IsNullOrWhiteSpace(requested))
+        {
+            return;
+        }
+
+        if (!ThemeProfiles.TryGet(requested, out var profile))
+        {
+            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                "warning-unknown-theme",
+                "name",
+                requested,
+                "themes",
+                string.Join(", ", registry.All.Keys)));
+        }
+
+        Theme.Apply(profile);
+    }
+
     public class CosmosShellOptions
     {
         [Option("cs", Required = false, HelpText = "ColorSystem", ResourceType = typeof(LocalizableSentenceBuilder))]
@@ -363,5 +407,8 @@ internal class Program
 
         [Option("verbose", Required = false, HelpText = "Verbose", ResourceType = typeof(LocalizableSentenceBuilder))]
         public bool Verbose { get; set; }
+
+        [Option("theme", Required = false, HelpText = "Theme", ResourceType = typeof(LocalizableSentenceBuilder))]
+        public string? Theme { get; set; }
     }
 }

@@ -131,7 +131,7 @@ internal partial class ConnectCommand : CosmosCommand
 
     internal static void AskForRBacPermissions(string principalId, string permission)
     {
-        AnsiConsole.Markup($"[red]{MessageService.GetString("error")}[/] ");
+        AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
         ShellInterpreter.WriteLine(MessageService.GetArgsString("command-connect-rbac-error", "id", principalId, "permission", permission));
     }
 
@@ -153,27 +153,27 @@ internal partial class ConnectCommand : CosmosCommand
 
         token.ThrowIfCancellationRequested();
         var acc = await client.ReadAccountAsync().WaitAsync(token);
-        AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-connect-info-title")}[/]");
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-connect-info-title")));
 
         var table = new Table();
         table.AddColumns(string.Empty, string.Empty);
         table.HideHeaders();
 
-        table.AddRow(MessageService.GetString("command-connect-info-account"), $"[white]{acc.Id}[/]");
-        table.AddRow(MessageService.GetString("command-connect-info-endpoint"), $"[white]{client.Endpoint}[/]");
+        table.AddRow(MessageService.GetString("command-connect-info-account"), Theme.FormatTableValue(acc.Id));
+        table.AddRow(MessageService.GetString("command-connect-info-endpoint"), Theme.FormatTableValue(client.Endpoint.ToString()));
 
         // Display the connection mode
         var connectionMode = client.ClientOptions.ConnectionMode;
-        table.AddRow(MessageService.GetString("command-connect-info-mode"), $"[white]{connectionMode}[/]");
+        table.AddRow(MessageService.GetString("command-connect-info-mode"), Theme.FormatTableValue(connectionMode.ToString()));
 
         // Display the readable/writable regions
-        table.AddRow(MessageService.GetString("command-connect-info-read-regions"), $"[white]{string.Join(", ", acc.ReadableRegions.Select(r => r.Name))}[/]");
-        table.AddRow(MessageService.GetString("command-connect-info-write-regions"), $"[white]{string.Join(", ", acc.WritableRegions.Select(r => r.Name))}[/]");
+        table.AddRow(MessageService.GetString("command-connect-info-read-regions"), Theme.FormatTableValue(string.Join(", ", acc.ReadableRegions.Select(r => r.Name))));
+        table.AddRow(MessageService.GetString("command-connect-info-write-regions"), Theme.FormatTableValue(string.Join(", ", acc.WritableRegions.Select(r => r.Name))));
 
         // Show current navigation state
         string currentLocation = ShellLocation.GetCurrentLocation(shell.State) ?? ShellLocation.NotConnectedText;
 
-        table.AddRow(MessageService.GetString("command-connect-info-location"), $"[cyan]{Markup.Escape(currentLocation)}[/]");
+        table.AddRow(MessageService.GetString("command-connect-info-location"), Theme.ConnectedStatePromt(currentLocation));
 
         AnsiConsole.Write(table);
 

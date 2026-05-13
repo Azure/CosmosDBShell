@@ -238,15 +238,15 @@ internal static class ReverseHistorySearch
 
     /// <summary>
     /// Walks a Spectre.Console markup string and wraps the plain-text positions in <paramref name="ranges"/>
-    /// with [underline yellow]...[/]. Underline is closed before any markup tag boundary and reopened on the
+    /// with the themed search-match style. The style is closed before any markup tag boundary and reopened on the
     /// other side so that the output remains well-nested.
     /// </summary>
     private static string OverlayUnderline(string markup, IReadOnlyList<(int Start, int End)> ranges)
     {
-        const string OpenUnderline = "[underline yellow]";
+        var openUnderline = "[" + Theme.SearchMatchStyle() + "]";
         const string CloseUnderline = "[/]";
 
-        var sb = new StringBuilder(markup.Length + (ranges.Count * (OpenUnderline.Length + CloseUnderline.Length)));
+        var sb = new StringBuilder(markup.Length + (ranges.Count * (openUnderline.Length + CloseUnderline.Length)));
         var plainIndex = 0;
         var inUnderline = false;
         var i = 0;
@@ -273,7 +273,7 @@ internal static class ReverseHistorySearch
                 // Escaped literal '['
                 if (!inUnderline && ShouldUnderline(plainIndex))
                 {
-                    sb.Append(OpenUnderline);
+                    sb.Append(openUnderline);
                     inUnderline = true;
                 }
 
@@ -294,7 +294,7 @@ internal static class ReverseHistorySearch
                 // Escaped literal ']'
                 if (!inUnderline && ShouldUnderline(plainIndex))
                 {
-                    sb.Append(OpenUnderline);
+                    sb.Append(openUnderline);
                     inUnderline = true;
                 }
 
@@ -331,7 +331,7 @@ internal static class ReverseHistorySearch
                 i = tagEnd + 1;
                 if (ShouldUnderline(plainIndex))
                 {
-                    sb.Append(OpenUnderline);
+                    sb.Append(openUnderline);
                     inUnderline = true;
                 }
 
@@ -341,7 +341,7 @@ internal static class ReverseHistorySearch
             // Plain character
             if (!inUnderline && ShouldUnderline(plainIndex))
             {
-                sb.Append(OpenUnderline);
+                sb.Append(openUnderline);
                 inUnderline = true;
             }
 

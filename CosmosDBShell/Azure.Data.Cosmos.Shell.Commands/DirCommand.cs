@@ -117,7 +117,7 @@ internal class DirCommand : CosmosCommand
                 // Simple list mode: just show the name
                 if (entry.IsDirectory)
                 {
-                    AnsiConsole.MarkupLine($"[blue]{Markup.Escape(entry.Name)}/[/]");
+                    AnsiConsole.MarkupLine(Theme.FormatDirectory(entry.Name + "/"));
                 }
                 else
                 {
@@ -129,12 +129,12 @@ internal class DirCommand : CosmosCommand
                 // Detailed mode: show date, size, and name
                 if (entry.IsDirectory)
                 {
-                    AnsiConsole.MarkupLine($"[blue]{Markup.Escape(entry.Name)}/[/]");
+                    AnsiConsole.MarkupLine(Theme.FormatDirectory(entry.Name + "/"));
                 }
                 else
                 {
                     var sizeStr = FormatFileSize(entry.Size ?? 0);
-                    AnsiConsole.MarkupLine($"[grey]{entry.LastModified:yyyy-MM-dd HH:mm}[/]  [white]{sizeStr,10}[/]  {Markup.Escape(entry.Name)}");
+                    AnsiConsole.MarkupLine($"{Theme.FormatMuted($"{entry.LastModified:yyyy-MM-dd HH:mm}")}  {Theme.FormatTableValue(sizeStr.PadLeft(10))}  {Markup.Escape(entry.Name)}");
                 }
             }
         }

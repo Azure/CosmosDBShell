@@ -124,6 +124,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
 | `--verbose` | Print full exception details |
 | `--cs <n>` | Colors: 0=off, 1=standard, 2=truecolor |
+| `--theme <name>` | Color theme profile to apply at startup (`default`, `light`, `dark`, `monochrome`). Falls back to `COSMOSDB_SHELL_THEME`. |
 | `--help` | Show help |
 
 Examples:
@@ -135,6 +136,76 @@ cosmosdbshell -c "seed.csh mydb mycontainer" --connect "AccountEndpoint=...;Acco
 # Run a script from piped command text.
 echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
 ```
+
+## Theming
+
+The shell ships with four built-in color profiles that can be selected at startup or swapped at runtime:
+
+| Profile | Best for |
+| ------- | -------- |
+| `default` | Dark terminal backgrounds (alias for `dark`). |
+| `dark` | Dark terminal backgrounds. |
+| `light` | Light terminal backgrounds (uses darker hues for brackets and literals so they remain readable on white). |
+| `monochrome` | No color escapes; only `bold`/`dim`/`underline`. Useful for screen readers, monochrome terminals, or piping to a log file. |
+
+All profiles use only the standard ANSI 16 color names, so the shell follows the terminal's configured palette (Solarized, Dracula, Campbell, …).
+
+```bash
+# Pick a profile at startup.
+cosmosdbshell --theme=light
+
+# Or via environment variable (the --theme flag wins if both are set).
+export COSMOSDB_SHELL_THEME=monochrome
+cosmosdbshell
+
+# Inspect or switch at runtime.
+CS > theme list
+CS > theme show light       # preview a profile without switching
+CS > theme use light        # switch for the rest of the session
+```
+
+### Custom themes
+
+Place TOML files under `~/.cosmosdbshell/themes/` (Windows: `%USERPROFILE%\.cosmosdbshell\themes`). They are scanned at startup and appear alongside the built-ins in `theme list` and `--theme=<name>`. Files may shadow built-ins by name (a warning is emitted).
+
+A theme file overlays a base profile via `extends` (defaults to `default`). Only the keys you want to change are required:
+
+```toml
+name        = "solarized-light"
+description = "Solarized-style light palette"
+extends     = "default"
+
+[colors]
+literal           = "purple"
+container_name    = "purple"
+connected_prompt  = "navy"
+json_property     = "navy"
+help_accent       = "navy"
+directory         = "navy"
+operator          = "navy"
+bracket_cycle     = ["purple", "maroon", "navy"]
+
+[styles]
+help_header     = "bold"
+unknown_command = "bold red"
+```
+
+Color values must be empty or one standard ANSI 16 color name (`black`, `maroon`, `green`, `olive`, `navy`, `purple`, `teal`, `silver`, `grey`, `red`, `lime`, `yellow`, `blue`, `fuchsia`, `aqua`, `white`). Style values may combine modifiers (`bold`, `dim`, `italic`, `underline`, `strikethrough`, `invert`, `conceal`, `slowblink`, `rapidblink`) with at most one ANSI 16 color. Empty string means "use the terminal's default foreground".
+
+Runtime commands for working with files:
+
+```bash
+CS > theme load ./my-theme.toml         # load and switch to a file ad-hoc
+CS > theme validate ./my-theme.toml     # validate a file without loading or switching
+CS > theme validate ~/.cosmosdbshell/themes  # validate every TOML file in a directory
+CS > theme validate my-theme --strict   # treat warnings as errors
+CS > theme save my-theme                # write the active theme to ~/.cosmosdbshell/themes/my-theme.toml
+CS > theme save my-theme ./out.toml     # save to a custom path
+CS > theme save my-theme --force        # overwrite an existing file
+CS > theme reload                       # rescan the user themes directory
+```
+
+`theme save` writes a self-contained theme file with every color and style slot populated, so the saved file can be moved or edited without depending on another custom profile.
 
 ## How to Contribute
 
