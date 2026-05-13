@@ -52,7 +52,7 @@ internal class ReplaceCommand : CosmosCommand
             "replace",
             token);
 
-        var partitionKeyPaths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(connectedState, databaseName ?? string.Empty, containerName ?? string.Empty, token);
+        var partitionKeyPaths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(connectedState, databaseName!, containerName!, token);
 
         await ReplaceItemsAsync(container, partitionKeyPaths, jsonOpt, this.ETag, token);
 

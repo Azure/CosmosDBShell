@@ -74,16 +74,7 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
 
     public ContainerProperties CreateContainerProperties(Database db)
     {
-        var keys = (this.PartitionKey ?? string.Empty).Split(",", StringSplitOptions.TrimEntries).ToList();
-        if (string.IsNullOrEmpty(keys[0]))
-        {
-            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_empty"));
-        }
-
-        if (keys.Any(key => !key.StartsWith("/")))
-        {
-            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_slash"));
-        }
+        var keys = ParsePartitionKeyPaths(this.PartitionKey);
 
         if (keys.Count > 1)
         {
@@ -114,6 +105,22 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         }
 
         properties.UniqueKeyPolicy.UniqueKeys.Add(key);
+    }
+
+    private static List<string> ParsePartitionKeyPaths(string? partitionKey)
+    {
+        var keys = (partitionKey ?? string.Empty).Split(",", StringSplitOptions.TrimEntries).ToList();
+        if (string.IsNullOrEmpty(keys[0]))
+        {
+            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_empty"));
+        }
+
+        if (keys.Any(key => !key.StartsWith("/")))
+        {
+            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_slash"));
+        }
+
+        return keys;
     }
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitDatabaseStateAsync(DatabaseState state, ShellInterpreter shell, CancellationToken token)
@@ -176,17 +183,6 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
 
     private IReadOnlyList<string> GetPartitionKeyPaths()
     {
-        var keys = (this.PartitionKey ?? string.Empty).Split(",", StringSplitOptions.TrimEntries).ToList();
-        if (string.IsNullOrEmpty(keys[0]))
-        {
-            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_empty"));
-        }
-
-        if (keys.Any(key => !key.StartsWith("/")))
-        {
-            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_slash"));
-        }
-
-        return keys;
+        return ParsePartitionKeyPaths(this.PartitionKey);
     }
 }

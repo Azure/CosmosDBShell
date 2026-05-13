@@ -101,7 +101,15 @@ internal class SettingsCommand : CosmosCommand
                 AnsiConsole.MarkupLine($"[grey]{MessageService.GetString("command-settings-na")}[/]");
                 break;
             default:
-                AnsiConsole.MarkupLine($"[red]{Markup.Escape(view.ThroughputErrorMessage ?? string.Empty)}[/]");
+                if (TryGetPrincipalIdFromRbacMessage(view.ThroughputErrorMessage, out var rbacId, out var rbacRequest, out var rbacPermission))
+                {
+                    AskForRBacPermissions(rbacId ?? string.Empty, rbacRequest ?? string.Empty, rbacPermission ?? string.Empty);
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine($"[red]{Markup.Escape(view.ThroughputErrorMessage ?? string.Empty)}[/]");
+                }
+
                 break;
         }
 
@@ -188,13 +196,21 @@ internal class SettingsCommand : CosmosCommand
 
     private static bool TryGetPrincipialIdFromRbacException(Exception e, out string? principalId, out string? request, out string? permission)
     {
-        var match = PrincipalIdRegex.Match(e.Message);
-        if (match.Success)
+        return TryGetPrincipalIdFromRbacMessage(e.Message, out principalId, out request, out permission);
+    }
+
+    private static bool TryGetPrincipalIdFromRbacMessage(string? message, out string? principalId, out string? request, out string? permission)
+    {
+        if (!string.IsNullOrEmpty(message))
         {
-            request = match.Groups[1].Value;
-            principalId = match.Groups[2].Value;
-            permission = match.Groups[3].Value;
-            return true;
+            var match = PrincipalIdRegex.Match(message);
+            if (match.Success)
+            {
+                request = match.Groups[1].Value;
+                principalId = match.Groups[2].Value;
+                permission = match.Groups[3].Value;
+                return true;
+            }
         }
 
         request = null;
