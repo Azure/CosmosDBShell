@@ -280,7 +280,7 @@ extends:
                         [System.IO.Compression.CompressionLevel]::Optimal,
                         $false)
 
-                      $expectedExe = if ($rid -like 'win-*') { 'cosmosdbshell.exe' } else { 'cosmosdbshell' }
+                      $expectedExe = if ($rid -like 'win-*') { 'CosmosDBShell.exe' } else { 'CosmosDBShell' }
                       $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
                       try {
                         if ($archive.Entries.Count -eq 0) {
@@ -288,7 +288,9 @@ extends:
                           exit 1
                         }
 
-                        $hasExe = $archive.Entries | Where-Object { $_.FullName -ieq $expectedExe }
+                        # Match by leaf file name only — the publish folder may nest binaries
+                        # under a project-named subdirectory (e.g. CosmosDBShell/CosmosDBShell.exe).
+                        $hasExe = $archive.Entries | Where-Object { [System.IO.Path]::GetFileName($_.FullName) -ieq $expectedExe }
                         if (-not $hasExe) {
                           $sample = ($archive.Entries | Select-Object -First 10 -ExpandProperty FullName) -join ', '
                           Write-Error "Archive $zipPath is missing expected executable '$expectedExe'. First entries: $sample"
