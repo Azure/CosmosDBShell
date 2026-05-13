@@ -244,6 +244,69 @@ extends:
                   files_to_sign: "**/*.exe;**/*.dll"
                   search_root: '$(Build.SourcesDirectory)\out'
 
+              - task: PowerShell@2
+                displayName: "Zip and validate signed RID publish folders"
+                condition: succeeded()
+                inputs:
+                  targetType: inline
+                  pwsh: true
+                  script: |
+                    $ErrorActionPreference = 'Stop'
+                    Add-Type -AssemblyName System.IO.Compression
+                    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+                    $version = "$(CosmosDBShell_PackageVersion)"
+                    $outDir  = "$(Build.SourcesDirectory)\out"
+                    $zipDir  = Join-Path $outDir 'zip'
+                    New-Item -ItemType Directory -Path $zipDir -Force | Out-Null
+
+                    $rids = @('win-x64', 'win-arm64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
+                    foreach ($rid in $rids) {
+                      $ridDir = Join-Path $outDir $rid
+                      if (-not (Test-Path $ridDir)) {
+                        Write-Error "Publish folder for RID '$rid' not found at $ridDir."
+                        exit 1
+                      }
+
+                      $zipPath = Join-Path $zipDir ("cosmosdbshell_{0}_{1}.zip" -f $rid, $version)
+                      if (Test-Path $zipPath) {
+                        Remove-Item -Path $zipPath -Force
+                      }
+
+                      Write-Host "Creating $zipPath"
+                      [System.IO.Compression.ZipFile]::CreateFromDirectory(
+                        $ridDir,
+                        $zipPath,
+                        [System.IO.Compression.CompressionLevel]::Optimal,
+                        $false)
+
+                      $expectedExe = if ($rid -like 'win-*') { 'CosmosDBShell.exe' } else { 'CosmosDBShell' }
+                      $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+                      try {
+                        if ($archive.Entries.Count -eq 0) {
+                          Write-Error "Generated archive is empty: $zipPath"
+                          exit 1
+                        }
+
+                        # Match by leaf file name only — the publish folder may nest binaries
+                        # under a project-named subdirectory (e.g. CosmosDBShell/CosmosDBShell.exe).
+                        $hasExe = $archive.Entries | Where-Object { [System.IO.Path]::GetFileName($_.FullName) -ieq $expectedExe }
+                        if (-not $hasExe) {
+                          $sample = ($archive.Entries | Select-Object -First 10 -ExpandProperty FullName) -join ', '
+                          Write-Error "Archive $zipPath is missing expected executable '$expectedExe'. First entries: $sample"
+                          exit 1
+                        }
+                      }
+                      finally {
+                        $archive.Dispose()
+                      }
+                    }
+
+                    Write-Host "Generated archives:"
+                    Get-ChildItem -Path $zipDir -Filter *.zip | Sort-Object Name | ForEach-Object {
+                      Write-Host " - $($_.Name) [$($_.Length) bytes]"
+                    }
+
               - task: DotNetCoreCLI@2
                 displayName: "Build Fuzzer"
                 inputs:
@@ -472,6 +535,10 @@ extends:
 
               # Clean unsigned build intermediates so Guardian CodeSignValidation
               # (which scans the entire source tree) only sees signed binaries in out\.
+              # Also trim out\ to the directories we actually want in the published
+              # cosmos_shell_all artifact: out\zip (per-RID executable archives) and
+              # out\nupkg (NuGet packages). The 1ES template appends out\_manifest
+              # (SBOM + signed build.manifest) on its own afterwards.
               # This MUST run before the NuGet push, because the 1ES Pipeline Template
               # injects a full-tree CodeSign scan after the last user step group.
               - task: PowerShell@2
@@ -498,6 +565,22 @@ extends:
                       }
                     }
                     Write-Host "Non-shipping build outputs cleaned."
+
+                    $outDir = "$(Build.SourcesDirectory)\out"
+                    if (Test-Path $outDir) {
+                      # Whitelist approach: keep only the dirs we explicitly want shipped
+                      # in the cosmos_shell_all artifact. Anything else (per-RID publish
+                      # folders, nupkg-payload sign-staging, future intermediates) is noise.
+                      $keep = @('zip', 'nupkg', '_manifest')
+                      Get-ChildItem -Path $outDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $keep -notcontains $_.Name } | ForEach-Object {
+                        Write-Host "Trimming $($_.FullName) from out\"
+                        Remove-Item -Recurse -Force $_.FullName
+                      }
+                      Get-ChildItem -Path $outDir -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                        Write-Host "Trimming loose file $($_.FullName) from out\"
+                        Remove-Item -Force $_.FullName
+                      }
+                    }
 
               # Keep the pointer package in out\nupkg so it is preserved in pipeline artifacts
               # and available for publishing to the internal feed alongside the RID packages.
@@ -593,68 +676,3 @@ extends:
                 displayName: Build for CodeQL
               - task: CodeQL3000Finalize@0
                 displayName: Finalize CodeQL
-
-      - stage: package
-        displayName: Package Artifacts
-        dependsOn: build
-        jobs:
-          - job: artifacts
-            displayName: Package
-            pool:
-              type: windows
-            strategy:
-              matrix:
-                win_x64:
-                  RuntimeId: win-x64
-                win_arm64:
-                  RuntimeId: win-arm64
-                osx_x64:
-                  RuntimeId: osx-x64
-                osx_arm64:
-                  RuntimeId: osx-arm64
-                linux_x64:
-                  RuntimeId: linux-x64
-                linux_arm64:
-                  RuntimeId: linux-arm64
-            variables:
-              ob_outputDirectory: '$(Build.SourcesDirectory)\package'
-              ob_artifactBaseName: cosmos_shell
-              ob_artifactSuffix: _$(RuntimeId)_$(Build.BuildNumber)
-            steps:
-              - download: current
-                artifact: cosmos_shell_all
-                displayName: Download build artifacts
-
-              - task: PowerShell@2
-                displayName: "Copy $(RuntimeId) to output"
-                inputs:
-                  targetType: inline
-                  script: |
-                    $source = "$(Pipeline.Workspace)\cosmos_shell_all\$(RuntimeId)"
-                    $dest = "$(ob_outputDirectory)"
-                    Write-Host "Copying from $source to $dest"
-                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
-                    Copy-Item -Path "$source\*" -Destination $dest -Recurse -Force
-
-              - task: PowerShell@2
-                displayName: "Validate package output for SBOM"
-                inputs:
-                  targetType: inline
-                  script: |
-                    $outputDir = "$(ob_outputDirectory)"
-
-                    if (-not (Test-Path $outputDir)) {
-                      Write-Error "Package output directory not found: $outputDir"
-                      exit 1
-                    }
-
-                    $files = Get-ChildItem -Path $outputDir -Recurse -File -ErrorAction SilentlyContinue
-                    if (-not $files -or $files.Count -eq 0) {
-                      Write-Error "Package output directory is empty: $outputDir"
-                      exit 1
-                    }
-
-                    Write-Host "Package output contains $($files.Count) file(s):"
-                    $files | Sort-Object FullName | Select-Object -First 50 | ForEach-Object {
-                      Write-Host " - $($_.FullName) [$($_.Length) bytes]"
-                    }
