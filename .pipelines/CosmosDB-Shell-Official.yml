@@ -535,6 +535,10 @@ extends:
 
               # Clean unsigned build intermediates so Guardian CodeSignValidation
               # (which scans the entire source tree) only sees signed binaries in out\.
+              # Also trim out\ to the directories we actually want in the published
+              # cosmos_shell_all artifact: out\zip (per-RID executable archives) and
+              # out\nupkg (NuGet packages). The 1ES template appends out\_manifest
+              # (SBOM + signed build.manifest) on its own afterwards.
               # This MUST run before the NuGet push, because the 1ES Pipeline Template
               # injects a full-tree CodeSign scan after the last user step group.
               - task: PowerShell@2
@@ -561,6 +565,22 @@ extends:
                       }
                     }
                     Write-Host "Non-shipping build outputs cleaned."
+
+                    $outDir = "$(Build.SourcesDirectory)\out"
+                    if (Test-Path $outDir) {
+                      # Whitelist approach: keep only the dirs we explicitly want shipped
+                      # in the cosmos_shell_all artifact. Anything else (per-RID publish
+                      # folders, nupkg-payload sign-staging, future intermediates) is noise.
+                      $keep = @('zip', 'nupkg', '_manifest')
+                      Get-ChildItem -Path $outDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $keep -notcontains $_.Name } | ForEach-Object {
+                        Write-Host "Trimming $($_.FullName) from out\"
+                        Remove-Item -Recurse -Force $_.FullName
+                      }
+                      Get-ChildItem -Path $outDir -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                        Write-Host "Trimming loose file $($_.FullName) from out\"
+                        Remove-Item -Force $_.FullName
+                      }
+                    }
 
               # Keep the pointer package in out\nupkg so it is preserved in pipeline artifacts
               # and available for publishing to the internal feed alongside the RID packages.
