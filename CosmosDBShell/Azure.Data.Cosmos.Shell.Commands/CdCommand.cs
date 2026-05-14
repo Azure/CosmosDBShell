@@ -80,7 +80,7 @@ internal class CdCommand : CosmosCommand
         // Handle "cd" with no arguments - go to root
         if (targetDatabase == null && targetContainer == null)
         {
-            SetState(shell, new ConnectedState(connectedState.Client));
+            SetState(shell, new ConnectedState(connectedState.Client, connectedState.ArmContext));
             if (!this.Quiet)
             {
                 ShellInterpreter.WriteLine(MessageService.GetString("command-cd-changed_to_connected_state"));
@@ -93,11 +93,11 @@ internal class CdCommand : CosmosCommand
         // Validate and navigate to database
         if (targetDatabase != null)
         {
-            await ValidateDatabaseExistsAsync(connectedState.Client, targetDatabase, "cd", token);
+            await ValidateDatabaseExistsAsync(connectedState, targetDatabase, "cd", token);
 
             if (targetContainer == null)
             {
-                SetState(shell, new DatabaseState(targetDatabase, connectedState.Client));
+                SetState(shell, new DatabaseState(targetDatabase, connectedState.Client, connectedState.ArmContext));
                 if (!this.Quiet)
                 {
                     ShellInterpreter.WriteLine(MessageService.GetString("command-cd-changed_to_db", new Dictionary<string, object> { { "db", targetDatabase } }));
@@ -108,8 +108,8 @@ internal class CdCommand : CosmosCommand
             }
 
             // Continue to navigate to container
-            await ValidateContainerExistsAsync(connectedState.Client, targetDatabase, targetContainer, "cd", token);
-            SetState(shell, new ContainerState(targetContainer, targetDatabase, connectedState.Client));
+            await ValidateContainerExistsAsync(connectedState, targetDatabase, targetContainer, "cd", token);
+            SetState(shell, new ContainerState(targetContainer, targetDatabase, connectedState.Client, connectedState.ArmContext));
             if (!this.Quiet)
             {
                 ShellInterpreter.WriteLine(MessageService.GetString("command-cd-changed_to_container", new Dictionary<string, object> { { "container", targetContainer } }));
@@ -128,8 +128,8 @@ internal class CdCommand : CosmosCommand
                 throw new NotInDatabaseException("cd");
             }
 
-            await ValidateContainerExistsAsync(connectedState.Client, dbName, targetContainer, "cd", token);
-            SetState(shell, new ContainerState(targetContainer, dbName, connectedState.Client));
+            await ValidateContainerExistsAsync(connectedState, dbName, targetContainer, "cd", token);
+            SetState(shell, new ContainerState(targetContainer, dbName, connectedState.Client, connectedState.ArmContext));
             if (!this.Quiet)
             {
                 ShellInterpreter.WriteLine(MessageService.GetString("command-cd-changed_to_container", new Dictionary<string, object> { { "container", targetContainer } }));

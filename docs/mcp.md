@@ -40,6 +40,8 @@ The MCP server runs locally with your user permissions. Connected clients can ex
 - Query and retrieve documents
 - Create, update, and delete resources
 
+Database and container resource actions are executed through Azure Resource Manager when an ARM context is attached (Entra ID connections). MCP sessions connected with account keys, emulator credentials, or static data-plane tokens fall back to the Cosmos DB data plane for these actions.
+
 ### Data Exposure
 
 Your MCP client may use a remote LLM. Command outputs, query results, and file contents could be transmitted to external services. **Treat all shell output as potentially shared.**
@@ -52,6 +54,7 @@ Your MCP client may use a remote LLM. Command outputs, query results, and file c
 | Unauthorized access | Bind to localhost only, don't expose port publicly |
 | Credential leakage | Use Azure AD instead of connection strings/keys |
 | Excessive permissions | Apply least-privilege RBAC, narrow scopes |
+| Missing management-plane scope | For ARM-routed actions, connect with Entra ID and grant Cosmos DB Operator or equivalent scoped permissions; otherwise the shell falls back to the data plane |
 | Accidental destruction | Review tool requests, don't auto-approve deletes |
 | Unnecessary exposure | Disable `--mcp` when not needed |
 

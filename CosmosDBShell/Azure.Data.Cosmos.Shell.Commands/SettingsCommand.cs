@@ -19,11 +19,6 @@ using Spectre.Console;
 [CosmosExample("settings --database=MyDB --container=Products", Description = "Display container settings for a specific database and container")]
 internal class SettingsCommand : CosmosCommand
 {
-    /// <summary>
-    /// Cosmos DB substatus returned when no dedicated throughput offer exists for the current container.
-    /// </summary>
-    private const int ThroughputNotConfiguredSubStatusCode = 1003;
-
     private static readonly Regex PrincipalIdRegex = new("Request for (.*) is blocked because principal \\[(.*)\\] does not have required RBAC permissions to perform action \\[(.*)\\]");
 
     [CosmosOption("database", "db")]
@@ -58,7 +53,7 @@ internal class SettingsCommand : CosmosCommand
             // If both database and container are resolved, show container settings
             if (!string.IsNullOrEmpty(databaseName) && !string.IsNullOrEmpty(containerName))
             {
-                return await ShowContainerSettingsAsync(connectedState.Client, databaseName, containerName, commandState, token);
+                return await ShowContainerSettingsAsync(connectedState, databaseName, containerName, commandState, token);
             }
 
             // Otherwise show account overview
@@ -76,83 +71,53 @@ internal class SettingsCommand : CosmosCommand
         }
     }
 
-    private static async Task<CommandState> ShowContainerSettingsAsync(CosmosClient client, string databaseName, string containerName, CommandState commandState, CancellationToken token)
+    private static async Task<CommandState> ShowContainerSettingsAsync(ConnectedState state, string databaseName, string containerName, CommandState commandState, CancellationToken token)
     {
-        var database = client.GetDatabase(databaseName);
-        var container = database.GetContainer(containerName);
+        var view = await CosmosResourceFacade.GetContainerSettingsAsync(state, databaseName, containerName, token);
         var mcpTable = new Dictionary<string, object?>();
 
         // Scale section - fail gracefully if it cannot be read
         AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-scale-heading")}[/]");
 
-        try
+        AnsiConsole.Markup("\t");
+        switch (view.Throughput)
         {
-            var throughputResponse = await container.ReadThroughputAsync(null, cancellationToken: token);
-            var min = throughputResponse.MinThroughput ?? 0;
-            var max = throughputResponse.Resource.AutoscaleMaxThroughput.HasValue ? throughputResponse.Resource.AutoscaleMaxThroughput.Value : throughputResponse.Resource.Throughput;
-            AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine(MessageService.GetArgsString("command-settings-scale-usage", "min", min, "max", max ?? min));
-            mcpTable["minThroughput"] = min;
-            mcpTable["maxThroughput"] = max ?? min;
-        }
-        catch (Exception e)
-        {
-            AnsiConsole.Markup("\t");
-            if (TryGetPrincipialIdFromRbacException(e, out var id, out var request, out var permission))
-            {
-                AskForRBacPermissions(id ?? string.Empty, request ?? string.Empty, permission ?? string.Empty);
-            }
-            else if (IsThroughputNotConfiguredException(e))
-            {
-                // No dedicated throughput is configured on this container - show N/A
+            case ThroughputAvailability.Available:
+                var minDisplay = view.MinThroughput?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? MessageService.GetString("command-settings-na");
+                var maxDisplay = view.MaxThroughput?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? MessageService.GetString("command-settings-na");
+                AnsiConsole.MarkupLine(MessageService.GetArgsString("command-settings-scale-usage", "min", minDisplay, "max", maxDisplay));
+                if (view.MinThroughput.HasValue)
+                {
+                    mcpTable["minThroughput"] = view.MinThroughput.Value;
+                }
+
+                if (view.MaxThroughput.HasValue)
+                {
+                    mcpTable["maxThroughput"] = view.MaxThroughput.Value;
+                }
+
+                break;
+            case ThroughputAvailability.NotConfigured:
                 AnsiConsole.MarkupLine($"[grey]{MessageService.GetString("command-settings-na")}[/]");
-            }
-            else
-            {
-                AnsiConsole.MarkupLine($"[red]{Markup.Escape(CommandException.GetDisplayMessage(e))}[/]");
-            }
+                break;
+            default:
+                if (TryGetPrincipalIdFromRbacMessage(view.ThroughputErrorMessage, out var rbacId, out var rbacRequest, out var rbacPermission))
+                {
+                    AskForRBacPermissions(rbacId ?? string.Empty, rbacRequest ?? string.Empty, rbacPermission ?? string.Empty);
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine($"[red]{Markup.Escape(view.ThroughputErrorMessage ?? string.Empty)}[/]");
+                }
+
+                break;
         }
 
         AnsiConsole.MarkupLine(string.Empty);
 
-        // Container settings section - fail gracefully if it cannot be read
-        ContainerProperties? resource = null;
-        try
-        {
-            var containerResponse = await container.ReadContainerAsync(cancellationToken: token);
-            resource = containerResponse.Resource;
-        }
-        catch (Exception e)
-        {
-            AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-title")}[/]");
-            AnsiConsole.Markup("\t");
-            if (TryGetPrincipialIdFromRbacException(e, out var id, out var request, out var permission))
-            {
-                AskForRBacPermissions(id ?? string.Empty, request ?? string.Empty, permission ?? string.Empty);
-            }
-            else
-            {
-                AnsiConsole.MarkupLine($"[red]{Markup.Escape(CommandException.GetDisplayMessage(e))}[/]");
-            }
-
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-            commandState.IsPrinted = true;
-            return commandState;
-        }
-
-        if (resource == null)
-        {
-            AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-title")}[/]");
-            AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine($"[yellow]{MessageService.GetString("command-settings-not-available")}[/]");
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-            commandState.IsPrinted = true;
-            return commandState;
-        }
-
-        mcpTable["id"] = resource.Id;
-        mcpTable["partitionKey"] = resource.PartitionKeyPaths;
-        mcpTable["analyticalTTL"] = resource.AnalyticalStoreTimeToLiveInSeconds;
+        mcpTable["id"] = view.ContainerName;
+        mcpTable["partitionKey"] = view.PartitionKeyPaths;
+        mcpTable["analyticalTTL"] = view.AnalyticalStorageTtl;
 
         AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-title")}[/]");
 
@@ -160,12 +125,12 @@ internal class SettingsCommand : CosmosCommand
         table.AddColumns(string.Empty, string.Empty);
 
         string ttl;
-        if (resource.AnalyticalStoreTimeToLiveInSeconds == null ||
-            resource.AnalyticalStoreTimeToLiveInSeconds == 0)
+        if (view.AnalyticalStorageTtl == null ||
+            view.AnalyticalStorageTtl == 0)
         {
             ttl = MessageService.GetString("command-settings-Off");
         }
-        else if (resource.AnalyticalStoreTimeToLiveInSeconds == -1)
+        else if (view.AnalyticalStorageTtl == -1)
         {
             ttl = MessageService.GetString("command-settings-On");
         }
@@ -174,64 +139,54 @@ internal class SettingsCommand : CosmosCommand
             ttl = MessageService.GetArgsString(
                   "command-settings-ttl-seconds",
                   "seconds",
-                  resource.AnalyticalStoreTimeToLiveInSeconds);
+                  view.AnalyticalStorageTtl);
         }
 
         table.AddRow(MessageService.GetString("command-settings-ttl-label"), $"[white]{ttl}[/]");
 
-        string label;
-        switch (resource.GeospatialConfig.GeospatialType)
+        if (view.GeospatialType is { } geospatialType)
         {
-            case GeospatialType.Geography:
-                label = MessageService.GetString("command-settings-geospatial-geography");
-                mcpTable["geospatialType"] = "Geography";
-                break;
-            default:
-                mcpTable["geospatialType"] = "Geometry";
-                label = MessageService.GetString("command-settings-geospatial-geometry");
-                break;
+            string geospatialLabel = string.Equals(geospatialType, "Geography", StringComparison.OrdinalIgnoreCase)
+                ? MessageService.GetString("command-settings-geospatial-geography")
+                : MessageService.GetString("command-settings-geospatial-geometry");
+            table.AddRow(MessageService.GetString("command-settings-geospatial-label"), $"[white]{geospatialLabel}[/]");
+            mcpTable["geospatialType"] = geospatialType;
         }
 
-        table.AddRow(MessageService.GetString("command-settings-geospatial-label"), $"[white]{label}[/]");
-        table.AddRow(MessageService.GetString("command-settings-partition-key-label"), $"[white]{string.Join(',', resource.PartitionKeyPaths)}[/]");
+        table.AddRow(MessageService.GetString("command-settings-partition-key-label"), $"[white]{string.Join(',', view.PartitionKeyPaths)}[/]");
         table.HideHeaders();
         AnsiConsole.Write(table);
 
-        // Full Text Policy section - show N/A if unset
-        AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-fulltext-title")}[/]");
-
-        if (resource.FullTextPolicy != null)
+        // Full Text Policy section - only emitted when known
+        if (view.FullTextPolicy is { } fullText)
         {
-            table = new Table();
-            table.AddColumns(string.Empty, string.Empty);
+            AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-fulltext-title")}[/]");
 
-            string defaultLanguage = resource.FullTextPolicy.DefaultLanguage;
-            table.AddRow(
+            var fullTextTable = new Table();
+            fullTextTable.AddColumns(string.Empty, string.Empty);
+
+            var defaultLanguage = string.IsNullOrEmpty(fullText.DefaultLanguage)
+                ? MessageService.GetString("command-settings-na")
+                : fullText.DefaultLanguage;
+            fullTextTable.AddRow(
                 MessageService.GetString("command-settings-fulltext-default-language-label"),
-                $"[white]{(string.IsNullOrEmpty(defaultLanguage) ? MessageService.GetString("command-settings-na") : defaultLanguage)}[/]");
+                $"[white]{defaultLanguage}[/]");
 
-            var fullTextPaths = new List<Dictionary<string, object?>>();
-
-            foreach (var path in resource.FullTextPolicy.FullTextPaths)
+            var mcpPaths = new List<Dictionary<string, object?>>();
+            foreach (var path in fullText.Paths)
             {
-                table.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), $"[white]{path.Path}[/]");
-                table.AddRow(MessageService.GetString("command-settings-fulltext-language-label"), $"[white]{path.Language}[/]");
-
-                fullTextPaths.Add(new Dictionary<string, object?>
+                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), $"[white]{path.Path}[/]");
+                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-language-label"), $"[white]{path.Language}[/]");
+                mcpPaths.Add(new Dictionary<string, object?>
                 {
                     { "path", path.Path },
                     { "language", path.Language },
                 });
             }
 
-            mcpTable["fullTextPolicy"] = fullTextPaths;
-            table.HideHeaders();
-            AnsiConsole.Write(table);
-        }
-        else
-        {
-            AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine($"[grey]{MessageService.GetString("command-settings-na")}[/]");
+            mcpTable["fullTextPolicy"] = mcpPaths;
+            fullTextTable.HideHeaders();
+            AnsiConsole.Write(fullTextTable);
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
@@ -241,13 +196,21 @@ internal class SettingsCommand : CosmosCommand
 
     private static bool TryGetPrincipialIdFromRbacException(Exception e, out string? principalId, out string? request, out string? permission)
     {
-        var match = PrincipalIdRegex.Match(e.Message);
-        if (match.Success)
+        return TryGetPrincipalIdFromRbacMessage(e.Message, out principalId, out request, out permission);
+    }
+
+    private static bool TryGetPrincipalIdFromRbacMessage(string? message, out string? principalId, out string? request, out string? permission)
+    {
+        if (!string.IsNullOrEmpty(message))
         {
-            request = match.Groups[1].Value;
-            principalId = match.Groups[2].Value;
-            permission = match.Groups[3].Value;
-            return true;
+            var match = PrincipalIdRegex.Match(message);
+            if (match.Success)
+            {
+                request = match.Groups[1].Value;
+                principalId = match.Groups[2].Value;
+                permission = match.Groups[3].Value;
+                return true;
+            }
         }
 
         request = null;
@@ -260,27 +223,6 @@ internal class SettingsCommand : CosmosCommand
     {
         AnsiConsole.Markup($"[red]{MessageService.GetString("error")}[/] ");
         ShellInterpreter.WriteLine(MessageService.GetArgsString("command-settings-rbac-error", "id", principalId, "request", request, "permission", permission));
-    }
-
-    /// <summary>
-    /// Checks if the exception indicates that no dedicated throughput is configured on the container
-    /// (e.g., Serverless accounts, Emulators, or containers using shared database throughput).
-    /// </summary>
-    private static bool IsThroughputNotConfiguredException(Exception e)
-    {
-        if (e is not CosmosException cosmosEx ||
-            cosmosEx.StatusCode != System.Net.HttpStatusCode.NotFound)
-        {
-            return false;
-        }
-
-        if ((int)cosmosEx.SubStatusCode == ThroughputNotConfiguredSubStatusCode)
-        {
-            // Cosmos DB uses this substatus when the container has no dedicated throughput offer.
-            return true;
-        }
-
-        return cosmosEx.Message.Contains("Throughput is not configured", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<CommandState> PrintOverviewAsync(CosmosClient client, CommandState commandState, CancellationToken token)

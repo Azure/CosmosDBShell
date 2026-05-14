@@ -66,7 +66,7 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
     {
         if (!string.IsNullOrEmpty(this.Database))
         {
-            return await this.CreateContainerInDatabaseAsync(state.Client, this.Database, token);
+            return await this.CreateContainerInDatabaseAsync(state, this.Database, token);
         }
 
         throw new NotInDatabaseException("mkcon");
@@ -74,16 +74,7 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
 
     public ContainerProperties CreateContainerProperties(Database db)
     {
-        var keys = (this.PartitionKey ?? string.Empty).Split(",", StringSplitOptions.TrimEntries).ToList();
-        if (string.IsNullOrEmpty(keys[0]))
-        {
-            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_empty"));
-        }
-
-        if (keys.Any(key => !key.StartsWith("/")))
-        {
-            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_slash"));
-        }
+        var keys = ParsePartitionKeyPaths(this.PartitionKey);
 
         if (keys.Count > 1)
         {
@@ -116,14 +107,30 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         properties.UniqueKeyPolicy.UniqueKeys.Add(key);
     }
 
+    private static List<string> ParsePartitionKeyPaths(string? partitionKey)
+    {
+        var keys = (partitionKey ?? string.Empty).Split(",", StringSplitOptions.TrimEntries).ToList();
+        if (string.IsNullOrEmpty(keys[0]))
+        {
+            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_empty"));
+        }
+
+        if (keys.Any(key => !key.StartsWith("/")))
+        {
+            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_slash"));
+        }
+
+        return keys;
+    }
+
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitDatabaseStateAsync(DatabaseState state, ShellInterpreter shell, CancellationToken token)
     {
         if (!string.IsNullOrEmpty(this.Database) && !string.Equals(this.Database, state.DatabaseName, StringComparison.OrdinalIgnoreCase))
         {
-            return await this.CreateContainerInDatabaseAsync(state.Client, this.Database, token);
+            return await this.CreateContainerInDatabaseAsync(state, this.Database, token);
         }
 
-        return await this.CreateContainerInDatabaseAsync(state.Client, state.DatabaseName, token);
+        return await this.CreateContainerInDatabaseAsync(state, state.DatabaseName, token);
     }
 
     Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitContainerStateAsync(ContainerState state, ShellInterpreter shell, CancellationToken token)
@@ -136,40 +143,46 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         throw new CommandException("mkcon", MessageService.GetString("error-not_allowed_in_container"));
     }
 
-    private async Task<CommandState> CreateContainerInDatabaseAsync(CosmosClient client, string databaseName, CancellationToken token)
+    private async Task<CommandState> CreateContainerInDatabaseAsync(ConnectedState state, string databaseName, CancellationToken token)
     {
         // Validate database exists
-        await ValidateDatabaseExistsAsync(client, databaseName, "mkcon", token);
+        await ValidateDatabaseExistsAsync(state, databaseName, "mkcon", token);
 
-        var db = client.GetDatabase(databaseName);
-        var cp = this.CreateContainerProperties(db);
-
-        if (!string.IsNullOrEmpty(this.IndexPolicy))
+        var partitionKeyPaths = this.GetPartitionKeyPaths();
+        string containerName;
+        try
         {
-            try
-            {
-                var indexingPolicy = Newtonsoft.Json.JsonConvert.DeserializeObject<IndexingPolicy>(this.IndexPolicy)
-                    ?? throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_invalid_index_policy"));
-                cp.IndexingPolicy = indexingPolicy;
-            }
-            catch (Newtonsoft.Json.JsonException ex)
-            {
-                throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_invalid_index_policy"), ex);
-            }
+            containerName = await CosmosResourceFacade.CreateContainerAsync(
+                state,
+                databaseName,
+                this.Name ?? string.Empty,
+                partitionKeyPaths,
+                this.UniqueKey,
+                this.IndexPolicy,
+                this.Scale,
+                this.MaxRU,
+                token);
+        }
+        catch (InvalidIndexingPolicyJsonException ex)
+        {
+            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_invalid_index_policy"), ex);
         }
 
-        var tp = MakeDbCommand.CreateThroughputProperties(this.Scale, this.MaxRU);
-        var container = await db.CreateContainerIfNotExistsAsync(cp, tp, cancellationToken: token);
         CosmosCompleteCommand.ClearContainers();
-        ShellInterpreter.WriteLine(MessageService.GetString("command-mkcon-CreatedContainer", new Dictionary<string, object> { { "container", container.Container.Id } }));
+        ShellInterpreter.WriteLine(MessageService.GetString("command-mkcon-CreatedContainer", new Dictionary<string, object> { { "container", containerName } }));
         var commandState = new CommandState
         {
             IsPrinted = true,
         };
-        var jsonObject = new { created_container = container.Container.Id };
+        var jsonObject = new { created_container = containerName };
         var jsonString = JsonSerializer.Serialize(jsonObject);
         using var jsonDoc = JsonDocument.Parse(jsonString);
         commandState.Result = new ShellJson(jsonDoc.RootElement.Clone());
         return commandState;
+    }
+
+    private IReadOnlyList<string> GetPartitionKeyPaths()
+    {
+        return ParsePartitionKeyPaths(this.PartitionKey);
     }
 }

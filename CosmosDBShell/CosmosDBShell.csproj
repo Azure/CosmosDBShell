@@ -86,6 +86,8 @@
   <ItemGroup>
     <PackageReference Include="Azure.Identity" />
     <PackageReference Include="Azure.Identity.Broker" />
+    <PackageReference Include="Azure.ResourceManager" />
+    <PackageReference Include="Azure.ResourceManager.CosmosDB" />
     <PackageReference Include="CommandLineParser" />
     <PackageReference Include="Fluent.Net" />
     <PackageReference Include="Microsoft.Azure.Cosmos" />
@@ -96,6 +98,7 @@
     <PackageReference Include="RadLine" />
     <PackageReference Include="Azure.Core" />
     <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="System.ClientModel" />
     <PackageReference Include="StyleCop.Analyzers">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

@@ -44,7 +44,7 @@ internal class ReplaceCommand : CosmosCommand
             throw new NotConnectedException("replace");
         }
 
-        var (_, _, container) = await ResolveContainerAsync(
+        var (databaseName, containerName, container) = await ResolveContainerAsync(
             connectedState.Client,
             shell.State,
             this.Database,
@@ -52,8 +52,7 @@ internal class ReplaceCommand : CosmosCommand
             "replace",
             token);
 
-        var containerResponse = await container.ReadContainerAsync(cancellationToken: token);
-        var partitionKeyPaths = GetPartitionKeyPaths(containerResponse.Resource);
+        var partitionKeyPaths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(connectedState, databaseName!, containerName!, token);
 
         await ReplaceItemsAsync(container, partitionKeyPaths, jsonOpt, this.ETag, token);
 

@@ -127,6 +127,9 @@ internal class Program
                             authorityHost: o.ConnectAuthorityHost,
                             managedIdentityClientId: o.ConnectManagedIdentity,
                             useVSCodeCredential: o.ConnectVSCodeCredential,
+                            subscriptionId: o.ConnectSubscription,
+                            resourceGroupName: o.ConnectResourceGroup,
+                            accountName: o.ConnectAccount,
                             token: connectToken);
                     }
                     catch (OperationCanceledException) when (connectToken.IsCancellationRequested)
@@ -348,6 +351,15 @@ internal class Program
 
         [Option("connect-managed-identity", Required = false, HelpText = "ConnectManagedIdentity", ResourceType = typeof(LocalizableSentenceBuilder))]
         public string? ConnectManagedIdentity { get; set; }
+
+        [Option("connect-subscription", Required = false, HelpText = "ConnectSubscription", ResourceType = typeof(LocalizableSentenceBuilder))]
+        public string? ConnectSubscription { get; set; }
+
+        [Option("connect-resource-group", Required = false, HelpText = "ConnectResourceGroup", ResourceType = typeof(LocalizableSentenceBuilder))]
+        public string? ConnectResourceGroup { get; set; }
+
+        [Option("connect-account", Required = false, HelpText = "ConnectAccount", ResourceType = typeof(LocalizableSentenceBuilder))]
+        public string? ConnectAccount { get; set; }
 
         [Option("connect-vscode-credential", Required = false, HelpText = "ConnectVSCodeCredential", ResourceType = typeof(LocalizableSentenceBuilder), Hidden = true)]
         public bool ConnectVSCodeCredential { get; set; }

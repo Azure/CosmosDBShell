@@ -12,6 +12,7 @@ using Azure.Data.Cosmos.Shell.KeyBindings;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
+using global::Azure.Core;
 using global::Azure.Identity;
 using Microsoft.Azure.Cosmos;
 using RadLine;
@@ -28,6 +29,8 @@ public partial class ShellInterpreter : IDisposable
     private const int MAXHISTORYITEMS = 60;
 
     private const double TimeoutInSeconds = 10.0;
+
+    private const int OptionalArmDiscoveryTimeoutSeconds = 3;
 
     private static CancellationTokenSource? currentTokenSource;
 
@@ -567,7 +570,7 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
-    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, CancellationToken token = default)
+    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, string? subscriptionId = null, string? resourceGroupName = null, string? accountName = null, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
 
@@ -676,8 +679,7 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 var vscProps = await ReadAccountAsync(client, token);
-                WriteLine(MessageService.GetArgsString("command-connect-connected", "account", vscProps.Id));
-                this.Connect(client);
+                await this.CompleteTokenConnectionAsync(client, vscCredential, vscProps.Id, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -766,8 +768,7 @@ public partial class ShellInterpreter : IDisposable
                 throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
             }
 
-            WriteLine(MessageService.GetArgsString("command-connect-connected", "account", miProps.Id));
-            this.Connect(client);
+            await this.CompleteTokenConnectionAsync(client, credential, miProps.Id, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
             return;
         }
 
@@ -802,8 +803,7 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 var entraProps = await ReadAccountAsync(client, token);
-                WriteLine(MessageService.GetArgsString("command-connect-connected", "account", entraProps.Id));
-                this.Connect(client);
+                await this.CompleteTokenConnectionAsync(client, browserCredential, entraProps.Id, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -854,8 +854,7 @@ public partial class ShellInterpreter : IDisposable
                     throw new ShellException(MessageService.GetString("error-connection_failed"), dcEx);
                 }
 
-                WriteLine(MessageService.GetArgsString("command-connect-connected", "account", dcProps.Id));
-                this.Connect(client);
+                await this.CompleteTokenConnectionAsync(client, deviceCodeCredential, dcProps.Id, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
                 return;
             }
         }
@@ -880,8 +879,7 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 var dacProps = await ReadAccountAsync(client, token);
-                WriteLine(MessageService.GetArgsString("command-connect-connected", "account", dacProps.Id));
-                this.Connect(client);
+                await this.CompleteTokenConnectionAsync(client, dacCredential, dacProps.Id, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -903,15 +901,123 @@ public partial class ShellInterpreter : IDisposable
         return await client.ReadAccountAsync().WaitAsync(token);
     }
 
+    private static bool IsArmContextExplicitlyRequested(string? subscriptionId, string? resourceGroupName, string? accountName)
+    {
+        return !string.IsNullOrWhiteSpace(subscriptionId)
+            || !string.IsNullOrWhiteSpace(resourceGroupName)
+            || !string.IsNullOrWhiteSpace(accountName);
+    }
+
+    private async Task CompleteTokenConnectionAsync(
+        CosmosClient client,
+        TokenCredential credential,
+        string accountId,
+        string? subscriptionId,
+        string? resourceGroupName,
+        string? accountName,
+        Uri? authorityHostUri,
+        CancellationToken token)
+    {
+        var explicitlyRequested = IsArmContextExplicitlyRequested(subscriptionId, resourceGroupName, accountName);
+        if (!explicitlyRequested)
+        {
+            this.Connect(client);
+            WriteLine(MessageService.GetArgsString("command-connect-connected", "account", accountId));
+
+            ArmCosmosContext? discoveredArmContext;
+            try
+            {
+                discoveredArmContext = await this.TryDiscoverArmContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (discoveredArmContext != null)
+            {
+                this.AttachArmContext(client, discoveredArmContext);
+            }
+
+            return;
+        }
+
+        var armContext = await this.TryDiscoverArmContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
+        this.Connect(client, armContext);
+        WriteLine(MessageService.GetArgsString("command-connect-connected", "account", accountId));
+    }
+
     /// <summary>
-    /// Connects to a client & disposes old state.
+    /// Wraps <see cref="CosmosArmResourceProvider.TryCreateContextAsync"/> so that an
+    /// ARM discovery failure does not break a successful data-plane connection.
+    /// When the user explicitly supplied <paramref name="subscriptionId"/>,
+    /// <paramref name="resourceGroupName"/>, or <paramref name="accountName"/>, any
+    /// failure bubbles up because the user explicitly requested ARM. Otherwise the
+    /// failure is logged as a warning and discovery returns <c>null</c>; database
+    /// and container commands continue through the data-plane resource strategy.
     /// </summary>
-    internal void Connect(CosmosClient client)
+    private async Task<ArmCosmosContext?> TryDiscoverArmContextAsync(
+        TokenCredential credential,
+        Uri endpoint,
+        string? subscriptionId,
+        string? resourceGroupName,
+        string? accountName,
+        Uri? authorityHostUri,
+        CancellationToken token)
+    {
+        var explicitlyRequested = IsArmContextExplicitlyRequested(subscriptionId, resourceGroupName, accountName);
+
+        try
+        {
+            using var timeoutTokenSource = explicitlyRequested ? null : CancellationTokenSource.CreateLinkedTokenSource(token);
+            if (timeoutTokenSource != null)
+            {
+                timeoutTokenSource.CancelAfter(TimeSpan.FromSeconds(OptionalArmDiscoveryTimeoutSeconds));
+            }
+
+            return await CosmosArmResourceProvider.TryCreateContextAsync(
+                credential,
+                endpoint,
+                subscriptionId,
+                resourceGroupName,
+                accountName,
+                authorityHostUri,
+                timeoutTokenSource?.Token ?? token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (ShellException) when (explicitlyRequested)
+        {
+            // Localized validation/cycle errors should always reach the user when
+            // they explicitly opted into ARM via --subscription/--resource-group/--account.
+            throw;
+        }
+        catch (Exception) when (!explicitlyRequested)
+        {
+            WriteLine(MessageService.GetString("shell-connect-arm-discovery-failed"));
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Connects to a client &amp; disposes old state.
+    /// </summary>
+    internal void Connect(CosmosClient client, ArmCosmosContext? armContext = null)
     {
         this.State?.Dispose();
-        this.State = new ConnectedState(client);
+        this.State = new ConnectedState(client, armContext);
         CosmosCompleteCommand.ClearDatabases();
         CosmosCompleteCommand.ClearContainers();
+    }
+
+    private void AttachArmContext(CosmosClient client, ArmCosmosContext armContext)
+    {
+        if (this.State is ConnectedState connectedState && ReferenceEquals(connectedState.Client, client))
+        {
+            this.State = new ConnectedState(client, armContext);
+        }
     }
 
     /// <summary>

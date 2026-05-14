@@ -8,6 +8,7 @@ Lightweight CLI for Azure Cosmos DB.
 - Navigate with `ls` and `cd` (Account -> Databases -> Containers -> Items)
 - Inspect the current location with `pwd`
 - Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
+- Database and container management commands use Azure Resource Manager when connected with Entra ID
 - Pipelines and scripting with variables, loops, functions
 - MCP server for AI/tool integration
 
@@ -121,6 +122,9 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--connect-hint <email>` | Login hint for interactive login |
 | `--connect-authority-host <uri>` | Authority host (e.g. sovereign clouds) |
 | `--connect-managed-identity <id>` | Use a user-assigned managed identity |
+| `--connect-subscription <id>` | Azure subscription ID for database/container ARM operations |
+| `--connect-resource-group <name>` | Azure resource group name for database/container ARM operations |
+| `--connect-account <name>` | Cosmos DB account name for database/container ARM operations |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
 | `--verbose` | Print full exception details |
 | `--cs <n>` | Colors: 0=off, 1=standard, 2=truecolor |

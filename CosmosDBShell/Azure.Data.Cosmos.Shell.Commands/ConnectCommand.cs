@@ -43,6 +43,15 @@ internal partial class ConnectCommand : CosmosCommand
     [CosmosOption("managed-identity")]
     public string? ManagedIdentityClientId { get; set; }
 
+    [CosmosOption("subscription")]
+    public string? SubscriptionId { get; set; }
+
+    [CosmosOption("resource-group")]
+    public string? ResourceGroupName { get; set; }
+
+    [CosmosOption("account")]
+    public string? AccountName { get; set; }
+
     [CosmosOption("vscode-credential", "connect-vscode-credential", Hidden = true)]
     public bool UseVSCodeCredential { get; init; }
 
@@ -85,7 +94,7 @@ internal partial class ConnectCommand : CosmosCommand
 
         try
         {
-            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, token: token);
+            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, accountName: this.AccountName, token: token);
             var returnState = new CommandState
             {
                 IsPrinted = true,
@@ -162,6 +171,11 @@ internal partial class ConnectCommand : CosmosCommand
         table.AddRow(MessageService.GetString("command-connect-info-account"), $"[white]{acc.Id}[/]");
         table.AddRow(MessageService.GetString("command-connect-info-endpoint"), $"[white]{client.Endpoint}[/]");
 
+        if (connectedState.ArmContext != null)
+        {
+            table.AddRow(MessageService.GetString("command-connect-info-arm-account"), $"[white]{connectedState.ArmContext.AccountResourceId}[/]");
+        }
+
         // Display the connection mode
         var connectionMode = client.ClientOptions.ConnectionMode;
         table.AddRow(MessageService.GetString("command-connect-info-mode"), $"[white]{connectionMode}[/]");
@@ -183,6 +197,7 @@ internal partial class ConnectCommand : CosmosCommand
             ["connected"] = true,
             ["accountId"] = acc.Id,
             ["endpoint"] = client.Endpoint.ToString(),
+            ["armAccountId"] = connectedState.ArmContext?.AccountResourceId.ToString(),
             ["connectionMode"] = connectionMode.ToString(),
             ["readRegions"] = acc.ReadableRegions.Select(r => r.Name).ToArray(),
             ["writeRegions"] = acc.WritableRegions.Select(r => r.Name).ToArray(),
