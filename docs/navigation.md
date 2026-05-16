@@ -207,8 +207,8 @@ Start the shell with options to customize behavior:
 
 | Option | Description |
 | ------ | ----------- |
-| `-c <cmd>` | Execute command and exit |
-| `-k <cmd>` | Execute command and stay in shell |
+| `-c <cmd>` | Execute command and exit. Everything after `-c` is taken as the command, so app-level options must come before `-c`. Windows-style `/c` is also accepted. |
+| `-k <cmd>` | Execute command and stay in shell. Everything after `-k` is taken as the command, so app-level options must come before `-k`. Windows-style `/k` is also accepted. |
 | `--connect <str>` | Connect with this connection string or endpoint on startup |
 | `--connect-mode <mode>` | Connection mode at startup: 'direct' or 'gateway' |
 | `--connect-tenant <id>` | Entra ID tenant ID at startup |
@@ -216,8 +216,8 @@ Start the shell with options to customize behavior:
 | `--connect-authority-host <url>` | Authority host URL at startup |
 | `--connect-managed-identity <id>` | User-assigned managed identity client ID at startup |
 | `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
-| `--cs <n>` | Color scheme: 0=off, 1=standard, 2=truecolor |
-| `--clearhistory` | Clear command history on start |
+| `--color-system <n>` | Color scheme: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
+| `--clear-history` | Clear command history on start |
 | `--help` | Show usage information |
 | `--version` | Show version |
 

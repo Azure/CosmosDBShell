@@ -124,6 +124,31 @@ public class ShellProcessTests
     }
 
     [Fact]
+    public async Task UnknownRootArgument_ReturnsUnknownArgumentError()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["not-a-root-option"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("Unrecognized argument 'not-a-root-option'", result.StdOut);
+        Assert.DoesNotContain("Option '--connect-mode' is defined with a bad format", result.StdOut);
+    }
+
+    [Fact]
+    public async Task MissingConnectValue_ReportsUserFacingOptionAlias()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--connect"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("Required option '--connect' is missing", result.StdOut);
+    }
+
+    [Fact]
     [Trait("Category", "Emulator")]
     public async Task ConnectOption_WithExecuteAndQuit_RunsCommandAgainstEmulator()
     {

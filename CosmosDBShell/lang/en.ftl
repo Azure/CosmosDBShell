@@ -436,6 +436,12 @@ command-version-repo = Report issues at [link={ $url }]{ $url }[/]
 help-RequiredWord = Required.
 help-ErrorsHeadingText = ERROR(S):
 help-UsageHeadingText  = USAGE:
+help-UsageSynopsis = { $command } [options] [-c|-k <command>...]
+help-CommandTailNote = Everything after -c / -k (or /c, /k) is taken as the command (no quoting needed). App-level options must come before -c / -k.
+help-OptionsHeadingText = OPTIONS:
+help-NotesHeadingText = NOTES:
+help-HelpOptionDescription = Show this help text and exit.
+help-VersionOptionDescription = Show product version and exit.
 help-OptionGroupWord = Group
 help-HelpCommandScreenText = Display this help screen.
 help-HelpCommandMoreText = Display more information on a specific command.
@@ -450,6 +456,7 @@ help-SentenceMutuallyExclusiveSetErrors =
 help-error-BadFormatTokenError = Token '{ $token }' is not recognized.
 help-error-MissingValueOptionError = Option '{ $option }' has no value.
 help-error-UnknownOptionError = Option '{ $option }' is unknown.
+help-error-UnknownArgumentError = Unrecognized argument '{ $argument }'.
 help-error-MissingRequiredOptionError1 = A required value not bound to option name is missing.
 help-error-MissingRequiredOptionError2 = Required option '{ $option }' is missing.
 help-error-BadFormatConversionError1 = A value not bound to option name is defined with a bad format.
@@ -463,9 +470,9 @@ help-error-SetValueExceptionError = Error setting value to option '{ $option }':
 help-error-MissingGroupOptionError = At least one option from group '{ $option }"' ({ $req_options }) is required.
 help-error-GroupOptionAmbiguityError= Both SetName and Group are not allowed in option: ({ $option })
 
-help-ExecuteAndContinue = Executes the specified command and keeps the shell running (for example: /k "help").
-help-ExecuteAndQuit = Executes the specified command and exits the shell (for example: /c "help").
-help-ColorSystem = ColorSystem to use.(0=off, 1=standard, 2=true color)
+help-ExecuteAndContinue = Execute the specified command, then keep the shell running.
+help-ExecuteAndQuit = Execute the specified command, then exit.
+help-ColorSystem = Color system: 0=off, 1=standard, 2=true color (default: 2).
 help-ClearHistory = Clears command history and exits.
 help-ConnectionString = The endpoint URL or connection string to connect to.
 help-ConnectionMode = Connection mode: 'direct' (default) or 'gateway'

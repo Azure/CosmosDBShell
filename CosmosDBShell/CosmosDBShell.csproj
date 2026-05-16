@@ -86,7 +86,7 @@
   <ItemGroup>
     <PackageReference Include="Azure.Identity" />
     <PackageReference Include="Azure.Identity.Broker" />
-    <PackageReference Include="CommandLineParser" />
+    <PackageReference Include="System.CommandLine" />
     <PackageReference Include="Fluent.Net" />
     <PackageReference Include="Microsoft.Azure.Cosmos" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
