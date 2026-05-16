@@ -1,4 +1,5 @@
 shell-ready = Cosmos DB shell ready.
+shell-not_connected_hint = Not connected. Run 'connect <endpoint>' to authenticate, or 'help connect' for more options.
 shell-hisory_file_deleted = History deleted.
 shell-connect-browser-auth = Authenticating via browser. Please complete the login in the browser window that opens.
 shell-connect-devicecode-auth = Browser authentication failed. Falling back to device code authentication.
@@ -324,6 +325,8 @@ command-connect-connected = Connected to account '{ $account }'
 command-connect-emulator-detected = Emulator endpoint detected, using well-known account key and gateway mode.
 command-connect-switching = Disconnecting from '{ $endpoint }'...
 command-connect-not_connected = Not connected to any Cosmos DB account.
+command-connect-not_connected-usage-header = Use 'connect <endpoint>' to authenticate. Common forms:
+command-connect-not_connected-usage-footer = Run 'help connect' for the full list of options.
 command-connect-info-title = Connection Information
 command-connect-info-account = Account
 command-connect-info-endpoint = Endpoint
