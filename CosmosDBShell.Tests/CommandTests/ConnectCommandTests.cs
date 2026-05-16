@@ -68,6 +68,32 @@ public class ConnectCommandTests
         Assert.DoesNotContain(model.Diagnostics, diagnostic => diagnostic.Code == "SEM002");
     }
 
+    [Fact]
+    public void LocalEmulatorConnectionFailureMessage_ExplainsCommonCauses()
+    {
+        var endpoint = new Uri("https://localhost:8081/");
+        var message = ShellInterpreter.GetLocalEmulatorConnectionFailureMessage(endpoint);
+
+        Assert.Contains("Cosmos DB emulator at https://localhost:8081/", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("http://localhost:8081/", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("--protocol [https|http]", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("https://learn.microsoft.com/en-us/azure/cosmos-db/emulator-linux", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("docker ps", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("http://localhost:8080/alive", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("docker run", message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void LocalEmulatorConnectionFailureMessage_SuggestsHttpsWhenHttpFails()
+    {
+        var endpoint = new Uri("http://localhost:8081/");
+        var message = ShellInterpreter.GetLocalEmulatorConnectionFailureMessage(endpoint);
+
+        Assert.Contains("Cosmos DB emulator at http://localhost:8081/", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("https://localhost:8081/", message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static async Task<ConnectCommand> BindConnectCommandAsync(string commandText)
     {
         var parser = new StatementParser(commandText);

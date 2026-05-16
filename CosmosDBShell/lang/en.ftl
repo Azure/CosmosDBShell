@@ -20,6 +20,15 @@ no_char = N
 
 error = Error:
 error-connection_failed = Failed to connect to the Cosmos DB account.
+error-emulator_connection_failed =
+    Could not reach the Cosmos DB emulator at { $endpoint }.
+    Make sure the emulator container is running ('docker ps') and reachable.
+    Tip: the Linux emulator exposes a health probe at http://localhost:8080/alive that can be used to verify it is up.
+    The Cosmos DB SDKs (including this shell) require HTTPS, but the Linux emulator defaults to HTTP.
+    Restart the container with --protocol [https|http], for example:
+        docker run -d -p 8081:8081 -p 1234:1234 -p 8080:8080 mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview --protocol https
+    Or, if you intentionally started the emulator with the other protocol, try connecting to { $alternate } instead.
+    See: https://learn.microsoft.com/en-us/azure/cosmos-db/emulator-linux
 error-command-not-found = '{ $command }' is not recognized as an internal or external command, operable program or batch file.
 error-shell-not-initialized = Shell is not initialized
 error-start_process = Failed to start the process.

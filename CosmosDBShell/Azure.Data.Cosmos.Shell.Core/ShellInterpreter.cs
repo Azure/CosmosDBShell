@@ -641,6 +641,11 @@ public partial class ShellInterpreter : IDisposable
             catch (Exception ex)
             {
                 client.Dispose();
+                if (isEmulator)
+                {
+                    throw new ShellException(GetLocalEmulatorConnectionFailureMessage(client.Endpoint), ex);
+                }
+
                 throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
             }
 
@@ -901,6 +906,28 @@ public partial class ShellInterpreter : IDisposable
     {
         token.ThrowIfCancellationRequested();
         return await client.ReadAccountAsync().WaitAsync(token);
+    }
+
+    internal static string GetLocalEmulatorConnectionFailureMessage(Uri endpoint)
+    {
+        var alternate = BuildAlternateEmulatorUri(endpoint);
+        return MessageService.GetArgsString(
+            "error-emulator_connection_failed",
+            "endpoint",
+            endpoint.ToString(),
+            "alternate",
+            alternate.ToString());
+    }
+
+    private static Uri BuildAlternateEmulatorUri(Uri endpoint)
+    {
+        var builder = new UriBuilder(endpoint)
+        {
+            Scheme = string.Equals(endpoint.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                ? Uri.UriSchemeHttp
+                : Uri.UriSchemeHttps,
+        };
+        return builder.Uri;
     }
 
     /// <summary>
