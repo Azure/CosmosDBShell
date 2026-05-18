@@ -135,11 +135,53 @@ internal partial class ConnectCommand : CosmosCommand
         ShellInterpreter.WriteLine(MessageService.GetArgsString("command-connect-rbac-error", "id", principalId, "permission", permission));
     }
 
+    /// <summary>
+    /// Prints a short usage block with examples taken from the <see cref="CosmosExampleAttribute"/>
+    /// metadata on this command. Shown when the user runs <c>connect</c> without arguments while
+    /// disconnected so the available authentication options are discoverable without having to know
+    /// about <c>help connect</c> (see issue #81).
+    /// </summary>
+    internal static void PrintConnectUsageHint(ShellInterpreter shell)
+    {
+        AnsiConsole.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-header")));
+
+        if (shell.App.Commands.TryGetValue("connect", out var factory))
+        {
+            const int MaxExamples = 2;
+            var shown = 0;
+            foreach (var (example, description) in factory.ExamplesWithDescriptions)
+            {
+                if (shown >= MaxExamples)
+                {
+                    break;
+                }
+
+                if (string.IsNullOrWhiteSpace(example) || example == "connect")
+                {
+                    // Skip the no-arg example — that's the one the user just ran.
+                    continue;
+                }
+
+                var highlighted = shell.BuildHighlightedMarkup(example);
+                AnsiConsole.MarkupLine($"  {highlighted}");
+                if (!string.IsNullOrWhiteSpace(description))
+                {
+                    AnsiConsole.MarkupLine($"    [silver]{Markup.Escape(description)}[/]");
+                }
+
+                shown++;
+            }
+        }
+
+        AnsiConsole.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-footer")));
+    }
+
     private static async Task<CommandState> PrintConnectionInfoAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
         if (shell.State is not ConnectedState connectedState)
         {
             AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected"));
+            PrintConnectUsageHint(shell);
             commandState.IsPrinted = true;
             var notConnectedJson = new Dictionary<string, object?>
             {
