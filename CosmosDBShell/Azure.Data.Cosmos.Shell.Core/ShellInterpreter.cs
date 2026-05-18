@@ -467,6 +467,15 @@ public partial class ShellInterpreter : IDisposable
         var result = 0;
         this.PrintVersion(null);
         WriteLine(MessageService.GetString("shell-ready"));
+
+        // First-run hint: if the shell starts without a connection, point users at
+        // the `connect` command. Otherwise users can land at the prompt with no
+        // obvious next step (see issue #81).
+        if (this.State is DisconnectedState)
+        {
+            AnsiConsole.MarkupLine("[yellow]" + Markup.Escape(MessageService.GetString("shell-not_connected_hint")) + "[/]");
+        }
+
         while (this.IsRunning)
         {
             this.StdOutRedirect = null;
@@ -644,6 +653,11 @@ public partial class ShellInterpreter : IDisposable
             catch (Exception ex)
             {
                 client.Dispose();
+                if (isEmulator)
+                {
+                    throw new ShellException(GetLocalEmulatorConnectionFailureMessage(client.Endpoint), ex);
+                }
+
                 throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
             }
 
@@ -901,6 +915,28 @@ public partial class ShellInterpreter : IDisposable
         return await client.ReadAccountAsync().WaitAsync(token);
     }
 
+    internal static string GetLocalEmulatorConnectionFailureMessage(Uri endpoint)
+    {
+        var alternate = BuildAlternateEmulatorUri(endpoint);
+        return MessageService.GetArgsString(
+            "error-emulator_connection_failed",
+            "endpoint",
+            endpoint.ToString(),
+            "alternate",
+            alternate.ToString());
+    }
+
+    private static Uri BuildAlternateEmulatorUri(Uri endpoint)
+    {
+        var builder = new UriBuilder(endpoint)
+        {
+            Scheme = string.Equals(endpoint.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                ? Uri.UriSchemeHttp
+                : Uri.UriSchemeHttps,
+        };
+        return builder.Uri;
+    }
+
     private static bool IsArmContextExplicitlyRequested(string? subscriptionId, string? resourceGroupName, string? accountName)
     {
         return !string.IsNullOrWhiteSpace(subscriptionId)
@@ -1066,6 +1102,21 @@ public partial class ShellInterpreter : IDisposable
 
             if (state.Result?.DataType == Parser.DataType.Json)
             {
+                // When writing JSON to the terminal (not redirected to a file), apply
+                // syntax highlighting using the configured Spectre.Console theme. File
+                // redirection still receives plain text so downstream tooling and tests
+                // are unaffected.
+                if (state.OutputFormat == OutputFormat.JSon && string.IsNullOrEmpty(this.StdOutRedirect))
+                {
+                    var element = (JsonElement?)state.Result.ConvertShellObject(Parser.DataType.Json);
+                    if (element.HasValue)
+                    {
+                        AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
+                        state.Result = null;
+                        return state;
+                    }
+                }
+
                 output = state.GenerateOutputText();
             }
             else

@@ -1,4 +1,5 @@
 shell-ready = Cosmos DB shell ready.
+shell-not_connected_hint = Not connected. Run 'connect <endpoint>' to authenticate, or 'help connect' for more options.
 shell-hisory_file_deleted = History deleted.
 shell-connect-browser-auth = Authenticating via browser. Please complete the login in the browser window that opens.
 shell-connect-devicecode-auth = Browser authentication failed. Falling back to device code authentication.
@@ -22,6 +23,15 @@ no_char = N
 
 error = Error:
 error-connection_failed = Failed to connect to the Cosmos DB account.
+error-emulator_connection_failed =
+    Could not reach the Cosmos DB emulator at { $endpoint }.
+    Make sure the emulator container is running ('docker ps') and reachable.
+    Tip: the Linux emulator exposes a health probe at http://localhost:8080/alive that can be used to verify it is up.
+    The Cosmos DB SDKs (including this shell) require HTTPS, but the Linux emulator defaults to HTTP.
+    Restart the container with --protocol [https|http], for example:
+        docker run -d -p 8081:8081 -p 1234:1234 -p 8080:8080 mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview --protocol https
+    Or, if you intentionally started the emulator with the other protocol, try connecting to { $alternate } instead.
+    See: https://learn.microsoft.com/en-us/azure/cosmos-db/emulator-linux
 error-command-not-found = '{ $command }' is not recognized as an internal or external command, operable program or batch file.
 error-shell-not-initialized = Shell is not initialized
 error-start_process = Failed to start the process.
@@ -333,6 +343,8 @@ command-connect-connected = Connected to account '{ $account }'
 command-connect-emulator-detected = Emulator endpoint detected, using well-known account key and gateway mode.
 command-connect-switching = Disconnecting from '{ $endpoint }'...
 command-connect-not_connected = Not connected to any Cosmos DB account.
+command-connect-not_connected-usage-header = Use 'connect <endpoint>' to authenticate. Common forms:
+command-connect-not_connected-usage-footer = Run 'help connect' for the full list of options.
 command-connect-info-title = Connection Information
 command-connect-info-account = Account
 command-connect-info-arm-account = ARM Account
@@ -446,6 +458,12 @@ command-version-repo = Report issues at [link={ $url }]{ $url }[/]
 help-RequiredWord = Required.
 help-ErrorsHeadingText = ERROR(S):
 help-UsageHeadingText  = USAGE:
+help-UsageSynopsis = { $command } [options] [-c|-k <command>...]
+help-CommandTailNote = Everything after -c / -k (or /c, /k) is taken as the command (no quoting needed). App-level options must come before -c / -k.
+help-OptionsHeadingText = OPTIONS:
+help-NotesHeadingText = NOTES:
+help-HelpOptionDescription = Show this help text and exit.
+help-VersionOptionDescription = Show product version and exit.
 help-OptionGroupWord = Group
 help-HelpCommandScreenText = Display this help screen.
 help-HelpCommandMoreText = Display more information on a specific command.
@@ -460,6 +478,7 @@ help-SentenceMutuallyExclusiveSetErrors =
 help-error-BadFormatTokenError = Token '{ $token }' is not recognized.
 help-error-MissingValueOptionError = Option '{ $option }' has no value.
 help-error-UnknownOptionError = Option '{ $option }' is unknown.
+help-error-UnknownArgumentError = Unrecognized argument '{ $argument }'.
 help-error-MissingRequiredOptionError1 = A required value not bound to option name is missing.
 help-error-MissingRequiredOptionError2 = Required option '{ $option }' is missing.
 help-error-BadFormatConversionError1 = A value not bound to option name is defined with a bad format.
@@ -473,9 +492,9 @@ help-error-SetValueExceptionError = Error setting value to option '{ $option }':
 help-error-MissingGroupOptionError = At least one option from group '{ $option }"' ({ $req_options }) is required.
 help-error-GroupOptionAmbiguityError= Both SetName and Group are not allowed in option: ({ $option })
 
-help-ExecuteAndContinue = Executes the specified command and keeps the shell running (for example: /k "help").
-help-ExecuteAndQuit = Executes the specified command and exits the shell (for example: /c "help").
-help-ColorSystem = ColorSystem to use.(0=off, 1=standard, 2=true color)
+help-ExecuteAndContinue = Execute the specified command, then keep the shell running.
+help-ExecuteAndQuit = Execute the specified command, then exit.
+help-ColorSystem = Color system: 0=off, 1=standard, 2=true color (default: 2).
 help-ClearHistory = Clears command history and exits.
 help-ConnectionString = The endpoint URL or connection string to connect to.
 help-ConnectionMode = Connection mode: 'direct' (default) or 'gateway'

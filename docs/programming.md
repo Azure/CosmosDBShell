@@ -115,13 +115,19 @@ Use `-k` to run a command or script and then stay in the interactive shell:
 cosmosdbshell -k "seed.csh \"AccountEndpoint=...;AccountKey=...\" mydb mycontainer"
 ```
 
-Startup connection options still belong to the shell process, not to the script:
+Startup connection options still belong to the shell process, not to the script. Because everything after `-c` / `-k` is captured as the command, place app-level options before `-c` / `-k`:
 
 ```bash
-cosmosdbshell -c "seed.csh mydb mycontainer" --connect "AccountEndpoint=...;AccountKey=..."
+cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c "seed.csh mydb mycontainer"
 ```
 
-If you want a value such as `--connect` to be passed to the script, put it inside the `-c` or `-k` command text:
+Quotes around the command are optional &mdash; the shell joins all remaining tokens after `-c` / `-k` into a single command string:
+
+```bash
+cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c seed.csh mydb mycontainer
+```
+
+If you want a value such as `--connect` to be passed to the script, put it inside the `-c` or `-k` command text (after `-c` everything goes to the script anyway):
 
 ```bash
 cosmosdbshell -c "seed.csh --connect xyz"

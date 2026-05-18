@@ -127,14 +127,18 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--connect-account <name>` | Cosmos DB account name for database/container ARM operations |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
 | `--verbose` | Print full exception details |
-| `--cs <n>` | Colors: 0=off, 1=standard, 2=truecolor |
+| `--color-system <n>` | Colors: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
 | `--help` | Show help |
 
 Examples:
 
 ```bash
 # Run a script and exit. Script arguments become $1, $2, ... inside the script.
-cosmosdbshell -c "seed.csh mydb mycontainer" --connect "AccountEndpoint=...;AccountKey=..."
+cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c "seed.csh mydb mycontainer"
+
+# -c also accepts an unquoted command tail; everything after -c becomes the
+# command, so app-level options (like --connect) must come BEFORE -c.
+cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c seed.csh mydb mycontainer
 
 # Run a script from piped command text.
 echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
@@ -147,6 +151,19 @@ This project welcomes contributions and suggestions. To contribute, see these do
 - [Code of Conduct](./CODE_OF_CONDUCT.md)
 - [Security](./SECURITY.md)
 - [Contributing](./CONTRIBUTING.md)
+
+## Telemetry
+
+**Azure Cosmos DB Shell does not collect any telemetry.** The CLI does not emit usage data, crash reports, or diagnostic information to Microsoft or any third party. There is no opt-out switch because there is nothing to opt out of — no telemetry SDK is bundled, and no network calls are made other than the requests you explicitly issue against your Azure Cosmos DB account (or local emulator) and, when Entra ID or other credential-based authentication is used, the identity endpoints required to obtain a token, including managed identity endpoints.
+
+**Server-side data collected by Azure.** When you connect the Shell to an Azure Cosmos DB account, every request you send (read, query, create, replace, patch, delete, container/database management, etc.) is processed by the Azure Cosmos DB service. As with any client (SDKs, REST, Data Explorer, or this Shell), the service records operational data on the backend so that you and Microsoft can monitor, bill, and support the account. This includes:
+
+- **Platform metrics and resource logs** — request counts, RU/s consumption, latency, status codes, partition key statistics, throttling events, and similar signals available through Azure Monitor. See [Monitor Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/monitor) and [Monitor data reference](https://learn.microsoft.com/azure/cosmos-db/monitor-reference).
+- **Diagnostic logs** — `DataPlaneRequests`, `QueryRuntimeStatistics`, `ControlPlaneRequests`, and other categories, but only if you enable diagnostic settings on the account and route them to a Log Analytics workspace, storage account, or event hub. See [Monitor data by using diagnostic settings](https://learn.microsoft.com/azure/cosmos-db/monitor-resource-logs).
+- **Activity log** — control-plane operations against the account (created/updated/deleted resources) recorded by Azure Resource Manager. See [Azure activity log](https://learn.microsoft.com/azure/azure-monitor/essentials/activity-log).
+- **Authentication telemetry** — Entra ID authentication events may be recorded by Microsoft Entra in sign-in logs, depending on the credential flow (including user and service principal sign-ins), independent of Azure Cosmos DB.
+
+This server-side collection is a property of the Azure Cosmos DB service itself, not of this Shell, and the same data would be recorded if the same operations were issued from any other client. It is governed by the [Microsoft Privacy Statement](https://go.microsoft.com/fwlink/?LinkID=521839), the [Microsoft Product Terms](https://www.microsoft.com/licensing/terms/), and the [Azure Trust Center](https://www.microsoft.com/trust-center). For details on what is logged, retention, and how to control it for your account, review the Azure Cosmos DB monitoring documentation linked above.
 
 ## License
 

@@ -117,6 +117,81 @@ public class HighlighterTests
     }
 
     [Fact]
+    public void TestInterpolatedExpressionDoesNotDuplicateText()
+    {
+        // Regression: nested expressions inside $(...) carry positions from a separate
+        // sub-Lexer, so recursing into them while indexing this.text used to smear
+        // characters from the start of the line into the rendered output. The full
+        // visible text must round-trip exactly through the highlighter.
+        var input = "echo \"$(3+5)\"\"$(3+5)\"";
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+        var rendered = string.Concat(res.GetSegments(AnsiConsole.Console).Select(s => s.Text));
+
+        Assert.Equal(input, rendered);
+    }
+
+    [Fact]
+    public void TestInterpolatedExpressionContentsAreColoredAsExpression()
+    {
+        // The '+' inside $( ... ) should be rendered with the operator color rather
+        // than being merged into the surrounding string-literal coloring. Spectre
+        // collapses adjacent segments that share a style, so any character whose
+        // color does not match the surrounding literal color must end up on its own
+        // segment — that is exactly what we want to verify.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var res = highlighter.BuildHighlightedText("echo \"$(3+5)\"") as Markup;
+        Assert.NotNull(res);
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        var plusSeg = segs.FirstOrDefault(s => s.Text == "+");
+        Assert.NotNull(plusSeg);
+
+        var quotedSeg = segs.FirstOrDefault(s => s.Text.Contains("\""));
+        Assert.NotNull(quotedSeg);
+        Assert.NotEqual(quotedSeg.Style.Foreground, plusSeg.Style.Foreground);
+    }
+
+    [Fact]
+    public void TestInterpolatedVariableIsColoredSeparately()
+    {
+        // $name inside an interpolated string should be rendered as a variable
+        // reference, not lumped together with the quoted text.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var input = "echo \"Hello $name!\"";
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+
+        var rendered = string.Concat(res.GetSegments(AnsiConsole.Console).Select(s => s.Text));
+        Assert.Equal(input, rendered);
+
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+        Assert.Contains(segs, s => s.Text == "$name");
+    }
+
+    [Fact]
+    public void TestInterpolatedExpressionWithEscapesRoundTrips()
+    {
+        // The cooked content of an interpolated string collapses escape sequences
+        // (e.g. \" -> "), so an inner Lexer that walks the cooked text would emit
+        // token positions that drift relative to the outer source. Verify that an
+        // interpolation containing an inner string literal with a backslash escape
+        // still renders the visible characters in their original positions.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var input = "echo \"$( \\\"a\\nb\\\" )\"";
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+
+        var rendered = string.Concat(res.GetSegments(AnsiConsole.Console).Select(s => s.Text));
+        Assert.Equal(input, rendered);
+    }
+
+    [Fact]
     public void TestExpressionHighlight()
     {
         var highlighter = (IHighlighter)ShellInterpreter.Instance;
