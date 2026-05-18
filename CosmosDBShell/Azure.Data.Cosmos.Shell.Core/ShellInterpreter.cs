@@ -470,7 +470,7 @@ public partial class ShellInterpreter : IDisposable
         // obvious next step (see issue #81).
         if (this.State is DisconnectedState)
         {
-            AnsiConsole.MarkupLine("[yellow]" + Markup.Escape(MessageService.GetString("shell-not_connected_hint")) + "[/]");
+            AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("shell-not_connected_hint")));
         }
 
         while (this.IsRunning)

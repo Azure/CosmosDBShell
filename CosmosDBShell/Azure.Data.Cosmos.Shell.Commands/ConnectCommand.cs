@@ -166,7 +166,7 @@ internal partial class ConnectCommand : CosmosCommand
                 AnsiConsole.MarkupLine($"  {highlighted}");
                 if (!string.IsNullOrWhiteSpace(description))
                 {
-                    AnsiConsole.MarkupLine($"    [silver]{Markup.Escape(description)}[/]");
+                    AnsiConsole.MarkupLine($"    {Theme.FormatMuted(description)}");
                 }
 
                 shown++;
