@@ -123,14 +123,18 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--connect-managed-identity <id>` | Use a user-assigned managed identity |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
 | `--verbose` | Print full exception details |
-| `--cs <n>` | Colors: 0=off, 1=standard, 2=truecolor |
+| `--color-system <n>` | Colors: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
 | `--help` | Show help |
 
 Examples:
 
 ```bash
 # Run a script and exit. Script arguments become $1, $2, ... inside the script.
-cosmosdbshell -c "seed.csh mydb mycontainer" --connect "AccountEndpoint=...;AccountKey=..."
+cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c "seed.csh mydb mycontainer"
+
+# -c also accepts an unquoted command tail; everything after -c becomes the
+# command, so app-level options (like --connect) must come BEFORE -c.
+cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c seed.csh mydb mycontainer
 
 # Run a script from piped command text.
 echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."

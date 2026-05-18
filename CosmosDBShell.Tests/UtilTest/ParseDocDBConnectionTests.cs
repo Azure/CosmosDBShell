@@ -2,13 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 // ------------------------------------------------------------
 
-using CommandLine;
 using Azure.Data.Cosmos.Shell.Util;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace CosmosShell.Tests.UtilTest;
 
