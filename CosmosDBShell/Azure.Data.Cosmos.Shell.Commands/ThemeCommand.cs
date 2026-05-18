@@ -23,6 +23,8 @@ using Spectre.Console;
 [CosmosExample("theme load ./my-theme.toml", Description = "Load a theme from a TOML file and switch to it")]
 [CosmosExample("theme validate ./my-theme.toml", Description = "Validate a theme TOML file without loading it")]
 [CosmosExample("theme save my-theme", Description = "Save the active theme as ~/.cosmosdbshell/themes/my-theme.toml")]
+[CosmosExample("theme edit my-theme", Description = "Open my-theme.toml in $EDITOR and reload it on exit")]
+[CosmosExample("theme open", Description = "Open the user themes folder in your OS file browser")]
 [CosmosExample("theme reload", Description = "Re-scan the user themes directory")]
 internal class ThemeCommand : CosmosCommand
 {
@@ -41,6 +43,9 @@ internal class ThemeCommand : CosmosCommand
     [CosmosOption("strict")]
     public bool Strict { get; init; }
 
+    [CosmosOption("editor")]
+    public string? Editor { get; init; }
+
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         var action = (this.Action ?? "current").Trim().ToLowerInvariant();
@@ -54,6 +59,8 @@ internal class ThemeCommand : CosmosCommand
             "load" => Task.FromResult(this.RunLoad(commandState)),
             "validate" => Task.FromResult(this.RunValidate(commandState)),
             "save" => Task.FromResult(this.RunSave(commandState)),
+            "edit" => Task.FromResult(this.RunEdit(commandState)),
+            "open" => Task.FromResult(this.RunOpen(commandState)),
             "reload" => Task.FromResult(this.RunReload(commandState)),
             _ => Task.FromResult(this.RunUnknownAction(commandState, action)),
         };
@@ -101,6 +108,54 @@ internal class ThemeCommand : CosmosCommand
             ? requested
             : requested + ".toml";
         return System.IO.Path.Combine(ThemeFile.DefaultUserThemesDirectory(), withExtension);
+    }
+
+    /// <summary>
+    /// Resolves the external editor to launch for <c>theme edit</c>.
+    /// Lookup order: explicit <c>--editor</c> argument, <c>$VISUAL</c>,
+    /// <c>$EDITOR</c>, then a platform default (<c>notepad</c> on Windows,
+    /// <c>nano</c> on Unix). The chosen editor must accept the file path as a
+    /// positional argument.
+    /// </summary>
+    private static EditorInvocation? ResolveEditor(string? explicitEditor)
+    {
+        var candidate = !string.IsNullOrWhiteSpace(explicitEditor)
+            ? explicitEditor
+            : (Environment.GetEnvironmentVariable("VISUAL") ?? Environment.GetEnvironmentVariable("EDITOR"));
+
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            candidate = OperatingSystem.IsWindows() ? "notepad" : "nano";
+        }
+
+        return EditorInvocation.Parse(candidate);
+    }
+
+    /// <summary>
+    /// Opens <paramref name="target"/> (file or directory) in the OS file browser.
+    /// This is the .NET equivalent of Rust's <c>open</c> crate: on Windows and
+    /// macOS <c>UseShellExecute = true</c> hands the path to the OS so the right
+    /// handler is picked (explorer / Finder); on other Unix-likes we shell out
+    /// to <c>xdg-open</c>, the freedesktop.org standard entry point.
+    /// </summary>
+    private static void LaunchInOsFileBrowser(string target)
+    {
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS())
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = target,
+                UseShellExecute = true,
+            });
+            return;
+        }
+
+        using var xdgProcess = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "xdg-open",
+            ArgumentList = { target },
+            UseShellExecute = false,
+        });
     }
 
     private CommandState RunCurrent(CommandState commandState)
@@ -479,6 +534,226 @@ internal class ThemeCommand : CosmosCommand
         return commandState;
     }
 
+    private CommandState RunOpen(CommandState commandState)
+    {
+        // 'theme open' always targets the user themes directory. We deliberately
+        // do not accept a name or path argument here: handing arbitrary paths to
+        // the OS file browser would let any script that can run 'theme' launch
+        // arbitrary files/URLs via the shell handler.
+        var targetPath = ThemeFile.DefaultUserThemesDirectory();
+
+        try
+        {
+            // Ensure the directory exists so the file browser actually opens
+            // something instead of failing silently.
+            Directory.CreateDirectory(targetPath);
+            LaunchInOsFileBrowser(targetPath);
+        }
+        catch (Exception ex)
+        {
+            var message = MessageService.GetArgsString(
+                "command-theme-open-failed",
+                "path",
+                targetPath,
+                "message",
+                ex.Message);
+            AnsiConsole.MarkupLine(Theme.FormatError(message));
+            return new ErrorCommandState(new CommandException("theme", message, ex));
+        }
+
+        AnsiConsole.MarkupLine(MessageService.GetArgsString(
+            "command-theme-opened",
+            "path",
+            Markup.Escape(targetPath)));
+
+        commandState.IsPrinted = true;
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { opened = targetPath }));
+        return commandState;
+    }
+
+    private CommandState RunEdit(CommandState commandState)
+    {
+        // Resolve target. Empty -> active theme; otherwise treat as theme name
+        // or path (same rules as load/validate).
+        var requested = string.IsNullOrWhiteSpace(this.Name)
+            ? (string.IsNullOrWhiteSpace(this.Path) ? ResolveActiveName() : this.Path)
+            : this.Name;
+
+        if (string.IsNullOrWhiteSpace(requested))
+        {
+            var message = MessageService.GetString("command-theme-edit-missing-name");
+            AnsiConsole.MarkupLine(message);
+            return new ErrorCommandState(new CommandException("theme", message));
+        }
+
+        // If the argument is itself a path to an existing file, edit it in place.
+        // Otherwise look the name up in the registry.
+        string? targetPath = null;
+        string? registeredName = null;
+        if (requested.Contains('/') || requested.Contains('\\') || File.Exists(requested))
+        {
+            targetPath = System.IO.Path.GetFullPath(requested);
+        }
+        else if (ThemeRegistry.Instance.All.TryGetValue(requested, out var registration))
+        {
+            registeredName = registration.Name;
+            targetPath = registration.Path;
+
+            if (targetPath is null)
+            {
+                // Built-in theme: seed a TOML copy in the user themes directory
+                // so the user has something to edit. Require --force so we never
+                // silently create files for a no-arg 'theme edit'.
+                var seedPath = System.IO.Path.Combine(
+                    ThemeFile.DefaultUserThemesDirectory(),
+                    registration.Name + ".toml");
+                if (File.Exists(seedPath))
+                {
+                    targetPath = seedPath;
+                }
+                else
+                {
+                    if (!this.Force)
+                    {
+                        var message = MessageService.GetArgsString(
+                            "command-theme-edit-builtin-needs-force",
+                            "name",
+                            Markup.Escape(registration.Name),
+                            "path",
+                            Markup.Escape(seedPath));
+                        AnsiConsole.MarkupLine(Theme.FormatWarning(message));
+                        return new ErrorCommandState(new CommandException("theme", message));
+                    }
+
+                    try
+                    {
+                        ThemeFile.Save(registration.Name, registration.Options, seedPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        var failed = MessageService.GetArgsString(
+                            "command-theme-save-failed",
+                            "path",
+                            seedPath,
+                            "message",
+                            ex.Message);
+                        AnsiConsole.MarkupLine(Theme.FormatError(failed));
+                        return new ErrorCommandState(new CommandException("theme", failed, ex));
+                    }
+
+                    targetPath = seedPath;
+                    AnsiConsole.MarkupLine(MessageService.GetArgsString(
+                        "command-theme-edit-seeded",
+                        "name",
+                        Markup.Escape(registration.Name),
+                        "path",
+                        Markup.Escape(seedPath)));
+                }
+            }
+        }
+        else
+        {
+            return ReportUnknownTheme(commandState, requested);
+        }
+
+        var editor = ResolveEditor(this.Editor);
+        if (editor is null)
+        {
+            var message = MessageService.GetString("command-theme-edit-no-editor");
+            AnsiConsole.MarkupLine(Theme.FormatError(message));
+            return new ErrorCommandState(new CommandException("theme", message));
+        }
+
+        AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
+            "command-theme-edit-launching",
+            "path",
+            targetPath!,
+            "editor",
+            editor.DisplayName)));
+
+        int exitCode;
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = editor.FileName,
+                Arguments = editor.BuildArguments(targetPath!),
+                UseShellExecute = false,
+            }) ?? throw new InvalidOperationException("Process.Start returned null");
+            process.WaitForExit();
+            exitCode = process.ExitCode;
+        }
+        catch (Exception ex)
+        {
+            var message = MessageService.GetArgsString(
+                "command-theme-edit-launch-failed",
+                "editor",
+                editor.DisplayName,
+                "path",
+                targetPath!,
+                "message",
+                ex.Message);
+            AnsiConsole.MarkupLine(Theme.FormatError(message));
+            return new ErrorCommandState(new CommandException("theme", message, ex));
+        }
+
+        if (exitCode != 0)
+        {
+            var message = MessageService.GetArgsString(
+                "command-theme-edit-exit-nonzero",
+                "editor",
+                editor.DisplayName,
+                "code",
+                exitCode);
+            AnsiConsole.MarkupLine(Theme.FormatWarning(message));
+            return new ErrorCommandState(new CommandException("theme", message));
+        }
+
+        // Reload registry so renamed/edited files are picked up, then apply the
+        // edited theme.
+        var registry = ThemeRegistry.Instance;
+        try
+        {
+            var result = registry.LoadFile(targetPath!);
+            Theme.Apply(result.Options);
+
+            // Re-scan the directory too so other files stay in sync with disk.
+            registry.LoadFromDirectory(ThemeFile.DefaultUserThemesDirectory());
+
+            AnsiConsole.MarkupLine(MessageService.GetArgsString(
+                "command-theme-edit-applied",
+                "name",
+                Markup.Escape(result.Name),
+                "path",
+                Markup.Escape(targetPath!)));
+
+            foreach (var warning in result.Warnings)
+            {
+                AnsiConsole.MarkupLine(Theme.FormatWarning(warning));
+            }
+
+            commandState.IsPrinted = true;
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                edited = result.Name,
+                path = targetPath,
+                requested = registeredName ?? requested,
+            }));
+            return commandState;
+        }
+        catch (Exception ex) when (ex is ThemeLoadException or FileNotFoundException or DirectoryNotFoundException)
+        {
+            var message = MessageService.GetArgsString(
+                "command-theme-edit-reload-failed",
+                "path",
+                targetPath!,
+                "message",
+                ex.Message);
+            AnsiConsole.MarkupLine(Theme.FormatError(message));
+            return new ErrorCommandState(new CommandException("theme", message, ex));
+        }
+    }
+
     private CommandState RunReload(CommandState commandState)
     {
         var registry = ThemeRegistry.Instance;
@@ -514,8 +789,53 @@ internal class ThemeCommand : CosmosCommand
             "action",
             Markup.Escape(action),
             "actions",
-            "current, list, show, use (alias: set), load, validate, save, reload");
+            "current, list, show, use (alias: set), load, validate, save, edit, open, reload");
         AnsiConsole.MarkupLine(message);
         return new ErrorCommandState(new CommandException("theme", message));
+    }
+
+    /// <summary>
+    /// Parses an editor invocation string (which may include arguments like
+    /// <c>code --wait</c>) into a file name plus any prefix arguments.
+    /// </summary>
+    private sealed record EditorInvocation(string FileName, string? PrefixArgs)
+    {
+        public string DisplayName => string.IsNullOrEmpty(this.PrefixArgs) ? this.FileName : $"{this.FileName} {this.PrefixArgs}";
+
+        public string BuildArguments(string path)
+        {
+            var quoted = path.Contains(' ') ? $"\"{path}\"" : path;
+            return string.IsNullOrEmpty(this.PrefixArgs) ? quoted : $"{this.PrefixArgs} {quoted}";
+        }
+
+        public static EditorInvocation? Parse(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return null;
+            }
+
+            raw = raw.Trim();
+
+            // Honor an explicitly-quoted executable path: "C:\\Program Files\\X\\editor.exe" --wait
+            if (raw.StartsWith('"'))
+            {
+                var endQuote = raw.IndexOf('"', 1);
+                if (endQuote > 1)
+                {
+                    var file = raw.Substring(1, endQuote - 1);
+                    var rest = raw[(endQuote + 1)..].Trim();
+                    return new EditorInvocation(file, string.IsNullOrEmpty(rest) ? null : rest);
+                }
+            }
+
+            var firstSpace = raw.IndexOf(' ');
+            if (firstSpace < 0)
+            {
+                return new EditorInvocation(raw, null);
+            }
+
+            return new EditorInvocation(raw[..firstSpace], raw[(firstSpace + 1)..].Trim());
+        }
     }
 }

@@ -503,11 +503,12 @@ mcp-error-invalid-port = Error: --mcp port must be greater than 0.
 warning-unknown-theme = Unknown theme '{ $name }'. Available themes: { $themes }. Falling back to default.
 
 command-theme-description = Inspects and switches the active color theme.
-command-theme-description-action = What to do: 'list', 'show', 'use', 'load', 'validate', 'save', or 'reload' (default lists the active theme).
-command-theme-description-name = Theme name (for show/use/save) or path to a TOML file (for load/validate).
+command-theme-description-action = What to do: 'list', 'show', 'use', 'load', 'validate', 'save', 'edit', 'open', or 'reload' (default lists the active theme).
+command-theme-description-name = Theme name (for show/use/save/edit) or path to a TOML file (for load/validate/edit).
 command-theme-description-path = Optional path. For 'save' the file path to write (default: ~/.cosmosdbshell/themes/<name>.toml). For 'load' and 'validate' the TOML file to read.
-command-theme-description-force = Overwrite an existing file when saving.
+command-theme-description-force = Overwrite an existing file when saving, or seed the built-in profile when editing.
 command-theme-description-strict = Treat warnings as errors when validating.
+command-theme-description-editor = External editor to launch (defaults to $VISUAL, $EDITOR, then a platform default).
 command-theme-active = Active theme: { $name }
 command-theme-applied = Switched to theme: { $name }
 command-theme-sample-heading = Sample of theme '{ $name }':
@@ -530,6 +531,17 @@ command-theme-save-exists = File already exists: { $path }. Pass --force to over
 command-theme-save-failed = Failed to save theme to { $path }: { $message }
 command-theme-save-hint-reload = Run 'theme reload' to register the new file (or 'theme load { $name }' to register and switch to it).
 command-theme-reloaded = Reloaded { $count } theme(s) from { $directory }
+command-theme-edit-missing-name = 'theme edit' requires a theme name or path. Run 'theme list' to see available themes.
+command-theme-edit-builtin-needs-force = '{ $name }' is a built-in theme and has no editable file. Pass --force to copy it to { $path } and edit the copy.
+command-theme-edit-seeded = Seeded built-in theme '{ $name }' to { $path }
+command-theme-edit-launching = Editing { $path } with { $editor }
+command-theme-edit-no-editor = No editor found. Set $VISUAL or $EDITOR, or pass --editor=<command>.
+command-theme-edit-launch-failed = Failed to launch editor '{ $editor }' for { $path }: { $message }
+command-theme-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }; theme was not reloaded.
+command-theme-edit-reload-failed = Theme file '{ $path }' could not be reloaded: { $message }
+command-theme-edit-applied = Reloaded and applied theme '{ $name }' from { $path }
+command-theme-opened = Opened { $path } in OS file browser.
+command-theme-open-failed = Failed to open { $path } in OS file browser: { $message }
 
 theme-file-error-parse = Failed to parse theme file '{ $source }': { $details }
 theme-file-error-extends-unknown = Theme file '{ $source }' extends unknown theme '{ $name }'.
