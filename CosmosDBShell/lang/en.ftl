@@ -11,6 +11,7 @@ shell-connect-vscode-credential-auth = Connecting with Visual Studio Code creden
 shell-connect-vscode-credential-fallback = Visual Studio Code credential unavailable, falling back...
 shell-connect-devicecode-fallback = Browser authentication failed, falling back to device code authentication...
 shell-connect-arm-discovery-failed = Using Cosmos DB data plane.
+shell-connect-arm-discovery-ambiguous = Multiple ARM Cosmos DB accounts match the connected endpoint. Pass --connect-subscription, --connect-resource-group and --connect-account (or the equivalent options on the 'connect' command) to use Azure Resource Manager; using Cosmos DB data plane.
 history-search-reverse = reverse-i-search
 history-search-forward = forward-i-search
 history-search-failed-reverse = failed reverse-i-search

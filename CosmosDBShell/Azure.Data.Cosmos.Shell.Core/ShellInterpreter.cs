@@ -994,6 +994,15 @@ public partial class ShellInterpreter : IDisposable
             // they explicitly opted into ARM via --subscription/--resource-group/--account.
             throw;
         }
+        catch (ShellException) when (!explicitlyRequested)
+        {
+            // Discovery succeeded enough to know there are multiple matching ARM
+            // accounts. Without explicit coordinates we cannot pick one, but we
+            // still tell the user how to disambiguate instead of silently falling
+            // back as if ARM was simply unreachable.
+            WriteLine(MessageService.GetString("shell-connect-arm-discovery-ambiguous"));
+            return null;
+        }
         catch (Exception) when (!explicitlyRequested)
         {
             WriteLine(MessageService.GetString("shell-connect-arm-discovery-failed"));

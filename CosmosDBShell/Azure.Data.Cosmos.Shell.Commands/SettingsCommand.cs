@@ -61,7 +61,7 @@ internal class SettingsCommand : CosmosCommand
         }
         catch (Exception e)
         {
-            if (TryGetPrincipialIdFromRbacException(e, out var id, out var request, out var permission))
+            if (TryGetPrincipalIdFromRbacException(e, out var id, out var request, out var permission))
             {
                 AskForRBacPermissions(id ?? string.Empty, request ?? string.Empty, permission ?? string.Empty);
                 return commandState;
@@ -194,7 +194,7 @@ internal class SettingsCommand : CosmosCommand
         return commandState;
     }
 
-    private static bool TryGetPrincipialIdFromRbacException(Exception e, out string? principalId, out string? request, out string? permission)
+    private static bool TryGetPrincipalIdFromRbacException(Exception e, out string? principalId, out string? request, out string? permission)
     {
         return TryGetPrincipalIdFromRbacMessage(e.Message, out principalId, out request, out permission);
     }
