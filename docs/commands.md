@@ -286,7 +286,7 @@ for $file in (dir "*.csh") { exec $file.path }
 
 ## Management
 
-Database and container management commands prefer Azure Resource Manager when an ARM context is attached (Entra ID connections, optionally with `--subscription`, `--resource-group`, and `--account`). Account-key, emulator, and static-token connections do not attach ARM context, so these commands automatically fall back to the Cosmos DB data plane and use the connection's existing credentials.
+Database and container management commands prefer Azure Resource Manager when an ARM context is attached (Entra ID connections, optionally with `--subscription` and `--resource-group`). The account name is inferred from the endpoint. Account-key, emulator, and static-token connections do not attach ARM context, so these commands automatically fall back to the Cosmos DB data plane and use the connection's existing credentials.
 
 ### mkdb
 

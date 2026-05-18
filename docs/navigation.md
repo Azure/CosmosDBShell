@@ -243,7 +243,7 @@ cosmosdbshell -c "connect $CONN; cd mydb/mycont; ls -m 5"
 cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
 
 # Start connected with explicit ARM account context
-cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-subscription <subscription-id> --connect-resource-group <resource-group> --connect-account <account-name>
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-subscription <subscription-id> --connect-resource-group <resource-group>
 
 # Start with MCP server enabled on the default port (6128)
 cosmosdbshell --mcp

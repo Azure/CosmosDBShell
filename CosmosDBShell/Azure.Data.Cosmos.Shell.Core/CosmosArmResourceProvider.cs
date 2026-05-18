@@ -33,7 +33,6 @@ internal static class CosmosArmResourceProvider
         Uri dataPlaneEndpoint,
         string? subscriptionId,
         string? resourceGroupName,
-        string? accountName,
         Uri? authorityHost,
         CancellationToken token)
     {
@@ -50,16 +49,15 @@ internal static class CosmosArmResourceProvider
 
         var hasSubscription = !string.IsNullOrWhiteSpace(subscriptionId);
         var hasResourceGroup = !string.IsNullOrWhiteSpace(resourceGroupName);
-        var hasAccount = !string.IsNullOrWhiteSpace(accountName);
 
-        if (hasSubscription || hasResourceGroup || hasAccount)
+        if (hasSubscription || hasResourceGroup)
         {
             if (!hasSubscription || !hasResourceGroup)
             {
                 throw new ShellException(MessageService.GetString("error-arm-context-incomplete"));
             }
 
-            var resolvedAccountName = hasAccount ? accountName! : GetAccountNameFromEndpoint(dataPlaneEndpoint);
+            var resolvedAccountName = GetAccountNameFromEndpoint(dataPlaneEndpoint);
             return await CreateExplicitContextAsync(armClient, dataPlaneEndpoint, subscriptionId!, resourceGroupName!, resolvedAccountName, token);
         }
 

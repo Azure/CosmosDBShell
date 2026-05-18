@@ -92,7 +92,6 @@ internal class Program
                 ConnectManagedIdentity = parseResult.GetValueForOption(optionMap.ConnectManagedIdentity),
                 ConnectSubscription = parseResult.GetValueForOption(optionMap.ConnectSubscription),
                 ConnectResourceGroup = parseResult.GetValueForOption(optionMap.ConnectResourceGroup),
-                ConnectAccount = parseResult.GetValueForOption(optionMap.ConnectAccount),
                 ConnectVSCodeCredential = parseResult.GetValueForOption(optionMap.ConnectVSCodeCredential),
                 StartLspServer = parseResult.GetValueForOption(optionMap.StartLspServer),
                 LspStdio = parseResult.GetValueForOption(optionMap.LspStdio),
@@ -162,7 +161,6 @@ internal class Program
                         useVSCodeCredential: o.ConnectVSCodeCredential,
                         subscriptionId: o.ConnectSubscription,
                         resourceGroupName: o.ConnectResourceGroup,
-                        accountName: o.ConnectAccount,
                         token: connectToken);
                 }
                 catch (OperationCanceledException) when (connectToken.IsCancellationRequested)
@@ -431,7 +429,6 @@ internal class Program
         var connectManagedIdentity = new Option<string?>("--connect-managed-identity", MessageService.GetString("help-ConnectManagedIdentity"));
         var connectSubscription = new Option<string?>("--connect-subscription", MessageService.GetString("help-ConnectSubscription"));
         var connectResourceGroup = new Option<string?>("--connect-resource-group", MessageService.GetString("help-ConnectResourceGroup"));
-        var connectAccount = new Option<string?>("--connect-account", MessageService.GetString("help-ConnectAccount"));
         var connectVSCodeCredential = new Option<bool>("--connect-vscode-credential", MessageService.GetString("help-ConnectVSCodeCredential"))
         {
             IsHidden = true,
@@ -463,7 +460,6 @@ internal class Program
             connectManagedIdentity,
             connectSubscription,
             connectResourceGroup,
-            connectAccount,
             connectVSCodeCredential,
             mcpPort,
             startLspServer,
@@ -484,7 +480,6 @@ internal class Program
             connectManagedIdentity,
             connectSubscription,
             connectResourceGroup,
-            connectAccount,
             connectVSCodeCredential,
             mcpPort,
             startLspServer,
@@ -513,7 +508,6 @@ internal class Program
             [map.ConnectManagedIdentity] = "<id>",
             [map.ConnectSubscription] = "<id>",
             [map.ConnectResourceGroup] = "<name>",
-            [map.ConnectAccount] = "<name>",
             [map.McpPort] = "[<port>]",
         };
 
@@ -572,7 +566,6 @@ internal class Program
         Option<string?> ConnectManagedIdentity,
         Option<string?> ConnectSubscription,
         Option<string?> ConnectResourceGroup,
-        Option<string?> ConnectAccount,
         Option<bool> ConnectVSCodeCredential,
         Option<int?> McpPort,
         Option<bool> StartLspServer,
@@ -643,8 +636,6 @@ internal class Program
         public string? ConnectSubscription { get; set; }
 
         public string? ConnectResourceGroup { get; set; }
-
-        public string? ConnectAccount { get; set; }
 
         public bool ConnectVSCodeCredential { get; set; }
 

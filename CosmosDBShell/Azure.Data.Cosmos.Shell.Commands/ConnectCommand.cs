@@ -49,9 +49,6 @@ internal partial class ConnectCommand : CosmosCommand
     [CosmosOption("resource-group")]
     public string? ResourceGroupName { get; set; }
 
-    [CosmosOption("account")]
-    public string? AccountName { get; set; }
-
     [CosmosOption("vscode-credential", "connect-vscode-credential", Hidden = true)]
     public bool UseVSCodeCredential { get; init; }
 
@@ -94,7 +91,7 @@ internal partial class ConnectCommand : CosmosCommand
 
         try
         {
-            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, accountName: this.AccountName, token: token);
+            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, token: token);
             var returnState = new CommandState
             {
                 IsPrinted = true,

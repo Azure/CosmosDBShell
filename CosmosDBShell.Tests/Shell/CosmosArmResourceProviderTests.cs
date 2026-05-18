@@ -32,7 +32,6 @@ public class CosmosArmResourceProviderTests
             dataPlaneEndpoint: TestEndpoint,
             subscriptionId: null,
             resourceGroupName: null,
-            accountName: null,
             authorityHost: null,
             token: TestContext.Current.CancellationToken);
 
@@ -50,7 +49,6 @@ public class CosmosArmResourceProviderTests
             dataPlaneEndpoint: TestEndpoint,
             subscriptionId: "sub",
             resourceGroupName: "rg",
-            accountName: "acc",
             authorityHost: null,
             token: TestContext.Current.CancellationToken);
 
@@ -58,20 +56,16 @@ public class CosmosArmResourceProviderTests
     }
 
     [Theory]
-    [InlineData("sub", null, null)]
-    [InlineData(null, "rg", null)]
-    [InlineData(null, null, "acc")]
-    [InlineData("sub", null, "acc")]
-    [InlineData(null, "rg", "acc")]
-    [InlineData(" ", "rg", "acc")]
-    public async Task TryCreateContextAsync_PartialCoordinates_Throws(string? subscription, string? resourceGroup, string? account)
+    [InlineData("sub", null)]
+    [InlineData(null, "rg")]
+    [InlineData(" ", "rg")]
+    public async Task TryCreateContextAsync_PartialCoordinates_Throws(string? subscription, string? resourceGroup)
     {
         var ex = await Assert.ThrowsAsync<ShellException>(() => CosmosArmResourceProvider.TryCreateContextAsync(
             credential: new NoOpTokenCredential(),
             dataPlaneEndpoint: TestEndpoint,
             subscriptionId: subscription,
             resourceGroupName: resourceGroup,
-            accountName: account,
             authorityHost: null,
             token: TestContext.Current.CancellationToken));
 

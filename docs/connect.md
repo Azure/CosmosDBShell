@@ -29,9 +29,11 @@ ARM context is attached only for Entra ID credential flows: `VisualStudioCodeCre
 When ARM context is attached, the shell can discover the ARM account by matching the connected data-plane endpoint across accessible subscriptions. For deterministic startup, especially in CI/CD or multi-subscription environments, provide the coordinates explicitly:
 
 ```bash
-connect https://myaccount.documents.azure.com:443/ --tenant=<tenant-id> --subscription=<subscription-id> --resource-group=<resource-group> --account=<account-name>
-cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-tenant=<tenant-id> --connect-subscription=<subscription-id> --connect-resource-group=<resource-group> --connect-account=<account-name>
+connect https://myaccount.documents.azure.com:443/ --tenant=<tenant-id> --subscription=<subscription-id> --resource-group=<resource-group>
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-tenant=<tenant-id> --connect-subscription=<subscription-id> --connect-resource-group=<resource-group>
 ```
+
+The account name is inferred from the endpoint hostname (the first segment before `.documents.*`).
 
 When ARM is in use, the identity needs data-plane RBAC for item operations and Azure management-plane permissions for database/container resources, such as Cosmos DB Operator or equivalent scoped permissions on the account. When falling back to the data plane (account-key, emulator, static token), the connection's existing data-plane authority is used for all commands.
 
@@ -39,7 +41,7 @@ When ARM is in use, the identity needs data-plane RBAC for item operations and A
 
 Account-key connections, `COSMOSDB_SHELL_TOKEN` connections, and emulator connections do not attach an ARM context, so resource commands (`mkdb`, `mkcon`, `rmdb`, `rmcon`, `indexpolicy`, container `settings`) fall back to the data plane. If you connect to a real Azure Cosmos DB account that has [native data-plane RBAC](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-setup-rbac) enforced (key-based and control-plane writes disabled), those commands will be rejected by the service even with a valid static credential, because the request never reaches Azure Resource Manager.
 
-To use resource commands against such an account, connect with an Entra ID credential — `--tenant`, `--managed-identity`, `--connect-vscode-credential`, or the endpoint-only `DefaultAzureCredential` form — and (optionally) supply `--subscription`, `--resource-group`, and `--account` to skip ARM discovery.
+To use resource commands against such an account, connect with an Entra ID credential — `--tenant`, `--managed-identity`, `--connect-vscode-credential`, or the endpoint-only `DefaultAzureCredential` form — and (optionally) supply `--subscription` and `--resource-group` to skip ARM discovery.
 
 ## Examples
 
@@ -139,7 +141,7 @@ All connect options are also available as CLI startup arguments:
 ```bash
 cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-tenant=<tenant-id>
 cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-managed-identity=<client-id>
-cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-subscription=<subscription-id> --connect-resource-group=<resource-group> --connect-account=<account-name>
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-subscription=<subscription-id> --connect-resource-group=<resource-group>
 cosmosdbshell --connect https://localhost:8081
 ```
 

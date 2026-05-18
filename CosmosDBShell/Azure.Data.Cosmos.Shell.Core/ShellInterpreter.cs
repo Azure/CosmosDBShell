@@ -579,7 +579,7 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
-    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, string? subscriptionId = null, string? resourceGroupName = null, string? accountName = null, CancellationToken token = default)
+    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, string? subscriptionId = null, string? resourceGroupName = null, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
 
@@ -693,7 +693,7 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 var vscProps = await ReadAccountAsync(client, token);
-                await this.CompleteTokenConnectionAsync(client, vscCredential, vscProps.Id, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
+                await this.CompleteTokenConnectionAsync(client, vscCredential, vscProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -782,7 +782,7 @@ public partial class ShellInterpreter : IDisposable
                 throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
             }
 
-            await this.CompleteTokenConnectionAsync(client, credential, miProps.Id, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
+            await this.CompleteTokenConnectionAsync(client, credential, miProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
             return;
         }
 
@@ -817,7 +817,7 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 var entraProps = await ReadAccountAsync(client, token);
-                await this.CompleteTokenConnectionAsync(client, browserCredential, entraProps.Id, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
+                await this.CompleteTokenConnectionAsync(client, browserCredential, entraProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -868,7 +868,7 @@ public partial class ShellInterpreter : IDisposable
                     throw new ShellException(MessageService.GetString("error-connection_failed"), dcEx);
                 }
 
-                await this.CompleteTokenConnectionAsync(client, deviceCodeCredential, dcProps.Id, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
+                await this.CompleteTokenConnectionAsync(client, deviceCodeCredential, dcProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
         }
@@ -893,7 +893,7 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 var dacProps = await ReadAccountAsync(client, token);
-                await this.CompleteTokenConnectionAsync(client, dacCredential, dacProps.Id, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
+                await this.CompleteTokenConnectionAsync(client, dacCredential, dacProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -937,11 +937,10 @@ public partial class ShellInterpreter : IDisposable
         return builder.Uri;
     }
 
-    private static bool IsArmContextExplicitlyRequested(string? subscriptionId, string? resourceGroupName, string? accountName)
+    private static bool IsArmContextExplicitlyRequested(string? subscriptionId, string? resourceGroupName)
     {
         return !string.IsNullOrWhiteSpace(subscriptionId)
-            || !string.IsNullOrWhiteSpace(resourceGroupName)
-            || !string.IsNullOrWhiteSpace(accountName);
+            || !string.IsNullOrWhiteSpace(resourceGroupName);
     }
 
     private async Task CompleteTokenConnectionAsync(
@@ -950,11 +949,10 @@ public partial class ShellInterpreter : IDisposable
         string accountId,
         string? subscriptionId,
         string? resourceGroupName,
-        string? accountName,
         Uri? authorityHostUri,
         CancellationToken token)
     {
-        var explicitlyRequested = IsArmContextExplicitlyRequested(subscriptionId, resourceGroupName, accountName);
+        var explicitlyRequested = IsArmContextExplicitlyRequested(subscriptionId, resourceGroupName);
         if (!explicitlyRequested)
         {
             this.Connect(client);
@@ -963,7 +961,7 @@ public partial class ShellInterpreter : IDisposable
             ArmCosmosContext? discoveredArmContext;
             try
             {
-                discoveredArmContext = await this.TryDiscoverArmContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
+                discoveredArmContext = await this.TryDiscoverArmContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, authorityHostUri, token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -978,7 +976,7 @@ public partial class ShellInterpreter : IDisposable
             return;
         }
 
-        var armContext = await this.TryDiscoverArmContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, accountName, authorityHostUri, token);
+        var armContext = await this.TryDiscoverArmContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, authorityHostUri, token);
         this.Connect(client, armContext);
         WriteLine(MessageService.GetArgsString("command-connect-connected", "account", accountId));
     }
@@ -986,22 +984,21 @@ public partial class ShellInterpreter : IDisposable
     /// <summary>
     /// Wraps <see cref="CosmosArmResourceProvider.TryCreateContextAsync"/> so that an
     /// ARM discovery failure does not break a successful data-plane connection.
-    /// When the user explicitly supplied <paramref name="subscriptionId"/>,
-    /// <paramref name="resourceGroupName"/>, or <paramref name="accountName"/>, any
-    /// failure bubbles up because the user explicitly requested ARM. Otherwise the
-    /// failure is logged as a warning and discovery returns <c>null</c>; database
-    /// and container commands continue through the data-plane resource strategy.
+    /// When the user explicitly supplied <paramref name="subscriptionId"/> or
+    /// <paramref name="resourceGroupName"/>, any failure bubbles up because the user
+    /// explicitly requested ARM. Otherwise the failure is logged as a warning and
+    /// discovery returns <c>null</c>; database and container commands continue through
+    /// the data-plane resource strategy.
     /// </summary>
     private async Task<ArmCosmosContext?> TryDiscoverArmContextAsync(
         TokenCredential credential,
         Uri endpoint,
         string? subscriptionId,
         string? resourceGroupName,
-        string? accountName,
         Uri? authorityHostUri,
         CancellationToken token)
     {
-        var explicitlyRequested = IsArmContextExplicitlyRequested(subscriptionId, resourceGroupName, accountName);
+        var explicitlyRequested = IsArmContextExplicitlyRequested(subscriptionId, resourceGroupName);
 
         try
         {
@@ -1016,7 +1013,6 @@ public partial class ShellInterpreter : IDisposable
                 endpoint,
                 subscriptionId,
                 resourceGroupName,
-                accountName,
                 authorityHostUri,
                 timeoutTokenSource?.Token ?? token);
         }
@@ -1027,7 +1023,7 @@ public partial class ShellInterpreter : IDisposable
         catch (ShellException) when (explicitlyRequested)
         {
             // Localized validation/cycle errors should always reach the user when
-            // they explicitly opted into ARM via --subscription/--resource-group/--account.
+            // they explicitly opted into ARM via --subscription/--resource-group.
             throw;
         }
         catch (ShellException) when (!explicitlyRequested)
