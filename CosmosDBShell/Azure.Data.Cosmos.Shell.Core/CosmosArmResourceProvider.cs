@@ -15,6 +15,26 @@ using global::Azure.ResourceManager.CosmosDB.Models;
 
 internal static class CosmosArmResourceProvider
 {
+    private static readonly KnownArmCloud[] KnownArmClouds =
+    [
+        new(
+            ArmEnvironment.AzurePublicCloud,
+            ["login.microsoftonline.com"],
+            [".documents.azure.com"]),
+        new(
+            ArmEnvironment.AzureChina,
+            ["login.chinacloudapi.cn", "login.partner.microsoftonline.cn"],
+            [".documents.azure.cn"]),
+        new(
+            ArmEnvironment.AzureGovernment,
+            ["login.microsoftonline.us"],
+            [".documents.azure.us"]),
+        new(
+            ArmEnvironment.AzureGermany,
+            ["login.microsoftonline.de"],
+            [".documents.microsoftazure.de"]),
+    ];
+
     // Known limitation: when the connection has no token credential (account key,
     // COSMOSDB_SHELL_TOKEN, emulator), no ARM context is attached and the resource
     // facade falls back to the data plane. For a real Azure Cosmos DB account that
@@ -65,27 +85,19 @@ internal static class CosmosArmResourceProvider
     /// Maps a credential authority host (or, when absent, the data-plane Cosmos
     /// endpoint suffix) to the matching <see cref="ArmEnvironment"/>. Falls back
     /// to <see cref="ArmEnvironment.AzurePublicCloud"/> when the host does not
-    /// look like a known sovereign cloud, which preserves the prior default.
+    /// look like a known Azure cloud, which preserves the prior default.
     /// </summary>
     internal static ArmEnvironment ResolveArmEnvironment(Uri? authorityHost, Uri dataPlaneEndpoint)
     {
         var host = authorityHost?.Host;
         if (!string.IsNullOrEmpty(host))
         {
-            if (host.EndsWith("login.microsoftonline.us", StringComparison.OrdinalIgnoreCase))
+            foreach (var cloud in KnownArmClouds)
             {
-                return ArmEnvironment.AzureGovernment;
-            }
-
-            if (host.EndsWith("login.chinacloudapi.cn", StringComparison.OrdinalIgnoreCase) ||
-                host.EndsWith("login.partner.microsoftonline.cn", StringComparison.OrdinalIgnoreCase))
-            {
-                return ArmEnvironment.AzureChina;
-            }
-
-            if (host.EndsWith("login.microsoftonline.de", StringComparison.OrdinalIgnoreCase))
-            {
-                return ArmEnvironment.AzureGermany;
+                if (cloud.AuthorityHosts.Any(authorityHost => host.EndsWith(authorityHost, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return cloud.Environment;
+                }
             }
         }
 
@@ -93,19 +105,12 @@ internal static class CosmosArmResourceProvider
         // pass --authority-host (sovereign-cloud users typically still use the
         // default authority on a sovereign endpoint).
         var endpointHost = dataPlaneEndpoint.Host;
-        if (endpointHost.EndsWith(".documents.azure.us", StringComparison.OrdinalIgnoreCase))
+        foreach (var cloud in KnownArmClouds)
         {
-            return ArmEnvironment.AzureGovernment;
-        }
-
-        if (endpointHost.EndsWith(".documents.azure.cn", StringComparison.OrdinalIgnoreCase))
-        {
-            return ArmEnvironment.AzureChina;
-        }
-
-        if (endpointHost.EndsWith(".documents.microsoftazure.de", StringComparison.OrdinalIgnoreCase))
-        {
-            return ArmEnvironment.AzureGermany;
+            if (cloud.CosmosEndpointSuffixes.Any(suffix => endpointHost.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)))
+            {
+                return cloud.Environment;
+            }
         }
 
         return ArmEnvironment.AzurePublicCloud;
@@ -347,4 +352,9 @@ internal static class CosmosArmResourceProvider
     {
         return Uri.Compare(left, right, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0;
     }
+
+    private sealed record KnownArmCloud(
+        ArmEnvironment Environment,
+        IReadOnlyList<string> AuthorityHosts,
+        IReadOnlyList<string> CosmosEndpointSuffixes);
 }
