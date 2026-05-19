@@ -215,8 +215,8 @@ Start the shell with options to customize behavior:
 | `--connect-hint <hint>` | Login hint for browser auth at startup |
 | `--connect-authority-host <url>` | Authority host URL at startup |
 | `--connect-managed-identity <id>` | User-assigned managed identity client ID at startup |
-| `--connect-subscription <id>` | Azure subscription ID for database/container ARM operations at startup |
-| `--connect-resource-group <name>` | Azure resource group name for database/container ARM operations at startup |
+| `--connect-subscription <id>` | Azure subscription ID for ARM database and container operations at startup |
+| `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations at startup |
 | `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
 | `--color-system <n>` | Color scheme: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
 | `--clear-history` | Clear command history on start |

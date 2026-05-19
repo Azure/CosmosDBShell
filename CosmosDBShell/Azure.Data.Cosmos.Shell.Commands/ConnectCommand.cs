@@ -19,6 +19,7 @@ using Spectre.Console;
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -hint=user@contoso.com", Description = "Connect using Entra ID authentication with login hint")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -mode=gateway", Description = "Connect using Entra ID with gateway connection mode")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -managed-identity=<client-id>", Description = "Connect using a user-assigned managed identity")]
+[CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -subscription=<subscription-id> -resource-group=<resource-group>", Description = "Connect using Entra ID with an explicit Azure Resource Manager subscription and resource group (skips ARM auto-discovery)")]
 internal partial class ConnectCommand : CosmosCommand
 {
     // internal static readonly string EntraRedirectUrl = "https://login.microsoftonline.com/common/oauth2/nativeclient";
