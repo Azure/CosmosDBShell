@@ -57,7 +57,7 @@ internal class IndexPolicyCommand : CosmosCommand, IStateVisitor<CommandState, S
     {
         if (!string.IsNullOrEmpty(this.Database) && !string.IsNullOrEmpty(this.Container))
         {
-            return await this.ExecuteOnContainerAsync(state.Client, this.Database, this.Container, token);
+            return await this.ExecuteOnContainerAsync(state, this.Database, this.Container, token);
         }
 
         throw new NotInContainerException("indexpolicy");
@@ -69,7 +69,7 @@ internal class IndexPolicyCommand : CosmosCommand, IStateVisitor<CommandState, S
 
         if (!string.IsNullOrEmpty(this.Container))
         {
-            return await this.ExecuteOnContainerAsync(state.Client, databaseName, this.Container, token);
+            return await this.ExecuteOnContainerAsync(state, databaseName, this.Container, token);
         }
 
         throw new NotInContainerException("indexpolicy");
@@ -80,20 +80,20 @@ internal class IndexPolicyCommand : CosmosCommand, IStateVisitor<CommandState, S
         string databaseName = this.Database ?? state.DatabaseName;
         string containerName = this.Container ?? state.ContainerName;
 
-        return await this.ExecuteOnContainerAsync(state.Client, databaseName, containerName, token);
+        return await this.ExecuteOnContainerAsync(state, databaseName, containerName, token);
     }
 
-    private static async Task<CommandState> ReadIndexPolicyAsync(Container container, CancellationToken token)
+    private static async Task<CommandState> ReadIndexPolicyAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
     {
-        var containerResponse = await container.ReadContainerAsync(cancellationToken: token);
-        var resource = containerResponse.Resource;
-        if (resource == null)
+        string json;
+        try
         {
-            throw new CommandException("indexpolicy", MessageService.GetString("error-unable_to_read_container"));
+            json = await CosmosResourceFacade.GetIndexingPolicyJsonAsync(state, databaseName, containerName, token);
         }
-
-        var indexingPolicy = resource.IndexingPolicy;
-        var json = Newtonsoft.Json.JsonConvert.SerializeObject(indexingPolicy, Newtonsoft.Json.Formatting.Indented);
+        catch (IndexPolicyMissingException ex)
+        {
+            throw new CommandException("indexpolicy", MessageService.GetString("command-indexpolicy-error_no_policy"), ex);
+        }
 
         ShellInterpreter.WriteLine(json);
 
@@ -106,50 +106,34 @@ internal class IndexPolicyCommand : CosmosCommand, IStateVisitor<CommandState, S
         return commandState;
     }
 
-    private async Task<CommandState> ExecuteOnContainerAsync(CosmosClient client, string databaseName, string containerName, CancellationToken token)
+    private async Task<CommandState> ExecuteOnContainerAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
     {
-        await ValidateContainerExistsAsync(client, databaseName, containerName, "indexpolicy", token);
-
-        var container = client.GetDatabase(databaseName).GetContainer(containerName);
+        await ValidateContainerExistsAsync(state, databaseName, containerName, "indexpolicy", token);
 
         if (string.IsNullOrEmpty(this.Policy))
         {
-            return await ReadIndexPolicyAsync(container, token);
+            return await ReadIndexPolicyAsync(state, databaseName, containerName, token);
         }
 
-        return await this.WriteIndexPolicyAsync(container, token);
+        return await this.WriteIndexPolicyAsync(state, databaseName, containerName, token);
     }
 
-    private async Task<CommandState> WriteIndexPolicyAsync(Container container, CancellationToken token)
+    private async Task<CommandState> WriteIndexPolicyAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
     {
-        IndexingPolicy indexingPolicy;
+        string updatedJson;
         try
         {
-            indexingPolicy = Newtonsoft.Json.JsonConvert.DeserializeObject<IndexingPolicy>(this.Policy!)
-                ?? throw new CommandException("indexpolicy", MessageService.GetString("command-indexpolicy-error_invalid_policy"));
+            updatedJson = await CosmosResourceFacade.ReplaceIndexingPolicyAsync(state, databaseName, containerName, this.Policy!, token);
         }
-        catch (Newtonsoft.Json.JsonException ex)
+        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException)
         {
             throw new CommandException("indexpolicy", MessageService.GetString("command-indexpolicy-error_invalid_policy"), ex);
         }
 
-        var containerResponse = await container.ReadContainerAsync(cancellationToken: token);
-        var resource = containerResponse.Resource;
-        if (resource == null)
-        {
-            throw new CommandException("indexpolicy", MessageService.GetString("error-unable_to_read_container"));
-        }
-
-        resource.IndexingPolicy = indexingPolicy;
-        var replaceResponse = await container.ReplaceContainerAsync(resource, cancellationToken: token);
-
-        var updatedPolicy = replaceResponse.Resource.IndexingPolicy;
-        var json = Newtonsoft.Json.JsonConvert.SerializeObject(updatedPolicy, Newtonsoft.Json.Formatting.Indented);
-
         ShellInterpreter.WriteLine(MessageService.GetString("command-indexpolicy-updated"));
-        ShellInterpreter.WriteLine(json);
+        ShellInterpreter.WriteLine(updatedJson);
 
-        using var jsonDoc = JsonDocument.Parse(json);
+        using var jsonDoc = JsonDocument.Parse(updatedJson);
         var commandState = new CommandState
         {
             IsPrinted = true,

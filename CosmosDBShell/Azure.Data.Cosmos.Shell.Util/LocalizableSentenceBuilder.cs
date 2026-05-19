@@ -32,6 +32,10 @@ public static class LocalizableSentenceBuilder
 
     public static string ConnectManagedIdentity => MessageService.GetString("help-ConnectManagedIdentity");
 
+    public static string ConnectSubscription => MessageService.GetString("help-ConnectSubscription");
+
+    public static string ConnectResourceGroup => MessageService.GetString("help-ConnectResourceGroup");
+
     public static string ConnectVSCodeCredential => MessageService.GetString("help-ConnectVSCodeCredential");
 
     public static string Command => MessageService.GetString("help-cmd");

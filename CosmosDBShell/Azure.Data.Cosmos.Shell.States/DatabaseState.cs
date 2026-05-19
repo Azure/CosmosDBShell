@@ -4,7 +4,9 @@
 
 namespace Azure.Data.Cosmos.Shell.States;
 
-internal class DatabaseState(string databaseName, CosmosClient cosmosClient) : ConnectedState(cosmosClient)
+using Azure.Data.Cosmos.Shell.Core;
+
+internal class DatabaseState(string databaseName, CosmosClient cosmosClient, ArmCosmosContext? armContext = null) : ConnectedState(cosmosClient, armContext)
 {
     public string DatabaseName { get; init; } = databaseName;
 

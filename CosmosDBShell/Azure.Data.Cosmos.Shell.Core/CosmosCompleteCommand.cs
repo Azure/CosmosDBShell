@@ -19,6 +19,14 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
     private const string Index = nameof(Index);
     private static readonly TimeSpan RefreshAfter = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// Hard cap on a single completion-refresh call. The hybrid resource facade may
+    /// route enumeration through Azure Resource Manager, where network or auth
+    /// hiccups can stall indefinitely. Completions are advisory, so failing fast
+    /// keeps the refresh task pool from filling up with stuck background work.
+    /// </summary>
+    private static readonly TimeSpan RefreshTimeout = TimeSpan.FromSeconds(5);
+
     private static readonly ConcurrentDictionary<string, CompletionCacheEntry> DatabaseCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, CompletionCacheEntry> ContainerCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, long> DatabaseRefreshTasks = new(StringComparer.OrdinalIgnoreCase);
@@ -266,10 +274,11 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
 
     private static async Task<string[]> GetDatabasesAsync(ConnectedState state)
     {
+        using var cts = new CancellationTokenSource(RefreshTimeout);
         var result = new List<string>();
-        await foreach (var database in EnumerateDatabasesAsync(state.Client))
+        await foreach (var name in CosmosResourceFacade.GetDatabaseNamesAsync(state, cts.Token).WithCancellation(cts.Token))
         {
-            result.Add(database.Id);
+            result.Add(name);
         }
 
         return [.. result];
@@ -277,43 +286,14 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
 
     private static async Task<string[]> GetContainersAsync(DatabaseState state)
     {
+        using var cts = new CancellationTokenSource(RefreshTimeout);
         var result = new List<string>();
-        await foreach (var container in EnumerateContainersAsync(state.Client.GetDatabase(state.DatabaseName)))
+        await foreach (var name in CosmosResourceFacade.GetContainerNamesAsync(state, state.DatabaseName, cts.Token).WithCancellation(cts.Token))
         {
-            result.Add(container.Id);
+            result.Add(name);
         }
 
         return [.. result];
-    }
-
-    private static async IAsyncEnumerable<DatabaseProperties> EnumerateDatabasesAsync(CosmosClient client)
-    {
-        using var feedIterator = client.GetDatabaseQueryIterator<DatabaseProperties>("SELECT * FROM c");
-        await foreach (var item in EnumerateFeedAsync(feedIterator))
-        {
-            yield return item;
-        }
-    }
-
-    private static async IAsyncEnumerable<ContainerProperties> EnumerateContainersAsync(Database database)
-    {
-        using var feedIterator = database.GetContainerQueryIterator<ContainerProperties>("SELECT * FROM c");
-        await foreach (var item in EnumerateFeedAsync(feedIterator))
-        {
-            yield return item;
-        }
-    }
-
-    private static async IAsyncEnumerable<T> EnumerateFeedAsync<T>(FeedIterator<T> feedIterator)
-    {
-        while (feedIterator.HasMoreResults)
-        {
-            var response = await feedIterator.ReadNextAsync();
-            foreach (var container in response)
-            {
-                yield return container;
-            }
-        }
     }
 
     private sealed record CompletionCacheEntry(string[] Items, DateTimeOffset RefreshedAt);

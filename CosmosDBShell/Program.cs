@@ -90,6 +90,8 @@ internal class Program
                 ConnectHint = parseResult.GetValueForOption(optionMap.ConnectHint),
                 ConnectAuthorityHost = parseResult.GetValueForOption(optionMap.ConnectAuthorityHost),
                 ConnectManagedIdentity = parseResult.GetValueForOption(optionMap.ConnectManagedIdentity),
+                ConnectSubscription = parseResult.GetValueForOption(optionMap.ConnectSubscription),
+                ConnectResourceGroup = parseResult.GetValueForOption(optionMap.ConnectResourceGroup),
                 ConnectVSCodeCredential = parseResult.GetValueForOption(optionMap.ConnectVSCodeCredential),
                 StartLspServer = parseResult.GetValueForOption(optionMap.StartLspServer),
                 LspStdio = parseResult.GetValueForOption(optionMap.LspStdio),
@@ -157,6 +159,8 @@ internal class Program
                         authorityHost: o.ConnectAuthorityHost,
                         managedIdentityClientId: o.ConnectManagedIdentity,
                         useVSCodeCredential: o.ConnectVSCodeCredential,
+                        subscriptionId: o.ConnectSubscription,
+                        resourceGroupName: o.ConnectResourceGroup,
                         token: connectToken);
                 }
                 catch (OperationCanceledException) when (connectToken.IsCancellationRequested)
@@ -423,6 +427,8 @@ internal class Program
         var connectHint = new Option<string?>("--connect-hint", MessageService.GetString("help-ConnectHint"));
         var connectAuthorityHost = new Option<string?>("--connect-authority-host", MessageService.GetString("help-ConnectAuthorityHost"));
         var connectManagedIdentity = new Option<string?>("--connect-managed-identity", MessageService.GetString("help-ConnectManagedIdentity"));
+        var connectSubscription = new Option<string?>("--connect-subscription", MessageService.GetString("help-ConnectSubscription"));
+        var connectResourceGroup = new Option<string?>("--connect-resource-group", MessageService.GetString("help-ConnectResourceGroup"));
         var connectVSCodeCredential = new Option<bool>("--connect-vscode-credential", MessageService.GetString("help-ConnectVSCodeCredential"))
         {
             IsHidden = true,
@@ -452,6 +458,8 @@ internal class Program
             connectHint,
             connectAuthorityHost,
             connectManagedIdentity,
+            connectSubscription,
+            connectResourceGroup,
             connectVSCodeCredential,
             mcpPort,
             startLspServer,
@@ -470,6 +478,8 @@ internal class Program
             connectHint,
             connectAuthorityHost,
             connectManagedIdentity,
+            connectSubscription,
+            connectResourceGroup,
             connectVSCodeCredential,
             mcpPort,
             startLspServer,
@@ -496,6 +506,8 @@ internal class Program
             [map.ConnectHint] = "<hint>",
             [map.ConnectAuthorityHost] = "<url>",
             [map.ConnectManagedIdentity] = "<id>",
+            [map.ConnectSubscription] = "<id>",
+            [map.ConnectResourceGroup] = "<name>",
             [map.McpPort] = "[<port>]",
         };
 
@@ -552,6 +564,8 @@ internal class Program
         Option<string?> ConnectHint,
         Option<string?> ConnectAuthorityHost,
         Option<string?> ConnectManagedIdentity,
+        Option<string?> ConnectSubscription,
+        Option<string?> ConnectResourceGroup,
         Option<bool> ConnectVSCodeCredential,
         Option<int?> McpPort,
         Option<bool> StartLspServer,
@@ -618,6 +632,10 @@ internal class Program
         public string? ConnectAuthorityHost { get; set; }
 
         public string? ConnectManagedIdentity { get; set; }
+
+        public string? ConnectSubscription { get; set; }
+
+        public string? ConnectResourceGroup { get; set; }
 
         public bool ConnectVSCodeCredential { get; set; }
 

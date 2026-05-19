@@ -41,7 +41,7 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
     {
         if (!string.IsNullOrEmpty(this.Database))
         {
-            return await this.RemoveContainerAsync(state.Client, this.Database, token);
+            return await this.RemoveContainerAsync(state, this.Database, token);
         }
 
         throw new NotInDatabaseException("rmcon");
@@ -51,42 +51,41 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
     {
         if (!string.IsNullOrEmpty(this.Database))
         {
-            return await this.RemoveContainerAsync(state.Client, this.Database, token);
+            return await this.RemoveContainerAsync(state, this.Database, token);
         }
 
-        return await this.RemoveContainerAsync(state.Client, state.DatabaseName, token);
+        return await this.RemoveContainerAsync(state, state.DatabaseName, token);
     }
 
     async Task<ExitCode> IStateVisitor<ExitCode, ShellInterpreter>.VisitContainerStateAsync(ContainerState state, ShellInterpreter shell, CancellationToken token)
     {
         if (!string.IsNullOrEmpty(this.Database))
         {
-            return await this.RemoveContainerAsync(state.Client, this.Database, token);
+            return await this.RemoveContainerAsync(state, this.Database, token);
         }
 
         throw new NotInContainerException("rmcon");
     }
 
-    private async Task<ExitCode> RemoveContainerAsync(CosmosClient client, string databaseName, CancellationToken token)
+    private async Task<ExitCode> RemoveContainerAsync(ConnectedState state, string databaseName, CancellationToken token)
     {
         // Validate database exists
-        await ValidateDatabaseExistsAsync(client, databaseName, "rmcon", token);
+        await ValidateDatabaseExistsAsync(state, databaseName, "rmcon", token);
 
-        await foreach (var containerProperty in EnumerateContainersAsync(client.GetDatabase(databaseName)))
+        await foreach (var containerName in EnumerateContainerNamesAsync(state, databaseName, "rmcon", token))
         {
             if (token.IsCancellationRequested)
             {
                 return -1;
             }
 
-            if (containerProperty.Id == this.Name)
+            if (containerName == this.Name)
             {
-                var c = client.GetContainer(databaseName, this.Name);
                 if (this.Force == true || ShellInterpreter.Confirm("command-rmcon-confirm_container_deletion"))
                 {
-                    await c.DeleteContainerAsync(cancellationToken: token);
+                    await CosmosResourceFacade.DeleteContainerAsync(state, databaseName, containerName, token);
                     CosmosCompleteCommand.ClearContainers();
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-deleted_container", new Dictionary<string, object> { { "container", containerProperty.Id } }));
+                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-deleted_container", new Dictionary<string, object> { { "container", containerName } }));
                 }
 
                 return 0;
