@@ -73,6 +73,7 @@ internal class SettingsCommand : CosmosCommand
 
     private static async Task<CommandState> ShowContainerSettingsAsync(ConnectedState state, string databaseName, string containerName, CommandState commandState, CancellationToken token)
     {
+        await ValidateContainerExistsAsync(state, databaseName, containerName, "settings", token);
         var view = await CosmosResourceFacade.GetContainerSettingsAsync(state, databaseName, containerName, token);
         var mcpTable = new Dictionary<string, object?>();
 
