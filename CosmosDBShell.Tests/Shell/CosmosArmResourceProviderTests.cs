@@ -100,6 +100,10 @@ public class CosmosArmResourceProviderTests
     [InlineData(null, "https://example.documents.microsoftazure.de:443/", "https://management.microsoftazure.de/")]
     [InlineData(null, "https://example.documents.azure.com:443/", "https://management.azure.com/")]
     [InlineData("https://login.microsoftonline.com/", "https://example.documents.azure.com:443/", "https://management.azure.com/")]
+
+    // Heuristic fallback: unknown authority host of the form login.X is mapped to management.X.
+    [InlineData("https://login.future-sovereign.example/", "https://example.documents.future-sovereign.example:443/", "https://management.future-sovereign.example/")]
+    [InlineData("https://login.partner.cloud.example/", "https://example.documents.partner.cloud.example:443/", "https://management.partner.cloud.example/")]
     public void ResolveArmEnvironment_PicksMatchingCloud(string? authorityHost, string dataPlaneEndpoint, string expectedArmEndpoint)
     {
         var authority = authorityHost is null ? null : new Uri(authorityHost);

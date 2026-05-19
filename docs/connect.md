@@ -108,6 +108,13 @@ For sovereign clouds or custom Entra environments, use `--authority-host`:
 connect https://myaccount.documents.azure.com:443/ --authority-host=https://login.microsoftonline.us/
 ```
 
+When `--subscription` and `--resource-group` are supplied, the shell also needs to pick an Azure Resource Manager endpoint for control-plane operations (mkdb, mkcon, rmdb, rmcon, indexpolicy). It resolves the ARM endpoint in this order:
+
+1. Match the authority host against the built-in table of known Azure clouds (Public, China, US Gov, Germany).
+2. If no match, match the Cosmos endpoint suffix (e.g. `.documents.azure.us`) against the same table.
+3. If still no match and the authority host is of the form `login.<rest>`, derive `https://management.<rest>` as the ARM endpoint. This covers additional national / sovereign clouds whose ARM metadata follows the `login.X` → `management.X` convention (for example `login.chinacloudapi.cn` → `management.chinacloudapi.cn`). The Public, US Gov, and Germany clouds deliberately do *not* follow that pattern, which is why the explicit table is consulted first.
+4. Otherwise default to Azure Public.
+
 ## COSMOSDB_SHELL_ACCOUNT_KEY Environment Variable
 
 This environment variable provides an account key for authentication:

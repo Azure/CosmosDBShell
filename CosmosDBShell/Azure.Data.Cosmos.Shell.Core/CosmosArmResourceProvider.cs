@@ -83,9 +83,22 @@ internal static class CosmosArmResourceProvider
 
     /// <summary>
     /// Maps a credential authority host (or, when absent, the data-plane Cosmos
-    /// endpoint suffix) to the matching <see cref="ArmEnvironment"/>. Falls back
-    /// to <see cref="ArmEnvironment.AzurePublicCloud"/> when the host does not
-    /// look like a known Azure cloud, which preserves the prior default.
+    /// endpoint suffix) to the matching <see cref="ArmEnvironment"/>.
+    /// <para>
+    /// Resolution order:
+    /// </para>
+    /// <list type="number">
+    ///   <item><description>Exact match against the <see cref="KnownArmClouds"/> table by authority host.</description></item>
+    ///   <item><description>Exact match against the <see cref="KnownArmClouds"/> table by Cosmos endpoint suffix.</description></item>
+    ///   <item><description>Heuristic fallback: when <paramref name="authorityHost"/> starts with <c>login.</c>,
+    ///     construct an <see cref="ArmEnvironment"/> by substituting <c>login.</c> with <c>management.</c>.
+    ///     This covers additional sovereign or regional clouds that are not in the SDK's static
+    ///     <see cref="ArmEnvironment"/> set (for example new national clouds) and works because the
+    ///     <c>resourceManager</c> entries in the ARM metadata document for such clouds follow that
+    ///     convention. Note: it does not hold for Azure Public, US Gov, or Germany, but those are
+    ///     already handled by the explicit table above.</description></item>
+    ///   <item><description>Final fallback: <see cref="ArmEnvironment.AzurePublicCloud"/>.</description></item>
+    /// </list>
     /// </summary>
     internal static ArmEnvironment ResolveArmEnvironment(Uri? authorityHost, Uri dataPlaneEndpoint)
     {
@@ -113,7 +126,35 @@ internal static class CosmosArmResourceProvider
             }
         }
 
+        // Heuristic fallback for unknown / future sovereign clouds: when the user
+        // supplied an --authority-host of the form `login.<rest>` and it did not
+        // match any known cloud, derive `management.<rest>` as the ARM endpoint.
+        // This matches the convention used by the ARM metadata document for
+        // sovereign clouds (e.g. login.chinacloudapi.cn -> management.chinacloudapi.cn).
+        // The known clouds above (Public / US Gov / Germany) deliberately do not
+        // follow this substitution, which is why the explicit table is consulted first.
+        if (TryInferArmEnvironmentFromAuthority(host, out var inferred))
+        {
+            return inferred;
+        }
+
         return ArmEnvironment.AzurePublicCloud;
+    }
+
+    private static bool TryInferArmEnvironmentFromAuthority(string? authorityHost, out ArmEnvironment environment)
+    {
+        const string LoginPrefix = "login.";
+        if (!string.IsNullOrEmpty(authorityHost)
+            && authorityHost.StartsWith(LoginPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var managementHost = "management." + authorityHost[LoginPrefix.Length..];
+            var url = $"https://{managementHost}";
+            environment = new ArmEnvironment(new Uri(url), url + "/");
+            return true;
+        }
+
+        environment = default;
+        return false;
     }
 
     internal static string GetAccountNameFromEndpoint(Uri dataPlaneEndpoint)
