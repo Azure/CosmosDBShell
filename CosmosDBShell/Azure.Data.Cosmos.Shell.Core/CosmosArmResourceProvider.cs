@@ -306,9 +306,6 @@ internal static class CosmosArmResourceProvider
 
     private static async Task<ArmCosmosContext?> DiscoverContextAsync(ArmClient armClient, Uri dataPlaneEndpoint, CancellationToken token)
     {
-        CosmosDBAccountResource? singleMatch = null;
-        bool multipleMatches = false;
-
         await foreach (var subscription in armClient.GetSubscriptions().GetAllAsync(token))
         {
             await foreach (var account in subscription.GetCosmosDBAccountsAsync(token))
@@ -318,43 +315,19 @@ internal static class CosmosArmResourceProvider
                     continue;
                 }
 
-                if (singleMatch is null)
-                {
-                    singleMatch = account;
-                    continue;
-                }
-
-                // We already have one match; finding a second is enough to know the discovery
-                // is ambiguous, so stop scanning further subscriptions/accounts.
-                multipleMatches = true;
-                break;
-            }
-
-            if (multipleMatches)
-            {
-                break;
+                var id = account.Id;
+                return new ArmCosmosContext(
+                    armClient,
+                    id,
+                    id.SubscriptionId ?? string.Empty,
+                    id.ResourceGroupName ?? string.Empty,
+                    account.Data.Name,
+                    new Uri(account.Data.DocumentEndpoint),
+                    account);
             }
         }
 
-        if (multipleMatches)
-        {
-            throw new ShellException(MessageService.GetString("error-arm-context-ambiguous"));
-        }
-
-        if (singleMatch is null)
-        {
-            return null;
-        }
-
-        var id = singleMatch.Id;
-        return new ArmCosmosContext(
-            armClient,
-            id,
-            id.SubscriptionId ?? string.Empty,
-            id.ResourceGroupName ?? string.Empty,
-            singleMatch.Data.Name,
-            new Uri(singleMatch.Data.DocumentEndpoint),
-            singleMatch);
+        return null;
     }
 
     private static void ValidateEndpoint(Uri dataPlaneEndpoint, Uri armEndpoint)
