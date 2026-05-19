@@ -6,6 +6,7 @@ namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Net;
 using System.Runtime.CompilerServices;
+using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 using Newtonsoft.Json;
 
@@ -137,7 +138,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     public async Task<ContainerSettingsView> GetContainerSettingsAsync(string databaseName, string containerName, CancellationToken token)
     {
         var dpResponse = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
-        var properties = dpResponse.Resource;
+        var properties = GetContainerPropertiesOrThrow(dpResponse);
         int? dpMin = null;
         int? dpMax = null;
         ThroughputAvailability dpAvailability = ThroughputAvailability.Available;
@@ -189,7 +190,8 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     public async Task<string> GetIndexingPolicyJsonAsync(string databaseName, string containerName, CancellationToken token)
     {
         var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
-        var policy = response.Resource?.IndexingPolicy
+        var properties = GetContainerPropertiesOrThrow(response);
+        var policy = properties.IndexingPolicy
             ?? throw new IndexPolicyMissingException();
         return JsonConvert.SerializeObject(policy, Formatting.Indented);
     }
@@ -198,11 +200,16 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     {
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
         var current = await container.ReadContainerAsync(cancellationToken: token);
-        var props = current.Resource;
+        var props = GetContainerPropertiesOrThrow(current);
         var policy = ParseIndexingPolicy(indexPolicyJson);
         props.IndexingPolicy = policy;
         var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
         return JsonConvert.SerializeObject(replaced.Resource?.IndexingPolicy ?? policy, Formatting.Indented);
+    }
+
+    private static ContainerProperties GetContainerPropertiesOrThrow(ContainerResponse response)
+    {
+        return response.Resource ?? throw new ShellException(MessageService.GetString("error-unable_to_read_container"));
     }
 
     private static IndexingPolicy ParseIndexingPolicy(string indexPolicyJson)
