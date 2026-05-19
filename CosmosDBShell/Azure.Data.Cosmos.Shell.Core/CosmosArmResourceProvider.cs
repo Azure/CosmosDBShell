@@ -364,7 +364,12 @@ internal static class CosmosArmResourceProvider
     {
         if (!EndpointEquals(dataPlaneEndpoint, armEndpoint))
         {
-            throw new InvalidOperationException($"The ARM account endpoint '{armEndpoint}' does not match the connected Cosmos DB endpoint '{dataPlaneEndpoint}'.");
+            throw new ShellException(MessageService.GetArgsString(
+                "error-arm-context-endpoint-mismatch",
+                "armEndpoint",
+                armEndpoint.ToString(),
+                "dataPlaneEndpoint",
+                dataPlaneEndpoint.ToString()));
         }
     }
 

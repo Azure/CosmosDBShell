@@ -65,7 +65,8 @@ error-shell-not-initialized = Shell is not initialized
 error-unable_to_read_container = Unable to read container.
 error-arm-context-required = Database and container resource operations require Azure Resource Manager context. Reconnect with Entra ID and provide --subscription and --resource-group, or use an identity that can discover the Cosmos DB account through ARM.
 error-arm-context-incomplete = Provide subscription and resource group together to use an explicit Azure Resource Manager account context. The account name is inferred from the endpoint.
-error-arm-context-ambiguous = Multiple Cosmos DB Azure Resource Manager accounts match the connected endpoint. Reconnect and provide subscription, resource group, and account name explicitly.
+error-arm-context-ambiguous = Multiple Cosmos DB Azure Resource Manager accounts match the connected endpoint. Reconnect and provide subscription and resource group explicitly.
+error-arm-context-endpoint-mismatch = The Azure Resource Manager account endpoint '{ $armEndpoint }' does not match the connected Cosmos DB endpoint '{ $dataPlaneEndpoint }'. Reconnect with the subscription and resource group that own the connected account.
 
 help-usage = Usage: { $command }
 help-usage-heading = Usage
