@@ -693,7 +693,7 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 var vscProps = await ReadAccountAsync(client, token);
-                await this.CompleteTokenConnectionAsync(client, vscCredential, vscProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
+                await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, vscCredential, vscProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -782,7 +782,7 @@ public partial class ShellInterpreter : IDisposable
                 throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
             }
 
-            await this.CompleteTokenConnectionAsync(client, credential, miProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
+            await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, credential, miProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
             return;
         }
 
@@ -817,7 +817,7 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 var entraProps = await ReadAccountAsync(client, token);
-                await this.CompleteTokenConnectionAsync(client, browserCredential, entraProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
+                await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, browserCredential, entraProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -868,7 +868,7 @@ public partial class ShellInterpreter : IDisposable
                     throw new ShellException(MessageService.GetString("error-connection_failed"), dcEx);
                 }
 
-                await this.CompleteTokenConnectionAsync(client, deviceCodeCredential, dcProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
+                await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, deviceCodeCredential, dcProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
         }
@@ -893,7 +893,7 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 var dacProps = await ReadAccountAsync(client, token);
-                await this.CompleteTokenConnectionAsync(client, dacCredential, dacProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
+                await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, dacCredential, dacProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -979,6 +979,30 @@ public partial class ShellInterpreter : IDisposable
         var armContext = await this.TryDiscoverArmContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, authorityHostUri, token);
         this.Connect(client, armContext);
         WriteLine(MessageService.GetArgsString("command-connect-connected", "account", accountId));
+    }
+
+    private async Task CompleteTokenConnectionAndDisposeOnFailureAsync(
+        CosmosClient client,
+        TokenCredential credential,
+        string accountId,
+        string? subscriptionId,
+        string? resourceGroupName,
+        Uri? authorityHostUri,
+        CancellationToken token)
+    {
+        try
+        {
+            await this.CompleteTokenConnectionAsync(client, credential, accountId, subscriptionId, resourceGroupName, authorityHostUri, token);
+        }
+        catch
+        {
+            if (this.State is not ConnectedState connectedState || !ReferenceEquals(connectedState.Client, client))
+            {
+                client.Dispose();
+            }
+
+            throw;
+        }
     }
 
     /// <summary>

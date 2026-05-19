@@ -6,12 +6,9 @@ namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.ClientModel.Primitives;
 using System.Net;
-using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Util;
 using global::Azure;
 using global::Azure.Core;
-using global::Azure.Core.Pipeline;
-using global::Azure.Identity;
 using global::Azure.ResourceManager;
 using global::Azure.ResourceManager.CosmosDB;
 using global::Azure.ResourceManager.CosmosDB.Models;
