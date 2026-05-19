@@ -42,6 +42,8 @@ The MCP server runs locally with your user permissions. Connected clients can ex
 
 Database and container resource actions are executed through Azure Resource Manager when an ARM context is attached (Entra ID connections). MCP sessions connected with account keys, emulator credentials, or static data-plane tokens fall back to the Cosmos DB data plane for these actions.
 
+For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.
+
 ### Data Exposure
 
 Your MCP client may use a remote LLM. Command outputs, query results, and file contents could be transmitted to external services. **Treat all shell output as potentially shared.**
