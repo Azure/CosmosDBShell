@@ -5,11 +5,14 @@
        a Major.Minor bump cleanly resets the patch to 0. NBGV sets Version,
        FileVersion, AssemblyVersion, AssemblyInformationalVersion, and
        PackageVersion automatically for both local and CI builds. -->
-  <ItemGroup>
-    <!-- VersionOverride lets this PackageReference work both with central
-         package management (used by most projects) and with local package
-         management (CosmosDBShell.Fuzzer). Keep this version aligned with
-         the entry in Directory.Packages.props. -->
-    <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" VersionOverride="3.9.50" />
+  <!-- Most projects use central package management; the version is sourced
+       from Directory.Packages.props. -->
+  <ItemGroup Condition="'$(ManagePackageVersionsCentrally)' != 'false'">
+    <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />
+  </ItemGroup>
+  <!-- CosmosDBShell.Fuzzer opts out of central package management, so the
+       version must be pinned directly on the PackageReference. -->
+  <ItemGroup Condition="'$(ManagePackageVersionsCentrally)' == 'false'">
+    <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" Version="3.9.50" />
   </ItemGroup>
 </Project>
