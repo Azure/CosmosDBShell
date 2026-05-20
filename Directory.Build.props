@@ -1,15 +1,15 @@
 <Project>
-  <!-- CI restores GitVersion.Tool from the repo tool manifest and computes
-       Version, FileVersion, InformationalVersion, and PackageVersion from
-       GitVersion.yml. See .github/workflows/validate-and-package.yml and
-       .pipelines/CosmosDB-Shell-Official.yml. -->
-
-  <!-- Default version suffix for the preview phase. CI overrides Version and
-       InformationalVersion explicitly (both already include "-preview"); this
-       only affects local/dev builds where no Version is passed in, so the
-       embedded executable still shows "<x.y.z>-preview". Remove this once the
-       preview phase is over. -->
-  <PropertyGroup>
-    <VersionSuffix Condition=" '$(VersionSuffix)' == '' ">preview</VersionSuffix>
-  </PropertyGroup>
+  <!-- Versioning is driven by Nerdbank.GitVersioning (NBGV). Major.Minor and
+       the prerelease label come from version.json at the repo root; the
+       patch is the git height (commits since version.json last changed) so
+       a Major.Minor bump cleanly resets the patch to 0. NBGV sets Version,
+       FileVersion, AssemblyVersion, AssemblyInformationalVersion, and
+       PackageVersion automatically for both local and CI builds. -->
+  <ItemGroup>
+    <!-- VersionOverride lets this PackageReference work both with central
+         package management (used by most projects) and with local package
+         management (CosmosDBShell.Fuzzer). Keep this version aligned with
+         the entry in Directory.Packages.props. -->
+    <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" VersionOverride="3.9.50" />
+  </ItemGroup>
 </Project>
