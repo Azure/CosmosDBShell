@@ -20,6 +20,29 @@ The credential type is determined by the first matching rule (top-to-bottom):
 
 The `--authority-host` option is passed through to whichever credential is created (priorities 3-6). It does not affect which credential type is selected.
 
+## Azure Resource Manager Context
+
+Database and container resource operations (listing, navigating to, creating, deleting, and reading settings for databases and containers) prefer Azure Resource Manager (ARM) when an ARM context is attached. Item operations always use the Cosmos DB data plane.
+
+ARM context is attached only for Entra ID credential flows: `VisualStudioCodeCredential`, `ManagedIdentityCredential`, `InteractiveBrowserCredential`, `DeviceCodeCredential`, and `DefaultAzureCredential`. Account-key connections, emulator connections, and `COSMOSDB_SHELL_TOKEN` connections do not attach ARM context, so resource operations fall back to the Cosmos DB data plane.
+
+When ARM context is attached, the shell can discover the ARM account by matching the connected data-plane endpoint across accessible subscriptions. For deterministic startup, especially in CI/CD or multi-subscription environments, provide the coordinates explicitly:
+
+```bash
+connect https://myaccount.documents.azure.com:443/ --tenant=<tenant-id> --subscription=<subscription-id> --resource-group=<resource-group>
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-tenant=<tenant-id> --connect-subscription=<subscription-id> --connect-resource-group=<resource-group>
+```
+
+The account name is inferred from the endpoint hostname (the first segment before `.documents.*`).
+
+When ARM is in use, the identity needs data-plane RBAC for item operations and Azure management-plane permissions for database/container resources, such as Cosmos DB Operator or equivalent scoped permissions on the account. When falling back to the data plane (account-key, emulator, static token), the connection's existing data-plane authority is used for all commands.
+
+### Known limitation: strict native data-plane RBAC with non-Entra connections
+
+Account-key connections, `COSMOSDB_SHELL_TOKEN` connections, and emulator connections do not attach an ARM context, so resource commands (`mkdb`, `mkcon`, `rmdb`, `rmcon`, `indexpolicy`, container `settings`) fall back to the data plane. If you connect to a real Azure Cosmos DB account that has [native data-plane RBAC](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-setup-rbac) enforced (key-based and control-plane writes disabled), those commands will be rejected by the service even with a valid static credential, because the request never reaches Azure Resource Manager.
+
+To use resource commands against such an account, connect with an Entra ID credential — `--tenant`, `--managed-identity`, `--connect-vscode-credential`, or the endpoint-only `DefaultAzureCredential` form — and (optionally) supply `--subscription` and `--resource-group` to skip ARM discovery.
+
 ## Examples
 
 ### Account Key
@@ -85,6 +108,13 @@ For sovereign clouds or custom Entra environments, use `--authority-host`:
 connect https://myaccount.documents.azure.com:443/ --authority-host=https://login.microsoftonline.us/
 ```
 
+When `--subscription` and `--resource-group` are supplied, the shell also needs to pick an Azure Resource Manager endpoint for control-plane operations (mkdb, mkcon, rmdb, rmcon, indexpolicy). It resolves the ARM endpoint in this order:
+
+1. Match the authority host against the built-in table of known Azure clouds (Public, China, US Gov, Germany).
+2. If no match, match the Cosmos endpoint suffix (e.g. `.documents.azure.us`) against the same table.
+3. If still no match and the authority host is of the form `login.<rest>`, derive `https://management.<rest>` as the ARM endpoint. This covers additional national / sovereign clouds whose ARM metadata follows the `login.X` → `management.X` convention (for example `login.chinacloudapi.cn` → `management.chinacloudapi.cn`). The Public, US Gov, and Germany clouds deliberately do *not* follow that pattern, which is why the explicit table is consulted first.
+4. Otherwise default to Azure Public.
+
 ## COSMOSDB_SHELL_ACCOUNT_KEY Environment Variable
 
 This environment variable provides an account key for authentication:
@@ -118,6 +148,7 @@ All connect options are also available as CLI startup arguments:
 ```bash
 cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-tenant=<tenant-id>
 cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-managed-identity=<client-id>
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-subscription=<subscription-id> --connect-resource-group=<resource-group>
 cosmosdbshell --connect https://localhost:8081
 ```
 

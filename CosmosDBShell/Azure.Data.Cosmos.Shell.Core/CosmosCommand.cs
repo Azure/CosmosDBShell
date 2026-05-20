@@ -73,7 +73,7 @@ internal abstract class CosmosCommand
         }
 
         // Validate that database and container exist
-        await ValidateContainerExistsAsync(client, databaseName, containerName, commandName, token);
+        await ValidateContainerExistsAsync(RequireConnectedState(state, commandName), databaseName, containerName, commandName, token);
 
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
         return (databaseName, containerName, container);
@@ -125,7 +125,7 @@ internal abstract class CosmosCommand
         }
 
         // Validate that database exists
-        await ValidateDatabaseExistsAsync(client, databaseName, commandName, token);
+        await ValidateDatabaseExistsAsync(RequireConnectedState(state, commandName), databaseName, commandName, token);
 
         var database = client.GetDatabase(databaseName);
         return (databaseName ?? string.Empty, database);
@@ -139,19 +139,14 @@ internal abstract class CosmosCommand
     /// <param name="commandName">The name of the command requesting validation (for error reporting).</param>
     /// <param name="token">Cancellation token.</param>
     /// <exception cref="CommandException">Thrown when the database does not exist.</exception>
-    protected static async Task ValidateDatabaseExistsAsync(CosmosClient client, string? databaseName, string commandName, CancellationToken token)
+    protected static async Task ValidateDatabaseExistsAsync(ConnectedState state, string? databaseName, string commandName, CancellationToken token)
     {
         if (databaseName == null)
         {
             return;
         }
 
-        try
-        {
-            var database = client.GetDatabase(databaseName);
-            await database.ReadAsync(cancellationToken: token);
-        }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        if (!await CosmosResourceFacade.DatabaseExistsAsync(state, databaseName, token))
         {
             throw new CommandException(
                 commandName,
@@ -168,7 +163,7 @@ internal abstract class CosmosCommand
     /// <param name="commandName">The name of the command requesting validation (for error reporting).</param>
     /// <param name="token">Cancellation token.</param>
     /// <exception cref="CommandException">Thrown when the database or container does not exist.</exception>
-    protected static async Task ValidateContainerExistsAsync(CosmosClient client, string? databaseName, string? containerName, string commandName, CancellationToken token)
+    protected static async Task ValidateContainerExistsAsync(ConnectedState state, string? databaseName, string? containerName, string commandName, CancellationToken token)
     {
         if (databaseName == null)
         {
@@ -176,20 +171,14 @@ internal abstract class CosmosCommand
         }
 
         // First validate the database exists
-        await ValidateDatabaseExistsAsync(client, databaseName, commandName, token);
+        await ValidateDatabaseExistsAsync(state, databaseName, commandName, token);
 
         if (containerName == null)
         {
             return;
         }
 
-        // Then validate the container exists
-        try
-        {
-            var container = client.GetDatabase(databaseName).GetContainer(containerName);
-            await container.ReadContainerAsync(cancellationToken: token);
-        }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        if (!await CosmosResourceFacade.ContainerExistsAsync(state, databaseName, containerName, token))
         {
             throw new CommandException(
                 commandName,
@@ -202,23 +191,27 @@ internal abstract class CosmosCommand
         }
     }
 
-    protected static async IAsyncEnumerable<DatabaseProperties> EnumerateDatabasesAsync(CosmosClient client)
+    protected static IAsyncEnumerable<string> EnumerateDatabaseNamesAsync(ConnectedState state, string commandName, CancellationToken token)
     {
-        using var feedIterator = client.GetDatabaseQueryIterator<DatabaseProperties>();
-        while (feedIterator.HasMoreResults)
-        {
-            var response = await feedIterator.ReadNextAsync();
-            foreach (var database in response)
-            {
-                yield return database;
-            }
-        }
+        _ = commandName;
+        return CosmosResourceFacade.GetDatabaseNamesAsync(state, token);
     }
 
-    protected static IAsyncEnumerable<ContainerProperties> EnumerateContainersAsync(Database database)
+    protected static IAsyncEnumerable<string> EnumerateContainerNamesAsync(ConnectedState state, string databaseName, string commandName, CancellationToken token)
     {
-        using var feedIterator = database.GetContainerQueryIterator<ContainerProperties>();
-        return EnumerateFeedAsync(feedIterator);
+        _ = commandName;
+        return CosmosResourceFacade.GetContainerNamesAsync(state, databaseName, token);
+    }
+
+    private static ConnectedState RequireConnectedState(State state, string commandName)
+    {
+        if (state is ConnectedState connectedState)
+        {
+            return connectedState;
+        }
+
+        ThrowNotConnected(commandName);
+        throw new InvalidOperationException();
     }
 
     protected static async IAsyncEnumerable<T> EnumerateFeedAsync<T>(FeedIterator<T> feedIterator)

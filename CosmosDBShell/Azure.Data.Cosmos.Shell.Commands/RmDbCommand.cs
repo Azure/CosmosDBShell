@@ -35,12 +35,12 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
 
     async Task<ExitCode> IStateVisitor<ExitCode, ShellInterpreter>.VisitConnectedStateAsync(ConnectedState state, ShellInterpreter shell, CancellationToken token)
     {
-        return await this.RemoveDatabaseAsync(state.Client, shell, token);
+        return await this.RemoveDatabaseAsync(state, shell, token);
     }
 
     async Task<ExitCode> IStateVisitor<ExitCode, ShellInterpreter>.VisitDatabaseStateAsync(DatabaseState state, ShellInterpreter shell, CancellationToken token)
     {
-        return await this.RemoveDatabaseAsync(state.Client, shell, token);
+        return await this.RemoveDatabaseAsync(state, shell, token);
     }
 
     Task<ExitCode> IStateVisitor<ExitCode, ShellInterpreter>.VisitContainerStateAsync(ContainerState state, ShellInterpreter shell, CancellationToken token)
@@ -48,35 +48,39 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
         throw new CommandException("rmdb", MessageService.GetString("command-rmdb-error-not_allowed_in_container"));
     }
 
-    internal static void UpdateStateAfterDelete(ShellInterpreter shell, CosmosClient client, string deletedDatabaseName)
+    internal static void UpdateStateAfterDelete(ShellInterpreter shell, CosmosClient client, ArmCosmosContext? armContext, string deletedDatabaseName)
     {
         if (shell.State is DatabaseState databaseState && databaseState.DatabaseName == deletedDatabaseName)
         {
-            var connectedState = new ConnectedState(client);
+            var connectedState = new ConnectedState(client, armContext);
             shell.State = connectedState;
 
             CosmosCompleteCommand.ClearContainers();
         }
     }
 
-    private async Task<ExitCode> RemoveDatabaseAsync(CosmosClient client, ShellInterpreter shell, CancellationToken token)
+    internal static void UpdateStateAfterDelete(ShellInterpreter shell, CosmosClient client, string deletedDatabaseName)
     {
-        await foreach (var database in EnumerateDatabasesAsync(client))
+        UpdateStateAfterDelete(shell, client, null, deletedDatabaseName);
+    }
+
+    private async Task<ExitCode> RemoveDatabaseAsync(ConnectedState state, ShellInterpreter shell, CancellationToken token)
+    {
+        await foreach (var databaseName in EnumerateDatabaseNamesAsync(state, "rmdb", token))
         {
             if (token.IsCancellationRequested)
             {
                 return -1;
             }
 
-            if (database.Id == this.Name)
+            if (databaseName == this.Name)
             {
-                var db = client.GetDatabase(this.Name);
                 if (this.Force is true || ShellInterpreter.Confirm("command-rmdb-confirm_db_deletion"))
                 {
-                    await db.DeleteAsync(cancellationToken: token);
-                    UpdateStateAfterDelete(shell, client, database.Id);
+                    await CosmosResourceFacade.DeleteDatabaseAsync(state, databaseName, token);
+                    UpdateStateAfterDelete(shell, state.Client, state.ArmContext, databaseName);
                     CosmosCompleteCommand.ClearDatabases();
-                    var messageArguments = new Dictionary<string, object> { { "db", database.Id } };
+                    var messageArguments = new Dictionary<string, object> { { "db", databaseName } };
                     AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", messageArguments));
                 }
 

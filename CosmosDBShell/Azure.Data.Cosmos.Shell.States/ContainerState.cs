@@ -4,8 +4,10 @@
 
 namespace Azure.Data.Cosmos.Shell.States;
 
-internal class ContainerState(string containerName, string databaseName, CosmosClient cosmosClient)
-    : DatabaseState(databaseName, cosmosClient)
+using Azure.Data.Cosmos.Shell.Core;
+
+internal class ContainerState(string containerName, string databaseName, CosmosClient cosmosClient, ArmCosmosContext? armContext = null)
+    : DatabaseState(databaseName, cosmosClient, armContext)
 {
     public string ContainerName { get; init; } = containerName;
 
