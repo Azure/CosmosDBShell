@@ -1483,6 +1483,44 @@ public partial class ShellInterpreter : IDisposable
         return (line, column);
     }
 
+    private (string Display, int CaretColumn) ExpandTabs(string lineText, int caretColumnOneBased, int tabSize = 4)
+    {
+        if (string.IsNullOrEmpty(lineText) || lineText.IndexOf('\t') < 0)
+        {
+            return (lineText ?? string.Empty, caretColumnOneBased);
+        }
+
+        var sb = new System.Text.StringBuilder(lineText.Length);
+        var caret = caretColumnOneBased;
+        var visualCol = 0;
+        for (int i = 0; i < lineText.Length; i++)
+        {
+            var c = lineText[i];
+            if (c == '\t')
+            {
+                var spaces = tabSize - (visualCol % tabSize);
+                sb.Append(' ', spaces);
+
+                // The character at index i lives at 1-based column i+1.
+                // If the caret is strictly past this tab, shift it forward by
+                // the extra spaces this tab consumed.
+                if (caretColumnOneBased > i + 1)
+                {
+                    caret += spaces - 1;
+                }
+
+                visualCol += spaces;
+            }
+            else
+            {
+                sb.Append(c);
+                visualCol++;
+            }
+        }
+
+        return (sb.ToString(), caret);
+    }
+
     private void ReportParserErrors(ErrorList errors, string commandText)
     {
         if (errors == null || errors.Count == 0)
@@ -1518,8 +1556,8 @@ public partial class ShellInterpreter : IDisposable
 
             var (lineIndex, column) = this.OffsetToLineColumn(commandText ?? string.Empty, error.Start);
             var lineNumber = lineIndex + 1;
-            var displayColumn = column + 1;
-            var lineText = lineIndex >= 0 && lineIndex < lines.Length ? lines[lineIndex] : string.Empty;
+            var rawLineText = lineIndex >= 0 && lineIndex < lines.Length ? lines[lineIndex] : string.Empty;
+            var (lineText, displayColumn) = this.ExpandTabs(rawLineText, column + 1);
 
             var level = isWarning ? "warning" : "error";
             var levelColor = isWarning ? "yellow" : "red";

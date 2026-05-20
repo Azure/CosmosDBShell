@@ -117,6 +117,49 @@ public class ExecuteCommandExceptionTests
     }
 
     [Fact]
+    public async Task ExecuteCommandAsync_ParserError_ExpandsTabsForCaretAlignment()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            // Leading tab followed by an unexpected '}'. With tabSize=4 the
+            // brace renders at visual column 5; the caret must land directly
+            // under it on the displayed source line.
+            var state = await interpreter.ExecuteCommandAsync("\t}", CancellationToken.None);
+
+            Assert.True(state.IsError);
+            Assert.IsType<ParserErrorCommandState>(state);
+
+            var content = File.ReadAllText(tempFile);
+            var lines = content.Replace("\r\n", "\n").Split('\n');
+
+            var sourceLine = Array.Find(lines, l => l.Contains("> 1 |"));
+            var caretLine = Array.Find(lines, l => l.Contains('^') && !l.Contains("parse "));
+
+            Assert.NotNull(sourceLine);
+            Assert.NotNull(caretLine);
+
+            // Tab must be expanded — no raw tab in the echoed source line.
+            Assert.DoesNotContain('\t', sourceLine!);
+
+            // Caret column on the caret line must point at the '}' on the
+            // displayed source line.
+            var caretIndex = caretLine!.IndexOf('^');
+            Assert.True(caretIndex >= 0);
+            Assert.True(sourceLine!.Length > caretIndex);
+            Assert.Equal('}', sourceLine[caretIndex]);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
     public void CommandException_CosmosTimeoutCancellation_UsesFriendlyMessage()
     {
         var exception = new OperationCanceledException(
