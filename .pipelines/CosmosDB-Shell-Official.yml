@@ -97,38 +97,30 @@ extends:
               - script: dotnet tool restore --configfile "$(Build.SourcesDirectory)\\.pipelines\\nuget.config"
                 displayName: "Dotnet Tools Restore"
 
-              # The version depends only on GitVersion.yml: Major.Minor come
-              # from the `next-version` field, and the patch number is the
-              # number of commits since GitVersion.yml was last modified.
-              # This keeps the version monotonically increasing within a
-              # release line and makes it independent of tags.
+              # GitVersion is restored from the repo tool manifest so the
+              # build does not need to reach nuget.org from the Windows
+              # container pool.
               - task: PowerShell@2
-                displayName: "Compute version from GitVersion.yml"
+                displayName: "Compute version with GitVersion"
                 inputs:
                   targetType: inline
                   pwsh: true
                   script: |
                     $ErrorActionPreference = 'Stop'
+                    $gitVersionJson = dotnet tool run dotnet-gitversion /output json
 
-                    $configPath = Join-Path '$(Build.SourcesDirectory)' 'GitVersion.yml'
-                    $configContent = Get-Content -Raw -LiteralPath $configPath
-                    if ($configContent -notmatch '(?m)^\s*next-version:\s*(?<major>[0-9]+)\.(?<minor>[0-9]+)(?:\.[0-9]+)?\s*$') {
-                      throw "Could not parse next-version from GitVersion.yml."
-                    }
-                    $major = [int]$Matches['major']
-                    $minor = [int]$Matches['minor']
-
-                    $configCommit = (git log -n 1 --format=%H -- $configPath).Trim()
-                    if ([string]::IsNullOrWhiteSpace($configCommit)) {
-                      throw "Could not determine the commit that last changed GitVersion.yml."
+                    if ($LASTEXITCODE -ne 0) {
+                      throw "dotnet-gitversion failed with exit code $LASTEXITCODE."
                     }
 
-                    $commitsSinceConfig = [int](git rev-list --count "$configCommit..HEAD")
-                    if ($commitsSinceConfig -gt 65535) {
-                      throw "Commits since GitVersion.yml ($commitsSinceConfig) exceeds the maximum .NET assembly version segment value of 65535. Bump next-version in GitVersion.yml before generating assembly and file versions."
+                    $gv = $gitVersionJson | ConvertFrom-Json
+
+                    $commitsSinceVersionSource = [int]$gv.CommitsSinceVersionSource
+                    if ($commitsSinceVersionSource -gt 65535) {
+                      throw "CommitsSinceVersionSource ($commitsSinceVersionSource) exceeds the maximum .NET assembly version segment value of 65535. Bump next-version before generating assembly and file versions."
                     }
 
-                    $assemblyVersion = "$major.$minor.$commitsSinceConfig"
+                    $assemblyVersion = "$($gv.Major).$($gv.Minor).$commitsSinceVersionSource"
                     $packageVersion  = "$assemblyVersion-preview"
                     $fileVersion     = "$assemblyVersion.0"
                     $infoVersion     = "$packageVersion+$(Build.SourceVersion)"
