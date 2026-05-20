@@ -133,7 +133,8 @@ public class CommandStatementTests
             async () => await statement.RunAsync(shell, commandState, CancellationToken.None));
 
         Assert.Equal("query", ex.Suggestion);
-        Assert.Contains("Did you mean 'query'?", ex.Message);
+        Assert.Equal("Did you mean 'query'?", ex.Hint);
+        Assert.DoesNotContain("Did you mean", ex.Message);
     }
 
     [Fact]
@@ -147,6 +148,7 @@ public class CommandStatementTests
             async () => await statement.RunAsync(shell, commandState, CancellationToken.None));
 
         Assert.Null(ex.Suggestion);
+        Assert.Null(ex.Hint);
         Assert.DoesNotContain("Did you mean", ex.Message);
     }
 

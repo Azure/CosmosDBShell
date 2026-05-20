@@ -1190,6 +1190,11 @@ public partial class ShellInterpreter : IDisposable
 
             var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
             AnsiConsole.MarkupLine($"[red]{Markup.Escape(prefix)}:[/] {Markup.Escape(e.Message)}");
+            if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
+            {
+                AnsiConsole.MarkupLine($"  {Markup.Escape(hinted.Hint)}");
+            }
+
             var inner = e.InnerException;
             while (inner != null)
             {
@@ -1391,12 +1396,15 @@ public partial class ShellInterpreter : IDisposable
 
         var prefix = e is CommandException ce ? $"{ce.Command}: " : string.Empty;
         var showInner = e is not ShellException && e.InnerException != null;
+        var hint = e is IShellExceptionWithHint hinted ? hinted.Hint : null;
 
         if (this.ErrOutRedirect != null)
         {
             var errTxt = this.Options?.Verbose == true
                 ? e.ToString()
-                : prefix + e.Message + (showInner ? Environment.NewLine + e.InnerException!.ToString() : string.Empty);
+                : prefix + e.Message
+                    + (!string.IsNullOrEmpty(hint) ? Environment.NewLine + hint : string.Empty)
+                    + (showInner ? Environment.NewLine + e.InnerException!.ToString() : string.Empty);
             if (this.AppendErrRedirection)
             {
                 File.AppendAllText(this.ErrOutRedirect, errTxt);
@@ -1422,6 +1430,11 @@ public partial class ShellInterpreter : IDisposable
         {
             var m = Markup.Escape(e.Message);
             AnsiConsole.MarkupLine($"{prefix}[red]{m}[/]");
+            if (!string.IsNullOrEmpty(hint))
+            {
+                AnsiConsole.MarkupLine($"  {Markup.Escape(hint)}");
+            }
+
             if (showInner)
             {
                 AnsiConsole.WriteLine(e.InnerException!.ToString());

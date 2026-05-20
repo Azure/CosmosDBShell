@@ -214,9 +214,8 @@ internal class CommandExpression : Expression
                 // suggestion echoes back what the user typed.
                 var dashCount = Math.Max(1, opt.NameToken.Start - opt.MinusToken.Start);
                 var typedPrefix = new string('-', dashCount);
-                throw new CommandException(
-                    this.Name,
-                    Azure.Data.Cosmos.Shell.Util.UnknownOptionMessage.Build(typedPrefix, rawName, knownNames));
+                var (msg, hint) = Azure.Data.Cosmos.Shell.Util.UnknownOptionMessage.Build(typedPrefix, rawName, knownNames);
+                throw new UnknownOptionException(this.Name, msg, hint);
             }
 
             var pi = matchingProperty.Prop;
