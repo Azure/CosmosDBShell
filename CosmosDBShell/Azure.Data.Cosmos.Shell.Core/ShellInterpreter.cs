@@ -1169,13 +1169,12 @@ public partial class ShellInterpreter : IDisposable
         {
             if (this.Options?.Verbose == true)
             {
-                AnsiConsole.Markup($"[red]PrintState: [/]");
                 AnsiConsole.WriteException(e);
             }
             else
             {
                 var m = Markup.Escape(e.Message);
-                AnsiConsole.MarkupLine($"[red]PrintState:{m}[/]");
+                AnsiConsole.MarkupLine($"[red]error:[/] {m}");
                 if (e.InnerException != null)
                 {
                     WriteLine(e.InnerException.ToString());

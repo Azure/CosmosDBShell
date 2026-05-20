@@ -8,9 +8,19 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
 
 public class LocalizationKeyAuditTests
 {
+    [Theory]
+    [InlineData("statement_error_expected_open_brace", "Expected '{'")]
+    [InlineData("statement_error_expected_close_brace", "Expected '}'")]
+    [InlineData("statement_error_unexpected_close_brace", "Unexpected '}'")]
+    public void BraceLiteralMessages_RenderLiteralBrace(string key, string expected)
+    {
+        Assert.Equal(expected, MessageService.GetString(key));
+    }
+
     [Fact]
     public void ReferencedLocalizationKeys_AreDefinedInEnglishResource()
     {
