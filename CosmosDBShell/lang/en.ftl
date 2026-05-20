@@ -564,6 +564,7 @@ statement_error_expected_close_brace = Expected '\u007D'
 statement_error_unexpected_close_brace = Unexpected '\u007D'
 statement_error_unexpected_end = Unexpected end of input
 statement_error_unexpected_end_parsing_command = Unexpected end of input when parsing command
+lexer_error_unterminated_string = Unterminated string literal
 statement_error_expected_command_name = Expected command name
 statement_error_expected_option_name = Expected option name after '{$prefix}'
 statement_error_invalid_option_value = Invalid value for option '{ $option }'

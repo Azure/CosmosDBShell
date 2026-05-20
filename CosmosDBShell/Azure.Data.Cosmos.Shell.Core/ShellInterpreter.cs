@@ -32,11 +32,19 @@ public partial class ShellInterpreter : IDisposable
 
     private const int OptionalArmDiscoveryTimeoutSeconds = 3;
 
+    private const string EncodedHistoryLinePrefix = "CosmosDBShellHistoryV1:";
+
     private static CancellationTokenSource? currentTokenSource;
 
     private readonly string cfgPath;
 
     private LineEditor? lineEditor;
+
+    private CosmosShellPrompt? cosmosShellPrompt;
+
+    private System.Text.StringBuilder? pendingMultiLineBuffer;
+
+    private bool pendingMultiLineSuppressesNewline;
 
     private CancellationTokenSource editorCancelTokenSource;
 
@@ -63,8 +71,9 @@ public partial class ShellInterpreter : IDisposable
         {
             foreach (var line in File.ReadAllLines(this.HistoryFile))
             {
-                this.history.Remove(line);
-                this.history.Add(line);
+                var decoded = DecodeHistoryLine(line);
+                this.history.Remove(decoded);
+                this.history.Add(decoded);
             }
         }
 
@@ -483,9 +492,57 @@ public partial class ShellInterpreter : IDisposable
             {
                 this.ClearHighlightStatement();
                 var input = this.Editor != null ? await this.Editor.ReadLine(this.editorCancelTokenSource.Token) : PromptFallback();
-                if (input is not { } command)
+                if (input is not { } line)
                 {
+                    // ReadLine cancelled (Ctrl+C). Discard any in-progress multi-line buffer.
+                    this.pendingMultiLineBuffer = null;
+                    this.pendingMultiLineSuppressesNewline = false;
+                    if (this.cosmosShellPrompt != null)
+                    {
+                        this.cosmosShellPrompt.InContinuation = false;
+                    }
+
                     continue;
+                }
+
+                // Detect explicit backslash-at-end-of-line continuation (bash-style).
+                bool backslashContinuation = TryRemoveLineContinuation(ref line);
+
+                if (this.pendingMultiLineBuffer != null)
+                {
+                    AppendMultiLineFragment(this.pendingMultiLineBuffer, line, this.pendingMultiLineSuppressesNewline);
+                }
+                else if (backslashContinuation || IsIncompleteInput(line))
+                {
+                    this.pendingMultiLineBuffer = new System.Text.StringBuilder(line);
+                }
+
+                string command;
+                if (this.pendingMultiLineBuffer != null)
+                {
+                    var aggregated = this.pendingMultiLineBuffer.ToString();
+                    if (backslashContinuation || IsIncompleteInput(aggregated))
+                    {
+                        if (this.cosmosShellPrompt != null)
+                        {
+                            this.cosmosShellPrompt.InContinuation = true;
+                        }
+
+                        this.pendingMultiLineSuppressesNewline = backslashContinuation;
+                        continue;
+                    }
+
+                    command = aggregated;
+                    this.pendingMultiLineBuffer = null;
+                    this.pendingMultiLineSuppressesNewline = false;
+                    if (this.cosmosShellPrompt != null)
+                    {
+                        this.cosmosShellPrompt.InContinuation = false;
+                    }
+                }
+                else
+                {
+                    command = line;
                 }
 
                 if (!string.IsNullOrWhiteSpace(command))
@@ -499,6 +556,12 @@ public partial class ShellInterpreter : IDisposable
             }
             catch (TaskCanceledException)
             {
+                this.pendingMultiLineBuffer = null;
+                this.pendingMultiLineSuppressesNewline = false;
+                if (this.cosmosShellPrompt != null)
+                {
+                    this.cosmosShellPrompt.InContinuation = false;
+                }
             }
         }
 
@@ -1285,9 +1348,10 @@ public partial class ShellInterpreter : IDisposable
     {
         try
         {
+            this.cosmosShellPrompt = new CosmosShellPrompt(this);
             var lineEditor = new LineEditor()
             {
-                Prompt = new CosmosShellPrompt(this),
+                Prompt = this.cosmosShellPrompt,
                 LineDecorationRenderer = new CosmosCompletionRenderer(this),
                 Highlighter = this,
             };
@@ -1340,6 +1404,13 @@ public partial class ShellInterpreter : IDisposable
     private void Console_CancelKeyPress(object? sender, ConsoleCancelEventArgs e)
     {
         e.Cancel = true;
+        this.pendingMultiLineBuffer = null;
+        this.pendingMultiLineSuppressesNewline = false;
+        if (this.cosmosShellPrompt != null)
+        {
+            this.cosmosShellPrompt.InContinuation = false;
+        }
+
         this.CancelPrompt();
         WriteLine("̂C");
     }
@@ -1351,7 +1422,141 @@ public partial class ShellInterpreter : IDisposable
             this.history = [.. this.history.Skip(this.history.Count - MAXHISTORYITEMS)];
         }
 
-        File.WriteAllLines(this.HistoryFile, this.history);
+        File.WriteAllLines(this.HistoryFile, this.history.Select(EncodeHistoryLine));
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    internal static string EncodeHistoryLine(string line)
+    {
+        if (line.IndexOfAny(['\n', '\r']) < 0 && !line.StartsWith(EncodedHistoryLinePrefix, StringComparison.Ordinal))
+        {
+            return line;
+        }
+
+        var sb = new System.Text.StringBuilder(line.Length + 8);
+        foreach (var ch in line)
+        {
+            switch (ch)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                default: sb.Append(ch); break;
+            }
+        }
+
+        return EncodedHistoryLinePrefix + sb.ToString();
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    internal static string DecodeHistoryLine(string line)
+    {
+        if (!line.StartsWith(EncodedHistoryLinePrefix, StringComparison.Ordinal))
+        {
+            return line;
+        }
+
+        line = line.Substring(EncodedHistoryLinePrefix.Length);
+
+        var sb = new System.Text.StringBuilder(line.Length);
+        for (int i = 0; i < line.Length; i++)
+        {
+            var ch = line[i];
+            if (ch == '\\' && i + 1 < line.Length)
+            {
+                var next = line[i + 1];
+                switch (next)
+                {
+                    case '\\': sb.Append('\\'); i++; continue;
+                    case 'n': sb.Append('\n'); i++; continue;
+                    case 'r': sb.Append('\r'); i++; continue;
+                    default: sb.Append(ch); continue;
+                }
+            }
+
+            sb.Append(ch);
+        }
+
+        return sb.ToString();
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Grouped with REPL helpers.")]
+    internal static bool TryRemoveLineContinuation(ref string line)
+    {
+        if (line.Length == 0 || line[^1] != '\\')
+        {
+            return false;
+        }
+
+        int trailing = 0;
+        for (int i = line.Length - 1; i >= 0 && line[i] == '\\'; i--)
+        {
+            trailing++;
+        }
+
+        if ((trailing & 1) == 0)
+        {
+            return false;
+        }
+
+        line = line.Substring(0, line.Length - 1);
+        return true;
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Grouped with REPL helpers.")]
+    internal static void AppendMultiLineFragment(System.Text.StringBuilder buffer, string line, bool suppressNewline)
+    {
+        if (!suppressNewline)
+        {
+            buffer.Append('\n');
+        }
+
+        buffer.Append(line);
+    }
+
+    /// <summary>
+    /// Returns true if the given input text appears to be an incomplete shell command —
+    /// either because the lexer flagged an unterminated string or the parser ran off the
+    /// end of input. Used by the REPL to decide whether to prompt for a continuation line.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Grouped with REPL helpers.")]
+    internal static bool IsIncompleteInput(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        try
+        {
+            var lexer = new Lexer(text);
+            var parser = new StatementParser(lexer);
+
+            // Drain the lazy enumerator so the parser reaches end-of-input.
+            foreach (var statement in parser.ParseStatements())
+            {
+                _ = statement;
+            }
+
+            foreach (var err in parser.Errors)
+            {
+                if (err.ErrorLevel != ErrorLevel.Error)
+                {
+                    continue;
+                }
+
+                if (err.Kind == ParseErrorKind.UnexpectedEnd || err.Kind == ParseErrorKind.UnterminatedString)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void ReportExecutionError(Exception e)

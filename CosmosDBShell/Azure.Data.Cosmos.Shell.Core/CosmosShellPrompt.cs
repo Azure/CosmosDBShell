@@ -17,8 +17,15 @@ internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IS
     private Markup prompt = new(string.Empty);
     private State? oldState;
 
+    internal bool InContinuation { get; set; }
+
     (Markup Markup, int Margin) ILineEditorPrompt.GetPrompt(ILineEditorState state, int line)
     {
+        if (this.InContinuation)
+        {
+            return (new Markup("[grey]...[/]"), 1);
+        }
+
         if (this.oldState != this.shell.State)
         {
             this.oldState = this.shell.State;
