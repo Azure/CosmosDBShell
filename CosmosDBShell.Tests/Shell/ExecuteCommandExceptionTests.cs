@@ -235,6 +235,79 @@ public class ExecuteCommandExceptionTests
     }
 
     [Fact]
+    public async Task ExecuteCommandAsync_ParserError_InScriptContext_PrependsScriptOrigin()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            // Simulate executing this command from inside a script. The script
+            // origin file name should be prepended to the diagnostic.
+            interpreter.CurrentScriptFileName = @"C:\scripts\demo.csh";
+            try
+            {
+                await interpreter.ExecuteCommandAsync("}", CancellationToken.None);
+            }
+            finally
+            {
+                interpreter.CurrentScriptFileName = null;
+            }
+
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains("demo.csh:1:", content, StringComparison.Ordinal);
+            Assert.Contains("parse error:", content, StringComparison.Ordinal);
+
+            // Origin form replaces the trailing "(L:C)" location suffix.
+            Assert.DoesNotContain("(1:1)", content, StringComparison.Ordinal);
+
+            // Absolute path should not leak into the diagnostic.
+            Assert.DoesNotContain(@"C:\scripts", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void TryReportQueryError_InScriptContext_PrependsScriptOrigin()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+            interpreter.CurrentScriptFileName = "queries.csh";
+            try
+            {
+                const string query = "SELECT * FORM c";
+                const string message = "Message: {\"errors\":[{\"location\":{\"start\":9,\"end\":13},\"message\":\"Identifier 'FORM' could not be resolved.\"}]}";
+
+                var reported = interpreter.TryReportQueryError(query, message);
+
+                Assert.True(reported);
+            }
+            finally
+            {
+                interpreter.CurrentScriptFileName = null;
+            }
+
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains("queries.csh:1:10:", content, StringComparison.Ordinal);
+            Assert.Contains("query error:", content, StringComparison.Ordinal);
+            Assert.DoesNotContain("(1:10)", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
     public void CommandException_CosmosTimeoutCancellation_UsesFriendlyMessage()
     {
         var exception = new OperationCanceledException(

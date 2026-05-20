@@ -1553,7 +1553,8 @@ public partial class ShellInterpreter : IDisposable
                 levelColor,
                 error.Message,
                 lineNumber,
-                rendered);
+                rendered,
+                origin: this.GetDiagnosticOrigin(this.CurrentScriptFileName));
         }
 
         if (redirected && fileBuffer != null)
@@ -1599,7 +1600,14 @@ public partial class ShellInterpreter : IDisposable
         var message = location.Message ?? rawMessage;
 
         System.Text.StringBuilder? fileBuffer = this.ErrOutRedirect != null ? new System.Text.StringBuilder() : null;
-        this.AppendSourceCaretDiagnostic(fileBuffer, prefix, "red", message, location.Line, rendered);
+        this.AppendSourceCaretDiagnostic(
+            fileBuffer,
+            prefix,
+            "red",
+            message,
+            location.Line,
+            rendered,
+            origin: this.GetDiagnosticOrigin(this.CurrentScriptFileName));
 
         if (fileBuffer != null)
         {
@@ -1623,13 +1631,29 @@ public partial class ShellInterpreter : IDisposable
         string levelColor,
         string message,
         int lineNumber,
-        RenderedSourceCaret rendered)
+        RenderedSourceCaret rendered,
+        string? origin = null)
     {
+        // When the diagnostic originates from a script file we prepend the
+        // "file:line:col:" prefix in front of the level prefix (cargo / clang
+        // style) so editors and humans can jump straight to the offending
+        // line. Interactive prompt errors keep the trailing " (L:C)" form so
+        // they read naturally without a fake file name.
+        var hasOrigin = !string.IsNullOrEmpty(origin);
         if (fileBuffer != null)
         {
-            fileBuffer.Append(levelPrefix).Append(": ").Append(message)
-                .Append(" (").Append(lineNumber).Append(':').Append(rendered.CaretColumn).Append(')')
-                .Append(Environment.NewLine);
+            if (hasOrigin)
+            {
+                fileBuffer.Append(origin).Append(':').Append(lineNumber).Append(':').Append(rendered.CaretColumn).Append(": ")
+                    .Append(levelPrefix).Append(": ").Append(message).Append(Environment.NewLine);
+            }
+            else
+            {
+                fileBuffer.Append(levelPrefix).Append(": ").Append(message)
+                    .Append(" (").Append(lineNumber).Append(':').Append(rendered.CaretColumn).Append(')')
+                    .Append(Environment.NewLine);
+            }
+
             if (!string.IsNullOrEmpty(rendered.Display))
             {
                 var gutter = $"  > {lineNumber} | ";
@@ -1643,13 +1667,42 @@ public partial class ShellInterpreter : IDisposable
         else
         {
             var m = Markup.Escape(message);
-            AnsiConsole.MarkupLine($"[{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m} [grey]({lineNumber}:{rendered.CaretColumn})[/]");
+            if (hasOrigin)
+            {
+                var location = $"{origin}:{lineNumber}:{rendered.CaretColumn}:";
+                AnsiConsole.MarkupLine($"[grey]{Markup.Escape(location)}[/] [{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m}");
+            }
+            else
+            {
+                AnsiConsole.MarkupLine($"[{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m} [grey]({lineNumber}:{rendered.CaretColumn})[/]");
+            }
+
             if (!string.IsNullOrEmpty(rendered.Display))
             {
                 var gutter = $"  > {lineNumber} | ";
                 AnsiConsole.MarkupLine($"[grey]{Markup.Escape(gutter)}[/]{Markup.Escape(rendered.Display)}");
                 AnsiConsole.MarkupLine($"[{levelColor}]{new string(' ', gutter.Length)}{rendered.CaretPad}{rendered.CaretMarker}[/]");
             }
+        }
+    }
+
+    private string? GetDiagnosticOrigin(string? scriptFileName)
+    {
+        if (string.IsNullOrEmpty(scriptFileName))
+        {
+            return null;
+        }
+
+        // Show just the file name so absolute paths don't leak into the
+        // diagnostic and so output stays terse in CI logs.
+        try
+        {
+            var leaf = Path.GetFileName(scriptFileName);
+            return string.IsNullOrEmpty(leaf) ? scriptFileName : leaf;
+        }
+        catch (ArgumentException)
+        {
+            return scriptFileName;
         }
     }
 
