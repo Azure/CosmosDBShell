@@ -492,57 +492,14 @@ public partial class ShellInterpreter : IDisposable
             {
                 this.ClearHighlightStatement();
                 var input = this.Editor != null ? await this.Editor.ReadLine(this.editorCancelTokenSource.Token) : PromptFallback();
-                if (input is not { } line)
+                var command = ProcessInteractiveLine(
+                    input,
+                    ref this.pendingMultiLineBuffer,
+                    ref this.pendingMultiLineSuppressesNewline,
+                    this.cosmosShellPrompt);
+                if (command == null)
                 {
-                    // ReadLine cancelled (Ctrl+C). Discard any in-progress multi-line buffer.
-                    this.pendingMultiLineBuffer = null;
-                    this.pendingMultiLineSuppressesNewline = false;
-                    if (this.cosmosShellPrompt != null)
-                    {
-                        this.cosmosShellPrompt.InContinuation = false;
-                    }
-
                     continue;
-                }
-
-                // Detect explicit backslash-at-end-of-line continuation (bash-style).
-                bool backslashContinuation = TryRemoveLineContinuation(ref line);
-
-                if (this.pendingMultiLineBuffer != null)
-                {
-                    AppendMultiLineFragment(this.pendingMultiLineBuffer, line, this.pendingMultiLineSuppressesNewline);
-                }
-                else if (backslashContinuation || IsIncompleteInput(line))
-                {
-                    this.pendingMultiLineBuffer = new System.Text.StringBuilder(line);
-                }
-
-                string command;
-                if (this.pendingMultiLineBuffer != null)
-                {
-                    var aggregated = this.pendingMultiLineBuffer.ToString();
-                    if (backslashContinuation || IsIncompleteInput(aggregated))
-                    {
-                        if (this.cosmosShellPrompt != null)
-                        {
-                            this.cosmosShellPrompt.InContinuation = true;
-                        }
-
-                        this.pendingMultiLineSuppressesNewline = backslashContinuation;
-                        continue;
-                    }
-
-                    command = aggregated;
-                    this.pendingMultiLineBuffer = null;
-                    this.pendingMultiLineSuppressesNewline = false;
-                    if (this.cosmosShellPrompt != null)
-                    {
-                        this.cosmosShellPrompt.InContinuation = false;
-                    }
-                }
-                else
-                {
-                    command = line;
                 }
 
                 if (!string.IsNullOrWhiteSpace(command))
@@ -1512,6 +1469,75 @@ public partial class ShellInterpreter : IDisposable
         }
 
         buffer.Append(line);
+    }
+
+    /// <summary>
+    /// Processes one physical input line through the REPL multi-line accumulation state
+    /// machine. Returns the joined command text when execution should proceed, or
+    /// <c>null</c> when the loop should keep reading additional continuation lines (or
+    /// when the input itself was cancelled and the pending buffer was discarded).
+    /// </summary>
+    /// <param name="input">The raw line returned by ReadLine, or <c>null</c> if ReadLine was cancelled.</param>
+    /// <param name="pendingBuffer">The in-flight multi-line buffer; replaced or cleared in place.</param>
+    /// <param name="pendingSuppressesNewline">Tracks whether the next appended fragment must splice without a newline (backslash continuation).</param>
+    /// <param name="prompt">Optional prompt whose <c>InContinuation</c> flag is kept in sync; may be <c>null</c> in non-interactive callers and tests.</param>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Grouped with REPL helpers.")]
+    internal static string? ProcessInteractiveLine(
+        string? input,
+        ref System.Text.StringBuilder? pendingBuffer,
+        ref bool pendingSuppressesNewline,
+        CosmosShellPrompt? prompt = null)
+    {
+        if (input is not { } line)
+        {
+            // ReadLine cancelled (Ctrl+C). Discard any in-progress multi-line buffer.
+            pendingBuffer = null;
+            pendingSuppressesNewline = false;
+            if (prompt != null)
+            {
+                prompt.InContinuation = false;
+            }
+
+            return null;
+        }
+
+        // Detect explicit backslash-at-end-of-line continuation (bash-style).
+        bool backslashContinuation = TryRemoveLineContinuation(ref line);
+
+        if (pendingBuffer != null)
+        {
+            AppendMultiLineFragment(pendingBuffer, line, pendingSuppressesNewline);
+        }
+        else if (backslashContinuation || IsIncompleteInput(line))
+        {
+            pendingBuffer = new System.Text.StringBuilder(line);
+        }
+
+        if (pendingBuffer != null)
+        {
+            var aggregated = pendingBuffer.ToString();
+            if (backslashContinuation || IsIncompleteInput(aggregated))
+            {
+                if (prompt != null)
+                {
+                    prompt.InContinuation = true;
+                }
+
+                pendingSuppressesNewline = backslashContinuation;
+                return null;
+            }
+
+            pendingBuffer = null;
+            pendingSuppressesNewline = false;
+            if (prompt != null)
+            {
+                prompt.InContinuation = false;
+            }
+
+            return aggregated;
+        }
+
+        return line;
     }
 
     /// <summary>

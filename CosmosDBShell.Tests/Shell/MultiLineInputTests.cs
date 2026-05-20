@@ -111,4 +111,159 @@ public class MultiLineInputTests
     {
         Assert.Equal("echo \\n", ShellInterpreter.EncodeHistoryLine("echo \\n"));
     }
+
+    [Fact]
+    public void ProcessInteractiveLine_CompleteSingleLine_ReturnsItImmediately()
+    {
+        StringBuilder? buffer = null;
+        var suppress = false;
+
+        var command = ShellInterpreter.ProcessInteractiveLine("ls", ref buffer, ref suppress);
+
+        Assert.Equal("ls", command);
+        Assert.Null(buffer);
+        Assert.False(suppress);
+    }
+
+    [Fact]
+    public void ProcessInteractiveLine_UnclosedBraceThenClose_AccumulatesAndJoinsWithNewlines()
+    {
+        StringBuilder? buffer = null;
+        var suppress = false;
+
+        var first = ShellInterpreter.ProcessInteractiveLine("if true {", ref buffer, ref suppress);
+        Assert.Null(first);
+        Assert.NotNull(buffer);
+
+        var second = ShellInterpreter.ProcessInteractiveLine("    echo hello", ref buffer, ref suppress);
+        Assert.Null(second);
+
+        var third = ShellInterpreter.ProcessInteractiveLine("}", ref buffer, ref suppress);
+        Assert.Equal("if true {\n    echo hello\n}", third);
+        Assert.Null(buffer);
+        Assert.False(suppress);
+    }
+
+    [Fact]
+    public void ProcessInteractiveLine_BackslashContinuation_SplicesWithoutInsertingNewlines()
+    {
+        StringBuilder? buffer = null;
+        var suppress = false;
+
+        var first = ShellInterpreter.ProcessInteractiveLine("echo hello\\", ref buffer, ref suppress);
+        Assert.Null(first);
+        Assert.NotNull(buffer);
+        Assert.True(suppress);
+
+        var second = ShellInterpreter.ProcessInteractiveLine(" world", ref buffer, ref suppress);
+        Assert.Equal("echo hello world", second);
+        Assert.Null(buffer);
+        Assert.False(suppress);
+    }
+
+    [Fact]
+    public void ProcessInteractiveLine_MixedBackslashThenParseContinuation_JoinsBothStyles()
+    {
+        StringBuilder? buffer = null;
+        var suppress = false;
+
+        // Backslash continuation: next fragment splices without a newline.
+        Assert.Null(ShellInterpreter.ProcessInteractiveLine("if true \\", ref buffer, ref suppress));
+        Assert.True(suppress);
+
+        // The next line opens a block; from here on the input is incomplete because of
+        // the parser, not the backslash, so newlines must be preserved between fragments.
+        Assert.Null(ShellInterpreter.ProcessInteractiveLine("{", ref buffer, ref suppress));
+        Assert.False(suppress);
+
+        Assert.Null(ShellInterpreter.ProcessInteractiveLine("    echo hi", ref buffer, ref suppress));
+        var command = ShellInterpreter.ProcessInteractiveLine("}", ref buffer, ref suppress);
+        Assert.Equal("if true {\n    echo hi\n}", command);
+        Assert.Null(buffer);
+        Assert.False(suppress);
+    }
+
+    [Fact]
+    public void ProcessInteractiveLine_UnterminatedStringSpanningTwoLines_JoinsWithNewline()
+    {
+        StringBuilder? buffer = null;
+        var suppress = false;
+
+        Assert.Null(ShellInterpreter.ProcessInteractiveLine("echo \"hello", ref buffer, ref suppress));
+        var command = ShellInterpreter.ProcessInteractiveLine("world\"", ref buffer, ref suppress);
+
+        Assert.Equal("echo \"hello\nworld\"", command);
+        Assert.Null(buffer);
+    }
+
+    [Fact]
+    public void ProcessInteractiveLine_NullInputMidBuffer_DiscardsBuffer()
+    {
+        StringBuilder? buffer = null;
+        var suppress = false;
+
+        Assert.Null(ShellInterpreter.ProcessInteractiveLine("if true {", ref buffer, ref suppress));
+        Assert.NotNull(buffer);
+
+        // Cancelled ReadLine (Ctrl+C) is signalled by a null input.
+        var result = ShellInterpreter.ProcessInteractiveLine(null, ref buffer, ref suppress);
+
+        Assert.Null(result);
+        Assert.Null(buffer);
+        Assert.False(suppress);
+    }
+
+    [Fact]
+    public void ProcessInteractiveLine_NullInputWithEmptyBuffer_IsNoOp()
+    {
+        StringBuilder? buffer = null;
+        var suppress = false;
+
+        var result = ShellInterpreter.ProcessInteractiveLine(null, ref buffer, ref suppress);
+
+        Assert.Null(result);
+        Assert.Null(buffer);
+        Assert.False(suppress);
+    }
+
+    [Fact]
+    public void ProcessInteractiveLine_EmptyLine_ReturnsEmptyAndDoesNotStartBuffer()
+    {
+        StringBuilder? buffer = null;
+        var suppress = false;
+
+        var result = ShellInterpreter.ProcessInteractiveLine(string.Empty, ref buffer, ref suppress);
+
+        Assert.Equal(string.Empty, result);
+        Assert.Null(buffer);
+        Assert.False(suppress);
+    }
+
+    [Fact]
+    public void EncodeDecodeHistoryLine_MultiLineEntry_SurvivesDiskRoundTrip()
+    {
+        var original = new[]
+        {
+            "ls",
+            "if true {\n    echo hello\n}",
+            "echo \\n",
+            "echo \"hello\nworld\"",
+        };
+
+        var path = Path.Combine(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}.txt");
+        try
+        {
+            File.WriteAllLines(path, original.Select(ShellInterpreter.EncodeHistoryLine));
+            var decoded = File.ReadAllLines(path).Select(ShellInterpreter.DecodeHistoryLine).ToArray();
+
+            Assert.Equal(original, decoded);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
 }
