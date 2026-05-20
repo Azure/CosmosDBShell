@@ -87,10 +87,14 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          # GitVersion.yml supplies Major.Minor via next-version and counts
-          # commits since it was last bumped. We build the final version
-          # string ourselves so it follows the Major.Minor.<commits>-preview
-          # format consistently across pipelines.
+          # Major.Minor come from GitVersion (`next-version` in
+          # GitVersion.yml). The patch is the number of commits since
+          # GitVersion.yml was last modified, computed directly from
+          # git so it is independent of any tags and so it resets to 0
+          # whenever next-version is bumped. GitVersion's
+          # CommitsSinceVersionSource is not used because, with the
+          # TaggedCommit strategy disabled, it falls back to counting
+          # all commits in the repository.
           $gitVersionJson = dotnet tool run dotnet-gitversion /output json /nofetch /nonormalize
           if ($LASTEXITCODE -ne 0) {
             throw "Failed to compute version metadata with dotnet-gitversion."
@@ -98,12 +102,18 @@ jobs:
 
           $gv = $gitVersionJson | ConvertFrom-Json
 
-          $commitsSinceVersionSource = [int]$gv.CommitsSinceVersionSource
-          if ($commitsSinceVersionSource -gt 65535) {
-            throw "CommitsSinceVersionSource ($commitsSinceVersionSource) exceeds the maximum .NET assembly version segment value of 65535. Bump next-version before generating assembly and file versions."
+          $configPath = Join-Path $env:GITHUB_WORKSPACE 'GitVersion.yml'
+          $configCommit = (git log -n 1 --format=%H -- $configPath).Trim()
+          if ([string]::IsNullOrWhiteSpace($configCommit)) {
+            throw "Could not determine the commit that last changed GitVersion.yml."
           }
 
-          $assemblyVersion = "$($gv.Major).$($gv.Minor).$commitsSinceVersionSource"
+          $commitsSinceConfig = [int](git rev-list --count "$configCommit..HEAD")
+          if ($commitsSinceConfig -gt 65535) {
+            throw "Commits since GitVersion.yml ($commitsSinceConfig) exceeds the maximum .NET assembly version segment value of 65535. Bump next-version in GitVersion.yml before generating assembly and file versions."
+          }
+
+          $assemblyVersion = "$($gv.Major).$($gv.Minor).$commitsSinceConfig"
           $packageVersion  = "$assemblyVersion-preview"
           $fileVersion     = "$assemblyVersion.0"
           $infoVersion     = "$packageVersion+${{ github.sha }}"
