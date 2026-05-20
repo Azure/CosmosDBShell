@@ -572,6 +572,11 @@ statement_error_invalid_redirect_destination = Invalid destination for '{$redire
 statement_error_duplicate_out_redirect = Duplicate output redirection
 statement_error_duplicate_err_redirect = Duplicate error redirection
 
+parser-error-prefix = parse error
+parser-warning-prefix = parse warning
+runtime-error-prefix = error
+runtime-error-canceled = Canceled.
+
 json_error_empty_array_brackets = Empty array brackets are not allowed.
 
 # Binary operator error messages

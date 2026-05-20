@@ -21,6 +21,15 @@ public class LocalizationKeyAuditTests
         Assert.Equal(expected, MessageService.GetString(key));
     }
 
+    [Theory]
+    [InlineData("parser-error-prefix", "parse error")]
+    [InlineData("parser-warning-prefix", "parse warning")]
+    [InlineData("runtime-error-prefix", "error")]
+    public void RuntimePrefixMessages_AreLocalized(string key, string expected)
+    {
+        Assert.Equal(expected, MessageService.GetString(key));
+    }
+
     [Fact]
     public void ReferencedLocalizationKeys_AreDefinedInEnglishResource()
     {

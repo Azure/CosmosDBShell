@@ -1170,15 +1170,31 @@ public partial class ShellInterpreter : IDisposable
             if (this.Options?.Verbose == true)
             {
                 AnsiConsole.WriteException(e);
+                return new ErrorCommandState(e);
             }
-            else
+
+            // Operational exceptions (Ctrl+C, SDK failures, our own shell/command
+            // exceptions) carry an actionable message; the stack trace is noise
+            // for end users. Show only Message chains and let --verbose surface
+            // the full exception.
+            if (e is OperationCanceledException)
             {
-                var m = Markup.Escape(e.Message);
-                AnsiConsole.MarkupLine($"[red]error:[/] {m}");
-                if (e.InnerException != null)
+                var canceled = MessageService.GetString("runtime-error-canceled");
+                if (!string.IsNullOrEmpty(canceled))
                 {
-                    WriteLine(e.InnerException.ToString());
+                    AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(canceled)}[/]");
                 }
+
+                return new ErrorCommandState(e);
+            }
+
+            var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(prefix)}:[/] {Markup.Escape(e.Message)}");
+            var inner = e.InnerException;
+            while (inner != null)
+            {
+                AnsiConsole.MarkupLine($"  [red]\u2192[/] {Markup.Escape(inner.Message)}");
+                inner = inner.InnerException;
             }
 
             return new ErrorCommandState(e);
@@ -1561,10 +1577,12 @@ public partial class ShellInterpreter : IDisposable
 
             var level = isWarning ? "warning" : "error";
             var levelColor = isWarning ? "yellow" : "red";
+            var levelPrefix = MessageService.GetString(isWarning ? "parser-warning-prefix" : "parser-error-prefix")
+                ?? (isWarning ? "parse warning" : "parse error");
 
             if (redirected)
             {
-                fileBuffer!.Append("parse ").Append(level).Append(": ").Append(error.Message)
+                fileBuffer!.Append(levelPrefix).Append(": ").Append(error.Message)
                     .Append(" (").Append(lineNumber).Append(':').Append(displayColumn).Append(')')
                     .Append(Environment.NewLine);
                 if (!string.IsNullOrEmpty(lineText))
@@ -1579,7 +1597,7 @@ public partial class ShellInterpreter : IDisposable
             else
             {
                 var m = Markup.Escape(error.Message);
-                AnsiConsole.MarkupLine($"[{levelColor}]parse {level}:[/] {m} [grey]({lineNumber}:{displayColumn})[/]");
+                AnsiConsole.MarkupLine($"[{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m} [grey]({lineNumber}:{displayColumn})[/]");
                 if (!string.IsNullOrEmpty(lineText))
                 {
                     var gutter = $"  > {lineNumber} | ";
