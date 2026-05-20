@@ -1530,40 +1530,47 @@ public partial class ShellInterpreter : IDisposable
         // Detect explicit backslash-at-end-of-line continuation (bash-style).
         bool backslashContinuation = TryRemoveLineContinuation(ref line);
 
+        // Compute the "incomplete?" decision exactly once per Enter press: parsing is
+        // not free, and the previous shape evaluated the same text twice on the line
+        // that starts a multi-line buffer.
+        bool incompleteAggregated;
         if (pendingBuffer != null)
         {
             AppendMultiLineFragment(pendingBuffer, line, pendingSuppressesNewline);
+            incompleteAggregated = backslashContinuation || IsIncompleteInput(pendingBuffer.ToString());
         }
-        else if (backslashContinuation || IsIncompleteInput(line))
+        else
         {
-            pendingBuffer = new System.Text.StringBuilder(line);
-        }
-
-        if (pendingBuffer != null)
-        {
-            var aggregated = pendingBuffer.ToString();
-            if (backslashContinuation || IsIncompleteInput(aggregated))
+            bool lineIncomplete = backslashContinuation || IsIncompleteInput(line);
+            if (!lineIncomplete)
             {
-                if (prompt != null)
-                {
-                    prompt.InContinuation = true;
-                }
-
-                pendingSuppressesNewline = backslashContinuation;
-                return null;
+                return line;
             }
 
-            pendingBuffer = null;
-            pendingSuppressesNewline = false;
+            pendingBuffer = new System.Text.StringBuilder(line);
+            incompleteAggregated = true; // aggregated == line on the first iteration
+        }
+
+        if (incompleteAggregated)
+        {
             if (prompt != null)
             {
-                prompt.InContinuation = false;
+                prompt.InContinuation = true;
             }
 
-            return aggregated;
+            pendingSuppressesNewline = backslashContinuation;
+            return null;
         }
 
-        return line;
+        var aggregated = pendingBuffer.ToString();
+        pendingBuffer = null;
+        pendingSuppressesNewline = false;
+        if (prompt != null)
+        {
+            prompt.InContinuation = false;
+        }
+
+        return aggregated;
     }
 
     /// <summary>
@@ -1605,7 +1612,7 @@ public partial class ShellInterpreter : IDisposable
 
             return false;
         }
-        catch
+        catch (Exception)
         {
             return false;
         }
