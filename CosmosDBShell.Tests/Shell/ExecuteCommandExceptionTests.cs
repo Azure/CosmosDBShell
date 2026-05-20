@@ -52,6 +52,71 @@ public class ExecuteCommandExceptionTests
     }
 
     [Fact]
+    public async Task ExecuteCommandAsync_UnclosedBrace_ReturnsParserErrorState()
+    {
+        using var interpreter = CreateInterpreter();
+
+        var state = await interpreter.ExecuteCommandAsync("{ { ls   }", CancellationToken.None);
+
+        Assert.True(state.IsError);
+        var parserState = Assert.IsType<ParserErrorCommandState>(state);
+        Assert.NotEmpty(parserState.Errors);
+        Assert.Contains(parserState.Errors, e => e.ErrorLevel == Azure.Data.Cosmos.Shell.Parser.ErrorLevel.Error);
+    }
+
+    [Fact]
+    public async Task ExecuteCommandAsync_ParserError_WritesLocationToErrRedirect()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            var state = await interpreter.ExecuteCommandAsync("{ { ls   }", CancellationToken.None);
+
+            Assert.True(state.IsError);
+            Assert.IsType<ParserErrorCommandState>(state);
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains("parse error:", content, StringComparison.Ordinal);
+            Assert.Contains("(1:", content, StringComparison.Ordinal);
+            Assert.Contains("{ { ls   }", content, StringComparison.Ordinal);
+            Assert.Contains("^", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteCommandAsync_ParserError_ReportsOnlyFirstError()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            var state = await interpreter.ExecuteCommandAsync("{ { ls   }", CancellationToken.None);
+
+            Assert.True(state.IsError);
+            var parserState = Assert.IsType<ParserErrorCommandState>(state);
+            Assert.NotEmpty(parserState.Errors);
+
+            var content = File.ReadAllText(tempFile);
+            var occurrences = content.Split("parse error:", StringSplitOptions.None).Length - 1;
+            Assert.Equal(1, occurrences);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
     public void CommandException_CosmosTimeoutCancellation_UsesFriendlyMessage()
     {
         var exception = new OperationCanceledException(

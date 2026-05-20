@@ -289,6 +289,12 @@ public partial class ShellInterpreter : IDisposable
                 return state;
             }
 
+            if (state is ParserErrorCommandState parserErrorState)
+            {
+                this.ReportParserErrors(parserErrorState.Errors, command);
+                return state;
+            }
+
             return this.PrintState(state);
         }
         finally
@@ -1430,6 +1436,132 @@ public partial class ShellInterpreter : IDisposable
             {
                 AnsiConsole.MarkupLine($"  [grey]{Markup.Escape(pe.LineText)}[/]");
                 AnsiConsole.MarkupLine($"  [red]{new string(' ', Math.Max(0, pe.Column - 1))}^[/]");
+            }
+        }
+    }
+
+    private string[] SplitIntoLines(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return new[] { string.Empty };
+        }
+
+        // Split on \n and strip trailing \r so the displayed source line
+        // does not include carriage returns from CRLF inputs.
+        var raw = text.Split('\n');
+        for (int i = 0; i < raw.Length; i++)
+        {
+            if (raw[i].EndsWith('\r'))
+            {
+                raw[i] = raw[i][..^1];
+            }
+        }
+
+        return raw;
+    }
+
+    private (int Line, int Column) OffsetToLineColumn(string text, int absolute)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return (0, 0);
+        }
+
+        absolute = Math.Clamp(absolute, 0, text.Length);
+        int line = 0;
+        int lastNl = -1;
+        for (int i = 0; i < absolute; i++)
+        {
+            if (text[i] == '\n')
+            {
+                line++;
+                lastNl = i;
+            }
+        }
+
+        int column = absolute - (lastNl + 1);
+        return (line, column);
+    }
+
+    private void ReportParserErrors(ErrorList errors, string commandText)
+    {
+        if (errors == null || errors.Count == 0)
+        {
+            return;
+        }
+
+        var lines = this.SplitIntoLines(commandText ?? string.Empty);
+        var redirected = this.ErrOutRedirect != null;
+        var fileBuffer = redirected ? new System.Text.StringBuilder() : null;
+
+        // Show every warning, but only the first hard error. Later errors are
+        // almost always recovery cascades from the first one and only add noise
+        // in an interactive shell.
+        var reportedError = false;
+        foreach (var error in errors)
+        {
+            if (error == null)
+            {
+                continue;
+            }
+
+            var isWarning = error.ErrorLevel == ErrorLevel.Warning;
+            if (!isWarning)
+            {
+                if (reportedError)
+                {
+                    continue;
+                }
+
+                reportedError = true;
+            }
+
+            var (lineIndex, column) = this.OffsetToLineColumn(commandText ?? string.Empty, error.Start);
+            var lineNumber = lineIndex + 1;
+            var displayColumn = column + 1;
+            var lineText = lineIndex >= 0 && lineIndex < lines.Length ? lines[lineIndex] : string.Empty;
+
+            var level = isWarning ? "warning" : "error";
+            var levelColor = isWarning ? "yellow" : "red";
+
+            if (redirected)
+            {
+                fileBuffer!.Append("parse ").Append(level).Append(": ").Append(error.Message)
+                    .Append(" (").Append(lineNumber).Append(':').Append(displayColumn).Append(')')
+                    .Append(Environment.NewLine);
+                if (!string.IsNullOrEmpty(lineText))
+                {
+                    var gutter = $"  > {lineNumber} | ";
+                    fileBuffer.Append(gutter).Append(lineText).Append(Environment.NewLine);
+                    fileBuffer.Append(new string(' ', gutter.Length))
+                        .Append(new string(' ', Math.Max(0, displayColumn - 1)))
+                        .Append('^').Append(Environment.NewLine);
+                }
+            }
+            else
+            {
+                var m = Markup.Escape(error.Message);
+                AnsiConsole.MarkupLine($"[{levelColor}]parse {level}:[/] {m} [grey]({lineNumber}:{displayColumn})[/]");
+                if (!string.IsNullOrEmpty(lineText))
+                {
+                    var gutter = $"  > {lineNumber} | ";
+                    AnsiConsole.MarkupLine($"[grey]{Markup.Escape(gutter)}[/]{Markup.Escape(lineText)}");
+                    AnsiConsole.MarkupLine($"[{levelColor}]{new string(' ', gutter.Length)}{new string(' ', Math.Max(0, displayColumn - 1))}^[/]");
+                }
+            }
+        }
+
+        if (redirected && fileBuffer != null)
+        {
+            var payload = fileBuffer.ToString();
+            if (this.AppendErrRedirection)
+            {
+                File.AppendAllText(this.ErrOutRedirect!, payload);
+            }
+            else
+            {
+                File.WriteAllText(this.ErrOutRedirect!, payload);
             }
         }
     }
