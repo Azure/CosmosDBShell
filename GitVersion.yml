@@ -6,8 +6,16 @@
 # version string as "Major.Minor.<commits>-preview" from those values so
 # we get the exact format we want across GitHub Actions and OneBranch.
 #
-# To start a new release line, bump next-version (e.g. 1.1.0) and commit;
-# the commit counter resets automatically because it counts commits since
-# that change.
+# To start a new release line, bump next-version (e.g. 1.2.0) and commit.
+#
+# We override `strategies` to omit `TaggedCommit` so GitVersion never
+# treats a tag (such as `v1.0.273`) as the version source. Without this,
+# creating a version tag resets `CommitsSinceVersionSource` and the patch
+# number can go backwards relative to a previous build.
+strategies:
+  - Fallback
+  - ConfiguredNextVersion
+  - TrackReleaseBranches
+  - VersionInBranchName
 
-next-version: 1.0.0
+next-version: 1.1.0
