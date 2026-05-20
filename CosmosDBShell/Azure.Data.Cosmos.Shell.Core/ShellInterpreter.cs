@@ -289,6 +289,12 @@ public partial class ShellInterpreter : IDisposable
                 return state;
             }
 
+            if (state is ParserErrorCommandState parserErrorState)
+            {
+                this.ReportParserErrors(parserErrorState.Errors, command);
+                return state;
+            }
+
             return this.PrintState(state);
         }
         finally
@@ -1163,17 +1169,37 @@ public partial class ShellInterpreter : IDisposable
         {
             if (this.Options?.Verbose == true)
             {
-                AnsiConsole.Markup($"[red]PrintState: [/]");
                 AnsiConsole.WriteException(e);
+                return new ErrorCommandState(e);
             }
-            else
+
+            // Operational exceptions (Ctrl+C, SDK failures, our own shell/command
+            // exceptions) carry an actionable message; the stack trace is noise
+            // for end users. Show only Message chains and let --verbose surface
+            // the full exception.
+            if (e is OperationCanceledException)
             {
-                var m = Markup.Escape(e.Message);
-                AnsiConsole.MarkupLine($"[red]PrintState:{m}[/]");
-                if (e.InnerException != null)
+                var canceled = MessageService.GetString("runtime-error-canceled");
+                if (!string.IsNullOrEmpty(canceled))
                 {
-                    WriteLine(e.InnerException.ToString());
+                    AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(canceled)}[/]");
                 }
+
+                return new ErrorCommandState(e);
+            }
+
+            var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(prefix)}:[/] {Markup.Escape(e.Message)}");
+            if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
+            {
+                AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
+            }
+
+            var inner = e.InnerException;
+            while (inner != null)
+            {
+                AnsiConsole.MarkupLine($"  [red]\u2192[/] {Markup.Escape(inner.Message)}");
+                inner = inner.InnerException;
             }
 
             return new ErrorCommandState(e);
@@ -1356,6 +1382,12 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportExecutionError(Exception e)
     {
+        // The command already emitted a friendly diagnostic; do not print again.
+        if (ContainsException<CommandReportedException>(e))
+        {
+            return;
+        }
+
         if (e is PositionalException pe)
         {
             this.ReportPositionalError(pe);
@@ -1364,12 +1396,15 @@ public partial class ShellInterpreter : IDisposable
 
         var prefix = e is CommandException ce ? $"{ce.Command}: " : string.Empty;
         var showInner = e is not ShellException && e.InnerException != null;
+        var hint = e is IShellExceptionWithHint hinted ? hinted.Hint : null;
 
         if (this.ErrOutRedirect != null)
         {
             var errTxt = this.Options?.Verbose == true
                 ? e.ToString()
-                : prefix + e.Message + (showInner ? Environment.NewLine + e.InnerException!.ToString() : string.Empty);
+                : prefix + e.Message
+                    + (!string.IsNullOrEmpty(hint) ? Environment.NewLine + hint : string.Empty)
+                    + (showInner ? Environment.NewLine + FormatInnerExceptionMessages(e.InnerException) : string.Empty);
             if (this.AppendErrRedirection)
             {
                 File.AppendAllText(this.ErrOutRedirect, errTxt);
@@ -1395,9 +1430,19 @@ public partial class ShellInterpreter : IDisposable
         {
             var m = Markup.Escape(e.Message);
             AnsiConsole.MarkupLine($"{prefix}[red]{m}[/]");
+            if (!string.IsNullOrEmpty(hint))
+            {
+                AnsiConsole.MarkupLine(Markup.Escape(hint));
+            }
+
             if (showInner)
             {
-                AnsiConsole.WriteLine(e.InnerException!.ToString());
+                var inner = e.InnerException;
+                while (inner != null)
+                {
+                    AnsiConsole.MarkupLine($"  [red]->[/] {Markup.Escape(inner.Message)}");
+                    inner = inner.InnerException;
+                }
             }
         }
     }
@@ -1432,6 +1477,283 @@ public partial class ShellInterpreter : IDisposable
                 AnsiConsole.MarkupLine($"  [red]{new string(' ', Math.Max(0, pe.Column - 1))}^[/]");
             }
         }
+    }
+
+    private string[] SplitIntoLines(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return new[] { string.Empty };
+        }
+
+        // Split on \n and strip trailing \r so the displayed source line
+        // does not include carriage returns from CRLF inputs.
+        var raw = text.Split('\n');
+        for (int i = 0; i < raw.Length; i++)
+        {
+            if (raw[i].EndsWith('\r'))
+            {
+                raw[i] = raw[i][..^1];
+            }
+        }
+
+        return raw;
+    }
+
+    private (int Line, int Column) OffsetToLineColumn(string text, int absolute)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return (0, 0);
+        }
+
+        absolute = Math.Clamp(absolute, 0, text.Length);
+        int line = 0;
+        int lastNl = -1;
+        for (int i = 0; i < absolute; i++)
+        {
+            if (text[i] == '\n')
+            {
+                line++;
+                lastNl = i;
+            }
+        }
+
+        int column = absolute - (lastNl + 1);
+        return (line, column);
+    }
+
+    private void ReportParserErrors(ErrorList errors, string commandText)
+    {
+        if (errors == null || errors.Count == 0)
+        {
+            return;
+        }
+
+        var lines = this.SplitIntoLines(commandText ?? string.Empty);
+        var redirected = this.ErrOutRedirect != null;
+        var fileBuffer = redirected ? new System.Text.StringBuilder() : null;
+
+        // Show every warning, but only the first hard error. Later errors are
+        // almost always recovery cascades from the first one and only add noise
+        // in an interactive shell.
+        var reportedError = false;
+        foreach (var error in errors)
+        {
+            if (error == null)
+            {
+                continue;
+            }
+
+            var isWarning = error.ErrorLevel == ErrorLevel.Warning;
+            if (!isWarning)
+            {
+                if (reportedError)
+                {
+                    continue;
+                }
+
+                reportedError = true;
+            }
+
+            var (lineIndex, column) = this.OffsetToLineColumn(commandText ?? string.Empty, error.Start);
+            var lineNumber = lineIndex + 1;
+            var rawLineText = lineIndex >= 0 && lineIndex < lines.Length ? lines[lineIndex] : string.Empty;
+            var rendered = SourceCaretRenderer.Render(rawLineText, column + 1);
+
+            var levelColor = isWarning ? "yellow" : "red";
+            var levelPrefix = MessageService.GetString(isWarning ? "parser-warning-prefix" : "parser-error-prefix");
+
+            this.AppendSourceCaretDiagnostic(
+                fileBuffer,
+                levelPrefix,
+                levelColor,
+                error.Message,
+                lineNumber,
+                rendered,
+                origin: this.GetDiagnosticOrigin(this.CurrentScriptFileName));
+        }
+
+        if (redirected && fileBuffer != null)
+        {
+            var payload = fileBuffer.ToString();
+            if (this.AppendErrRedirection)
+            {
+                File.AppendAllText(this.ErrOutRedirect!, payload);
+            }
+            else
+            {
+                File.WriteAllText(this.ErrOutRedirect!, payload);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Attempts to render a Cosmos NoSQL query error in the same compiler-style
+    /// format used for parser errors. Returns true when the error message
+    /// contained a recognisable source location and the diagnostic was
+    /// written; the caller can then throw a CommandReportedException so the
+    /// generic error reporter stays silent.
+    /// </summary>
+    internal bool TryReportQueryError(string query, string rawMessage)
+    {
+        if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(rawMessage))
+        {
+            return false;
+        }
+
+        var location = QueryErrorLocator.TryLocate(query, rawMessage);
+        if (location == null)
+        {
+            return false;
+        }
+
+        var lines = this.SplitIntoLines(query);
+        var lineIndex = Math.Clamp(location.Line - 1, 0, Math.Max(0, lines.Length - 1));
+        var rawLineText = lines.Length > 0 ? lines[lineIndex] : string.Empty;
+        var rendered = SourceCaretRenderer.Render(rawLineText, location.Column, location.Length);
+
+        var prefix = MessageService.GetString("query-error-prefix");
+        var message = location.Message ?? rawMessage;
+
+        System.Text.StringBuilder? fileBuffer = this.ErrOutRedirect != null ? new System.Text.StringBuilder() : null;
+        this.AppendSourceCaretDiagnostic(
+            fileBuffer,
+            prefix,
+            "red",
+            message,
+            location.Line,
+            rendered,
+            origin: this.GetDiagnosticOrigin(this.CurrentScriptFileName));
+
+        if (fileBuffer != null)
+        {
+            var payload = fileBuffer.ToString();
+            if (this.AppendErrRedirection)
+            {
+                File.AppendAllText(this.ErrOutRedirect!, payload);
+            }
+            else
+            {
+                File.WriteAllText(this.ErrOutRedirect!, payload);
+            }
+        }
+
+        return true;
+    }
+
+    private void AppendSourceCaretDiagnostic(
+        System.Text.StringBuilder? fileBuffer,
+        string levelPrefix,
+        string levelColor,
+        string message,
+        int lineNumber,
+        RenderedSourceCaret rendered,
+        string? origin = null)
+    {
+        // When the diagnostic originates from a script file we prepend the
+        // "file:line:col:" prefix in front of the level prefix (cargo / clang
+        // style) so editors and humans can jump straight to the offending
+        // line. Interactive prompt errors keep the trailing " (L:C)" form so
+        // they read naturally without a fake file name.
+        var hasOrigin = !string.IsNullOrEmpty(origin);
+        if (fileBuffer != null)
+        {
+            if (hasOrigin)
+            {
+                fileBuffer.Append(origin).Append(':').Append(lineNumber).Append(':').Append(rendered.SourceColumn).Append(": ")
+                    .Append(levelPrefix).Append(": ").Append(message).Append(Environment.NewLine);
+            }
+            else
+            {
+                fileBuffer.Append(levelPrefix).Append(": ").Append(message)
+                    .Append(" (").Append(lineNumber).Append(':').Append(rendered.SourceColumn).Append(')')
+                    .Append(Environment.NewLine);
+            }
+
+            var gutter = $"  > {lineNumber} | ";
+            fileBuffer.Append(gutter).Append(rendered.Display).Append(Environment.NewLine);
+            fileBuffer.Append(new string(' ', gutter.Length))
+                .Append(rendered.CaretPad)
+                .Append(rendered.CaretMarker)
+                .Append(Environment.NewLine);
+        }
+        else
+        {
+            var m = Markup.Escape(message);
+            if (hasOrigin)
+            {
+                var location = $"{origin}:{lineNumber}:{rendered.SourceColumn}:";
+                AnsiConsole.MarkupLine($"[grey]{Markup.Escape(location)}[/] [{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m}");
+            }
+            else
+            {
+                AnsiConsole.MarkupLine($"[{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m} [grey]({lineNumber}:{rendered.SourceColumn})[/]");
+            }
+
+            var gutter = $"  > {lineNumber} | ";
+            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(gutter)}[/]{Markup.Escape(rendered.Display)}");
+            AnsiConsole.MarkupLine($"[{levelColor}]{new string(' ', gutter.Length)}{rendered.CaretPad}{rendered.CaretMarker}[/]");
+        }
+    }
+
+    private string? GetDiagnosticOrigin(string? scriptFileName)
+    {
+        if (string.IsNullOrEmpty(scriptFileName))
+        {
+            return null;
+        }
+
+        // Show just the file name so absolute paths don't leak into the
+        // diagnostic and so output stays terse in CI logs.
+        try
+        {
+            var leaf = scriptFileName
+                .Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries)
+                .LastOrDefault();
+            return string.IsNullOrEmpty(leaf) ? scriptFileName : leaf;
+        }
+        catch (ArgumentException)
+        {
+            return scriptFileName;
+        }
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Diagnostic helpers are grouped with diagnostic rendering code.")]
+    private static bool ContainsException<TException>(Exception? exception)
+        where TException : Exception
+    {
+        while (exception != null)
+        {
+            if (exception is TException)
+            {
+                return true;
+            }
+
+            exception = exception.InnerException;
+        }
+
+        return false;
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Diagnostic helpers are grouped with diagnostic rendering code.")]
+    private static string FormatInnerExceptionMessages(Exception? exception)
+    {
+        var sb = new System.Text.StringBuilder();
+        var first = true;
+        while (exception != null)
+        {
+            if (!first)
+            {
+                sb.Append(Environment.NewLine);
+            }
+
+            sb.Append(exception.Message);
+            first = false;
+            exception = exception.InnerException;
+        }
+
+        return sb.ToString();
     }
 
     /*

@@ -8,9 +8,50 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
 
 public class LocalizationKeyAuditTests
 {
+    [Theory]
+    [InlineData("statement_error_expected_open_brace", "Expected '{'")]
+    [InlineData("statement_error_expected_close_brace", "Expected '}'")]
+    [InlineData("statement_error_unexpected_close_brace", "Unexpected '}'")]
+    public void BraceLiteralMessages_RenderLiteralBrace(string key, string expected)
+    {
+        Assert.Equal(expected, MessageService.GetString(key));
+    }
+
+    [Theory]
+    [InlineData("parser-error-prefix", "parse error")]
+    [InlineData("parser-warning-prefix", "parse warning")]
+    [InlineData("runtime-error-prefix", "error")]
+    public void RuntimePrefixMessages_AreLocalized(string key, string expected)
+    {
+        Assert.Equal(expected, MessageService.GetString(key));
+    }
+
+    [Fact]
+    public void QueryErrorPrefix_IsLocalized()
+    {
+        Assert.Equal("query error", MessageService.GetString("query-error-prefix"));
+    }
+
+    [Fact]
+    public void UnknownOptionMessages_AreLocalized()
+    {
+        Assert.Equal(
+            "Unknown option '--bogus'.",
+            MessageService.GetString(
+                "error-unknown-option",
+                new Dictionary<string, object> { { "option", "--bogus" } }));
+
+        Assert.Equal(
+            "Did you mean '--foo'?",
+            MessageService.GetString(
+                "error-unknown-option-suggestion",
+                new Dictionary<string, object> { { "suggestion", "--foo" } }));
+    }
+
     [Fact]
     public void ReferencedLocalizationKeys_AreDefinedInEnglishResource()
     {
