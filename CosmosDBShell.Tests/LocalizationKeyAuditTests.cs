@@ -37,6 +37,22 @@ public class LocalizationKeyAuditTests
     }
 
     [Fact]
+    public void UnknownOptionMessages_AreLocalized()
+    {
+        Assert.Equal(
+            "Unknown option '--bogus'.",
+            MessageService.GetString(
+                "error-unknown-option",
+                new Dictionary<string, object> { { "option", "--bogus" } }));
+
+        Assert.Equal(
+            "Did you mean '--foo'?",
+            MessageService.GetString(
+                "error-unknown-option-suggestion",
+                new Dictionary<string, object> { { "suggestion", "--foo" } }));
+    }
+
+    [Fact]
     public void ReferencedLocalizationKeys_AreDefinedInEnglishResource()
     {
         var root = FindRepositoryRoot();

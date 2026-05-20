@@ -34,6 +34,8 @@ error-emulator_connection_failed =
     See: https://learn.microsoft.com/en-us/azure/cosmos-db/emulator-linux
 error-command-not-found = '{ $command }' is not recognized as an internal or external command, operable program or batch file.
 error-command-not-found-suggestion = Did you mean '{ $suggestion }'?
+error-unknown-option = Unknown option '{ $option }'.
+error-unknown-option-suggestion = Did you mean '{ $suggestion }'?
 error-shell-not-initialized = Shell is not initialized
 error-start_process = Failed to start the process.
 error-file_not_found = file '{ $file }' not found.

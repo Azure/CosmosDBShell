@@ -267,6 +267,47 @@ namespace CosmosShell.Tests.Parser
         }
 
         [Fact]
+        public async Task UnknownOption_WithCloseTypo_SuggestsKnownOption()
+        {
+            var stmt = Parse("optcmd -fooo bar");
+            Assert.True(shell.App.Commands.TryGetValue("optcmd", out var factory));
+
+            var ex = await Assert.ThrowsAsync<CommandException>(
+                async () => await stmt.CreateCommandAsync(factory, shell, new CommandState(), CancellationToken.None));
+
+            Assert.Contains("Unknown option", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("-fooo", ex.Message, StringComparison.Ordinal);
+            // Suggestion should reuse the same dash prefix the user typed.
+            Assert.Contains("Did you mean '-foo'", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task UnknownOption_WithDoubleDashTypo_PreservesDoubleDashInSuggestion()
+        {
+            var stmt = Parse("optcmd --fooo bar");
+            Assert.True(shell.App.Commands.TryGetValue("optcmd", out var factory));
+
+            var ex = await Assert.ThrowsAsync<CommandException>(
+                async () => await stmt.CreateCommandAsync(factory, shell, new CommandState(), CancellationToken.None));
+
+            Assert.Contains("--fooo", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("Did you mean '--foo'", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task UnknownOption_WithUnrelatedName_HasNoSuggestion()
+        {
+            var stmt = Parse("optcmd -xyzzyfoobarbaz arg1");
+            Assert.True(shell.App.Commands.TryGetValue("optcmd", out var factory));
+
+            var ex = await Assert.ThrowsAsync<CommandException>(
+                async () => await stmt.CreateCommandAsync(factory, shell, new CommandState(), CancellationToken.None));
+
+            Assert.Contains("Unknown option", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Did you mean", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public async Task ArrayRestParameters_CollectRemainingArguments()
         {
             var cmd = await BindAsync("optcmd -foo first main rest1 rest2 rest3");

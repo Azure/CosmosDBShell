@@ -203,7 +203,20 @@ internal class CommandExpression : Expression
 
             if (matchingProperty == null)
             {
-                throw new CommandException(this.Name, $"Unknown option '{rawName}'.");
+                var knownNames = optionProperties
+                    .Where(x => x.Attr != null)
+                    .SelectMany(x => x.Attr!.Names)
+                    .Where(n => !string.IsNullOrEmpty(n));
+
+                // The parser stores only the first '-' in MinusToken; a second
+                // '-' for '--option' is consumed but discarded. Reconstruct the
+                // exact dash prefix from the gap between the two tokens so the
+                // suggestion echoes back what the user typed.
+                var dashCount = Math.Max(1, opt.NameToken.Start - opt.MinusToken.Start);
+                var typedPrefix = new string('-', dashCount);
+                throw new CommandException(
+                    this.Name,
+                    Azure.Data.Cosmos.Shell.Util.UnknownOptionMessage.Build(typedPrefix, rawName, knownNames));
             }
 
             var pi = matchingProperty.Prop;
