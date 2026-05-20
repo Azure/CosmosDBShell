@@ -21,7 +21,14 @@ internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IS
 
     (Markup Markup, int Margin) ILineEditorPrompt.GetPrompt(ILineEditorState state, int line)
     {
-        if (this.InContinuation)
+        // Show the continuation marker on any non-first row of the editor buffer.
+        // This covers two cases: (1) the user is typing a parse-driven continuation
+        // line that RadLine renders as row > 0, and (2) a multi-line entry was
+        // recalled from history and RadLine is rendering its later rows. The
+        // explicit InContinuation flag handles the third case where we start a
+        // fresh ReadLine for the next line of a multi-line entry (so the new
+        // row 0 still gets the continuation marker).
+        if (line > 0 || this.InContinuation)
         {
             return (new Markup("[grey]...[/]"), 1);
         }
