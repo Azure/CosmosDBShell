@@ -338,6 +338,14 @@ internal class QueryCommand : CosmosCommand
                             { "status", response.StatusCode },
                         });
                     }
+                    else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest
+                        && shell.TryReportQueryError(this.Query ?? string.Empty, message))
+                    {
+                        // The shell has already emitted a compiler-style
+                        // diagnostic with line/column/caret; throw a marker
+                        // exception so ReportExecutionError stays silent.
+                        throw new CommandReportedException("query", new InvalidOperationException(message));
+                    }
 
                     throw CommandException.FromResponseStatus("query", response.StatusCode, message);
                 }

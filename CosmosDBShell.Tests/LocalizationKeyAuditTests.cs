@@ -31,6 +31,12 @@ public class LocalizationKeyAuditTests
     }
 
     [Fact]
+    public void QueryErrorPrefix_IsLocalized()
+    {
+        Assert.Equal("query error", MessageService.GetString("query-error-prefix"));
+    }
+
+    [Fact]
     public void ReferencedLocalizationKeys_AreDefinedInEnglishResource()
     {
         var root = FindRepositoryRoot();

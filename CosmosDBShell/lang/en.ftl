@@ -575,6 +575,7 @@ statement_error_duplicate_err_redirect = Duplicate error redirection
 
 parser-error-prefix = parse error
 parser-warning-prefix = parse warning
+query-error-prefix = query error
 runtime-error-prefix = error
 runtime-error-canceled = Canceled.
 

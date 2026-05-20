@@ -160,6 +160,81 @@ public class ExecuteCommandExceptionTests
     }
 
     [Fact]
+    public void TryReportQueryError_StructuredCosmosMessage_WritesCompilerStyleDiagnostic()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            const string query = "SELECT * FORM c";
+            const string message = "Message: {\"errors\":[{\"severity\":\"Error\",\"location\":{\"start\":9,\"end\":13},\"message\":\"Identifier 'FORM' could not be resolved.\"}]}";
+
+            var reported = interpreter.TryReportQueryError(query, message);
+
+            Assert.True(reported);
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains("query error:", content, StringComparison.Ordinal);
+            Assert.Contains("Identifier 'FORM' could not be resolved.", content, StringComparison.Ordinal);
+            Assert.Contains("(1:10)", content, StringComparison.Ordinal);
+            Assert.Contains("> 1 | SELECT * FORM c", content, StringComparison.Ordinal);
+            Assert.Contains("^^^^", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void TryReportQueryError_UnknownShape_ReturnsFalseAndWritesNothing()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            var reported = interpreter.TryReportQueryError(
+                "SELECT * FROM c",
+                "Throttled: too many requests for partition X.");
+
+            Assert.False(reported);
+            Assert.Empty(File.ReadAllText(tempFile));
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task ParserError_RedirectedFile_DoesNotContainSpectreMarkup()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            await interpreter.ExecuteCommandAsync("\t}", CancellationToken.None);
+
+            var content = File.ReadAllText(tempFile);
+            Assert.DoesNotContain("[red]", content, StringComparison.Ordinal);
+            Assert.DoesNotContain("[grey]", content, StringComparison.Ordinal);
+            Assert.DoesNotContain("[/]", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
     public void CommandException_CosmosTimeoutCancellation_UsesFriendlyMessage()
     {
         var exception = new OperationCanceledException(

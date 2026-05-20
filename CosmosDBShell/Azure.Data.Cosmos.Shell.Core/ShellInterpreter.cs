@@ -1377,6 +1377,12 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportExecutionError(Exception e)
     {
+        // The command already emitted a friendly diagnostic; do not print again.
+        if (e is CommandReportedException)
+        {
+            return;
+        }
+
         if (e is PositionalException pe)
         {
             this.ReportPositionalError(pe);
@@ -1499,44 +1505,6 @@ public partial class ShellInterpreter : IDisposable
         return (line, column);
     }
 
-    private (string Display, int CaretColumn) ExpandTabs(string lineText, int caretColumnOneBased, int tabSize = 4)
-    {
-        if (string.IsNullOrEmpty(lineText) || lineText.IndexOf('\t') < 0)
-        {
-            return (lineText ?? string.Empty, caretColumnOneBased);
-        }
-
-        var sb = new System.Text.StringBuilder(lineText.Length);
-        var caret = caretColumnOneBased;
-        var visualCol = 0;
-        for (int i = 0; i < lineText.Length; i++)
-        {
-            var c = lineText[i];
-            if (c == '\t')
-            {
-                var spaces = tabSize - (visualCol % tabSize);
-                sb.Append(' ', spaces);
-
-                // The character at index i lives at 1-based column i+1.
-                // If the caret is strictly past this tab, shift it forward by
-                // the extra spaces this tab consumed.
-                if (caretColumnOneBased > i + 1)
-                {
-                    caret += spaces - 1;
-                }
-
-                visualCol += spaces;
-            }
-            else
-            {
-                sb.Append(c);
-                visualCol++;
-            }
-        }
-
-        return (sb.ToString(), caret);
-    }
-
     private void ReportParserErrors(ErrorList errors, string commandText)
     {
         if (errors == null || errors.Count == 0)
@@ -1573,38 +1541,19 @@ public partial class ShellInterpreter : IDisposable
             var (lineIndex, column) = this.OffsetToLineColumn(commandText ?? string.Empty, error.Start);
             var lineNumber = lineIndex + 1;
             var rawLineText = lineIndex >= 0 && lineIndex < lines.Length ? lines[lineIndex] : string.Empty;
-            var (lineText, displayColumn) = this.ExpandTabs(rawLineText, column + 1);
+            var rendered = SourceCaretRenderer.Render(rawLineText, column + 1);
 
-            var level = isWarning ? "warning" : "error";
             var levelColor = isWarning ? "yellow" : "red";
             var levelPrefix = MessageService.GetString(isWarning ? "parser-warning-prefix" : "parser-error-prefix")
                 ?? (isWarning ? "parse warning" : "parse error");
 
-            if (redirected)
-            {
-                fileBuffer!.Append(levelPrefix).Append(": ").Append(error.Message)
-                    .Append(" (").Append(lineNumber).Append(':').Append(displayColumn).Append(')')
-                    .Append(Environment.NewLine);
-                if (!string.IsNullOrEmpty(lineText))
-                {
-                    var gutter = $"  > {lineNumber} | ";
-                    fileBuffer.Append(gutter).Append(lineText).Append(Environment.NewLine);
-                    fileBuffer.Append(new string(' ', gutter.Length))
-                        .Append(new string(' ', Math.Max(0, displayColumn - 1)))
-                        .Append('^').Append(Environment.NewLine);
-                }
-            }
-            else
-            {
-                var m = Markup.Escape(error.Message);
-                AnsiConsole.MarkupLine($"[{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m} [grey]({lineNumber}:{displayColumn})[/]");
-                if (!string.IsNullOrEmpty(lineText))
-                {
-                    var gutter = $"  > {lineNumber} | ";
-                    AnsiConsole.MarkupLine($"[grey]{Markup.Escape(gutter)}[/]{Markup.Escape(lineText)}");
-                    AnsiConsole.MarkupLine($"[{levelColor}]{new string(' ', gutter.Length)}{new string(' ', Math.Max(0, displayColumn - 1))}^[/]");
-                }
-            }
+            this.AppendSourceCaretDiagnostic(
+                fileBuffer,
+                levelPrefix,
+                levelColor,
+                error.Message,
+                lineNumber,
+                rendered);
         }
 
         if (redirected && fileBuffer != null)
@@ -1617,6 +1566,89 @@ public partial class ShellInterpreter : IDisposable
             else
             {
                 File.WriteAllText(this.ErrOutRedirect!, payload);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Attempts to render a Cosmos NoSQL query error in the same compiler-style
+    /// format used for parser errors. Returns true when the error message
+    /// contained a recognisable source location and the diagnostic was
+    /// written; the caller can then throw a CommandReportedException so the
+    /// generic error reporter stays silent.
+    /// </summary>
+    internal bool TryReportQueryError(string query, string rawMessage)
+    {
+        if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(rawMessage))
+        {
+            return false;
+        }
+
+        var location = QueryErrorLocator.TryLocate(query, rawMessage);
+        if (location == null)
+        {
+            return false;
+        }
+
+        var lines = this.SplitIntoLines(query);
+        var lineIndex = Math.Clamp(location.Line - 1, 0, Math.Max(0, lines.Length - 1));
+        var rawLineText = lines.Length > 0 ? lines[lineIndex] : string.Empty;
+        var rendered = SourceCaretRenderer.Render(rawLineText, location.Column, location.Length);
+
+        var prefix = MessageService.GetString("query-error-prefix") ?? "query error";
+        var message = location.Message ?? rawMessage;
+
+        System.Text.StringBuilder? fileBuffer = this.ErrOutRedirect != null ? new System.Text.StringBuilder() : null;
+        this.AppendSourceCaretDiagnostic(fileBuffer, prefix, "red", message, location.Line, rendered);
+
+        if (fileBuffer != null)
+        {
+            var payload = fileBuffer.ToString();
+            if (this.AppendErrRedirection)
+            {
+                File.AppendAllText(this.ErrOutRedirect!, payload);
+            }
+            else
+            {
+                File.WriteAllText(this.ErrOutRedirect!, payload);
+            }
+        }
+
+        return true;
+    }
+
+    private void AppendSourceCaretDiagnostic(
+        System.Text.StringBuilder? fileBuffer,
+        string levelPrefix,
+        string levelColor,
+        string message,
+        int lineNumber,
+        RenderedSourceCaret rendered)
+    {
+        if (fileBuffer != null)
+        {
+            fileBuffer.Append(levelPrefix).Append(": ").Append(message)
+                .Append(" (").Append(lineNumber).Append(':').Append(rendered.CaretColumn).Append(')')
+                .Append(Environment.NewLine);
+            if (!string.IsNullOrEmpty(rendered.Display))
+            {
+                var gutter = $"  > {lineNumber} | ";
+                fileBuffer.Append(gutter).Append(rendered.Display).Append(Environment.NewLine);
+                fileBuffer.Append(new string(' ', gutter.Length))
+                    .Append(rendered.CaretPad)
+                    .Append(rendered.CaretMarker)
+                    .Append(Environment.NewLine);
+            }
+        }
+        else
+        {
+            var m = Markup.Escape(message);
+            AnsiConsole.MarkupLine($"[{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m} [grey]({lineNumber}:{rendered.CaretColumn})[/]");
+            if (!string.IsNullOrEmpty(rendered.Display))
+            {
+                var gutter = $"  > {lineNumber} | ";
+                AnsiConsole.MarkupLine($"[grey]{Markup.Escape(gutter)}[/]{Markup.Escape(rendered.Display)}");
+                AnsiConsole.MarkupLine($"[{levelColor}]{new string(' ', gutter.Length)}{rendered.CaretPad}{rendered.CaretMarker}[/]");
             }
         }
     }
