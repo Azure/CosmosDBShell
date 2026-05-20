@@ -11,12 +11,36 @@ using Spectre.Console;
 internal class CommandNotFoundException : Exception
 {
     public CommandNotFoundException(string commandName)
-        : base(MessageService.GetString(
-            "error-command-not-found",
-            new Dictionary<string, object> { { "command", Markup.Escape(commandName) } }))
+        : this(commandName, suggestion: null)
+    {
+    }
+
+    public CommandNotFoundException(string commandName, string? suggestion)
+        : base(BuildMessage(commandName, suggestion))
     {
         this.CommandName = commandName;
+        this.Suggestion = suggestion;
     }
 
     public string CommandName { get; }
+
+    public string? Suggestion { get; }
+
+    private static string BuildMessage(string commandName, string? suggestion)
+    {
+        var baseMessage = MessageService.GetString(
+            "error-command-not-found",
+            new Dictionary<string, object> { { "command", Markup.Escape(commandName) } });
+
+        if (string.IsNullOrEmpty(suggestion))
+        {
+            return baseMessage;
+        }
+
+        var hint = MessageService.GetString(
+            "error-command-not-found-suggestion",
+            new Dictionary<string, object> { { "suggestion", Markup.Escape(suggestion) } });
+
+        return string.IsNullOrEmpty(hint) ? baseMessage : baseMessage + " " + hint;
+    }
 }

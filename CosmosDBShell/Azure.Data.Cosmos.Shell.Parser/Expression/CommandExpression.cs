@@ -157,7 +157,18 @@ internal class CommandExpression : Expression
             return await this.RunScriptAsync(shell, commandState, token);
         }
 
-        throw new CommandNotFoundException(this.Name);
+        throw new CommandNotFoundException(this.Name, SuggestCommand(shell, this.Name));
+    }
+
+    private static string? SuggestCommand(ShellInterpreter shell, string typed)
+    {
+        IEnumerable<string> candidates = shell.App.Commands.Keys;
+        if (shell.Functions.Count > 0)
+        {
+            candidates = candidates.Concat(shell.Functions.Keys);
+        }
+
+        return Azure.Data.Cosmos.Shell.Util.CommandNameSuggester.Suggest(typed, candidates);
     }
 
     /// <summary>
