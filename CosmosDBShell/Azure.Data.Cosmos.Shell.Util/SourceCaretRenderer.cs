@@ -45,7 +45,7 @@ internal static class SourceCaretRenderer
         var caretPad = new string(' ', Math.Max(0, displayCaret - 1));
         var caretMarker = new string('^', clampedLength);
 
-        return new RenderedSourceCaret(display, displayCaret, caretPad, caretMarker);
+        return new RenderedSourceCaret(display, displayCaret, expandedCaret, caretPad, caretMarker);
     }
 
     /// <summary>
@@ -158,7 +158,8 @@ internal static class SourceCaretRenderer
         }
 
         var newCaret = (caretIndex - leftIdx) + 1 + (leftEllipsis ? ellipsisWidth : 0);
-        newCaret = Math.Clamp(newCaret, 1, sb.Length);
+        var maxCaret = caretIndex == displayLine.Length ? sb.Length + 1 : sb.Length;
+        newCaret = Math.Clamp(newCaret, 1, maxCaret);
         return (sb.ToString(), newCaret);
     }
 }

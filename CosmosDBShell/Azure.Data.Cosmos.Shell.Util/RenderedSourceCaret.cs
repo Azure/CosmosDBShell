@@ -12,5 +12,6 @@ namespace Azure.Data.Cosmos.Shell.Util;
 internal readonly record struct RenderedSourceCaret(
     string Display,
     int CaretColumn,
+    int SourceColumn,
     string CaretPad,
     string CaretMarker);

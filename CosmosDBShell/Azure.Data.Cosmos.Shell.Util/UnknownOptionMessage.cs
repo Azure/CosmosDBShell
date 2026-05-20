@@ -26,8 +26,7 @@ internal static class UnknownOptionMessage
         var displayed = prefix + typedName;
         var baseMsg = MessageService.GetString(
             "error-unknown-option",
-            new Dictionary<string, object> { { "option", displayed } })
-            ?? $"Unknown option '{displayed}'.";
+            new Dictionary<string, object> { { "option", displayed } });
 
         var suggestion = CommandNameSuggester.Suggest(typedName, knownNames);
         if (string.IsNullOrEmpty(suggestion))
@@ -37,8 +36,7 @@ internal static class UnknownOptionMessage
 
         var hint = MessageService.GetString(
             "error-unknown-option-suggestion",
-            new Dictionary<string, object> { { "suggestion", prefix + suggestion } })
-            ?? $"Did you mean '{prefix}{suggestion}'?";
+            new Dictionary<string, object> { { "suggestion", prefix + suggestion } });
 
         return (baseMsg, string.IsNullOrEmpty(hint) ? null : hint);
     }

@@ -534,6 +534,10 @@ internal class QueryCommand : CosmosCommand
         {
             throw new CommandException("query", e);
         }
+        catch (CommandReportedException)
+        {
+            throw;
+        }
         catch (Exception e)
         {
             throw new CommandException("query", e);

@@ -308,6 +308,59 @@ public class ExecuteCommandExceptionTests
     }
 
     [Fact]
+    public void TryReportQueryError_TrimsLongDisplayButKeepsOriginalSourceColumn()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+            var query = "SELECT * FROM c WHERE c.description = '" + new string('x', 140) + "' AND FORM c";
+            var start = query.IndexOf("FORM", StringComparison.Ordinal);
+            var message = $"Message: {{\"errors\":[{{\"location\":{{\"start\":{start},\"end\":{start + 4}}},\"message\":\"Expected FROM.\"}}]}}";
+
+            var reported = interpreter.TryReportQueryError(query, message);
+
+            Assert.True(reported);
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains($"(1:{start + 1})", content, StringComparison.Ordinal);
+            Assert.Contains("…", content, StringComparison.Ordinal);
+            Assert.Contains("^^^^", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void TryReportQueryError_BlankLineLocation_WritesCaretContext()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+            const string query = "\n";
+            const string message = "Message: {\"errors\":[{\"location\":{\"start\":1,\"end\":1},\"message\":\"Unexpected end.\"}]}";
+
+            var reported = interpreter.TryReportQueryError(query, message);
+
+            Assert.True(reported);
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains("query error: Unexpected end. (2:1)", content, StringComparison.Ordinal);
+            Assert.Contains("> 2 |", content, StringComparison.Ordinal);
+            Assert.Contains("^", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
     public void CommandException_CosmosTimeoutCancellation_UsesFriendlyMessage()
     {
         var exception = new OperationCanceledException(

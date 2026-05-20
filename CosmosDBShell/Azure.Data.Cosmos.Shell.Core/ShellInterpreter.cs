@@ -1383,7 +1383,7 @@ public partial class ShellInterpreter : IDisposable
     private void ReportExecutionError(Exception e)
     {
         // The command already emitted a friendly diagnostic; do not print again.
-        if (e is CommandReportedException)
+        if (ContainsException<CommandReportedException>(e))
         {
             return;
         }
@@ -1404,7 +1404,7 @@ public partial class ShellInterpreter : IDisposable
                 ? e.ToString()
                 : prefix + e.Message
                     + (!string.IsNullOrEmpty(hint) ? Environment.NewLine + hint : string.Empty)
-                    + (showInner ? Environment.NewLine + e.InnerException!.ToString() : string.Empty);
+                    + (showInner ? Environment.NewLine + FormatInnerExceptionMessages(e.InnerException) : string.Empty);
             if (this.AppendErrRedirection)
             {
                 File.AppendAllText(this.ErrOutRedirect, errTxt);
@@ -1437,7 +1437,12 @@ public partial class ShellInterpreter : IDisposable
 
             if (showInner)
             {
-                AnsiConsole.WriteLine(e.InnerException!.ToString());
+                var inner = e.InnerException;
+                while (inner != null)
+                {
+                    AnsiConsole.MarkupLine($"  [red]->[/] {Markup.Escape(inner.Message)}");
+                    inner = inner.InnerException;
+                }
             }
         }
     }
@@ -1557,8 +1562,7 @@ public partial class ShellInterpreter : IDisposable
             var rendered = SourceCaretRenderer.Render(rawLineText, column + 1);
 
             var levelColor = isWarning ? "yellow" : "red";
-            var levelPrefix = MessageService.GetString(isWarning ? "parser-warning-prefix" : "parser-error-prefix")
-                ?? (isWarning ? "parse warning" : "parse error");
+            var levelPrefix = MessageService.GetString(isWarning ? "parser-warning-prefix" : "parser-error-prefix");
 
             this.AppendSourceCaretDiagnostic(
                 fileBuffer,
@@ -1609,7 +1613,7 @@ public partial class ShellInterpreter : IDisposable
         var rawLineText = lines.Length > 0 ? lines[lineIndex] : string.Empty;
         var rendered = SourceCaretRenderer.Render(rawLineText, location.Column, location.Length);
 
-        var prefix = MessageService.GetString("query-error-prefix") ?? "query error";
+        var prefix = MessageService.GetString("query-error-prefix");
         var message = location.Message ?? rawMessage;
 
         System.Text.StringBuilder? fileBuffer = this.ErrOutRedirect != null ? new System.Text.StringBuilder() : null;
@@ -1657,45 +1661,39 @@ public partial class ShellInterpreter : IDisposable
         {
             if (hasOrigin)
             {
-                fileBuffer.Append(origin).Append(':').Append(lineNumber).Append(':').Append(rendered.CaretColumn).Append(": ")
+                fileBuffer.Append(origin).Append(':').Append(lineNumber).Append(':').Append(rendered.SourceColumn).Append(": ")
                     .Append(levelPrefix).Append(": ").Append(message).Append(Environment.NewLine);
             }
             else
             {
                 fileBuffer.Append(levelPrefix).Append(": ").Append(message)
-                    .Append(" (").Append(lineNumber).Append(':').Append(rendered.CaretColumn).Append(')')
+                    .Append(" (").Append(lineNumber).Append(':').Append(rendered.SourceColumn).Append(')')
                     .Append(Environment.NewLine);
             }
 
-            if (!string.IsNullOrEmpty(rendered.Display))
-            {
-                var gutter = $"  > {lineNumber} | ";
-                fileBuffer.Append(gutter).Append(rendered.Display).Append(Environment.NewLine);
-                fileBuffer.Append(new string(' ', gutter.Length))
-                    .Append(rendered.CaretPad)
-                    .Append(rendered.CaretMarker)
-                    .Append(Environment.NewLine);
-            }
+            var gutter = $"  > {lineNumber} | ";
+            fileBuffer.Append(gutter).Append(rendered.Display).Append(Environment.NewLine);
+            fileBuffer.Append(new string(' ', gutter.Length))
+                .Append(rendered.CaretPad)
+                .Append(rendered.CaretMarker)
+                .Append(Environment.NewLine);
         }
         else
         {
             var m = Markup.Escape(message);
             if (hasOrigin)
             {
-                var location = $"{origin}:{lineNumber}:{rendered.CaretColumn}:";
+                var location = $"{origin}:{lineNumber}:{rendered.SourceColumn}:";
                 AnsiConsole.MarkupLine($"[grey]{Markup.Escape(location)}[/] [{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m}");
             }
             else
             {
-                AnsiConsole.MarkupLine($"[{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m} [grey]({lineNumber}:{rendered.CaretColumn})[/]");
+                AnsiConsole.MarkupLine($"[{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m} [grey]({lineNumber}:{rendered.SourceColumn})[/]");
             }
 
-            if (!string.IsNullOrEmpty(rendered.Display))
-            {
-                var gutter = $"  > {lineNumber} | ";
-                AnsiConsole.MarkupLine($"[grey]{Markup.Escape(gutter)}[/]{Markup.Escape(rendered.Display)}");
-                AnsiConsole.MarkupLine($"[{levelColor}]{new string(' ', gutter.Length)}{rendered.CaretPad}{rendered.CaretMarker}[/]");
-            }
+            var gutter = $"  > {lineNumber} | ";
+            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(gutter)}[/]{Markup.Escape(rendered.Display)}");
+            AnsiConsole.MarkupLine($"[{levelColor}]{new string(' ', gutter.Length)}{rendered.CaretPad}{rendered.CaretMarker}[/]");
         }
     }
 
@@ -1710,13 +1708,52 @@ public partial class ShellInterpreter : IDisposable
         // diagnostic and so output stays terse in CI logs.
         try
         {
-            var leaf = Path.GetFileName(scriptFileName);
+            var leaf = scriptFileName
+                .Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries)
+                .LastOrDefault();
             return string.IsNullOrEmpty(leaf) ? scriptFileName : leaf;
         }
         catch (ArgumentException)
         {
             return scriptFileName;
         }
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Diagnostic helpers are grouped with diagnostic rendering code.")]
+    private static bool ContainsException<TException>(Exception? exception)
+        where TException : Exception
+    {
+        while (exception != null)
+        {
+            if (exception is TException)
+            {
+                return true;
+            }
+
+            exception = exception.InnerException;
+        }
+
+        return false;
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Diagnostic helpers are grouped with diagnostic rendering code.")]
+    private static string FormatInnerExceptionMessages(Exception? exception)
+    {
+        var sb = new System.Text.StringBuilder();
+        var first = true;
+        while (exception != null)
+        {
+            if (!first)
+            {
+                sb.Append(Environment.NewLine);
+            }
+
+            sb.Append(exception.Message);
+            first = false;
+            exception = exception.InnerException;
+        }
+
+        return sb.ToString();
     }
 
     /*

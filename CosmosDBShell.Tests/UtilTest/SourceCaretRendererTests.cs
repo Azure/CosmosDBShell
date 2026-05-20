@@ -40,6 +40,7 @@ public class SourceCaretRendererTests
 
         Assert.Equal("    }", result.Display);
         Assert.Equal(5, result.CaretColumn);
+        Assert.Equal(5, result.SourceColumn);
         Assert.Equal('}', result.Display[result.CaretColumn - 1]);
     }
 
@@ -57,6 +58,7 @@ public class SourceCaretRendererTests
 
         // Caret should still land on the 'B' inside the displayed window.
         Assert.Equal('B', result.Display[result.CaretColumn - 1]);
+        Assert.Equal(caretCol, result.SourceColumn);
         Assert.Equal("^^^", result.CaretMarker);
     }
 
@@ -92,5 +94,19 @@ public class SourceCaretRendererTests
 
         Assert.Equal("hello world", display);
         Assert.Equal(5, caret);
+    }
+
+    [Fact]
+    public void Render_EofCaretAfterTrim_PreservesOnePastEndCaret()
+    {
+        var line = new string('a', 200);
+
+        var result = SourceCaretRenderer.Render(line, caretColumnOneBased: line.Length + 1, maxDisplayWidth: 60, leftContextWidth: 25);
+
+        Assert.StartsWith("\u2026 ", result.Display);
+        Assert.Equal(result.Display.Length + 1, result.CaretColumn);
+        Assert.Equal(line.Length + 1, result.SourceColumn);
+        Assert.Equal(new string(' ', result.Display.Length), result.CaretPad);
+        Assert.Equal("^", result.CaretMarker);
     }
 }
