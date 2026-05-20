@@ -24,6 +24,33 @@ public enum ErrorLevel
 }
 
 /// <summary>
+/// Categorizes a parse error so the REPL can distinguish "input is incomplete"
+/// (the parser ran off the end while expecting more) from a definitive
+/// syntax error. Continuation-prompt logic only treats incomplete-input
+/// kinds as a signal to keep reading more lines.
+/// </summary>
+public enum ParseErrorKind
+{
+    /// <summary>
+    /// An ordinary syntax error. Reporting it does not imply the input
+    /// would be accepted if the user typed more characters.
+    /// </summary>
+    Generic,
+
+    /// <summary>
+    /// The parser hit end-of-input while expecting another token
+    /// (unclosed brace, missing right-hand side of an operator, etc.).
+    /// </summary>
+    UnexpectedEnd,
+
+    /// <summary>
+    /// The lexer reached end-of-input inside a string literal without
+    /// seeing the closing quote.
+    /// </summary>
+    UnterminatedString,
+}
+
+/// <summary>
 /// Represents a parsing error with location, message, and severity.
 /// </summary>
 public class ParseError
@@ -35,12 +62,14 @@ public class ParseError
     /// <param name="length">The length of the error span.</param>
     /// <param name="message">The error message.</param>
     /// <param name="errorLevel">The severity level of the error.</param>
-    public ParseError(int start, int length, string message, ErrorLevel errorLevel = ErrorLevel.Error)
+    /// <param name="kind">The category of error.</param>
+    public ParseError(int start, int length, string message, ErrorLevel errorLevel = ErrorLevel.Error, ParseErrorKind kind = ParseErrorKind.Generic)
     {
         this.Start = start;
         this.Length = length;
         this.Message = message ?? throw new ArgumentNullException(nameof(message));
         this.ErrorLevel = errorLevel;
+        this.Kind = kind;
     }
 
     /// <summary>
@@ -62,6 +91,11 @@ public class ParseError
     /// Gets or sets the severity level of the error.
     /// </summary>
     public ErrorLevel ErrorLevel { get; set; }
+
+    /// <summary>
+    /// Gets or sets the category of the error.
+    /// </summary>
+    public ParseErrorKind Kind { get; set; }
 
     /// <summary>
     /// Creates a new <see cref="ParseError"/> instance with <see cref="ErrorLevel.Error"/>.
