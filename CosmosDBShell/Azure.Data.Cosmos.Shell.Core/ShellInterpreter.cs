@@ -1192,7 +1192,7 @@ public partial class ShellInterpreter : IDisposable
             AnsiConsole.MarkupLine($"[red]{Markup.Escape(prefix)}:[/] {Markup.Escape(e.Message)}");
             if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
             {
-                AnsiConsole.MarkupLine($"  {Markup.Escape(hinted.Hint)}");
+                AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
             }
 
             var inner = e.InnerException;
@@ -1432,7 +1432,7 @@ public partial class ShellInterpreter : IDisposable
             AnsiConsole.MarkupLine($"{prefix}[red]{m}[/]");
             if (!string.IsNullOrEmpty(hint))
             {
-                AnsiConsole.MarkupLine($"  {Markup.Escape(hint)}");
+                AnsiConsole.MarkupLine(Markup.Escape(hint));
             }
 
             if (showInner)
