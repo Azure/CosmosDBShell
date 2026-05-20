@@ -289,9 +289,35 @@ public class MultiLineInputTests
     [Fact]
     public void DecodeHistoryLine_PrefixedLineWithOnlyValidEscapes_DecodesNormally()
     {
-        var encoded = "CosmosDBShellHistoryV1:line1\\nline2\\\\end";
+        // The encoder emits the prefix plus the "E:" marker before the escaped
+        // payload; lines that lack the marker are treated as user data and
+        // returned untouched.
+        var encoded = "CosmosDBShellHistoryV1:E:line1\\nline2\\\\end";
 
         Assert.Equal("line1\nline2\\end", ShellInterpreter.DecodeHistoryLine(encoded));
+    }
+
+    [Fact]
+    public void DecodeHistoryLine_PrefixedLineWithoutMarker_ReturnsRawLine()
+    {
+        // A pre-existing history entry that literally begins with the prefix
+        // but lacks the encoder-only "E:" marker must be preserved verbatim,
+        // even when the payload would otherwise look like valid escapes.
+        var raw = "CosmosDBShellHistoryV1:line1\\nline2";
+
+        Assert.Equal(raw, ShellInterpreter.DecodeHistoryLine(raw));
+    }
+
+    [Fact]
+    public void EncodeHistoryLine_LineStartingWithPrefix_RoundTrips()
+    {
+        // A user command that literally starts with the prefix string must
+        // survive a round trip through the encoder/decoder.
+        var command = "CosmosDBShellHistoryV1:hello";
+
+        var encoded = ShellInterpreter.EncodeHistoryLine(command);
+        Assert.NotEqual(command, encoded);
+        Assert.Equal(command, ShellInterpreter.DecodeHistoryLine(encoded));
     }
 
     [Fact]

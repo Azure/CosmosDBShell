@@ -34,6 +34,11 @@ public partial class ShellInterpreter : IDisposable
 
     private const string EncodedHistoryLinePrefix = "CosmosDBShellHistoryV1:";
 
+    // Sentinel written immediately after the prefix by EncodeHistoryLine so that
+    // DecodeHistoryLine can unambiguously tell a value it produced apart from a
+    // user command that just happens to start with the prefix string.
+    private const string EncodedHistoryLineMarker = "E:";
+
     private static CancellationTokenSource? currentTokenSource;
 
     private readonly string cfgPath;
@@ -1402,25 +1407,24 @@ public partial class ShellInterpreter : IDisposable
             }
         }
 
-        return EncodedHistoryLinePrefix + sb.ToString();
+        return EncodedHistoryLinePrefix + EncodedHistoryLineMarker + sb.ToString();
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
     internal static string DecodeHistoryLine(string line)
     {
-        if (!line.StartsWith(EncodedHistoryLinePrefix, StringComparison.Ordinal))
+        // Require both the prefix and the encoder-only marker so a user command
+        // that happens to start with the prefix string is never silently rewritten.
+        if (!line.StartsWith(EncodedHistoryLinePrefix + EncodedHistoryLineMarker, StringComparison.Ordinal))
         {
             return line;
         }
 
-        var payload = line.Substring(EncodedHistoryLinePrefix.Length);
+        var payload = line.Substring(EncodedHistoryLinePrefix.Length + EncodedHistoryLineMarker.Length);
 
-        // Validate that the payload only contains escape sequences we emit
-        // (\\, \n, \r). Any other backslash usage means the line was not
-        // produced by EncodeHistoryLine — for example a pre-existing history
-        // entry from an older version that just happens to start with the
-        // prefix string. In that case return the line untouched rather than
-        // silently mangling it.
+        // Defensive: validate that the payload only contains escape sequences
+        // we emit (\\, \n, \r). If a line was hand-edited and broke the format,
+        // fall back to returning it untouched rather than mangling the data.
         for (int i = 0; i < payload.Length; i++)
         {
             if (payload[i] != '\\')
@@ -1591,11 +1595,10 @@ public partial class ShellInterpreter : IDisposable
             var lexer = new Lexer(text);
             var parser = new StatementParser(lexer);
 
-            // Drain the lazy enumerator so the parser reaches end-of-input.
-            foreach (var statement in parser.ParseStatements())
-            {
-                _ = statement;
-            }
+            // ParseStatements() runs the parser to end-of-input and returns the
+            // full statement list eagerly; the result is discarded because we
+            // only care about whether parsing flagged the input as incomplete.
+            _ = parser.ParseStatements();
 
             foreach (var err in parser.Errors)
             {
