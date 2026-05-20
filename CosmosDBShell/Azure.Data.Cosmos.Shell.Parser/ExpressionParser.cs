@@ -1210,11 +1210,11 @@ internal class ExpressionParser
         return new JsonArrayExpression(lbracket, synthetic, elements);
     }
 
-    private void ReportError(string message, Token? token, TokenType? expected = null, int? position = null)
+    private void ReportError(string message, Token? token, TokenType? expected = null, int? position = null, ParseErrorKind kind = ParseErrorKind.Generic)
     {
         int start = position ?? token?.Start ?? (this.lastNonNullToken?.Start ?? 0);
         int length = token?.Length ?? 0;
-        this.lexer.Errors.Add(ParseError.CreateError(start, length, message));
+        this.lexer.Errors.Add(new ParseError(start, length, message, ErrorLevel.Error, kind));
     }
 
     private void AbortUnexpectedEnd()
@@ -1225,7 +1225,7 @@ internal class ExpressionParser
         }
 
         int pos = this.GetErrorPosition();
-        this.ReportError(MessageService.GetString("expression_error_unexpected_end"), null, position: pos);
+        this.ReportError(MessageService.GetString("expression_error_unexpected_end"), null, position: pos, kind: ParseErrorKind.UnexpectedEnd);
         this.aborted = true;
     }
 

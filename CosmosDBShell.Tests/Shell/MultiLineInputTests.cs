@@ -266,4 +266,47 @@ public class MultiLineInputTests
             }
         }
     }
+
+    [Fact]
+    public void DecodeHistoryLine_PrefixedLineWithInvalidEscape_ReturnsRawLine()
+    {
+        // A pre-existing history entry that literally begins with the prefix
+        // and contains a backslash sequence we never emit (\x). Decoding must
+        // leave it untouched rather than mangling the user's data.
+        var raw = "CosmosDBShellHistoryV1:hello \\x world";
+
+        Assert.Equal(raw, ShellInterpreter.DecodeHistoryLine(raw));
+    }
+
+    [Fact]
+    public void DecodeHistoryLine_PrefixedLineEndingInLoneBackslash_ReturnsRawLine()
+    {
+        var raw = "CosmosDBShellHistoryV1:trailing\\";
+
+        Assert.Equal(raw, ShellInterpreter.DecodeHistoryLine(raw));
+    }
+
+    [Fact]
+    public void DecodeHistoryLine_PrefixedLineWithOnlyValidEscapes_DecodesNormally()
+    {
+        var encoded = "CosmosDBShellHistoryV1:line1\\nline2\\\\end";
+
+        Assert.Equal("line1\nline2\\end", ShellInterpreter.DecodeHistoryLine(encoded));
+    }
+
+    [Fact]
+    public void IsIncompleteInput_IncompleteExpression_ReturnsTrue()
+    {
+        // Inputs that trail off mid-expression must be recognized as
+        // incomplete so the REPL prompts for another line, regardless of
+        // whether the unexpected-end is raised by the statement parser or
+        // the expression parser. These cases exercise the expression-parser
+        // AbortUnexpectedEnd path (without `ParseErrorKind.UnexpectedEnd`
+        // they would all be misclassified as definitive syntax errors and
+        // the REPL would execute them instead of prompting for more).
+        Assert.True(ShellInterpreter.IsIncompleteInput("if (1 +"));
+        Assert.True(ShellInterpreter.IsIncompleteInput("while (1 + 2"));
+        Assert.True(ShellInterpreter.IsIncompleteInput("if a +"));
+        Assert.True(ShellInterpreter.IsIncompleteInput("echo (1+"));
+    }
 }

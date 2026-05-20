@@ -1413,21 +1413,47 @@ public partial class ShellInterpreter : IDisposable
             return line;
         }
 
-        line = line.Substring(EncodedHistoryLinePrefix.Length);
+        var payload = line.Substring(EncodedHistoryLinePrefix.Length);
 
-        var sb = new System.Text.StringBuilder(line.Length);
-        for (int i = 0; i < line.Length; i++)
+        // Validate that the payload only contains escape sequences we emit
+        // (\\, \n, \r). Any other backslash usage means the line was not
+        // produced by EncodeHistoryLine — for example a pre-existing history
+        // entry from an older version that just happens to start with the
+        // prefix string. In that case return the line untouched rather than
+        // silently mangling it.
+        for (int i = 0; i < payload.Length; i++)
         {
-            var ch = line[i];
-            if (ch == '\\' && i + 1 < line.Length)
+            if (payload[i] != '\\')
             {
-                var next = line[i + 1];
+                continue;
+            }
+
+            if (i + 1 >= payload.Length)
+            {
+                return line;
+            }
+
+            var next = payload[i + 1];
+            if (next != '\\' && next != 'n' && next != 'r')
+            {
+                return line;
+            }
+
+            i++;
+        }
+
+        var sb = new System.Text.StringBuilder(payload.Length);
+        for (int i = 0; i < payload.Length; i++)
+        {
+            var ch = payload[i];
+            if (ch == '\\' && i + 1 < payload.Length)
+            {
+                var next = payload[i + 1];
                 switch (next)
                 {
                     case '\\': sb.Append('\\'); i++; continue;
                     case 'n': sb.Append('\n'); i++; continue;
                     case 'r': sb.Append('\r'); i++; continue;
-                    default: sb.Append(ch); continue;
                 }
             }
 
