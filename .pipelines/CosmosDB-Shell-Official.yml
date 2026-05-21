@@ -71,10 +71,13 @@ extends:
             variables: # More settings at https://aka.ms/obpipelines/yaml/jobs
               ob_outputDirectory: '$(Build.SourcesDirectory)\out' # this directory is uploaded to pipeline artifacts, reddog and cloudvault. More info at https://aka.ms/obpipelines/artifacts
               ob_artifactBaseName: cosmos_shell_all # combined artifact with all RIDs for SDL scanning
-              # GitVersion needs full history to count commits. Using
-              # ob_git_fetchDepth lets OneBranch do the full clone in one shot
-              # instead of shallow-clone + --unshallow, which avoids a second
-              # fetch to github.com that the windows_build_container pool blocks.
+              # Nerdbank.GitVersioning needs full history to walk back to
+              # the commit that last changed version.json (the baseline) so
+              # it can compute the patch as the git height since that
+              # commit. Setting ob_git_fetchDepth: -1 makes OneBranch do the
+              # full clone in one shot instead of shallow-clone +
+              # --unshallow, avoiding a second fetch to github.com that the
+              # windows_build_container pool blocks.
               ob_git_fetchDepth: -1
               OneES_SbomNugetSDLPath: out\nupkg
               # https://aka.ms/obpipelines/sdl
@@ -97,52 +100,25 @@ extends:
               - script: dotnet tool restore --configfile "$(Build.SourcesDirectory)\\.pipelines\\nuget.config"
                 displayName: "Dotnet Tools Restore"
 
-              # Major.Minor come from GitVersion (`next-version` in
-              # GitVersion.yml). The patch is the number of commits since
-              # GitVersion.yml was last modified, computed directly from
-              # git so it is independent of any tags and so it resets to
-              # 0 whenever next-version is bumped. GitVersion's
-              # CommitsSinceVersionSource is not used because, with the
-              # TaggedCommit strategy disabled, it falls back to counting
-              # all commits in the repository.
+              # Nerdbank.GitVersioning is wired in via PackageReference in
+              # Directory.Build.props, so dotnet build/publish/pack already
+              # produce versions matching version.json. We only need NBGV's
+              # NuGetPackageVersion here to drive the OneBranch build
+              # number and the zip filenames.
               - task: PowerShell@2
-                displayName: "Compute version with GitVersion"
+                displayName: "Compute version with nbgv"
                 inputs:
                   targetType: inline
                   pwsh: true
                   script: |
                     $ErrorActionPreference = 'Stop'
-                    $gitVersionJson = dotnet tool run dotnet-gitversion /output json
-
-                    if ($LASTEXITCODE -ne 0) {
-                      throw "dotnet-gitversion failed with exit code $LASTEXITCODE."
+                    $packageVersion = (dotnet tool run nbgv get-version -v NuGetPackageVersion).Trim()
+                    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($packageVersion)) {
+                      throw "Failed to compute version metadata with nbgv."
                     }
 
-                    $gv = $gitVersionJson | ConvertFrom-Json
-
-                    $configPath = Join-Path '$(Build.SourcesDirectory)' 'GitVersion.yml'
-                    $configCommit = (git log -n 1 --format=%H -- $configPath).Trim()
-                    if ([string]::IsNullOrWhiteSpace($configCommit)) {
-                      throw "Could not determine the commit that last changed GitVersion.yml."
-                    }
-
-                    $commitsSinceConfig = [int](git rev-list --count "$configCommit..HEAD")
-                    if ($commitsSinceConfig -gt 65535) {
-                      throw "Commits since GitVersion.yml ($commitsSinceConfig) exceeds the maximum .NET assembly version segment value of 65535. Bump next-version in GitVersion.yml before generating assembly and file versions."
-                    }
-
-                    $assemblyVersion = "$($gv.Major).$($gv.Minor).$commitsSinceConfig"
-                    $packageVersion  = "$assemblyVersion-preview"
-                    $fileVersion     = "$assemblyVersion.0"
-                    $infoVersion     = "$packageVersion+$(Build.SourceVersion)"
-
-                    Write-Host "AssemblyVersion: $assemblyVersion"
                     Write-Host "PackageVersion:  $packageVersion"
-
-                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_Version]$assemblyVersion"
                     Write-Host "##vso[task.setvariable variable=CosmosDBShell_PackageVersion]$packageVersion"
-                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_FileVersion]$fileVersion"
-                    Write-Host "##vso[task.setvariable variable=CosmosDBShell_InformationalVersion]$infoVersion"
 
               - task: onebranch.pipeline.version@1
                 displayName: "Update build number"
@@ -166,7 +142,7 @@ extends:
                 displayName: "DotNetCore build with RoslynAnalyzers"
                 inputs:
                   userProvideBuildInfo: "msBuildInfo"
-                  msBuildCommandline: "dotnet.exe build $(BuildSolution) --no-restore --configuration $(BuildConfiguration) /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion)"
+                  msBuildCommandline: "dotnet.exe build $(BuildSolution) --no-restore --configuration $(BuildConfiguration)"
 
               - task: DotNetCoreCLI@2
                 displayName: "DotNetCore test"
@@ -189,7 +165,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r win-x64 --output $(Build.SourcesDirectory)\out\win-x64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
+                  arguments: '--configuration $(BuildConfiguration) -r win-x64 --output $(Build.SourcesDirectory)\out\win-x64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -198,7 +174,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r win-arm64 --output $(Build.SourcesDirectory)\out\win-arm64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
+                  arguments: '--configuration $(BuildConfiguration) -r win-arm64 --output $(Build.SourcesDirectory)\out\win-arm64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -207,7 +183,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r osx-x64 --output $(Build.SourcesDirectory)\out\osx-x64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
+                  arguments: '--configuration $(BuildConfiguration) -r osx-x64 --output $(Build.SourcesDirectory)\out\osx-x64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -216,7 +192,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r linux-x64 --output $(Build.SourcesDirectory)\out\linux-x64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
+                  arguments: '--configuration $(BuildConfiguration) -r linux-x64 --output $(Build.SourcesDirectory)\out\linux-x64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -225,7 +201,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r linux-arm64 --output $(Build.SourcesDirectory)\out\linux-arm64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
+                  arguments: '--configuration $(BuildConfiguration) -r linux-arm64 --output $(Build.SourcesDirectory)\out\linux-arm64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -234,7 +210,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r osx-arm64 --output $(Build.SourcesDirectory)\out\osx-arm64 /p:Version=$(CosmosDBShell_Version) /p:FileVersion=$(CosmosDBShell_FileVersion) /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
+                  arguments: '--configuration $(BuildConfiguration) -r osx-arm64 --output $(Build.SourcesDirectory)\out\osx-arm64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               # Kept for reference, intentionally disabled:
@@ -416,10 +392,6 @@ extends:
                       --no-build `
                       --no-restore `
                       --output $pkgDir `
-                      /p:PackageVersion=$(CosmosDBShell_PackageVersion) `
-                      /p:Version=$(CosmosDBShell_Version) `
-                      /p:FileVersion=$(CosmosDBShell_FileVersion) `
-                      /p:InformationalVersion=$(CosmosDBShell_InformationalVersion) `
                       /p:ContinuousIntegrationBuild=true
 
                     if ($LASTEXITCODE -ne 0) {
