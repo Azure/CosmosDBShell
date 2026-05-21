@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.4 — 2026-05-21
+## 1.1.4-preview — 2026-05-21
 
 First release on the 1.1 line. A pretty packed cycle. The headline change is **ARM-based control plane for database and container management**, but there’s also a fully reworked CLI, two new item commands, a much friendlier shell experience for newcomers, and a long list of paper-cut fixes.
 
