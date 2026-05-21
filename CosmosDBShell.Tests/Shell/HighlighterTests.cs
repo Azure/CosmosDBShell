@@ -483,10 +483,44 @@ public class HighlighterTests
         Assert.NotNull(res);
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
         Assert.True(segs.Count >= 4);
-        Assert.Contains("{ ", segs.Select(s => s.Text));
-        Assert.Contains(" }", segs.Select(s => s.Text));
+
+        // Block braces should be colored as brackets (their own segments), the same
+        // way JSON braces, brackets, and parentheses are highlighted.
+        Assert.Contains("{", segs.Select(s => s.Text));
+        Assert.Contains("}", segs.Select(s => s.Text));
+
+        var openBrace = segs.First(s => s.Text == "{");
+        var closeBrace = segs.First(s => s.Text == "}");
+        Assert.NotNull(openBrace.Style.Foreground);
+        Assert.Equal(openBrace.Style.Foreground, closeBrace.Style.Foreground);
+
         var echoSegs = segs.Where(s => s.Text.Contains("echo")).ToList();
         Assert.Equal(2, echoSegs.Count);
+    }
+
+    [Fact]
+    public void TestNestedBlockStatementRainbowBrackets()
+    {
+        // Outer and inner block braces should use different rainbow-bracket colors,
+        // and the inner JSON braces should continue the cycle from the surrounding blocks.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var res = highlighter.BuildHighlightedText("{ { echo { foo:bar } } }") as Markup;
+        Assert.NotNull(res);
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        var openBraces = segs.Where(s => s.Text == "{").ToList();
+        var closeBraces = segs.Where(s => s.Text == "}").ToList();
+        Assert.Equal(3, openBraces.Count);
+        Assert.Equal(3, closeBraces.Count);
+
+        // Outer and inner block braces must not share the same color.
+        Assert.NotEqual(openBraces[0].Style.Foreground, openBraces[1].Style.Foreground);
+
+        // Each opening brace should match its corresponding closing brace's color.
+        Assert.Equal(openBraces[0].Style.Foreground, closeBraces[2].Style.Foreground);
+        Assert.Equal(openBraces[1].Style.Foreground, closeBraces[1].Style.Foreground);
+        Assert.Equal(openBraces[2].Style.Foreground, closeBraces[0].Style.Foreground);
     }
 
     [Fact]

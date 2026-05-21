@@ -608,9 +608,27 @@ public partial class ShellInterpreter : IHighlighter
 
         public void Visit(BlockStatement blockStatement)
         {
+            // Color the block braces using the current bracket depth so they participate
+            // in the same rainbow cycle as JSON braces, brackets, and parentheses.
+            var braceDepth = this.bracketDepth;
+
+            if (blockStatement.OpenBraceToken != null)
+            {
+                this.AppendToken(blockStatement.OpenBraceToken, Theme.FormatBracket(blockStatement.OpenBraceToken.Value, braceDepth));
+            }
+
+            this.bracketDepth = braceDepth + 1;
+
             foreach (var statement in blockStatement.Statements)
             {
                 statement.Accept(this);
+            }
+
+            this.bracketDepth = braceDepth;
+
+            if (blockStatement.CloseBraceToken != null)
+            {
+                this.AppendToken(blockStatement.CloseBraceToken, Theme.FormatBracket(blockStatement.CloseBraceToken.Value, braceDepth));
             }
         }
 

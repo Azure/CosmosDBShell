@@ -34,6 +34,16 @@ internal class BlockStatement : Statement
     }
 
     /// <summary>
+    /// Gets the opening brace token, or <c>null</c> when the block was synthesized without one.
+    /// </summary>
+    public Token? OpenBraceToken => this.openBraceToken;
+
+    /// <summary>
+    /// Gets the closing brace token, or <c>null</c> when the source ended before the block was closed.
+    /// </summary>
+    public Token? CloseBraceToken => this.closeBraceToken;
+
+    /// <summary>
     /// Gets the list of statements contained within this block.
     /// </summary>
     public List<Statement> Statements { get; } = new List<Statement>();
