@@ -12,6 +12,7 @@ using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 using RadLine;
 
+[Collection(CompletionCacheTestCollection.Name)]
 public class CompletionTests
 {
     [Fact]
@@ -124,4 +125,10 @@ public class CompletionTests
         var refreshTasks = Assert.IsType<ConcurrentDictionary<string, long>>(field.GetValue(null));
         return refreshTasks;
     }
+}
+
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class CompletionCacheTestCollection
+{
+    public const string Name = "Completion cache tests";
 }

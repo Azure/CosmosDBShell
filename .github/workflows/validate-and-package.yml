@@ -59,7 +59,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # GitVersion needs full history to compute commit counts.
+          # Nerdbank.GitVersioning needs full history to walk back to the
+          # commit that last changed version.json (the baseline) so it can
+          # compute the patch as the git height since that commit.
           fetch-depth: 0
 
       - name: Setup .NET SDK
@@ -72,50 +74,33 @@ jobs:
             Directory.Packages.props
             **/*.csproj
 
-      - name: Restore GitVersion tool
-        if: github.event_name != 'pull_request'
+      - name: Restore .NET tools
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           dotnet tool restore
           if ($LASTEXITCODE -ne 0) {
-            throw "Failed to restore the local GitVersion tool."
+            throw "Failed to restore .NET local tools (nbgv)."
           }
 
       - name: Compute version properties
-        if: github.event_name != 'pull_request'
         id: version
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
-          # GitVersion.yml supplies Major.Minor via next-version and counts
-          # commits since it was last bumped. We build the final version
-          # string ourselves so it follows the Major.Minor.<commits>-preview
-          # format consistently across pipelines.
-          $gitVersionJson = dotnet tool run dotnet-gitversion /output json /nofetch /nonormalize
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to compute version metadata with dotnet-gitversion."
+          # Nerdbank.GitVersioning is wired in via PackageReference in
+          # Directory.Build.props, so dotnet build/publish/pack already
+          # produce versions matching version.json. We only need NBGV's
+          # NuGetPackageVersion here to drive artifact naming and the
+          # workflow step summary.
+          $packageVersion = (dotnet tool run nbgv get-version -v NuGetPackageVersion).Trim()
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($packageVersion)) {
+            throw "Failed to compute version metadata with nbgv."
           }
 
-          $gv = $gitVersionJson | ConvertFrom-Json
-
-          $commitsSinceVersionSource = [int]$gv.CommitsSinceVersionSource
-          if ($commitsSinceVersionSource -gt 65535) {
-            throw "CommitsSinceVersionSource ($commitsSinceVersionSource) exceeds the maximum .NET assembly version segment value of 65535. Bump next-version before generating assembly and file versions."
-          }
-
-          $assemblyVersion = "$($gv.Major).$($gv.Minor).$commitsSinceVersionSource"
-          $packageVersion  = "$assemblyVersion-preview"
-          $fileVersion     = "$assemblyVersion.0"
-          $infoVersion     = "$packageVersion+${{ github.sha }}"
-
-          Write-Host "AssemblyVersion: $assemblyVersion"
           Write-Host "PackageVersion:  $packageVersion"
-          "assembly_version=$assemblyVersion" >> $env:GITHUB_OUTPUT
           "package_version=$packageVersion" >> $env:GITHUB_OUTPUT
-          "file_version=$fileVersion" >> $env:GITHUB_OUTPUT
-          "informational_version=$infoVersion" >> $env:GITHUB_OUTPUT
 
           $branchName = "${{ github.ref_name }}"
           $branchLabel = $branchName.ToLowerInvariant()
@@ -142,9 +127,6 @@ jobs:
           dotnet build CosmosDBShell.sln
           --configuration $env:BUILD_CONFIGURATION
           --no-restore
-          $(if ('${{ steps.version.outputs.assembly_version }}') { "/p:Version=${{ steps.version.outputs.assembly_version }}" })
-          $(if ('${{ steps.version.outputs.file_version }}') { "/p:FileVersion=${{ steps.version.outputs.file_version }}" })
-          $(if ('${{ steps.version.outputs.informational_version }}') { "/p:InformationalVersion=${{ steps.version.outputs.informational_version }}" })
         shell: pwsh
 
       - name: Test solution
@@ -189,7 +171,6 @@ jobs:
           if-no-files-found: ignore
 
       - name: Publish runtime artifacts
-        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -206,10 +187,7 @@ jobs:
               --configuration $env:BUILD_CONFIGURATION `
               --no-restore `
               -r $rid `
-              --output "out/$rid" `
-              /p:Version=${{ steps.version.outputs.assembly_version }} `
-              /p:FileVersion=${{ steps.version.outputs.file_version }} `
-              /p:InformationalVersion=${{ steps.version.outputs.informational_version }}
+              --output "out/$rid"
 
             if ($LASTEXITCODE -ne 0) {
               throw "RID publish failed for $rid with exit code $LASTEXITCODE."
@@ -217,7 +195,6 @@ jobs:
           }
 
       - name: Pack NuGet artifacts
-        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path out/nupkg -Force | Out-Null
@@ -229,14 +206,9 @@ jobs:
             --configuration $env:BUILD_CONFIGURATION `
             --no-restore `
             --output out/nupkg `
-            /p:PackageVersion=${{ steps.version.outputs.package_version }} `
-            /p:Version=${{ steps.version.outputs.assembly_version }} `
-            /p:FileVersion=${{ steps.version.outputs.file_version }} `
-            /p:InformationalVersion=${{ steps.version.outputs.informational_version }} `
             /p:ContinuousIntegrationBuild=true
 
       - name: Validate NuGet package set
-        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           $pkgDir = Join-Path $pwd 'out/nupkg'
@@ -262,9 +234,9 @@ jobs:
             $_.Name -notmatch '^CosmosDBShell\.(win-x64|win-arm64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
           }
 
-          if ($pointerPackages -and $pointerPackages.Count -gt 1) {
+          if (-not $pointerPackages -or $pointerPackages.Count -ne 1) {
             $names = @($pointerPackages | ForEach-Object { $_.Name })
-            Write-Error "Expected at most one pointer package (non-RID). Found: $($names -join ', ')"
+            Write-Error "Expected exactly one pointer package (non-RID). Found: $($names -join ', ')"
             exit 1
           }
 
@@ -275,22 +247,7 @@ jobs:
             exit 1
           }
 
-      - name: Validate pointer package is available for upload
-        if: github.event_name != 'pull_request'
-        shell: pwsh
-        run: |
-          $pkgDir = Join-Path $pwd 'out/nupkg'
-          $pointerPackages = Get-ChildItem -Path (Join-Path $pkgDir 'CosmosDBShell.*.nupkg') -ErrorAction SilentlyContinue | Where-Object {
-            $_.Name -notmatch '^CosmosDBShell\.(win-x64|win-arm64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
-          }
-
-          if (-not $pointerPackages) {
-            Write-Error 'Expected a pointer package in out/nupkg, but none was found.'
-            exit 1
-          }
-
       - name: List packaged NuGet files
-        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           Get-ChildItem -Path out/nupkg -Filter *.nupkg -File | Sort-Object Name | ForEach-Object {
@@ -298,7 +255,6 @@ jobs:
           }
 
       - name: Write package install summary
-        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           $summary = $env:GITHUB_STEP_SUMMARY
@@ -329,7 +285,6 @@ jobs:
           $lines -join "`n" | Out-File -FilePath $summary -Encoding utf8 -Append
 
       - name: Upload pointer package
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-pointer-${{ steps.version.outputs.artifact_suffix }}
@@ -344,7 +299,6 @@ jobs:
           if-no-files-found: error
 
       - name: Upload win-x64 package
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-win-x64-${{ steps.version.outputs.artifact_suffix }}
@@ -359,7 +313,6 @@ jobs:
           if-no-files-found: error
 
       - name: Upload linux-x64 package
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-linux-x64-${{ steps.version.outputs.artifact_suffix }}
@@ -367,7 +320,6 @@ jobs:
           if-no-files-found: error
 
       - name: Upload linux-arm64 package
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-linux-arm64-${{ steps.version.outputs.artifact_suffix }}
@@ -375,7 +327,6 @@ jobs:
           if-no-files-found: error
 
       - name: Upload osx-x64 package
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-osx-x64-${{ steps.version.outputs.artifact_suffix }}
@@ -383,7 +334,6 @@ jobs:
           if-no-files-found: error
 
       - name: Upload osx-arm64 package
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CosmosDBShell-osx-arm64-${{ steps.version.outputs.artifact_suffix }}

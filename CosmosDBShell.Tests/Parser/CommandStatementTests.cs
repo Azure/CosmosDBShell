@@ -123,6 +123,36 @@ public class CommandStatementTests
     }
 
     [Fact]
+    public async Task CommandStatement_UnknownCommandWithCloseTypo_SuggestsKnownCommand()
+    {
+        var shell = ShellInterpreter.Instance;
+        var commandState = new CommandState();
+        var statement = ParseStatement("qery");
+
+        var ex = await Assert.ThrowsAsync<CommandNotFoundException>(
+            async () => await statement.RunAsync(shell, commandState, CancellationToken.None));
+
+        Assert.Equal("query", ex.Suggestion);
+        Assert.Equal("Did you mean 'query'?", ex.Hint);
+        Assert.DoesNotContain("Did you mean", ex.Message);
+    }
+
+    [Fact]
+    public async Task CommandStatement_UnknownCommandWithUnrelatedName_HasNoSuggestion()
+    {
+        var shell = ShellInterpreter.Instance;
+        var commandState = new CommandState();
+        var statement = ParseStatement("xyzzyfoobarbaz");
+
+        var ex = await Assert.ThrowsAsync<CommandNotFoundException>(
+            async () => await statement.RunAsync(shell, commandState, CancellationToken.None));
+
+        Assert.Null(ex.Suggestion);
+        Assert.Null(ex.Hint);
+        Assert.DoesNotContain("Did you mean", ex.Message);
+    }
+
+    [Fact]
     public void CommandStatement_ToString_ReconstructsCommand()
     {
         var statement = ParseStatement("query \"SELECT * FROM c\" collection1");

@@ -10,6 +10,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using Azure.Data.Cosmos.Shell.Util;
+
 /// <summary>
 /// Represents the different types of tokens that can be recognized by the lexer.
 /// </summary>
@@ -221,13 +223,34 @@ internal class Lexer
 {
     private readonly string input;
     private readonly Stack<Token> putBackTokens;
+    private readonly int positionOffset;
+
+    // Use reference equality on the Token key. Token is a record (value equality),
+    // so two distinct tokens with identical Type/Value/Start/Length would otherwise
+    // collide as map keys. Reference equality guarantees that only the exact token
+    // instance produced by ReadInterpolatedString / ReadDoubleQuotedString in this
+    // lexer can retrieve its source map.
+    private readonly Dictionary<Token, int[]> interpolatedStringSourceMaps = new(ReferenceEqualityComparer.Instance);
+
     private int position;
     private Token? lastToken;
 
     public Lexer(string input)
+        : this(input, 0)
+    {
+    }
+
+    /// <summary>
+    /// Creates a lexer that reports token positions shifted by <paramref name="positionOffset"/>.
+    /// Used when lexing a substring of a larger source buffer (for example, the contents of
+    /// a <c>$(...)</c> interpolation inside an interpolated string) so that the produced
+    /// tokens carry positions relative to the outer buffer.
+    /// </summary>
+    public Lexer(string input, int positionOffset)
     {
         this.input = input ?? string.Empty;
         this.position = 0;
+        this.positionOffset = positionOffset;
         this.putBackTokens = new Stack<Token>();
         this.lastToken = null;
     }
@@ -235,6 +258,35 @@ internal class Lexer
     public List<Token> Comments { get; } = new();
 
     public ErrorList Errors { get; } = new ErrorList();
+
+    /// <summary>
+    /// Gets the raw input string this lexer is reading. Combined with
+    /// <see cref="PositionOffset"/>, callers can recover the original outer-source
+    /// substring underlying any token position produced by this lexer.
+    /// </summary>
+    internal string RawInput => this.input;
+
+    /// <summary>
+    /// Gets the position offset added to every produced token's <c>Start</c> value.
+    /// </summary>
+    internal int PositionOffset => this.positionOffset;
+
+    /// <summary>
+    /// Returns the per-character source-position mapping recorded for a previously produced
+    /// interpolated string token, or <c>null</c> if the token did not originate from this
+    /// lexer or contained no mapping. Each entry is the absolute source position of the
+    /// corresponding character in the cooked token value, taking <see cref="positionOffset"/>
+    /// into account.
+    /// </summary>
+    internal IReadOnlyList<int>? GetInterpolatedStringSourceMap(Token token)
+    {
+        return this.interpolatedStringSourceMaps.TryGetValue(token, out var map) ? map : null;
+    }
+
+    private Token MakeToken(TokenType type, string value, int rawStart, int length)
+    {
+        return new Token(type, value, rawStart + this.positionOffset, length);
+    }
 
     public IEnumerable<Token> Tokenize()
     {
@@ -321,51 +373,51 @@ internal class Lexer
         {
             case '|':
                 this.Advance();
-                return new Token(TokenType.Pipe, "|", startPosition, 1);
+                return this.MakeToken(TokenType.Pipe, "|", startPosition, 1);
 
             case '(':
                 this.Advance();
-                return new Token(TokenType.OpenParenthesis, "(", startPosition, 1);
+                return this.MakeToken(TokenType.OpenParenthesis, "(", startPosition, 1);
 
             case ')':
                 this.Advance();
-                return new Token(TokenType.CloseParenthesis, ")", startPosition, 1);
+                return this.MakeToken(TokenType.CloseParenthesis, ")", startPosition, 1);
 
             case '[':
                 this.Advance();
-                return new Token(TokenType.OpenBracket, "[", startPosition, 1);
+                return this.MakeToken(TokenType.OpenBracket, "[", startPosition, 1);
 
             case ']':
                 this.Advance();
-                return new Token(TokenType.CloseBracket, "]", startPosition, 1);
+                return this.MakeToken(TokenType.CloseBracket, "]", startPosition, 1);
 
             case '{':
                 this.Advance();
-                return new Token(TokenType.OpenBrace, "{", startPosition, 1);
+                return this.MakeToken(TokenType.OpenBrace, "{", startPosition, 1);
 
             case '}':
                 this.Advance();
-                return new Token(TokenType.CloseBrace, "}", startPosition, 1);
+                return this.MakeToken(TokenType.CloseBrace, "}", startPosition, 1);
 
             case ':':
                 this.Advance();
-                return new Token(TokenType.Colon, ":", startPosition, 1);
+                return this.MakeToken(TokenType.Colon, ":", startPosition, 1);
 
             case ';':
                 this.Advance();
-                return new Token(TokenType.Semicolon, ";", startPosition, 1);
+                return this.MakeToken(TokenType.Semicolon, ";", startPosition, 1);
 
             case ',':
                 this.Advance();
-                return new Token(TokenType.Comma, ",", startPosition, 1);
+                return this.MakeToken(TokenType.Comma, ",", startPosition, 1);
 
             case '+':
                 this.Advance();
-                return new Token(TokenType.Plus, "+", startPosition, 1);
+                return this.MakeToken(TokenType.Plus, "+", startPosition, 1);
 
             case '-':
                 this.Advance();
-                return new Token(TokenType.Minus, "-", startPosition, 1);
+                return this.MakeToken(TokenType.Minus, "-", startPosition, 1);
 
             case '/':
                 // Check if this might be the start of a partition key identifier (e.g., /partitionKey)
@@ -378,19 +430,19 @@ internal class Lexer
 
                 // Otherwise treat as division operator
                 this.Advance();
-                return new Token(TokenType.Divide, "/", startPosition, 1);
+                return this.MakeToken(TokenType.Divide, "/", startPosition, 1);
 
             case '%':
                 this.Advance();
-                return new Token(TokenType.Mod, "%", startPosition, 1);
+                return this.MakeToken(TokenType.Mod, "%", startPosition, 1);
 
             case '^':
                 this.Advance();
-                return new Token(TokenType.Xor, "^", startPosition, 1);
+                return this.MakeToken(TokenType.Xor, "^", startPosition, 1);
 
             case '!':
                 this.Advance();
-                return new Token(TokenType.Not, "!", startPosition, 1);
+                return this.MakeToken(TokenType.Not, "!", startPosition, 1);
 
             case '?':
                 this.Advance();
@@ -400,7 +452,7 @@ internal class Lexer
             case '\r':
                 var eolStartPos = this.position;
                 this.SkipNewline();
-                return new Token(TokenType.Eol, Environment.NewLine, startPosition, this.position - eolStartPos);
+                return this.MakeToken(TokenType.Eol, Environment.NewLine, startPosition, this.position - eolStartPos);
 
             case '#':
                 return this.ReadComment(startPosition);
@@ -420,7 +472,7 @@ internal class Lexer
                 {
                     // Unknown character, treat as single character identifier
                     this.Advance();
-                    return new Token(TokenType.Identifier, ch.ToString(), startPosition, 1);
+                    return this.MakeToken(TokenType.Identifier, ch.ToString(), startPosition, 1);
                 }
         }
     }
@@ -433,7 +485,7 @@ internal class Lexer
         if (this.LookAhead("&&"))
         {
             this.Advance(2);
-            token = new Token(TokenType.And, "&&", startPosition, 2);
+            token = this.MakeToken(TokenType.And, "&&", startPosition, 2);
             return true;
         }
 
@@ -441,7 +493,7 @@ internal class Lexer
         if (this.LookAhead("||"))
         {
             this.Advance(2);
-            token = new Token(TokenType.Or, "||", startPosition, 2);
+            token = this.MakeToken(TokenType.Or, "||", startPosition, 2);
             return true;
         }
 
@@ -449,7 +501,7 @@ internal class Lexer
         if (this.LookAhead("**"))
         {
             this.Advance(2);
-            token = new Token(TokenType.Pow, "**", startPosition, 2);
+            token = this.MakeToken(TokenType.Pow, "**", startPosition, 2);
             return true;
         }
 
@@ -457,7 +509,7 @@ internal class Lexer
         if (this.LookAhead("=="))
         {
             this.Advance(2);
-            token = new Token(TokenType.Equal, "==", startPosition, 2);
+            token = this.MakeToken(TokenType.Equal, "==", startPosition, 2);
             return true;
         }
 
@@ -465,7 +517,7 @@ internal class Lexer
         if (this.LookAhead("!="))
         {
             this.Advance(2);
-            token = new Token(TokenType.NotEqual, "!=", startPosition, 2);
+            token = this.MakeToken(TokenType.NotEqual, "!=", startPosition, 2);
             return true;
         }
 
@@ -473,7 +525,7 @@ internal class Lexer
         if (this.LookAhead("<="))
         {
             this.Advance(2);
-            token = new Token(TokenType.LessThanOrEqual, "<=", startPosition, 2);
+            token = this.MakeToken(TokenType.LessThanOrEqual, "<=", startPosition, 2);
             return true;
         }
 
@@ -481,7 +533,7 @@ internal class Lexer
         if (this.LookAhead(">="))
         {
             this.Advance(2);
-            token = new Token(TokenType.GreaterThanOrEqual, ">=", startPosition, 2);
+            token = this.MakeToken(TokenType.GreaterThanOrEqual, ">=", startPosition, 2);
             return true;
         }
 
@@ -491,22 +543,22 @@ internal class Lexer
         {
             case '*':
                 this.Advance();
-                token = new Token(TokenType.Multiply, "*", startPosition, 1);
+                token = this.MakeToken(TokenType.Multiply, "*", startPosition, 1);
                 return true;
 
             case '=':
                 this.Advance();
-                token = new Token(TokenType.Assignment, "=", startPosition, 1);
+                token = this.MakeToken(TokenType.Assignment, "=", startPosition, 1);
                 return true;
 
             case '<':
                 this.Advance();
-                token = new Token(TokenType.LessThan, "<", startPosition, 1);
+                token = this.MakeToken(TokenType.LessThan, "<", startPosition, 1);
                 return true;
 
             case '>':
                 this.Advance();
-                token = new Token(TokenType.GreaterThan, ">", startPosition, 1);
+                token = this.MakeToken(TokenType.GreaterThan, ">", startPosition, 1);
                 return true;
         }
 
@@ -528,7 +580,7 @@ internal class Lexer
             this.Advance();
         }
 
-        var commentToken = new Token(TokenType.Comment, sb.ToString(), startPosition, this.position - startPosition);
+        var commentToken = this.MakeToken(TokenType.Comment, sb.ToString(), startPosition, this.position - startPosition);
         this.Comments.Add(commentToken);
         return commentToken;
     }
@@ -571,25 +623,33 @@ internal class Lexer
             }
         }
 
-        return new Token(TokenType.Identifier, sb.ToString(), startPosition, this.position - startPosition);
+        return this.MakeToken(TokenType.Identifier, sb.ToString(), startPosition, this.position - startPosition);
     }
 
     private Token ReadDoubleQuotedString(int startPosition)
     {
         var sb = new StringBuilder();
         bool hasInterpolation = false;
+        bool terminated = false;
+
+        // Mirrors the source-position tracking in ReadInterpolatedString so callers can
+        // map cooked content indices back to absolute outer-source positions when the
+        // string contains "$..." interpolations.
+        var sourcePositions = new List<int>();
 
         // Skip opening quote
         this.Advance();
 
         while (this.position < this.input.Length)
         {
+            var sourcePos = this.position + this.positionOffset;
             var ch = this.input[this.position];
 
             if (ch == '"')
             {
                 // Skip closing quote
                 this.Advance();
+                terminated = true;
                 break;
             }
             else if (ch == '\\' && this.position + 1 < this.input.Length)
@@ -607,6 +667,7 @@ internal class Lexer
                     default: sb.Append(ch); break;
                 }
 
+                sourcePositions.Add(sourcePos);
                 this.Advance();
             }
             else
@@ -619,17 +680,35 @@ internal class Lexer
                 }
 
                 sb.Append(ch);
+                sourcePositions.Add(sourcePos);
                 this.Advance();
             }
         }
 
         var tokenType = hasInterpolation ? TokenType.InterpolatedString : TokenType.String;
-        return new Token(tokenType, sb.ToString(), startPosition, this.position - startPosition);
+        var token = this.MakeToken(tokenType, sb.ToString(), startPosition, this.position - startPosition);
+        if (hasInterpolation)
+        {
+            this.interpolatedStringSourceMaps[token] = sourcePositions.ToArray();
+        }
+
+        if (!terminated)
+        {
+            this.Errors.Add(new ParseError(
+                startPosition,
+                Math.Max(1, this.position - startPosition),
+                MessageService.GetString("lexer_error_unterminated_string") ?? "Unterminated string literal",
+                ErrorLevel.Error,
+                ParseErrorKind.UnterminatedString));
+        }
+
+        return token;
     }
 
     private Token ReadSingleQuotedString(int startPosition)
     {
         var sb = new StringBuilder();
+        bool terminated = false;
 
         // Skip opening quote
         this.Advance();
@@ -652,6 +731,7 @@ internal class Lexer
                 {
                     // It's the closing quote
                     this.Advance();
+                    terminated = true;
                     break;
                 }
             }
@@ -663,7 +743,17 @@ internal class Lexer
             }
         }
 
-        return new Token(TokenType.String, sb.ToString(), startPosition, this.position - startPosition);
+        if (!terminated)
+        {
+            this.Errors.Add(new ParseError(
+                startPosition,
+                Math.Max(1, this.position - startPosition),
+                MessageService.GetString("lexer_error_unterminated_string") ?? "Unterminated string literal",
+                ErrorLevel.Error,
+                ParseErrorKind.UnterminatedString));
+        }
+
+        return this.MakeToken(TokenType.String, sb.ToString(), startPosition, this.position - startPosition);
     }
 
     private Token ReadNumber(int startPosition)
@@ -737,7 +827,7 @@ internal class Lexer
         // Determine token type based on what we found
         var tokenType = (hasDecimalPoint || hasExponent) ? TokenType.Decimal : TokenType.Number;
 
-        return new Token(tokenType, sb.ToString(), startPosition, this.position - startPosition);
+        return this.MakeToken(tokenType, sb.ToString(), startPosition, this.position - startPosition);
     }
 
     private void SkipWhitespace()
@@ -795,6 +885,15 @@ internal class Lexer
     private Token ReadInterpolatedString(int startPosition)
     {
         var sb = new StringBuilder();
+        bool terminated = false;
+
+        // Records the absolute outer-source position of the source character that
+        // produced each cooked character appended to <c>sb</c>. Used by callers
+        // (notably <see cref="ExpressionParser.ParseInterpolatedStringExpression"/>)
+        // to map indices in the cooked content back to positions in the original
+        // input, which is required for syntax highlighting of nested
+        // <c>$(...)</c> interpolations and <c>$VAR</c> references.
+        var sourcePositions = new List<int>();
 
         // Skip the '$' and opening quote
         this.Advance(); // skip $
@@ -802,12 +901,14 @@ internal class Lexer
 
         while (this.position < this.input.Length)
         {
+            var sourcePos = this.position + this.positionOffset;
             var ch = this.input[this.position];
 
             if (ch == '"')
             {
                 // Skip closing quote
                 this.Advance();
+                terminated = true;
                 break;
             }
             else if (ch == '\\' && this.position + 1 < this.input.Length)
@@ -827,12 +928,14 @@ internal class Lexer
                     default: sb.Append(ch); break;
                 }
 
+                sourcePositions.Add(sourcePos);
                 this.Advance();
             }
             else if (ch == '{' && this.position + 1 < this.input.Length && this.input[this.position + 1] == '{')
             {
                 // Handle escaped opening brace {{
                 sb.Append('{');
+                sourcePositions.Add(sourcePos);
                 this.Advance(); // skip first {
                 this.Advance(); // skip second {
             }
@@ -840,6 +943,7 @@ internal class Lexer
             {
                 // Handle escaped closing brace }}
                 sb.Append('}');
+                sourcePositions.Add(sourcePos);
                 this.Advance(); // skip first }
                 this.Advance(); // skip second }
             }
@@ -847,10 +951,24 @@ internal class Lexer
             {
                 // Regular character (including interpolation expressions)
                 sb.Append(ch);
+                sourcePositions.Add(sourcePos);
                 this.Advance();
             }
         }
 
-        return new Token(TokenType.InterpolatedString, sb.ToString(), startPosition, this.position - startPosition);
+        var token = this.MakeToken(TokenType.InterpolatedString, sb.ToString(), startPosition, this.position - startPosition);
+        this.interpolatedStringSourceMaps[token] = sourcePositions.ToArray();
+
+        if (!terminated)
+        {
+            this.Errors.Add(new ParseError(
+                startPosition,
+                Math.Max(1, this.position - startPosition),
+                MessageService.GetString("lexer_error_unterminated_string") ?? "Unterminated string literal",
+                ErrorLevel.Error,
+                ParseErrorKind.UnterminatedString));
+        }
+
+        return token;
     }
 }

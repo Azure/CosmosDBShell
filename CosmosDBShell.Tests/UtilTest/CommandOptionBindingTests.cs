@@ -246,7 +246,7 @@ namespace CosmosShell.Tests.Parser
             var stmt = Parse("optcmd -unknown arg1");
             Assert.True(shell.App.Commands.TryGetValue("optcmd", out var factory));
 
-            var ex = await Assert.ThrowsAsync<CommandException>(
+            var ex = await Assert.ThrowsAsync<UnknownOptionException>(
                 async () => await stmt.CreateCommandAsync(factory, shell, new CommandState(), CancellationToken.None));
 
             Assert.Contains("Unknown option", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -259,11 +259,55 @@ namespace CosmosShell.Tests.Parser
             var expr = ParseCommandExpression("(optcmd -unknown arg1)");
             Assert.True(shell.App.Commands.TryGetValue("optcmd", out var factory));
 
-            var ex = await Assert.ThrowsAsync<CommandException>(
+            var ex = await Assert.ThrowsAsync<UnknownOptionException>(
                 async () => await expr.CreateCommandAsync(factory, shell, new CommandState(), CancellationToken.None));
 
             Assert.Contains("Unknown option", ex.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("unknown", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public async Task UnknownOption_WithCloseTypo_SuggestsKnownOption()
+        {
+            var stmt = Parse("optcmd -fooo bar");
+            Assert.True(shell.App.Commands.TryGetValue("optcmd", out var factory));
+
+            var ex = await Assert.ThrowsAsync<UnknownOptionException>(
+                async () => await stmt.CreateCommandAsync(factory, shell, new CommandState(), CancellationToken.None));
+
+            Assert.Contains("Unknown option", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("-fooo", ex.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("Did you mean", ex.Message, StringComparison.OrdinalIgnoreCase);
+            // Suggestion is surfaced as a separate hint that reuses the typed dash prefix.
+            Assert.Equal("Did you mean '-foo'?", ex.Hint);
+        }
+
+        [Fact]
+        public async Task UnknownOption_WithDoubleDashTypo_PreservesDoubleDashInSuggestion()
+        {
+            var stmt = Parse("optcmd --fooo bar");
+            Assert.True(shell.App.Commands.TryGetValue("optcmd", out var factory));
+
+            var ex = await Assert.ThrowsAsync<UnknownOptionException>(
+                async () => await stmt.CreateCommandAsync(factory, shell, new CommandState(), CancellationToken.None));
+
+            Assert.Contains("--fooo", ex.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("Did you mean", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("Did you mean '--foo'?", ex.Hint);
+        }
+
+        [Fact]
+        public async Task UnknownOption_WithUnrelatedName_HasNoSuggestion()
+        {
+            var stmt = Parse("optcmd -xyzzyfoobarbaz arg1");
+            Assert.True(shell.App.Commands.TryGetValue("optcmd", out var factory));
+
+            var ex = await Assert.ThrowsAsync<UnknownOptionException>(
+                async () => await stmt.CreateCommandAsync(factory, shell, new CommandState(), CancellationToken.None));
+
+            Assert.Contains("Unknown option", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Did you mean", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Null(ex.Hint);
         }
 
         [Fact]

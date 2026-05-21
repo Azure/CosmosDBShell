@@ -52,6 +52,315 @@ public class ExecuteCommandExceptionTests
     }
 
     [Fact]
+    public async Task ExecuteCommandAsync_UnclosedBrace_ReturnsParserErrorState()
+    {
+        using var interpreter = CreateInterpreter();
+
+        var state = await interpreter.ExecuteCommandAsync("{ { ls   }", CancellationToken.None);
+
+        Assert.True(state.IsError);
+        var parserState = Assert.IsType<ParserErrorCommandState>(state);
+        Assert.NotEmpty(parserState.Errors);
+        Assert.Contains(parserState.Errors, e => e.ErrorLevel == Azure.Data.Cosmos.Shell.Parser.ErrorLevel.Error);
+    }
+
+    [Fact]
+    public async Task ExecuteCommandAsync_ParserError_WritesLocationToErrRedirect()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            var state = await interpreter.ExecuteCommandAsync("{ { ls   }", CancellationToken.None);
+
+            Assert.True(state.IsError);
+            Assert.IsType<ParserErrorCommandState>(state);
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains("parse error:", content, StringComparison.Ordinal);
+            Assert.Contains("(1:", content, StringComparison.Ordinal);
+            Assert.Contains("{ { ls   }", content, StringComparison.Ordinal);
+            Assert.Contains("^", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteCommandAsync_ParserError_ReportsOnlyFirstError()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            var state = await interpreter.ExecuteCommandAsync("{ { ls   }", CancellationToken.None);
+
+            Assert.True(state.IsError);
+            var parserState = Assert.IsType<ParserErrorCommandState>(state);
+            Assert.NotEmpty(parserState.Errors);
+
+            var content = File.ReadAllText(tempFile);
+            var occurrences = content.Split("parse error:", StringSplitOptions.None).Length - 1;
+            Assert.Equal(1, occurrences);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteCommandAsync_ParserError_ExpandsTabsForCaretAlignment()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            // Leading tab followed by an unexpected '}'. With tabSize=4 the
+            // brace renders at visual column 5; the caret must land directly
+            // under it on the displayed source line.
+            var state = await interpreter.ExecuteCommandAsync("\t}", CancellationToken.None);
+
+            Assert.True(state.IsError);
+            Assert.IsType<ParserErrorCommandState>(state);
+
+            var content = File.ReadAllText(tempFile);
+            var lines = content.Replace("\r\n", "\n").Split('\n');
+
+            var sourceLine = Array.Find(lines, l => l.Contains("> 1 |"));
+            var caretLine = Array.Find(lines, l => l.Contains('^') && !l.Contains("parse "));
+
+            Assert.NotNull(sourceLine);
+            Assert.NotNull(caretLine);
+
+            // Tab must be expanded — no raw tab in the echoed source line.
+            Assert.DoesNotContain('\t', sourceLine!);
+
+            // Caret column on the caret line must point at the '}' on the
+            // displayed source line.
+            var caretIndex = caretLine!.IndexOf('^');
+            Assert.True(caretIndex >= 0);
+            Assert.True(sourceLine!.Length > caretIndex);
+            Assert.Equal('}', sourceLine[caretIndex]);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void TryReportQueryError_StructuredCosmosMessage_WritesCompilerStyleDiagnostic()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            const string query = "SELECT * FORM c";
+            const string message = "Message: {\"errors\":[{\"severity\":\"Error\",\"location\":{\"start\":9,\"end\":13},\"message\":\"Identifier 'FORM' could not be resolved.\"}]}";
+
+            var reported = interpreter.TryReportQueryError(query, message);
+
+            Assert.True(reported);
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains("query error:", content, StringComparison.Ordinal);
+            Assert.Contains("Identifier 'FORM' could not be resolved.", content, StringComparison.Ordinal);
+            Assert.Contains("(1:10)", content, StringComparison.Ordinal);
+            Assert.Contains("> 1 | SELECT * FORM c", content, StringComparison.Ordinal);
+            Assert.Contains("^^^^", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void TryReportQueryError_UnknownShape_ReturnsFalseAndWritesNothing()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            var reported = interpreter.TryReportQueryError(
+                "SELECT * FROM c",
+                "Throttled: too many requests for partition X.");
+
+            Assert.False(reported);
+            Assert.Empty(File.ReadAllText(tempFile));
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task ParserError_RedirectedFile_DoesNotContainSpectreMarkup()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            await interpreter.ExecuteCommandAsync("\t}", CancellationToken.None);
+
+            var content = File.ReadAllText(tempFile);
+            Assert.DoesNotContain("[red]", content, StringComparison.Ordinal);
+            Assert.DoesNotContain("[grey]", content, StringComparison.Ordinal);
+            Assert.DoesNotContain("[/]", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteCommandAsync_ParserError_InScriptContext_PrependsScriptOrigin()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            // Simulate executing this command from inside a script. The script
+            // origin file name should be prepended to the diagnostic.
+            interpreter.CurrentScriptFileName = @"C:\scripts\demo.csh";
+            try
+            {
+                await interpreter.ExecuteCommandAsync("}", CancellationToken.None);
+            }
+            finally
+            {
+                interpreter.CurrentScriptFileName = null;
+            }
+
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains("demo.csh:1:", content, StringComparison.Ordinal);
+            Assert.Contains("parse error:", content, StringComparison.Ordinal);
+
+            // Origin form replaces the trailing "(L:C)" location suffix.
+            Assert.DoesNotContain("(1:1)", content, StringComparison.Ordinal);
+
+            // Absolute path should not leak into the diagnostic.
+            Assert.DoesNotContain(@"C:\scripts", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void TryReportQueryError_InScriptContext_PrependsScriptOrigin()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+            interpreter.CurrentScriptFileName = "queries.csh";
+            try
+            {
+                const string query = "SELECT * FORM c";
+                const string message = "Message: {\"errors\":[{\"location\":{\"start\":9,\"end\":13},\"message\":\"Identifier 'FORM' could not be resolved.\"}]}";
+
+                var reported = interpreter.TryReportQueryError(query, message);
+
+                Assert.True(reported);
+            }
+            finally
+            {
+                interpreter.CurrentScriptFileName = null;
+            }
+
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains("queries.csh:1:10:", content, StringComparison.Ordinal);
+            Assert.Contains("query error:", content, StringComparison.Ordinal);
+            Assert.DoesNotContain("(1:10)", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void TryReportQueryError_TrimsLongDisplayButKeepsOriginalSourceColumn()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+            var query = "SELECT * FROM c WHERE c.description = '" + new string('x', 140) + "' AND FORM c";
+            var start = query.IndexOf("FORM", StringComparison.Ordinal);
+            var message = $"Message: {{\"errors\":[{{\"location\":{{\"start\":{start},\"end\":{start + 4}}},\"message\":\"Expected FROM.\"}}]}}";
+
+            var reported = interpreter.TryReportQueryError(query, message);
+
+            Assert.True(reported);
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains($"(1:{start + 1})", content, StringComparison.Ordinal);
+            Assert.Contains("…", content, StringComparison.Ordinal);
+            Assert.Contains("^^^^", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void TryReportQueryError_BlankLineLocation_WritesCaretContext()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+            const string query = "\n";
+            const string message = "Message: {\"errors\":[{\"location\":{\"start\":1,\"end\":1},\"message\":\"Unexpected end.\"}]}";
+
+            var reported = interpreter.TryReportQueryError(query, message);
+
+            Assert.True(reported);
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains("query error: Unexpected end. (2:1)", content, StringComparison.Ordinal);
+            Assert.Contains("> 2 |", content, StringComparison.Ordinal);
+            Assert.Contains("^", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
     public void CommandException_CosmosTimeoutCancellation_UsesFriendlyMessage()
     {
         var exception = new OperationCanceledException(

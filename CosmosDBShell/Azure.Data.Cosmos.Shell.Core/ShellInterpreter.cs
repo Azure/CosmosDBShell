@@ -12,6 +12,7 @@ using Azure.Data.Cosmos.Shell.KeyBindings;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
+using global::Azure.Core;
 using global::Azure.Identity;
 using Microsoft.Azure.Cosmos;
 using RadLine;
@@ -29,11 +30,26 @@ public partial class ShellInterpreter : IDisposable
 
     private const double TimeoutInSeconds = 10.0;
 
+    private const int OptionalArmDiscoveryTimeoutSeconds = 3;
+
+    private const string EncodedHistoryLinePrefix = "CosmosDBShellHistoryV1:";
+
+    // Sentinel written immediately after the prefix by EncodeHistoryLine so that
+    // DecodeHistoryLine can unambiguously tell a value it produced apart from a
+    // user command that just happens to start with the prefix string.
+    private const string EncodedHistoryLineMarker = "E:";
+
     private static CancellationTokenSource? currentTokenSource;
 
     private readonly string cfgPath;
 
     private LineEditor? lineEditor;
+
+    private CosmosShellPrompt? cosmosShellPrompt;
+
+    private System.Text.StringBuilder? pendingMultiLineBuffer;
+
+    private bool pendingMultiLineSuppressesNewline;
 
     private CancellationTokenSource editorCancelTokenSource;
 
@@ -60,8 +76,9 @@ public partial class ShellInterpreter : IDisposable
         {
             foreach (var line in File.ReadAllLines(this.HistoryFile))
             {
-                this.history.Remove(line);
-                this.history.Add(line);
+                var decoded = DecodeHistoryLine(line);
+                this.history.Remove(decoded);
+                this.history.Add(decoded);
             }
         }
 
@@ -286,6 +303,12 @@ public partial class ShellInterpreter : IDisposable
                 return state;
             }
 
+            if (state is ParserErrorCommandState parserErrorState)
+            {
+                this.ReportParserErrors(parserErrorState.Errors, command);
+                return state;
+            }
+
             return this.PrintState(state);
         }
         finally
@@ -464,6 +487,15 @@ public partial class ShellInterpreter : IDisposable
         var result = 0;
         this.PrintVersion(null);
         WriteLine(MessageService.GetString("shell-ready"));
+
+        // First-run hint: if the shell starts without a connection, point users at
+        // the `connect` command. Otherwise users can land at the prompt with no
+        // obvious next step (see issue #81).
+        if (this.State is DisconnectedState)
+        {
+            AnsiConsole.MarkupLine("[yellow]" + Markup.Escape(MessageService.GetString("shell-not_connected_hint")) + "[/]");
+        }
+
         while (this.IsRunning)
         {
             this.StdOutRedirect = null;
@@ -471,7 +503,12 @@ public partial class ShellInterpreter : IDisposable
             {
                 this.ClearHighlightStatement();
                 var input = this.Editor != null ? await this.Editor.ReadLine(this.editorCancelTokenSource.Token) : PromptFallback();
-                if (input is not { } command)
+                var command = ProcessInteractiveLine(
+                    input,
+                    ref this.pendingMultiLineBuffer,
+                    ref this.pendingMultiLineSuppressesNewline,
+                    this.cosmosShellPrompt);
+                if (command == null)
                 {
                     continue;
                 }
@@ -487,6 +524,12 @@ public partial class ShellInterpreter : IDisposable
             }
             catch (TaskCanceledException)
             {
+                this.pendingMultiLineBuffer = null;
+                this.pendingMultiLineSuppressesNewline = false;
+                if (this.cosmosShellPrompt != null)
+                {
+                    this.cosmosShellPrompt.InContinuation = false;
+                }
             }
         }
 
@@ -567,7 +610,7 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
-    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, CancellationToken token = default)
+    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, string? subscriptionId = null, string? resourceGroupName = null, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
 
@@ -641,6 +684,11 @@ public partial class ShellInterpreter : IDisposable
             catch (Exception ex)
             {
                 client.Dispose();
+                if (isEmulator)
+                {
+                    throw new ShellException(GetLocalEmulatorConnectionFailureMessage(client.Endpoint), ex);
+                }
+
                 throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
             }
 
@@ -676,8 +724,7 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 var vscProps = await ReadAccountAsync(client, token);
-                WriteLine(MessageService.GetArgsString("command-connect-connected", "account", vscProps.Id));
-                this.Connect(client);
+                await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, vscCredential, vscProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -766,8 +813,7 @@ public partial class ShellInterpreter : IDisposable
                 throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
             }
 
-            WriteLine(MessageService.GetArgsString("command-connect-connected", "account", miProps.Id));
-            this.Connect(client);
+            await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, credential, miProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
             return;
         }
 
@@ -802,8 +848,7 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 var entraProps = await ReadAccountAsync(client, token);
-                WriteLine(MessageService.GetArgsString("command-connect-connected", "account", entraProps.Id));
-                this.Connect(client);
+                await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, browserCredential, entraProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -854,8 +899,7 @@ public partial class ShellInterpreter : IDisposable
                     throw new ShellException(MessageService.GetString("error-connection_failed"), dcEx);
                 }
 
-                WriteLine(MessageService.GetArgsString("command-connect-connected", "account", dcProps.Id));
-                this.Connect(client);
+                await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, deviceCodeCredential, dcProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
         }
@@ -880,8 +924,7 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 var dacProps = await ReadAccountAsync(client, token);
-                WriteLine(MessageService.GetArgsString("command-connect-connected", "account", dacProps.Id));
-                this.Connect(client);
+                await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, dacCredential, dacProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -903,15 +946,174 @@ public partial class ShellInterpreter : IDisposable
         return await client.ReadAccountAsync().WaitAsync(token);
     }
 
+    internal static string GetLocalEmulatorConnectionFailureMessage(Uri endpoint)
+    {
+        var alternate = BuildAlternateEmulatorUri(endpoint);
+        return MessageService.GetArgsString(
+            "error-emulator_connection_failed",
+            "endpoint",
+            endpoint.ToString(),
+            "alternate",
+            alternate.ToString());
+    }
+
+    private static Uri BuildAlternateEmulatorUri(Uri endpoint)
+    {
+        var builder = new UriBuilder(endpoint)
+        {
+            Scheme = string.Equals(endpoint.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                ? Uri.UriSchemeHttp
+                : Uri.UriSchemeHttps,
+        };
+        return builder.Uri;
+    }
+
+    private static bool IsArmContextExplicitlyRequested(string? subscriptionId, string? resourceGroupName)
+    {
+        return !string.IsNullOrWhiteSpace(subscriptionId)
+            || !string.IsNullOrWhiteSpace(resourceGroupName);
+    }
+
+    private async Task CompleteTokenConnectionAsync(
+        CosmosClient client,
+        TokenCredential credential,
+        string accountId,
+        string? subscriptionId,
+        string? resourceGroupName,
+        Uri? authorityHostUri,
+        CancellationToken token)
+    {
+        var explicitlyRequested = IsArmContextExplicitlyRequested(subscriptionId, resourceGroupName);
+        if (!explicitlyRequested)
+        {
+            this.Connect(client);
+            WriteLine(MessageService.GetArgsString("command-connect-connected", "account", accountId));
+
+            ArmCosmosContext? discoveredArmContext;
+            try
+            {
+                discoveredArmContext = await this.TryDiscoverArmContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, authorityHostUri, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (discoveredArmContext != null)
+            {
+                this.AttachArmContext(client, discoveredArmContext);
+            }
+
+            return;
+        }
+
+        var armContext = await this.TryDiscoverArmContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, authorityHostUri, token);
+        this.Connect(client, armContext);
+        WriteLine(MessageService.GetArgsString("command-connect-connected", "account", accountId));
+    }
+
+    private async Task CompleteTokenConnectionAndDisposeOnFailureAsync(
+        CosmosClient client,
+        TokenCredential credential,
+        string accountId,
+        string? subscriptionId,
+        string? resourceGroupName,
+        Uri? authorityHostUri,
+        CancellationToken token)
+    {
+        try
+        {
+            await this.CompleteTokenConnectionAsync(client, credential, accountId, subscriptionId, resourceGroupName, authorityHostUri, token);
+        }
+        catch
+        {
+            if (this.State is not ConnectedState connectedState || !ReferenceEquals(connectedState.Client, client))
+            {
+                client.Dispose();
+            }
+
+            throw;
+        }
+    }
+
     /// <summary>
-    /// Connects to a client & disposes old state.
+    /// Wraps <see cref="CosmosArmResourceProvider.TryCreateContextAsync"/> so that an
+    /// ARM discovery failure does not break a successful data-plane connection.
+    /// When the user explicitly supplied <paramref name="subscriptionId"/> or
+    /// <paramref name="resourceGroupName"/>, any failure bubbles up because the user
+    /// explicitly requested ARM. Otherwise the failure is logged as a warning and
+    /// discovery returns <c>null</c>; database and container commands continue through
+    /// the data-plane resource strategy.
     /// </summary>
-    internal void Connect(CosmosClient client)
+    private async Task<ArmCosmosContext?> TryDiscoverArmContextAsync(
+        TokenCredential credential,
+        Uri endpoint,
+        string? subscriptionId,
+        string? resourceGroupName,
+        Uri? authorityHostUri,
+        CancellationToken token)
+    {
+        var explicitlyRequested = IsArmContextExplicitlyRequested(subscriptionId, resourceGroupName);
+
+        try
+        {
+            using var timeoutTokenSource = explicitlyRequested ? null : CancellationTokenSource.CreateLinkedTokenSource(token);
+            if (timeoutTokenSource != null)
+            {
+                timeoutTokenSource.CancelAfter(TimeSpan.FromSeconds(OptionalArmDiscoveryTimeoutSeconds));
+            }
+
+            return await CosmosArmResourceProvider.TryCreateContextAsync(
+                credential,
+                endpoint,
+                subscriptionId,
+                resourceGroupName,
+                authorityHostUri,
+                timeoutTokenSource?.Token ?? token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (ShellException) when (explicitlyRequested)
+        {
+            // Localized validation/cycle errors should always reach the user when
+            // they explicitly opted into ARM via --subscription/--resource-group.
+            throw;
+        }
+        catch (ShellException) when (!explicitlyRequested)
+        {
+            // Discovery succeeded enough to know there are multiple matching ARM
+            // accounts. Without explicit coordinates we cannot pick one, but we
+            // still tell the user how to disambiguate instead of silently falling
+            // back as if ARM was simply unreachable.
+            WriteLine(MessageService.GetString("shell-connect-arm-discovery-ambiguous"));
+            return null;
+        }
+        catch (Exception) when (!explicitlyRequested)
+        {
+            WriteLine(MessageService.GetString("shell-connect-arm-discovery-failed"));
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Connects to a client &amp; disposes old state.
+    /// </summary>
+    internal void Connect(CosmosClient client, ArmCosmosContext? armContext = null)
     {
         this.State?.Dispose();
-        this.State = new ConnectedState(client);
+        this.State = new ConnectedState(client, armContext);
         CosmosCompleteCommand.ClearDatabases();
         CosmosCompleteCommand.ClearContainers();
+    }
+
+    private void AttachArmContext(CosmosClient client, ArmCosmosContext armContext)
+    {
+        if (this.State is ConnectedState connectedState && ReferenceEquals(connectedState.Client, client))
+        {
+            this.State = new ConnectedState(client, armContext);
+        }
     }
 
     /// <summary>
@@ -951,6 +1153,21 @@ public partial class ShellInterpreter : IDisposable
 
             if (state.Result?.DataType == Parser.DataType.Json)
             {
+                // When writing JSON to the terminal (not redirected to a file), apply
+                // syntax highlighting using the configured Spectre.Console theme. File
+                // redirection still receives plain text so downstream tooling and tests
+                // are unaffected.
+                if (state.OutputFormat == OutputFormat.JSon && string.IsNullOrEmpty(this.StdOutRedirect))
+                {
+                    var element = (JsonElement?)state.Result.ConvertShellObject(Parser.DataType.Json);
+                    if (element.HasValue)
+                    {
+                        AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
+                        state.Result = null;
+                        return state;
+                    }
+                }
+
                 output = state.GenerateOutputText();
             }
             else
@@ -977,17 +1194,37 @@ public partial class ShellInterpreter : IDisposable
         {
             if (this.Options?.Verbose == true)
             {
-                AnsiConsole.Markup($"[red]PrintState: [/]");
                 AnsiConsole.WriteException(e);
+                return new ErrorCommandState(e);
             }
-            else
+
+            // Operational exceptions (Ctrl+C, SDK failures, our own shell/command
+            // exceptions) carry an actionable message; the stack trace is noise
+            // for end users. Show only Message chains and let --verbose surface
+            // the full exception.
+            if (e is OperationCanceledException)
             {
-                var m = Markup.Escape(e.Message);
-                AnsiConsole.MarkupLine($"[red]PrintState:{m}[/]");
-                if (e.InnerException != null)
+                var canceled = MessageService.GetString("runtime-error-canceled");
+                if (!string.IsNullOrEmpty(canceled))
                 {
-                    WriteLine(e.InnerException.ToString());
+                    AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(canceled)}[/]");
                 }
+
+                return new ErrorCommandState(e);
+            }
+
+            var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(prefix)}:[/] {Markup.Escape(e.Message)}");
+            if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
+            {
+                AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
+            }
+
+            var inner = e.InnerException;
+            while (inner != null)
+            {
+                AnsiConsole.MarkupLine($"  [red]\u2192[/] {Markup.Escape(inner.Message)}");
+                inner = inner.InnerException;
             }
 
             return new ErrorCommandState(e);
@@ -1099,9 +1336,10 @@ public partial class ShellInterpreter : IDisposable
     {
         try
         {
+            this.cosmosShellPrompt = new CosmosShellPrompt(this);
             var lineEditor = new LineEditor()
             {
-                Prompt = new CosmosShellPrompt(this),
+                Prompt = this.cosmosShellPrompt,
                 LineDecorationRenderer = new CosmosCompletionRenderer(this),
                 Highlighter = this,
             };
@@ -1154,6 +1392,13 @@ public partial class ShellInterpreter : IDisposable
     private void Console_CancelKeyPress(object? sender, ConsoleCancelEventArgs e)
     {
         e.Cancel = true;
+        this.pendingMultiLineBuffer = null;
+        this.pendingMultiLineSuppressesNewline = false;
+        if (this.cosmosShellPrompt != null)
+        {
+            this.cosmosShellPrompt.InContinuation = false;
+        }
+
         this.CancelPrompt();
         WriteLine("̂C");
     }
@@ -1165,11 +1410,251 @@ public partial class ShellInterpreter : IDisposable
             this.history = [.. this.history.Skip(this.history.Count - MAXHISTORYITEMS)];
         }
 
-        File.WriteAllLines(this.HistoryFile, this.history);
+        File.WriteAllLines(this.HistoryFile, this.history.Select(EncodeHistoryLine));
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    internal static string EncodeHistoryLine(string line)
+    {
+        if (line.IndexOfAny(['\n', '\r']) < 0 && !line.StartsWith(EncodedHistoryLinePrefix, StringComparison.Ordinal))
+        {
+            return line;
+        }
+
+        var sb = new System.Text.StringBuilder(line.Length + 8);
+        foreach (var ch in line)
+        {
+            switch (ch)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                default: sb.Append(ch); break;
+            }
+        }
+
+        return EncodedHistoryLinePrefix + EncodedHistoryLineMarker + sb.ToString();
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    internal static string DecodeHistoryLine(string line)
+    {
+        // Require both the prefix and the encoder-only marker so a user command
+        // that happens to start with the prefix string is never silently rewritten.
+        if (!line.StartsWith(EncodedHistoryLinePrefix + EncodedHistoryLineMarker, StringComparison.Ordinal))
+        {
+            return line;
+        }
+
+        var payload = line.Substring(EncodedHistoryLinePrefix.Length + EncodedHistoryLineMarker.Length);
+
+        // Defensive: validate that the payload only contains escape sequences
+        // we emit (\\, \n, \r). If a line was hand-edited and broke the format,
+        // fall back to returning it untouched rather than mangling the data.
+        for (int i = 0; i < payload.Length; i++)
+        {
+            if (payload[i] != '\\')
+            {
+                continue;
+            }
+
+            if (i + 1 >= payload.Length)
+            {
+                return line;
+            }
+
+            var next = payload[i + 1];
+            if (next != '\\' && next != 'n' && next != 'r')
+            {
+                return line;
+            }
+
+            i++;
+        }
+
+        var sb = new System.Text.StringBuilder(payload.Length);
+        for (int i = 0; i < payload.Length; i++)
+        {
+            var ch = payload[i];
+            if (ch == '\\' && i + 1 < payload.Length)
+            {
+                var next = payload[i + 1];
+                switch (next)
+                {
+                    case '\\': sb.Append('\\'); i++; continue;
+                    case 'n': sb.Append('\n'); i++; continue;
+                    case 'r': sb.Append('\r'); i++; continue;
+                }
+            }
+
+            sb.Append(ch);
+        }
+
+        return sb.ToString();
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Grouped with REPL helpers.")]
+    internal static bool TryRemoveLineContinuation(ref string line)
+    {
+        if (line.Length == 0 || line[^1] != '\\')
+        {
+            return false;
+        }
+
+        int trailing = 0;
+        for (int i = line.Length - 1; i >= 0 && line[i] == '\\'; i--)
+        {
+            trailing++;
+        }
+
+        if ((trailing & 1) == 0)
+        {
+            return false;
+        }
+
+        line = line.Substring(0, line.Length - 1);
+        return true;
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Grouped with REPL helpers.")]
+    internal static void AppendMultiLineFragment(System.Text.StringBuilder buffer, string line, bool suppressNewline)
+    {
+        if (!suppressNewline)
+        {
+            buffer.Append('\n');
+        }
+
+        buffer.Append(line);
+    }
+
+    /// <summary>
+    /// Processes one physical input line through the REPL multi-line accumulation state
+    /// machine. Returns the joined command text when execution should proceed, or
+    /// <c>null</c> when the loop should keep reading additional continuation lines (or
+    /// when the input itself was cancelled and the pending buffer was discarded).
+    /// </summary>
+    /// <param name="input">The raw line returned by ReadLine, or <c>null</c> if ReadLine was cancelled.</param>
+    /// <param name="pendingBuffer">The in-flight multi-line buffer; replaced or cleared in place.</param>
+    /// <param name="pendingSuppressesNewline">Tracks whether the next appended fragment must splice without a newline (backslash continuation).</param>
+    /// <param name="prompt">Optional prompt whose <c>InContinuation</c> flag is kept in sync; may be <c>null</c> in non-interactive callers and tests.</param>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Grouped with REPL helpers.")]
+    internal static string? ProcessInteractiveLine(
+        string? input,
+        ref System.Text.StringBuilder? pendingBuffer,
+        ref bool pendingSuppressesNewline,
+        CosmosShellPrompt? prompt = null)
+    {
+        if (input is not { } line)
+        {
+            // ReadLine cancelled (Ctrl+C). Discard any in-progress multi-line buffer.
+            pendingBuffer = null;
+            pendingSuppressesNewline = false;
+            if (prompt != null)
+            {
+                prompt.InContinuation = false;
+            }
+
+            return null;
+        }
+
+        // Detect explicit backslash-at-end-of-line continuation (bash-style).
+        bool backslashContinuation = TryRemoveLineContinuation(ref line);
+
+        // Compute the "incomplete?" decision exactly once per Enter press: parsing is
+        // not free, and the previous shape evaluated the same text twice on the line
+        // that starts a multi-line buffer.
+        bool incompleteAggregated;
+        if (pendingBuffer != null)
+        {
+            AppendMultiLineFragment(pendingBuffer, line, pendingSuppressesNewline);
+            incompleteAggregated = backslashContinuation || IsIncompleteInput(pendingBuffer.ToString());
+        }
+        else
+        {
+            bool lineIncomplete = backslashContinuation || IsIncompleteInput(line);
+            if (!lineIncomplete)
+            {
+                return line;
+            }
+
+            pendingBuffer = new System.Text.StringBuilder(line);
+            incompleteAggregated = true; // aggregated == line on the first iteration
+        }
+
+        if (incompleteAggregated)
+        {
+            if (prompt != null)
+            {
+                prompt.InContinuation = true;
+            }
+
+            pendingSuppressesNewline = backslashContinuation;
+            return null;
+        }
+
+        var aggregated = pendingBuffer.ToString();
+        pendingBuffer = null;
+        pendingSuppressesNewline = false;
+        if (prompt != null)
+        {
+            prompt.InContinuation = false;
+        }
+
+        return aggregated;
+    }
+
+    /// <summary>
+    /// Returns true if the given input text appears to be an incomplete shell command —
+    /// either because the lexer flagged an unterminated string or the parser ran off the
+    /// end of input. Used by the REPL to decide whether to prompt for a continuation line.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Grouped with REPL helpers.")]
+    internal static bool IsIncompleteInput(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        try
+        {
+            var lexer = new Lexer(text);
+            var parser = new StatementParser(lexer);
+
+            // ParseStatements() runs the parser to end-of-input and returns the
+            // full statement list eagerly; the result is discarded because we
+            // only care about whether parsing flagged the input as incomplete.
+            _ = parser.ParseStatements();
+
+            foreach (var err in parser.Errors)
+            {
+                if (err.ErrorLevel != ErrorLevel.Error)
+                {
+                    continue;
+                }
+
+                if (err.Kind == ParseErrorKind.UnexpectedEnd || err.Kind == ParseErrorKind.UnterminatedString)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private void ReportExecutionError(Exception e)
     {
+        // The command already emitted a friendly diagnostic; do not print again.
+        if (ContainsException<CommandReportedException>(e))
+        {
+            return;
+        }
+
         if (e is PositionalException pe)
         {
             this.ReportPositionalError(pe);
@@ -1178,12 +1663,15 @@ public partial class ShellInterpreter : IDisposable
 
         var prefix = e is CommandException ce ? $"{ce.Command}: " : string.Empty;
         var showInner = e is not ShellException && e.InnerException != null;
+        var hint = e is IShellExceptionWithHint hinted ? hinted.Hint : null;
 
         if (this.ErrOutRedirect != null)
         {
             var errTxt = this.Options?.Verbose == true
                 ? e.ToString()
-                : prefix + e.Message + (showInner ? Environment.NewLine + e.InnerException!.ToString() : string.Empty);
+                : prefix + e.Message
+                    + (!string.IsNullOrEmpty(hint) ? Environment.NewLine + hint : string.Empty)
+                    + (showInner ? Environment.NewLine + FormatInnerExceptionMessages(e.InnerException) : string.Empty);
             if (this.AppendErrRedirection)
             {
                 File.AppendAllText(this.ErrOutRedirect, errTxt);
@@ -1209,9 +1697,19 @@ public partial class ShellInterpreter : IDisposable
         {
             var m = Markup.Escape(e.Message);
             AnsiConsole.MarkupLine($"{prefix}[red]{m}[/]");
+            if (!string.IsNullOrEmpty(hint))
+            {
+                AnsiConsole.MarkupLine(Markup.Escape(hint));
+            }
+
             if (showInner)
             {
-                AnsiConsole.WriteLine(e.InnerException!.ToString());
+                var inner = e.InnerException;
+                while (inner != null)
+                {
+                    AnsiConsole.MarkupLine($"  [red]->[/] {Markup.Escape(inner.Message)}");
+                    inner = inner.InnerException;
+                }
             }
         }
     }
@@ -1246,6 +1744,283 @@ public partial class ShellInterpreter : IDisposable
                 AnsiConsole.MarkupLine($"  [red]{new string(' ', Math.Max(0, pe.Column - 1))}^[/]");
             }
         }
+    }
+
+    private string[] SplitIntoLines(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return new[] { string.Empty };
+        }
+
+        // Split on \n and strip trailing \r so the displayed source line
+        // does not include carriage returns from CRLF inputs.
+        var raw = text.Split('\n');
+        for (int i = 0; i < raw.Length; i++)
+        {
+            if (raw[i].EndsWith('\r'))
+            {
+                raw[i] = raw[i][..^1];
+            }
+        }
+
+        return raw;
+    }
+
+    private (int Line, int Column) OffsetToLineColumn(string text, int absolute)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return (0, 0);
+        }
+
+        absolute = Math.Clamp(absolute, 0, text.Length);
+        int line = 0;
+        int lastNl = -1;
+        for (int i = 0; i < absolute; i++)
+        {
+            if (text[i] == '\n')
+            {
+                line++;
+                lastNl = i;
+            }
+        }
+
+        int column = absolute - (lastNl + 1);
+        return (line, column);
+    }
+
+    private void ReportParserErrors(ErrorList errors, string commandText)
+    {
+        if (errors == null || errors.Count == 0)
+        {
+            return;
+        }
+
+        var lines = this.SplitIntoLines(commandText ?? string.Empty);
+        var redirected = this.ErrOutRedirect != null;
+        var fileBuffer = redirected ? new System.Text.StringBuilder() : null;
+
+        // Show every warning, but only the first hard error. Later errors are
+        // almost always recovery cascades from the first one and only add noise
+        // in an interactive shell.
+        var reportedError = false;
+        foreach (var error in errors)
+        {
+            if (error == null)
+            {
+                continue;
+            }
+
+            var isWarning = error.ErrorLevel == ErrorLevel.Warning;
+            if (!isWarning)
+            {
+                if (reportedError)
+                {
+                    continue;
+                }
+
+                reportedError = true;
+            }
+
+            var (lineIndex, column) = this.OffsetToLineColumn(commandText ?? string.Empty, error.Start);
+            var lineNumber = lineIndex + 1;
+            var rawLineText = lineIndex >= 0 && lineIndex < lines.Length ? lines[lineIndex] : string.Empty;
+            var rendered = SourceCaretRenderer.Render(rawLineText, column + 1);
+
+            var levelColor = isWarning ? "yellow" : "red";
+            var levelPrefix = MessageService.GetString(isWarning ? "parser-warning-prefix" : "parser-error-prefix");
+
+            this.AppendSourceCaretDiagnostic(
+                fileBuffer,
+                levelPrefix,
+                levelColor,
+                error.Message,
+                lineNumber,
+                rendered,
+                origin: this.GetDiagnosticOrigin(this.CurrentScriptFileName));
+        }
+
+        if (redirected && fileBuffer != null)
+        {
+            var payload = fileBuffer.ToString();
+            if (this.AppendErrRedirection)
+            {
+                File.AppendAllText(this.ErrOutRedirect!, payload);
+            }
+            else
+            {
+                File.WriteAllText(this.ErrOutRedirect!, payload);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Attempts to render a Cosmos NoSQL query error in the same compiler-style
+    /// format used for parser errors. Returns true when the error message
+    /// contained a recognisable source location and the diagnostic was
+    /// written; the caller can then throw a CommandReportedException so the
+    /// generic error reporter stays silent.
+    /// </summary>
+    internal bool TryReportQueryError(string query, string rawMessage)
+    {
+        if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(rawMessage))
+        {
+            return false;
+        }
+
+        var location = QueryErrorLocator.TryLocate(query, rawMessage);
+        if (location == null)
+        {
+            return false;
+        }
+
+        var lines = this.SplitIntoLines(query);
+        var lineIndex = Math.Clamp(location.Line - 1, 0, Math.Max(0, lines.Length - 1));
+        var rawLineText = lines.Length > 0 ? lines[lineIndex] : string.Empty;
+        var rendered = SourceCaretRenderer.Render(rawLineText, location.Column, location.Length);
+
+        var prefix = MessageService.GetString("query-error-prefix");
+        var message = location.Message ?? rawMessage;
+
+        System.Text.StringBuilder? fileBuffer = this.ErrOutRedirect != null ? new System.Text.StringBuilder() : null;
+        this.AppendSourceCaretDiagnostic(
+            fileBuffer,
+            prefix,
+            "red",
+            message,
+            location.Line,
+            rendered,
+            origin: this.GetDiagnosticOrigin(this.CurrentScriptFileName));
+
+        if (fileBuffer != null)
+        {
+            var payload = fileBuffer.ToString();
+            if (this.AppendErrRedirection)
+            {
+                File.AppendAllText(this.ErrOutRedirect!, payload);
+            }
+            else
+            {
+                File.WriteAllText(this.ErrOutRedirect!, payload);
+            }
+        }
+
+        return true;
+    }
+
+    private void AppendSourceCaretDiagnostic(
+        System.Text.StringBuilder? fileBuffer,
+        string levelPrefix,
+        string levelColor,
+        string message,
+        int lineNumber,
+        RenderedSourceCaret rendered,
+        string? origin = null)
+    {
+        // When the diagnostic originates from a script file we prepend the
+        // "file:line:col:" prefix in front of the level prefix (cargo / clang
+        // style) so editors and humans can jump straight to the offending
+        // line. Interactive prompt errors keep the trailing " (L:C)" form so
+        // they read naturally without a fake file name.
+        var hasOrigin = !string.IsNullOrEmpty(origin);
+        if (fileBuffer != null)
+        {
+            if (hasOrigin)
+            {
+                fileBuffer.Append(origin).Append(':').Append(lineNumber).Append(':').Append(rendered.SourceColumn).Append(": ")
+                    .Append(levelPrefix).Append(": ").Append(message).Append(Environment.NewLine);
+            }
+            else
+            {
+                fileBuffer.Append(levelPrefix).Append(": ").Append(message)
+                    .Append(" (").Append(lineNumber).Append(':').Append(rendered.SourceColumn).Append(')')
+                    .Append(Environment.NewLine);
+            }
+
+            var gutter = $"  > {lineNumber} | ";
+            fileBuffer.Append(gutter).Append(rendered.Display).Append(Environment.NewLine);
+            fileBuffer.Append(new string(' ', gutter.Length))
+                .Append(rendered.CaretPad)
+                .Append(rendered.CaretMarker)
+                .Append(Environment.NewLine);
+        }
+        else
+        {
+            var m = Markup.Escape(message);
+            if (hasOrigin)
+            {
+                var location = $"{origin}:{lineNumber}:{rendered.SourceColumn}:";
+                AnsiConsole.MarkupLine($"[grey]{Markup.Escape(location)}[/] [{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m}");
+            }
+            else
+            {
+                AnsiConsole.MarkupLine($"[{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m} [grey]({lineNumber}:{rendered.SourceColumn})[/]");
+            }
+
+            var gutter = $"  > {lineNumber} | ";
+            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(gutter)}[/]{Markup.Escape(rendered.Display)}");
+            AnsiConsole.MarkupLine($"[{levelColor}]{new string(' ', gutter.Length)}{rendered.CaretPad}{rendered.CaretMarker}[/]");
+        }
+    }
+
+    private string? GetDiagnosticOrigin(string? scriptFileName)
+    {
+        if (string.IsNullOrEmpty(scriptFileName))
+        {
+            return null;
+        }
+
+        // Show just the file name so absolute paths don't leak into the
+        // diagnostic and so output stays terse in CI logs.
+        try
+        {
+            var leaf = scriptFileName
+                .Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries)
+                .LastOrDefault();
+            return string.IsNullOrEmpty(leaf) ? scriptFileName : leaf;
+        }
+        catch (ArgumentException)
+        {
+            return scriptFileName;
+        }
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Diagnostic helpers are grouped with diagnostic rendering code.")]
+    private static bool ContainsException<TException>(Exception? exception)
+        where TException : Exception
+    {
+        while (exception != null)
+        {
+            if (exception is TException)
+            {
+                return true;
+            }
+
+            exception = exception.InnerException;
+        }
+
+        return false;
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Diagnostic helpers are grouped with diagnostic rendering code.")]
+    private static string FormatInnerExceptionMessages(Exception? exception)
+    {
+        var sb = new System.Text.StringBuilder();
+        var first = true;
+        while (exception != null)
+        {
+            if (!first)
+            {
+                sb.Append(Environment.NewLine);
+            }
+
+            sb.Append(exception.Message);
+            first = false;
+            exception = exception.InnerException;
+        }
+
+        return sb.ToString();
     }
 
     /*

@@ -19,6 +19,7 @@ using Spectre.Console;
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -hint=user@contoso.com", Description = "Connect using Entra ID authentication with login hint")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -mode=gateway", Description = "Connect using Entra ID with gateway connection mode")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -managed-identity=<client-id>", Description = "Connect using a user-assigned managed identity")]
+[CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -subscription=<subscription-id> -resource-group=<resource-group>", Description = "Connect using Entra ID with an explicit Azure Resource Manager subscription and resource group (skips ARM auto-discovery)")]
 internal partial class ConnectCommand : CosmosCommand
 {
     // internal static readonly string EntraRedirectUrl = "https://login.microsoftonline.com/common/oauth2/nativeclient";
@@ -42,6 +43,12 @@ internal partial class ConnectCommand : CosmosCommand
 
     [CosmosOption("managed-identity")]
     public string? ManagedIdentityClientId { get; set; }
+
+    [CosmosOption("subscription")]
+    public string? SubscriptionId { get; set; }
+
+    [CosmosOption("resource-group")]
+    public string? ResourceGroupName { get; set; }
 
     [CosmosOption("vscode-credential", "connect-vscode-credential", Hidden = true)]
     public bool UseVSCodeCredential { get; init; }
@@ -85,7 +92,7 @@ internal partial class ConnectCommand : CosmosCommand
 
         try
         {
-            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, token: token);
+            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, token: token);
             var returnState = new CommandState
             {
                 IsPrinted = true,
@@ -135,11 +142,53 @@ internal partial class ConnectCommand : CosmosCommand
         ShellInterpreter.WriteLine(MessageService.GetArgsString("command-connect-rbac-error", "id", principalId, "permission", permission));
     }
 
+    /// <summary>
+    /// Prints a short usage block with examples taken from the <see cref="CosmosExampleAttribute"/>
+    /// metadata on this command. Shown when the user runs <c>connect</c> without arguments while
+    /// disconnected so the available authentication options are discoverable without having to know
+    /// about <c>help connect</c> (see issue #81).
+    /// </summary>
+    internal static void PrintConnectUsageHint(ShellInterpreter shell)
+    {
+        AnsiConsole.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-header")));
+
+        if (shell.App.Commands.TryGetValue("connect", out var factory))
+        {
+            const int MaxExamples = 2;
+            var shown = 0;
+            foreach (var (example, description) in factory.ExamplesWithDescriptions)
+            {
+                if (shown >= MaxExamples)
+                {
+                    break;
+                }
+
+                if (string.IsNullOrWhiteSpace(example) || example == "connect")
+                {
+                    // Skip the no-arg example — that's the one the user just ran.
+                    continue;
+                }
+
+                var highlighted = shell.BuildHighlightedMarkup(example);
+                AnsiConsole.MarkupLine($"  {highlighted}");
+                if (!string.IsNullOrWhiteSpace(description))
+                {
+                    AnsiConsole.MarkupLine($"    [silver]{Markup.Escape(description)}[/]");
+                }
+
+                shown++;
+            }
+        }
+
+        AnsiConsole.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-footer")));
+    }
+
     private static async Task<CommandState> PrintConnectionInfoAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
         if (shell.State is not ConnectedState connectedState)
         {
             AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected"));
+            PrintConnectUsageHint(shell);
             commandState.IsPrinted = true;
             var notConnectedJson = new Dictionary<string, object?>
             {
@@ -162,6 +211,11 @@ internal partial class ConnectCommand : CosmosCommand
         table.AddRow(MessageService.GetString("command-connect-info-account"), $"[white]{acc.Id}[/]");
         table.AddRow(MessageService.GetString("command-connect-info-endpoint"), $"[white]{client.Endpoint}[/]");
 
+        if (connectedState.ArmContext != null)
+        {
+            table.AddRow(MessageService.GetString("command-connect-info-arm-account"), $"[white]{connectedState.ArmContext.AccountResourceId}[/]");
+        }
+
         // Display the connection mode
         var connectionMode = client.ClientOptions.ConnectionMode;
         table.AddRow(MessageService.GetString("command-connect-info-mode"), $"[white]{connectionMode}[/]");
@@ -183,6 +237,7 @@ internal partial class ConnectCommand : CosmosCommand
             ["connected"] = true,
             ["accountId"] = acc.Id,
             ["endpoint"] = client.Endpoint.ToString(),
+            ["armAccountId"] = connectedState.ArmContext?.AccountResourceId.ToString(),
             ["connectionMode"] = connectionMode.ToString(),
             ["readRegions"] = acc.ReadableRegions.Select(r => r.Name).ToArray(),
             ["writeRegions"] = acc.WritableRegions.Select(r => r.Name).ToArray(),

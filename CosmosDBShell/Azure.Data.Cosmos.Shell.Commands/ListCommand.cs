@@ -53,7 +53,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         string databaseName = this.Database ?? state.DatabaseName;
         string containerName = this.Container ?? state.ContainerName;
 
-        return await this.ListContainerItemsAsync(state.Client, databaseName, containerName, token);
+        return await this.ListContainerItemsAsync(state, databaseName, containerName, token);
     }
 
     Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitDisconnectedStateAsync(DisconnectedState state, ShellInterpreter interpreter, CancellationToken token)
@@ -67,26 +67,26 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         {
             if (!string.IsNullOrEmpty(this.Container))
             {
-                return await this.ListContainerItemsAsync(state.Client, this.Database, this.Container, token);
+                return await this.ListContainerItemsAsync(state, this.Database, this.Container, token);
             }
 
-            return await this.ListDatabaseContainersAsync(state.Client, this.Database, token);
+            return await this.ListDatabaseContainersAsync(state, this.Database, token);
         }
 
         // Default behavior: list databases
         var list = new List<string>();
         var completionList = new List<string>();
-        await foreach (var database in EnumerateDatabasesAsync(state.Client))
+        await foreach (var databaseName in EnumerateDatabaseNamesAsync(state, "ls", token))
         {
-            var databaseName = database.Id.Trim();
-            completionList.Add(databaseName);
+            var trimmed = databaseName.Trim();
+            completionList.Add(trimmed);
 
-            if (!this.IsMatch(database.Id))
+            if (!this.IsMatch(trimmed))
             {
                 continue;
             }
 
-            var cn = Markup.Escape(databaseName);
+            var cn = Markup.Escape(trimmed);
             list.Add(cn);
             AnsiConsole.MarkupLine($"[green]{cn}[/]");
         }
@@ -108,36 +108,35 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         // If container is specified, list items in that container
         if (!string.IsNullOrEmpty(this.Container))
         {
-            return await this.ListContainerItemsAsync(state.Client, databaseName, this.Container, token);
+            return await this.ListContainerItemsAsync(state, databaseName, this.Container, token);
         }
 
         // Default behavior: list containers in the database
-        return await this.ListDatabaseContainersAsync(state.Client, databaseName, token);
+        return await this.ListDatabaseContainersAsync(state, databaseName, token);
     }
 
-    private async Task<CommandState> ListDatabaseContainersAsync(CosmosClient client, string databaseName, CancellationToken token)
+    private async Task<CommandState> ListDatabaseContainersAsync(ConnectedState state, string databaseName, CancellationToken token)
     {
         // Validate database exists
-        await ValidateDatabaseExistsAsync(client, databaseName, "ls", token);
-        var db = client.GetDatabase(databaseName);
+        await ValidateDatabaseExistsAsync(state, databaseName, "ls", token);
         var list = new List<string>();
         var completionList = new List<string>();
-        await foreach (var container in EnumerateContainersAsync(db))
+        await foreach (var containerName in EnumerateContainerNamesAsync(state, databaseName, "ls", token))
         {
-            var containerName = container.Id.Trim();
-            completionList.Add(containerName);
+            var trimmed = containerName.Trim();
+            completionList.Add(trimmed);
 
-            if (!this.IsMatch(container.Id))
+            if (!this.IsMatch(trimmed))
             {
                 continue;
             }
 
-            var cn = Markup.Escape(containerName);
+            var cn = Markup.Escape(trimmed);
             list.Add(cn);
             AnsiConsole.MarkupLine($"[magenta]{cn}[/]");
         }
 
-        CosmosCompleteCommand.SetContainers(client, databaseName, completionList);
+        CosmosCompleteCommand.SetContainers(state.Client, databaseName, completionList);
 
         var result = new CommandState
         {
@@ -147,11 +146,12 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         return result;
     }
 
-    private async Task<CommandState> ListContainerItemsAsync(CosmosClient client, string databaseName, string containerName, CancellationToken token)
+    private async Task<CommandState> ListContainerItemsAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
     {
         // Validate database and container exist
-        await ValidateContainerExistsAsync(client, databaseName, containerName, "ls", token);
+        await ValidateContainerExistsAsync(state, databaseName, containerName, "ls", token);
 
+        var client = state.Client;
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
         AnsiConsole.MarkupLine(MessageService.GetString("command-ls-container", new Dictionary<string, object> { { "container", Theme.ContainerNamePromt(container.Id) } }));
         var opt = new QueryRequestOptions();
@@ -161,8 +161,8 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             opt.MaxItemCount = effectiveMaxItemCount.Value;
         }
 
-        var containerResponse = await container.ReadContainerAsync(cancellationToken: token);
-        var partitionKeyPropertyNames = GetPartitionKeyPropertyNames(containerResponse.Resource.PartitionKeyPaths);
+        var partitionKeyPaths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(state, databaseName, containerName, token);
+        var partitionKeyPropertyNames = GetPartitionKeyPropertyNames(partitionKeyPaths);
         var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
 
         var queryText = BuildItemQueryText(effectiveMaxItemCount, this.Filter);

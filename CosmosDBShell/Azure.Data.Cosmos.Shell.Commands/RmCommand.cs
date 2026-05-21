@@ -35,11 +35,6 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
     [CosmosOption("key", "k")]
     public string? Key { get; init; }
 
-    public static new IAsyncEnumerable<DatabaseProperties> EnumerateDatabasesAsync(CosmosClient client)
-    {
-        throw new NotInContainerException("rm");
-    }
-
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         if (commandState.Result == null)
@@ -66,7 +61,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         // If both database and container are specified, allow removing items
         if (!string.IsNullOrEmpty(this.Database) && !string.IsNullOrEmpty(this.Container))
         {
-            return await this.RemoveItemsFromContainerAsync(state.Client, this.Database, this.Container, commandState, token);
+            return await this.RemoveItemsFromContainerAsync(state, this.Database, this.Container, commandState, token);
         }
 
         throw new NotInContainerException("rm");
@@ -77,7 +72,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         string databaseName = this.Database ?? state.DatabaseName;
         if (!string.IsNullOrEmpty(this.Container))
         {
-            return await this.RemoveItemsFromContainerAsync(state.Client, databaseName, this.Container, commandState, token);
+            return await this.RemoveItemsFromContainerAsync(state, databaseName, this.Container, commandState, token);
         }
 
         throw new NotInContainerException("rm");
@@ -88,10 +83,10 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         string databaseName = this.Database ?? state.DatabaseName;
         string containerName = this.Container ?? state.ContainerName;
 
-        return await this.RemoveItemsFromContainerAsync(state.Client, databaseName, containerName, commandState, token);
+        return await this.RemoveItemsFromContainerAsync(state, databaseName, containerName, commandState, token);
     }
 
-    private async Task<ExitCode> RemoveItemsFromContainerAsync(CosmosClient client, string databaseName, string containerName, CommandState commandState, CancellationToken token)
+    private async Task<ExitCode> RemoveItemsFromContainerAsync(ConnectedState state, string databaseName, string containerName, CommandState commandState, CancellationToken token)
     {
         if (this.shell == null)
         {
@@ -106,13 +101,14 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         }
 
         // Validate database and container exist
-        await ValidateContainerExistsAsync(client, databaseName, containerName, "rm", token);
+        await ValidateContainerExistsAsync(state, databaseName, containerName, "rm", token);
 
+        var client = state.Client;
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
 
         // Get container properties to find the partition key paths
-        var containerResponse = await container.ReadContainerAsync(cancellationToken: token);
-        var partitionKeyPropertyNames = GetPartitionKeyPropertyNames(containerResponse.Resource.PartitionKeyPaths);
+        var partitionKeyPaths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(state, databaseName, containerName, token);
+        var partitionKeyPropertyNames = GetPartitionKeyPropertyNames(partitionKeyPaths);
 
         // Determine which key to match against (partition key by default, or custom key if specified)
         var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];

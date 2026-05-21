@@ -13,12 +13,27 @@ using Spectre.Console;
 internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IStateVisitor<string, object?>
 {
     internal const string PromptText = "CS ";
+    private static readonly (Markup Markup, int Margin) ContinuationPrompt = (new Markup("[grey]...[/]"), 1);
     private readonly ShellInterpreter shell = shell ?? throw new ArgumentNullException(nameof(shell));
     private Markup prompt = new(string.Empty);
     private State? oldState;
 
+    internal bool InContinuation { get; set; }
+
     (Markup Markup, int Margin) ILineEditorPrompt.GetPrompt(ILineEditorState state, int line)
     {
+        // Show the continuation marker on any non-first row of the editor buffer.
+        // This covers two cases: (1) the user is typing a parse-driven continuation
+        // line that RadLine renders as row > 0, and (2) a multi-line entry was
+        // recalled from history and RadLine is rendering its later rows. The
+        // explicit InContinuation flag handles the third case where we start a
+        // fresh ReadLine for the next line of a multi-line entry (so the new
+        // row 0 still gets the continuation marker).
+        if (line > 0 || this.InContinuation)
+        {
+            return ContinuationPrompt;
+        }
+
         if (this.oldState != this.shell.State)
         {
             this.oldState = this.shell.State;

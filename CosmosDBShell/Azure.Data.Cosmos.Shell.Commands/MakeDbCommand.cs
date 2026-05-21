@@ -48,12 +48,11 @@ internal class MakeDbCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitConnectedStateAsync(ConnectedState state, ShellInterpreter shell, CancellationToken token)
     {
-        var tp = CreateThroughputProperties(this.Scale, this.MaxRU);
-        var result = await state.Client.CreateDatabaseIfNotExistsAsync(this.Name, tp, cancellationToken: token);
+        var databaseName = await CosmosResourceFacade.CreateDatabaseAsync(state, this.Name ?? string.Empty, this.Scale, this.MaxRU, token);
         CosmosCompleteCommand.ClearDatabases();
 
-        ShellInterpreter.WriteLine(MessageService.GetString("command-mkdb-database_created", new Dictionary<string, object> { { "db", result.Database.Id } }));
-        var jsonString = $"{{\"created_database\": \"{result.Database.Id}\"}}";
+        ShellInterpreter.WriteLine(MessageService.GetString("command-mkdb-database_created", new Dictionary<string, object> { { "db", databaseName } }));
+        var jsonString = $"{{\"created_database\": \"{databaseName}\"}}";
         using var jsonDoc = JsonDocument.Parse(jsonString);
         var commandState = new CommandState();
         commandState.Result = new ShellJson(jsonDoc.RootElement.Clone());

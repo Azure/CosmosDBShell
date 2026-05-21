@@ -215,7 +215,7 @@ internal class StatementParser
         var current = this.expressionParser.Current;
         if (current == null)
         {
-            this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+            this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
             return null;
         }
 
@@ -265,7 +265,7 @@ internal class StatementParser
             var ifToken = this.expressionParser.Current;
             if (ifToken == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -309,7 +309,7 @@ internal class StatementParser
             var whileToken = this.expressionParser.Current;
             if (whileToken == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -338,7 +338,7 @@ internal class StatementParser
             var forToken = this.expressionParser.Current;
             if (forToken == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -357,7 +357,7 @@ internal class StatementParser
 
             if (this.expressionParser.Current == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -388,7 +388,7 @@ internal class StatementParser
             var doToken = this.expressionParser.Current;
             if (doToken == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -405,7 +405,7 @@ internal class StatementParser
 
             if (this.expressionParser.Current == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -429,7 +429,7 @@ internal class StatementParser
             var loopToken = this.expressionParser.Current;
             if (loopToken == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -457,7 +457,7 @@ internal class StatementParser
             var execToken = this.expressionParser.Current;
             if (execToken == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -501,7 +501,7 @@ internal class StatementParser
             var defToken = this.expressionParser.Current;
             if (defToken == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -509,7 +509,7 @@ internal class StatementParser
 
             if (this.expressionParser.Current == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -683,7 +683,7 @@ internal class StatementParser
             var token = this.expressionParser.Current;
             if (token == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -714,7 +714,7 @@ internal class StatementParser
             var token = this.expressionParser.Current;
             if (token == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -735,7 +735,7 @@ internal class StatementParser
             var token = this.expressionParser.Current;
             if (token == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -756,7 +756,7 @@ internal class StatementParser
             var openBrace = this.expressionParser.Current;
             if (openBrace == null)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -799,7 +799,13 @@ internal class StatementParser
 
             if (this.expressionParser.Current == null || this.expressionParser.Current.Type != TokenType.CloseBrace)
             {
-                this.ReportError(MessageService.GetString("statement_error_expected_close_brace"), this.expressionParser.Current);
+                // If we ran out of input entirely while waiting for '}', this is the same
+                // signal as any other "ran off the end" error — surface it as UnexpectedEnd
+                // so the REPL can prompt for a continuation line.
+                var kind = this.expressionParser.Current == null
+                    ? ParseErrorKind.UnexpectedEnd
+                    : ParseErrorKind.Generic;
+                this.ReportError(MessageService.GetString("statement_error_expected_close_brace"), this.expressionParser.Current, kind);
                 return null;
             }
 
@@ -857,7 +863,7 @@ internal class StatementParser
         {
             if (optToken == null && this.expressionParser.IsAtEnd)
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end_parsing_command"), this.expressionParser.Current);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end_parsing_command"), this.expressionParser.Current, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -872,7 +878,7 @@ internal class StatementParser
             }
             else
             {
-                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null);
+                this.ReportError(MessageService.GetString("statement_error_unexpected_end") ?? "Unexpected end of input", null, ParseErrorKind.UnexpectedEnd);
                 return null;
             }
 
@@ -1125,16 +1131,16 @@ internal class StatementParser
         }
     }
 
-    private void ReportError(string message, Token? token)
+    private void ReportError(string message, Token? token, ParseErrorKind kind = ParseErrorKind.Generic)
     {
         var t = token ?? this.expressionParser.Current;
         if (t == null)
         {
-            this.lexer.Errors.Add(new ParseError(0, 1, message, ErrorLevel.Error));
+            this.lexer.Errors.Add(new ParseError(0, 1, message, ErrorLevel.Error, kind));
         }
         else
         {
-            this.lexer.Errors.Add(new ParseError(t.Start, Math.Max(1, t.Length), message, ErrorLevel.Error));
+            this.lexer.Errors.Add(new ParseError(t.Start, Math.Max(1, t.Length), message, ErrorLevel.Error, kind));
         }
     }
 

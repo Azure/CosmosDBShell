@@ -157,7 +157,18 @@ internal class CommandExpression : Expression
             return await this.RunScriptAsync(shell, commandState, token);
         }
 
-        throw new CommandNotFoundException(this.Name);
+        throw new CommandNotFoundException(this.Name, SuggestCommand(shell, this.Name));
+    }
+
+    private static string? SuggestCommand(ShellInterpreter shell, string typed)
+    {
+        IEnumerable<string> candidates = shell.App.Commands.Keys;
+        if (shell.Functions.Count > 0)
+        {
+            candidates = candidates.Concat(shell.Functions.Keys);
+        }
+
+        return Azure.Data.Cosmos.Shell.Util.CommandNameSuggester.Suggest(typed, candidates);
     }
 
     /// <summary>
@@ -192,7 +203,19 @@ internal class CommandExpression : Expression
 
             if (matchingProperty == null)
             {
-                throw new CommandException(this.Name, $"Unknown option '{rawName}'.");
+                var knownNames = optionProperties
+                    .Where(x => x.Attr != null)
+                    .SelectMany(x => x.Attr!.Names)
+                    .Where(n => !string.IsNullOrEmpty(n));
+
+                // The parser stores only the first '-' in MinusToken; a second
+                // '-' for '--option' is consumed but discarded. Reconstruct the
+                // exact dash prefix from the gap between the two tokens so the
+                // suggestion echoes back what the user typed.
+                var dashCount = Math.Max(1, opt.NameToken.Start - opt.MinusToken.Start);
+                var typedPrefix = new string('-', dashCount);
+                var (msg, hint) = Azure.Data.Cosmos.Shell.Util.UnknownOptionMessage.Build(typedPrefix, rawName, knownNames);
+                throw new UnknownOptionException(this.Name, msg, hint);
             }
 
             var pi = matchingProperty.Prop;

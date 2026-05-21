@@ -181,6 +181,56 @@ These commands accept and process piped JSON:
 | `jq` | Filters/transforms piped JSON |
 | `ftab` | Formats piped JSON as table |
 
+## Multi-line Input
+
+The interactive prompt accepts commands that span more than one physical line. There are two ways to enter multi-line input — they can be mixed freely.
+
+### Automatic (parse-driven) continuation
+
+The shell inspects what you've typed when you press Enter. If the input is *syntactically incomplete*, the prompt switches to a grey `...` continuation prompt and keeps reading instead of executing. Input is considered incomplete when:
+
+- a block is left open: `{`, `(`, or `[` without its matching close
+- a quoted string has no closing quote (`"`, `'`, or interpolated `` ` ``)
+- a statement ends part-way through (for example, after `if`, `for`, `function`, or a trailing operator)
+
+Example — paste or type, pressing Enter at the end of each line:
+
+```cosmosdb
+> if ($x > 0) {
+...     echo "positive"
+... } else {
+...     echo "non-positive"
+... }
+```
+
+The command runs as soon as the final `}` closes the outer block.
+
+### Explicit backslash continuation
+
+End any line with a single backslash (`\`) and press Enter to continue on the next line, bash-style. This works even when the input *would* parse on its own, which is useful for breaking long single-statement commands across lines:
+
+```cosmosdb
+> query "SELECT c.id, c.status FROM c \
+... WHERE c.priority = 1" \
+... --db ToDoList --con Items
+```
+
+Backslash runs follow normal escaping rules: an even number of trailing backslashes (`\\`, `\\\\`, …) is a literal and does **not** continue the line. An odd number (`\`, `\\\`, …) continues, with the final backslash consumed as the continuation marker.
+
+### Cancelling a multi-line entry
+
+While the `...` prompt is active:
+
+- Press **Ctrl+C** to discard everything you've typed so far and return to the regular prompt.
+- Press **Esc** to clear the current line; this only affects the line you're editing, not the buffered earlier lines.
+- An EOF / cancelled read (for example, Ctrl+D on an empty line) also discards the pending buffer.
+
+There is no separate "enter multi-line mode" command — the shell enters and leaves continuation mode automatically based on the rules above.
+
+### History
+
+Multi-line commands are saved to history as a single entry. When you recall one with `Up` / `Ctrl+P` or reverse-search (`Ctrl+R`), the full multi-line text is restored. History files written by older versions of the shell continue to load unchanged.
+
 ## Keyboard Shortcuts
 
 Available at the interactive prompt:
@@ -208,17 +258,19 @@ Start the shell with options to customize behavior:
 
 | Option | Description |
 | ------ | ----------- |
-| `-c <cmd>` | Execute command and exit |
-| `-k <cmd>` | Execute command and stay in shell |
+| `-c <cmd>` | Execute command and exit. Everything after `-c` is taken as the command, so app-level options must come before `-c`. Windows-style `/c` is also accepted. |
+| `-k <cmd>` | Execute command and stay in shell. Everything after `-k` is taken as the command, so app-level options must come before `-k`. Windows-style `/k` is also accepted. |
 | `--connect <str>` | Connect with this connection string or endpoint on startup |
 | `--connect-mode <mode>` | Connection mode at startup: 'direct' or 'gateway' |
 | `--connect-tenant <id>` | Entra ID tenant ID at startup |
 | `--connect-hint <hint>` | Login hint for browser auth at startup |
 | `--connect-authority-host <url>` | Authority host URL at startup |
 | `--connect-managed-identity <id>` | User-assigned managed identity client ID at startup |
+| `--connect-subscription <id>` | Azure subscription ID for ARM database and container operations at startup |
+| `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations at startup |
 | `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
-| `--cs <n>` | Color scheme: 0=off, 1=standard, 2=truecolor |
-| `--clearhistory` | Clear command history on start |
+| `--color-system <n>` | Color scheme: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
+| `--clear-history` | Clear command history on start |
 | `--help` | Show usage information |
 | `--version` | Show version |
 
@@ -239,6 +291,9 @@ cosmosdbshell -c "connect $CONN; cd mydb/mycont; ls -m 5"
 
 # Start connected to a specific account
 cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
+
+# Start connected with explicit ARM account context
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-subscription <subscription-id> --connect-resource-group <resource-group>
 
 # Start with MCP server enabled on the default port (6128)
 cosmosdbshell --mcp

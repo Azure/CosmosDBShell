@@ -10,7 +10,6 @@ using System.Text;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
-using CommandLine.Text;
 using RadLine;
 using Spectre.Console;
 using static System.Net.Mime.MediaTypeNames;

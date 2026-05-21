@@ -1,4 +1,5 @@
 shell-ready = Cosmos DB shell ready.
+shell-not_connected_hint = Not connected. Run 'connect <endpoint>' to authenticate, or 'help connect' for more options.
 shell-hisory_file_deleted = History deleted.
 shell-connect-browser-auth = Authenticating via browser. Please complete the login in the browser window that opens.
 shell-connect-devicecode-auth = Browser authentication failed. Falling back to device code authentication.
@@ -10,6 +11,8 @@ shell-connect-static-token-expiry = Expires in { $timespan } (expiration: { $exp
 shell-connect-vscode-credential-auth = Connecting with Visual Studio Code credential...
 shell-connect-vscode-credential-fallback = Visual Studio Code credential unavailable, falling back...
 shell-connect-devicecode-fallback = Browser authentication failed, falling back to device code authentication...
+shell-connect-arm-discovery-failed = Using Cosmos DB data plane.
+shell-connect-arm-discovery-ambiguous = Multiple ARM Cosmos DB accounts match the connected endpoint. Reconnect with --subscription and --resource-group, or use --connect-subscription and --connect-resource-group at startup, to specify which account to use. Using Cosmos DB data plane for now.
 history-search-reverse = reverse-i-search
 history-search-forward = forward-i-search
 history-search-failed-reverse = failed reverse-i-search
@@ -20,7 +23,19 @@ no_char = N
 
 error = Error:
 error-connection_failed = Failed to connect to the Cosmos DB account.
+error-emulator_connection_failed =
+    Could not reach the Cosmos DB emulator at { $endpoint }.
+    Make sure the emulator container is running ('docker ps') and reachable.
+    Tip: the Linux emulator exposes a health probe at http://localhost:8080/alive that can be used to verify it is up.
+    The Cosmos DB SDKs (including this shell) require HTTPS, but the Linux emulator defaults to HTTP.
+    Restart the container with --protocol [https|http], for example:
+        docker run -d -p 8081:8081 -p 1234:1234 -p 8080:8080 mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview --protocol https
+    Or, if you intentionally started the emulator with the other protocol, try connecting to { $alternate } instead.
+    See: https://learn.microsoft.com/en-us/azure/cosmos-db/emulator-linux
 error-command-not-found = '{ $command }' is not recognized as an internal or external command, operable program or batch file.
+error-command-not-found-suggestion = Did you mean '{ $suggestion }'?
+error-unknown-option = Unknown option '{ $option }'.
+error-unknown-option-suggestion = Did you mean '{ $suggestion }'?
 error-shell-not-initialized = Shell is not initialized
 error-start_process = Failed to start the process.
 error-file_not_found = file '{ $file }' not found.
@@ -51,6 +66,10 @@ error-variable_not_set = Variable '{ $name }' is not set.
 error-mutually-exclusive-options = Options '-c' and '-k' cannot be used together.
 error-shell-not-initialized = Shell is not initialized
 error-unable_to_read_container = Unable to read container.
+error-arm-context-required = Database and container resource operations require Azure Resource Manager context. Reconnect with Entra ID and provide --subscription and --resource-group, or use --connect-subscription and --connect-resource-group at startup. Alternatively, use an identity that can discover the Cosmos DB account through ARM.
+error-arm-context-incomplete = Provide subscription and resource group together to use an explicit Azure Resource Manager account context. The account name is inferred from the endpoint.
+error-arm-context-ambiguous = Multiple Cosmos DB Azure Resource Manager accounts match the connected endpoint. Reconnect and provide subscription and resource group explicitly.
+error-arm-context-endpoint-mismatch = The Azure Resource Manager account endpoint '{ $armEndpoint }' does not match the connected Cosmos DB endpoint '{ $dataPlaneEndpoint }'. Reconnect with the subscription and resource group that own the connected account.
 
 help-usage = Usage: { $command }
 help-usage-heading = Usage
@@ -248,6 +267,7 @@ command-indexpolicy-description-database = The database containing the container
 command-indexpolicy-description-container = The container to read/update the indexing policy for
 command-indexpolicy-updated = Indexing policy updated successfully.
 command-indexpolicy-error_invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
+command-indexpolicy-error_no_policy = The container has no indexing policy configured.
 
 command-ls-description = List resources in the current context.
 command-ls-description-filter = The filter pattern.
@@ -324,13 +344,18 @@ command-connect-description-mode = Connection mode: 'direct' (default) or 'gatew
 command-connect-description-tenant = The Entra ID tenant ID to authenticate against.
 command-connect-description-authority-host = The authority host URL (The default is https://login.microsoftonline.com/).
 command-connect-description-managed-identity = The client ID of a user-assigned managed identity to authenticate with.
+command-connect-description-subscription = Azure subscription ID for ARM database and container operations. Must be paired with --resource-group.
+command-connect-description-resource-group = Azure resource group name for ARM database and container operations. Must be paired with --subscription.
 command-connect-error-no_endpoint = An account endpoint or connection string must be specified.
 command-connect-connected = Connected to account '{ $account }'
 command-connect-emulator-detected = Emulator endpoint detected, using well-known account key and gateway mode.
 command-connect-switching = Disconnecting from '{ $endpoint }'...
 command-connect-not_connected = Not connected to any Cosmos DB account.
+command-connect-not_connected-usage-header = Use 'connect <endpoint>' to authenticate. Common forms:
+command-connect-not_connected-usage-footer = Run 'help connect' for the full list of options.
 command-connect-info-title = Connection Information
 command-connect-info-account = Account
+command-connect-info-arm-account = ARM Account
 command-connect-info-endpoint = Endpoint
 command-connect-info-mode = Connection Mode
 command-connect-info-read-regions = Read Regions
@@ -441,6 +466,12 @@ command-version-repo = Report issues at [link={ $url }]{ $url }[/]
 help-RequiredWord = Required.
 help-ErrorsHeadingText = ERROR(S):
 help-UsageHeadingText  = USAGE:
+help-UsageSynopsis = { $command } [options] [-c|-k <command>...]
+help-CommandTailNote = Everything after -c / -k (or /c, /k) is taken as the command (no quoting needed). App-level options must come before -c / -k.
+help-OptionsHeadingText = OPTIONS:
+help-NotesHeadingText = NOTES:
+help-HelpOptionDescription = Show this help text and exit.
+help-VersionOptionDescription = Show product version and exit.
 help-OptionGroupWord = Group
 help-HelpCommandScreenText = Display this help screen.
 help-HelpCommandMoreText = Display more information on a specific command.
@@ -455,6 +486,7 @@ help-SentenceMutuallyExclusiveSetErrors =
 help-error-BadFormatTokenError = Token '{ $token }' is not recognized.
 help-error-MissingValueOptionError = Option '{ $option }' has no value.
 help-error-UnknownOptionError = Option '{ $option }' is unknown.
+help-error-UnknownArgumentError = Unrecognized argument '{ $argument }'.
 help-error-MissingRequiredOptionError1 = A required value not bound to option name is missing.
 help-error-MissingRequiredOptionError2 = Required option '{ $option }' is missing.
 help-error-BadFormatConversionError1 = A value not bound to option name is defined with a bad format.
@@ -468,9 +500,9 @@ help-error-SetValueExceptionError = Error setting value to option '{ $option }':
 help-error-MissingGroupOptionError = At least one option from group '{ $option }"' ({ $req_options }) is required.
 help-error-GroupOptionAmbiguityError= Both SetName and Group are not allowed in option: ({ $option })
 
-help-ExecuteAndContinue = Executes the specified command and keeps the shell running (for example: /k "help").
-help-ExecuteAndQuit = Executes the specified command and exits the shell (for example: /c "help").
-help-ColorSystem = ColorSystem to use.(0=off, 1=standard, 2=true color)
+help-ExecuteAndContinue = Execute the specified command, then keep the shell running.
+help-ExecuteAndQuit = Execute the specified command, then exit.
+help-ColorSystem = Color system: 0=off, 1=standard, 2=true color (default: 2).
 help-ClearHistory = Clears command history and exits.
 help-ConnectionString = The endpoint URL or connection string to connect to.
 help-ConnectionMode = Connection mode: 'direct' (default) or 'gateway'
@@ -478,6 +510,8 @@ help-ConnectTenant = The Entra ID tenant ID to authenticate against at startup.
 help-ConnectHint = Login hint for browser authentication at startup.
 help-ConnectAuthorityHost = The authority host URL at startup (default: https://login.microsoftonline.com/).
 help-ConnectManagedIdentity = The client ID of a user-assigned managed identity at startup.
+help-ConnectSubscription = Azure subscription ID for ARM database and container operations at startup.
+help-ConnectResourceGroup = Azure resource group name for ARM database and container operations at startup.
 help-ConnectVSCodeCredential = Use Visual Studio Code credential for authentication at startup.
 help-EnableMcpServer = Enable MCP server for programmatic control of the shell
 help-EnableLspServer = Enable Language Server Protocol (LSP) server for editor integration
@@ -536,11 +570,12 @@ statement_error_expected_after_function_def = Expected statement after function 
 statement_error_expected_return = Expected 'return'
 statement_error_expected_break = Expected 'break'
 statement_error_expected_continue = Expected 'continue'
-statement_error_expected_open_brace = Expected '\u007B'
-statement_error_expected_close_brace = Expected '\u007D'
-statement_error_unexpected_close_brace = Unexpected '\u007D'
+statement_error_expected_open_brace = Expected '{ "{" }'
+statement_error_expected_close_brace = Expected '{ "}" }'
+statement_error_unexpected_close_brace = Unexpected '{ "}" }'
 statement_error_unexpected_end = Unexpected end of input
 statement_error_unexpected_end_parsing_command = Unexpected end of input when parsing command
+lexer_error_unterminated_string = Unterminated string literal
 statement_error_expected_command_name = Expected command name
 statement_error_expected_option_name = Expected option name after '{$prefix}'
 statement_error_invalid_option_value = Invalid value for option '{ $option }'
@@ -548,6 +583,12 @@ statement_error_expected_redirect_destination = Expected file name after '{$redi
 statement_error_invalid_redirect_destination = Invalid destination for '{$redirect}' redirection
 statement_error_duplicate_out_redirect = Duplicate output redirection
 statement_error_duplicate_err_redirect = Duplicate error redirection
+
+parser-error-prefix = parse error
+parser-warning-prefix = parse warning
+query-error-prefix = query error
+runtime-error-prefix = error
+runtime-error-canceled = Canceled.
 
 json_error_empty_array_brackets = Empty array brackets are not allowed.
 
