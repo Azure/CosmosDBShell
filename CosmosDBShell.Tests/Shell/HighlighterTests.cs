@@ -646,4 +646,46 @@ public class HighlighterTests
         Assert.Contains("echo", segs.Select(s => s.Text));
         Assert.Contains(" $.users[0].name", segs.Select(s => s.Text));
     }
+
+    [Fact]
+    public void TestIncompleteBlockStillHighlightsInnerStatements()
+    {
+        // Regression: an unterminated '{' block used to make the parser bail out
+        // and the highlighter to fall back to plain rendering, leaving known
+        // commands and string literals uncolored until the user typed the
+        // matching '}'. With the partial-AST fix the inner statements should be
+        // highlighted normally even while the block is still open.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var input = "{ echo \"Hello World\"";
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+        var rendered = string.Concat(segs.Select(s => s.Text));
+        Assert.Equal(input, rendered);
+
+        var echoSeg = segs.FirstOrDefault(s => s.Text.Trim() == "echo");
+        Assert.NotNull(echoSeg);
+        // 'echo' is a known command, so it must not be rendered with the error color.
+        Assert.NotEqual(ErrorColor, echoSeg.Style.Foreground);
+
+        // The quoted string should appear as a single segment with its literal text intact.
+        Assert.Contains(segs, s => s.Text.Contains("\"Hello World\""));
+    }
+
+    [Fact]
+    public void TestIncompleteInlineExpressionDoesNotDuplicateText()
+    {
+        // Regression: a synthetic missing ')' token must not rewind the visitor
+        // and make GetResult() append already-highlighted text again.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var input = "echo $(44";
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+
+        var rendered = string.Concat(res.GetSegments(AnsiConsole.Console).Select(s => s.Text));
+        Assert.Equal(input, rendered);
+    }
 }

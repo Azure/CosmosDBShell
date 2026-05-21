@@ -23,8 +23,10 @@ internal class BlockStatement : Statement
     /// Initializes a new instance of the <see cref="BlockStatement"/> class with brace tokens.
     /// </summary>
     /// <param name="openBrace">The opening brace token.</param>
-    /// <param name="closeBrace">The closing brace token.</param>
-    public BlockStatement(Token openBrace, Token closeBrace, List<Statement> statements)
+    /// <param name="closeBrace">
+    /// The closing brace token, or <c>null</c> when the source ended before the block was closed.
+    /// </param>
+    public BlockStatement(Token openBrace, Token? closeBrace, List<Statement> statements)
     {
         this.openBraceToken = openBrace;
         this.closeBraceToken = closeBrace;
