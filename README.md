@@ -100,6 +100,7 @@ dotnet tool uninstall --global CosmosDBShell
 - [Commands](docs/commands.md) - All shell commands
 - [Navigation](docs/navigation.md) - Navigation, pipes, CLI arguments
 - [Programming](docs/programming.md) - Variables, control flow, functions
+- [Filter expression language (v1)](docs/filter-v1-spec.md) - Grammar and semantics of the built-in `filter` command
 - [MCP](docs/mcp.md) - Model Context Protocol integration
 
 ## CI And Packaging

@@ -100,6 +100,38 @@ public class FilterCommandTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ArrayCollectorFlattensIterationSequence()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                items = new[]
+                {
+                    new { id = "1" },
+                    new { id = "2" },
+                    new { id = "3" },
+                },
+            })),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = "[.items[] | .id]",
+        };
+
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+
+        var json = Assert.IsType<ShellJson>(result.Result);
+        Assert.Equal(JsonValueKind.Array, json.Value.ValueKind);
+        Assert.Equal(3, json.Value.GetArrayLength());
+        Assert.Equal("1", json.Value[0].GetString());
+        Assert.Equal("2", json.Value[1].GetString());
+        Assert.Equal("3", json.Value[2].GetString());
+    }
+
+    [Fact]
     public async Task ExecuteAsync_NormalizesTextResult_ToJsonString()
     {
         var shell = ShellInterpreter.CreateInstance();
