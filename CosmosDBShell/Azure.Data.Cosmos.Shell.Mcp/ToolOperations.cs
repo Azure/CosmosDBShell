@@ -439,7 +439,13 @@ internal class ToolOperations
                     continue;
                 }
 
-                this.logger?.LogWarning($"Unknown argument '{par.Key}' for command '{command.CommandName}'. It will be ignored.");
+                var knownNames = command.Options.SelectMany(o => o.Name)
+                    .Concat(command.Parameters.SelectMany(p => p.Name))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
+                var unknownArgMessage = $"Unknown argument '{par.Key}' for command '{command.CommandName}'. Known arguments: {string.Join(", ", knownNames)}.";
+                this.logger?.LogWarning(unknownArgMessage);
+                return McpResponseFactory.CreateError(unknownArgMessage, ShellInterpreter.Instance.State);
             }
         }
 
