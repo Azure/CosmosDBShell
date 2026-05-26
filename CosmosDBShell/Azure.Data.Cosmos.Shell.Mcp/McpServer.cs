@@ -50,8 +50,9 @@ internal class McpServer
     private static void ConfigureMcpServer(IServiceCollection services)
     {
         services.AddSingleton<ToolOperations>();
+        services.AddSingleton<ResourceSubscriptionManager>();
         services.AddOptions<McpServerOptions>()
-            .Configure<ToolOperations>((mcpServerOptions, toolOperations) =>
+            .Configure<ToolOperations, ResourceSubscriptionManager>((mcpServerOptions, toolOperations, subscriptions) =>
             {
                 var entryAssembly = Assembly.GetEntryAssembly();
                 var assemblyName = entryAssembly?.GetName();
@@ -66,13 +67,36 @@ internal class McpServer
                 mcpServerOptions.Capabilities = new ServerCapabilities
                 {
                     Tools = new ToolsCapability(),
-                    Resources = new ResourcesCapability(),
+                    Resources = new ResourcesCapability
+                    {
+                        Subscribe = true,
+                    },
                 };
 
                 mcpServerOptions.Handlers = new McpServerHandlers
                 {
                     CallToolHandler = toolOperations.CallToolHandler,
                     ListToolsHandler = toolOperations.ListToolsHandler,
+                    SubscribeToResourcesHandler = (context, _) =>
+                    {
+                        var uri = context.Params?.Uri;
+                        if (!string.IsNullOrWhiteSpace(uri))
+                        {
+                            subscriptions.Subscribe(uri, context.Server);
+                        }
+
+                        return new ValueTask<EmptyResult>(new EmptyResult());
+                    },
+                    UnsubscribeFromResourcesHandler = (context, _) =>
+                    {
+                        var uri = context.Params?.Uri;
+                        if (!string.IsNullOrWhiteSpace(uri))
+                        {
+                            subscriptions.Unsubscribe(uri, context.Server);
+                        }
+
+                        return new ValueTask<EmptyResult>(new EmptyResult());
+                    },
                 };
 
                 mcpServerOptions.ProtocolVersion = "2025-07-05";

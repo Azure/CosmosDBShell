@@ -57,6 +57,8 @@ public partial class ShellInterpreter : IDisposable
 
     private List<string> history;
 
+    private State state = null!;
+
     internal ShellInterpreter()
     {
         this.State = new DisconnectedState();
@@ -85,6 +87,12 @@ public partial class ShellInterpreter : IDisposable
         Console.CancelKeyPress += this.Console_CancelKeyPress;
         this.editorCancelTokenSource = new CancellationTokenSource();
     }
+
+    /// <summary>
+    /// Raised when <see cref="State"/> transitions to a new instance. Listeners run
+    /// synchronously inside the setter; handlers must be fast and exception-safe.
+    /// </summary>
+    internal event EventHandler<StateChangedEventArgs>? StateChanged;
 
     /// <summary>
     /// Gets the line editor instance used by the shell, or <c>null</c> if not available.
@@ -157,7 +165,19 @@ public partial class ShellInterpreter : IDisposable
 
     internal bool AppendErrRedirection { get; set; }
 
-    internal State State { get; set; }
+    internal State State
+    {
+        get => this.state;
+        set
+        {
+            var previous = this.state;
+            this.state = value;
+            if (!ReferenceEquals(previous, value))
+            {
+                this.StateChanged?.Invoke(this, new StateChangedEventArgs(previous, value));
+            }
+        }
+    }
 
     internal Program.CosmosShellOptions? Options { get; set; }
 
