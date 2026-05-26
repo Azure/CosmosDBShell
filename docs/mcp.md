@@ -50,6 +50,17 @@ The MCP server publishes documentation and live shell-state resources that clien
 
 The server advertises the `resources.subscribe` capability. Clients may call `resources/subscribe` on any of the URIs above; the server emits `notifications/resources/updated` whenever the shell state transitions (connect, disconnect, `cd`, `rmdb` of the current database). The history resource is not republished on every command — clients should re-read it on demand.
 
+### Completion
+
+The server advertises the `completions` capability and declares two resource templates that drive argument completion:
+
+| Template | Completable placeholders |
+| --- | --- |
+| `cosmos://databases/{database}/containers` | `{database}` |
+| `cosmos://databases/{database}/containers/{container}/indexing-policy` | `{database}`, `{container}` |
+
+`completion/complete` returns live database names from the connected account, and live container names for the database the client has already supplied in `context.arguments.database`. Empty list when the shell is disconnected.
+
 ## Security
 
 ### How MCP Works

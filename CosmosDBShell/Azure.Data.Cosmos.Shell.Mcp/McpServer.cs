@@ -71,6 +71,7 @@ internal class McpServer
                     {
                         Subscribe = true,
                     },
+                    Completions = new CompletionsCapability(),
                 };
 
                 mcpServerOptions.Handlers = new McpServerHandlers
@@ -106,6 +107,8 @@ internal class McpServer
 
         var mcpServerBuilder = services.AddMcpServer();
         mcpServerBuilder.WithResources<ResourceOperations>();
+        mcpServerBuilder.WithListResourceTemplatesHandler(ResourceCompletionOperations.ListResourceTemplatesAsync);
+        mcpServerBuilder.WithCompleteHandler(ResourceCompletionOperations.CompleteAsync);
         mcpServerBuilder.WithHttpTransport();
     }
 
