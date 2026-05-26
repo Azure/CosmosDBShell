@@ -36,6 +36,19 @@ internal static class ResourceCompletionOperations
 
     private const int MaxCompletionValues = 100;
 
+    /// <summary>
+    /// Maps each known prompt to the set of argument names that participate in
+    /// database/container completion. Keep in sync with <see cref="PromptOperations"/>.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, HashSet<string>> PromptCompletableArguments =
+        new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
+        {
+            ["cosmos.explain-container"] = new(StringComparer.Ordinal) { "database", "container" },
+            ["cosmos.query-optimize"] = new(StringComparer.Ordinal) { "database", "container" },
+            ["cosmos.partition-key-audit"] = new(StringComparer.Ordinal) { "database", "container" },
+            ["cosmos.bulk-import-plan"] = new(StringComparer.Ordinal) { "database", "container" },
+        };
+
     internal static readonly IReadOnlyList<ResourceTemplate> Templates = new[]
     {
         new ResourceTemplate
@@ -81,16 +94,19 @@ internal static class ResourceCompletionOperations
         CompleteRequestParams? parameters,
         CancellationToken cancellationToken)
     {
-        if (parameters?.Ref is not ResourceTemplateReference templateRef ||
-            string.IsNullOrEmpty(templateRef.Uri) ||
-            !IsKnownTemplate(templateRef.Uri))
+        if (!TryGetCompletionTarget(parameters?.Ref, out var promptName))
         {
             return EmptyCompletion();
         }
 
-        var argumentName = parameters.Argument?.Name;
+        var argumentName = parameters!.Argument?.Name;
         var argumentValue = parameters.Argument?.Value ?? string.Empty;
         if (string.IsNullOrEmpty(argumentName))
+        {
+            return EmptyCompletion();
+        }
+
+        if (promptName != null && !PromptArgumentSupportsCompletion(promptName, argumentName))
         {
             return EmptyCompletion();
         }
@@ -119,6 +135,29 @@ internal static class ResourceCompletionOperations
     {
         return string.Equals(uri, DatabaseContainersTemplate, StringComparison.Ordinal)
             || string.Equals(uri, ContainerIndexingPolicyTemplate, StringComparison.Ordinal);
+    }
+
+    private static bool TryGetCompletionTarget(Reference? reference, out string? promptName)
+    {
+        promptName = null;
+        switch (reference)
+        {
+            case ResourceTemplateReference templateRef
+                when !string.IsNullOrEmpty(templateRef.Uri) && IsKnownTemplate(templateRef.Uri):
+                return true;
+            case PromptReference promptRef
+                when !string.IsNullOrEmpty(promptRef.Name) && PromptCompletableArguments.ContainsKey(promptRef.Name):
+                promptName = promptRef.Name;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool PromptArgumentSupportsCompletion(string promptName, string argumentName)
+    {
+        return PromptCompletableArguments.TryGetValue(promptName, out var args)
+            && args.Contains(argumentName);
     }
 
     private static async Task<CompleteResult> SuggestDatabasesAsync(
