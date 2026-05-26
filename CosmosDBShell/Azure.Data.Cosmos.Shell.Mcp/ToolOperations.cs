@@ -355,6 +355,7 @@ internal class ToolOperations
         }
 
         var cmd = command.CreateCommand();
+        var suppliedParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         if (parameters.Params.Arguments != null)
         {
@@ -405,6 +406,7 @@ internal class ToolOperations
                 var parameter = command.Parameters.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (parameter != null)
                 {
+                    suppliedParameters.Add(parameter.Name[0]);
                     var property = cmd.GetType().GetProperty(parameter.Name[0], BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
                     if (property != null && property.CanWrite)
                     {
@@ -447,6 +449,17 @@ internal class ToolOperations
                 this.logger?.LogWarning(unknownArgMessage);
                 return McpResponseFactory.CreateError(unknownArgMessage, ShellInterpreter.Instance.State);
             }
+        }
+
+        var missingRequired = command.Parameters
+            .Where(p => p.IsRequired && !suppliedParameters.Contains(p.Name[0]))
+            .Select(p => p.Name[0])
+            .ToList();
+        if (missingRequired.Count > 0)
+        {
+            var missingMessage = $"Missing required parameter(s) for command '{command.CommandName}': {string.Join(", ", missingRequired)}.";
+            this.logger?.LogWarning(missingMessage);
+            return McpResponseFactory.CreateError(missingMessage, ShellInterpreter.Instance.State);
         }
 
         this.logger?.LogTrace($"Invoking '{command.CommandName}'.");
