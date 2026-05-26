@@ -314,6 +314,51 @@ internal class ToolOperations
         return "string";
     }
 
+    private CallToolResult? BindMember(
+        object cmd,
+        PropertyInfo property,
+        string memberName,
+        object? rawValue,
+        string memberKind,
+        string memberDisplay,
+        string commandName,
+        Action<object?> appendToHistory)
+    {
+        if (property == null || !property.CanWrite)
+        {
+            return null;
+        }
+
+        object? convertedValue;
+        try
+        {
+            var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            convertedValue = rawValue is JsonElement jsonElement
+                ? ConvertJsonElement(jsonElement, targetType)
+                : Convert.ChangeType(rawValue, targetType);
+        }
+        catch (Exception ex)
+        {
+            var errorMessage = $"Invalid value for {memberKind} '{memberDisplay}' on command '{commandName}': {ex.Message}";
+            this.logger?.LogWarning(ex, errorMessage);
+            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
+        }
+
+        try
+        {
+            appendToHistory(convertedValue);
+            property.SetValue(cmd, convertedValue);
+        }
+        catch (Exception ex)
+        {
+            var errorMessage = $"Failed to set {memberKind} '{memberDisplay}' on command '{commandName}': {ex.Message}";
+            this.logger?.LogWarning(ex, errorMessage);
+            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
+        }
+
+        return null;
+    }
+
     private ValueTask<ListToolsResult> OnListToolsAsync(
         RequestContext<ListToolsRequestParams> requestContext,
         CancellationToken cancellationToken)
@@ -374,38 +419,21 @@ internal class ToolOperations
                     continue;
                 }
 
-                var argument = command.Options.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
-                if (argument != null)
+                var option = command.Options.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
+                if (option != null)
                 {
-                    var property = cmd.GetType().GetProperty(argument.Name[0], BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                    if (property != null && property.CanWrite)
+                    var bindError = BindMember(
+                        cmd,
+                        option.PropertyInfo,
+                        option.Name[0],
+                        par.Value,
+                        memberKind: "option",
+                        memberDisplay: $"--{option.Name[0]}",
+                        commandName: command.CommandName,
+                        appendToHistory: value => sb.Append(FormatOptionForHistory(option, value)));
+                    if (bindError != null)
                     {
-                        object? convertedValue;
-                        try
-                        {
-                            var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                            convertedValue = par.Value is JsonElement jsonElement
-                                ? ConvertJsonElement(jsonElement, targetType)
-                                : Convert.ChangeType(par.Value, targetType);
-                        }
-                        catch (Exception ex)
-                        {
-                            var errorMessage = $"Invalid value for option '--{argument.Name[0]}' on command '{command.CommandName}': {ex.Message}";
-                            this.logger?.LogWarning(ex, errorMessage);
-                            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
-                        }
-
-                        try
-                        {
-                            sb.Append(FormatOptionForHistory(argument, convertedValue));
-                            property.SetValue(cmd, convertedValue);
-                        }
-                        catch (Exception ex)
-                        {
-                            var errorMessage = $"Failed to set option '--{argument.Name[0]}' on command '{command.CommandName}': {ex.Message}";
-                            this.logger?.LogWarning(ex, errorMessage);
-                            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
-                        }
+                        return bindError;
                     }
 
                     continue;
@@ -415,35 +443,18 @@ internal class ToolOperations
                 if (parameter != null)
                 {
                     suppliedParameters.Add(parameter.Name[0]);
-                    var property = cmd.GetType().GetProperty(parameter.Name[0], BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                    if (property != null && property.CanWrite)
+                    var bindError = BindMember(
+                        cmd,
+                        parameter.PropertyInfo,
+                        parameter.Name[0],
+                        par.Value,
+                        memberKind: "parameter",
+                        memberDisplay: parameter.Name[0],
+                        commandName: command.CommandName,
+                        appendToHistory: value => sb.Append(' ').Append(FormatParameter(value?.ToString())));
+                    if (bindError != null)
                     {
-                        object? convertedValue;
-                        try
-                        {
-                            var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                            convertedValue = par.Value is JsonElement jsonElement
-                                ? ConvertJsonElement(jsonElement, targetType)
-                                : Convert.ChangeType(par.Value, targetType);
-                        }
-                        catch (Exception ex)
-                        {
-                            var errorMessage = $"Invalid value for parameter '{parameter.Name[0]}' on command '{command.CommandName}': {ex.Message}";
-                            this.logger?.LogWarning(ex, errorMessage);
-                            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
-                        }
-
-                        try
-                        {
-                            sb.Append(' ').Append(FormatParameter(convertedValue?.ToString()));
-                            property.SetValue(cmd, convertedValue);
-                        }
-                        catch (Exception ex)
-                        {
-                            var errorMessage = $"Failed to set parameter '{parameter.Name[0]}' on command '{command.CommandName}': {ex.Message}";
-                            this.logger?.LogWarning(ex, errorMessage);
-                            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
-                        }
+                        return bindError;
                     }
 
                     continue;
