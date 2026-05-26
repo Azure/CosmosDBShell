@@ -18,9 +18,11 @@ using ModelContextProtocol.Server;
 
 internal class ToolOperations
 {
+    private static readonly JsonSerializerOptions IndentedJsonOptions = new() { WriteIndented = true };
+
     private readonly ILogger<ToolOperations> logger;
 
-    public ToolOperations(IServiceProvider serviceProvider, ILogger<ToolOperations> logger)
+    public ToolOperations(ILogger<ToolOperations> logger)
     {
         this.logger = logger;
     }
@@ -31,10 +33,24 @@ internal class ToolOperations
 
     internal static Tool GetTool(CommandFactory command)
     {
+        var descriptionParts = new[] { command.Description, command.McpDescription }
+            .Where(part => !string.IsNullOrWhiteSpace(part));
+        var description = string.Join("\n", descriptionParts);
+
+        if (command.McpRestricted)
+        {
+            if (description.Length > 0)
+            {
+                description += "\n";
+            }
+
+            description += "Warning: This tool can't be used in MCP context. Usage is user only. Suggest using the command manually or run help for this command.";
+        }
+
         var tool = new Tool
         {
             Name = command.CommandName,
-            Description = command.Description + command.McpDescription + (command.McpRestricted ? "\nWarning: This tool can't be used in MCP context. Usage is user only. Suggest using the command manually or run help for this command." : string.Empty),
+            Description = description,
         };
         var schema = new JsonObject
         {
@@ -303,17 +319,6 @@ internal class ToolOperations
         CancellationToken cancellationToken)
     {
         var tools = ShellInterpreter.Instance.App.Commands.Values.DistinctBy(c => c.CommandName).Select(ToolOperations.GetTool).ToList();
-        var arguments = new JsonObject
-        {
-            {
-                "command",
-                new JsonObject()
-                {
-                    ["type"] = "string",
-                    ["description"] = "Command name to get help of.",
-                }
-            },
-        };
         var listToolsResult = new ListToolsResult { Tools = tools };
         this.logger?.LogInformation($"Listing {tools.Count} tools.");
         return new ValueTask<ListToolsResult>(listToolsResult);
@@ -323,9 +328,12 @@ internal class ToolOperations
         RequestContext<CallToolRequestParams> parameters,
         CancellationToken cancellationToken)
     {
-        var requestJson = System.Text.Json.JsonSerializer.Serialize(
-            parameters?.Params,
-            new JsonSerializerOptions { WriteIndented = true });
+        if (this.logger?.IsEnabled(LogLevel.Trace) == true)
+        {
+            this.logger.LogTrace(
+                "MCP CallTool request: {Request}",
+                JsonSerializer.Serialize(parameters?.Params, IndentedJsonOptions));
+        }
 
         var sb = new StringBuilder();
         sb.Append(parameters?.Params?.Name);
