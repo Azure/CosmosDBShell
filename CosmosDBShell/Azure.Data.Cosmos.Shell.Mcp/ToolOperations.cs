@@ -20,6 +20,40 @@ internal class ToolOperations
 {
     private static readonly JsonSerializerOptions IndentedJsonOptions = new() { WriteIndented = true };
 
+    /// <summary>
+    /// JSON schema describing the standard shape of every successful tool response.
+    /// Mirrors the payload produced by <see cref="McpResponseFactory"/>: a result
+    /// node (any JSON value), an optional CSV output text, an optional error
+    /// message, and the shell location at the time of the call.
+    /// </summary>
+    private static readonly JsonElement SharedOutputSchema = JsonSerializer.SerializeToElement(new JsonObject
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject
+        {
+            ["result"] = new JsonObject
+            {
+                ["description"] = "Command result, when produced. May be any JSON value (object, array, string, number, boolean, or null).",
+            },
+            ["outputText"] = new JsonObject
+            {
+                ["type"] = "string",
+                ["description"] = "Formatted output text. Populated when the command was invoked with CSV output formatting.",
+            },
+            ["error"] = new JsonObject
+            {
+                ["type"] = "string",
+                ["description"] = "Error message. Present when the command failed; mutually exclusive with 'result'.",
+            },
+            ["currentLocation"] = new JsonObject
+            {
+                ["type"] = new JsonArray { "string", "null" },
+                ["description"] = "Shell location at the time the command completed, formatted as '/database/container' or null when disconnected.",
+            },
+        },
+        ["additionalProperties"] = false,
+    });
+
     private readonly ILogger<ToolOperations> logger;
     private readonly Lazy<List<Tool>> cachedTools;
 
@@ -144,6 +178,7 @@ internal class ToolOperations
         }
 
         tool.InputSchema = JsonSerializer.SerializeToElement(schema);
+        tool.OutputSchema = SharedOutputSchema;
         return tool;
     }
 

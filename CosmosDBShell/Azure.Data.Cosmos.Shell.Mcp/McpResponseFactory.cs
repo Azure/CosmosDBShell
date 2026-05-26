@@ -57,15 +57,20 @@ internal static class McpResponseFactory
     {
         payload["currentLocation"] = GetCurrentLocation(shellState);
 
+        var serialized = payload.ToJsonString(JsonOptions);
+        using var document = JsonDocument.Parse(serialized);
+        var structured = document.RootElement.Clone();
+
         return new CallToolResult
         {
             Content =
             [
                 new TextContentBlock
                 {
-                    Text = payload.ToJsonString(JsonOptions),
+                    Text = serialized,
                 }
             ],
+            StructuredContent = structured,
             IsError = isError,
         };
     }

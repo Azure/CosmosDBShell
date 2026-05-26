@@ -103,4 +103,41 @@ public class McpResponseFactoryTests
         Assert.False(result.IsError);
         Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("currentLocation").ValueKind);
     }
+
+    [Fact]
+    public void CreateSuccess_PopulatesStructuredContentMatchingTextPayload()
+    {
+        var commandState = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                connected = true,
+            })),
+        };
+
+        var result = McpResponseFactory.CreateSuccess(commandState, new ContainerState("c", "db", null!));
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+
+        Assert.NotNull(result.StructuredContent);
+        var structured = result.StructuredContent!.Value;
+        Assert.Equal(JsonValueKind.Object, structured.ValueKind);
+        Assert.Equal("/db/c", structured.GetProperty("currentLocation").GetString());
+        Assert.True(structured.GetProperty("result").GetProperty("connected").GetBoolean());
+
+        using var fromText = JsonDocument.Parse(text);
+        Assert.Equal(
+            fromText.RootElement.GetProperty("result").GetProperty("connected").GetBoolean(),
+            structured.GetProperty("result").GetProperty("connected").GetBoolean());
+    }
+
+    [Fact]
+    public void CreateError_PopulatesStructuredContent()
+    {
+        var result = McpResponseFactory.CreateError("boom", new DisconnectedState());
+
+        Assert.NotNull(result.StructuredContent);
+        var structured = result.StructuredContent!.Value;
+        Assert.Equal("boom", structured.GetProperty("error").GetString());
+        Assert.Equal(JsonValueKind.Null, structured.GetProperty("currentLocation").ValueKind);
+    }
 }

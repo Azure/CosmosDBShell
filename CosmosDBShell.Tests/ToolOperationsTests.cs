@@ -90,4 +90,22 @@ public class ToolOperationsTests
 
         Assert.Contains("query", toolNames);
     }
+
+    [Fact]
+    public void GetTool_AttachesSharedOutputSchema()
+    {
+        var factory = new CommandRunner().Commands["query"];
+
+        var tool = ToolOperations.GetTool(factory);
+
+        Assert.NotNull(tool.OutputSchema);
+        var schema = tool.OutputSchema!.Value;
+        Assert.Equal("object", schema.GetProperty("type").GetString());
+
+        var properties = schema.GetProperty("properties");
+        foreach (var name in new[] { "result", "outputText", "error", "currentLocation" })
+        {
+            Assert.True(properties.TryGetProperty(name, out _), $"OutputSchema missing property '{name}'.");
+        }
+    }
 }
