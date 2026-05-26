@@ -371,26 +371,31 @@ internal class ToolOperations
                     var property = cmd.GetType().GetProperty(argument.Name[0], BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
                     if (property != null && property.CanWrite)
                     {
+                        object? convertedValue;
                         try
                         {
-                            object? convertedValue = null;
-                            if (par.Value is JsonElement jsonElement)
-                            {
-                                var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                                convertedValue = ConvertJsonElement(jsonElement, targetType);
-                            }
-                            else
-                            {
-                                var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                                convertedValue = Convert.ChangeType(par.Value, targetType);
-                            }
+                            var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+                            convertedValue = par.Value is JsonElement jsonElement
+                                ? ConvertJsonElement(jsonElement, targetType)
+                                : Convert.ChangeType(par.Value, targetType);
+                        }
+                        catch (Exception ex)
+                        {
+                            var errorMessage = $"Invalid value for option '--{argument.Name[0]}' on command '{command.CommandName}': {ex.Message}";
+                            this.logger?.LogWarning(ex, errorMessage);
+                            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
+                        }
 
+                        try
+                        {
                             sb.Append(FormatOptionForHistory(argument, convertedValue));
                             property.SetValue(cmd, convertedValue);
                         }
                         catch (Exception ex)
                         {
-                            this.logger?.LogWarning(ex, $"Failed to set property '{argument.Name[0]}' on command '{command.CommandName}'.");
+                            var errorMessage = $"Failed to set option '--{argument.Name[0]}' on command '{command.CommandName}': {ex.Message}";
+                            this.logger?.LogWarning(ex, errorMessage);
+                            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
                         }
                     }
 
@@ -403,26 +408,31 @@ internal class ToolOperations
                     var property = cmd.GetType().GetProperty(parameter.Name[0], BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
                     if (property != null && property.CanWrite)
                     {
+                        object? convertedValue;
                         try
                         {
-                            object? convertedValue = null;
-                            if (par.Value is JsonElement jsonElement)
-                            {
-                                var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                                convertedValue = ConvertJsonElement(jsonElement, targetType);
-                            }
-                            else
-                            {
-                                var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                                convertedValue = Convert.ChangeType(par.Value, targetType);
-                            }
+                            var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+                            convertedValue = par.Value is JsonElement jsonElement
+                                ? ConvertJsonElement(jsonElement, targetType)
+                                : Convert.ChangeType(par.Value, targetType);
+                        }
+                        catch (Exception ex)
+                        {
+                            var errorMessage = $"Invalid value for parameter '{parameter.Name[0]}' on command '{command.CommandName}': {ex.Message}";
+                            this.logger?.LogWarning(ex, errorMessage);
+                            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
+                        }
 
+                        try
+                        {
                             sb.Append(' ').Append(FormatParameter(convertedValue?.ToString()));
                             property.SetValue(cmd, convertedValue);
                         }
                         catch (Exception ex)
                         {
-                            this.logger?.LogWarning(ex, $"Failed to set property '{parameter.Name[0]}' on command '{command.CommandName}'.");
+                            var errorMessage = $"Failed to set parameter '{parameter.Name[0]}' on command '{command.CommandName}': {ex.Message}";
+                            this.logger?.LogWarning(ex, errorMessage);
+                            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
                         }
                     }
 
