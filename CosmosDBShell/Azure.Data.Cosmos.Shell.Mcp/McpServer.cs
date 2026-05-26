@@ -40,8 +40,6 @@ internal class McpServer
             .ConfigureLogging(logging =>
             {
                 logging.SetMinimumLevel(LogLevel.Error);
-
-                // logging.AddEventSourceLogger();
             });
         var application = builder.Build();
         application.UseOriginValidation();
@@ -51,8 +49,6 @@ internal class McpServer
 
     private static void ConfigureMcpServer(IServiceCollection services)
     {
-        services.AddMemoryCache();
-
         services.AddSingleton<ToolOperations>();
         services.AddOptions<McpServerOptions>()
             .Configure<ToolOperations>((mcpServerOptions, toolOperations) =>
