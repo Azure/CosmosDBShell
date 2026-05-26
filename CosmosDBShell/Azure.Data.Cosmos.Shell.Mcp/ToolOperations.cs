@@ -21,10 +21,17 @@ internal class ToolOperations
     private static readonly JsonSerializerOptions IndentedJsonOptions = new() { WriteIndented = true };
 
     private readonly ILogger<ToolOperations> logger;
+    private readonly Lazy<List<Tool>> cachedTools;
 
     public ToolOperations(ILogger<ToolOperations> logger)
     {
         this.logger = logger;
+        this.cachedTools = new Lazy<List<Tool>>(
+            () => ShellInterpreter.Instance.App.Commands.Values
+                .DistinctBy(c => c.CommandName)
+                .Select(GetTool)
+                .ToList(),
+            LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult> ListToolsHandler => this.OnListToolsAsync;
@@ -317,7 +324,6 @@ internal class ToolOperations
     private CallToolResult? BindMember(
         object cmd,
         PropertyInfo property,
-        string memberName,
         object? rawValue,
         string memberKind,
         string memberDisplay,
@@ -363,7 +369,7 @@ internal class ToolOperations
         RequestContext<ListToolsRequestParams> requestContext,
         CancellationToken cancellationToken)
     {
-        var tools = ShellInterpreter.Instance.App.Commands.Values.DistinctBy(c => c.CommandName).Select(ToolOperations.GetTool).ToList();
+        var tools = this.cachedTools.Value;
         var listToolsResult = new ListToolsResult { Tools = tools };
         this.logger?.LogInformation($"Listing {tools.Count} tools.");
         return new ValueTask<ListToolsResult>(listToolsResult);
@@ -422,10 +428,9 @@ internal class ToolOperations
                 var option = command.Options.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (option != null)
                 {
-                    var bindError = BindMember(
+                    var bindError = this.BindMember(
                         cmd,
                         option.PropertyInfo,
-                        option.Name[0],
                         par.Value,
                         memberKind: "option",
                         memberDisplay: $"--{option.Name[0]}",
@@ -443,10 +448,9 @@ internal class ToolOperations
                 if (parameter != null)
                 {
                     suppliedParameters.Add(parameter.Name[0]);
-                    var bindError = BindMember(
+                    var bindError = this.BindMember(
                         cmd,
                         parameter.PropertyInfo,
-                        parameter.Name[0],
                         par.Value,
                         memberKind: "parameter",
                         memberDisplay: parameter.Name[0],

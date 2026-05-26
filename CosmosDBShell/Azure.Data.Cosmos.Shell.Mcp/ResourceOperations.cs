@@ -50,22 +50,6 @@ internal class ResourceOperations
 
     private static string LoadEmbeddedResource(string suffix)
     {
-        var assembly = typeof(ResourceOperations).Assembly;
-        var resourceName = assembly.GetManifestResourceNames()
-            .FirstOrDefault(name => name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
-
-        if (resourceName == null)
-        {
-            throw new InvalidOperationException($"Embedded resource '{suffix}' not found.");
-        }
-
-        using var stream = assembly.GetManifestResourceStream(resourceName);
-        if (stream == null)
-        {
-            throw new InvalidOperationException($"Stream for embedded resource '{resourceName}' not found.");
-        }
-
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
+        return EmbeddedResourceLoader.Load(typeof(ResourceOperations).Assembly, suffix);
     }
 }

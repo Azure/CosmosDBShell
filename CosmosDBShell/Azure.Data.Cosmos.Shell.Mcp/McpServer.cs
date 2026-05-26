@@ -87,17 +87,6 @@ internal class McpServer
 
     private static string LoadServerInstructions()
     {
-        var assembly = typeof(McpServer).Assembly;
-        var resourceName = assembly.GetManifestResourceNames()
-            .FirstOrDefault(name => name.EndsWith("serverinstructions.md", StringComparison.OrdinalIgnoreCase));
-
-        if (resourceName == null)
-        {
-            throw new InvalidOperationException("Embedded resource 'serverinstructions.md' not found.");
-        }
-
-        using var stream = assembly.GetManifestResourceStream(resourceName)!;
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
+        return EmbeddedResourceLoader.Load(typeof(McpServer).Assembly, "serverinstructions.md");
     }
 }
