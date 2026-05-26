@@ -27,16 +27,27 @@ internal class ToolOperations
     {
         this.logger = logger;
         this.cachedTools = new Lazy<List<Tool>>(
-            () => ShellInterpreter.Instance.App.Commands.Values
-                .DistinctBy(c => c.CommandName)
-                .Select(GetTool)
-                .ToList(),
+            () => BuildToolList(ShellInterpreter.Instance.App.Commands.Values),
             LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult> ListToolsHandler => this.OnListToolsAsync;
 
     public McpRequestHandler<CallToolRequestParams, CallToolResult> CallToolHandler => this.OnCallToolsAsync;
+
+    /// <summary>
+    /// Builds the list of MCP tools advertised by <c>tools/list</c>. Tools marked as
+    /// MCP-restricted are intentionally omitted so MCP clients never see them in the
+    /// tool catalog and cannot attempt to call them.
+    /// </summary>
+    internal static List<Tool> BuildToolList(IEnumerable<CommandFactory> commands)
+    {
+        return commands
+            .DistinctBy(c => c.CommandName)
+            .Where(c => !c.McpRestricted)
+            .Select(GetTool)
+            .ToList();
+    }
 
     internal static Tool GetTool(CommandFactory command)
     {

@@ -67,4 +67,27 @@ public class ToolOperationsTests
 
         Assert.Equal(" --database Samples", formattedOption);
     }
+
+    [Fact]
+    public void BuildToolList_OmitsRestrictedCommands()
+    {
+        var commands = new CommandRunner().Commands.Values.ToList();
+
+        var restrictedNames = commands
+            .Where(c => c.McpRestricted)
+            .Select(c => c.CommandName)
+            .Distinct()
+            .ToArray();
+        Assert.NotEmpty(restrictedNames);
+
+        var tools = ToolOperations.BuildToolList(commands);
+        var toolNames = tools.Select(t => t.Name).ToHashSet();
+
+        foreach (var restricted in restrictedNames)
+        {
+            Assert.DoesNotContain(restricted, toolNames);
+        }
+
+        Assert.Contains("query", toolNames);
+    }
 }
