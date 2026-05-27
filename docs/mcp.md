@@ -48,7 +48,19 @@ The MCP server publishes documentation and live shell-state resources that clien
 
 ### Subscriptions
 
-The server advertises the `resources.subscribe` capability. Clients may call `resources/subscribe` on any of the URIs above; the server emits `notifications/resources/updated` whenever the shell state transitions (connect, disconnect, `cd`, `rmdb` of the current database). The history resource is not republished on every command — clients should re-read it on demand.
+The server advertises the `resources.subscribe` capability. Clients may subscribe
+to the following URIs and will receive `notifications/resources/updated` on shell
+state transitions (`connect`, `disconnect`, `cd`, `rmdb` of the current database):
+
+- `cosmos://shell/connection`
+- `cosmos://shell/location`
+- `cosmos://databases`
+- `cosmos://current/containers`
+- `cosmos://current/container/indexing-policy`
+
+All other resources (`cosmos://docs/*`, `cosmos://shell/history`) are read-on-demand
+and never push update notifications. Subscriptions to any other URI are rejected,
+as are subscriptions beyond a per-client cap.
 
 ### Completion
 

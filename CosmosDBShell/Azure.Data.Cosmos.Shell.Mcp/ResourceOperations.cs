@@ -44,8 +44,10 @@ internal class ResourceOperations
         WriteIndented = true,
     };
 
+    // Matches AccountKey=... in both quoted ("...") and unquoted forms so the
+    // redactor catches quoted connection strings as well as bare key=value pairs.
     private static readonly Regex AccountKeyRedactor = new(
-        @"AccountKey\s*=\s*[^;""\s]+",
+        @"AccountKey\s*=\s*(?:""[^""]*""|[^;""\s]+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     [McpServerResource(
@@ -204,9 +206,12 @@ internal class ResourceOperations
     [Description("Most recent Cosmos Shell commands the user ran in the current session, with embedded connection-string AccountKey values redacted. Useful for grounding follow-up suggestions in what the user actually did.")]
     public static string GetHistory()
     {
-        var history = ShellInterpreter.Instance.History;
-        var recent = history
-            .Skip(Math.Max(0, history.Count - HistoryItemLimit))
+        // Snapshot first: ShellInterpreter.History is a mutable List<string> that
+        // PrintCommand appends to on the UI thread. Without this, a concurrent MCP
+        // request can throw "Collection was modified" mid-enumeration.
+        var snapshot = ShellInterpreter.Instance.History.ToArray();
+        var recent = snapshot
+            .Skip(Math.Max(0, snapshot.Length - HistoryItemLimit))
             .Select(SanitizeHistoryEntry);
 
         var entries = new JsonArray();

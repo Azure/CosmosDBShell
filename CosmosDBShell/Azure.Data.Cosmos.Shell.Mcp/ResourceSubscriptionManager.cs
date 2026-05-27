@@ -25,6 +25,13 @@ using McpSdkServer = ModelContextProtocol.Server.McpServer;
 /// </remarks>
 internal sealed class ResourceSubscriptionManager : IDisposable
 {
+    /// <summary>
+    /// Hard cap on the number of distinct URI subscriptions a single connected
+    /// MCP server (client transport) can hold at once. Bounds memory growth
+    /// from a misbehaving or malicious client.
+    /// </summary>
+    internal const int MaxSubscriptionsPerServer = 64;
+
     private static readonly string[] StateScopedUris =
     {
         "cosmos://shell/connection",
@@ -46,14 +53,61 @@ internal sealed class ResourceSubscriptionManager : IDisposable
         ShellInterpreter.Instance.StateChanged += this.stateChangedHandler;
     }
 
-    public void Subscribe(string uri, McpSdkServer server)
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="uri"/> identifies a resource that
+    /// the manager actually publishes update notifications for. Subscriptions to
+    /// any other URI would never fire and would only consume memory.
+    /// </summary>
+    internal static bool IsSubscribable(string? uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+        {
+            return false;
+        }
+
+        foreach (var supported in StateScopedUris)
+        {
+            if (string.Equals(supported, uri, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool Subscribe(string uri, McpSdkServer server)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(uri);
         ArgumentNullException.ThrowIfNull(server);
 
+        if (!IsSubscribable(uri))
+        {
+            return false;
+        }
+
         var set = this.subscriptions.GetOrAdd(uri, _ => new ConcurrentDictionary<McpSdkServer, byte>());
+
+        if (!set.ContainsKey(server))
+        {
+            var perServer = 0;
+            foreach (var s in this.subscriptions.Values)
+            {
+                if (s.ContainsKey(server))
+                {
+                    perServer++;
+                }
+            }
+
+            if (perServer >= MaxSubscriptionsPerServer)
+            {
+                return false;
+            }
+        }
+
         set[server] = 0;
         this.logger?.LogInformation("MCP resource subscribed: {Uri}", uri);
+        return true;
     }
 
     public void Unsubscribe(string uri, McpSdkServer server)

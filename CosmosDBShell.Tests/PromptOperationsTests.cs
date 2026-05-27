@@ -87,6 +87,25 @@ public class PromptOperationsTests
     }
 
     [Fact]
+    public void QueryOptimize_EscapesQuotesAndBackslashesInScope()
+    {
+        var result = PromptOperations.QueryOptimize("SELECT 1", "He said \"hi\"", "C:\\path");
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Messages).Content).Text;
+        Assert.Contains("\"database\": \"He said \\\"hi\\\"\"", text);
+        Assert.Contains("\"container\": \"C:\\\\path\"", text);
+    }
+
+    [Fact]
+    public void QueryOptimize_EscapesQueryWithEmbeddedQuotes()
+    {
+        var result = PromptOperations.QueryOptimize("SELECT \"id\" FROM c");
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Messages).Content).Text;
+        Assert.Contains("\"query\": \"SELECT \\\"id\\\" FROM c\"", text);
+    }
+
+    [Fact]
     public void AllPrompts_DeclareNameAndTitle()
     {
         var methods = typeof(PromptOperations).GetMethods(BindingFlags.Public | BindingFlags.Static);

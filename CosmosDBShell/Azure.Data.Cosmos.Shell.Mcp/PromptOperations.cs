@@ -5,6 +5,8 @@
 namespace Azure.Data.Cosmos.Shell.Mcp;
 
 using System.ComponentModel;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -17,6 +19,13 @@ using ModelContextProtocol.Server;
 [McpServerPromptType]
 internal class PromptOperations
 {
+    // Relaxed encoder so values such as `c.id = '1'` survive into the prompt
+    // without HTML-style \u0027 escapes that would confuse the model.
+    private static readonly JsonSerializerOptions PromptJsonOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
     [McpServerPrompt(
         Name = "cosmos.explain-container",
         Title = "Explain a Cosmos DB container")]
@@ -67,7 +76,7 @@ internal class PromptOperations
             ```
 
             Steps:
-            1. Run the `query` tool with arguments: `{ "query": "{{EscapeJson(query)}}"{{scope}} }` and observe the RU charge plus row count.
+            1. Run the `query` tool with arguments: `{ "query": {{JsonSerializer.Serialize(query, PromptJsonOptions)}}{{scope}} }` and observe the RU charge plus row count.
             2. Read the resource {{indexingResourceHint}} to understand the indexing strategy.
             3. Propose a rewrite that reduces RU/s, leveraging existing indexes where possible. If a different index would help, call it out explicitly.
 
@@ -191,19 +200,14 @@ internal class PromptOperations
         var builder = new System.Text.StringBuilder();
         if (!string.IsNullOrWhiteSpace(database))
         {
-            builder.Append(", \"database\": \"").Append(database).Append('"');
+            builder.Append(", \"database\": ").Append(JsonSerializer.Serialize(database, PromptJsonOptions));
         }
 
         if (!string.IsNullOrWhiteSpace(container))
         {
-            builder.Append(", \"container\": \"").Append(container).Append('"');
+            builder.Append(", \"container\": ").Append(JsonSerializer.Serialize(container, PromptJsonOptions));
         }
 
         return builder.ToString();
-    }
-
-    private static string EscapeJson(string value)
-    {
-        return value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
     }
 }

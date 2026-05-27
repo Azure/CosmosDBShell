@@ -17,6 +17,9 @@ public class ResourceOperationsTests
         "connect AccountEndpoint=https://x;AccountKey=topsecret;DisableServerCertificateValidation=True",
         "connect AccountEndpoint=https://x;AccountKey=***;DisableServerCertificateValidation=True")]
     [InlineData(
+        "connect AccountEndpoint=https://x;AccountKey=\"abc 123==\";Foo=bar",
+        "connect AccountEndpoint=https://x;AccountKey=***;Foo=bar")]
+    [InlineData(
         "ls",
         "ls")]
     [InlineData(

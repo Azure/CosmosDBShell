@@ -13,9 +13,10 @@ using Microsoft.AspNetCore.Http;
 /// <summary>
 /// Validates the Origin and Host headers on incoming requests to prevent DNS rebinding attacks.
 /// Per MCP spec (2025-11-25), servers MUST validate the Origin header and respond
-/// with HTTP 403 Forbidden if the Origin is present and invalid. For local-only MCP
-/// servers the Host header is also validated to defend against attackers tricking a
-/// browser into resolving a non-loopback name to 127.0.0.1.
+/// with HTTP 403 Forbidden if the Origin is present and invalid. The Host header is
+/// also validated to defend against attackers tricking a browser into resolving a
+/// non-loopback name to 127.0.0.1; a malformed/non-loopback Host yields 400 Bad Request,
+/// since the request itself is structurally invalid for a local-only server.
 /// </summary>
 internal static class OriginValidationMiddleware
 {
@@ -41,7 +42,7 @@ internal static class OriginValidationMiddleware
             var host = context.Request.Headers.Host.ToString();
             if (!IsAllowedHost(host))
             {
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 return;
             }
 

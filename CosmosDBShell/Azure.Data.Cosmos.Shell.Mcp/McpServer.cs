@@ -82,9 +82,16 @@ internal class McpServer
                     SubscribeToResourcesHandler = (context, _) =>
                     {
                         var uri = context.Params?.Uri;
-                        if (!string.IsNullOrWhiteSpace(uri))
+                        if (!ResourceSubscriptionManager.IsSubscribable(uri))
                         {
-                            subscriptions.Subscribe(uri, context.Server);
+                            throw new InvalidOperationException(
+                                $"Resource '{uri}' is not subscribable. Subscribable URIs are limited to live shell-state resources.");
+                        }
+
+                        if (!subscriptions.Subscribe(uri!, context.Server))
+                        {
+                            throw new InvalidOperationException(
+                                $"Subscription limit ({ResourceSubscriptionManager.MaxSubscriptionsPerServer}) reached for this client.");
                         }
 
                         return new ValueTask<EmptyResult>(new EmptyResult());
