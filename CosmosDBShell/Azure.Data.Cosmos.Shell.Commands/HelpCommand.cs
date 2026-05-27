@@ -642,18 +642,26 @@ internal class HelpCommand : CosmosCommand
             // Escape the syntax first
             highlighted = Markup.Escape(highlighted);
 
+            // Build conditional open/close tags so monochrome (empty color slots)
+            // does not produce invalid Spectre markup like "[]if[/]".
+            static (string Open, string Close) Tags(string color) =>
+                string.IsNullOrEmpty(color) ? (string.Empty, string.Empty) : ("[" + color + "]", "[/]");
+            var (kwOpen, kwClose) = Tags(Theme.KeywordColorName);
+            var (phOpen, phClose) = Tags(Theme.HelpPlaceholderColorName);
+            var (varOpen, varClose) = Tags(Theme.HelpVariableColorName);
+
             // Highlight keywords (if, else, while, do, for, in, loop, break, continue, return, def)
-            highlighted = System.Text.RegularExpressions.Regex.Replace(highlighted, @"\b(if|else|while|do|for|in|loop|break|continue|return|def)\b", "[" + Theme.KeywordColorName + "]$1[/]");
+            highlighted = System.Text.RegularExpressions.Regex.Replace(highlighted, @"\b(if|else|while|do|for|in|loop|break|continue|return|def)\b", kwOpen + "$1" + kwClose);
 
             // Highlight placeholders <...>
-            highlighted = System.Text.RegularExpressions.Regex.Replace(highlighted, @"&lt;([^&]+)&gt;", "[" + Theme.HelpPlaceholderColorName + "]<$1>[/]");
+            highlighted = System.Text.RegularExpressions.Regex.Replace(highlighted, @"&lt;([^&]+)&gt;", phOpen + "<$1>" + phClose);
 
             // Highlight optional syntax [[[ ]]]
             highlighted = System.Text.RegularExpressions.Regex.Replace(highlighted, @"\[\[\[", "[dim][[[/]");
             highlighted = System.Text.RegularExpressions.Regex.Replace(highlighted, @"\]\]\]", "[dim]]][/]");
 
             // Highlight $ for variables
-            highlighted = highlighted.Replace("$", "[" + Theme.HelpVariableColorName + "]$[/]");
+            highlighted = highlighted.Replace("$", varOpen + "$" + varClose);
             AnsiConsole.MarkupLine($"{INDENT}{highlighted}");
             ShellInterpreter.WriteLine();
         }

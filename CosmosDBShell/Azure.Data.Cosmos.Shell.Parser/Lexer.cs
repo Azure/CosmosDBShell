@@ -10,6 +10,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using Azure.Data.Cosmos.Shell.Util;
+
 /// <summary>
 /// Represents the different types of tokens that can be recognized by the lexer.
 /// </summary>
@@ -619,6 +621,7 @@ internal class Lexer
     {
         var sb = new StringBuilder();
         bool hasInterpolation = false;
+        bool terminated = false;
 
         // Mirrors the source-position tracking in ReadInterpolatedString so callers can
         // map cooked content indices back to absolute outer-source positions when the
@@ -637,6 +640,7 @@ internal class Lexer
             {
                 // Skip closing quote
                 this.Advance();
+                terminated = true;
                 break;
             }
             else if (ch == '\\' && this.position + 1 < this.input.Length)
@@ -679,12 +683,23 @@ internal class Lexer
             this.interpolatedStringSourceMaps[token] = sourcePositions.ToArray();
         }
 
+        if (!terminated)
+        {
+            this.Errors.Add(new ParseError(
+                startPosition,
+                Math.Max(1, this.position - startPosition),
+                MessageService.GetString("lexer_error_unterminated_string") ?? "Unterminated string literal",
+                ErrorLevel.Error,
+                ParseErrorKind.UnterminatedString));
+        }
+
         return token;
     }
 
     private Token ReadSingleQuotedString(int startPosition)
     {
         var sb = new StringBuilder();
+        bool terminated = false;
 
         // Skip opening quote
         this.Advance();
@@ -707,6 +722,7 @@ internal class Lexer
                 {
                     // It's the closing quote
                     this.Advance();
+                    terminated = true;
                     break;
                 }
             }
@@ -716,6 +732,16 @@ internal class Lexer
                 sb.Append(ch);
                 this.Advance();
             }
+        }
+
+        if (!terminated)
+        {
+            this.Errors.Add(new ParseError(
+                startPosition,
+                Math.Max(1, this.position - startPosition),
+                MessageService.GetString("lexer_error_unterminated_string") ?? "Unterminated string literal",
+                ErrorLevel.Error,
+                ParseErrorKind.UnterminatedString));
         }
 
         return this.MakeToken(TokenType.String, sb.ToString(), startPosition, this.position - startPosition);
@@ -850,6 +876,7 @@ internal class Lexer
     private Token ReadInterpolatedString(int startPosition)
     {
         var sb = new StringBuilder();
+        bool terminated = false;
 
         // Records the absolute outer-source position of the source character that
         // produced each cooked character appended to <c>sb</c>. Used by callers
@@ -872,6 +899,7 @@ internal class Lexer
             {
                 // Skip closing quote
                 this.Advance();
+                terminated = true;
                 break;
             }
             else if (ch == '\\' && this.position + 1 < this.input.Length)
@@ -921,6 +949,17 @@ internal class Lexer
 
         var token = this.MakeToken(TokenType.InterpolatedString, sb.ToString(), startPosition, this.position - startPosition);
         this.interpolatedStringSourceMaps[token] = sourcePositions.ToArray();
+
+        if (!terminated)
+        {
+            this.Errors.Add(new ParseError(
+                startPosition,
+                Math.Max(1, this.position - startPosition),
+                MessageService.GetString("lexer_error_unterminated_string") ?? "Unterminated string literal",
+                ErrorLevel.Error,
+                ParseErrorKind.UnterminatedString));
+        }
+
         return token;
     }
 }

@@ -108,7 +108,7 @@ internal class SettingsCommand : CosmosCommand
                 }
                 else
                 {
-                    AnsiConsole.MarkupLine(Theme.FormatError(Markup.Escape(view.ThroughputErrorMessage ?? string.Empty)));
+                    AnsiConsole.MarkupLine(Theme.FormatError(view.ThroughputErrorMessage ?? string.Empty));
                 }
 
                 break;

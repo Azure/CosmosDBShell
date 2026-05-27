@@ -86,9 +86,8 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
                 continue;
             }
 
-            var cn = Markup.Escape(trimmed);
-            list.Add(cn);
-            AnsiConsole.MarkupLine(Theme.DatabaseNamePromt(databaseName));
+            list.Add(trimmed);
+            AnsiConsole.MarkupLine(Theme.DatabaseNamePromt(trimmed));
         }
 
         CosmosCompleteCommand.SetDatabases(state.Client, completionList);
@@ -131,9 +130,8 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
                 continue;
             }
 
-            var cn = Markup.Escape(trimmed);
-            list.Add(cn);
-            AnsiConsole.MarkupLine(Theme.ContainerNamePromt(containerName));
+            list.Add(trimmed);
+            AnsiConsole.MarkupLine(Theme.ContainerNamePromt(trimmed));
         }
 
         CosmosCompleteCommand.SetContainers(state.Client, databaseName, completionList);

@@ -565,7 +565,7 @@ internal class Program
     /// Resolves the requested theme profile and applies it via <see cref="Theme.Apply"/>.
     /// Resolution order: explicit <c>--theme</c> flag, then <c>COSMOSDB_SHELL_THEME</c>
     /// environment variable, then the built-in default. Unknown names emit a warning
-    /// to stderr and fall back to the default profile.
+    /// to standard output and fall back to the default profile.
     /// </summary>
     private static void ApplyTheme(string? themeFromCli)
     {

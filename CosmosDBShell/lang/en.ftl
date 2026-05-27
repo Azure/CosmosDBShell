@@ -33,6 +33,9 @@ error-emulator_connection_failed =
     Or, if you intentionally started the emulator with the other protocol, try connecting to { $alternate } instead.
     See: https://learn.microsoft.com/en-us/azure/cosmos-db/emulator-linux
 error-command-not-found = '{ $command }' is not recognized as an internal or external command, operable program or batch file.
+error-command-not-found-suggestion = Did you mean '{ $suggestion }'?
+error-unknown-option = Unknown option '{ $option }'.
+error-unknown-option-suggestion = Did you mean '{ $suggestion }'?
 error-shell-not-initialized = Shell is not initialized
 error-start_process = Failed to start the process.
 error-file_not_found = file '{ $file }' not found.
@@ -620,11 +623,12 @@ statement_error_expected_after_function_def = Expected statement after function 
 statement_error_expected_return = Expected 'return'
 statement_error_expected_break = Expected 'break'
 statement_error_expected_continue = Expected 'continue'
-statement_error_expected_open_brace = Expected '\u007B'
-statement_error_expected_close_brace = Expected '\u007D'
-statement_error_unexpected_close_brace = Unexpected '\u007D'
+statement_error_expected_open_brace = Expected '{ "{" }'
+statement_error_expected_close_brace = Expected '{ "}" }'
+statement_error_unexpected_close_brace = Unexpected '{ "}" }'
 statement_error_unexpected_end = Unexpected end of input
 statement_error_unexpected_end_parsing_command = Unexpected end of input when parsing command
+lexer_error_unterminated_string = Unterminated string literal
 statement_error_expected_command_name = Expected command name
 statement_error_expected_option_name = Expected option name after '{$prefix}'
 statement_error_invalid_option_value = Invalid value for option '{ $option }'
@@ -632,6 +636,12 @@ statement_error_expected_redirect_destination = Expected file name after '{$redi
 statement_error_invalid_redirect_destination = Invalid destination for '{$redirect}' redirection
 statement_error_duplicate_out_redirect = Duplicate output redirection
 statement_error_duplicate_err_redirect = Duplicate error redirection
+
+parser-error-prefix = parse error
+parser-warning-prefix = parse warning
+query-error-prefix = query error
+runtime-error-prefix = error
+runtime-error-canceled = Canceled.
 
 json_error_empty_array_brackets = Empty array brackets are not allowed.
 
