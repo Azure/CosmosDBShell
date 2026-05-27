@@ -259,6 +259,62 @@ Arguments:
     pattern     Pattern for items to remove
 ```
 
+### export
+
+Stream items from a container to a local file. Default format is JSON Lines (one compact JSON object per line); pass `--format=array` for a single JSON array. Items are streamed end-to-end and are not buffered in memory.
+
+```text
+Usage: export <file> [options]
+
+Arguments:
+    file                 Destination file path.
+
+Options:
+    --db, --database     Source database (defaults to the current navigation context).
+    --con, --container   Source container (defaults to the current navigation context).
+    --query, -q          SELECT query whose results are exported (default: SELECT * FROM c).
+    --max, -m            Maximum number of items to export. 0 means no limit.
+    --format, -f         Output format: jsonl (default) or array.
+    --force              Overwrite the destination file if it already exists.
+```
+
+Examples:
+
+- `export items.jsonl` exports every item in the current container.
+- `export active.jsonl --query="SELECT * FROM c WHERE c.status = 'active'"` exports a filtered subset.
+- `export snapshot.json --format=array --force` exports as a JSON array, replacing any existing file.
+
+The summary line reports the number of items written and the total RU charge.
+
+### import
+
+Bulk-load items from a JSON Lines or JSON array file into a container. Format is auto-detected from the first non-whitespace character (`[` ⇒ array, otherwise JSON Lines), or can be forced with `--format`. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist.
+
+```text
+Usage: import <file> [options]
+
+Arguments:
+    file                          Source file path.
+
+Options:
+    --db, --database              Target database (defaults to the current navigation context).
+    --con, --container            Target container (defaults to the current navigation context).
+    --mode                        Write mode: insert (default) or upsert.
+    --format, -f                  Input format: auto (default), jsonl, or array.
+    --continue, --continue-on-error
+                                  Continue importing after individual item failures.
+    --dry-run                     Parse the file without writing any items (validation only).
+```
+
+Examples:
+
+- `import items.jsonl` inserts every item from a JSON Lines file.
+- `import items.json --format=array` reads a JSON array file.
+- `import items.jsonl --mode=upsert --continue-on-error` upserts items and keeps going on per-item failures.
+- `import items.jsonl --dry-run` validates the file without writing anything; useful before a real run.
+
+By default, the first failure stops the import. With `--continue-on-error` the command runs to completion and the final summary reports how many items succeeded and how many failed. The command exits with an error status if any items failed.
+
 ## Scripting
 
 ### exec
