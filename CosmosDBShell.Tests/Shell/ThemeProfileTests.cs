@@ -14,6 +14,7 @@ using Azure.Data.Cosmos.Shell.Util;
 /// Verifies the built-in <see cref="ThemeProfiles"/> match their contracts and
 /// guards against accidental regressions to non-themable color names.
 /// </summary>
+[Collection(ThemeStateTestCollection.Name)]
 public class ThemeProfileTests
 {
     /// <summary>

@@ -8,6 +8,7 @@ using Azure.Data.Cosmos.Shell.Core;
 
 namespace CosmosShell.Tests.UtilTest;
 
+[Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class JsonOutputHighlighterTests
 {
     [Fact]
