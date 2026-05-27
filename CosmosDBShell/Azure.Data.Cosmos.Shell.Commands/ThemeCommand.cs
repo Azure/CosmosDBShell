@@ -330,9 +330,28 @@ internal class ThemeCommand : CosmosCommand
             return new ErrorCommandState(new CommandException("theme", message));
         }
 
-        var path = string.IsNullOrWhiteSpace(this.Path)
-            ? System.IO.Path.Combine(ThemeFile.DefaultUserThemesDirectory(), this.Name + ".toml")
-            : this.Path;
+        string path;
+        if (string.IsNullOrWhiteSpace(this.Path))
+        {
+            // When deriving the default path from Name, ensure Name is a safe single
+            // filename component so it cannot escape the user themes directory via
+            // path separators (e.g. '../foo') or otherwise reference arbitrary paths.
+            if (this.Name.IndexOfAny(System.IO.Path.GetInvalidFileNameChars()) >= 0
+                || this.Name.Contains(System.IO.Path.DirectorySeparatorChar)
+                || this.Name.Contains(System.IO.Path.AltDirectorySeparatorChar)
+                || this.Name != System.IO.Path.GetFileName(this.Name))
+            {
+                var message = MessageService.GetArgsString("command-theme-save-invalid-name", "name", this.Name);
+                AnsiConsole.MarkupLine(Theme.FormatError(message));
+                return new ErrorCommandState(new CommandException("theme", message));
+            }
+
+            path = System.IO.Path.Combine(ThemeFile.DefaultUserThemesDirectory(), this.Name + ".toml");
+        }
+        else
+        {
+            path = this.Path;
+        }
 
         if (File.Exists(path) && !this.Force)
         {

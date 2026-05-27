@@ -40,7 +40,12 @@ internal sealed class ThemeRegistry
     /// <summary>All registered themes (built-ins followed by file themes), keyed by name.</summary>
     public IReadOnlyDictionary<string, ThemeRegistration> All => this.entries;
 
-    /// <summary>Diagnostic warnings emitted by the most recent load operation.</summary>
+    /// <summary>
+    /// Diagnostic warnings emitted by the most recent load operation
+    /// (<see cref="LoadFromDirectory"/>, <see cref="LoadFile"/>, or
+    /// <see cref="ResetToBuiltIns"/>). Each of those operations clears this list
+    /// before populating it so callers see only warnings from the latest call.
+    /// </summary>
     public IReadOnlyList<string> Warnings => this.warnings;
 
     /// <summary>
@@ -147,6 +152,7 @@ internal sealed class ThemeRegistry
     /// </summary>
     public int LoadFromDirectory(string directory)
     {
+        this.warnings.Clear();
         var loaded = 0;
         foreach (var path in ThemeFile.EnumerateThemeFiles(directory))
         {
@@ -179,6 +185,7 @@ internal sealed class ThemeRegistry
     /// </summary>
     public ThemeFileResult LoadFile(string path)
     {
+        this.warnings.Clear();
         var result = ThemeFile.Load(path, name => this.TryLookupOptions(name));
         this.Register(result);
         return result;

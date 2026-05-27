@@ -542,6 +542,7 @@ command-theme-validate-no-files = No theme files found in { $directory }.
 command-theme-validate-strict-failed = Theme '{ $name }' has { $count } warning(s); strict mode treats them as errors.
 command-theme-saved = Saved theme '{ $name }' to { $path }
 command-theme-save-missing-name = 'theme save' requires a theme name.
+command-theme-save-invalid-name = Invalid theme name '{ $name }'. When --path is omitted, the name must be a simple filename without path separators or invalid characters.
 command-theme-save-exists = File already exists: { $path }. Pass --force to overwrite.
 command-theme-save-failed = Failed to save theme to { $path }: { $message }
 command-theme-save-hint-reload = Run 'theme reload' to register the new file (or 'theme load { $name }' to register and switch to it).
