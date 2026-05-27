@@ -35,6 +35,20 @@ public class ImportCommandTests
         Assert.Equal(ImportFormat.JsonLines, ImportCommand.DetectFormat(null!));
     }
 
+    [Theory]
+    [InlineData("auto")]
+    [InlineData("Auto")]
+    [InlineData("jsonl")]
+    [InlineData("JSONL")]
+    [InlineData("jsonlines")]
+    [InlineData("JsonLines")]
+    [InlineData("array")]
+    [InlineData("Array")]
+    public void ImportFormat_ParsesDocumentedAliases(string value)
+    {
+        Assert.True(Enum.TryParse<ImportFormat>(value, ignoreCase: true, out _));
+    }
+
     [Fact]
     public void ParseJsonLine_ValidObject_ReturnsClonedElement()
     {

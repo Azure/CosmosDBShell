@@ -132,6 +132,19 @@ public class ExportCommandTests
         }
     }
 
+    [Theory]
+    [InlineData("jsonl")]
+    [InlineData("JSONL")]
+    [InlineData("Jsonl")]
+    [InlineData("jsonlines")]
+    [InlineData("JsonLines")]
+    [InlineData("array")]
+    [InlineData("Array")]
+    public void ExportFormat_ParsesDocumentedAliases(string value)
+    {
+        Assert.True(Enum.TryParse<ExportFormat>(value, ignoreCase: true, out _));
+    }
+
     private static async IAsyncEnumerable<JsonElement> ToAsyncEnumerable(params JsonElement[] items)
     {
         foreach (var item in items)

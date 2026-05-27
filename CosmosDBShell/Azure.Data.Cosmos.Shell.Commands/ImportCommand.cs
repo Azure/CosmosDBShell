@@ -18,6 +18,7 @@ using global::Azure.Data.Cosmos.Shell.States;
 internal enum ImportFormat
 {
     Auto = 0,
+    Jsonl = 1,
     JsonLines = 1,
     Array = 2,
 }

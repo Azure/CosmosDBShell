@@ -16,6 +16,7 @@ using global::Azure.Data.Cosmos.Shell.States;
 
 internal enum ExportFormat
 {
+    Jsonl = 0,
     JsonLines = 0,
     Array = 1,
 }
@@ -27,9 +28,9 @@ internal enum ExportFormat
 [CosmosExample("export items.jsonl --db=MyDB --con=Products --max=1000", Description = "Export up to 1000 items from a specific database and container")]
 [McpAnnotation(
     Title = "Export Container Items",
-    ReadOnly = true,
+    ReadOnly = false,
     Idempotent = false,
-    OpenWorld = false,
+    OpenWorld = true,
     Description = "Streams items from a Cosmos container into a local JSON Lines or JSON array file.")]
 internal class ExportCommand : CosmosCommand
 {
