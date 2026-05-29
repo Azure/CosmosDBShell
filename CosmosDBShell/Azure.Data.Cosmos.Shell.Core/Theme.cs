@@ -52,6 +52,10 @@ internal static class Theme
 
     public static string LiteralColorName => Current.LiteralColor;
 
+    public static string VariableColorName => Current.VariableColor;
+
+    public static string JsonPathColorName => Current.JsonPathColor;
+
     public static string KeywordColorName => Current.KeywordColor;
 
     public static string ErrorColorName => Current.ErrorColor;
@@ -223,6 +227,20 @@ internal static class Theme
     internal static string FormatStringLiteral(string text)
     {
         return Wrap(Current.LiteralColor, Markup.Escape(text));
+    }
+
+    /// <summary>Wraps a variable reference token (e.g. <c>$foo</c>) in the
+    /// active variable color.</summary>
+    internal static string FormatVariable(string text)
+    {
+        return Wrap(Current.VariableColor, Markup.Escape(text));
+    }
+
+    /// <summary>Wraps a JSON path expression (e.g. <c>.items[0].name</c>) in the
+    /// active JSON path color.</summary>
+    internal static string FormatJsonPath(string text)
+    {
+        return Wrap(Current.JsonPathColor, Markup.Escape(text));
     }
 
     internal static string FormatNumberLiteral(string v)

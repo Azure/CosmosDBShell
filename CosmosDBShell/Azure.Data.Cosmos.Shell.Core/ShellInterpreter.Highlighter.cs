@@ -485,12 +485,18 @@ public partial class ShellInterpreter : IHighlighter
 
         public void Visit(JSonPathExpression jSonPathExpression)
         {
-            this.AppendUpTo(jSonPathExpression.Start + jSonPathExpression.Length);
+            this.AppendUpTo(jSonPathExpression.Start);
+            var content = this.text.Substring(jSonPathExpression.Start, jSonPathExpression.Length);
+            this.result.Append(Theme.FormatJsonPath(content));
+            this.currentPosition = jSonPathExpression.Start + jSonPathExpression.Length;
         }
 
         public void Visit(VariableExpression variableExpression)
         {
-            this.AppendUpTo(variableExpression.Start + variableExpression.Length);
+            this.AppendUpTo(variableExpression.Start);
+            var content = this.text.Substring(variableExpression.Start, variableExpression.Length);
+            this.result.Append(Theme.FormatVariable(content));
+            this.currentPosition = variableExpression.Start + variableExpression.Length;
         }
 
         public void Visit(CommandExpression commandExpression)

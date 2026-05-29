@@ -102,7 +102,7 @@ public class HighlighterTests
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
         Assert.True(segs.Count >= 2);
         Assert.Equal("echo", segs[0].Text.Trim());
-        Assert.Contains(" $myVariable", segs.Select(s => s.Text));
+        Assert.Contains("$myVariable", segs.Select(s => s.Text));
     }
 
     [Fact]
@@ -390,7 +390,7 @@ public class HighlighterTests
         Assert.NotNull(res);
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
         Assert.True(segs.Count >= 3);
-        Assert.Contains("$x ", segs.Select(s => s.Text));
+        Assert.Contains("$x", segs.Select(s => s.Text));
         Assert.Contains("=", segs.Select(s => s.Text));
         Assert.Contains("42", segs.Select(s => s.Text));
     }
@@ -629,7 +629,7 @@ public class HighlighterTests
         var res = highlighter.BuildHighlightedText("$result = 2 + 3 * 4") as Markup;
         Assert.NotNull(res);
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
-        Assert.Contains("$result ", segs.Select(s => s.Text));
+        Assert.Contains("$result", segs.Select(s => s.Text));
         Assert.Contains("=", segs.Select(s => s.Text));
         Assert.Contains("+", segs.Select(s => s.Text));
         Assert.Contains("*", segs.Select(s => s.Text));
@@ -645,6 +645,34 @@ public class HighlighterTests
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
         Assert.True(segs.Count >= 2);
         Assert.Contains("echo", segs.Select(s => s.Text));
-        Assert.Contains(" $.users[0].name", segs.Select(s => s.Text));
+        Assert.Contains("$.users[0].name", segs.Select(s => s.Text));
+    }
+
+    [Fact]
+    public void VariableExpression_UsesVariableColor()
+    {
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var res = highlighter.BuildHighlightedText("echo $myVariable") as Markup;
+        Assert.NotNull(res);
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        var variableSeg = segs.FirstOrDefault(s => s.Text == "$myVariable");
+        Assert.NotNull(variableSeg);
+        Assert.Equal(Color.Aqua, variableSeg.Style.Foreground);
+    }
+
+    [Fact]
+    public void JSonPathExpression_UsesJsonPathColor()
+    {
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var res = highlighter.BuildHighlightedText("echo $.users[0].name") as Markup;
+        Assert.NotNull(res);
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        var pathSeg = segs.FirstOrDefault(s => s.Text == "$.users[0].name");
+        Assert.NotNull(pathSeg);
+        Assert.Equal(Color.Aqua, pathSeg.Style.Foreground);
     }
 }

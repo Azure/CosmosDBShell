@@ -41,6 +41,18 @@ internal sealed record ThemeOptions
 
     public string LiteralColor { get; init; } = "fuchsia";
 
+    /// <summary>
+    /// Gets the color applied to variable references (e.g. <c>$foo</c>) in the
+    /// prompt highlighter. Empty string falls back to the terminal default.
+    /// </summary>
+    public string VariableColor { get; init; } = "aqua";
+
+    /// <summary>
+    /// Gets the color applied to JSON path expressions (e.g. <c>.items[0].name</c>)
+    /// in the prompt highlighter. Empty string falls back to the terminal default.
+    /// </summary>
+    public string JsonPathColor { get; init; } = "aqua";
+
     public string KeywordColor { get; init; } = "purple";
 
     public string ErrorColor { get; init; } = "red";
