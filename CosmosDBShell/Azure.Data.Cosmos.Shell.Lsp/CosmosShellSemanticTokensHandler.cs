@@ -39,9 +39,8 @@ internal class CosmosShellSemanticTokensHandler : SemanticTokensHandlerBase
                     SemanticTokenType.Variable,
                     SemanticTokenType.String,
                     SemanticTokenType.Number,
-                    SemanticTokenType.Operator,
+                    SemanticTokenType.Operator,   // Also covers brackets/parens
                     SemanticTokenType.Property,
-                    SemanticTokenType.Regexp,     // Brackets stand-in
                     SemanticTokenType.Parameter,
                     SemanticTokenType.Comment),   // Added comment highlighting
                 TokenModifiers = new Container<SemanticTokenModifier>(
@@ -171,13 +170,14 @@ internal class CosmosShellSemanticTokensHandler : SemanticTokensHandlerBase
                 [TokenType.Assignment] = SemanticTokenType.Operator,
                 [TokenType.Pipe] = SemanticTokenType.Operator,
 
-                // Brackets
-                [TokenType.OpenBrace] = SemanticTokenType.Regexp,
-                [TokenType.CloseBrace] = SemanticTokenType.Regexp,
-                [TokenType.OpenBracket] = SemanticTokenType.Regexp,
-                [TokenType.CloseBracket] = SemanticTokenType.Regexp,
-                [TokenType.OpenParenthesis] = SemanticTokenType.Regexp,
-                [TokenType.CloseParenthesis] = SemanticTokenType.Regexp,
+                // Brackets (mapped to Operator — LSP has no dedicated bracket type,
+                // and Operator is a closer semantic match than Regexp.)
+                [TokenType.OpenBrace] = SemanticTokenType.Operator,
+                [TokenType.CloseBrace] = SemanticTokenType.Operator,
+                [TokenType.OpenBracket] = SemanticTokenType.Operator,
+                [TokenType.CloseBracket] = SemanticTokenType.Operator,
+                [TokenType.OpenParenthesis] = SemanticTokenType.Operator,
+                [TokenType.CloseParenthesis] = SemanticTokenType.Operator,
 
                 // Literals
                 [TokenType.String] = SemanticTokenType.String,
@@ -288,7 +288,7 @@ internal class CosmosShellSemanticTokensHandler : SemanticTokensHandlerBase
         public void Visit(JsonExpression jsonExpression)
         {
             // Opening brace
-            this.addSpan(jsonExpression.Start, 1, SemanticTokenType.Regexp);
+            this.addSpan(jsonExpression.Start, 1, SemanticTokenType.Operator);
 
             foreach (var prop in jsonExpression.Properties)
             {
@@ -308,18 +308,18 @@ internal class CosmosShellSemanticTokensHandler : SemanticTokensHandlerBase
             }
 
             // Closing brace
-            this.addSpan(jsonExpression.Start + jsonExpression.Length - 1, 1, SemanticTokenType.Regexp);
+            this.addSpan(jsonExpression.Start + jsonExpression.Length - 1, 1, SemanticTokenType.Operator);
         }
 
         public void Visit(JsonArrayExpression jsonArrayExpression)
         {
-            this.addSpan(jsonArrayExpression.LBracketToken.Start, jsonArrayExpression.LBracketToken.Length, SemanticTokenType.Regexp);
+            this.addSpan(jsonArrayExpression.LBracketToken.Start, jsonArrayExpression.LBracketToken.Length, SemanticTokenType.Operator);
             foreach (var expr in jsonArrayExpression.Expressions)
             {
                 expr.Accept(this);
             }
 
-            this.addSpan(jsonArrayExpression.RBracketToken.Start, jsonArrayExpression.RBracketToken.Length, SemanticTokenType.Regexp);
+            this.addSpan(jsonArrayExpression.RBracketToken.Start, jsonArrayExpression.RBracketToken.Length, SemanticTokenType.Operator);
         }
 
         public void Visit(IfStatement ifStatement)
