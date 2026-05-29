@@ -92,6 +92,83 @@ public class HighlighterTests
         Assert.NotEmpty(bracketSegments);
     }
 
+    // Resolves the foreground color produced by a Theme.Format* helper so the JSON tests
+    // can compare against the real punctuation/property colors instead of hardcoding them.
+    private static Color SingleColor(string markup)
+    {
+        var segs = new Markup(markup).GetSegments(AnsiConsole.Console).Where(s => !string.IsNullOrEmpty(s.Text)).ToList();
+        return segs[0].Style.Foreground;
+    }
+
+    [Fact]
+    public void TestJsonObjectStringValueDelimitersAreNotHighlightedAsPunctuation()
+    {
+        // Regression: a ':' / ',' / '}' that appears INSIDE a string value must keep the
+        // literal color and must not be mistaken for a structural delimiter. Previously the
+        // highlighter scanned the text with IndexOf and would color these inner characters.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var input = "mkitem {\"k\": \"a:b, c}\"}";
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        // Full text must round-trip exactly.
+        Assert.Equal(input, string.Concat(segs.Select(s => s.Text)));
+
+        var punctColor = SingleColor(Theme.FormatJsonBracket(":"));
+
+        // Exactly one structural colon and zero structural commas should be punctuation-colored;
+        // the ':' and ',' inside the value belong to the string literal.
+        Assert.Equal(1, segs.Count(s => s.Text == ":" && s.Style.Foreground == punctColor));
+        Assert.Equal(0, segs.Count(s => s.Text == "," && s.Style.Foreground == punctColor));
+    }
+
+    [Fact]
+    public void TestJsonArrayStringElementCommaIsNotHighlightedAsPunctuation()
+    {
+        // The comma inside the "a,b" element must stay part of the literal; only the comma
+        // separating the two array elements is a structural delimiter.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var input = "mkitem [\"a,b\", \"c\"]";
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        Assert.Equal(input, string.Concat(segs.Select(s => s.Text)));
+
+        var punctColor = SingleColor(Theme.FormatJsonBracket(","));
+        Assert.Equal(1, segs.Count(s => s.Text == "," && s.Style.Foreground == punctColor));
+    }
+
+    [Fact]
+    public void TestJsonObjectQuotedKeyWithColonIsHighlightedAsSingleProperty()
+    {
+        // A ':' embedded in a quoted key must be part of the property name token, not treated
+        // as the key/value separator. Only the real separator colon is punctuation-colored.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var input = "mkitem {\"a:b\": 1}";
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        Assert.Equal(input, string.Concat(segs.Select(s => s.Text)));
+
+        var punctColor = SingleColor(Theme.FormatJsonBracket(":"));
+        var propertyColor = SingleColor(Theme.FormatJsonProperty("\"a:b\""));
+
+        // The whole quoted key (including the inner colon) is rendered as one property segment.
+        Assert.Contains(segs, s => s.Text == "\"a:b\"" && s.Style.Foreground == propertyColor);
+
+        // Only the separator colon is punctuation-colored.
+        Assert.Equal(1, segs.Count(s => s.Text == ":" && s.Style.Foreground == punctColor));
+    }
+
     [Fact]
     public void TestVariableHighlight()
     {
