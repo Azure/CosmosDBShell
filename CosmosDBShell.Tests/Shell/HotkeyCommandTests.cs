@@ -9,6 +9,7 @@ using Azure.Data.Cosmos.Shell.KeyBindings;
 using RadLine;
 using Spectre.Console;
 
+[Collection(ThemeStateTestCollection.Name)]
 public class HotkeyCommandTests
 {
     [Fact]
@@ -491,6 +492,24 @@ public class HotkeyCommandTests
         var prompt = ReverseHistorySearch.FormatSearchPromptMarkup("a", "ababa", hasMatch: true);
 
         Assert.Equal("(reverse-i-search)`a`: [underline yellow]a[/]b[underline yellow]a[/]b[underline yellow]a[/]", prompt);
+    }
+
+    [Fact]
+    public void ReverseSearch_FormatSearchPromptMarkup_MonochromeUsesUnderlineOnly()
+    {
+        var saved = Theme.Current;
+        try
+        {
+            Theme.Apply(ThemeProfiles.Monochrome);
+
+            var prompt = ReverseHistorySearch.FormatSearchPromptMarkup("que", "select query foo", hasMatch: true);
+
+            Assert.Equal("(reverse-i-search)`que`: select [underline]que[/]ry foo", prompt);
+        }
+        finally
+        {
+            Theme.Apply(saved);
+        }
     }
 
     [Fact]

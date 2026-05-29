@@ -427,7 +427,7 @@ public partial class ShellInterpreter : IDisposable
 
     internal static void ReportError(string message, params object[] par)
     {
-        AnsiConsole.MarkupLine("[red]" + Markup.Escape(message) + "[/]", par);
+        AnsiConsole.MarkupLine(Theme.FormatError(message), par);
     }
 
     internal ShellObject GetVariable(string name)
@@ -451,7 +451,7 @@ public partial class ShellInterpreter : IDisposable
         if (port != null)
         {
             var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
-            AnsiConsole.MarkupLine("[yellow]" + mcpPortString + "[/]");
+            AnsiConsole.MarkupLine(Theme.FormatWarning(mcpPortString));
         }
         else
         {
@@ -493,7 +493,7 @@ public partial class ShellInterpreter : IDisposable
         // obvious next step (see issue #81).
         if (this.State is DisconnectedState)
         {
-            AnsiConsole.MarkupLine("[yellow]" + Markup.Escape(MessageService.GetString("shell-not_connected_hint")) + "[/]");
+            AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("shell-not_connected_hint")));
         }
 
         while (this.IsRunning)
@@ -1207,7 +1207,7 @@ public partial class ShellInterpreter : IDisposable
                 var canceled = MessageService.GetString("runtime-error-canceled");
                 if (!string.IsNullOrEmpty(canceled))
                 {
-                    AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(canceled)}[/]");
+                    AnsiConsole.MarkupLine(Theme.FormatWarning(canceled));
                 }
 
                 return new ErrorCommandState(e);
@@ -1695,8 +1695,7 @@ public partial class ShellInterpreter : IDisposable
         }
         else
         {
-            var m = Markup.Escape(e.Message);
-            AnsiConsole.MarkupLine($"{prefix}[red]{m}[/]");
+            AnsiConsole.MarkupLine(prefix + Theme.FormatError(e.Message));
             if (!string.IsNullOrEmpty(hint))
             {
                 AnsiConsole.MarkupLine(Markup.Escape(hint));
@@ -1736,12 +1735,11 @@ public partial class ShellInterpreter : IDisposable
         }
         else
         {
-            var m = Markup.Escape(pe.Message);
-            AnsiConsole.MarkupLine($"{Markup.Escape($"{pe.FileName}:{pe.Line}:{pe.Column}:")} [red]error:[/] {m}");
+            AnsiConsole.MarkupLine($"{Markup.Escape($"{pe.FileName}:{pe.Line}:{pe.Column}:")} {Theme.FormatError("error:")} {Markup.Escape(pe.Message)}");
             if (pe.LineText != null)
             {
-                AnsiConsole.MarkupLine($"  [grey]{Markup.Escape(pe.LineText)}[/]");
-                AnsiConsole.MarkupLine($"  [red]{new string(' ', Math.Max(0, pe.Column - 1))}^[/]");
+                AnsiConsole.MarkupLine("  " + Theme.FormatMuted(pe.LineText));
+                AnsiConsole.MarkupLine("  " + Theme.FormatError(new string(' ', Math.Max(0, pe.Column - 1)) + "^"));
             }
         }
     }
@@ -2113,7 +2111,7 @@ public partial class ShellInterpreter : IDisposable
             }
             else
             {
-                AnsiConsole.Markup($"[red]Error:[/]");
+                AnsiConsole.Markup(Theme.FormatError("Error:"));
                 ShellInterpreter.Instance.WriteLine($"{cmdStr} not found.");
             }
             ShellInterpreter.Instance.WriteLine("```");

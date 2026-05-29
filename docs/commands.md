@@ -100,6 +100,51 @@ cd MyContainer
 pwd                    # /MyDb/MyContainer
 ```
 
+## Appearance
+
+### theme
+
+Inspect, switch, load, validate, save, edit, open, and reload shell color themes.
+
+```text
+Usage: theme [action] [name] [path] [-force] [-strict] [-editor <ARG>]
+
+Arguments:
+    [action]    What to do: current (default), list, show, use (alias: set),
+                load, validate, save, edit, open, or reload
+    [name]      Theme name (for show/use/save/edit) or a TOML path
+                (for load/validate/edit)
+    [path]      Optional path for save, load, or validate
+
+Options:
+    -force, -f  Overwrite an existing file when saving, or seed the
+                built-in profile to a user file when editing
+    -strict     Treat warnings as errors during validate
+    -editor     External editor to launch for `theme edit`
+                (defaults to $VISUAL, $EDITOR, then a platform default)
+```
+
+Examples:
+
+```bash
+theme list
+theme show light
+theme use light
+theme load ./my-theme.toml
+theme validate ./my-theme.toml
+theme validate ~/.cosmosdbshell/themes
+theme validate my-theme --strict
+theme save my-theme --force
+theme edit my-theme
+theme edit dark --force --editor "code --wait"
+theme open
+theme reload
+```
+
+`theme edit` opens the named theme's TOML file in an external editor and reloads it when the editor exits. Built-in profiles have no editable file by default; pass `--force` to seed a copy under `~/.cosmosdbshell/themes` and edit that. `theme open` opens the user themes folder in your OS file browser.
+
+`theme validate` parses a TOML file and reports warnings without registering it or switching the active theme. When the argument is a directory it validates every `*.toml` file in that directory and prints a per-file summary. With no argument it scans the user themes directory (`~/.cosmosdbshell/themes`). The validator collects every issue in a single pass so that multiple typos can be fixed at once, and suggests the closest valid token when an unknown color or modifier is used. It also warns on bracket cycles that have only one color or contain duplicates. Pass `--strict` to fail when any warnings are present. Color values must be empty or one ANSI 16 color name. Style values may combine modifiers with at most one ANSI 16 color.
+
 ## Data Operations
 
 ### query

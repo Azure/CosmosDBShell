@@ -9,6 +9,7 @@ using Azure.Data.Cosmos.Shell.Core;
 using RadLine;
 using Spectre.Console;
 
+[Collection(ThemeStateTestCollection.Name)]
 public class HighlighterTests
 {
     [Fact]
