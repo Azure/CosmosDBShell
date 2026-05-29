@@ -288,35 +288,41 @@ internal class CosmosShellSemanticTokensHandler : SemanticTokensHandlerBase
         public void Visit(JsonExpression jsonExpression)
         {
             // Opening brace
-            this.addSpan(jsonExpression.Start, 1, SemanticTokenType.Operator);
+            this.addSpan(jsonExpression.LBraceToken.Start, jsonExpression.LBraceToken.Length, SemanticTokenType.Operator);
 
-            foreach (var prop in jsonExpression.Properties)
+            foreach (var prop in jsonExpression.PropertyNodes)
             {
-                if (prop.Key is ShellText keyText)
-                {
-                    var keyStr = keyText.Text;
+                this.addSpan(prop.KeyToken.Start, prop.KeyToken.Length, SemanticTokenType.Property);
 
-                    // Naive lookup (could be improved by storing exact token positions in parser)
-                    var keyIndex = this.text.IndexOf(keyStr, jsonExpression.Start, StringComparison.Ordinal);
-                    if (keyIndex >= 0)
-                    {
-                        this.addSpan(keyIndex, keyStr.Length, SemanticTokenType.Property);
-                    }
+                if (prop.ColonToken != null)
+                {
+                    this.addSpan(prop.ColonToken.Start, prop.ColonToken.Length, SemanticTokenType.Operator);
                 }
 
                 prop.Value.Accept(this);
+
+                if (prop.CommaToken != null)
+                {
+                    this.addSpan(prop.CommaToken.Start, prop.CommaToken.Length, SemanticTokenType.Operator);
+                }
             }
 
             // Closing brace
-            this.addSpan(jsonExpression.Start + jsonExpression.Length - 1, 1, SemanticTokenType.Operator);
+            this.addSpan(jsonExpression.RBraceToken.Start, jsonExpression.RBraceToken.Length, SemanticTokenType.Operator);
         }
 
         public void Visit(JsonArrayExpression jsonArrayExpression)
         {
             this.addSpan(jsonArrayExpression.LBracketToken.Start, jsonArrayExpression.LBracketToken.Length, SemanticTokenType.Operator);
-            foreach (var expr in jsonArrayExpression.Expressions)
+            var commaTokens = jsonArrayExpression.CommaTokens;
+            for (int i = 0; i < jsonArrayExpression.Expressions.Count; i++)
             {
-                expr.Accept(this);
+                jsonArrayExpression.Expressions[i].Accept(this);
+
+                if (i < commaTokens.Count)
+                {
+                    this.addSpan(commaTokens[i].Start, commaTokens[i].Length, SemanticTokenType.Operator);
+                }
             }
 
             this.addSpan(jsonArrayExpression.RBracketToken.Start, jsonArrayExpression.RBracketToken.Length, SemanticTokenType.Operator);

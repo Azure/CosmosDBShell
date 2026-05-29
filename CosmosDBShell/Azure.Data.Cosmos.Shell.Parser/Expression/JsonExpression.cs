@@ -11,17 +11,31 @@ using Azure.Data.Cosmos.Shell.Core;
 // JsonExpression.cs
 internal class JsonExpression : Expression
 {
+    private static readonly IReadOnlyList<JsonProperty> EmptyPropertyNodes = Array.Empty<JsonProperty>();
+
     private readonly Token lBraceToken;
     private readonly Token rBraceToken;
 
-    public JsonExpression(Token lBraceToken, Token rBraceToken, Dictionary<ShellObject, Expression> properties)
+    public JsonExpression(Token lBraceToken, Token rBraceToken, Dictionary<ShellObject, Expression> properties, IReadOnlyList<JsonProperty>? propertyNodes = null)
     {
         this.Properties = properties ?? throw new ArgumentNullException(nameof(properties));
         this.lBraceToken = lBraceToken ?? throw new ArgumentNullException(nameof(lBraceToken));
         this.rBraceToken = rBraceToken ?? throw new ArgumentNullException(nameof(rBraceToken));
+        this.PropertyNodes = propertyNodes ?? EmptyPropertyNodes;
     }
 
     public Dictionary<ShellObject, Expression> Properties { get; }
+
+    /// <summary>
+    /// Gets the ordered list of parsed properties, including the exact token positions of
+    /// each key, colon, and trailing comma. Used by syntax highlighters so they can rely
+    /// on real token spans instead of re-scanning the source text.
+    /// </summary>
+    public IReadOnlyList<JsonProperty> PropertyNodes { get; }
+
+    public Token LBraceToken => this.lBraceToken;
+
+    public Token RBraceToken => this.rBraceToken;
 
     public override int Start => this.lBraceToken.Start;
 
