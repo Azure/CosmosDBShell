@@ -1214,7 +1214,7 @@ public partial class ShellInterpreter : IDisposable
             }
 
             var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
-            AnsiConsole.MarkupLine($"[red]{Markup.Escape(prefix)}:[/] {Markup.Escape(e.Message)}");
+            AnsiConsole.MarkupLine($"{Theme.FormatError(prefix + ":")} {Markup.Escape(e.Message)}");
             if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
             {
                 AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
@@ -1223,7 +1223,7 @@ public partial class ShellInterpreter : IDisposable
             var inner = e.InnerException;
             while (inner != null)
             {
-                AnsiConsole.MarkupLine($"  [red]\u2192[/] {Markup.Escape(inner.Message)}");
+                AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
                 inner = inner.InnerException;
             }
 
@@ -1706,7 +1706,7 @@ public partial class ShellInterpreter : IDisposable
                 var inner = e.InnerException;
                 while (inner != null)
                 {
-                    AnsiConsole.MarkupLine($"  [red]->[/] {Markup.Escape(inner.Message)}");
+                    AnsiConsole.MarkupLine($"  {Theme.FormatError("->")} {Markup.Escape(inner.Message)}");
                     inner = inner.InnerException;
                 }
             }
@@ -1826,13 +1826,12 @@ public partial class ShellInterpreter : IDisposable
             var rawLineText = lineIndex >= 0 && lineIndex < lines.Length ? lines[lineIndex] : string.Empty;
             var rendered = SourceCaretRenderer.Render(rawLineText, column + 1);
 
-            var levelColor = isWarning ? "yellow" : "red";
             var levelPrefix = MessageService.GetString(isWarning ? "parser-warning-prefix" : "parser-error-prefix");
 
             this.AppendSourceCaretDiagnostic(
                 fileBuffer,
                 levelPrefix,
-                levelColor,
+                isWarning,
                 error.Message,
                 lineNumber,
                 rendered,
@@ -1885,7 +1884,7 @@ public partial class ShellInterpreter : IDisposable
         this.AppendSourceCaretDiagnostic(
             fileBuffer,
             prefix,
-            "red",
+            isWarning: false,
             message,
             location.Line,
             rendered,
@@ -1910,12 +1909,14 @@ public partial class ShellInterpreter : IDisposable
     private void AppendSourceCaretDiagnostic(
         System.Text.StringBuilder? fileBuffer,
         string levelPrefix,
-        string levelColor,
+        bool isWarning,
         string message,
         int lineNumber,
         RenderedSourceCaret rendered,
         string? origin = null)
     {
+        string FormatLevel(string text) => isWarning ? Theme.FormatWarning(text) : Theme.FormatError(text);
+
         // When the diagnostic originates from a script file we prepend the
         // "file:line:col:" prefix in front of the level prefix (cargo / clang
         // style) so editors and humans can jump straight to the offending
@@ -1949,16 +1950,16 @@ public partial class ShellInterpreter : IDisposable
             if (hasOrigin)
             {
                 var location = $"{origin}:{lineNumber}:{rendered.SourceColumn}:";
-                AnsiConsole.MarkupLine($"[grey]{Markup.Escape(location)}[/] [{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m}");
+                AnsiConsole.MarkupLine($"{Theme.FormatMuted(location)} {FormatLevel(levelPrefix + ":")} {m}");
             }
             else
             {
-                AnsiConsole.MarkupLine($"[{levelColor}]{Markup.Escape(levelPrefix)}:[/] {m} [grey]({lineNumber}:{rendered.SourceColumn})[/]");
+                AnsiConsole.MarkupLine($"{FormatLevel(levelPrefix + ":")} {m} {Theme.FormatMuted($"({lineNumber}:{rendered.SourceColumn})")}");
             }
 
             var gutter = $"  > {lineNumber} | ";
-            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(gutter)}[/]{Markup.Escape(rendered.Display)}");
-            AnsiConsole.MarkupLine($"[{levelColor}]{new string(' ', gutter.Length)}{rendered.CaretPad}{rendered.CaretMarker}[/]");
+            AnsiConsole.MarkupLine($"{Theme.FormatMuted(gutter)}{Markup.Escape(rendered.Display)}");
+            AnsiConsole.MarkupLine(FormatLevel(new string(' ', gutter.Length) + rendered.CaretPad + rendered.CaretMarker));
         }
     }
 

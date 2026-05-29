@@ -62,6 +62,12 @@ internal sealed record ThemeOptions
     public string HelpVariableColor { get; init; } = "green";
 
     /// <summary>
+    /// Color applied to the border of help title panels. Empty string means the
+    /// terminal default (no color escape), used by the monochrome profile.
+    /// </summary>
+    public string HelpBorderColor { get; init; } = "green";
+
+    /// <summary>
     /// Style applied to help section/category headers and statement-help titles.
     /// Empty string means terminal default with no modifiers.
     /// </summary>

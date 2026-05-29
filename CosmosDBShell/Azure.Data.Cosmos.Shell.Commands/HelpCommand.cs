@@ -429,7 +429,7 @@ internal class HelpCommand : CosmosCommand
             var headerPanel = new Panel(Theme.FormatHelpHeader(MessageService.GetString("help-available-commands")))
             {
                 Border = BoxBorder.Rounded,
-                BorderStyle = Style.Parse("green"),
+                BorderStyle = Theme.GetHelpBorderStyle(),
                 Padding = new Padding(1, 0, 1, 0),
             };
             AnsiConsole.Write(headerPanel);
@@ -726,7 +726,7 @@ internal class HelpCommand : CosmosCommand
         var stmtPanel = new Panel(Theme.FormatSectionHeader("Control Flow Statements"))
         {
             Border = BoxBorder.Rounded,
-            BorderStyle = Style.Parse("green"),
+            BorderStyle = Theme.GetHelpBorderStyle(),
             Padding = new Padding(1, 0, 1, 0),
         };
         AnsiConsole.Write(stmtPanel);
@@ -779,7 +779,7 @@ internal class HelpCommand : CosmosCommand
             var stmtPanel = new Panel(Theme.FormatHelpHeader(MessageService.GetString("help-control-flow-statements")))
             {
                 Border = BoxBorder.Rounded,
-                BorderStyle = Style.Parse("green"),
+                BorderStyle = Theme.GetHelpBorderStyle(),
                 Padding = new Padding(1, 0, 1, 0),
             };
             AnsiConsole.Write(stmtPanel);
@@ -852,7 +852,7 @@ internal class HelpCommand : CosmosCommand
         var rule = new Rule(Theme.FormatHelpHeader(title))
         {
             Justification = Justify.Left,
-            Style = Style.Parse("grey"),
+            Style = Theme.GetMutedStyle(),
         };
         AnsiConsole.Write(rule);
     }

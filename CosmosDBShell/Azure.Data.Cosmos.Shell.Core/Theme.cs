@@ -72,6 +72,39 @@ internal static class Theme
 
     public static string HelpVariableColorName => Current.HelpVariableColor;
 
+    public static string HelpBorderColorName => Current.HelpBorderColor;
+
+    /// <summary>
+    /// Spectre style for the border of help title panels. Returns
+    /// <see cref="Style.Plain"/> when the active theme has an empty
+    /// <see cref="ThemeOptions.HelpBorderColor"/> (monochrome), so the panel
+    /// falls back to the terminal's default foreground.
+    /// </summary>
+    public static Style GetHelpBorderStyle()
+    {
+        return GetStyle(Current.HelpBorderColor);
+    }
+
+    /// <summary>
+    /// Spectre style for muted accents (separators, rules). Returns
+    /// <see cref="Style.Plain"/> when the active theme has an empty
+    /// <see cref="ThemeOptions.MutedColor"/>.
+    /// </summary>
+    public static Style GetMutedStyle()
+    {
+        return GetStyle(Current.MutedColor);
+    }
+
+    /// <summary>
+    /// Parses <paramref name="style"/> into a Spectre <see cref="Style"/>, returning
+    /// <see cref="Style.Plain"/> when it is empty so monochrome and other minimal
+    /// profiles can disable a slot entirely.
+    /// </summary>
+    public static Style GetStyle(string style)
+    {
+        return string.IsNullOrEmpty(style) ? Style.Plain : Style.Parse(style);
+    }
+
     /// <summary>
     /// Replaces the active theme. Subsequent calls to any <c>Format*</c> helper or
     /// color-name accessor will use values from <paramref name="options"/>.

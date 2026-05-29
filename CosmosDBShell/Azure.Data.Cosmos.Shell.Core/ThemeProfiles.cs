@@ -72,6 +72,7 @@ internal static class ThemeProfiles
         HelpAccentColor = string.Empty,
         HelpPlaceholderColor = string.Empty,
         HelpVariableColor = string.Empty,
+        HelpBorderColor = string.Empty,
         HelpHeaderStyle = "bold",
         HelpNameStyle = "bold",
         BracketCycle = [string.Empty],
