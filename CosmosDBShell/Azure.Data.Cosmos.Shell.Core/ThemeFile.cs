@@ -64,6 +64,7 @@ internal static class ThemeFile
             ["help_accent"] = (o => o.HelpAccentColor, (o, v) => o with { HelpAccentColor = v }),
             ["help_placeholder"] = (o => o.HelpPlaceholderColor, (o, v) => o with { HelpPlaceholderColor = v }),
             ["help_variable"] = (o => o.HelpVariableColor, (o, v) => o with { HelpVariableColor = v }),
+            ["help_border"] = (o => o.HelpBorderColor, (o, v) => o with { HelpBorderColor = v }),
         };
 
     /// <summary>Slot definitions for the <c>[styles]</c> section.</summary>
