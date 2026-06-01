@@ -73,22 +73,6 @@ The server advertises the `completions` capability and declares two resource tem
 
 `completion/complete` returns live database names from the connected account, and live container names for the database the client has already supplied in `context.arguments.database`. Empty list when the shell is disconnected.
 
-Completion also fires for the `database` and `container` arguments on the prompts listed below.
-
-## Prompts
-
-The server declares the `prompts` capability and exposes the following ready-made workflows. MCP clients (e.g. VS Code, Claude Desktop) surface them as slash-commands. Each prompt produces a short user message that steers the model toward calling the shell's tools and reading the shell's resources.
-
-| Name | Arguments | Purpose |
-| --- | --- | --- |
-| `cosmos.explain-container` | `database`, `container` | Read the indexing policy, sample a few items, emit a JSON summary (`partitionKey`, `indexingSummary`, `sampleShape`, `concerns`). |
-| `cosmos.query-optimize` | `query`, `database?`, `container?` | Run the query, inspect RU charge and indexing policy, propose a rewrite as a unified diff. |
-| `cosmos.partition-key-audit` | `database`, `container` | Evaluate the current partition-key choice against inferred access patterns. |
-| `cosmos.bulk-import-plan` | `file`, `database`, `container` | Produce a concrete, batched, 429-aware execution plan using `mkitem`/`create`. |
-| `cosmos.connect-help` | `endpoint?` | Walk the user through choosing the right `connect` invocation (Entra ID vs key vs emulator). |
-
-Optional arguments fall back to the shell's current scope where applicable.
-
 ## Security
 
 ### How MCP Works
