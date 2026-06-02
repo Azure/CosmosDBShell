@@ -18,6 +18,14 @@ internal static class SourceCaretRenderer
     public const int DefaultTabSize = 4;
 
     /// <summary>
+    /// Leading ellipsis prefix (U+2026 HORIZONTAL ELLIPSIS + space) inserted
+    /// when content to the left of the caret is elided. The caret row repeats
+    /// this same prefix so the marker stays aligned regardless of how wide a
+    /// terminal renders the ellipsis glyph.
+    /// </summary>
+    public const string LeftEllipsis = "\u2026 ";
+
+    /// <summary>
     /// Computes the rendered source line and caret line.
     /// Caret columns are 1-based on the original input line; the returned
     /// values are 1-based on the displayed line.
@@ -39,13 +47,22 @@ internal static class SourceCaretRenderer
         var (expandedLine, expandedCaret) = ExpandTabs(lineText, caretColumnOneBased, tabSize);
         var (display, displayCaret) = TrimAroundCaret(expandedLine, expandedCaret, maxDisplayWidth, leftContextWidth);
 
+        // When the display was trimmed on the left we reproduce the ellipsis
+        // glyph verbatim in the caret row instead of substituting spaces. A
+        // bare space is one cell, but some terminals/fonts render U+2026 as a
+        // wider (ambiguous-width) glyph; reusing the exact same prefix keeps
+        // the caret column aligned with the display in every terminal.
+        var caretLeader = display.StartsWith(LeftEllipsis, StringComparison.Ordinal)
+            ? LeftEllipsis
+            : string.Empty;
+
         // Clamp caret length so the underline never extends past the displayed text.
         var maxLength = Math.Max(1, display.Length - displayCaret + 1);
         var clampedLength = Math.Min(caretLength, maxLength);
-        var caretPad = new string(' ', Math.Max(0, displayCaret - 1));
+        var caretPad = new string(' ', Math.Max(0, displayCaret - 1 - caretLeader.Length));
         var caretMarker = new string('^', clampedLength);
 
-        return new RenderedSourceCaret(display, displayCaret, expandedCaret, caretPad, caretMarker);
+        return new RenderedSourceCaret(display, displayCaret, expandedCaret, caretLeader, caretPad, caretMarker);
     }
 
     /// <summary>
@@ -103,7 +120,7 @@ internal static class SourceCaretRenderer
             return (displayLine ?? string.Empty, caretColumnOneBased);
         }
 
-        const string ellipsis = "\u2026 "; // U+2026 HORIZONTAL ELLIPSIS + space
+        const string ellipsis = LeftEllipsis; // U+2026 HORIZONTAL ELLIPSIS + space
         const int ellipsisWidth = 2;
 
         // Pick a content window of up to maxDisplayWidth chars centred so the

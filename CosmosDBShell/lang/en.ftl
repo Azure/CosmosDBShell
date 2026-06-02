@@ -34,6 +34,7 @@ error-emulator_connection_failed =
     See: https://learn.microsoft.com/en-us/azure/cosmos-db/emulator-linux
 error-command-not-found = '{ $command }' is not recognized as an internal or external command, operable program or batch file.
 error-command-not-found-suggestion = Did you mean '{ $suggestion }'?
+error-command-not-found-connection-string = This looks like part of a connection string. The shell treats ';' as a command separator, so wrap the whole value in quotes, e.g. connect "AccountEndpoint=https://localhost:8081/;AccountKey=...;".
 error-unknown-option = Unknown option '{ $option }'.
 error-unknown-option-suggestion = Did you mean '{ $suggestion }'?
 error-shell-not-initialized = Shell is not initialized

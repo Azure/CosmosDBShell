@@ -288,12 +288,12 @@ public partial class ShellInterpreter : IDisposable
             catch (TaskCanceledException e)
             {
                 var shellException = new ShellException(CommandException.GetDisplayMessage(e), e);
-                this.ReportExecutionError(shellException);
+                this.ReportExecutionError(shellException, command);
                 return new ErrorCommandState(shellException);
             }
             catch (Exception e)
             {
-                this.ReportExecutionError(e);
+                this.ReportExecutionError(e, command);
                 var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
                 return new ErrorCommandState(inner);
             }
@@ -1647,7 +1647,7 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
-    private void ReportExecutionError(Exception e)
+    private void ReportExecutionError(Exception e, string? sourceText = null)
     {
         // The command already emitted a friendly diagnostic; do not print again.
         if (ContainsException<CommandReportedException>(e))
@@ -1658,6 +1658,16 @@ public partial class ShellInterpreter : IDisposable
         if (e is PositionalException pe)
         {
             this.ReportPositionalError(pe);
+            return;
+        }
+
+        // Unknown-command errors carry the offset of the offending name in the
+        // typed line. Render them with the same compiler-style caret used for
+        // parser errors so the user can see exactly which fragment failed (for
+        // example the trailing piece of an unquoted connection string).
+        if (e is CommandNotFoundException cnf && cnf.Start.HasValue && !string.IsNullOrEmpty(sourceText))
+        {
+            this.ReportCommandNotFoundError(cnf, sourceText!);
             return;
         }
 
@@ -1711,6 +1721,81 @@ public partial class ShellInterpreter : IDisposable
                 }
             }
         }
+    }
+
+    private void ReportCommandNotFoundError(CommandNotFoundException e, string sourceText)
+    {
+        var lines = this.SplitIntoLines(sourceText);
+        var (lineIndex, column) = this.OffsetToLineColumn(sourceText, e.Start!.Value);
+        var lineNumber = lineIndex + 1;
+        var rawLineText = lineIndex >= 0 && lineIndex < lines.Length ? lines[lineIndex] : string.Empty;
+        var rendered = SourceCaretRenderer.Render(rawLineText, column + 1, e.Length is > 0 ? e.Length.Value : 1);
+
+        var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
+        var fileBuffer = this.ErrOutRedirect != null ? new System.Text.StringBuilder() : null;
+
+        this.AppendSourceCaretDiagnostic(
+            fileBuffer,
+            prefix,
+            "red",
+            e.Message,
+            lineNumber,
+            rendered,
+            origin: this.GetDiagnosticOrigin(this.CurrentScriptFileName));
+
+        if (!string.IsNullOrEmpty(e.Hint))
+        {
+            if (fileBuffer != null)
+            {
+                fileBuffer.Append(e.Hint).Append(Environment.NewLine);
+            }
+            else
+            {
+                AnsiConsole.MarkupLine(Markup.Escape(e.Hint));
+            }
+        }
+        else if (LooksLikeConnectionStringLine(rawLineText))
+        {
+            // An unquoted connection string is split on ';' into fragments that
+            // surface as unknown commands. Point the user at the real fix.
+            var csHint = MessageService.GetString("error-command-not-found-connection-string");
+            if (!string.IsNullOrEmpty(csHint))
+            {
+                if (fileBuffer != null)
+                {
+                    fileBuffer.Append(csHint).Append(Environment.NewLine);
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine(Markup.Escape(csHint));
+                }
+            }
+        }
+
+        if (fileBuffer != null)
+        {
+            var payload = fileBuffer.ToString();
+            if (this.AppendErrRedirection)
+            {
+                File.AppendAllText(this.ErrOutRedirect!, payload);
+            }
+            else
+            {
+                File.WriteAllText(this.ErrOutRedirect!, payload);
+            }
+        }
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Diagnostic helpers are grouped with diagnostic rendering code.")]
+    private static bool LooksLikeConnectionStringLine(string lineText)
+    {
+        if (string.IsNullOrEmpty(lineText))
+        {
+            return false;
+        }
+
+        return lineText.Contains("AccountEndpoint=", StringComparison.OrdinalIgnoreCase)
+            || lineText.Contains("AccountKey=", StringComparison.OrdinalIgnoreCase);
     }
 
     private void ReportPositionalError(PositionalException pe)
@@ -1939,6 +2024,7 @@ public partial class ShellInterpreter : IDisposable
             var gutter = $"  > {lineNumber} | ";
             fileBuffer.Append(gutter).Append(rendered.Display).Append(Environment.NewLine);
             fileBuffer.Append(new string(' ', gutter.Length))
+                .Append(rendered.CaretLeader)
                 .Append(rendered.CaretPad)
                 .Append(rendered.CaretMarker)
                 .Append(Environment.NewLine);
@@ -1958,7 +2044,7 @@ public partial class ShellInterpreter : IDisposable
 
             var gutter = $"  > {lineNumber} | ";
             AnsiConsole.MarkupLine($"[grey]{Markup.Escape(gutter)}[/]{Markup.Escape(rendered.Display)}");
-            AnsiConsole.MarkupLine($"[{levelColor}]{new string(' ', gutter.Length)}{rendered.CaretPad}{rendered.CaretMarker}[/]");
+            AnsiConsole.MarkupLine($"[grey]{new string(' ', gutter.Length)}{Markup.Escape(rendered.CaretLeader)}[/][{levelColor}]{rendered.CaretPad}{rendered.CaretMarker}[/]");
         }
     }
 
