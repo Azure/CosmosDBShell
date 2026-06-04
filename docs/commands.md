@@ -331,6 +331,31 @@ exec $script.path arg1 arg2
 for $file in (dir "*.csh") { exec $file.path }
 ```
 
+### edit
+
+Open a local file (for example a `.csh` script) in an external editor and wait for the editor to close. The file is created if it does not already exist. Pair it with `exec` to edit and then run a script.
+
+```text
+Usage: edit <path> [-editor <ARG>]
+
+Arguments:
+    path        The file to edit (created if it does not exist)
+
+Options:
+    -editor     External editor to launch
+                (defaults to $VISUAL, $EDITOR, then a platform default)
+```
+
+Examples:
+
+```bash
+edit deploy.csh                         # open in $EDITOR (or platform default)
+edit deploy.csh --editor "code --wait"  # use VS Code; --wait keeps the shell blocked until you close the tab
+exec deploy.csh                         # run the script you just edited
+```
+
+The editor is resolved from `--editor`, then `$VISUAL`, then `$EDITOR`, then a platform default (`notepad` on Windows, `nano` elsewhere). GUI editors must block until the file is closed (for example `code --wait`), otherwise the command returns immediately. `edit` requires an interactive terminal and is rejected when input is piped or running under a script.
+
 ## Management
 
 Database and container management commands prefer Azure Resource Manager when an ARM context is attached (Entra ID connections, optionally specifying `--subscription` and `--resource-group` for explicit account targeting). The account name is inferred from the endpoint. Account-key, emulator, and static-token connections do not attach ARM context, so these commands automatically fall back to the Cosmos DB data plane and use the connection's existing credentials.
