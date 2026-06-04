@@ -63,7 +63,7 @@ internal class WatchCommand : CosmosCommand
         // so the loop runs until the user presses Ctrl+C or --max is reached.
         var watchToken = ShellInterpreter.UserCancellationTokenSource.Token;
 
-        return await this.WatchAsync(container, watchToken);
+        return await this.WatchAsync(shell, container, watchToken);
     }
 
     /// <summary>
@@ -75,7 +75,7 @@ internal class WatchCommand : CosmosCommand
     {
         if (!string.IsNullOrEmpty(partitionKey))
         {
-            var feedRange = FeedRange.FromPartitionKey(new PartitionKey(partitionKey));
+            var feedRange = FeedRange.FromPartitionKey(CreatePartitionKeyFromArgument(partitionKey));
             return fromBeginning ? ChangeFeedStartFrom.Beginning(feedRange) : ChangeFeedStartFrom.Now(feedRange);
         }
 
@@ -121,13 +121,23 @@ internal class WatchCommand : CosmosCommand
         return ParseChangeFeedDocuments(content);
     }
 
-    private async Task<CommandState> WatchAsync(Container container, CancellationToken token)
+    private async Task<CommandState> WatchAsync(ShellInterpreter shell, Container container, CancellationToken token)
     {
-        var startFrom = BuildStartFrom(this.FromBeginning, this.PartitionKey);
+        ChangeFeedStartFrom startFrom;
+        try
+        {
+            startFrom = BuildStartFrom(this.FromBeginning, this.PartitionKey);
+        }
+        catch (JsonException ex)
+        {
+            throw new CommandException("watch", MessageService.GetString("command-patch-error-invalid_pk_json"), ex);
+        }
+
+        var redirected = !string.IsNullOrEmpty(shell.StdOutRedirect);
         using var iterator = container.GetChangeFeedStreamIterator(startFrom, ChangeFeedMode.Incremental);
 
         var max = this.Max is > 0 ? this.Max : null;
-        var collected = max.HasValue ? new List<JsonElement>() : null;
+        var collected = (max.HasValue || redirected) ? new List<JsonElement>() : null;
         var count = 0;
 
         AnsiConsole.MarkupLine(MessageService.GetArgsString("command-watch-started", "container", Theme.ContainerNamePromt(container.Id)));
@@ -158,7 +168,11 @@ internal class WatchCommand : CosmosCommand
                 var limitReached = false;
                 foreach (var element in documents)
                 {
-                    AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element));
+                    if (!redirected)
+                    {
+                        AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element));
+                    }
+
                     collected?.Add(element);
                     count++;
 
@@ -184,7 +198,7 @@ internal class WatchCommand : CosmosCommand
 
         var result = new CommandState
         {
-            IsPrinted = true,
+            IsPrinted = !redirected,
         };
         result.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
         if (collected != null)
