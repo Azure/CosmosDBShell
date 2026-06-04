@@ -9,6 +9,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
@@ -21,6 +22,7 @@ internal enum ImportFormat
     Jsonl = 1,
     JsonLines = 1,
     Array = 2,
+    Csv = 3,
 }
 
 internal enum ImportMode
@@ -32,6 +34,8 @@ internal enum ImportMode
 [CosmosCommand("import")]
 [CosmosExample("import items.jsonl", Description = "Import items from a JSON Lines file (one JSON object per line)")]
 [CosmosExample("import items.json --format=array", Description = "Import items from a JSON array file")]
+[CosmosExample("import items.csv", Description = "Import items from a CSV file (the header row defines property names)")]
+[CosmosExample("import items.csv --partition-key=/address/city", Description = "Import CSV and nest the matching column under a nested partition key path")]
 [CosmosExample("import items.jsonl --mode=upsert", Description = "Insert new items and replace any existing items with the same id")]
 [CosmosExample("import items.jsonl --continue-on-error", Description = "Keep importing after individual item failures")]
 [CosmosExample("import items.jsonl --dry-run", Description = "Validate the file without writing any items")]
@@ -53,6 +57,9 @@ internal class ImportCommand : CosmosCommand
 
     [CosmosOption("format", "f", DefaultValue = ImportFormat.Auto)]
     public ImportFormat? Format { get; init; }
+
+    [CosmosOption("partition-key", "pk")]
+    public string? PartitionKey { get; init; }
 
     [CosmosOption("continue-on-error", "continue")]
     public bool? ContinueOnError { get; init; }
@@ -198,6 +205,185 @@ internal class ImportCommand : CosmosCommand
         }
     }
 
+    /// <summary>
+    /// Parses a partition key path (e.g. <c>/address/city</c>) into its individual
+    /// segments. Returns <see langword="null"/> when no usable path is supplied.
+    /// </summary>
+    /// <param name="path">The partition key path.</param>
+    /// <returns>The path segments, or <see langword="null"/>.</returns>
+    internal static string[]? ParsePartitionKeySegments(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return segments.Length == 0 ? null : segments;
+    }
+
+    /// <summary>
+    /// Parses CSV text into records, honoring RFC 4180 quoting rules: fields may be quoted
+    /// with double quotes, embedded quotes are escaped by doubling, and quoted fields may
+    /// contain the separator and newlines. Blank lines are skipped.
+    /// </summary>
+    /// <param name="content">The full CSV text.</param>
+    /// <param name="separator">The field separator.</param>
+    /// <returns>A list of records, each a list of field values.</returns>
+    internal static List<List<string>> ParseCsv(string content, char separator)
+    {
+        var records = new List<List<string>>();
+        var record = new List<string>();
+        var field = new StringBuilder();
+        var inQuotes = false;
+        var hasContent = false;
+
+        for (var i = 0; i < content.Length; i++)
+        {
+            var c = content[i];
+            if (inQuotes)
+            {
+                if (c == '"')
+                {
+                    if (i + 1 < content.Length && content[i + 1] == '"')
+                    {
+                        field.Append('"');
+                        i++;
+                    }
+                    else
+                    {
+                        inQuotes = false;
+                    }
+                }
+                else
+                {
+                    field.Append(c);
+                }
+            }
+            else if (c == '"')
+            {
+                inQuotes = true;
+                hasContent = true;
+            }
+            else if (c == separator)
+            {
+                record.Add(field.ToString());
+                field.Clear();
+                hasContent = true;
+            }
+            else if (c == '\r')
+            {
+                // Ignored; line breaks are handled on '\n'.
+            }
+            else if (c == '\n')
+            {
+                record.Add(field.ToString());
+                field.Clear();
+                if (hasContent || record.Count > 1)
+                {
+                    records.Add(record);
+                }
+
+                record = new List<string>();
+                hasContent = false;
+            }
+            else
+            {
+                field.Append(c);
+                hasContent = true;
+            }
+        }
+
+        if (hasContent || field.Length > 0 || record.Count > 0)
+        {
+            record.Add(field.ToString());
+            records.Add(record);
+        }
+
+        return records;
+    }
+
+    /// <summary>
+    /// Builds a JSON object from a CSV header row and a value row. Every column becomes a
+    /// top-level string property. When <paramref name="partitionKeySegments"/> describes a
+    /// nested path, the matching leaf column is relocated under that nested path.
+    /// </summary>
+    /// <param name="headers">The header field names.</param>
+    /// <param name="values">The row values.</param>
+    /// <param name="partitionKeySegments">Optional partition key path segments.</param>
+    /// <returns>The constructed JSON object element.</returns>
+    internal static JsonElement BuildCsvObject(IReadOnlyList<string> headers, IReadOnlyList<string> values, string[]? partitionKeySegments)
+    {
+        var root = new JsonObject();
+        for (var i = 0; i < headers.Count; i++)
+        {
+            var name = headers[i];
+            if (string.IsNullOrEmpty(name))
+            {
+                continue;
+            }
+
+            var value = i < values.Count ? values[i] : string.Empty;
+            root[name] = JsonValue.Create(value);
+        }
+
+        if (partitionKeySegments is { Length: > 1 })
+        {
+            var leaf = partitionKeySegments[^1];
+            if (root.ContainsKey(leaf))
+            {
+                var pkValue = root[leaf];
+                root.Remove(leaf);
+
+                var current = root;
+                for (var s = 0; s < partitionKeySegments.Length - 1; s++)
+                {
+                    var seg = partitionKeySegments[s];
+                    if (current[seg] is JsonObject existing)
+                    {
+                        current = existing;
+                    }
+                    else
+                    {
+                        var next = new JsonObject();
+                        current[seg] = next;
+                        current = next;
+                    }
+                }
+
+                current[leaf] = pkValue;
+            }
+        }
+
+        return JsonSerializer.SerializeToElement(root);
+    }
+
+    /// <summary>
+    /// Enumerates items from a CSV file. The first record is treated as the header row.
+    /// </summary>
+    /// <param name="filePath">The source file path.</param>
+    /// <param name="partitionKeySegments">Optional partition key path segments.</param>
+    /// <param name="token">Cancellation token.</param>
+    /// <returns>An async sequence of (1-based file line number, item) tuples.</returns>
+    internal static async IAsyncEnumerable<(int LineNumber, JsonElement Item)> EnumerateCsvAsync(
+        string filePath,
+        string[]? partitionKeySegments,
+        [EnumeratorCancellation] CancellationToken token)
+    {
+        var content = await System.IO.File.ReadAllTextAsync(filePath, token);
+        var records = ParseCsv(content, ShellInterpreter.CSVSeparator);
+        if (records.Count == 0)
+        {
+            yield break;
+        }
+
+        var headers = records[0];
+        for (var r = 1; r < records.Count; r++)
+        {
+            yield return (r + 1, BuildCsvObject(headers, records[r], partitionKeySegments));
+        }
+    }
+
     public override async Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         if (string.IsNullOrWhiteSpace(this.File))
@@ -236,8 +422,9 @@ internal class ImportCommand : CosmosCommand
         var format = await ResolveFormatAsync(filePath, this.Format ?? ImportFormat.Auto, token);
         var mode = this.Mode ?? ImportMode.Insert;
         var continueOnError = this.ContinueOnError == true;
+        var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
 
-        var (successCount, failCount, charge) = await ExecuteImportAsync(filePath, format, mode, container, continueOnError, dryRun, token);
+        var (successCount, failCount, charge) = await ExecuteImportAsync(filePath, format, mode, container, continueOnError, dryRun, partitionKeySegments, token);
 
         if (dryRun)
         {
@@ -301,6 +488,11 @@ internal class ImportCommand : CosmosCommand
             return requested;
         }
 
+        if (string.Equals(Path.GetExtension(filePath), ".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            return ImportFormat.Csv;
+        }
+
         await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
         var buffer = new byte[1024];
         var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), token);
@@ -315,25 +507,34 @@ internal class ImportCommand : CosmosCommand
         Container? container,
         bool continueOnError,
         bool dryRun,
+        string[]? partitionKeySegments,
         CancellationToken token)
     {
         var success = 0;
         var failed = 0;
         var charge = 0.0;
 
-        await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        IAsyncEnumerable<(int LineNumber, JsonElement Item)> source;
+        FileStream? stream = null;
         StreamReader? lineReader = null;
+        IAsyncEnumerable<(int LineNumber, JsonElement Item)> source;
         try
         {
-            if (format == ImportFormat.Array)
+            if (format == ImportFormat.Csv)
             {
-                source = EnumerateArrayAsync(stream, token);
+                source = EnumerateCsvAsync(filePath, partitionKeySegments, token);
             }
             else
             {
-                lineReader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-                source = EnumerateJsonLinesAsync(lineReader, token);
+                stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                if (format == ImportFormat.Array)
+                {
+                    source = EnumerateArrayAsync(stream, token);
+                }
+                else
+                {
+                    lineReader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+                    source = EnumerateJsonLinesAsync(lineReader, token);
+                }
             }
 
             await foreach (var (lineNumber, item) in source.WithCancellation(token))
@@ -395,6 +596,10 @@ internal class ImportCommand : CosmosCommand
         finally
         {
             lineReader?.Dispose();
+            if (stream != null)
+            {
+                await stream.DisposeAsync();
+            }
         }
 
         return (success, failed, charge);

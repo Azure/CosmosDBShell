@@ -261,7 +261,7 @@ Arguments:
 
 ### export
 
-Stream items from a container to a local file. Default format is JSON Lines (one compact JSON object per line); pass `--format=array` for a single JSON array. Items are streamed end-to-end and are not buffered in memory.
+Stream items from a container to a local file. Default format is JSON Lines (one compact JSON object per line); pass `--format=array` for a single JSON array, or `--format=csv` for CSV. Items are streamed end-to-end for JSON formats; CSV buffers items to compute the column set. The CSV separator follows the `COSMOSDB_SHELL_CSVSEP` environment variable (default `;`).
 
 ```text
 Usage: export <file> [options]
@@ -274,7 +274,7 @@ Options:
     --con, --container   Source container (defaults to the current navigation context).
     --query, -q          SELECT query whose results are exported (default: SELECT * FROM c).
     --max, -m            Maximum number of items to export. 0 means no limit.
-    --format, -f         Output format: jsonl (default) or array.
+    --format, -f         Output format: jsonl (default), array, or csv.
     --force              Overwrite the destination file if it already exists.
 ```
 
@@ -283,12 +283,13 @@ Examples:
 - `export items.jsonl` exports every item in the current container.
 - `export active.jsonl --query="SELECT * FROM c WHERE c.status = 'active'"` exports a filtered subset.
 - `export snapshot.json --format=array --force` exports as a JSON array, replacing any existing file.
+- `export items.csv --format=csv` exports as CSV with one column per top-level property (nested values are written as compact JSON).
 
 The summary line reports the number of items written and the total RU charge.
 
 ### import
 
-Bulk-load items from a JSON Lines or JSON array file into a container. Format is auto-detected from the first non-whitespace character (`[` ⇒ array, otherwise JSON Lines), or can be forced with `--format`. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist.
+Bulk-load items from a JSON Lines, JSON array, or CSV file into a container. Format is auto-detected: a `.csv` extension selects CSV, otherwise the first non-whitespace character is inspected (`[` ⇒ array, otherwise JSON Lines). It can be forced with `--format`. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist. For CSV, the header row defines property names and every value is imported as a string; the CSV separator follows `COSMOSDB_SHELL_CSVSEP` (default `;`).
 
 ```text
 Usage: import <file> [options]
@@ -300,7 +301,9 @@ Options:
     --db, --database              Target database (defaults to the current navigation context).
     --con, --container            Target container (defaults to the current navigation context).
     --mode                        Write mode: insert (default) or upsert.
-    --format, -f                  Input format: auto (default), jsonl, or array.
+    --format, -f                  Input format: auto (default), jsonl, array, or csv.
+    --partition-key, --pk         For CSV import, the partition key path. Nested paths
+                                  (e.g. /address/city) nest the matching column.
     --continue, --continue-on-error
                                   Continue importing after individual item failures.
     --dry-run                     Parse the file without writing any items (validation only).
@@ -310,6 +313,8 @@ Examples:
 
 - `import items.jsonl` inserts every item from a JSON Lines file.
 - `import items.json --format=array` reads a JSON array file.
+- `import items.csv` imports a CSV file, mapping each header column to a string property.
+- `import items.csv --partition-key=/address/city` nests the `city` column under `address` for a nested partition key.
 - `import items.jsonl --mode=upsert --continue-on-error` upserts items and keeps going on per-item failures.
 - `import items.jsonl --dry-run` validates the file without writing anything; useful before a real run.
 

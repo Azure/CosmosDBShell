@@ -258,6 +258,114 @@ public class ImportCommandTests
         Assert.Equal(20, readItems[1].GetProperty("value").GetInt32());
     }
 
+    [Theory]
+    [InlineData("/city", new[] { "city" })]
+    [InlineData("/address/city", new[] { "address", "city" })]
+    [InlineData("  /a/b/c  ", new[] { "a", "b", "c" })]
+    public void ParsePartitionKeySegments_SplitsPath(string path, string[] expected)
+    {
+        Assert.Equal(expected, ImportCommand.ParsePartitionKeySegments(path));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("/")]
+    public void ParsePartitionKeySegments_EmptyOrBlank_ReturnsNull(string? path)
+    {
+        Assert.Null(ImportCommand.ParsePartitionKeySegments(path));
+    }
+
+    [Fact]
+    public void ParseCsv_ParsesHeaderAndRows()
+    {
+        var content = "id,name\n1,Alice\n2,Bob\n";
+
+        var records = ImportCommand.ParseCsv(content, ',');
+
+        Assert.Equal(3, records.Count);
+        Assert.Equal(new[] { "id", "name" }, records[0]);
+        Assert.Equal(new[] { "1", "Alice" }, records[1]);
+        Assert.Equal(new[] { "2", "Bob" }, records[2]);
+    }
+
+    [Fact]
+    public void ParseCsv_HandlesQuotedFieldsWithSeparatorsAndNewlines()
+    {
+        var content = "id,note\n1,\"a,b\"\n2,\"line1\nline2\"\n3,\"say \"\"hi\"\"\"\n";
+
+        var records = ImportCommand.ParseCsv(content, ',');
+
+        Assert.Equal(4, records.Count);
+        Assert.Equal(new[] { "1", "a,b" }, records[1]);
+        Assert.Equal(new[] { "2", "line1\nline2" }, records[2]);
+        Assert.Equal(new[] { "3", "say \"hi\"" }, records[3]);
+    }
+
+    [Fact]
+    public void ParseCsv_SkipsBlankLines()
+    {
+        var content = "id\n1\n\n2\n";
+
+        var records = ImportCommand.ParseCsv(content, ',');
+
+        Assert.Equal(3, records.Count);
+        Assert.Equal(new[] { "id" }, records[0]);
+        Assert.Equal(new[] { "1" }, records[1]);
+        Assert.Equal(new[] { "2" }, records[2]);
+    }
+
+    [Fact]
+    public void BuildCsvObject_MapsColumnsToStringProperties()
+    {
+        var element = ImportCommand.BuildCsvObject(
+            new[] { "id", "name" },
+            new[] { "1", "Alice" },
+            partitionKeySegments: null);
+
+        Assert.Equal(JsonValueKind.Object, element.ValueKind);
+        Assert.Equal("1", element.GetProperty("id").GetString());
+        Assert.Equal("Alice", element.GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public void BuildCsvObject_SingleSegmentPartitionKey_StaysTopLevel()
+    {
+        var element = ImportCommand.BuildCsvObject(
+            new[] { "id", "city" },
+            new[] { "1", "Seattle" },
+            new[] { "city" });
+
+        Assert.Equal("Seattle", element.GetProperty("city").GetString());
+    }
+
+    [Fact]
+    public void BuildCsvObject_NestedPartitionKey_NestsMatchingColumn()
+    {
+        var element = ImportCommand.BuildCsvObject(
+            new[] { "id", "city" },
+            new[] { "1", "Seattle" },
+            new[] { "address", "city" });
+
+        Assert.False(element.TryGetProperty("city", out _));
+        Assert.Equal("Seattle", element.GetProperty("address").GetProperty("city").GetString());
+        Assert.Equal("1", element.GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void BuildCsvObject_MissingValues_FillWithEmptyString()
+    {
+        var element = ImportCommand.BuildCsvObject(
+            new[] { "id", "name", "extra" },
+            new[] { "1" },
+            partitionKeySegments: null);
+
+        Assert.Equal("1", element.GetProperty("id").GetString());
+        Assert.Equal(string.Empty, element.GetProperty("name").GetString());
+        Assert.Equal(string.Empty, element.GetProperty("extra").GetString());
+    }
+
     private static async IAsyncEnumerable<JsonElement> ToAsyncEnumerable(IEnumerable<JsonElement> items)
     {
         foreach (var item in items)

@@ -19,12 +19,14 @@ internal enum ExportFormat
     Jsonl = 0,
     JsonLines = 0,
     Array = 1,
+    Csv = 2,
 }
 
 [CosmosCommand("export")]
 [CosmosExample("export items.jsonl", Description = "Export every item in the current container as JSON Lines")]
 [CosmosExample("export items.jsonl --query=\"SELECT * FROM c WHERE c.status = 'active'\"", Description = "Export the results of a query")]
 [CosmosExample("export items.json --format=array --force", Description = "Export as a JSON array, overwriting an existing file")]
+[CosmosExample("export items.csv --format=csv", Description = "Export items as CSV (one column per top-level property)")]
 [CosmosExample("export items.jsonl --db=MyDB --con=Products --max=1000", Description = "Export up to 1000 items from a specific database and container")]
 [McpAnnotation(
     Title = "Export Container Items",
@@ -172,6 +174,89 @@ internal class ExportCommand : CosmosCommand
         return count;
     }
 
+    /// <summary>
+    /// Writes a sequence of items to <paramref name="writer"/> as CSV. The header row is the
+    /// union of all top-level property names (in first-seen order); each subsequent row
+    /// contains the corresponding values. Nested objects and arrays are written as compact
+    /// JSON. Items are buffered to compute the column set.
+    /// </summary>
+    /// <param name="items">The items to write.</param>
+    /// <param name="writer">The destination writer.</param>
+    /// <param name="separator">The field separator.</param>
+    /// <param name="token">Cancellation token.</param>
+    /// <returns>The number of data rows written.</returns>
+    internal static async Task<int> WriteCsvAsync(IAsyncEnumerable<JsonElement> items, TextWriter writer, char separator, CancellationToken token)
+    {
+        var buffered = new List<JsonElement>();
+        await foreach (var item in items.WithCancellation(token))
+        {
+            buffered.Add(item);
+        }
+
+        var headers = new List<string>();
+        var headerSet = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in buffered)
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            foreach (var prop in item.EnumerateObject())
+            {
+                if (headerSet.Add(prop.Name))
+                {
+                    headers.Add(prop.Name);
+                }
+            }
+        }
+
+        var sb = new StringBuilder();
+        if (headers.Count > 0)
+        {
+            for (var i = 0; i < headers.Count; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(separator);
+                }
+
+                sb.Append(CommandState.EscapeCSV(headers[i]));
+            }
+
+            await writer.WriteLineAsync(sb.ToString().AsMemory(), token);
+        }
+
+        var count = 0;
+        foreach (var item in buffered)
+        {
+            sb.Clear();
+            for (var i = 0; i < headers.Count; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(separator);
+                }
+
+                if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty(headers[i], out var value))
+                {
+                    var text = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
+                    sb.Append(CommandState.EscapeCSV(text));
+                }
+                else
+                {
+                    sb.Append(CommandState.EscapeCSV(string.Empty));
+                }
+            }
+
+            await writer.WriteLineAsync(sb.ToString().AsMemory(), token);
+            count++;
+        }
+
+        await writer.FlushAsync(token);
+        return count;
+    }
+
     private static async Task<(int Count, double Charge)> ExecuteExportAsync(
         Container container,
         string query,
@@ -201,6 +286,14 @@ internal class ExportCommand : CosmosCommand
             {
                 await using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
                 var count = await WriteArrayAsync(EnumerateAsync(iterator, max, charge => totalCharge += charge, token), stream, token);
+                return (count, totalCharge);
+            }
+            else if (format == ExportFormat.Csv)
+            {
+                await using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
+                using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                writer.NewLine = "\n";
+                var count = await WriteCsvAsync(EnumerateAsync(iterator, max, charge => totalCharge += charge, token), writer, ShellInterpreter.CSVSeparator, token);
                 return (count, totalCharge);
             }
             else

@@ -145,6 +145,74 @@ public class ExportCommandTests
         Assert.True(Enum.TryParse<ExportFormat>(value, ignoreCase: true, out _));
     }
 
+    [Fact]
+    public async Task WriteCsvAsync_WritesHeaderUnionAndRows()
+    {
+        var items = ToAsyncEnumerable(
+            JsonSerializer.SerializeToElement(new { id = "1", name = "Alice" }),
+            JsonSerializer.SerializeToElement(new { id = "2", city = "Seattle" }));
+
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
+
+        Assert.Equal(2, count);
+        var lines = writer.ToString().TrimEnd('\n').Split('\n');
+        Assert.Equal(3, lines.Length);
+        Assert.Equal("\"id\",\"name\",\"city\"", lines[0]);
+        Assert.Equal("\"1\",\"Alice\",\"\"", lines[1]);
+        Assert.Equal("\"2\",\"\",\"Seattle\"", lines[2]);
+    }
+
+    [Fact]
+    public async Task WriteCsvAsync_EscapesSeparatorsQuotesAndNewlines()
+    {
+        var items = ToAsyncEnumerable(
+            JsonSerializer.SerializeToElement(new { note = "a,b" }),
+            JsonSerializer.SerializeToElement(new { note = "say \"hi\"" }),
+            JsonSerializer.SerializeToElement(new { note = "line1\nline2" }));
+
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
+
+        Assert.Equal(3, count);
+        var output = writer.ToString();
+        Assert.Contains("\"a,b\"", output);
+        Assert.Contains("\"say \"\"hi\"\"\"", output);
+        Assert.Contains("\"line1\nline2\"", output);
+    }
+
+    [Fact]
+    public async Task WriteCsvAsync_NestedValuesWrittenAsCompactJson()
+    {
+        var items = ToAsyncEnumerable(
+            JsonSerializer.SerializeToElement(new { id = "1", tags = new[] { 1, 2 }, nested = new { a = "b" } }));
+
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
+
+        var output = writer.ToString();
+        Assert.Contains("\"[1,2]\"", output);
+        Assert.Contains("\"{\"\"a\"\":\"\"b\"\"}\"", output);
+    }
+
+    [Fact]
+    public async Task WriteCsvAsync_WithNoItems_ProducesEmptyOutput()
+    {
+        var items = ToAsyncEnumerable();
+
+        using var writer = new StringWriter();
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
+
+        Assert.Equal(0, count);
+        Assert.Equal(string.Empty, writer.ToString());
+    }
+
     private static async IAsyncEnumerable<JsonElement> ToAsyncEnumerable(params JsonElement[] items)
     {
         foreach (var item in items)
