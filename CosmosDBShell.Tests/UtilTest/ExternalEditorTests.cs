@@ -6,6 +6,16 @@ namespace CosmosShell.Tests.UtilTest;
 
 using Azure.Data.Cosmos.Shell.Util;
 
+// Several tests below mutate process-wide environment variables (VISUAL/EDITOR).
+// xUnit parallelizes across test classes, so this collection disables
+// parallelization to prevent races with other tests that read those variables.
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class ExternalEditorTestCollection
+{
+    public const string Name = "External editor environment tests";
+}
+
+[Collection(ExternalEditorTestCollection.Name)]
 public class ExternalEditorTests
 {
     [Fact]

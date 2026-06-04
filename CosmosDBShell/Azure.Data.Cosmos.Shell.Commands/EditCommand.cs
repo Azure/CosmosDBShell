@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Commands;
 using System.IO;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 using Spectre.Console;
@@ -18,6 +19,7 @@ using Spectre.Console;
 [CosmosCommand("edit")]
 [CosmosExample("edit deploy.csh", Description = "Open deploy.csh in $EDITOR, creating it if needed")]
 [CosmosExample("edit deploy.csh --editor \"code --wait\"", Description = "Edit a script with a specific editor")]
+[McpAnnotation(Restricted = true)]
 internal class EditCommand : CosmosCommand
 {
     [CosmosParameter("path", IsRequired = true, ParameterType = ParameterType.File)]
@@ -33,7 +35,7 @@ internal class EditCommand : CosmosCommand
             throw new CommandException("edit", MessageService.GetString("command-edit-missing-path"));
         }
 
-        if (Console.IsInputRedirected)
+        if (Console.IsInputRedirected || !string.IsNullOrEmpty(shell.CurrentScriptFileName))
         {
             var message = MessageService.GetString("command-edit-not-interactive");
             AnsiConsole.MarkupLine(Theme.FormatError(message));
