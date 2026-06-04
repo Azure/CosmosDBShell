@@ -269,6 +269,22 @@ command-indexpolicy-updated = Indexing policy updated successfully.
 command-indexpolicy-error_invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-indexpolicy-error_no_policy = The container has no indexing policy configured.
 
+command-index-description = Manages the indexing policy of a container via show, add, remove, and set subcommands.
+command-index-description-subcommand = The action to perform: show, add, remove, or set.
+command-index-description-paths = The indexing paths to add or remove, or a full indexing policy JSON document for set.
+command-index-description-mode = The indexing mode to set (consistent or none).
+command-index-description-automatic = Whether automatic indexing is enabled (true or false).
+command-index-description-database = The database containing the container
+command-index-description-container = The container to read/update the indexing policy for
+command-index-updated = Indexing policy updated successfully.
+command-index-error-missing_subcommand = Missing subcommand. Use one of: show, add, remove, set.
+command-index-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, add, remove, set.
+command-index-error-missing_paths = No paths provided. Specify at least one path, for example: index add /address/*.
+command-index-error-missing_set_args = Nothing to set. Provide --mode, --automatic, or a full indexing policy JSON document.
+command-index-error-invalid_automatic = Invalid value for --automatic. Use true or false.
+command-index-error-invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
+command-index-error-no_policy = The container has no indexing policy configured.
+
 command-ls-description = List resources in the current context.
 command-ls-description-filter = The filter pattern.
 command-ls-description-max = Maximum number of items returned when listing container items. Defaults to 100 if omitted. Use 0 or a negative value for no limit.
