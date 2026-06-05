@@ -246,6 +246,8 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
             return;
         }
 
+        // Iterate in reverse so removing a matching element does not shift the
+        // indices of items we have not yet examined.
         for (int i = array.Count - 1; i >= 0; i--)
         {
             if (string.Equals(GetPathValue(array[i]), path, StringComparison.Ordinal))
