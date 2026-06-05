@@ -39,9 +39,8 @@ internal class CosmosShellSemanticTokensHandler : SemanticTokensHandlerBase
                     SemanticTokenType.Variable,
                     SemanticTokenType.String,
                     SemanticTokenType.Number,
-                    SemanticTokenType.Operator,
+                    SemanticTokenType.Operator,   // Also covers brackets/parens
                     SemanticTokenType.Property,
-                    SemanticTokenType.Regexp,     // Brackets stand-in
                     SemanticTokenType.Parameter,
                     SemanticTokenType.Comment),   // Added comment highlighting
                 TokenModifiers = new Container<SemanticTokenModifier>(
@@ -171,13 +170,14 @@ internal class CosmosShellSemanticTokensHandler : SemanticTokensHandlerBase
                 [TokenType.Assignment] = SemanticTokenType.Operator,
                 [TokenType.Pipe] = SemanticTokenType.Operator,
 
-                // Brackets
-                [TokenType.OpenBrace] = SemanticTokenType.Regexp,
-                [TokenType.CloseBrace] = SemanticTokenType.Regexp,
-                [TokenType.OpenBracket] = SemanticTokenType.Regexp,
-                [TokenType.CloseBracket] = SemanticTokenType.Regexp,
-                [TokenType.OpenParenthesis] = SemanticTokenType.Regexp,
-                [TokenType.CloseParenthesis] = SemanticTokenType.Regexp,
+                // Brackets (mapped to Operator — LSP has no dedicated bracket type,
+                // and Operator is a closer semantic match than Regexp.)
+                [TokenType.OpenBrace] = SemanticTokenType.Operator,
+                [TokenType.CloseBrace] = SemanticTokenType.Operator,
+                [TokenType.OpenBracket] = SemanticTokenType.Operator,
+                [TokenType.CloseBracket] = SemanticTokenType.Operator,
+                [TokenType.OpenParenthesis] = SemanticTokenType.Operator,
+                [TokenType.CloseParenthesis] = SemanticTokenType.Operator,
 
                 // Literals
                 [TokenType.String] = SemanticTokenType.String,
@@ -295,38 +295,44 @@ internal class CosmosShellSemanticTokensHandler : SemanticTokensHandlerBase
         public void Visit(JsonExpression jsonExpression)
         {
             // Opening brace
-            this.addSpan(jsonExpression.Start, 1, SemanticTokenType.Regexp);
+            this.addSpan(jsonExpression.LBraceToken.Start, jsonExpression.LBraceToken.Length, SemanticTokenType.Operator);
 
-            foreach (var prop in jsonExpression.Properties)
+            foreach (var prop in jsonExpression.PropertyNodes)
             {
-                if (prop.Key is ShellText keyText)
-                {
-                    var keyStr = keyText.Text;
+                this.addSpan(prop.KeyToken.Start, prop.KeyToken.Length, SemanticTokenType.Property);
 
-                    // Naive lookup (could be improved by storing exact token positions in parser)
-                    var keyIndex = this.text.IndexOf(keyStr, jsonExpression.Start, StringComparison.Ordinal);
-                    if (keyIndex >= 0)
-                    {
-                        this.addSpan(keyIndex, keyStr.Length, SemanticTokenType.Property);
-                    }
+                if (prop.ColonToken != null)
+                {
+                    this.addSpan(prop.ColonToken.Start, prop.ColonToken.Length, SemanticTokenType.Operator);
                 }
 
                 prop.Value.Accept(this);
+
+                if (prop.CommaToken != null)
+                {
+                    this.addSpan(prop.CommaToken.Start, prop.CommaToken.Length, SemanticTokenType.Operator);
+                }
             }
 
             // Closing brace
-            this.addSpan(jsonExpression.Start + jsonExpression.Length - 1, 1, SemanticTokenType.Regexp);
+            this.addSpan(jsonExpression.RBraceToken.Start, jsonExpression.RBraceToken.Length, SemanticTokenType.Operator);
         }
 
         public void Visit(JsonArrayExpression jsonArrayExpression)
         {
-            this.addSpan(jsonArrayExpression.LBracketToken.Start, jsonArrayExpression.LBracketToken.Length, SemanticTokenType.Regexp);
-            foreach (var expr in jsonArrayExpression.Expressions)
+            this.addSpan(jsonArrayExpression.LBracketToken.Start, jsonArrayExpression.LBracketToken.Length, SemanticTokenType.Operator);
+            var commaTokens = jsonArrayExpression.CommaTokens;
+            for (int i = 0; i < jsonArrayExpression.Expressions.Count; i++)
             {
-                expr.Accept(this);
+                jsonArrayExpression.Expressions[i].Accept(this);
+
+                if (i < commaTokens.Count)
+                {
+                    this.addSpan(commaTokens[i].Start, commaTokens[i].Length, SemanticTokenType.Operator);
+                }
             }
 
-            this.addSpan(jsonArrayExpression.RBracketToken.Start, jsonArrayExpression.RBracketToken.Length, SemanticTokenType.Regexp);
+            this.addSpan(jsonArrayExpression.RBracketToken.Start, jsonArrayExpression.RBracketToken.Length, SemanticTokenType.Operator);
         }
 
         public void Visit(FilterPathExpression filterPathExpression)

@@ -1008,6 +1008,7 @@ internal class ExpressionParser
         this.Advance(); // consume '{'
 
         var properties = new Dictionary<ShellObject, Expression>();
+        var propertyNodes = new List<JsonProperty>();
 
         void SkipTrivia()
         {
@@ -1028,7 +1029,7 @@ internal class ExpressionParser
         {
             var rbrace = this.currentToken!;
             this.Advance(); // consume '}'
-            return new JsonExpression(lbrace, rbrace, properties);
+            return new JsonExpression(lbrace, rbrace, properties, propertyNodes);
         }
 
         while (!this.IsAtEnd)
@@ -1045,7 +1046,7 @@ internal class ExpressionParser
             {
                 var rbrace = this.currentToken!;
                 this.Advance(); // consume '}'
-                return new JsonExpression(lbrace, rbrace, properties);
+                return new JsonExpression(lbrace, rbrace, properties, propertyNodes);
             }
 
             // Parse property name (key)
@@ -1120,6 +1121,7 @@ internal class ExpressionParser
                 continue;
             }
 
+            var colonToken = this.currentToken;
             this.Advance(); // consume ':'
 
             SkipTrivia();
@@ -1133,9 +1135,12 @@ internal class ExpressionParser
             var value = this.ParsePipeExpression();
 
             // Add to properties if key valid
+            JsonProperty? propertyNode = null;
             if (key != null)
             {
                 properties[key] = value;
+                propertyNode = new JsonProperty(keyToken, colonToken, value);
+                propertyNodes.Add(propertyNode);
             }
 
             SkipTrivia();
@@ -1145,6 +1150,11 @@ internal class ExpressionParser
             {
                 if (this.currentToken?.Type == TokenType.Comma)
                 {
+                    if (propertyNode != null)
+                    {
+                        propertyNode.CommaToken = this.currentToken;
+                    }
+
                     this.Advance(); // consume ','
                     SkipTrivia();
 
@@ -1153,7 +1163,7 @@ internal class ExpressionParser
                     {
                         var rbrace = this.currentToken!;
                         this.Advance(); // consume '}'
-                        return new JsonExpression(lbrace, rbrace, properties);
+                        return new JsonExpression(lbrace, rbrace, properties, propertyNodes);
                     }
 
                     continue;
@@ -1162,7 +1172,7 @@ internal class ExpressionParser
                 {
                     var rbrace = this.currentToken!;
                     this.Advance(); // consume '}'
-                    return new JsonExpression(lbrace, rbrace, properties);
+                    return new JsonExpression(lbrace, rbrace, properties, propertyNodes);
                 }
                 else
                 {
@@ -1183,13 +1193,13 @@ internal class ExpressionParser
         if (this.aborted)
         {
             var syntheticAbort = this.CreateMissingToken(TokenType.CloseBrace, this.GetErrorPosition());
-            return new JsonExpression(lbrace, syntheticAbort, properties);
+            return new JsonExpression(lbrace, syntheticAbort, properties, propertyNodes);
         }
 
         // Missing closing brace
         this.ReportError(MessageService.GetString("expression_error_unmatched_braces"), lbrace);
         var synthetic = this.CreateMissingToken(TokenType.CloseBrace, lbrace.Start + lbrace.Length);
-        return new JsonExpression(lbrace, synthetic, properties);
+        return new JsonExpression(lbrace, synthetic, properties, propertyNodes);
     }
 
     private void SkipWhitespace()
@@ -1221,6 +1231,7 @@ internal class ExpressionParser
         this.Advance(); // consume '['
 
         var elements = new List<Expression>();
+        var commaTokens = new List<Token>();
 
         this.SkipWhitespace();
 
@@ -1229,7 +1240,7 @@ internal class ExpressionParser
         {
             var rbracketEmpty = this.Current;
             this.Advance();
-            return new JsonArrayExpression(lbracket, rbracketEmpty!, elements);
+            return new JsonArrayExpression(lbracket, rbracketEmpty!, elements, commaTokens);
         }
 
         while (!this.IsAtEnd)
@@ -1241,7 +1252,7 @@ internal class ExpressionParser
             {
                 var rbracket = this.Current;
                 this.Advance(); // consume ']'
-                return new JsonArrayExpression(lbracket, rbracket!, elements);
+                return new JsonArrayExpression(lbracket, rbracket!, elements, commaTokens);
             }
 
             if (this.aborted)
@@ -1257,6 +1268,11 @@ internal class ExpressionParser
 
             if (!this.IsAtEnd && this.Check(TokenType.Comma))
             {
+                if (this.Current != null)
+                {
+                    commaTokens.Add(this.Current);
+                }
+
                 this.Advance(); // consume ',' and continue with next element
                 this.SkipWhitespace();
 
@@ -1265,7 +1281,7 @@ internal class ExpressionParser
                 {
                     var rbracket = this.Current;
                     this.Advance(); // consume ']'
-                    return new JsonArrayExpression(lbracket, rbracket!, elements);
+                    return new JsonArrayExpression(lbracket, rbracket!, elements, commaTokens);
                 }
 
                 continue;
@@ -1277,11 +1293,11 @@ internal class ExpressionParser
                 if (rbracket == null)
                 {
                     this.AbortUnexpectedEnd();
-                    return new JsonArrayExpression(lbracket, this.CreateMissingToken(TokenType.CloseBracket, this.GetErrorPosition()), elements);
+                    return new JsonArrayExpression(lbracket, this.CreateMissingToken(TokenType.CloseBracket, this.GetErrorPosition()), elements, commaTokens);
                 }
 
                 this.Advance(); // consume ']'
-                return new JsonArrayExpression(lbracket, rbracket, elements);
+                return new JsonArrayExpression(lbracket, rbracket, elements, commaTokens);
             }
 
             if (this.IsAtEnd)
@@ -1304,13 +1320,13 @@ internal class ExpressionParser
 
         if (this.aborted)
         {
-            return new JsonArrayExpression(lbracket, this.CreateMissingToken(TokenType.CloseBracket, this.GetErrorPosition()), elements);
+            return new JsonArrayExpression(lbracket, this.CreateMissingToken(TokenType.CloseBracket, this.GetErrorPosition()), elements, commaTokens);
         }
 
         // Missing closing bracket
         this.ReportError(MessageService.GetString("expression_error_unmatched_brackets"), lbracket);
         var synthetic = this.CreateMissingToken(TokenType.CloseBracket, lbracket.Start + lbracket.Length);
-        return new JsonArrayExpression(lbracket, synthetic, elements);
+        return new JsonArrayExpression(lbracket, synthetic, elements, commaTokens);
     }
 
     private void ReportError(string message, Token? token, TokenType? expected = null, int? position = null, ParseErrorKind kind = ParseErrorKind.Generic)

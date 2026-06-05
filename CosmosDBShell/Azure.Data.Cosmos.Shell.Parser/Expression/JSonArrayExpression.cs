@@ -10,17 +10,26 @@ using Azure.Data.Cosmos.Shell.Core;
 
 internal class JsonArrayExpression : Expression
 {
+    private static readonly IReadOnlyList<Token> EmptyCommaTokens = Array.Empty<Token>();
+
     private readonly Token lBracketToken;
     private readonly Token rBracketToken;
 
-    public JsonArrayExpression(Token lBracketToken, Token rBracketToken, List<Expression> expressions)
+    public JsonArrayExpression(Token lBracketToken, Token rBracketToken, List<Expression> expressions, IReadOnlyList<Token>? commaTokens = null)
     {
         this.Expressions = expressions ?? throw new ArgumentNullException(nameof(expressions));
         this.lBracketToken = lBracketToken ?? throw new ArgumentNullException(nameof(lBracketToken));
         this.rBracketToken = rBracketToken ?? throw new ArgumentNullException(nameof(rBracketToken));
+        this.CommaTokens = commaTokens ?? EmptyCommaTokens;
     }
 
     public List<Expression> Expressions { get; }
+
+    /// <summary>
+    /// Gets the comma tokens separating array elements, in source order. Used by syntax
+    /// highlighters so they can rely on real token spans instead of re-scanning the source text.
+    /// </summary>
+    public IReadOnlyList<Token> CommaTokens { get; }
 
     public Token LBracketToken { get => this.lBracketToken; }
 

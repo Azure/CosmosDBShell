@@ -338,177 +338,76 @@ public partial class ShellInterpreter : IHighlighter
 
         public void Visit(JsonExpression jsonExpression)
         {
-            // Find the opening brace position in the text
-            var startPos = jsonExpression.Start;
-            this.AppendUpTo(startPos);
-
             // Color the opening brace using the current bracket depth, then increment
             // so nested braces/brackets/parens use the next color in the cycle.
             var braceDepth = this.bracketDepth;
 
-            // Find and highlight the opening brace
-            var openBracePos = this.text.IndexOf('{', this.currentPosition);
-            if (openBracePos >= 0 && openBracePos < jsonExpression.Start + jsonExpression.Length)
-            {
-                this.AppendUpTo(openBracePos);
-                this.result.Append(Theme.FormatBracket("{", braceDepth));
-                this.currentPosition = openBracePos + 1;
-            }
+            this.AppendToken(jsonExpression.LBraceToken, Theme.FormatBracket("{", braceDepth));
 
             this.bracketDepth = braceDepth + 1;
 
-            // Process the properties
-            foreach (var property in jsonExpression.Properties)
+            // Process the properties using the exact token positions captured by the parser.
+            foreach (var property in jsonExpression.PropertyNodes)
             {
-                // Preserve whitespace before property name by using AppendUpTo
-                // Find the next non-whitespace character (start of property name)
-                var propertyStart = this.currentPosition;
+                var keyToken = property.KeyToken;
+                var keyText = this.text.Substring(keyToken.Start, keyToken.Length);
+                this.AppendToken(keyToken, Theme.FormatJsonProperty(keyText));
 
-                // Skip whitespace to find where property actually starts
-                while (propertyStart < this.text.Length &&
-                       propertyStart < jsonExpression.Start + jsonExpression.Length &&
-                       char.IsWhiteSpace(this.text[propertyStart]))
+                if (property.ColonToken != null)
                 {
-                    propertyStart++;
+                    this.AppendToken(property.ColonToken, Theme.FormatJsonBracket(":"));
                 }
 
-                // Determine the property name format and find its end
-                var propertyEnd = propertyStart;
-                if (propertyStart < this.text.Length)
-                {
-                    if (this.text[propertyStart] == '"' || this.text[propertyStart] == '\'')
-                    {
-                        // Quoted property name
-                        var quote = this.text[propertyStart];
-                        propertyEnd = this.text.IndexOf(quote, propertyStart + 1);
-                        if (propertyEnd >= 0)
-                        {
-                            propertyEnd++; // Include closing quote
-                        }
-                    }
-                    else
-                    {
-                        // Unquoted identifier
-                        while (propertyEnd < this.text.Length &&
-                               (char.IsLetterOrDigit(this.text[propertyEnd]) ||
-                                this.text[propertyEnd] == '_' ||
-                                this.text[propertyEnd] == '-'))
-                        {
-                            propertyEnd++;
-                        }
-                    }
-                }
-
-                if (propertyEnd > propertyStart && propertyEnd <= this.text.Length)
-                {
-                    // Use AppendUpTo to preserve the whitespace before the property
-                    this.AppendUpTo(propertyStart);
-                    var propertyText = this.text.Substring(propertyStart, propertyEnd - propertyStart);
-                    this.result.Append(Theme.FormatJsonProperty(propertyText));
-                    this.currentPosition = propertyEnd;
-                }
-
-                // Find and highlight the colon
-                var colonPos = this.text.IndexOf(':', this.currentPosition);
-                if (colonPos >= 0 && colonPos < jsonExpression.Start + jsonExpression.Length)
-                {
-                    this.AppendUpTo(colonPos);
-                    this.result.Append(Theme.FormatJsonBracket(":"));
-                    this.currentPosition = colonPos + 1;
-                }
-
-                // Visit the value expression
                 property.Value.Accept(this);
 
-                // Look for comma
-                var commaPos = this.text.IndexOf(',', this.currentPosition);
-                var closeBracePos = this.text.IndexOf('}', this.currentPosition);
-
-                // Only highlight comma if it comes before the closing brace
-                if (commaPos >= 0 && commaPos < jsonExpression.Start + jsonExpression.Length &&
-                    (closeBracePos < 0 || commaPos < closeBracePos))
+                if (property.CommaToken != null)
                 {
-                    this.AppendUpTo(commaPos);
-                    this.result.Append(Theme.FormatJsonBracket(","));
-                    this.currentPosition = commaPos + 1;
+                    this.AppendToken(property.CommaToken, Theme.FormatJsonBracket(","));
                 }
             }
 
             // Restore depth so the closing brace matches its opener color.
             this.bracketDepth = braceDepth;
 
-            // Find and highlight the closing brace
-            var endBracePos = this.text.LastIndexOf('}', jsonExpression.Start + jsonExpression.Length - 1);
-            if (endBracePos >= 0 && endBracePos >= this.currentPosition)
-            {
-                this.AppendUpTo(endBracePos);
-                this.result.Append(Theme.FormatBracket("}", braceDepth));
-                this.currentPosition = endBracePos + 1;
-            }
+            this.AppendToken(jsonExpression.RBraceToken, Theme.FormatBracket("}", braceDepth));
         }
 
         public void Visit(JsonArrayExpression jsonArrayExpression)
         {
-            // Find the opening bracket position in the text
-            var startPos = jsonArrayExpression.Start;
-            this.AppendUpTo(startPos);
-
             // Color the opening bracket using the current bracket depth, then increment
             // so nested braces/brackets/parens use the next color in the cycle.
             var bracketDepthForPair = this.bracketDepth;
 
-            // Find and highlight the opening bracket
-            var openBracketPos = this.text.IndexOf('[', this.currentPosition);
-            if (openBracketPos >= 0 && openBracketPos < jsonArrayExpression.Start + jsonArrayExpression.Length)
-            {
-                this.AppendUpTo(openBracketPos);
-                this.result.Append(Theme.FormatBracket("[", bracketDepthForPair));
-                this.currentPosition = openBracketPos + 1;
-            }
+            this.AppendToken(jsonArrayExpression.LBracketToken, Theme.FormatBracket("[", bracketDepthForPair));
 
             this.bracketDepth = bracketDepthForPair + 1;
 
-            // Process each element in the array
+            // Process each element in the array, highlighting the separating commas
+            // using the exact token positions captured by the parser.
+            var commaTokens = jsonArrayExpression.CommaTokens;
             for (int i = 0; i < jsonArrayExpression.Expressions.Count; i++)
             {
                 // Visit the element expression (AppendUpTo in the element's Accept will preserve whitespace)
                 jsonArrayExpression.Expressions[i].Accept(this);
 
-                // Look for comma after element (except for last element)
-                if (i < jsonArrayExpression.Expressions.Count - 1)
+                if (i < commaTokens.Count)
                 {
-                    // Find the comma position
-                    var commaPos = this.text.IndexOf(',', this.currentPosition);
-                    if (commaPos >= 0 && commaPos < jsonArrayExpression.Start + jsonArrayExpression.Length)
-                    {
-                        // AppendUpTo preserves whitespace between element and comma
-                        this.AppendUpTo(commaPos);
-                        this.result.Append(Theme.FormatJsonBracket(","));
-                        this.currentPosition = commaPos + 1;
-                    }
+                    this.AppendToken(commaTokens[i], Theme.FormatJsonBracket(","));
                 }
             }
 
             // Restore depth so the closing bracket matches its opener color.
             this.bracketDepth = bracketDepthForPair;
 
-            // Find and highlight the closing bracket
-            var closeBracketPos = this.text.IndexOf(']', this.currentPosition);
-            if (closeBracketPos >= 0 && closeBracketPos < jsonArrayExpression.Start + jsonArrayExpression.Length)
-            {
-                // AppendUpTo preserves any whitespace before the closing bracket
-                this.AppendUpTo(closeBracketPos);
-                this.result.Append(Theme.FormatBracket("]", bracketDepthForPair));
-                this.currentPosition = closeBracketPos + 1;
-            }
-
-            // Ensure we've moved past the entire expression
-            this.AppendUpTo(jsonArrayExpression.Start + jsonArrayExpression.Length);
+            this.AppendToken(jsonArrayExpression.RBracketToken, Theme.FormatBracket("]", bracketDepthForPair));
         }
 
         public void Visit(JSonPathExpression jSonPathExpression)
         {
-            this.AppendUpTo(jSonPathExpression.Start + jSonPathExpression.Length);
+            this.AppendUpTo(jSonPathExpression.Start);
+            var content = this.text.Substring(jSonPathExpression.Start, jSonPathExpression.Length);
+            this.result.Append(Theme.FormatJsonPath(content));
+            this.currentPosition = jSonPathExpression.Start + jSonPathExpression.Length;
         }
 
         public void Visit(FilterPathExpression filterPathExpression)
@@ -518,7 +417,10 @@ public partial class ShellInterpreter : IHighlighter
 
         public void Visit(VariableExpression variableExpression)
         {
-            this.AppendUpTo(variableExpression.Start + variableExpression.Length);
+            this.AppendUpTo(variableExpression.Start);
+            var content = this.text.Substring(variableExpression.Start, variableExpression.Length);
+            this.result.Append(Theme.FormatVariable(content));
+            this.currentPosition = variableExpression.Start + variableExpression.Length;
         }
 
         public void Visit(CommandExpression commandExpression)
