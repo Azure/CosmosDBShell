@@ -200,4 +200,85 @@ public class FilterCommandTests
 
         await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None));
     }
+
+    [Fact]
+    public async Task ExecuteAsync_SortBy_IsStableForEqualKeys()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                items = new[]
+                {
+                    new { id = "a", rank = 1 },
+                    new { id = "b", rank = 1 },
+                    new { id = "c", rank = 1 },
+                    new { id = "d", rank = 1 },
+                },
+            })),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = ".items | sort_by(.rank)",
+        };
+
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+
+        var json = Assert.IsType<ShellJson>(result.Result);
+        Assert.Equal(JsonValueKind.Array, json.Value.ValueKind);
+        Assert.Equal("a", json.Value[0].GetProperty("id").GetString());
+        Assert.Equal("b", json.Value[1].GetProperty("id").GetString());
+        Assert.Equal("c", json.Value[2].GetProperty("id").GetString());
+        Assert.Equal("d", json.Value[3].GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SortBy_OrdersByKey()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                items = new[]
+                {
+                    new { id = "a", rank = 3 },
+                    new { id = "b", rank = 1 },
+                    new { id = "c", rank = 2 },
+                },
+            })),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = ".items | sort_by(.rank)",
+        };
+
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+
+        var json = Assert.IsType<ShellJson>(result.Result);
+        Assert.Equal("b", json.Value[0].GetProperty("id").GetString());
+        Assert.Equal("c", json.Value[1].GetProperty("id").GetString());
+        Assert.Equal("a", json.Value[2].GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ThrowsOnTrailingTokens()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = "1" })),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = ".id )",
+        };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None));
+        Assert.Contains("Unexpected", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }

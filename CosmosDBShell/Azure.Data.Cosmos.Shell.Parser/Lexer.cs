@@ -446,7 +446,7 @@ internal class Lexer
 
             case '?':
                 this.Advance();
-                return new Token(TokenType.Question, "?", startPosition, 1);
+                return this.MakeToken(TokenType.Question, "?", startPosition, 1);
 
             case '\n':
             case '\r':

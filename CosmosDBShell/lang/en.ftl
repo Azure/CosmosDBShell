@@ -295,6 +295,7 @@ command-filter-description-expression = Filter expression to evaluate against th
 command-filter-error-no_expression = Filter expression is missing.
 command-filter-error-no_input = The filter command requires piped JSON input.
 command-filter-error-invalid_input = The filter command can only process JSON input.
+command-filter-error-trailing_tokens = Unexpected '{ $token }' after the filter expression. Check for stray characters or unbalanced quotes.
 command-ftab-description = Render piped JSON as a table
 command-ftab-description-fields = Comma-separated field names to include in the table (Optional)
 command-ftab-description-take = Limit the number of rendered rows (Optional)

@@ -45,6 +45,16 @@ internal class FilterCommand : CosmosCommand
             throw new CommandException("filter", lexer.Errors[0].Message);
         }
 
+        if (!parser.IsAtEnd)
+        {
+            var trailing = parser.Current?.Value ?? string.Empty;
+            throw new CommandException(
+                "filter",
+                MessageService.GetString(
+                    "command-filter-error-trailing_tokens",
+                    new Dictionary<string, object> { { "token", trailing } }));
+        }
+
         var result = await expression.EvaluateAsync(shell, commandState, token);
         if (result is ShellSequence sequence)
         {

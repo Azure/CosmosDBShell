@@ -196,8 +196,12 @@ internal class FilterCallExpression : Expression
             items.Add((item.Clone(), FilterExpressionUtilities.ToJsonElement(evaluated)));
         }
 
-        items.Sort(static (left, right) => FilterExpressionUtilities.Compare(left.Key, right.Key));
-        return new ShellJson(FilterExpressionUtilities.ToJsonArray(items.Select(static item => item.Item)));
+        // OrderBy performs a stable sort, which the filter v1 spec prefers so
+        // that items with equal keys retain their original input order.
+        var sorted = items
+            .OrderBy(static entry => entry.Key, Comparer<JsonElement>.Create(FilterExpressionUtilities.Compare))
+            .Select(static entry => entry.Item);
+        return new ShellJson(FilterExpressionUtilities.ToJsonArray(sorted));
     }
 
     private void RequireArgumentCount(int expected)
