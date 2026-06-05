@@ -100,6 +100,51 @@ cd MyContainer
 pwd                    # /MyDb/MyContainer
 ```
 
+## Appearance
+
+### theme
+
+Inspect, switch, load, validate, save, edit, open, and reload shell color themes.
+
+```text
+Usage: theme [action] [name] [path] [-force] [-strict] [-editor <ARG>]
+
+Arguments:
+    [action]    What to do: current (default), list, show, use (alias: set),
+                load, validate, save, edit, open, or reload
+    [name]      Theme name (for show/use/save/edit) or a TOML path
+                (for load/validate/edit)
+    [path]      Optional path for save, load, or validate
+
+Options:
+    -force, -f  Overwrite an existing file when saving, or seed the
+                built-in profile to a user file when editing
+    -strict     Treat warnings as errors during validate
+    -editor     External editor to launch for `theme edit`
+                (defaults to $VISUAL, $EDITOR, then a platform default)
+```
+
+Examples:
+
+```bash
+theme list
+theme show light
+theme use light
+theme load ./my-theme.toml
+theme validate ./my-theme.toml
+theme validate ~/.cosmosdbshell/themes
+theme validate my-theme --strict
+theme save my-theme --force
+theme edit my-theme
+theme edit dark --force --editor "code --wait"
+theme open
+theme reload
+```
+
+`theme edit` opens the named theme's TOML file in an external editor and reloads it when the editor exits. Built-in profiles have no editable file by default; pass `--force` to seed a copy under `~/.cosmosdbshell/themes` and edit that. `theme open` opens the user themes folder in your OS file browser.
+
+`theme validate` parses a TOML file and reports warnings without registering it or switching the active theme. When the argument is a directory it validates every `*.toml` file in that directory and prints a per-file summary. With no argument it scans the user themes directory (`~/.cosmosdbshell/themes`). The validator collects every issue in a single pass so that multiple typos can be fixed at once, and suggests the closest valid token when an unknown color or modifier is used. It also warns on bracket cycles that have only one color or contain duplicates. Pass `--strict` to fail when any warnings are present. Color values must be empty or one ANSI 16 color name. Style values may combine modifiers with at most one ANSI 16 color.
+
 ## Data Operations
 
 ### query
@@ -320,6 +365,39 @@ Examples:
 
 By default, the first failure stops the import. With `--continue-on-error` the command keeps going after per-item *write* failures (for example a Cosmos write that throws) and the final summary reports how many items succeeded and how many failed. Parse and validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) still abort the import immediately. The command exits with an error status if any items failed.
 
+### watch
+
+Tail the change feed of a container, printing new and modified items as they arrive. Also available as `tail`.
+
+```text
+Usage: watch [-from-beginning] [-partition-key <ARG>] [-max <ARG>] [-interval <ARG>] [-format <ARG>] [-database <ARG>] [-container <ARG>]
+
+Options:
+    -from-beginning, -b
+               Replay the change feed from the beginning of the container instead of from now
+    -partition-key, -pk
+               Scope the change feed to a single partition key (Optional)
+    -max, -m   Stop after this many changes (Optional)
+    -interval, -i
+               Seconds between change feed polls; defaults to 1 (Optional)
+    -format, -f
+               Output format for the printed items (Optional)
+    -database, -db
+               Override database name (Optional)
+    -container, -con
+               Override container name (Optional)
+```
+
+By default `watch` starts from now and follows the container, printing each change as highlighted JSON until you press Ctrl+C. Use `--from-beginning` to replay existing items first, `--partition-key` to scope the feed to one partition, and `--max` to stop automatically after a number of changes. Use `--interval` to change how long the shell waits between polls once it has caught up (default 1 second; values below 0.1 are clamped to avoid hammering the container). The change feed surfaces creates and updates (not deletes). This command is interactive and streaming, so it is not exposed over MCP.
+
+```bash
+watch
+watch --from-beginning
+watch --partition-key=myKey --max=100
+watch --interval=5
+watch --database=MyDB --container=Products
+```
+
 ## Scripting
 
 ### exec
@@ -496,6 +574,117 @@ Usage: jq [args]
 Arguments:
     [args]      Arguments to pass to jq (Optional)
 ```
+
+### filter
+
+Native JSON filter and transformation command. Uses the built-in filter
+expression language, a small jq-inspired subset designed for shell-safe JSON
+shaping. The full grammar and semantics are documented in
+[filter-v1-spec.md](./filter-v1-spec.md).
+
+```text
+Usage: filter expression
+
+Arguments:
+    expression  Filter expression to evaluate against piped JSON input
+```
+
+Notes:
+
+- `filter` requires piped JSON input.
+- Results stay structured JSON in the shell pipeline, so `filter` composes
+  cleanly with later commands (for example `filter ... | ftab`).
+- `filter` is not a full jq implementation. If you need jq features that v1
+  does not implement (regex, `reduce`, `def`, `|=`, multi-result `,`, etc.),
+  use the external `jq` command when it is installed.
+
+#### Quick reference
+
+| Construct | Meaning |
+|---|---|
+| `.` | The current input |
+| `.name` / `."Volcano Name"` / `.["Volcano Name"]` | Property access |
+| `.name?` | Optional property access — returns `null` instead of erroring on a wrong type |
+| `.[0]` | Array index access |
+| `.[]` | Array iteration (materialized to a JSON array at the top level) |
+| `.foo[0]?`, `.[]?` | Optional index / iteration |
+| `a | b` | Pipe — evaluate `b` against the result of `a` |
+| `==` `!=` `<` `<=` `>` `>=` | Comparison operators producing booleans |
+| `+` `-` `*` `/` `%` `**` | Arithmetic on numbers (`**` is power, right-associative); unary `-`/`+` also work |
+| `&&` `\|\|` `^` `!` | Logical and / or / xor / not (`&&` and `\|\|` short-circuit) |
+| `[expr, ...]` | Array constructor; each expression sees the current input |
+| `{id, status}` | Object shorthand — equivalent to `{id: .id, status: .status}` |
+| `{id: .id, "item-id": .id}` | Explicit object construction with identifier or string keys |
+| `length` | Length of array, object, string, or `null` (number and boolean raise a runtime error) |
+| `keys` | Sorted array of an object's property names |
+| `type` | One of `"null"`, `"boolean"`, `"number"`, `"string"`, `"array"`, `"object"` |
+| `contains(expr)` | Substring / element / object-subset / equality test |
+| `map(expr)` | Apply `expr` to each element of an input array |
+| `select(expr)` | Keep array elements where `expr` evaluates to `true` |
+| `sort_by(expr)` | Sort an input array by the key produced by `expr` (cross-type keys order by `null` < `false` < `true` < number < string < array < object) |
+
+#### Examples
+
+Project a single field from a query result:
+
+```text
+query "SELECT * FROM c" | filter '.items[0]'
+```
+
+Count items returned by a command:
+
+```text
+ls | filter '.items | length'
+```
+
+Shape each item into a smaller object:
+
+```text
+query "SELECT * FROM c" | filter '.items | map({id, status})'
+```
+
+Project items with quoted property names:
+
+```text
+ls | filter '.items | map({"Volcano Name": .["Volcano Name"], Country})'
+```
+
+Filter items by a predicate:
+
+```text
+query "SELECT * FROM c" | filter '.items | select(.status == "active")'
+```
+
+Sort and project:
+
+```text
+query "SELECT * FROM c" | filter '.items | sort_by(.id) | map(.id)'
+```
+
+Collect iterated values into a flat array:
+
+```text
+query "SELECT * FROM c" | filter '[.items[] | .id]'
+```
+
+Combine with `ftab` to render the projected JSON as a table:
+
+```text
+query "SELECT * FROM c" | filter '.items | map({id, status})' | ftab
+```
+
+#### Quoting
+
+The expression is parsed by `filter`, not by the shell, but the shell still
+tokenizes the argument first. Wrap the expression in single quotes so the
+shell does not interpret characters such as `|`, `$`, or `"` inside it:
+
+```text
+filter '.items | select(.status == "active")'
+```
+
+If you need a literal single quote inside the expression, prefer double quotes
+on the outside or escape per your platform's shell rules.
 
 ### ftab
 

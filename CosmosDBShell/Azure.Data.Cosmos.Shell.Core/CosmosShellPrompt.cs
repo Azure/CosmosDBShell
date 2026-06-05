@@ -13,10 +13,10 @@ using Spectre.Console;
 internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IStateVisitor<string, object?>
 {
     internal const string PromptText = "CS ";
-    private static readonly (Markup Markup, int Margin) ContinuationPrompt = (new Markup("[grey]...[/]"), 1);
     private readonly ShellInterpreter shell = shell ?? throw new ArgumentNullException(nameof(shell));
     private Markup prompt = new(string.Empty);
     private State? oldState;
+    private ThemeOptions? oldTheme;
 
     internal bool InContinuation { get; set; }
 
@@ -31,12 +31,13 @@ internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IS
         // row 0 still gets the continuation marker).
         if (line > 0 || this.InContinuation)
         {
-            return ContinuationPrompt;
+            return (new Markup(Theme.FormatMuted("...")), 1);
         }
 
-        if (this.oldState != this.shell.State)
+        if (this.oldState != this.shell.State || !ReferenceEquals(this.oldTheme, Theme.Current))
         {
             this.oldState = this.shell.State;
+            this.oldTheme = Theme.Current;
             this.prompt = new Markup(this.GetPromptString());
         }
 
@@ -46,6 +47,7 @@ internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IS
     public string GetPromptString()
     {
         this.oldState ??= this.shell.State;
+        this.oldTheme ??= Theme.Current;
 #pragma warning disable VSTHRD002 // Synchronously waiting - required by ILineEditorPrompt interface
         return this.oldState.AcceptAsync(this, null, default).Result ?? string.Empty;
 #pragma warning restore VSTHRD002

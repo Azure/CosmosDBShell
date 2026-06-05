@@ -129,7 +129,7 @@ command-query-description-format = Output format (json, table, csv)
 command-query-description-database = The database to query against
 command-query-description-container = The container to query against
 command-query-fetched = Fetched { $count } documents.
-command-query-request_charge = Request Charge: [white]{ $charge } RUs[/]
+command-query-request_charge = Request Charge: { $charge } RUs
 command-query-document_header = Document
 command-query-count_header = Count
 command-query-size_header = Size
@@ -336,8 +336,39 @@ command-results-limit_reached =
        *[other] Results limited to { $count } items. Use --max to change the limit or --max 0 for no limit.
     }
 
+command-watch-description = Tail the change feed of a container, streaming new and modified items as they arrive.
+command-watch-description-from-beginning = Start from the beginning of the change feed instead of from now.
+command-watch-description-partition-key = Scope the change feed to a single partition key value.
+command-watch-description-max = Stop after receiving this many changes. Omit, or use 0 or a negative value, to follow until Ctrl+C.
+command-watch-description-interval = Seconds to wait between change feed polls once caught up. Defaults to 1; values below 0.1 are clamped.
+command-watch-description-format = { command-query-description-format }
+command-watch-description-database = The database containing the container to watch.
+command-watch-description-container = The container to watch.
+command-watch-started = Watching changes in { $container }. Press Ctrl+C to stop.
+command-watch-stopped = Stopped watching after { $count } changes.
+command-watch-error-request_failed = Change feed request failed with status code { $statusCode } ({ $status }).
+command-watch-error-invalid_interval = Interval value '{ $interval }' is invalid. Specify a finite number of seconds.
+
 command-jq-description = Commandline JSON processor
 command-jq-description-args = Arguments for the jq command
+command-filter-description = Filter and transform piped JSON with the native filter expression language
+command-filter-description-expression = Filter expression to evaluate against the piped JSON input
+command-filter-error-no_expression = Filter expression is missing.
+command-filter-error-no_input = The filter command requires piped JSON input.
+command-filter-error-invalid_input = The filter command can only process JSON input.
+command-filter-error-trailing_tokens = Unexpected '{ $token }' after the filter expression. Check for stray characters or unbalanced quotes.
+command-filter-error-not_json = The filter requires JSON input to evaluate '{ $context }'.
+command-filter-error-argument_count = The '{ $name }' filter expects { $expected } argument(s).
+command-filter-error-unknown_builtin = Unknown filter builtin '{ $name }'.
+command-filter-error-length_type = length supports arrays, objects, strings, and null, not { $type }.
+command-filter-error-keys_type = keys requires an object input, not { $type }.
+command-filter-error-map_type = map requires an array input, not { $type }.
+command-filter-error-select_type = select requires an array input, not { $type }.
+command-filter-error-sort_by_type = sort_by requires an array input, not { $type }.
+command-filter-error-property_type = Cannot read property '{ $name }' from { $type }.
+command-filter-error-index_type = Cannot index { $type } with [{ $index }].
+command-filter-error-iterate_type = Cannot iterate over { $type }.
+command-filter-error-evaluation = Failed to evaluate the filter expression: { $message }
 command-ftab-description = Render piped JSON as a table
 command-ftab-description-fields = Comma-separated field names to include in the table (Optional)
 command-ftab-description-take = Limit the number of rendered rows (Optional)
@@ -560,7 +591,69 @@ help-EnableMcpServer = Enable MCP server for programmatic control of the shell
 help-EnableLspServer = Enable Language Server Protocol (LSP) server for editor integration
 help-McpPort = Enable MCP HTTP server. Optionally specify a port with --mcp <port>; default is 6128.
 help-Verbose = Print full exception details instead of only the message.
+help-Theme = Color theme profile to apply at startup. Falls back to the COSMOSDB_SHELL_THEME environment variable.
 mcp-error-invalid-port = Error: --mcp port must be greater than 0.
+
+warning-unknown-theme = Unknown theme '{ $name }'. Available themes: { $themes }. Falling back to default.
+
+command-theme-description = Inspects and switches the active color theme.
+command-theme-description-action = What to do: 'list', 'show', 'use', 'load', 'validate', 'save', 'edit', 'open', or 'reload' (default lists the active theme).
+command-theme-description-name = Theme name (for show/use/save/edit) or path to a TOML file (for load/validate/edit).
+command-theme-description-path = Optional path. For 'save' the file path to write (default: ~/.cosmosdbshell/themes/<name>.toml). For 'load' and 'validate' the TOML file to read.
+command-theme-description-force = Overwrite an existing file when saving, or seed the built-in profile when editing.
+command-theme-description-strict = Treat warnings as errors when validating.
+command-theme-description-editor = External editor to launch (defaults to $VISUAL, $EDITOR, then a platform default).
+command-theme-active = Active theme: { $name }
+command-theme-applied = Switched to theme: { $name }
+command-theme-sample-heading = Sample of theme '{ $name }':
+command-theme-unknown = Unknown theme '{ $name }'. Available themes: { $themes }
+command-theme-unknown-action = Unknown 'theme' action '{ $action }'. Available actions: { $actions }
+command-theme-use-missing-name = 'theme use' requires a theme name. Run 'theme list' to see available themes.
+command-theme-source-builtin = (built-in)
+command-theme-source-file = ({ $path })
+command-theme-loaded = Loaded theme '{ $name }' from { $path }
+command-theme-load-missing-path = 'theme load' requires a path to a TOML file.
+command-theme-load-not-found = Theme file not found: { $path }
+command-theme-validated = Theme file is valid: '{ $name }' from { $path }
+command-theme-validate-missing-path = 'theme validate' requires a path to a TOML file.
+command-theme-validate-summary = { $valid } of { $total } theme file(s) valid in { $directory }.
+command-theme-validate-no-files = No theme files found in { $directory }.
+command-theme-validate-strict-failed = Theme '{ $name }' has { $count } warning(s); strict mode treats them as errors.
+command-theme-saved = Saved theme '{ $name }' to { $path }
+command-theme-save-missing-name = 'theme save' requires a theme name.
+command-theme-save-invalid-name = Invalid theme name '{ $name }'. When --path is omitted, the name must be a simple filename without path separators or invalid characters.
+command-theme-save-exists = File already exists: { $path }. Pass --force to overwrite.
+command-theme-save-failed = Failed to save theme to { $path }: { $message }
+command-theme-save-hint-reload = Run 'theme reload' to register the new file (or 'theme load { $name }' to register and switch to it).
+command-theme-reloaded = Reloaded { $count } theme(s) from { $directory }
+command-theme-edit-missing-name = 'theme edit' requires a theme name or path. Run 'theme list' to see available themes.
+command-theme-edit-builtin-needs-force = '{ $name }' is a built-in theme and has no editable file. Pass --force to copy it to { $path } and edit the copy.
+command-theme-edit-seeded = Seeded built-in theme '{ $name }' to { $path }
+command-theme-edit-launching = Editing { $path } with { $editor }
+command-theme-edit-no-editor = No editor found. Set $VISUAL or $EDITOR, or pass --editor=<command>.
+command-theme-edit-launch-failed = Failed to launch editor '{ $editor }' for { $path }: { $message }
+command-theme-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }; theme was not reloaded.
+command-theme-edit-reload-failed = Theme file '{ $path }' could not be reloaded: { $message }
+command-theme-edit-applied = Reloaded and applied theme '{ $name }' from { $path }
+command-theme-opened = Opened { $path } in OS file browser.
+command-theme-open-failed = Failed to open { $path } in OS file browser: { $message }
+
+theme-file-error-parse = Failed to parse theme file '{ $source }': { $details }
+theme-file-error-extends-unknown = Theme file '{ $source }' extends unknown theme '{ $name }'.
+theme-file-error-extends-self = Theme file '{ $source }' extends itself ('{ $name }').
+theme-file-error-extends-cycle = Theme '{ $name }' (from '{ $source }') is part of an extends cycle.
+theme-file-error-extends-too-deep = Theme '{ $name }' (from '{ $source }') has an extends chain that is too deep.
+theme-file-error-empty-bracket-cycle = Theme file '{ $source }' has an empty bracket_cycle. At least one color is required.
+theme-file-error-invalid-color = Theme file '{ $source }' has invalid value for '{ $key }': '{ $value }'. Allowed colors: { $allowed }
+theme-file-error-invalid-color-suggested = Theme file '{ $source }' has invalid value for '{ $key }': '{ $value }'. Allowed colors: { $allowed }. Did you mean '{ $suggestion }'?
+theme-file-error-invalid-style = Theme file '{ $source }' has invalid style for '{ $key }': '{ $value }'. Styles may contain modifiers ({ $modifiers }) and at most one color ({ $colors }).
+theme-file-error-invalid-style-suggested = Theme file '{ $source }' has invalid style for '{ $key }': '{ $value }'. Styles may contain modifiers ({ $modifiers }) and at most one color ({ $colors }). Did you mean '{ $suggestion }'?
+theme-file-warning-bracket-cycle-not-array = Theme file '{ $source }' specifies bracket_cycle but it is not an array; ignoring.
+theme-file-warning-bracket-cycle-single = Theme file '{ $source }' has only one bracket_cycle color; nested brackets will not vary by depth.
+theme-file-warning-bracket-cycle-duplicates = Theme file '{ $source }' has duplicate bracket_cycle colors; consecutive depths will share a color.
+theme-file-warning-unknown-key = Theme file '{ $source }' has unknown key in [{ $section }]: '{ $key }' (ignored).
+theme-registry-warning-shadow-builtin = Theme '{ $name }' shadows the built-in profile.
+theme-registry-warning-load-failed = Failed to load theme file '{ $path }': { $message }
 
 json_error_property_not_found = Property '{ $property }' not found.
 json_error_no_array = JSON data is not an array.
@@ -577,7 +670,10 @@ json_error_unclosed_array_bracket = Unclosed array bracket.
 json_error_result_evaluation_null = Result evaluation returned null.
 
 expression_error_no_more_tokens = No more tokens
+expression_error_expected_open_paren = Expected '('
 expression_error_expected_close_paren = Expected ')' after expression
+expression_error_expected_close_bracket = Expected ']'
+expression_error_expected_array_index = Expected array index
 expression_error_invalid_number = Invalid number format: {$value}
 expression_error_unexpected_end = Unexpected end of expression
 expression_error_unexpected_token = Unexpected token: {$type} '{$value}'
@@ -667,8 +763,8 @@ expression_error_null_xor = Operand evaluation returned null for XOR operation
 expression_error_unsupported_operator = Binary operator { $operator } is not supported
 
 # MCP Server messages
-mcp-error-creating-server = Error creating MCP server: [red]{ $message }[/]
-mcp-error-server-failed-start = MCP server failed to start: [red]{ $message }[/]
+mcp-error-creating-server = Error creating MCP server: { $message }
+mcp-error-server-failed-start = MCP server failed to start: { $message }
 
 
 # Statements
@@ -676,9 +772,7 @@ help-statements = Statements
 help-example = Example
 help-syntax = Syntax
 help-available-commands = Available Commands
-help-available-commands-styled = [bold white]Available Commands[/]
-help-control-flow-statements = Control Flow Statements:
-help-control-flow-statements-styled = [bold white]Control Flow Statements[/]
+help-control-flow-statements = Control Flow Statements
 help-list-of-available-commands = List of available commands
 help-category-connection = Connection
 help-category-connection-styled = Connection

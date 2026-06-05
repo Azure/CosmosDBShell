@@ -78,7 +78,7 @@ internal class SettingsCommand : CosmosCommand
         var mcpTable = new Dictionary<string, object?>();
 
         // Scale section - fail gracefully if it cannot be read
-        AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-scale-heading")}[/]");
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-scale-heading")));
 
         AnsiConsole.Markup("\t");
         switch (view.Throughput)
@@ -99,7 +99,7 @@ internal class SettingsCommand : CosmosCommand
 
                 break;
             case ThroughputAvailability.NotConfigured:
-                AnsiConsole.MarkupLine($"[grey]{MessageService.GetString("command-settings-na")}[/]");
+                AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
                 break;
             default:
                 if (TryGetPrincipalIdFromRbacMessage(view.ThroughputErrorMessage, out var rbacId, out var rbacRequest, out var rbacPermission))
@@ -108,7 +108,7 @@ internal class SettingsCommand : CosmosCommand
                 }
                 else
                 {
-                    AnsiConsole.MarkupLine($"[red]{Markup.Escape(view.ThroughputErrorMessage ?? string.Empty)}[/]");
+                    AnsiConsole.MarkupLine(Theme.FormatError(view.ThroughputErrorMessage ?? string.Empty));
                 }
 
                 break;
@@ -120,7 +120,7 @@ internal class SettingsCommand : CosmosCommand
         mcpTable["partitionKey"] = view.PartitionKeyPaths;
         mcpTable["analyticalTTL"] = view.AnalyticalStorageTtl;
 
-        AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-title")}[/]");
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-title")));
 
         var table = new Table();
         table.AddColumns(string.Empty, string.Empty);
@@ -143,26 +143,26 @@ internal class SettingsCommand : CosmosCommand
                   view.AnalyticalStorageTtl);
         }
 
-        table.AddRow(MessageService.GetString("command-settings-ttl-label"), $"[white]{ttl}[/]");
+        table.AddRow(MessageService.GetString("command-settings-ttl-label"), Theme.FormatTableValue(ttl));
 
         if (view.GeospatialType is { } geospatialType)
         {
             string geospatialLabel = string.Equals(geospatialType, "Geography", StringComparison.OrdinalIgnoreCase)
                 ? MessageService.GetString("command-settings-geospatial-geography")
                 : MessageService.GetString("command-settings-geospatial-geometry");
-            table.AddRow(MessageService.GetString("command-settings-geospatial-label"), $"[white]{geospatialLabel}[/]");
+            table.AddRow(MessageService.GetString("command-settings-geospatial-label"), Theme.FormatTableValue(geospatialLabel));
             mcpTable["geospatialType"] = geospatialType;
         }
 
-        table.AddRow(MessageService.GetString("command-settings-partition-key-label"), $"[white]{string.Join(',', view.PartitionKeyPaths)}[/]");
+        table.AddRow(MessageService.GetString("command-settings-partition-key-label"), Theme.FormatTableValue(string.Join(',', view.PartitionKeyPaths)));
         table.HideHeaders();
         AnsiConsole.Write(table);
 
-        // Full Text Policy section - only emitted when known
+        // Full Text Policy section - show N/A when policy is unset
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-fulltext-title")));
+
         if (view.FullTextPolicy is { } fullText)
         {
-            AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-fulltext-title")}[/]");
-
             var fullTextTable = new Table();
             fullTextTable.AddColumns(string.Empty, string.Empty);
 
@@ -171,13 +171,13 @@ internal class SettingsCommand : CosmosCommand
                 : fullText.DefaultLanguage;
             fullTextTable.AddRow(
                 MessageService.GetString("command-settings-fulltext-default-language-label"),
-                $"[white]{defaultLanguage}[/]");
+                Theme.FormatTableValue(defaultLanguage));
 
             var mcpPaths = new List<Dictionary<string, object?>>();
             foreach (var path in fullText.Paths)
             {
-                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), $"[white]{path.Path}[/]");
-                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-language-label"), $"[white]{path.Language}[/]");
+                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), Theme.FormatTableValue(path.Path));
+                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-language-label"), Theme.FormatTableValue(path.Language ?? string.Empty));
                 mcpPaths.Add(new Dictionary<string, object?>
                 {
                     { "path", path.Path },
@@ -188,6 +188,11 @@ internal class SettingsCommand : CosmosCommand
             mcpTable["fullTextPolicy"] = mcpPaths;
             fullTextTable.HideHeaders();
             AnsiConsole.Write(fullTextTable);
+        }
+        else
+        {
+            AnsiConsole.Markup("\t");
+            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
@@ -222,7 +227,7 @@ internal class SettingsCommand : CosmosCommand
 
     private static void AskForRBacPermissions(string principalId, string request, string permission)
     {
-        AnsiConsole.Markup($"[red]{MessageService.GetString("error")}[/] ");
+        AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
         ShellInterpreter.WriteLine(MessageService.GetArgsString("command-settings-rbac-error", "id", principalId, "request", request, "permission", permission));
     }
 
@@ -230,12 +235,12 @@ internal class SettingsCommand : CosmosCommand
     {
         var acc = await client.ReadAccountAsync();
 
-        AnsiConsole.MarkupLine($"[bold]{MessageService.GetString("command-settings-overview")}[/]");
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-overview")));
 
         var table = new Table();
         table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
-        table.AddRow(MessageService.GetString("command-settings-account_id"), $"[white]{acc.Id}[/]", MessageService.GetString("command-settings-read_locations"), $"[white]{string.Join(", ", acc.ReadableRegions.Select(location => location.Name))}[/]");
-        table.AddRow(MessageService.GetString("command-settings-uri"), $"[white]{client.Endpoint}[/]", MessageService.GetString("command-settings-write_locations"), $"[white]{string.Join(", ", acc.WritableRegions.Select(location => location.Name))}[/]");
+        table.AddRow(MessageService.GetString("command-settings-account_id"), Theme.FormatTableValue(acc.Id), MessageService.GetString("command-settings-read_locations"), Theme.FormatTableValue(string.Join(", ", acc.ReadableRegions.Select(location => location.Name))));
+        table.AddRow(MessageService.GetString("command-settings-uri"), Theme.FormatTableValue(client.Endpoint.ToString()), MessageService.GetString("command-settings-write_locations"), Theme.FormatTableValue(string.Join(", ", acc.WritableRegions.Select(location => location.Name))));
         table.HideHeaders();
         AnsiConsole.Write(table);
 
