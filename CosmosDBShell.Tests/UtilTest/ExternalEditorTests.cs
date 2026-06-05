@@ -85,6 +85,29 @@ public class ExternalEditorTests
     }
 
     [Fact]
+    public void Resolve_WhitespaceVisual_FallsBackToEditor()
+    {
+        var visual = Environment.GetEnvironmentVariable("VISUAL");
+        var editor = Environment.GetEnvironmentVariable("EDITOR");
+        try
+        {
+            // A whitespace-only VISUAL must be treated as unset so EDITOR is honored.
+            Environment.SetEnvironmentVariable("VISUAL", "   ");
+            Environment.SetEnvironmentVariable("EDITOR", "vim");
+
+            var invocation = ExternalEditor.Resolve(null);
+
+            Assert.NotNull(invocation);
+            Assert.Equal("vim", invocation!.FileName);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("VISUAL", visual);
+            Environment.SetEnvironmentVariable("EDITOR", editor);
+        }
+    }
+
+    [Fact]
     public void BuildArguments_QuotesPathWithSpaces()
     {
         var invocation = ExternalEditor.EditorInvocation.Parse("code --wait");

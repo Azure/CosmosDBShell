@@ -20,9 +20,17 @@ internal static class ExternalEditor
     /// <returns>The resolved editor invocation, or <c>null</c> when none could be determined.</returns>
     public static EditorInvocation? Resolve(string? explicitEditor)
     {
-        var candidate = !string.IsNullOrWhiteSpace(explicitEditor)
-            ? explicitEditor
-            : (Environment.GetEnvironmentVariable("VISUAL") ?? Environment.GetEnvironmentVariable("EDITOR"));
+        var candidate = explicitEditor;
+
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            candidate = Environment.GetEnvironmentVariable("VISUAL");
+        }
+
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            candidate = Environment.GetEnvironmentVariable("EDITOR");
+        }
 
         if (string.IsNullOrWhiteSpace(candidate))
         {
