@@ -42,4 +42,25 @@ public class CommandNotFoundExceptionTests
 
         Assert.Null(ex.Hint);
     }
+
+    [Fact]
+    public void Message_DoesNotPreEscapeMarkupCharacters()
+    {
+        // The command name is stored verbatim; display paths escape it once for
+        // Spectre markup. Pre-escaping here caused double-escaped brackets.
+        var ex = new CommandNotFoundException("foo[bar]");
+
+        Assert.Contains("foo[bar]", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("[[", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Hint_DoesNotPreEscapeMarkupCharacters()
+    {
+        var ex = new CommandNotFoundException("foo[bar]", suggestion: "foo[baz]");
+
+        Assert.NotNull(ex.Hint);
+        Assert.Contains("foo[baz]", ex.Hint!, StringComparison.Ordinal);
+        Assert.DoesNotContain("[[", ex.Hint!, StringComparison.Ordinal);
+    }
 }

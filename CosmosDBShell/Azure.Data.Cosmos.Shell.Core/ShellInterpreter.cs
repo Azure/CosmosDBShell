@@ -1754,7 +1754,11 @@ public partial class ShellInterpreter : IDisposable
                 AnsiConsole.MarkupLine(Markup.Escape(e.Hint));
             }
         }
-        else if (LooksLikeConnectionStringLine(rawLineText))
+
+        // Emitted in addition to any "Did you mean" hint: a connection-string
+        // fragment can still match a known command, and the quoting guidance is
+        // the real fix the user needs.
+        if (LooksLikeConnectionStringLine(rawLineText))
         {
             // An unquoted connection string is split on ';' into fragments that
             // surface as unknown commands. Point the user at the real fix.

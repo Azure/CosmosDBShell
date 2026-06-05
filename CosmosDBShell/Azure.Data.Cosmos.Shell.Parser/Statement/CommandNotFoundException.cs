@@ -6,7 +6,6 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Util;
-using Spectre.Console;
 
 [Serializable]
 internal class CommandNotFoundException : Exception, IShellExceptionWithHint
@@ -51,9 +50,11 @@ internal class CommandNotFoundException : Exception, IShellExceptionWithHint
 
     private static string BuildMessage(string commandName)
     {
+        // The command name is stored unescaped; each display path escapes it
+        // for Spectre markup at render time (mirroring UnknownOptionException).
         return MessageService.GetString(
             "error-command-not-found",
-            new Dictionary<string, object> { { "command", Markup.Escape(commandName) } });
+            new Dictionary<string, object> { { "command", commandName } });
     }
 
     private static string? BuildHint(string? suggestion)
@@ -65,7 +66,7 @@ internal class CommandNotFoundException : Exception, IShellExceptionWithHint
 
         var hint = MessageService.GetString(
             "error-command-not-found-suggestion",
-            new Dictionary<string, object> { { "suggestion", Markup.Escape(suggestion) } });
+            new Dictionary<string, object> { { "suggestion", suggestion } });
 
         return string.IsNullOrEmpty(hint) ? null : hint;
     }

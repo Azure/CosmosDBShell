@@ -126,7 +126,7 @@ internal static class SourceCaretRenderer
         }
 
         const string ellipsis = LeftEllipsis; // U+2026 HORIZONTAL ELLIPSIS + space
-        const int ellipsisWidth = 2;
+        var ellipsisWidth = ellipsis.Length;
 
         // Pick a content window of up to maxDisplayWidth chars centred so the
         // caret sits ~leftContextWidth from the left edge, then slide the
