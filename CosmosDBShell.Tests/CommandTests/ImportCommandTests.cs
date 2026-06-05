@@ -354,6 +354,17 @@ public class ImportCommandTests
     }
 
     [Fact]
+    public void BuildCsvObject_NestedPartitionKey_ConflictingScalarColumn_Throws()
+    {
+        var ex = Assert.Throws<CommandException>(() => ImportCommand.BuildCsvObject(
+            new[] { "id", "address", "city" },
+            new[] { "1", "123 Main St", "Seattle" },
+            new[] { "address", "city" }));
+
+        Assert.Contains("address", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BuildCsvObject_MissingValues_FillWithEmptyString()
     {
         var element = ImportCommand.BuildCsvObject(

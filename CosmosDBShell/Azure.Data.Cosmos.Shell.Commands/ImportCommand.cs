@@ -343,6 +343,21 @@ internal class ImportCommand : CosmosCommand
                     {
                         current = existing;
                     }
+                    else if (current.ContainsKey(seg))
+                    {
+                        // An intermediate segment already holds a scalar (or
+                        // array) value from another CSV column. Nesting under it
+                        // would silently discard that value, so fail loudly
+                        // instead of corrupting the imported data.
+                        throw new CommandException(
+                            "import",
+                            MessageService.GetArgsString(
+                                "command-import-error-csv_pk_conflict",
+                                "column",
+                                seg,
+                                "path",
+                                "/" + string.Join("/", partitionKeySegments)));
+                    }
                     else
                     {
                         var next = new JsonObject();
@@ -431,9 +446,7 @@ internal class ImportCommand : CosmosCommand
             ShellInterpreter.WriteLine(MessageService.GetArgsString(
                 "command-import-dry-run-success",
                 "count",
-                successCount,
-                "failed",
-                failCount));
+                successCount));
         }
         else if (failCount == 0)
         {

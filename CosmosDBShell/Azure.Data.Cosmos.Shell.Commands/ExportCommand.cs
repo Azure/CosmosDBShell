@@ -33,7 +33,7 @@ internal enum ExportFormat
     ReadOnly = false,
     Idempotent = false,
     OpenWorld = true,
-    Description = "Streams items from a Cosmos container into a local JSON Lines or JSON array file.")]
+    Description = "Streams items from a Cosmos container into a local JSON Lines, JSON array, or CSV file.")]
 internal class ExportCommand : CosmosCommand
 {
     private const string DefaultQuery = "SELECT * FROM c";

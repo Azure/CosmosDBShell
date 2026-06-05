@@ -289,7 +289,7 @@ The summary line reports the number of items written and the total RU charge.
 
 ### import
 
-Bulk-load items from a JSON Lines, JSON array, or CSV file into a container. Format is auto-detected: a `.csv` extension selects CSV, otherwise the first non-whitespace character is inspected (`[` ⇒ array, otherwise JSON Lines). It can be forced with `--format`. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist. For CSV, the header row defines property names and every value is imported as a string; the CSV separator follows `COSMOSDB_SHELL_CSVSEP` (default `;`).
+Bulk-load items from a JSON Lines, JSON array, or CSV file into a container. Format is auto-detected: a `.csv` extension selects CSV, otherwise the first non-whitespace character is inspected (`[` ⇒ array, otherwise JSON Lines). It can be forced with `--format`. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist. For CSV, the header row defines property names and every value is imported as a string; the CSV separator follows `COSMOSDB_SHELL_CSVSEP` (default `;`). JSON Lines and JSON array inputs are streamed item-by-item, but CSV import reads and parses the entire file into memory before importing, so very large CSV files can cause a significant memory spike.
 
 ```text
 Usage: import <file> [options]
@@ -314,7 +314,7 @@ Examples:
 - `import items.jsonl` inserts every item from a JSON Lines file.
 - `import items.json --format=array` reads a JSON array file.
 - `import items.csv` imports a CSV file, mapping each header column to a string property.
-- `import items.csv --partition-key=/address/city` nests the `city` column under `address` for a nested partition key.
+- `import items.csv --partition-key=/address/city` nests the `city` column under `address` for a nested partition key. If a scalar column already occupies an intermediate path segment (for example an `address` column), the import fails with a conflict error rather than silently overwriting it.
 - `import items.jsonl --mode=upsert --continue-on-error` upserts items and keeps going on per-item failures.
 - `import items.jsonl --dry-run` validates the file without writing anything; useful before a real run.
 

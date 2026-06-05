@@ -240,7 +240,7 @@ command-patch-error-failed = Failed to patch item: { $status } - { $message }
 command-patch-error-not_found = Item '{ $id }' not found.
 command-patch-error-etag_mismatch = Item '{ $id }' was modified since it was last read (ETag mismatch).
 
-command-export-description = Exports items from a container to a JSON Lines or JSON array file.
+command-export-description = Exports items from a container to a JSON Lines, JSON array, or CSV file.
 command-export-description-file = Destination file path.
 command-export-description-database = The database to read from.
 command-export-description-container = The container to read from.
@@ -256,7 +256,7 @@ command-export-error-missing_file = A destination file path is required.
 command-export-error-file_exists = File '{ $file }' already exists. Use --force to overwrite.
 command-export-error-query_failed = Export query failed: { $status } - { $message }
 
-command-import-description = Imports items into a container from a JSON Lines or JSON array file.
+command-import-description = Imports items into a container from a JSON Lines, JSON array, or CSV file.
 command-import-description-file = Source file path.
 command-import-description-database = The database to write to.
 command-import-description-container = The container to write to.
@@ -277,7 +277,7 @@ command-import-all-failed = Failed to import all { $count } items
 command-import-dry-run-success = Dry run: { $count } valid { $count ->
     [one] item
     *[other] items
-}, { $failed } invalid
+}
 command-import-error-missing_file = A source file path is required.
 command-import-error-file_not_found = File '{ $file }' was not found.
 command-import-error-blank_line = Line { $line } is blank.
@@ -286,6 +286,7 @@ command-import-error-invalid_line_json = Line { $line } is not valid JSON: { $me
 command-import-error-item_status = Line { $line }: item returned status { $status }.
 command-import-error-item_failed = Line { $line }: { $status } - { $message }
 command-import-error-some_failed = Failed to import { $failed } of { $total } items.
+command-import-error-csv_pk_conflict = CSV column '{ $column }' conflicts with the partition key path '{ $path }': the column holds a scalar value but the path requires it to be a nested object. Rename the column or choose a different partition key path.
 
 
 command-mkdb-description = Creates new database
