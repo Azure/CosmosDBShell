@@ -22,7 +22,7 @@ using Tomlyn.Model;
 /// [colors]
 /// command           = "yellow"
 /// literal           = "purple"
-/// bracket_cycle     = ["yellow", "fuchsia", "aqua"]
+/// bracket_cycle     = ["yellow", "fuchsia", "blue"]
 ///
 /// [styles]
 /// help_header     = "bold"

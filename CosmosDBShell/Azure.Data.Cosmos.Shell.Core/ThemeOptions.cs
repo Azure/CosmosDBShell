@@ -57,7 +57,7 @@ internal sealed record ThemeOptions
 
     public string ErrorColor { get; init; } = "red";
 
-    public string OperatorColor { get; init; } = "blue";
+    public string OperatorColor { get; init; } = "teal";
 
     public string TableValueColor { get; init; } = "white";
 
@@ -94,5 +94,5 @@ internal sealed record ThemeOptions
     /// Colors used for paired brackets ({}, [], ()) cycled by nesting depth. Must be
     /// non-empty.
     /// </summary>
-    public string[] BracketCycle { get; init; } = ["yellow", "fuchsia", "aqua"];
+    public string[] BracketCycle { get; init; } = ["yellow", "fuchsia", "blue"];
 }
