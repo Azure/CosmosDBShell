@@ -475,7 +475,7 @@ Options:
 |`show`|Reads and returns the current indexing policy as JSON.|
 |`add <path...>`|Adds one or more paths to the included paths. Existing paths are left untouched, and any matching excluded path is removed.|
 |`remove <path...>`|Removes one or more paths from both the included and excluded paths.|
-|`set`|Updates the indexing policy. Pass `--mode` and/or `--automatic` to patch the current policy, or provide a full indexing policy JSON document to replace it.|
+|`set`|Updates the indexing policy. Pass `--mode` (`consistent` or `none`, case-insensitive) and/or `--automatic` to patch the current policy, or provide a full indexing policy JSON document to replace it.|
 
 Paths use the Cosmos DB indexing path syntax, for example `/address/*` or `/name/?`.
 

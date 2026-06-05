@@ -140,9 +140,10 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
     {
         var root = ParseObject(policyJson);
 
-        if (!string.IsNullOrEmpty(mode))
+        var normalizedMode = NormalizeMode(mode);
+        if (normalizedMode is not null)
         {
-            SetProperty(root, "indexingMode", mode);
+            SetProperty(root, "indexingMode", normalizedMode);
         }
 
         if (automatic.HasValue)
@@ -151,6 +152,27 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
         }
 
         return Serialize(root);
+    }
+
+    /// <summary>
+    /// Normalizes the value of the <c>--mode</c> option to a canonical Cosmos DB
+    /// indexing mode. Returns null when no value was supplied. Accepts
+    /// <c>consistent</c> or <c>none</c> case-insensitively and rejects anything else
+    /// so an invalid mode never round-trips into the policy JSON.
+    /// </summary>
+    internal static string? NormalizeMode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "consistent" => "consistent",
+            "none" => "none",
+            _ => throw new CommandException("index", MessageService.GetString("command-index-error-invalid_mode")),
+        };
     }
 
     /// <summary>
@@ -310,6 +332,11 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
 
     private async Task<CommandState> ShowAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
     {
+        if (this.Paths is { Length: > 0 })
+        {
+            throw new CommandException("index", MessageService.GetString("command-index-error-show_no_args"));
+        }
+
         string json = await this.ReadPolicyAsync(state, databaseName, containerName, token);
 
         return BuildResult(json);

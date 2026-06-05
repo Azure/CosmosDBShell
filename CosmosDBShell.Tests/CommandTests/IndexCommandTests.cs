@@ -102,6 +102,51 @@ public class IndexCommandTests
     }
 
     [Theory]
+    [InlineData("consistent", "consistent")]
+    [InlineData("none", "none")]
+    [InlineData("Consistent", "consistent")]
+    [InlineData(" NONE ", "none")]
+    public void ApplySettings_NormalizesModeCasing(string mode, string expected)
+    {
+        var result = IndexCommand.ApplySettings(SamplePolicy, mode, automatic: null);
+
+        using var doc = JsonDocument.Parse(result);
+        Assert.Equal(expected, doc.RootElement.GetProperty("indexingMode").GetString());
+    }
+
+    [Theory]
+    [InlineData("lazy")]
+    [InlineData("consistnet")]
+    [InlineData("off")]
+    public void ApplySettings_ThrowsForInvalidMode(string mode)
+    {
+        Assert.Throws<CommandException>(() => IndexCommand.ApplySettings(SamplePolicy, mode, automatic: null));
+    }
+
+    [Theory]
+    [InlineData("consistent", "consistent")]
+    [InlineData("None", "none")]
+    public void NormalizeMode_NormalizesKnownModes(string value, string expected)
+    {
+        Assert.Equal(expected, IndexCommand.NormalizeMode(value));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void NormalizeMode_ReturnsNullForEmptyValues(string? value)
+    {
+        Assert.Null(IndexCommand.NormalizeMode(value));
+    }
+
+    [Fact]
+    public void NormalizeMode_ThrowsForInvalidValue()
+    {
+        Assert.Throws<CommandException>(() => IndexCommand.NormalizeMode("lazy"));
+    }
+
+    [Theory]
     [InlineData("true", true)]
     [InlineData("false", false)]
     [InlineData("True", true)]

@@ -282,6 +282,8 @@ command-index-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. U
 command-index-error-missing_paths = No paths provided. Specify at least one path, for example: index add /address/*.
 command-index-error-missing_set_args = Nothing to set. Provide --mode, --automatic, or a full indexing policy JSON document.
 command-index-error-invalid_automatic = Invalid value for --automatic. Use true or false.
+command-index-error-invalid_mode = Invalid value for --mode. Use consistent or none.
+command-index-error-show_no_args = 'index show' does not take any arguments. Use 'index show' to display the current policy.
 command-index-error-invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-index-error-no_policy = The container has no indexing policy configured.
 
