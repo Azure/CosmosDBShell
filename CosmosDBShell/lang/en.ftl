@@ -307,6 +307,7 @@ command-filter-error-sort_by_type = sort_by requires an array input, not { $type
 command-filter-error-property_type = Cannot read property '{ $name }' from { $type }.
 command-filter-error-index_type = Cannot index { $type } with [{ $index }].
 command-filter-error-iterate_type = Cannot iterate over { $type }.
+command-filter-error-evaluation = Failed to evaluate the filter expression: { $message }
 command-ftab-description = Render piped JSON as a table
 command-ftab-description-fields = Comma-separated field names to include in the table (Optional)
 command-ftab-description-take = Limit the number of rendered rows (Optional)

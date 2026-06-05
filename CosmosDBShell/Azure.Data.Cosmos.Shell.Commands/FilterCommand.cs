@@ -55,7 +55,28 @@ internal class FilterCommand : CosmosCommand
                     new Dictionary<string, object> { { "token", trailing } }));
         }
 
-        var result = await expression.EvaluateAsync(shell, commandState, token);
+        ShellObject result;
+        try
+        {
+            result = await expression.EvaluateAsync(shell, commandState, token);
+        }
+        catch (CommandException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new CommandException(
+                "filter",
+                MessageService.GetString(
+                    "command-filter-error-evaluation",
+                    new Dictionary<string, object> { { "message", ex.Message } }));
+        }
+
         if (result is ShellSequence sequence)
         {
             commandState.Result = new ShellJson(FilterExpressionUtilities.ToJsonArray(sequence.Elements));

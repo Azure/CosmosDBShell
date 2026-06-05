@@ -447,4 +447,89 @@ public class FilterCommandTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => command.ExecuteAsync(shell, state, string.Empty, cts.Token));
     }
+
+    [Fact]
+    public async Task ExecuteAsync_Comparison_HandlesNumbersOutsideDecimalRange()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonDocument.Parse("{\"v\": 1e308}").RootElement.Clone()),
+        };
+
+        // A JSON number outside the Int32/decimal range must compare numerically
+        // instead of throwing FormatException.
+        var command = new FilterCommand
+        {
+            ExpressionText = ".v > 1",
+        };
+
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+
+        var json = Assert.IsType<ShellJson>(result.Result);
+        Assert.Equal(JsonValueKind.True, json.Value.ValueKind);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Comparison_HandlesDecimalOperands()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonDocument.Parse("{\"price\": 3.14}").RootElement.Clone()),
+        };
+
+        // A fractional JSON number must compare using the decimal path instead of
+        // truncating to an integer.
+        var command = new FilterCommand
+        {
+            ExpressionText = ".price > 3",
+        };
+
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+
+        var json = Assert.IsType<ShellJson>(result.Result);
+        Assert.Equal(JsonValueKind.True, json.Value.ValueKind);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Arithmetic_PreservesJsonNumberPrecision()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonDocument.Parse("{\"price\": 3.5}").RootElement.Clone()),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = ".price + 1",
+        };
+
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+
+        var json = Assert.IsType<ShellJson>(result.Result);
+        Assert.Equal(4.5d, json.Value.GetDouble());
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WrapsRuntimeErrorsInCommandException()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonDocument.Parse("{}").RootElement.Clone()),
+        };
+
+        // Integer division by zero raises a System exception from the expression
+        // engine; the filter command must surface it as a CommandException.
+        var command = new FilterCommand
+        {
+            ExpressionText = "1 / 0",
+        };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None));
+        Assert.DoesNotContain("System.", ex.Message, StringComparison.Ordinal);
+    }
 }

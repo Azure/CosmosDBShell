@@ -71,6 +71,15 @@ internal class BinaryOperatorExpression : Expression
         var leftResult = await this.Left.EvaluateAsync(interpreter, currentState, cancellationToken);
         var rightResult = await this.Right.EvaluateAsync(interpreter, currentState, cancellationToken);
 
+        // JSON numbers carry DataType.Json, so without normalization the numeric
+        // operator paths below fall through to the Int32 branch and throw or
+        // truncate for decimals and values outside the Int32 range. Promote JSON
+        // number operands to double-backed decimals (via GetDouble so large
+        // magnitudes such as 1e308 do not overflow GetDecimal) so comparisons and
+        // arithmetic operate on the JSON number model.
+        leftResult = NormalizeJsonNumber(leftResult);
+        rightResult = NormalizeJsonNumber(rightResult);
+
         // Handle arithmetic operators
         // Handle arithmetic operators
         switch (this.Operator)
@@ -475,5 +484,15 @@ internal class BinaryOperatorExpression : Expression
     public override string ToString()
     {
         return $"({this.Left} {this.OperatorToken.Value} {this.Right})";
+    }
+
+    private static ShellObject NormalizeJsonNumber(ShellObject value)
+    {
+        if (value is ShellJson json && json.Value.ValueKind == JsonValueKind.Number)
+        {
+            return new ShellDecimal(json.Value.GetDouble());
+        }
+
+        return value;
     }
 }
