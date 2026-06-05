@@ -427,9 +427,10 @@ internal class ToolOperations
     {
         if (this.logger?.IsEnabled(LogLevel.Trace) == true)
         {
+            var serializedRequest = JsonSerializer.Serialize(parameters?.Params, IndentedJsonOptions);
             this.logger.LogTrace(
                 "MCP CallTool request: {Request}",
-                JsonSerializer.Serialize(parameters?.Params, IndentedJsonOptions));
+                ResourceOperations.SanitizeHistoryEntry(serializedRequest));
         }
 
         var sb = new StringBuilder();

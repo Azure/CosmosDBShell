@@ -82,7 +82,7 @@ internal class ResourceOperations
         Name = "cosmos-shell-commands",
         Title = "Cosmos Shell Command Catalog",
         MimeType = "application/json")]
-    [Description("JSON catalog of all non-restricted Cosmos Shell commands with descriptions, MCP annotations, aliases, and examples. Useful as a reference when the model needs to discover available commands without listing tools.")]
+    [Description("JSON catalog of all non-restricted Cosmos Shell commands with descriptions, MCP descriptions, aliases, and examples. Useful as a reference when the model needs to discover available commands without listing tools.")]
     public static string GetCommandsCatalog()
     {
         var catalog = new JsonArray();

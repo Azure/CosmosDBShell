@@ -40,7 +40,7 @@ The MCP server publishes documentation and live shell-state resources that clien
 | `cosmos://docs/nosql-query-language` | Cosmos DB NoSQL query reference (markdown) |
 | `cosmos://docs/commands` | JSON catalog of non-restricted shell commands |
 | `cosmos://shell/connection` | Current connection (endpoint, scope, ARM context) |
-| `cosmos://shell/location` | Current shell location (`/db/container`) |
+| `cosmos://shell/location` | Current shell location as JSON (`{ "location": "/db/container" }`; `location` is `null` when disconnected) |
 | `cosmos://shell/history` | Recent shell commands with `AccountKey` redacted |
 | `cosmos://databases` | Databases on the connected account |
 | `cosmos://current/containers` | Containers in the current database scope |
