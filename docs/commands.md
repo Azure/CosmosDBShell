@@ -318,7 +318,7 @@ Examples:
 - `import items.jsonl --mode=upsert --continue-on-error` upserts items and keeps going on per-item failures.
 - `import items.jsonl --dry-run` validates the file without writing anything; useful before a real run.
 
-By default, the first failure stops the import. With `--continue-on-error` the command runs to completion and the final summary reports how many items succeeded and how many failed. The command exits with an error status if any items failed.
+By default, the first failure stops the import. With `--continue-on-error` the command keeps going after per-item *write* failures (for example a Cosmos write that throws) and the final summary reports how many items succeeded and how many failed. Parse and validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) still abort the import immediately. The command exits with an error status if any items failed.
 
 ## Scripting
 

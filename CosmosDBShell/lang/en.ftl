@@ -263,7 +263,7 @@ command-import-description-container = The container to write to.
 command-import-description-mode = Write mode: insert (default) or upsert.
 command-import-description-format = Input format: auto (default), jsonl, array, or csv.
 command-import-description-partition-key = For CSV import, the partition key path. Nested paths (e.g. /address/city) place the matching column under that path.
-command-import-description-continue-on-error = Continue importing after individual item failures.
+command-import-description-continue-on-error = Continue importing after individual item write failures. Parse or validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) still abort the import.
 command-import-description-dry-run = Parse the file without writing any items.
 command-import-success = Imported { $count } { $count ->
     [one] item

@@ -8,7 +8,7 @@ Lightweight CLI for Azure Cosmos DB.
 - Navigate with `ls` and `cd` (Account -> Databases -> Containers -> Items)
 - Inspect the current location with `pwd`
 - Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
-- Bulk roundtrip with `import` / `export` for JSON Lines, JSON array, and CSV files (with `--partition-key` for nested CSV partition keys)
+- Bulk roundtrip with `import` / `export` for JSON Lines and JSON array files, plus CSV import/export (CSV import coerces values to strings; `--partition-key` nests a CSV column under a nested partition key path)
 - Database and container management commands prefer Azure Resource Manager when connected with Entra ID, with data-plane fallback for key, emulator, and static-token connections
 - Pipelines and scripting with variables, loops, functions
 - Multi-line input at the prompt — automatic continuation for unclosed blocks/strings, plus explicit `\` line continuation ([docs](docs/navigation.md#multi-line-input))
