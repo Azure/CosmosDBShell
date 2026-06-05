@@ -279,6 +279,13 @@ internal class CosmosShellSemanticTokensHandler : SemanticTokensHandlerBase
             binaryOperatorExpression.Right.Accept(this);
         }
 
+        public void Visit(FilterPipeExpression filterPipeExpression)
+        {
+            filterPipeExpression.Left.Accept(this);
+            this.VisitToken(filterPipeExpression.PipeToken);
+            filterPipeExpression.Right.Accept(this);
+        }
+
         public void Visit(UnaryOperatorExpression unaryOperatorExpression)
         {
             this.VisitToken(unaryOperatorExpression.OperatorToken);
@@ -320,6 +327,20 @@ internal class CosmosShellSemanticTokensHandler : SemanticTokensHandlerBase
             }
 
             this.addSpan(jsonArrayExpression.RBracketToken.Start, jsonArrayExpression.RBracketToken.Length, SemanticTokenType.Regexp);
+        }
+
+        public void Visit(FilterPathExpression filterPathExpression)
+        {
+            this.addSpan(filterPathExpression.Start, filterPathExpression.Length, SemanticTokenType.Variable);
+        }
+
+        public void Visit(FilterCallExpression filterCallExpression)
+        {
+            this.addSpan(filterCallExpression.NameToken.Start, filterCallExpression.NameToken.Length, SemanticTokenType.Function);
+            foreach (var argument in filterCallExpression.Arguments)
+            {
+                argument.Accept(this);
+            }
         }
 
         public void Visit(IfStatement ifStatement)

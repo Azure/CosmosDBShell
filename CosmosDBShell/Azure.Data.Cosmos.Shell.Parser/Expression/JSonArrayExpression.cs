@@ -38,6 +38,20 @@ internal class JsonArrayExpression : Expression
         foreach (var expr in this.Expressions)
         {
             var value = await expr.EvaluateAsync(interpreter, currentState, cancellationToken);
+
+            // Flatten filter sequences (produced by .[] iteration or pipes over them) so that
+            // collector expressions like [.items[] | .id] yield [id1, id2, ...] rather than
+            // wrapping the sequence as a single nested array element.
+            if (value is ShellSequence shellSequence)
+            {
+                foreach (var sequenceElement in shellSequence.Elements)
+                {
+                    items.Add(sequenceElement.Clone());
+                }
+
+                continue;
+            }
+
             switch (value.DataType)
             {
                 case DataType.Json:
