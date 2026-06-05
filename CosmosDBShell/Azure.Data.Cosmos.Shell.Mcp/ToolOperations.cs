@@ -18,8 +18,6 @@ using ModelContextProtocol.Server;
 
 internal class ToolOperations
 {
-    private static readonly JsonSerializerOptions IndentedJsonOptions = new() { WriteIndented = true };
-
     private readonly ILogger<ToolOperations> logger;
     private readonly Lazy<List<Tool>> cachedTools;
 
@@ -381,9 +379,13 @@ internal class ToolOperations
     {
         if (this.logger?.IsEnabled(LogLevel.Trace) == true)
         {
+            var argumentNames = parameters?.Params?.Arguments == null
+                ? "(none)"
+                : string.Join(", ", parameters.Params.Arguments.Keys);
             this.logger.LogTrace(
-                "MCP CallTool request: {Request}",
-                JsonSerializer.Serialize(parameters?.Params, IndentedJsonOptions));
+                "MCP CallTool request: tool={Tool}, arguments=[{Arguments}]",
+                parameters?.Params?.Name,
+                argumentNames);
         }
 
         var sb = new StringBuilder();
