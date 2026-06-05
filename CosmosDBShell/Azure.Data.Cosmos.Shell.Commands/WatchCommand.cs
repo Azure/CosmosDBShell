@@ -17,11 +17,13 @@ using Spectre.Console;
 [CosmosExample("watch", Description = "Tail new changes in the current container as they arrive")]
 [CosmosExample("watch --from-beginning", Description = "Replay the change feed from the beginning of the container")]
 [CosmosExample("watch --partition-key=myKey --max=100", Description = "Watch a single partition key and stop after 100 changes")]
+[CosmosExample("watch --interval=5", Description = "Poll the change feed every 5 seconds instead of the 1 second default")]
 [CosmosExample("watch --database=MyDB --container=Products", Description = "Watch a specific database and container")]
 [McpAnnotation(Restricted = true, ReadOnly = true)]
 internal class WatchCommand : CosmosCommand
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
+    private const double DefaultIntervalSeconds = 1.0;
+    private const double MinIntervalSeconds = 0.1;
 
     [CosmosOption("from-beginning", "b")]
     public bool FromBeginning { get; init; }
@@ -31,6 +33,9 @@ internal class WatchCommand : CosmosCommand
 
     [CosmosOption("max", "m")]
     public int? Max { get; init; }
+
+    [CosmosOption("interval", "i")]
+    public double? Interval { get; init; }
 
     [CosmosOption("format", "f")]
     public string? OutputFormat { get; init; }
@@ -80,6 +85,21 @@ internal class WatchCommand : CosmosCommand
         }
 
         return fromBeginning ? ChangeFeedStartFrom.Beginning() : ChangeFeedStartFrom.Now();
+    }
+
+    /// <summary>
+    /// Resolves the change feed polling interval from the command option. When no
+    /// value is supplied the default of one second is used; any supplied value is
+    /// clamped to a small minimum so a tight loop cannot hammer the container.
+    /// </summary>
+    internal static TimeSpan ResolveInterval(double? seconds)
+    {
+        if (seconds is not { } value)
+        {
+            return TimeSpan.FromSeconds(DefaultIntervalSeconds);
+        }
+
+        return TimeSpan.FromSeconds(Math.Max(value, MinIntervalSeconds));
     }
 
     /// <summary>
@@ -134,6 +154,7 @@ internal class WatchCommand : CosmosCommand
         }
 
         var redirected = !string.IsNullOrEmpty(shell.StdOutRedirect);
+        var pollInterval = ResolveInterval(this.Interval);
         using var iterator = container.GetChangeFeedStreamIterator(startFrom, ChangeFeedMode.Incremental);
 
         var max = this.Max is > 0 ? this.Max : null;
@@ -151,7 +172,7 @@ internal class WatchCommand : CosmosCommand
                 if (response.StatusCode == HttpStatusCode.NotModified)
                 {
                     // Caught up with the feed; wait before polling for more.
-                    await Task.Delay(PollInterval, token);
+                    await Task.Delay(pollInterval, token);
                     continue;
                 }
 

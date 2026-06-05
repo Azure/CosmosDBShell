@@ -63,4 +63,27 @@ public class WatchCommandTests
     {
         Assert.NotNull(WatchCommand.BuildStartFrom(fromBeginning, partitionKey));
     }
+
+    [Fact]
+    public void ResolveInterval_NullValue_UsesOneSecondDefault()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(1), WatchCommand.ResolveInterval(null));
+    }
+
+    [Theory]
+    [InlineData(5.0)]
+    [InlineData(0.25)]
+    public void ResolveInterval_ValueAboveMinimum_IsUsedAsIs(double seconds)
+    {
+        Assert.Equal(TimeSpan.FromSeconds(seconds), WatchCommand.ResolveInterval(seconds));
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(0.05)]
+    [InlineData(-1.0)]
+    public void ResolveInterval_ValueBelowMinimum_IsClamped(double seconds)
+    {
+        Assert.Equal(TimeSpan.FromSeconds(0.1), WatchCommand.ResolveInterval(seconds));
+    }
 }

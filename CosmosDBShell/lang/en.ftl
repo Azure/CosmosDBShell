@@ -292,6 +292,7 @@ command-watch-description = Tail the change feed of a container, streaming new a
 command-watch-description-from-beginning = Start from the beginning of the change feed instead of from now.
 command-watch-description-partition-key = Scope the change feed to a single partition key value.
 command-watch-description-max = Stop after receiving this many changes. Omit, or use 0 or a negative value, to follow until Ctrl+C.
+command-watch-description-interval = Seconds to wait between change feed polls once caught up. Defaults to 1; values below 0.1 are clamped.
 command-watch-description-format = { command-query-description-format }
 command-watch-description-database = The database containing the container to watch.
 command-watch-description-container = The container to watch.
