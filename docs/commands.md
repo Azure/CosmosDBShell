@@ -471,16 +471,18 @@ Notes:
 | `.foo[0]?`, `.[]?` | Optional index / iteration |
 | `a | b` | Pipe — evaluate `b` against the result of `a` |
 | `==` `!=` `<` `<=` `>` `>=` | Comparison operators producing booleans |
+| `+` `-` `*` `/` `%` `**` | Arithmetic on numbers (`**` is power, right-associative); unary `-`/`+` also work |
+| `&&` `\|\|` `^` `!` | Logical and / or / xor / not (`&&` and `\|\|` short-circuit) |
 | `[expr, ...]` | Array constructor; each expression sees the current input |
 | `{id, status}` | Object shorthand — equivalent to `{id: .id, status: .status}` |
 | `{id: .id, "item-id": .id}` | Explicit object construction with identifier or string keys |
-| `length` | Length of array, object, string, or `null` |
+| `length` | Length of array, object, string, or `null` (number and boolean raise a runtime error) |
 | `keys` | Sorted array of an object's property names |
 | `type` | One of `"null"`, `"boolean"`, `"number"`, `"string"`, `"array"`, `"object"` |
 | `contains(expr)` | Substring / element / object-subset / equality test |
 | `map(expr)` | Apply `expr` to each element of an input array |
 | `select(expr)` | Keep array elements where `expr` evaluates to `true` |
-| `sort_by(expr)` | Sort an input array by the key produced by `expr` |
+| `sort_by(expr)` | Sort an input array by the key produced by `expr` (cross-type keys order by `null` < `false` < `true` < number < string < array < object) |
 
 #### Examples
 

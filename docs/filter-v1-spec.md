@@ -100,13 +100,33 @@ filter-expression  = expression ;
 
 expression         = pipe-expression ;
 
-pipe-expression    = comparison-expression , { '|' , comparison-expression } ;
+pipe-expression    = or-expression , { '|' , or-expression } ;
+
+or-expression      = and-expression , { '||' , and-expression } ;
+
+and-expression     = xor-expression , { '&&' , xor-expression } ;
+
+xor-expression     = equality-expression , { '^' , equality-expression } ;
+
+equality-expression
+                   = comparison-expression , { ( '==' | '!=' ) , comparison-expression } ;
 
 comparison-expression
-                   = primary-expression , [ comparison-operator , primary-expression ] ;
+                   = additive-expression ,
+                     { ( '<' | '<=' | '>' | '>=' ) , additive-expression } ;
 
-comparison-operator
-                   = '==' | '!=' | '<' | '<=' | '>' | '>=' ;
+additive-expression
+                   = multiplicative-expression ,
+                     { ( '+' | '-' ) , multiplicative-expression } ;
+
+multiplicative-expression
+                   = power-expression ,
+                     { ( '*' | '/' | '%' ) , power-expression } ;
+
+power-expression   = unary-expression , [ '**' , power-expression ] ;
+
+unary-expression   = ( '!' | '-' | '+' ) , unary-expression
+                   | primary-expression ;
 
 primary-expression = path-expression
                    | literal
@@ -238,6 +258,42 @@ Examples:
 - `.status == "active"`
 - `.count > 10`
 
+### Arithmetic and Logical Operators
+
+In addition to comparisons, v1 supports the shell's standard arithmetic and
+logical operators inside a filter expression. Each operand is an expression
+that is evaluated against the current input.
+
+Arithmetic operators (operate on numbers):
+
+- `+` addition
+- `-` subtraction
+- `*` multiplication
+- `/` division
+- `%` modulo
+- `**` power (right-associative)
+- unary `-` and `+`
+
+Logical operators (operate on booleans):
+
+- `&&` and (short-circuits)
+- `||` or (short-circuits)
+- `^` xor
+- `!` not (unary)
+
+Precedence, from lowest to highest binding, is:
+
+`|` < `||` < `&&` < `^` < `==` `!=` < `<` `<=` `>` `>=` < `+` `-` < `*` `/` `%` < `**` < unary `!` `-` `+`.
+
+Use parentheses to group sub-expressions, for example `(.a + .b) * .c`.
+
+Examples:
+
+- `.price * .quantity`
+- `.count + 1`
+- `.status == "active" && .count > 10`
+- `!(.disabled)`
+
 ### Array Construction
 
 `[expr1, expr2, ...]` evaluates each expression against the current input and constructs a JSON array from the results.
@@ -351,6 +407,17 @@ Sorts an input array using the value produced by `expr` for each element.
 - keys must be mutually comparable
 - stable sorting is preferred
 
+Keys of the same JSON type are ordered naturally: numbers numerically,
+strings by ordinal comparison, booleans as `false` < `true`, and `null`
+as equal to `null`. When keys have different JSON types, they are ordered
+by a fixed kind rank:
+
+`null` < `false` < `true` < number < string < array < object
+
+Arrays and objects that share a rank are compared by their raw JSON text,
+which is deterministic but not semantically meaningful; prefer like-typed,
+scalar sort keys.
+
 Examples:
 
 - `.items | sort_by(.id)`
@@ -362,8 +429,9 @@ Examples:
 - Index access and array builtins require an array unless optional access is used.
 - `map`, `select`, and `sort_by` require arrays.
 - `keys` requires an object.
-- `length` supports arrays, objects, strings, and null.
+- `length` supports arrays, objects, strings, and null. Numbers and booleans raise a runtime error.
 - Comparisons require values that the implementation can compare deterministically.
+- Cross-type ordering for `sort_by` and relational comparisons uses the fixed kind rank `null` < `false` < `true` < number < string < array < object.
 
 ## Error Behavior
 
