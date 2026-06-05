@@ -289,8 +289,39 @@ command-results-limit_reached =
        *[other] Results limited to { $count } items. Use --max to change the limit or --max 0 for no limit.
     }
 
+command-watch-description = Tail the change feed of a container, streaming new and modified items as they arrive.
+command-watch-description-from-beginning = Start from the beginning of the change feed instead of from now.
+command-watch-description-partition-key = Scope the change feed to a single partition key value.
+command-watch-description-max = Stop after receiving this many changes. Omit, or use 0 or a negative value, to follow until Ctrl+C.
+command-watch-description-interval = Seconds to wait between change feed polls once caught up. Defaults to 1; values below 0.1 are clamped.
+command-watch-description-format = { command-query-description-format }
+command-watch-description-database = The database containing the container to watch.
+command-watch-description-container = The container to watch.
+command-watch-started = Watching changes in { $container }. Press Ctrl+C to stop.
+command-watch-stopped = Stopped watching after { $count } changes.
+command-watch-error-request_failed = Change feed request failed with status code { $statusCode } ({ $status }).
+command-watch-error-invalid_interval = Interval value '{ $interval }' is invalid. Specify a finite number of seconds.
+
 command-jq-description = Commandline JSON processor
 command-jq-description-args = Arguments for the jq command
+command-filter-description = Filter and transform piped JSON with the native filter expression language
+command-filter-description-expression = Filter expression to evaluate against the piped JSON input
+command-filter-error-no_expression = Filter expression is missing.
+command-filter-error-no_input = The filter command requires piped JSON input.
+command-filter-error-invalid_input = The filter command can only process JSON input.
+command-filter-error-trailing_tokens = Unexpected '{ $token }' after the filter expression. Check for stray characters or unbalanced quotes.
+command-filter-error-not_json = The filter requires JSON input to evaluate '{ $context }'.
+command-filter-error-argument_count = The '{ $name }' filter expects { $expected } argument(s).
+command-filter-error-unknown_builtin = Unknown filter builtin '{ $name }'.
+command-filter-error-length_type = length supports arrays, objects, strings, and null, not { $type }.
+command-filter-error-keys_type = keys requires an object input, not { $type }.
+command-filter-error-map_type = map requires an array input, not { $type }.
+command-filter-error-select_type = select requires an array input, not { $type }.
+command-filter-error-sort_by_type = sort_by requires an array input, not { $type }.
+command-filter-error-property_type = Cannot read property '{ $name }' from { $type }.
+command-filter-error-index_type = Cannot index { $type } with [{ $index }].
+command-filter-error-iterate_type = Cannot iterate over { $type }.
+command-filter-error-evaluation = Failed to evaluate the filter expression: { $message }
 command-ftab-description = Render piped JSON as a table
 command-ftab-description-fields = Comma-separated field names to include in the table (Optional)
 command-ftab-description-take = Limit the number of rendered rows (Optional)
@@ -592,7 +623,10 @@ json_error_unclosed_array_bracket = Unclosed array bracket.
 json_error_result_evaluation_null = Result evaluation returned null.
 
 expression_error_no_more_tokens = No more tokens
+expression_error_expected_open_paren = Expected '('
 expression_error_expected_close_paren = Expected ')' after expression
+expression_error_expected_close_bracket = Expected ']'
+expression_error_expected_array_index = Expected array index
 expression_error_invalid_number = Invalid number format: {$value}
 expression_error_unexpected_end = Unexpected end of expression
 expression_error_unexpected_token = Unexpected token: {$type} '{$value}'

@@ -276,6 +276,7 @@ public class ThemeFileTests
         {
             LiteralColor = "purple",
             ContainerNameColor = "fuchsia",
+            HelpBorderColor = "aqua",
             HelpHeaderStyle = "bold underline",
             BracketCycle = ["yellow", "fuchsia", "purple"],
         };
@@ -293,6 +294,7 @@ public class ThemeFileTests
             Assert.Contains("literal = ", text);
             Assert.Contains("bracket_cycle = ", text);
             Assert.Contains("help_header = ", text);
+            Assert.Contains("help_border = ", text);
             Assert.DoesNotContain("extends ", text);
 
             var result = ThemeFile.Load(path, LookupBuiltIn);
@@ -300,6 +302,7 @@ public class ThemeFileTests
             Assert.Equal("smoke", result.Description);
             Assert.Equal("purple", result.Options.LiteralColor);
             Assert.Equal("fuchsia", result.Options.ContainerNameColor);
+            Assert.Equal("aqua", result.Options.HelpBorderColor);
             Assert.Equal("bold underline", result.Options.HelpHeaderStyle);
             Assert.Equal(new[] { "yellow", "fuchsia", "purple" }, result.Options.BracketCycle);
 

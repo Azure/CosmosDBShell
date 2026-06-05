@@ -52,6 +52,10 @@ internal static class Theme
 
     public static string LiteralColorName => Current.LiteralColor;
 
+    public static string VariableColorName => Current.VariableColor;
+
+    public static string JsonPathColorName => Current.JsonPathColor;
+
     public static string KeywordColorName => Current.KeywordColor;
 
     public static string ErrorColorName => Current.ErrorColor;
@@ -71,6 +75,39 @@ internal static class Theme
     public static string HelpPlaceholderColorName => Current.HelpPlaceholderColor;
 
     public static string HelpVariableColorName => Current.HelpVariableColor;
+
+    public static string HelpBorderColorName => Current.HelpBorderColor;
+
+    /// <summary>
+    /// Spectre style for the border of help title panels. Returns
+    /// <see cref="Style.Plain"/> when the active theme has an empty
+    /// <see cref="ThemeOptions.HelpBorderColor"/> (monochrome), so the panel
+    /// falls back to the terminal's default foreground.
+    /// </summary>
+    public static Style GetHelpBorderStyle()
+    {
+        return GetStyle(Current.HelpBorderColor);
+    }
+
+    /// <summary>
+    /// Spectre style for muted accents (separators, rules). Returns
+    /// <see cref="Style.Plain"/> when the active theme has an empty
+    /// <see cref="ThemeOptions.MutedColor"/>.
+    /// </summary>
+    public static Style GetMutedStyle()
+    {
+        return GetStyle(Current.MutedColor);
+    }
+
+    /// <summary>
+    /// Parses <paramref name="style"/> into a Spectre <see cref="Style"/>, returning
+    /// <see cref="Style.Plain"/> when it is empty so monochrome and other minimal
+    /// profiles can disable a slot entirely.
+    /// </summary>
+    public static Style GetStyle(string style)
+    {
+        return string.IsNullOrEmpty(style) ? Style.Plain : Style.Parse(style);
+    }
 
     /// <summary>
     /// Replaces the active theme. Subsequent calls to any <c>Format*</c> helper or
@@ -190,6 +227,20 @@ internal static class Theme
     internal static string FormatStringLiteral(string text)
     {
         return Wrap(Current.LiteralColor, Markup.Escape(text));
+    }
+
+    /// <summary>Wraps a variable reference token (e.g. <c>$foo</c>) in the
+    /// active variable color.</summary>
+    internal static string FormatVariable(string text)
+    {
+        return Wrap(Current.VariableColor, Markup.Escape(text));
+    }
+
+    /// <summary>Wraps a JSON path expression (e.g. <c>.items[0].name</c>) in the
+    /// active JSON path color.</summary>
+    internal static string FormatJsonPath(string text)
+    {
+        return Wrap(Current.JsonPathColor, Markup.Escape(text));
     }
 
     internal static string FormatNumberLiteral(string v)

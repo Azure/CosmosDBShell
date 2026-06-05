@@ -92,6 +92,83 @@ public class HighlighterTests
         Assert.NotEmpty(bracketSegments);
     }
 
+    // Resolves the foreground color produced by a Theme.Format* helper so the JSON tests
+    // can compare against the real punctuation/property colors instead of hardcoding them.
+    private static Color SingleColor(string markup)
+    {
+        var segs = new Markup(markup).GetSegments(AnsiConsole.Console).Where(s => !string.IsNullOrEmpty(s.Text)).ToList();
+        return segs[0].Style.Foreground;
+    }
+
+    [Fact]
+    public void TestJsonObjectStringValueDelimitersAreNotHighlightedAsPunctuation()
+    {
+        // Regression: a ':' / ',' / '}' that appears INSIDE a string value must keep the
+        // literal color and must not be mistaken for a structural delimiter. Previously the
+        // highlighter scanned the text with IndexOf and would color these inner characters.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var input = "mkitem {\"k\": \"a:b, c}\"}";
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        // Full text must round-trip exactly.
+        Assert.Equal(input, string.Concat(segs.Select(s => s.Text)));
+
+        var punctColor = SingleColor(Theme.FormatJsonBracket(":"));
+
+        // Exactly one structural colon and zero structural commas should be punctuation-colored;
+        // the ':' and ',' inside the value belong to the string literal.
+        Assert.Equal(1, segs.Count(s => s.Text == ":" && s.Style.Foreground == punctColor));
+        Assert.Equal(0, segs.Count(s => s.Text == "," && s.Style.Foreground == punctColor));
+    }
+
+    [Fact]
+    public void TestJsonArrayStringElementCommaIsNotHighlightedAsPunctuation()
+    {
+        // The comma inside the "a,b" element must stay part of the literal; only the comma
+        // separating the two array elements is a structural delimiter.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var input = "mkitem [\"a,b\", \"c\"]";
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        Assert.Equal(input, string.Concat(segs.Select(s => s.Text)));
+
+        var punctColor = SingleColor(Theme.FormatJsonBracket(","));
+        Assert.Equal(1, segs.Count(s => s.Text == "," && s.Style.Foreground == punctColor));
+    }
+
+    [Fact]
+    public void TestJsonObjectQuotedKeyWithColonIsHighlightedAsSingleProperty()
+    {
+        // A ':' embedded in a quoted key must be part of the property name token, not treated
+        // as the key/value separator. Only the real separator colon is punctuation-colored.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var input = "mkitem {\"a:b\": 1}";
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        Assert.Equal(input, string.Concat(segs.Select(s => s.Text)));
+
+        var punctColor = SingleColor(Theme.FormatJsonBracket(":"));
+        var propertyColor = SingleColor(Theme.FormatJsonProperty("\"a:b\""));
+
+        // The whole quoted key (including the inner colon) is rendered as one property segment.
+        Assert.Contains(segs, s => s.Text == "\"a:b\"" && s.Style.Foreground == propertyColor);
+
+        // Only the separator colon is punctuation-colored.
+        Assert.Equal(1, segs.Count(s => s.Text == ":" && s.Style.Foreground == punctColor));
+    }
+
     [Fact]
     public void TestVariableHighlight()
     {
@@ -102,7 +179,7 @@ public class HighlighterTests
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
         Assert.True(segs.Count >= 2);
         Assert.Equal("echo", segs[0].Text.Trim());
-        Assert.Contains(" $myVariable", segs.Select(s => s.Text));
+        Assert.Contains("$myVariable", segs.Select(s => s.Text));
     }
 
     [Fact]
@@ -390,7 +467,7 @@ public class HighlighterTests
         Assert.NotNull(res);
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
         Assert.True(segs.Count >= 3);
-        Assert.Contains("$x ", segs.Select(s => s.Text));
+        Assert.Contains("$x", segs.Select(s => s.Text));
         Assert.Contains("=", segs.Select(s => s.Text));
         Assert.Contains("42", segs.Select(s => s.Text));
     }
@@ -484,10 +561,44 @@ public class HighlighterTests
         Assert.NotNull(res);
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
         Assert.True(segs.Count >= 4);
-        Assert.Contains("{ ", segs.Select(s => s.Text));
-        Assert.Contains(" }", segs.Select(s => s.Text));
+
+        // Block braces should be colored as brackets (their own segments), the same
+        // way JSON braces, brackets, and parentheses are highlighted.
+        Assert.Contains("{", segs.Select(s => s.Text));
+        Assert.Contains("}", segs.Select(s => s.Text));
+
+        var openBrace = segs.First(s => s.Text == "{");
+        var closeBrace = segs.First(s => s.Text == "}");
+        Assert.NotEqual(Color.Default, openBrace.Style.Foreground);
+        Assert.Equal(openBrace.Style.Foreground, closeBrace.Style.Foreground);
+
         var echoSegs = segs.Where(s => s.Text.Contains("echo")).ToList();
         Assert.Equal(2, echoSegs.Count);
+    }
+
+    [Fact]
+    public void TestNestedBlockStatementRainbowBrackets()
+    {
+        // Outer and inner block braces should use different rainbow-bracket colors,
+        // and the inner JSON braces should continue the cycle from the surrounding blocks.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var res = highlighter.BuildHighlightedText("{ { echo { foo:bar } } }") as Markup;
+        Assert.NotNull(res);
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        var openBraces = segs.Where(s => s.Text == "{").ToList();
+        var closeBraces = segs.Where(s => s.Text == "}").ToList();
+        Assert.Equal(3, openBraces.Count);
+        Assert.Equal(3, closeBraces.Count);
+
+        // Outer and inner block braces must not share the same color.
+        Assert.NotEqual(openBraces[0].Style.Foreground, openBraces[1].Style.Foreground);
+
+        // Each opening brace should match its corresponding closing brace's color.
+        Assert.Equal(openBraces[0].Style.Foreground, closeBraces[2].Style.Foreground);
+        Assert.Equal(openBraces[1].Style.Foreground, closeBraces[1].Style.Foreground);
+        Assert.Equal(openBraces[2].Style.Foreground, closeBraces[0].Style.Foreground);
     }
 
     [Fact]
@@ -629,7 +740,7 @@ public class HighlighterTests
         var res = highlighter.BuildHighlightedText("$result = 2 + 3 * 4") as Markup;
         Assert.NotNull(res);
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
-        Assert.Contains("$result ", segs.Select(s => s.Text));
+        Assert.Contains("$result", segs.Select(s => s.Text));
         Assert.Contains("=", segs.Select(s => s.Text));
         Assert.Contains("+", segs.Select(s => s.Text));
         Assert.Contains("*", segs.Select(s => s.Text));
@@ -645,6 +756,76 @@ public class HighlighterTests
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
         Assert.True(segs.Count >= 2);
         Assert.Contains("echo", segs.Select(s => s.Text));
-        Assert.Contains(" $.users[0].name", segs.Select(s => s.Text));
+        Assert.Contains("$.users[0].name", segs.Select(s => s.Text));
+    }
+
+    [Fact]
+    public void VariableExpression_UsesVariableColor()
+    {
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var res = highlighter.BuildHighlightedText("echo $myVariable") as Markup;
+        Assert.NotNull(res);
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        var variableSeg = segs.FirstOrDefault(s => s.Text == "$myVariable");
+        Assert.NotNull(variableSeg);
+        Assert.Equal(Color.Aqua, variableSeg.Style.Foreground);
+    }
+
+    [Fact]
+    public void JSonPathExpression_UsesJsonPathColor()
+    {
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var res = highlighter.BuildHighlightedText("echo $.users[0].name") as Markup;
+        Assert.NotNull(res);
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        var pathSeg = segs.FirstOrDefault(s => s.Text == "$.users[0].name");
+        Assert.NotNull(pathSeg);
+        Assert.Equal(Color.Aqua, pathSeg.Style.Foreground);
+    }
+
+    [Fact]
+    public void TestIncompleteBlockStillHighlightsInnerStatements()
+    {
+        // Regression: an unterminated '{' block used to make the parser bail out
+        // and the highlighter to fall back to plain rendering, leaving known
+        // commands and string literals uncolored until the user typed the
+        // matching '}'. With the partial-AST fix the inner statements should be
+        // highlighted normally even while the block is still open.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var input = "{ echo \"Hello World\"";
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+        var rendered = string.Concat(segs.Select(s => s.Text));
+        Assert.Equal(input, rendered);
+
+        var echoSeg = segs.FirstOrDefault(s => s.Text.Trim() == "echo");
+        Assert.NotNull(echoSeg);
+        // 'echo' is a known command, so it must not be rendered with the error color.
+        Assert.NotEqual(ErrorColor, echoSeg.Style.Foreground);
+
+        // The quoted string should appear as a single segment with its literal text intact.
+        Assert.Contains(segs, s => s.Text.Contains("\"Hello World\""));
+    }
+
+    [Fact]
+    public void TestIncompleteInlineExpressionDoesNotDuplicateText()
+    {
+        // Regression: a synthetic missing ')' token must not rewind the visitor
+        // and make GetResult() append already-highlighted text again.
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var input = "echo $(44";
+        var res = highlighter.BuildHighlightedText(input) as Markup;
+        Assert.NotNull(res);
+
+        var rendered = string.Concat(res.GetSegments(AnsiConsole.Console).Select(s => s.Text));
+        Assert.Equal(input, rendered);
     }
 }

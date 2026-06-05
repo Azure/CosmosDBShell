@@ -16,6 +16,8 @@ internal interface IAstVisitor
 
     void Visit(BinaryOperatorExpression binaryOperatorExpression);
 
+    void Visit(FilterPipeExpression filterPipeExpression);
+
     void Visit(ParensExpression parensExpression);
 
     void Visit(JsonExpression jsonExpression);
@@ -23,6 +25,10 @@ internal interface IAstVisitor
     void Visit(JsonArrayExpression jSonArrayExpression);
 
     void Visit(JSonPathExpression jSonPathExpression);
+
+    void Visit(FilterPathExpression filterPathExpression);
+
+    void Visit(FilterCallExpression filterCallExpression);
 
     void Visit(InterpolatedStringExpression interpolatedStringExpression);
 
@@ -90,6 +96,13 @@ internal abstract class AstVisitor : IAstVisitor
         binaryOperatorExpression.Right.Accept(this);
     }
 
+    public virtual void Visit(FilterPipeExpression filterPipeExpression)
+    {
+        filterPipeExpression.Left.Accept(this);
+        this.VisitToken(filterPipeExpression.PipeToken);
+        filterPipeExpression.Right.Accept(this);
+    }
+
     public virtual void Visit(ParensExpression parensExpression)
     {
         this.VisitToken(parensExpression.LParToken);
@@ -104,6 +117,20 @@ internal abstract class AstVisitor : IAstVisitor
     public virtual void Visit(JSonPathExpression jSonPathExpression)
     {
         this.VisitToken(jSonPathExpression.VariableToken);
+    }
+
+    public virtual void Visit(FilterPathExpression filterPathExpression)
+    {
+        this.VisitToken(filterPathExpression.RootToken);
+    }
+
+    public virtual void Visit(FilterCallExpression filterCallExpression)
+    {
+        this.VisitToken(filterCallExpression.NameToken);
+        foreach (var argument in filterCallExpression.Arguments)
+        {
+            argument.Accept(this);
+        }
     }
 
     public virtual void Visit(JsonArrayExpression jSonArrayExpression)

@@ -163,6 +163,7 @@ public class ThemeProfileTests
             (nameof(profile.HelpAccentColor), profile.HelpAccentColor),
             (nameof(profile.HelpPlaceholderColor), profile.HelpPlaceholderColor),
             (nameof(profile.HelpVariableColor), profile.HelpVariableColor),
+            (nameof(profile.HelpBorderColor), profile.HelpBorderColor),
             (nameof(profile.HelpHeaderStyle), profile.HelpHeaderStyle),
             (nameof(profile.HelpNameStyle), profile.HelpNameStyle),
         };
