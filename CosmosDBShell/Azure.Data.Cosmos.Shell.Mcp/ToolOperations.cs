@@ -18,8 +18,6 @@ using ModelContextProtocol.Server;
 
 internal class ToolOperations
 {
-    private static readonly JsonSerializerOptions IndentedJsonOptions = new() { WriteIndented = true };
-
     /// <summary>
     /// JSON schema describing the standard shape of every successful tool response.
     /// Mirrors the payload produced by <see cref="McpResponseFactory"/>: a result
@@ -427,10 +425,13 @@ internal class ToolOperations
     {
         if (this.logger?.IsEnabled(LogLevel.Trace) == true)
         {
-            var serializedRequest = JsonSerializer.Serialize(parameters?.Params, IndentedJsonOptions);
+            var argumentNames = parameters?.Params?.Arguments == null
+                ? "(none)"
+                : string.Join(", ", parameters.Params.Arguments.Keys);
             this.logger.LogTrace(
-                "MCP CallTool request: {Request}",
-                ResourceOperations.SanitizeHistoryEntry(serializedRequest));
+                "MCP CallTool request: tool={Tool}, arguments=[{Arguments}]",
+                parameters?.Params?.Name,
+                argumentNames);
         }
 
         var sb = new StringBuilder();
