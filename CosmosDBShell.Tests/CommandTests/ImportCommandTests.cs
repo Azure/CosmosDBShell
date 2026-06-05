@@ -317,6 +317,24 @@ public class ImportCommandTests
     }
 
     [Fact]
+    public void ParseCsvWithLines_TracksPhysicalStartLineAcrossEmbeddedNewlines()
+    {
+        var content = "id,note\n1,\"a,b\"\n2,\"line1\nline2\"\n3,ok\n";
+
+        var records = ImportCommand.ParseCsvWithLines(content, ',');
+
+        Assert.Equal(4, records.Count);
+        Assert.Equal(1, records[0].StartLine);
+        Assert.Equal(2, records[1].StartLine);
+        Assert.Equal(3, records[2].StartLine);
+
+        // Record 3 follows a quoted field with an embedded newline, so its physical
+        // start line (5) differs from its record index (would be 4).
+        Assert.Equal(5, records[3].StartLine);
+        Assert.Equal(new[] { "3", "ok" }, records[3].Fields);
+    }
+
+    [Fact]
     public void BuildCsvObject_MapsColumnsToStringProperties()
     {
         var element = ImportCommand.BuildCsvObject(

@@ -238,11 +238,33 @@ internal class ImportCommand : CosmosCommand
     /// <returns>A list of records, each a list of field values.</returns>
     internal static List<List<string>> ParseCsv(string content, char separator)
     {
-        var records = new List<List<string>>();
+        var records = ParseCsvWithLines(content, separator);
+        var result = new List<List<string>>(records.Count);
+        foreach (var record in records)
+        {
+            result.Add(record.Fields);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Parses CSV text like <see cref="ParseCsv"/> but also reports the 1-based physical
+    /// line in the source text where each record begins. Quoted fields may span multiple
+    /// physical lines, so the start line is tracked independently of the record index.
+    /// </summary>
+    /// <param name="content">The full CSV text.</param>
+    /// <param name="separator">The field separator.</param>
+    /// <returns>A list of (1-based start line, field values) records.</returns>
+    internal static List<(int StartLine, List<string> Fields)> ParseCsvWithLines(string content, char separator)
+    {
+        var records = new List<(int StartLine, List<string> Fields)>();
         var record = new List<string>();
         var field = new StringBuilder();
         var inQuotes = false;
         var hasContent = false;
+        var physicalLine = 1;
+        var recordStartLine = 0;
 
         for (var i = 0; i < content.Length; i++)
         {
@@ -263,16 +285,31 @@ internal class ImportCommand : CosmosCommand
                 }
                 else
                 {
+                    if (c == '\n')
+                    {
+                        physicalLine++;
+                    }
+
                     field.Append(c);
                 }
             }
             else if (c == '"')
             {
+                if (recordStartLine == 0)
+                {
+                    recordStartLine = physicalLine;
+                }
+
                 inQuotes = true;
                 hasContent = true;
             }
             else if (c == separator)
             {
+                if (recordStartLine == 0)
+                {
+                    recordStartLine = physicalLine;
+                }
+
                 record.Add(field.ToString());
                 field.Clear();
                 hasContent = true;
@@ -287,14 +324,21 @@ internal class ImportCommand : CosmosCommand
                 field.Clear();
                 if (hasContent || record.Count > 1)
                 {
-                    records.Add(record);
+                    records.Add((recordStartLine == 0 ? physicalLine : recordStartLine, record));
                 }
 
                 record = new List<string>();
                 hasContent = false;
+                recordStartLine = 0;
+                physicalLine++;
             }
             else
             {
+                if (recordStartLine == 0)
+                {
+                    recordStartLine = physicalLine;
+                }
+
                 field.Append(c);
                 hasContent = true;
             }
@@ -303,7 +347,7 @@ internal class ImportCommand : CosmosCommand
         if (hasContent || field.Length > 0 || record.Count > 0)
         {
             record.Add(field.ToString());
-            records.Add(record);
+            records.Add((recordStartLine == 0 ? physicalLine : recordStartLine, record));
         }
 
         return records;
@@ -392,16 +436,17 @@ internal class ImportCommand : CosmosCommand
         [EnumeratorCancellation] CancellationToken token)
     {
         var content = await System.IO.File.ReadAllTextAsync(filePath, token);
-        var records = ParseCsv(content, ShellInterpreter.CSVSeparator);
+        var records = ParseCsvWithLines(content, ShellInterpreter.CSVSeparator);
         if (records.Count == 0)
         {
             yield break;
         }
 
-        var headers = records[0];
+        var headers = records[0].Fields;
         for (var r = 1; r < records.Count; r++)
         {
-            yield return (r + 1, BuildCsvObject(headers, records[r], partitionKeySegments));
+            var (startLine, fields) = records[r];
+            yield return (startLine, BuildCsvObject(headers, fields, partitionKeySegments));
         }
     }
 
