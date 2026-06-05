@@ -213,7 +213,7 @@ public class ImportCommandTests
 
         using var writer = new StringWriter();
         writer.NewLine = "\n";
-        var written = await ExportCommand.WriteJsonLinesAsync(ToAsyncEnumerable(items), writer, CancellationToken.None);
+        var written = await ExportCommand.WriteJsonLinesAsync(ToAsyncEnumerableAsync(items), writer, CancellationToken.None);
         Assert.Equal(3, written);
 
         using var reader = new StringReader(writer.ToString());
@@ -241,7 +241,7 @@ public class ImportCommandTests
         };
 
         using var buffer = new MemoryStream();
-        var written = await ExportCommand.WriteArrayAsync(ToAsyncEnumerable(items), buffer, CancellationToken.None);
+        var written = await ExportCommand.WriteArrayAsync(ToAsyncEnumerableAsync(items), buffer, CancellationToken.None);
         Assert.Equal(2, written);
 
         buffer.Position = 0;
@@ -377,7 +377,7 @@ public class ImportCommandTests
         Assert.Equal(string.Empty, element.GetProperty("extra").GetString());
     }
 
-    private static async IAsyncEnumerable<JsonElement> ToAsyncEnumerable(IEnumerable<JsonElement> items)
+    private static async IAsyncEnumerable<JsonElement> ToAsyncEnumerableAsync(IEnumerable<JsonElement> items)
     {
         foreach (var item in items)
         {

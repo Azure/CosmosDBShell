@@ -44,7 +44,7 @@ public class ExportCommandTests
     [Fact]
     public async Task WriteJsonLinesAsync_WritesOneItemPerLine()
     {
-        var items = ToAsyncEnumerable(
+        var items = ToAsyncEnumerableAsync(
             JsonSerializer.SerializeToElement(new { id = "1" }),
             JsonSerializer.SerializeToElement(new { id = "2" }),
             JsonSerializer.SerializeToElement(new { id = "3" }));
@@ -66,7 +66,7 @@ public class ExportCommandTests
     [Fact]
     public async Task WriteJsonLinesAsync_WithNoItems_ProducesEmptyOutput()
     {
-        var items = ToAsyncEnumerable();
+        var items = ToAsyncEnumerableAsync();
 
         using var writer = new StringWriter();
         var count = await ExportCommand.WriteJsonLinesAsync(items, writer, CancellationToken.None);
@@ -78,7 +78,7 @@ public class ExportCommandTests
     [Fact]
     public async Task WriteArrayAsync_WritesValidStreamingArray()
     {
-        var items = ToAsyncEnumerable(
+        var items = ToAsyncEnumerableAsync(
             JsonSerializer.SerializeToElement(new { id = "a" }),
             JsonSerializer.SerializeToElement(new { id = "b" }));
 
@@ -87,7 +87,7 @@ public class ExportCommandTests
 
         Assert.Equal(2, count);
         buffer.Position = 0;
-        using var doc = await JsonDocument.ParseAsync(buffer);
+        using var doc = await JsonDocument.ParseAsync(buffer, cancellationToken: CancellationToken.None);
         Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
         Assert.Equal(2, doc.RootElement.GetArrayLength());
         Assert.Equal("a", doc.RootElement[0].GetProperty("id").GetString());
@@ -97,7 +97,7 @@ public class ExportCommandTests
     [Fact]
     public async Task WriteArrayAsync_WithNoItems_ProducesEmptyArray()
     {
-        var items = ToAsyncEnumerable();
+        var items = ToAsyncEnumerableAsync();
         using var buffer = new MemoryStream();
 
         var count = await ExportCommand.WriteArrayAsync(items, buffer, CancellationToken.None);
@@ -110,7 +110,7 @@ public class ExportCommandTests
     [Fact]
     public async Task WriteJsonLinesAsync_RoundTripsExoticValues()
     {
-        var items = ToAsyncEnumerable(
+        var items = ToAsyncEnumerableAsync(
             JsonSerializer.SerializeToElement(new { id = "1", text = "line\nwith\nnewlines" }),
             JsonSerializer.SerializeToElement(new { id = "2", numbers = new[] { 1, 2, 3 } }),
             JsonSerializer.SerializeToElement(new { id = "3", flag = (object?)null }));
@@ -148,7 +148,7 @@ public class ExportCommandTests
     [Fact]
     public async Task WriteCsvAsync_WritesHeaderUnionAndRows()
     {
-        var items = ToAsyncEnumerable(
+        var items = ToAsyncEnumerableAsync(
             JsonSerializer.SerializeToElement(new { id = "1", name = "Alice" }),
             JsonSerializer.SerializeToElement(new { id = "2", city = "Seattle" }));
 
@@ -168,7 +168,7 @@ public class ExportCommandTests
     [Fact]
     public async Task WriteCsvAsync_EscapesSeparatorsQuotesAndNewlines()
     {
-        var items = ToAsyncEnumerable(
+        var items = ToAsyncEnumerableAsync(
             JsonSerializer.SerializeToElement(new { note = "a,b" }),
             JsonSerializer.SerializeToElement(new { note = "say \"hi\"" }),
             JsonSerializer.SerializeToElement(new { note = "line1\nline2" }));
@@ -188,7 +188,7 @@ public class ExportCommandTests
     [Fact]
     public async Task WriteCsvAsync_NestedValuesWrittenAsCompactJson()
     {
-        var items = ToAsyncEnumerable(
+        var items = ToAsyncEnumerableAsync(
             JsonSerializer.SerializeToElement(new { id = "1", tags = new[] { 1, 2 }, nested = new { a = "b" } }));
 
         using var writer = new StringWriter();
@@ -204,7 +204,7 @@ public class ExportCommandTests
     [Fact]
     public async Task WriteCsvAsync_WithNoItems_ProducesEmptyOutput()
     {
-        var items = ToAsyncEnumerable();
+        var items = ToAsyncEnumerableAsync();
 
         using var writer = new StringWriter();
         var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
@@ -213,7 +213,7 @@ public class ExportCommandTests
         Assert.Equal(string.Empty, writer.ToString());
     }
 
-    private static async IAsyncEnumerable<JsonElement> ToAsyncEnumerable(params JsonElement[] items)
+    private static async IAsyncEnumerable<JsonElement> ToAsyncEnumerableAsync(params JsonElement[] items)
     {
         foreach (var item in items)
         {
