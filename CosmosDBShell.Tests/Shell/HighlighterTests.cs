@@ -491,7 +491,7 @@ public class HighlighterTests
 
         var openBrace = segs.First(s => s.Text == "{");
         var closeBrace = segs.First(s => s.Text == "}");
-        Assert.NotNull(openBrace.Style.Foreground);
+        Assert.NotEqual(Color.Default, openBrace.Style.Foreground);
         Assert.Equal(openBrace.Style.Foreground, closeBrace.Style.Foreground);
 
         var echoSegs = segs.Where(s => s.Text.Contains("echo")).ToList();
