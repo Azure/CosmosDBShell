@@ -421,6 +421,17 @@ command-cat-description = Displays a file
 command-cat-description-path = The path of the file to view.
 command-cat-description-encoding = File encoding (utf8, utf16, ascii)
 
+command-edit-description = Opens a file in an external editor and waits for it to close.
+command-edit-description-path = The path of the file to edit (created if it does not exist).
+command-edit-missing-path = 'edit' requires a file path.
+command-edit-not-interactive = 'edit' needs an interactive terminal and cannot run from a script or piped input.
+command-edit-create-failed = Could not create '{ $path }': { $message }
+command-edit-no-editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
+command-edit-launching = Editing { $path } with { $editor }
+command-edit-launch-failed = Failed to launch editor '{ $editor }' for { $path }: { $message }
+command-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }.
+command-edit-saved = Saved { $path }
+
 command-dir-description = Lists files and directories in the local file system.
 command-dir-description-filter = File name pattern filter (e.g., *.json, *.cs)
 command-dir-description-directory = The directory to list files from
