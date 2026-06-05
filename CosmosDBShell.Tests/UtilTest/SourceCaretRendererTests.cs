@@ -84,6 +84,23 @@ public class SourceCaretRendererTests
     }
 
     [Fact]
+    public void Render_ShortLineStartingWithEllipsisGlyph_NoLeaderSubstitution()
+    {
+        // The source line literally begins with the ellipsis glyph but is short
+        // enough that no trimming occurs. The leading "\u2026 " is real content,
+        // so it must be padded with spaces, not mistaken for a trim leader.
+        var line = "\u2026 value";
+        var caretCol = 3; // points at 'v'
+
+        var result = SourceCaretRenderer.Render(line, caretColumnOneBased: caretCol);
+
+        Assert.Equal(line, result.Display);
+        Assert.Equal(caretCol, result.CaretColumn);
+        Assert.Equal(string.Empty, result.CaretLeader);
+        Assert.Equal(new string(' ', caretCol - 1), result.CaretPad);
+    }
+
+    [Fact]
     public void Render_LongLineCaretNearEnd_OnlyLeftEllipsis()
     {
         var line = new string('a', 200) + "BUG";

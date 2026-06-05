@@ -52,7 +52,12 @@ internal static class SourceCaretRenderer
         // bare space is one cell, but some terminals/fonts render U+2026 as a
         // wider (ambiguous-width) glyph; reusing the exact same prefix keeps
         // the caret column aligned with the display in every terminal.
-        var caretLeader = display.StartsWith(LeftEllipsis, StringComparison.Ordinal)
+        //
+        // Detect left-trimming by whether trimming moved the caret column
+        // rather than by the display prefix: a source line that literally
+        // begins with the ellipsis glyph would otherwise be mistaken for a
+        // trimmed line and shift the caret left.
+        var caretLeader = displayCaret < expandedCaret
             ? LeftEllipsis
             : string.Empty;
 
