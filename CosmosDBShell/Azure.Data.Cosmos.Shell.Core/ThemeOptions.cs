@@ -41,11 +41,23 @@ internal sealed record ThemeOptions
 
     public string LiteralColor { get; init; } = "fuchsia";
 
+    /// <summary>
+    /// Gets the color applied to variable references (e.g. <c>$foo</c>) in the
+    /// prompt highlighter. Empty string falls back to the terminal default.
+    /// </summary>
+    public string VariableColor { get; init; } = "aqua";
+
+    /// <summary>
+    /// Gets the color applied to JSON path expressions (e.g. <c>.items[0].name</c>)
+    /// in the prompt highlighter. Empty string falls back to the terminal default.
+    /// </summary>
+    public string JsonPathColor { get; init; } = "aqua";
+
     public string KeywordColor { get; init; } = "purple";
 
     public string ErrorColor { get; init; } = "red";
 
-    public string OperatorColor { get; init; } = "blue";
+    public string OperatorColor { get; init; } = "teal";
 
     public string TableValueColor { get; init; } = "white";
 
@@ -62,6 +74,12 @@ internal sealed record ThemeOptions
     public string HelpVariableColor { get; init; } = "green";
 
     /// <summary>
+    /// Color applied to the border of help title panels. Empty string means the
+    /// terminal default (no color escape), used by the monochrome profile.
+    /// </summary>
+    public string HelpBorderColor { get; init; } = "green";
+
+    /// <summary>
     /// Style applied to help section/category headers and statement-help titles.
     /// Empty string means terminal default with no modifiers.
     /// </summary>
@@ -76,5 +94,5 @@ internal sealed record ThemeOptions
     /// Colors used for paired brackets ({}, [], ()) cycled by nesting depth. Must be
     /// non-empty.
     /// </summary>
-    public string[] BracketCycle { get; init; } = ["yellow", "fuchsia", "aqua"];
+    public string[] BracketCycle { get; init; } = ["yellow", "fuchsia", "blue"];
 }

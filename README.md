@@ -9,6 +9,7 @@ Lightweight CLI for Azure Cosmos DB.
 - Inspect the current location with `pwd`
 - Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
 - Manage container indexing policies with `index` (`show`, `add`, `remove`, `set`)
+- Tail the change feed of a container with `watch` (alias `tail`)
 - Database and container management commands prefer Azure Resource Manager when connected with Entra ID, with data-plane fallback for key, emulator, and static-token connections
 - Pipelines and scripting with variables, loops, functions
 - Multi-line input at the prompt — automatic continuation for unclosed blocks/strings, plus explicit `\` line continuation ([docs](docs/navigation.md#multi-line-input))
@@ -101,6 +102,7 @@ dotnet tool uninstall --global CosmosDBShell
 - [Commands](docs/commands.md) - All shell commands
 - [Navigation](docs/navigation.md) - Navigation, pipes, CLI arguments
 - [Programming](docs/programming.md) - Variables, control flow, functions
+- [Filter expression language (v1)](docs/filter-v1-spec.md) - Grammar and semantics of the built-in `filter` command
 - [MCP](docs/mcp.md) - Model Context Protocol integration
 
 ## CI And Packaging

@@ -123,11 +123,42 @@ jobs:
         run: dotnet restore CosmosDBShell.sln
 
       - name: Build solution
-        run: >-
-          dotnet build CosmosDBShell.sln
-          --configuration $env:BUILD_CONFIGURATION
-          --no-restore
         shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $log = 'build.log'
+
+          dotnet build CosmosDBShell.sln `
+            --configuration $env:BUILD_CONFIGURATION `
+            --no-restore 2>&1 | Tee-Object -FilePath $log
+          $exitCode = $LASTEXITCODE
+
+          # Surface compiler/analyzer warnings prominently. By default they
+          # are only visible buried in the raw build log and the PR "Files
+          # changed" tab, so collect the distinct warnings here and emit
+          # them both as workflow annotations and in the job step summary.
+          $warnings = Select-String -Path $log -Pattern ': warning ' |
+            ForEach-Object { $_.Line.Trim() } |
+            Sort-Object -Unique
+
+          if ($warnings.Count -gt 0) {
+            foreach ($w in $warnings) {
+              Write-Host "::warning::$w"
+            }
+
+            $summaryLines = @(
+              "## :warning: Build warnings ($($warnings.Count))",
+              '',
+              '```text'
+            )
+            $summaryLines += $warnings
+            $summaryLines += '```'
+            $summaryLines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
+
+          if ($exitCode -ne 0) {
+            throw "dotnet build failed with exit code $exitCode."
+          }
 
       - name: Test solution
         run: >-
