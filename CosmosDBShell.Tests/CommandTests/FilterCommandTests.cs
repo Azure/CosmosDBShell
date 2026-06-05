@@ -281,4 +281,65 @@ public class FilterCommandTests
         var ex = await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None));
         Assert.Contains("Unexpected", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_ParenthesizedPath_EvaluatesAsExpression()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = "1", status = "active" })),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = "(.id)",
+        };
+
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+
+        var json = Assert.IsType<ShellJson>(result.Result);
+        Assert.Equal(JsonValueKind.String, json.Value.ValueKind);
+        Assert.Equal("1", json.Value.GetString());
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ParenthesizedComparison_EvaluatesAsBoolean()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = 1 })),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = "(.id == 1)",
+        };
+
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+
+        var json = Assert.IsType<ShellJson>(result.Result);
+        Assert.Equal(JsonValueKind.True, json.Value.ValueKind);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ParenthesizedExpression_InPipeline()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = "abc" })),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = ". | (.id)",
+        };
+
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+
+        var json = Assert.IsType<ShellJson>(result.Result);
+        Assert.Equal("abc", json.Value.GetString());
+    }
 }

@@ -534,10 +534,14 @@ internal class ExpressionParser
                 var identToken = this.currentToken;
                 var value = identToken.Value;
 
-                // Skip booleans and variables - these should be parsed as expressions
+                // Skip booleans and variables - these should be parsed as expressions.
+                // In filter mode a leading dot-path (e.g. (.id), (.id == 1)) is a pure
+                // sub-expression, not a command invocation, so it is skipped here too;
+                // otherwise the dot-path would be misread as a command name.
                 bool isBooleanOrVariable = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
                                            string.Equals(value, "false", StringComparison.OrdinalIgnoreCase) ||
-                                           value.StartsWith("$");
+                                           value.StartsWith("$") ||
+                                           (this.inFilterMode && value.StartsWith(".", StringComparison.Ordinal));
 
                 if (!isBooleanOrVariable)
                 {
