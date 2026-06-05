@@ -288,6 +288,19 @@ command-results-limit_reached =
        *[other] Results limited to { $count } items. Use --max to change the limit or --max 0 for no limit.
     }
 
+command-watch-description = Tail the change feed of a container, streaming new and modified items as they arrive.
+command-watch-description-from-beginning = Start from the beginning of the change feed instead of from now.
+command-watch-description-partition-key = Scope the change feed to a single partition key value.
+command-watch-description-max = Stop after receiving this many changes. Omit, or use 0 or a negative value, to follow until Ctrl+C.
+command-watch-description-interval = Seconds to wait between change feed polls once caught up. Defaults to 1; values below 0.1 are clamped.
+command-watch-description-format = { command-query-description-format }
+command-watch-description-database = The database containing the container to watch.
+command-watch-description-container = The container to watch.
+command-watch-started = Watching changes in { $container }. Press Ctrl+C to stop.
+command-watch-stopped = Stopped watching after { $count } changes.
+command-watch-error-request_failed = Change feed request failed with status code { $statusCode } ({ $status }).
+command-watch-error-invalid_interval = Interval value '{ $interval }' is invalid. Specify a finite number of seconds.
+
 command-jq-description = Commandline JSON processor
 command-jq-description-args = Arguments for the jq command
 command-filter-description = Filter and transform piped JSON with the native filter expression language

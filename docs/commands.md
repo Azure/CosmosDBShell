@@ -304,6 +304,39 @@ Arguments:
     pattern     Pattern for items to remove
 ```
 
+### watch
+
+Tail the change feed of a container, printing new and modified items as they arrive. Also available as `tail`.
+
+```text
+Usage: watch [-from-beginning] [-partition-key <ARG>] [-max <ARG>] [-interval <ARG>] [-format <ARG>] [-database <ARG>] [-container <ARG>]
+
+Options:
+    -from-beginning, -b
+               Replay the change feed from the beginning of the container instead of from now
+    -partition-key, -pk
+               Scope the change feed to a single partition key (Optional)
+    -max, -m   Stop after this many changes (Optional)
+    -interval, -i
+               Seconds between change feed polls; defaults to 1 (Optional)
+    -format, -f
+               Output format for the printed items (Optional)
+    -database, -db
+               Override database name (Optional)
+    -container, -con
+               Override container name (Optional)
+```
+
+By default `watch` starts from now and follows the container, printing each change as highlighted JSON until you press Ctrl+C. Use `--from-beginning` to replay existing items first, `--partition-key` to scope the feed to one partition, and `--max` to stop automatically after a number of changes. Use `--interval` to change how long the shell waits between polls once it has caught up (default 1 second; values below 0.1 are clamped to avoid hammering the container). The change feed surfaces creates and updates (not deletes). This command is interactive and streaming, so it is not exposed over MCP.
+
+```bash
+watch
+watch --from-beginning
+watch --partition-key=myKey --max=100
+watch --interval=5
+watch --database=MyDB --container=Products
+```
+
 ## Scripting
 
 ### exec
