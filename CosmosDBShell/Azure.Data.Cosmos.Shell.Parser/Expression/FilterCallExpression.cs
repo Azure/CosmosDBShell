@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal class FilterCallExpression : Expression
 {
@@ -35,7 +36,11 @@ internal class FilterCallExpression : Expression
         var current = currentState.Result?.ConvertShellObject(DataType.Json);
         if (current is not JsonElement currentJson)
         {
-            throw new InvalidOperationException($"filter builtin '{this.Name}' requires a JSON pipeline value");
+            throw new CommandException(
+                "filter",
+                MessageService.GetString(
+                    "command-filter-error-not_json",
+                    new Dictionary<string, object> { { "context", this.Name } }));
         }
 
         return this.Name switch
@@ -47,7 +52,11 @@ internal class FilterCallExpression : Expression
             "map" => await this.EvaluateMapAsync(interpreter, currentJson, cancellationToken),
             "select" => await this.EvaluateSelectAsync(interpreter, currentJson, cancellationToken),
             "sort_by" => await this.EvaluateSortByAsync(interpreter, currentJson, cancellationToken),
-            _ => throw new InvalidOperationException($"Unsupported filter builtin '{this.Name}'"),
+            _ => throw new CommandException(
+                "filter",
+                MessageService.GetString(
+                    "command-filter-error-unknown_builtin",
+                    new Dictionary<string, object> { { "name", this.Name } })),
         };
     }
 
@@ -82,7 +91,11 @@ internal class FilterCallExpression : Expression
             JsonValueKind.Object => new ShellNumber(currentJson.EnumerateObject().Count()),
             JsonValueKind.String => new ShellNumber((currentJson.GetString() ?? string.Empty).Length),
             JsonValueKind.Null => new ShellNumber(0),
-            _ => throw new InvalidOperationException("length supports arrays, objects, strings, and null"),
+            _ => throw new CommandException(
+                "filter",
+                MessageService.GetString(
+                    "command-filter-error-length_type",
+                    new Dictionary<string, object> { { "type", FilterExpressionUtilities.DescribeKind(currentJson.ValueKind) } })),
         };
     }
 
@@ -90,7 +103,11 @@ internal class FilterCallExpression : Expression
     {
         if (currentJson.ValueKind != JsonValueKind.Object)
         {
-            throw new InvalidOperationException("keys requires an object input");
+            throw new CommandException(
+                "filter",
+                MessageService.GetString(
+                    "command-filter-error-keys_type",
+                    new Dictionary<string, object> { { "type", FilterExpressionUtilities.DescribeKind(currentJson.ValueKind) } }));
         }
 
         var keys = currentJson.EnumerateObject().Select(static p => p.Name).OrderBy(static p => p, StringComparer.Ordinal).ToArray();
@@ -117,7 +134,11 @@ internal class FilterCallExpression : Expression
     {
         if (actual != expected)
         {
-            throw new InvalidOperationException($"Builtin '{name}' expects {expected} argument(s)");
+            throw new CommandException(
+                "filter",
+                MessageService.GetString(
+                    "command-filter-error-argument_count",
+                    new Dictionary<string, object> { { "name", name }, { "expected", expected } }));
         }
     }
 
@@ -133,7 +154,11 @@ internal class FilterCallExpression : Expression
         this.RequireArgumentCount(1);
         if (currentJson.ValueKind != JsonValueKind.Array)
         {
-            throw new InvalidOperationException("map requires an array input");
+            throw new CommandException(
+                "filter",
+                MessageService.GetString(
+                    "command-filter-error-map_type",
+                    new Dictionary<string, object> { { "type", FilterExpressionUtilities.DescribeKind(currentJson.ValueKind) } }));
         }
 
         var results = new List<JsonElement>();
@@ -159,7 +184,11 @@ internal class FilterCallExpression : Expression
         this.RequireArgumentCount(1);
         if (currentJson.ValueKind != JsonValueKind.Array)
         {
-            throw new InvalidOperationException("select requires an array input");
+            throw new CommandException(
+                "filter",
+                MessageService.GetString(
+                    "command-filter-error-select_type",
+                    new Dictionary<string, object> { { "type", FilterExpressionUtilities.DescribeKind(currentJson.ValueKind) } }));
         }
 
         var results = new List<JsonElement>();
@@ -185,7 +214,11 @@ internal class FilterCallExpression : Expression
         this.RequireArgumentCount(1);
         if (currentJson.ValueKind != JsonValueKind.Array)
         {
-            throw new InvalidOperationException("sort_by requires an array input");
+            throw new CommandException(
+                "filter",
+                MessageService.GetString(
+                    "command-filter-error-sort_by_type",
+                    new Dictionary<string, object> { { "type", FilterExpressionUtilities.DescribeKind(currentJson.ValueKind) } }));
         }
 
         var items = new List<(JsonElement Item, JsonElement Key)>();

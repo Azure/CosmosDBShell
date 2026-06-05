@@ -342,4 +342,66 @@ public class FilterCommandTests
         var json = Assert.IsType<ShellJson>(result.Result);
         Assert.Equal("abc", json.Value.GetString());
     }
+
+    [Theory]
+    [InlineData("length", "5", "length supports")]
+    [InlineData("keys", "[1, 2]", "keys requires an object")]
+    [InlineData("map(.id)", "{ \"id\": 1 }", "map requires an array")]
+    [InlineData("select(.id)", "{ \"id\": 1 }", "select requires an array")]
+    [InlineData("sort_by(.id)", "{ \"id\": 1 }", "sort_by requires an array")]
+    public async Task ExecuteAsync_RuntimeTypeError_ThrowsLocalizedCommandException(string expression, string inputJson, string expectedFragment)
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonDocument.Parse(inputJson).RootElement.Clone()),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = expression,
+        };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None));
+        Assert.Contains(expectedFragment, ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("System.", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PropertyAccessOnNonObject_ThrowsLocalizedCommandException()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(5)),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = ".id",
+        };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None));
+        Assert.Contains("Cannot read property", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_OptionalPropertyOnNonObject_ReturnsNull()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(5)),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = ".id?",
+        };
+
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+
+        var json = Assert.IsType<ShellJson>(result.Result);
+        Assert.Equal(JsonValueKind.Null, json.Value.ValueKind);
+    }
 }

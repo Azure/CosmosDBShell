@@ -16,6 +16,20 @@ internal static class FilterExpressionUtilities
         return NullJsonDocument.RootElement;
     }
 
+    public static string DescribeKind(JsonValueKind kind)
+    {
+        return kind switch
+        {
+            JsonValueKind.Null or JsonValueKind.Undefined => "null",
+            JsonValueKind.True or JsonValueKind.False => "boolean",
+            JsonValueKind.Number => "number",
+            JsonValueKind.String => "string",
+            JsonValueKind.Array => "array",
+            JsonValueKind.Object => "object",
+            _ => "null",
+        };
+    }
+
     public static JsonElement ToJsonElement(ShellObject shellObject)
     {
         switch (shellObject)

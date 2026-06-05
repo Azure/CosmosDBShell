@@ -692,7 +692,7 @@ public class ExpressionTests
     [InlineData("type(.items)")]
     public async Task EvaluateExpression_FilterZeroArgumentBuiltin_WithArgument_Throws(string expression)
     {
-        await Assert.ThrowsAsync<InvalidOperationException>(() => EvaluateExpressionWithJsonAsync(expression, new { items = new[] { 1, 2, 3 } }));
+        await Assert.ThrowsAsync<CommandException>(() => EvaluateExpressionWithJsonAsync(expression, new { items = new[] { 1, 2, 3 } }));
     }
 
     [Fact]

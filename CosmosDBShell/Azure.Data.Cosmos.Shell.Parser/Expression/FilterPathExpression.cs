@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal class FilterPathExpression : Expression
 {
@@ -37,7 +38,11 @@ internal class FilterPathExpression : Expression
         var evaluatedResult = currentState.Result?.ConvertShellObject(DataType.Json);
         if (evaluatedResult is not JsonElement root)
         {
-            throw new InvalidOperationException("filter path requires a JSON pipeline value");
+            throw new CommandException(
+                "filter",
+                MessageService.GetString(
+                    "command-filter-error-not_json",
+                    new Dictionary<string, object> { { "context", this.RootToken.Value } }));
         }
 
         var values = new List<JsonElement> { root.Clone() };
@@ -69,7 +74,15 @@ internal class FilterPathExpression : Expression
                         }
                         else
                         {
-                            throw new InvalidOperationException($"Cannot read property '{propertySegment.Name}' from {value.ValueKind}");
+                            throw new CommandException(
+                                "filter",
+                                MessageService.GetString(
+                                    "command-filter-error-property_type",
+                                    new Dictionary<string, object>
+                                    {
+                                        { "name", propertySegment.Name },
+                                        { "type", FilterExpressionUtilities.DescribeKind(value.ValueKind) },
+                                    }));
                         }
 
                         break;
@@ -92,7 +105,15 @@ internal class FilterPathExpression : Expression
                         }
                         else
                         {
-                            throw new InvalidOperationException($"Cannot index {value.ValueKind} with [{indexSegment.Index}]");
+                            throw new CommandException(
+                                "filter",
+                                MessageService.GetString(
+                                    "command-filter-error-index_type",
+                                    new Dictionary<string, object>
+                                    {
+                                        { "type", FilterExpressionUtilities.DescribeKind(value.ValueKind) },
+                                        { "index", indexSegment.Index },
+                                    }));
                         }
 
                         break;
@@ -113,7 +134,11 @@ internal class FilterPathExpression : Expression
                         }
                         else
                         {
-                            throw new InvalidOperationException($"Cannot iterate over {value.ValueKind}");
+                            throw new CommandException(
+                                "filter",
+                                MessageService.GetString(
+                                    "command-filter-error-iterate_type",
+                                    new Dictionary<string, object> { { "type", FilterExpressionUtilities.DescribeKind(value.ValueKind) } }));
                         }
 
                         break;
