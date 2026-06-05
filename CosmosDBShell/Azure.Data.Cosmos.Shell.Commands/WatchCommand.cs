@@ -78,7 +78,7 @@ internal class WatchCommand : CosmosCommand
     /// </summary>
     internal static ChangeFeedStartFrom BuildStartFrom(bool fromBeginning, string? partitionKey)
     {
-        if (!string.IsNullOrEmpty(partitionKey))
+        if (partitionKey is not null)
         {
             var feedRange = FeedRange.FromPartitionKey(CreatePartitionKeyFromArgument(partitionKey));
             return fromBeginning ? ChangeFeedStartFrom.Beginning(feedRange) : ChangeFeedStartFrom.Now(feedRange);
@@ -97,6 +97,11 @@ internal class WatchCommand : CosmosCommand
         if (seconds is not { } value)
         {
             return TimeSpan.FromSeconds(DefaultIntervalSeconds);
+        }
+
+        if (double.IsNaN(value) || double.IsInfinity(value))
+        {
+            throw new CommandException("watch", MessageService.GetArgsString("command-watch-error-invalid_interval", "interval", value.ToString()));
         }
 
         return TimeSpan.FromSeconds(Math.Max(value, MinIntervalSeconds));
@@ -224,7 +229,7 @@ internal class WatchCommand : CosmosCommand
         result.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
         if (collected != null)
         {
-            result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { changes = collected }));
+            result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = collected }));
         }
 
         return result;

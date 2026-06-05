@@ -299,6 +299,7 @@ command-watch-description-container = The container to watch.
 command-watch-started = Watching changes in { $container }. Press Ctrl+C to stop.
 command-watch-stopped = Stopped watching after { $count } changes.
 command-watch-error-request_failed = Change feed request failed with status code { $statusCode } ({ $status }).
+command-watch-error-invalid_interval = Interval value '{ $interval }' is invalid. Specify a finite number of seconds.
 
 command-jq-description = Commandline JSON processor
 command-jq-description-args = Arguments for the jq command
