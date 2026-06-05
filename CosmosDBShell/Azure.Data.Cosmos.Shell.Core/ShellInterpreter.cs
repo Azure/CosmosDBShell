@@ -90,7 +90,8 @@ public partial class ShellInterpreter : IDisposable
 
     /// <summary>
     /// Raised when <see cref="State"/> transitions to a new instance. Listeners run
-    /// synchronously inside the setter; handlers must be fast and exception-safe.
+    /// synchronously inside the setter; subscriber exceptions are isolated so a
+    /// misbehaving listener cannot break shell state transitions.
     /// </summary>
     internal event EventHandler<StateChangedEventArgs>? StateChanged;
 
@@ -174,7 +175,7 @@ public partial class ShellInterpreter : IDisposable
             this.state = value;
             if (!ReferenceEquals(previous, value))
             {
-                this.StateChanged?.Invoke(this, new StateChangedEventArgs(previous, value));
+                this.RaiseStateChanged(new StateChangedEventArgs(previous, value));
             }
         }
     }
@@ -184,6 +185,33 @@ public partial class ShellInterpreter : IDisposable
     internal int? McpPort { get; set; }
 
     internal Queue<VariableContainer> VariableContainers { get; } = new();
+
+    /// <summary>
+    /// Raises <see cref="StateChanged"/>, invoking each subscriber independently so that
+    /// an exception thrown by one listener cannot propagate out of the <see cref="State"/>
+    /// setter and break shell state transitions, navigation, or command execution.
+    /// </summary>
+    /// <param name="args">The state transition details to publish.</param>
+    private void RaiseStateChanged(StateChangedEventArgs args)
+    {
+        var handler = this.StateChanged;
+        if (handler == null)
+        {
+            return;
+        }
+
+        foreach (var subscriber in handler.GetInvocationList())
+        {
+            try
+            {
+                ((EventHandler<StateChangedEventArgs>)subscriber)(this, args);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"StateChanged subscriber threw: {ex}");
+            }
+        }
+    }
 
     /// <summary>
     /// Create a new instance of the <see cref="ShellInterpreter"/> class.

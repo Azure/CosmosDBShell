@@ -44,11 +44,24 @@ internal sealed class ResourceSubscriptionManager : IDisposable
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<McpSdkServer, byte>> subscriptions = new(StringComparer.Ordinal);
     private readonly ILogger<ResourceSubscriptionManager>? logger;
     private readonly EventHandler<StateChangedEventArgs> stateChangedHandler;
+    private readonly Func<McpSdkServer, ResourceUpdatedNotificationParams, CancellationToken, Task> sendNotificationAsync;
     private bool disposed;
 
     public ResourceSubscriptionManager(ILogger<ResourceSubscriptionManager>? logger = null)
+        : this(logger, null)
+    {
+    }
+
+    /// <summary>
+    /// Test seam constructor that allows substituting the notification dispatch so unit
+    /// tests can simulate transport failures without a live MCP client connection.
+    /// </summary>
+    internal ResourceSubscriptionManager(
+        ILogger<ResourceSubscriptionManager>? logger,
+        Func<McpSdkServer, ResourceUpdatedNotificationParams, CancellationToken, Task>? sendNotificationAsync)
     {
         this.logger = logger;
+        this.sendNotificationAsync = sendNotificationAsync ?? DefaultSendNotificationAsync;
         this.stateChangedHandler = this.OnShellStateChanged;
         ShellInterpreter.Instance.StateChanged += this.stateChangedHandler;
     }
@@ -74,6 +87,14 @@ internal sealed class ResourceSubscriptionManager : IDisposable
         }
 
         return false;
+    }
+
+    private static Task DefaultSendNotificationAsync(McpSdkServer server, ResourceUpdatedNotificationParams parameters, CancellationToken cancellationToken)
+    {
+        return server.SendNotificationAsync(
+            NotificationMethods.ResourceUpdatedNotification,
+            parameters,
+            cancellationToken: cancellationToken);
     }
 
     public bool Subscribe(string uri, McpSdkServer server)
@@ -140,10 +161,7 @@ internal sealed class ResourceSubscriptionManager : IDisposable
         {
             try
             {
-                await server.SendNotificationAsync(
-                    NotificationMethods.ResourceUpdatedNotification,
-                    parameters,
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                await this.sendNotificationAsync(server, parameters, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

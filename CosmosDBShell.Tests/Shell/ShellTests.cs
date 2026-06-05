@@ -13,9 +13,33 @@ using System.Threading.Tasks;
 
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.States;
+using Azure.Data.Cosmos.Shell.Util;
+using Microsoft.Azure.Cosmos;
 
 public class ShellTests
 {
+    [Fact]
+    public void StateSetter_IsolatesSubscriberExceptions()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var client = new CosmosClient(ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/"));
+
+        var secondHandlerRan = false;
+        shell.StateChanged += (_, _) => throw new InvalidOperationException("boom");
+        shell.StateChanged += (_, _) => secondHandlerRan = true;
+
+        var newState = new ConnectedState(client);
+
+        // A throwing subscriber must neither abort the transition nor prevent
+        // later subscribers from running.
+        var ex = Record.Exception(() => shell.State = newState);
+
+        Assert.Null(ex);
+        Assert.Same(newState, shell.State);
+        Assert.True(secondHandlerRan);
+    }
+
     [Fact]
     public async Task TestHelp()
     {
