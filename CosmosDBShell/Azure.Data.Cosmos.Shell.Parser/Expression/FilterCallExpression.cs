@@ -116,18 +116,7 @@ internal class FilterCallExpression : Expression
 
     private static ShellObject EvaluateType(JsonElement currentJson)
     {
-        var value = currentJson.ValueKind switch
-        {
-            JsonValueKind.Null => "null",
-            JsonValueKind.True or JsonValueKind.False => "boolean",
-            JsonValueKind.Number => "number",
-            JsonValueKind.String => "string",
-            JsonValueKind.Array => "array",
-            JsonValueKind.Object => "object",
-            _ => "null",
-        };
-
-        return new ShellText(value);
+        return new ShellText(FilterExpressionUtilities.DescribeKind(currentJson.ValueKind));
     }
 
     private static void RequireArgumentCount(int actual, string name, int expected)
@@ -164,6 +153,7 @@ internal class FilterCallExpression : Expression
         var results = new List<JsonElement>();
         foreach (var item in currentJson.EnumerateArray())
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var nestedState = new CommandState { Result = new ShellJson(item.Clone()) };
             var evaluated = await this.Arguments[0].EvaluateAsync(interpreter, nestedState, cancellationToken);
             if (evaluated is ShellSequence sequence)
@@ -194,6 +184,7 @@ internal class FilterCallExpression : Expression
         var results = new List<JsonElement>();
         foreach (var item in currentJson.EnumerateArray())
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var nestedState = new CommandState { Result = new ShellJson(item.Clone()) };
             var evaluated = await this.Arguments[0].EvaluateAsync(interpreter, nestedState, cancellationToken);
             if (evaluated is ShellBool shellBool && shellBool.Value)
@@ -224,6 +215,7 @@ internal class FilterCallExpression : Expression
         var items = new List<(JsonElement Item, JsonElement Key)>();
         foreach (var item in currentJson.EnumerateArray())
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var nestedState = new CommandState { Result = new ShellJson(item.Clone()) };
             var evaluated = await this.Arguments[0].EvaluateAsync(interpreter, nestedState, cancellationToken);
             items.Add((item.Clone(), FilterExpressionUtilities.ToJsonElement(evaluated)));

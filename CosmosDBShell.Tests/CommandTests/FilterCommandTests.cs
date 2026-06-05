@@ -404,4 +404,47 @@ public class FilterCommandTests
         var json = Assert.IsType<ShellJson>(result.Result);
         Assert.Equal(JsonValueKind.Null, json.Value.ValueKind);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_SortBy_HandlesNumbersOutsideDecimalRange()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonDocument.Parse("[{\"v\": 1e308}, {\"v\": -1e308}, {\"v\": 0}]").RootElement.Clone()),
+        };
+
+        // Sort by a key that exceeds decimal range; must not throw FormatException.
+        var sortCommand = new FilterCommand
+        {
+            ExpressionText = "sort_by(.v) | map(.v)",
+        };
+
+        var result = await sortCommand.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+
+        var json = Assert.IsType<ShellJson>(result.Result);
+        var values = json.Value.EnumerateArray().Select(static e => e.GetDouble()).ToArray();
+        Assert.Equal(new[] { -1e308, 0d, 1e308 }, values);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_HonorsCancellation()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonDocument.Parse("[1, 2, 3, 4, 5]").RootElement.Clone()),
+        };
+
+        var command = new FilterCommand
+        {
+            ExpressionText = "map(. == .)",
+        };
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => command.ExecuteAsync(shell, state, string.Empty, cts.Token));
+    }
 }

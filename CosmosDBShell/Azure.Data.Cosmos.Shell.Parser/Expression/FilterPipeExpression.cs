@@ -35,6 +35,7 @@ internal class FilterPipeExpression : Expression
             var outputs = new List<System.Text.Json.JsonElement>();
             foreach (var element in sequence.Elements)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var nestedState = new CommandState { Result = new ShellJson(element.Clone()) };
                 var rightResult = await this.Right.EvaluateAsync(interpreter, nestedState, cancellationToken);
                 if (rightResult is ShellSequence nestedSequence)

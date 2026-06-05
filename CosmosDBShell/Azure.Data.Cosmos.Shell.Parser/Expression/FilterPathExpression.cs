@@ -50,6 +50,7 @@ internal class FilterPathExpression : Expression
 
         foreach (var segment in this.Segments)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var next = new List<JsonElement>();
 
             foreach (var value in values)

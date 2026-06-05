@@ -74,7 +74,7 @@ internal static class FilterExpressionUtilities
             JsonValueKind.Null or JsonValueKind.Undefined => true,
             JsonValueKind.True => right.ValueKind == JsonValueKind.True,
             JsonValueKind.False => right.ValueKind == JsonValueKind.False,
-            JsonValueKind.Number => left.GetDecimal() == right.GetDecimal(),
+            JsonValueKind.Number => left.GetDouble() == right.GetDouble(),
             JsonValueKind.String => string.Equals(left.GetString(), right.GetString(), StringComparison.Ordinal),
             JsonValueKind.Array => left.EnumerateArray().SequenceEqual(right.EnumerateArray(), JsonElementComparer.Instance),
             JsonValueKind.Object => ObjectEquals(left, right),
@@ -123,7 +123,7 @@ internal static class FilterExpressionUtilities
         {
             JsonValueKind.Null or JsonValueKind.Undefined => 0,
             JsonValueKind.False or JsonValueKind.True => left.GetBoolean().CompareTo(right.GetBoolean()),
-            JsonValueKind.Number => left.GetDecimal().CompareTo(right.GetDecimal()),
+            JsonValueKind.Number => left.GetDouble().CompareTo(right.GetDouble()),
             JsonValueKind.String => string.Compare(left.GetString(), right.GetString(), StringComparison.Ordinal),
             _ => string.Compare(left.GetRawText(), right.GetRawText(), StringComparison.Ordinal),
         };
