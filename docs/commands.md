@@ -336,25 +336,20 @@ for $file in (dir "*.csh") { exec $file.path }
 Open a local file (for example a `.csh` script) in an external editor and wait for the editor to close. The file is created if it does not already exist. Pair it with `exec` to edit and then run a script.
 
 ```text
-Usage: edit <path> [-editor <ARG>]
+Usage: edit <path>
 
 Arguments:
     path        The file to edit (created if it does not exist)
-
-Options:
-    -editor     External editor to launch
-                (defaults to $VISUAL, $EDITOR, then a platform default)
 ```
 
 Examples:
 
 ```bash
-edit deploy.csh                         # open in $EDITOR (or platform default)
-edit deploy.csh --editor "code --wait"  # use VS Code; --wait keeps the shell blocked until you close the tab
-exec deploy.csh                         # run the script you just edited
+edit deploy.csh   # open in $EDITOR (or platform default)
+exec deploy.csh   # run the script you just edited
 ```
 
-The editor is resolved from `--editor`, then `$VISUAL`, then `$EDITOR`, then a platform default (`notepad` on Windows, `nano` elsewhere). GUI editors must block until the file is closed (for example `code --wait`), otherwise the command returns immediately. `edit` requires an interactive terminal and is rejected when input is piped or running under a script.
+The editor is resolved from `$VISUAL`, then `$EDITOR`, then a platform default (`notepad` on Windows, `nano` elsewhere). GUI editors must block until the file is closed (for example by setting `$VISUAL` to `code --wait`), otherwise the command returns immediately. `edit` requires an interactive terminal and is rejected when input is piped or running under a script.
 
 ## Management
 

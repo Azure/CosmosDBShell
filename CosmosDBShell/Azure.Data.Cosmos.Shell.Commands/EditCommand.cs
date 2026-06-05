@@ -18,15 +18,11 @@ using Spectre.Console;
 /// </summary>
 [CosmosCommand("edit")]
 [CosmosExample("edit deploy.csh", Description = "Open deploy.csh in $EDITOR, creating it if needed")]
-[CosmosExample("edit deploy.csh --editor \"code --wait\"", Description = "Edit a script with a specific editor")]
 [McpAnnotation(Restricted = true)]
 internal class EditCommand : CosmosCommand
 {
     [CosmosParameter("path", IsRequired = true, ParameterType = ParameterType.File)]
     public string? FilePath { get; init; }
-
-    [CosmosOption("editor")]
-    public string? Editor { get; init; }
 
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
@@ -64,7 +60,7 @@ internal class EditCommand : CosmosCommand
             return Task.FromResult<CommandState>(new ErrorCommandState(new CommandException("edit", message, ex)));
         }
 
-        var editor = ExternalEditor.Resolve(this.Editor);
+        var editor = ExternalEditor.Resolve(null);
         if (editor is null)
         {
             var message = MessageService.GetString("command-edit-no-editor");

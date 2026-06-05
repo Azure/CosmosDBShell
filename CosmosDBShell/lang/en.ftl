@@ -392,11 +392,10 @@ command-cat-description-encoding = File encoding (utf8, utf16, ascii)
 
 command-edit-description = Opens a file in an external editor and waits for it to close.
 command-edit-description-path = The path of the file to edit (created if it does not exist).
-command-edit-description-editor = External editor to launch (defaults to $VISUAL, $EDITOR, then a platform default).
 command-edit-missing-path = 'edit' requires a file path.
 command-edit-not-interactive = 'edit' needs an interactive terminal and cannot run from a script or piped input.
 command-edit-create-failed = Could not create '{ $path }': { $message }
-command-edit-no-editor = No editor found. Set $VISUAL or $EDITOR, or pass --editor=<command>.
+command-edit-no-editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
 command-edit-launching = Editing { $path } with { $editor }
 command-edit-launch-failed = Failed to launch editor '{ $editor }' for { $path }: { $message }
 command-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }.
