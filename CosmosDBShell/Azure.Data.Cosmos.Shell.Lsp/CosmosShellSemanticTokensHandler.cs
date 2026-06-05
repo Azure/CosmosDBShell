@@ -371,9 +371,19 @@ internal class CosmosShellSemanticTokensHandler : SemanticTokensHandlerBase
 
         public void Visit(BlockStatement s)
         {
+            if (s.OpenBraceToken != null)
+            {
+                this.addSpan(s.OpenBraceToken.Start, s.OpenBraceToken.Length, SemanticTokenType.Regexp);
+            }
+
             foreach (var stmt in s.Statements)
             {
                 stmt.Accept(this);
+            }
+
+            if (s.CloseBraceToken != null)
+            {
+                this.addSpan(s.CloseBraceToken.Start, s.CloseBraceToken.Length, SemanticTokenType.Regexp);
             }
         }
 

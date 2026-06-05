@@ -37,7 +37,13 @@ public partial class ShellInterpreter : IHighlighter
     /// </summary>
     internal string BuildHighlightedMarkup(string text)
     {
-        var parser = new StatementParser(text);
+        var parser = new StatementParser(text)
+        {
+            // Allow the parser to return partial AST nodes (e.g. a BlockStatement
+            // whose '}' hasn't been typed yet) so the highlighter can color the
+            // inner statements while the user is still entering the construct.
+            TolerateIncompleteConstructs = true,
+        };
         Statement? statement = null;
 
 #pragma warning disable CZ0001 // Empty Catch Clause
@@ -50,15 +56,23 @@ public partial class ShellInterpreter : IHighlighter
             // Ignore parse errors for highlighting purposes
         }
 
-        if (statement != null && !parser.Errors.HasErrors)
+        if (statement != null)
         {
             try
             {
                 var highlighter = new HighlightingVisitor(text, this);
                 statement.Accept(highlighter);
                 var result = highlighter.GetResult();
-                this.oldHighlightStatement = statement;
-                this.oldHighlightedText = text;
+
+                // Only cache the AST for reuse when the parse was clean. Partial trees
+                // are good enough to render the current keystroke, but we don't want a
+                // later prefix-match fallback to use them as if they were authoritative.
+                if (!parser.Errors.HasErrors)
+                {
+                    this.oldHighlightStatement = statement;
+                    this.oldHighlightedText = text;
+                }
+
                 return result;
             }
             catch
@@ -594,9 +608,27 @@ public partial class ShellInterpreter : IHighlighter
 
         public void Visit(BlockStatement blockStatement)
         {
+            // Color the block braces using the current bracket depth so they participate
+            // in the same rainbow cycle as JSON braces, brackets, and parentheses.
+            var braceDepth = this.bracketDepth;
+
+            if (blockStatement.OpenBraceToken != null)
+            {
+                this.AppendToken(blockStatement.OpenBraceToken, Theme.FormatBracket(blockStatement.OpenBraceToken.Value, braceDepth));
+            }
+
+            this.bracketDepth = braceDepth + 1;
+
             foreach (var statement in blockStatement.Statements)
             {
                 statement.Accept(this);
+            }
+
+            this.bracketDepth = braceDepth;
+
+            if (blockStatement.CloseBraceToken != null)
+            {
+                this.AppendToken(blockStatement.CloseBraceToken, Theme.FormatBracket(blockStatement.CloseBraceToken.Value, braceDepth));
             }
         }
 
@@ -724,9 +756,18 @@ public partial class ShellInterpreter : IHighlighter
 
         private void AppendToken(Token token, string markup)
         {
+            // Synthetic tokens emitted during error recovery (e.g. a missing ')'
+            // in 'echo $(44') carry zero length and the position of the previous
+            // real token. They must not rewind currentPosition or emit markup.
+            var end = token.Start + token.Length;
+            if (token.Length == 0 || end <= this.currentPosition)
+            {
+                return;
+            }
+
             this.AppendUpTo(token.Start);
             this.result.Append(markup);
-            this.currentPosition = token.Start + token.Length;
+            this.currentPosition = end;
         }
     }
 }

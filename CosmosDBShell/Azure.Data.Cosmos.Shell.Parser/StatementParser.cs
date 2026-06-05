@@ -28,6 +28,15 @@ internal class StatementParser
 
     public ErrorList Errors { get => this.lexer.Errors; }
 
+    /// <summary>
+    /// When true, the parser returns partial AST nodes on recoverable errors
+    /// (e.g. a <see cref="BlockStatement"/> with a missing close brace) instead
+    /// of <c>null</c>. Intended for consumers like the syntax highlighter that
+    /// need to walk whatever was parsed so far while the user is still typing.
+    /// Execution paths must leave this disabled so partial trees are never run.
+    /// </summary>
+    public bool TolerateIncompleteConstructs { get; set; }
+
     public List<Statement> ParseStatements()
     {
         var statements = new List<Statement>();
@@ -800,12 +809,22 @@ internal class StatementParser
             if (this.expressionParser.Current == null || this.expressionParser.Current.Type != TokenType.CloseBrace)
             {
                 // If we ran out of input entirely while waiting for '}', this is the same
-                // signal as any other "ran off the end" error — surface it as UnexpectedEnd
+                // signal as any other "ran off the end" error: surface it as UnexpectedEnd
                 // so the REPL can prompt for a continuation line.
                 var kind = this.expressionParser.Current == null
                     ? ParseErrorKind.UnexpectedEnd
                     : ParseErrorKind.Generic;
                 this.ReportError(MessageService.GetString("statement_error_expected_close_brace"), this.expressionParser.Current, kind);
+
+                // Tolerant consumers (notably syntax highlighting) want a partial
+                // BlockStatement so they can still walk the inner statements parsed
+                // before the missing '}'. Execution paths must leave the flag off
+                // so partial trees are never run; they continue to receive null.
+                if (this.TolerateIncompleteConstructs)
+                {
+                    return new BlockStatement(openBrace, closeBrace: null, statements);
+                }
+
                 return null;
             }
 
