@@ -34,7 +34,9 @@ internal class BlockStatement : Statement
     }
 
     /// <summary>
-    /// Gets the opening brace token, or <c>null</c> when the block was synthesized without one.
+    /// Gets the opening brace token. A block is only ever constructed from a real
+    /// <c>{</c>, so this is always present; under tolerant parsing only
+    /// <see cref="CloseBraceToken"/> can be <c>null</c>.
     /// </summary>
     public Token? OpenBraceToken => this.openBraceToken;
 
