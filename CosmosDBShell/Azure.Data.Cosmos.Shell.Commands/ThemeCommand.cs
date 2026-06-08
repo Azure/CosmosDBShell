@@ -111,26 +111,6 @@ internal class ThemeCommand : CosmosCommand
     }
 
     /// <summary>
-    /// Resolves the external editor to launch for <c>theme edit</c>.
-    /// Lookup order: explicit <c>--editor</c> argument, <c>$VISUAL</c>,
-    /// <c>$EDITOR</c>, then a platform default (<c>notepad</c> on Windows,
-    /// <c>nano</c> on Unix). The chosen editor must accept the file path as a
-    /// positional argument.
-    /// </summary>
-    private static EditorInvocation? ResolveEditor(string? explicitEditor)
-    {
-        var candidate = !string.IsNullOrWhiteSpace(explicitEditor)
-            ? explicitEditor
-            : (Environment.GetEnvironmentVariable("VISUAL") ?? Environment.GetEnvironmentVariable("EDITOR"));
-
-        if (string.IsNullOrWhiteSpace(candidate))
-        {
-            candidate = OperatingSystem.IsWindows() ? "notepad" : "nano";
-        }
-
-        return EditorInvocation.Parse(candidate);
-    }
-
     /// <summary>
     /// Opens <paramref name="target"/> (file or directory) in the OS file browser.
     /// This is the .NET equivalent of Rust's <c>open</c> crate: on Windows and
@@ -675,7 +655,7 @@ internal class ThemeCommand : CosmosCommand
             return ReportUnknownTheme(commandState, requested);
         }
 
-        var editor = ResolveEditor(this.Editor);
+        var editor = ExternalEditor.Resolve(this.Editor);
         if (editor is null)
         {
             var message = MessageService.GetString("command-theme-edit-no-editor");
@@ -811,50 +791,5 @@ internal class ThemeCommand : CosmosCommand
             "current, list, show, use (alias: set), load, validate, save, edit, open, reload");
         AnsiConsole.MarkupLine(message);
         return new ErrorCommandState(new CommandException("theme", message));
-    }
-
-    /// <summary>
-    /// Parses an editor invocation string (which may include arguments like
-    /// <c>code --wait</c>) into a file name plus any prefix arguments.
-    /// </summary>
-    private sealed record EditorInvocation(string FileName, string? PrefixArgs)
-    {
-        public string DisplayName => string.IsNullOrEmpty(this.PrefixArgs) ? this.FileName : $"{this.FileName} {this.PrefixArgs}";
-
-        public string BuildArguments(string path)
-        {
-            var quoted = path.Contains(' ') ? $"\"{path}\"" : path;
-            return string.IsNullOrEmpty(this.PrefixArgs) ? quoted : $"{this.PrefixArgs} {quoted}";
-        }
-
-        public static EditorInvocation? Parse(string? raw)
-        {
-            if (string.IsNullOrWhiteSpace(raw))
-            {
-                return null;
-            }
-
-            raw = raw.Trim();
-
-            // Honor an explicitly-quoted executable path: "C:\\Program Files\\X\\editor.exe" --wait
-            if (raw.StartsWith('"'))
-            {
-                var endQuote = raw.IndexOf('"', 1);
-                if (endQuote > 1)
-                {
-                    var file = raw.Substring(1, endQuote - 1);
-                    var rest = raw[(endQuote + 1)..].Trim();
-                    return new EditorInvocation(file, string.IsNullOrEmpty(rest) ? null : rest);
-                }
-            }
-
-            var firstSpace = raw.IndexOf(' ');
-            if (firstSpace < 0)
-            {
-                return new EditorInvocation(raw, null);
-            }
-
-            return new EditorInvocation(raw[..firstSpace], raw[(firstSpace + 1)..].Trim());
-        }
     }
 }

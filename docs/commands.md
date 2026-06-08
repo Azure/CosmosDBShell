@@ -425,6 +425,26 @@ exec $script.path arg1 arg2
 for $file in (dir "*.csh") { exec $file.path }
 ```
 
+### edit
+
+Open a local file (for example a `.csh` script) in an external editor and wait for the editor to close. The file is created if it does not already exist. Pair it with `exec` to edit and then run a script.
+
+```text
+Usage: edit <path>
+
+Arguments:
+    path        The file to edit (created if it does not exist)
+```
+
+Examples:
+
+```bash
+edit deploy.csh   # open in $EDITOR (or platform default)
+exec deploy.csh   # run the script you just edited
+```
+
+The editor is resolved from `$VISUAL`, then `$EDITOR`, then a platform default (`notepad` on Windows, `nano` elsewhere). GUI editors must block until the file is closed (for example by setting `$VISUAL` to `code --wait`), otherwise the command returns immediately. `edit` requires an interactive terminal and is rejected when input is piped or running under a script.
+
 ## Management
 
 Database and container management commands prefer Azure Resource Manager when an ARM context is attached (Entra ID connections, optionally specifying `--subscription` and `--resource-group` for explicit account targeting). The account name is inferred from the endpoint. Account-key, emulator, and static-token connections do not attach ARM context, so these commands automatically fall back to the Cosmos DB data plane and use the connection's existing credentials.
@@ -506,6 +526,49 @@ Usage: delete item pattern
 Arguments:
     item        Object type: item, container, or database
     pattern     Items/container/database to delete
+```
+
+### index
+
+Manage the indexing policy of a container through subcommands.
+
+```text
+Usage: index subcommand [paths ...] [-mode <ARG>] [-automatic <ARG>] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  show, add, remove, or set
+    [paths]     One or more index paths (for add/remove), or a full indexing policy JSON document (for set)
+
+Options:
+    -mode, -m   Indexing mode for 'set' (consistent or none)
+    -automatic, -a
+                Automatic indexing flag for 'set' (true or false)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`show`|Reads and returns the current indexing policy as JSON.|
+|`add <path...>`|Adds one or more paths to the included paths. Existing paths are left untouched, and any matching excluded path is removed.|
+|`remove <path...>`|Removes one or more paths from both the included and excluded paths.|
+|`set`|Updates the indexing policy. Pass `--mode` (`consistent` or `none`, case-insensitive) and/or `--automatic` to patch the current policy, or provide a full indexing policy JSON document to replace it.|
+
+Paths use the Cosmos DB indexing path syntax, for example `/address/*` or `/name/?`.
+
+#### Examples
+
+```bash
+index show
+index add /address/*
+index add /address/* /name/?
+index remove /address/*
+index set --mode=consistent --automatic=true
+index set '{"indexingMode":"consistent","automatic":true,"includedPaths":[{"path":"/*"}],"excludedPaths":[]}'
 ```
 
 ## Utilities

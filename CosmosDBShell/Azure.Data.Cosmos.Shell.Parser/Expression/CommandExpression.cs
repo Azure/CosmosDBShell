@@ -157,7 +157,7 @@ internal class CommandExpression : Expression
             return await this.RunScriptAsync(shell, commandState, token);
         }
 
-        throw new CommandNotFoundException(this.Name, SuggestCommand(shell, this.Name));
+        throw new CommandNotFoundException(this.Name, SuggestCommand(shell, this.Name), this.Start, this.CommandToken.Length);
     }
 
     private static string? SuggestCommand(ShellInterpreter shell, string typed)

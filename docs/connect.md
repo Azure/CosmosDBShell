@@ -56,6 +56,12 @@ export COSMOSDB_SHELL_ACCOUNT_KEY="myaccountkey"
 connect https://myaccount.documents.azure.com:443/
 ```
 
+> **Quote the connection string.** A connection string contains `;`, which the
+> shell treats as a command separator. If you paste it unquoted, the shell
+> splits it into fragments and reports an unknown-command error pointing at the
+> fragment after the first `;`. Wrapping the whole value in quotes (as above)
+> avoids this.
+
 ### Emulator
 
 ```bash
