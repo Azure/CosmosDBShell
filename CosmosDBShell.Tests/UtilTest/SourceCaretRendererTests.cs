@@ -60,6 +60,12 @@ public class SourceCaretRendererTests
         Assert.Equal('B', result.Display[result.CaretColumn - 1]);
         Assert.Equal(caretCol, result.SourceColumn);
         Assert.Equal("^^^", result.CaretMarker);
+
+        // The caret row repeats the leading ellipsis glyph verbatim so it
+        // lines up with the display even when a terminal renders the ellipsis
+        // wider than one cell.
+        Assert.Equal("\u2026 ", result.CaretLeader);
+        Assert.Equal(result.CaretColumn - 1, result.CaretLeader.Length + result.CaretPad.Length);
     }
 
     [Fact]
@@ -72,6 +78,26 @@ public class SourceCaretRendererTests
         Assert.DoesNotContain('\u2026', result.Display[..2]);
         Assert.EndsWith(" \u2026", result.Display);
         Assert.Equal(1, result.CaretColumn);
+
+        // No left ellipsis means no leader; the caret row starts with spaces.
+        Assert.Equal(string.Empty, result.CaretLeader);
+    }
+
+    [Fact]
+    public void Render_ShortLineStartingWithEllipsisGlyph_NoLeaderSubstitution()
+    {
+        // The source line literally begins with the ellipsis glyph but is short
+        // enough that no trimming occurs. The leading "\u2026 " is real content,
+        // so it must be padded with spaces, not mistaken for a trim leader.
+        var line = "\u2026 value";
+        var caretCol = 3; // points at 'v'
+
+        var result = SourceCaretRenderer.Render(line, caretColumnOneBased: caretCol);
+
+        Assert.Equal(line, result.Display);
+        Assert.Equal(caretCol, result.CaretColumn);
+        Assert.Equal(string.Empty, result.CaretLeader);
+        Assert.Equal(new string(' ', caretCol - 1), result.CaretPad);
     }
 
     [Fact]
@@ -106,7 +132,12 @@ public class SourceCaretRendererTests
         Assert.StartsWith("\u2026 ", result.Display);
         Assert.Equal(result.Display.Length + 1, result.CaretColumn);
         Assert.Equal(line.Length + 1, result.SourceColumn);
-        Assert.Equal(new string(' ', result.Display.Length), result.CaretPad);
+
+        // Leader + pad fill exactly up to the caret column, with the leader
+        // mirroring the display's leading ellipsis and the pad all spaces.
+        Assert.Equal("\u2026 ", result.CaretLeader);
+        Assert.Equal(new string(' ', result.Display.Length - result.CaretLeader.Length), result.CaretPad);
+        Assert.Equal(result.CaretColumn - 1, result.CaretLeader.Length + result.CaretPad.Length);
         Assert.Equal("^", result.CaretMarker);
     }
 }

@@ -52,6 +52,72 @@ public class ExecuteCommandExceptionTests
     }
 
     [Fact]
+    public async Task ExecuteCommandAsync_UnknownCommand_PropagatesSourcePosition()
+    {
+        using var interpreter = CreateInterpreter();
+
+        // The fragment after ';' is parsed as a separate, unknown command.
+        var state = await interpreter.ExecuteCommandAsync("echo hi; foo_bar_baz", CancellationToken.None);
+
+        Assert.True(state.IsError);
+        var errorState = Assert.IsType<ErrorCommandState>(state);
+        var notFound = Assert.IsType<Azure.Data.Cosmos.Shell.Parser.CommandNotFoundException>(errorState.Exception);
+        Assert.True(notFound.Start.HasValue);
+        Assert.Equal("echo hi; ".Length, notFound.Start!.Value);
+    }
+
+    [Fact]
+    public async Task ExecuteCommandAsync_UnknownCommand_WritesSourceCaretToErrRedirect()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            var state = await interpreter.ExecuteCommandAsync("echo hi; foo_bar_baz", CancellationToken.None);
+
+            Assert.True(state.IsError);
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains("error:", content, StringComparison.Ordinal);
+            Assert.Contains("foo_bar_baz", content, StringComparison.Ordinal);
+            Assert.Contains("^", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteCommandAsync_UnquotedConnectionStringFragment_EmitsQuotingHint()
+    {
+        using var interpreter = CreateInterpreter();
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            interpreter.ErrOutRedirect = tempFile;
+
+            // An unquoted connection string is split on ';'. The fragment after
+            // the first ';' surfaces as an unknown command on a line that still
+            // carries the connection-string markers.
+            var state = await interpreter.ExecuteCommandAsync(
+                "AccountEndpoint=https://localhost:8081/;AccountKey=abc==",
+                CancellationToken.None);
+
+            Assert.True(state.IsError);
+            var content = File.ReadAllText(tempFile);
+            Assert.Contains("connection string", content, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
     public async Task ExecuteCommandAsync_UnclosedBrace_ReturnsParserErrorState()
     {
         using var interpreter = CreateInterpreter();
