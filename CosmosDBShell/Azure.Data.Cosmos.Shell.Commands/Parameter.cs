@@ -43,6 +43,12 @@ internal class Parameter(PropertyInfo p, CosmosParameterAttribute pAttr)
     public ParameterType ParameterType { get => this.pAttr.ParameterType; }
 
     /// <summary>
+    /// Gets the optional localization key used to produce a tailored message when the
+    /// parameter is required but missing.
+    /// </summary>
+    public string? RequiredErrorKey { get => this.pAttr.RequiredErrorKey; }
+
+    /// <summary>
     /// Gets the description of the parameter.
     /// </summary>
     public string? GetDescription(string commandName) => MessageService.GetString($"command-{commandName}-description-{this.Name[0]}");

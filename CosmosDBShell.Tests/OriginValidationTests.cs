@@ -46,4 +46,35 @@ public class OriginValidationTests
     {
         Assert.False(OriginValidationMiddleware.IsAllowedOrigin(origin));
     }
+
+    [Theory]
+    [InlineData("localhost")]
+    [InlineData("localhost:6128")]
+    [InlineData("LocalHost:6128")]
+    [InlineData("127.0.0.1")]
+    [InlineData("127.0.0.1:6128")]
+    [InlineData("[::1]")]
+    [InlineData("[::1]:6128")]
+    public void AllowsLoopbackHosts(string host)
+    {
+        Assert.True(OriginValidationMiddleware.IsAllowedHost(host));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("evil.com")]
+    [InlineData("evil.com:6128")]
+    [InlineData("192.168.1.1")]
+    [InlineData("10.0.0.1:6128")]
+    [InlineData("172.16.0.1")]
+    [InlineData("localhost.evil.com")]
+    [InlineData("user@localhost")]
+    [InlineData("localhost/admin")]
+    [InlineData("localhost?x=1")]
+    [InlineData("localhost#frag")]
+    [InlineData("not a host")]
+    public void RejectsNonLoopbackHosts(string host)
+    {
+        Assert.False(OriginValidationMiddleware.IsAllowedHost(host));
+    }
 }

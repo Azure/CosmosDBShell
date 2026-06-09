@@ -40,8 +40,6 @@ internal class McpServer
             .ConfigureLogging(logging =>
             {
                 logging.SetMinimumLevel(LogLevel.Error);
-
-                // logging.AddEventSourceLogger();
             });
         var application = builder.Build();
         application.UseOriginValidation();
@@ -51,8 +49,6 @@ internal class McpServer
 
     private static void ConfigureMcpServer(IServiceCollection services)
     {
-        services.AddMemoryCache();
-
         services.AddSingleton<ToolOperations>();
         services.AddOptions<McpServerOptions>()
             .Configure<ToolOperations>((mcpServerOptions, toolOperations) =>
@@ -91,17 +87,6 @@ internal class McpServer
 
     private static string LoadServerInstructions()
     {
-        var assembly = typeof(McpServer).Assembly;
-        var resourceName = assembly.GetManifestResourceNames()
-            .FirstOrDefault(name => name.EndsWith("serverinstructions.md", StringComparison.OrdinalIgnoreCase));
-
-        if (resourceName == null)
-        {
-            throw new InvalidOperationException("Embedded resource 'serverinstructions.md' not found.");
-        }
-
-        using var stream = assembly.GetManifestResourceStream(resourceName)!;
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
+        return EmbeddedResourceLoader.Load(typeof(McpServer).Assembly, "serverinstructions.md");
     }
 }

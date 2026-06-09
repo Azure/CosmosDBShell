@@ -19,10 +19,17 @@ using ModelContextProtocol.Server;
 internal class ToolOperations
 {
     private readonly ILogger<ToolOperations> logger;
+    private readonly Lazy<List<Tool>> cachedTools;
 
-    public ToolOperations(IServiceProvider serviceProvider, ILogger<ToolOperations> logger)
+    public ToolOperations(ILogger<ToolOperations> logger)
     {
         this.logger = logger;
+        this.cachedTools = new Lazy<List<Tool>>(
+            () => ShellInterpreter.Instance.App.Commands.Values
+                .DistinctBy(c => c.CommandName)
+                .Select(GetTool)
+                .ToList(),
+            LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult> ListToolsHandler => this.OnListToolsAsync;
@@ -31,10 +38,24 @@ internal class ToolOperations
 
     internal static Tool GetTool(CommandFactory command)
     {
+        var descriptionParts = new[] { command.Description, command.McpDescription }
+            .Where(part => !string.IsNullOrWhiteSpace(part));
+        var description = string.Join("\n", descriptionParts);
+
+        if (command.McpRestricted)
+        {
+            if (description.Length > 0)
+            {
+                description += "\n";
+            }
+
+            description += "Warning: This command is restricted to interactive use and cannot be invoked through MCP. Run it manually in the shell, or call 'help' for this command.";
+        }
+
         var tool = new Tool
         {
             Name = command.CommandName,
-            Description = command.Description + command.McpDescription + (command.McpRestricted ? "\nWarning: This tool can't be used in MCP context. Usage is user only. Suggest using the command manually or run help for this command." : string.Empty),
+            Description = description,
         };
         var schema = new JsonObject
         {
@@ -298,24 +319,63 @@ internal class ToolOperations
         return "string";
     }
 
+    private CallToolResult? BindMember(
+        object cmd,
+        PropertyInfo property,
+        object? rawValue,
+        string memberKind,
+        string memberDisplay,
+        string commandName,
+        Action<object?> appendToHistory)
+    {
+        if (property == null || !property.CanWrite)
+        {
+            return null;
+        }
+
+        object? convertedValue;
+        var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        try
+        {
+            convertedValue = rawValue is JsonElement jsonElement
+                ? ConvertJsonElement(jsonElement, targetType)
+                : Convert.ChangeType(rawValue, targetType);
+        }
+        catch (Exception ex)
+        {
+            // Do not include the exception message or the raw value: conversion
+            // failures often echo the offending input (e.g. an AccountKey), which
+            // would leak secrets into both the log and the MCP error response.
+            var errorMessage = $"Invalid value for {memberKind} '{memberDisplay}' on command '{commandName}'. Expected a value of type '{targetType.Name}'.";
+            this.logger?.LogWarning("{Message} (conversion threw {ExceptionType})", errorMessage, ex.GetType().Name);
+            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
+        }
+
+        try
+        {
+            appendToHistory(convertedValue);
+            property.SetValue(cmd, convertedValue);
+        }
+        catch (Exception ex)
+        {
+            // Do not include the exception message: a property setter may throw a
+            // validation exception that echoes the provided value, which could leak
+            // secrets into the log and the MCP error response.
+            var errorMessage = $"Failed to set {memberKind} '{memberDisplay}' on command '{commandName}'.";
+            this.logger?.LogWarning("{Message} (setter threw {ExceptionType})", errorMessage, ex.GetType().Name);
+            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
+        }
+
+        return null;
+    }
+
     private ValueTask<ListToolsResult> OnListToolsAsync(
         RequestContext<ListToolsRequestParams> requestContext,
         CancellationToken cancellationToken)
     {
-        var tools = ShellInterpreter.Instance.App.Commands.Values.DistinctBy(c => c.CommandName).Select(ToolOperations.GetTool).ToList();
-        var arguments = new JsonObject
-        {
-            {
-                "command",
-                new JsonObject()
-                {
-                    ["type"] = "string",
-                    ["description"] = "Command name to get help of.",
-                }
-            },
-        };
+        var tools = this.cachedTools.Value;
         var listToolsResult = new ListToolsResult { Tools = tools };
-        this.logger?.LogInformation($"Listing {tools.Count} tools.");
+        this.logger?.LogInformation("Listing {ToolCount} tools.", tools.Count);
         return new ValueTask<ListToolsResult>(listToolsResult);
     }
 
@@ -323,9 +383,16 @@ internal class ToolOperations
         RequestContext<CallToolRequestParams> parameters,
         CancellationToken cancellationToken)
     {
-        var requestJson = System.Text.Json.JsonSerializer.Serialize(
-            parameters?.Params,
-            new JsonSerializerOptions { WriteIndented = true });
+        if (this.logger?.IsEnabled(LogLevel.Trace) == true)
+        {
+            var argumentNames = parameters?.Params?.Arguments == null
+                ? "(none)"
+                : string.Join(", ", parameters.Params.Arguments.Keys);
+            this.logger.LogTrace(
+                "MCP CallTool request: tool={Tool}, arguments=[{Arguments}]",
+                parameters?.Params?.Name,
+                argumentNames);
+        }
 
         var sb = new StringBuilder();
         sb.Append(parameters?.Params?.Name);
@@ -355,6 +422,7 @@ internal class ToolOperations
         }
 
         var cmd = command.CreateCommand();
+        var suppliedParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         if (parameters.Params.Arguments != null)
         {
@@ -365,33 +433,20 @@ internal class ToolOperations
                     continue;
                 }
 
-                var argument = command.Options.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
-                if (argument != null)
+                var option = command.Options.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
+                if (option != null)
                 {
-                    var property = cmd.GetType().GetProperty(argument.Name[0], BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                    if (property != null && property.CanWrite)
+                    var bindError = this.BindMember(
+                        cmd,
+                        option.PropertyInfo,
+                        par.Value,
+                        memberKind: "option",
+                        memberDisplay: $"--{option.Name[0]}",
+                        commandName: command.CommandName,
+                        appendToHistory: value => sb.Append(FormatOptionForHistory(option, value)));
+                    if (bindError != null)
                     {
-                        try
-                        {
-                            object? convertedValue = null;
-                            if (par.Value is JsonElement jsonElement)
-                            {
-                                var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                                convertedValue = ConvertJsonElement(jsonElement, targetType);
-                            }
-                            else
-                            {
-                                var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                                convertedValue = Convert.ChangeType(par.Value, targetType);
-                            }
-
-                            sb.Append(FormatOptionForHistory(argument, convertedValue));
-                            property.SetValue(cmd, convertedValue);
-                        }
-                        catch (Exception ex)
-                        {
-                            this.logger?.LogWarning(ex, $"Failed to set property '{argument.Name[0]}' on command '{command.CommandName}'.");
-                        }
+                        return bindError;
                     }
 
                     continue;
@@ -400,37 +455,45 @@ internal class ToolOperations
                 var parameter = command.Parameters.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (parameter != null)
                 {
-                    var property = cmd.GetType().GetProperty(parameter.Name[0], BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                    if (property != null && property.CanWrite)
+                    suppliedParameters.Add(parameter.Name[0]);
+                    var bindError = this.BindMember(
+                        cmd,
+                        parameter.PropertyInfo,
+                        par.Value,
+                        memberKind: "parameter",
+                        memberDisplay: parameter.Name[0],
+                        commandName: command.CommandName,
+                        appendToHistory: value => sb.Append(' ').Append(FormatParameter(value?.ToString())));
+                    if (bindError != null)
                     {
-                        try
-                        {
-                            object? convertedValue = null;
-                            if (par.Value is JsonElement jsonElement)
-                            {
-                                var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                                convertedValue = ConvertJsonElement(jsonElement, targetType);
-                            }
-                            else
-                            {
-                                var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                                convertedValue = Convert.ChangeType(par.Value, targetType);
-                            }
-
-                            sb.Append(' ').Append(FormatParameter(convertedValue?.ToString()));
-                            property.SetValue(cmd, convertedValue);
-                        }
-                        catch (Exception ex)
-                        {
-                            this.logger?.LogWarning(ex, $"Failed to set property '{parameter.Name[0]}' on command '{command.CommandName}'.");
-                        }
+                        return bindError;
                     }
 
                     continue;
                 }
 
-                this.logger?.LogWarning($"Unknown argument '{par.Key}' for command '{command.CommandName}'. It will be ignored.");
+                var knownNames = command.Options.SelectMany(o => o.Name)
+                    .Concat(command.Parameters.SelectMany(p => p.Name))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
+                var unknownArgMessage = $"Unknown argument '{par.Key}' for command '{command.CommandName}'. Known arguments: {string.Join(", ", knownNames)}.";
+                this.logger?.LogWarning(unknownArgMessage);
+                return McpResponseFactory.CreateError(unknownArgMessage, ShellInterpreter.Instance.State);
             }
+        }
+
+        var missingRequired = command.Parameters
+            .Where(p => p.IsRequired && !suppliedParameters.Contains(p.Name[0]))
+            .ToList();
+        if (missingRequired.Count > 0)
+        {
+            var missingDetails = missingRequired.Select(p =>
+                !string.IsNullOrEmpty(p.RequiredErrorKey)
+                    ? MessageService.GetString(p.RequiredErrorKey)
+                    : p.Name[0]);
+            var missingMessage = $"Missing required parameter(s) for command '{command.CommandName}': {string.Join("; ", missingDetails)}.";
+            this.logger?.LogWarning("Missing required parameter(s) for command {CommandName}.", command.CommandName);
+            return McpResponseFactory.CreateError(missingMessage, ShellInterpreter.Instance.State);
         }
 
         this.logger?.LogTrace($"Invoking '{command.CommandName}'.");
