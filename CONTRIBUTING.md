@@ -22,6 +22,7 @@ There are several ways you can contribute to the CosmosDBShell project:
   - Restore dependencies: `dotnet restore CosmosDBShell.sln`
   - Build: `dotnet build CosmosDBShell.sln` (or use the VS Code build task with Ctrl+Shift+B).
   - Run tests: `dotnet test CosmosDBShell.sln`
+  - Run tests with code coverage: `./tools/coverage.ps1` (or the VS Code `coverage` task). Generates an HTML report under `TestResults/coverage` and prints a per-namespace summary; use the report's "Group by" selector for namespace-level coverage.
   - Run the tool locally: `dotnet run --project CosmosDBShell/CosmosDBShell.csproj`
   - GitHub Actions runs CI and uploads NuGet package artifacts from [.github/workflows/validate-and-package.yml](.github/workflows/validate-and-package.yml).
   - Local builds and GitHub Actions use the default NuGet sources (nuget.org). The Azure DevOps pipeline uses [.pipelines/nuget.config](.pipelines/nuget.config) to restrict restores to the internal feed.
