@@ -67,4 +67,94 @@ public class ToolOperationsTests
 
         Assert.Equal(" --database Samples", formattedOption);
     }
+
+    [Theory]
+    [InlineData("has space", " --database \"has space\"")]
+    [InlineData("with\"quote", " --database \"with\\\"quote\"")]
+    [InlineData("back\\slash", " --database \"back\\\\slash\"")]
+    [InlineData("line\nbreak", " --database \"line\\nbreak\"")]
+    public void FormatOptionForHistory_QuotesAndEscapesSpecialValues(string value, string expected)
+    {
+        var factory = new CommandRunner().Commands["query"];
+        var databaseOption = factory.Options.Single(option => option.Name[0] == "database");
+
+        var formattedOption = ToolOperations.FormatOptionForHistory(databaseOption, value);
+
+        Assert.Equal(expected, formattedOption);
+    }
+
+    [Fact]
+    public void FormatOptionForHistory_RendersNullValueAsEmptyQuotedString()
+    {
+        var factory = new CommandRunner().Commands["query"];
+        var databaseOption = factory.Options.Single(option => option.Name[0] == "database");
+
+        var formattedOption = ToolOperations.FormatOptionForHistory(databaseOption, null);
+
+        Assert.Equal(" --database \"\"", formattedOption);
+    }
+
+    [Fact]
+    public void GetTool_AppendsUserOnlyWarningForRestrictedCommands()
+    {
+        var factory = new CommandRunner().Commands["delete"];
+        Assert.True(factory.McpRestricted);
+
+        var tool = ToolOperations.GetTool(factory);
+
+        Assert.Contains("user only", tool.Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GetTool_DoesNotAppendWarningForUnrestrictedCommands()
+    {
+        var factory = new CommandRunner().Commands["query"];
+        Assert.False(factory.McpRestricted);
+
+        var tool = ToolOperations.GetTool(factory);
+
+        Assert.DoesNotContain("user only", tool.Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GetTool_MapsReadOnlyAnnotationHints()
+    {
+        var factory = new CommandRunner().Commands["query"];
+
+        var tool = ToolOperations.GetTool(factory);
+
+        Assert.NotNull(tool.Annotations);
+        Assert.Equal("Run Query", tool.Annotations!.Title);
+        Assert.True(tool.Annotations.ReadOnlyHint);
+        Assert.True(tool.Annotations.IdempotentHint);
+        Assert.True(tool.Annotations.OpenWorldHint);
+        Assert.NotEqual(true, tool.Annotations.DestructiveHint);
+    }
+
+    [Fact]
+    public void GetTool_MapsDestructiveAnnotationHint()
+    {
+        var factory = new CommandRunner().Commands["delete"];
+
+        var tool = ToolOperations.GetTool(factory);
+
+        Assert.NotNull(tool.Annotations);
+        Assert.True(tool.Annotations!.DestructiveHint);
+    }
+
+    [Fact]
+    public void GetTool_RendersEnumOptionAsStringSchemaWithValues()
+    {
+        var factory = new CommandRunner().Commands["query"];
+
+        var tool = ToolOperations.GetTool(factory);
+        var schema = JsonDocument.Parse(tool.InputSchema.GetRawText()).RootElement;
+        var metrics = schema.GetProperty("properties").GetProperty("metrics");
+
+        Assert.Equal("string", metrics.GetProperty("type").GetString());
+        var enumValues = metrics.GetProperty("enum").EnumerateArray().Select(element => element.GetString()).ToArray();
+        Assert.Contains("Display", enumValues);
+        Assert.Contains("File", enumValues);
+        Assert.Equal("Display", metrics.GetProperty("default").GetString());
+    }
 }
