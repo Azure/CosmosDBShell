@@ -49,7 +49,7 @@ internal class ToolOperations
                 description += "\n";
             }
 
-            description += "Warning: This tool can't be used in MCP context. Usage is user only. Suggest using the command manually or run help for this command.";
+            description += "Warning: This command is restricted to interactive use and cannot be invoked through MCP. Run it manually in the shell, or call 'help' for this command.";
         }
 
         var tool = new Tool
@@ -375,7 +375,7 @@ internal class ToolOperations
     {
         var tools = this.cachedTools.Value;
         var listToolsResult = new ListToolsResult { Tools = tools };
-        this.logger?.LogInformation($"Listing {tools.Count} tools.");
+        this.logger?.LogInformation("Listing {ToolCount} tools.", tools.Count);
         return new ValueTask<ListToolsResult>(listToolsResult);
     }
 
@@ -484,12 +484,15 @@ internal class ToolOperations
 
         var missingRequired = command.Parameters
             .Where(p => p.IsRequired && !suppliedParameters.Contains(p.Name[0]))
-            .Select(p => p.Name[0])
             .ToList();
         if (missingRequired.Count > 0)
         {
-            var missingMessage = $"Missing required parameter(s) for command '{command.CommandName}': {string.Join(", ", missingRequired)}.";
-            this.logger?.LogWarning(missingMessage);
+            var missingDetails = missingRequired.Select(p =>
+                !string.IsNullOrEmpty(p.RequiredErrorKey)
+                    ? MessageService.GetString(p.RequiredErrorKey)
+                    : p.Name[0]);
+            var missingMessage = $"Missing required parameter(s) for command '{command.CommandName}': {string.Join("; ", missingDetails)}.";
+            this.logger?.LogWarning("Missing required parameter(s) for command {CommandName}.", command.CommandName);
             return McpResponseFactory.CreateError(missingMessage, ShellInterpreter.Instance.State);
         }
 

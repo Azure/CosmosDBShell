@@ -102,7 +102,7 @@ public class ToolOperationsTests
 
         var tool = ToolOperations.GetTool(factory);
 
-        Assert.Contains("user only", tool.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cannot be invoked through MCP", tool.Description, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public class ToolOperationsTests
 
         var tool = ToolOperations.GetTool(factory);
 
-        Assert.DoesNotContain("user only", tool.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("cannot be invoked through MCP", tool.Description, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
