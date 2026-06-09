@@ -600,6 +600,95 @@ public class HotkeyCommandTests
         Assert.Contains("...", text);
     }
 
+    [Fact]
+    public void ClearCurrentLine_RemovesAllContent()
+    {
+        var context = CreateContext("hello world", position: 5);
+
+        new ClearCurrentLineCommand().Execute(context);
+
+        Assert.Equal(string.Empty, context.Buffer.Content);
+        Assert.Equal(0, context.Buffer.Position);
+    }
+
+    [Fact]
+    public void ClearCurrentLine_EmptyBuffer_NoOp()
+    {
+        var context = CreateContext(string.Empty, position: 0);
+
+        new ClearCurrentLineCommand().Execute(context);
+
+        Assert.Equal(string.Empty, context.Buffer.Content);
+        Assert.Equal(0, context.Buffer.Position);
+    }
+
+    [Fact]
+    public void ClearScreen_DoesNotThrowAndPreservesBuffer()
+    {
+        var context = CreateContext("hello", position: 2);
+
+        var saved = AnsiConsole.Console;
+        try
+        {
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.Yes,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(new StringWriter()),
+            });
+
+            var ex = Record.Exception(() => new ClearScreenCommand().Execute(context));
+
+            Assert.Null(ex);
+            Assert.Equal("hello", context.Buffer.Content);
+        }
+        finally
+        {
+            AnsiConsole.Console = saved;
+        }
+    }
+
+    [Fact]
+    public void ReverseSearch_FindInitialForwardMatch_NoMatch_ReturnsNone()
+    {
+        var history = new[] { "ls", "echo hi" };
+
+        var result = ReverseHistorySearch.FindInitialForwardMatch(history, "query");
+
+        Assert.False(result.HasMatch);
+    }
+
+    [Fact]
+    public void ReverseSearch_FindInitialForwardMatch_ReturnsOldestMatch()
+    {
+        var history = new[] { "query a", "ls", "query b" };
+
+        var result = ReverseHistorySearch.FindInitialForwardMatch(history, "query");
+
+        Assert.True(result.HasMatch);
+        Assert.Equal("query a", result.Match);
+    }
+
+    [Fact]
+    public void ReverseSearch_FindPreviousMatch_NoMatch_ReturnsNone()
+    {
+        var history = new[] { "ls", "echo hi" };
+
+        var result = ReverseHistorySearch.FindPreviousMatch(history, "query", currentSkip: 0);
+
+        Assert.False(result.HasMatch);
+    }
+
+    [Fact]
+    public void ReverseSearch_FindInitialMatch_NoMatch_ReturnsNone()
+    {
+        var history = new[] { "ls", "echo hi" };
+
+        var result = ReverseHistorySearch.FindInitialMatch(history, "query");
+
+        Assert.False(result.HasMatch);
+    }
+
     private static LineEditorContext CreateContext(string content, int position)
     {
         var buffer = new LineBuffer(content);
