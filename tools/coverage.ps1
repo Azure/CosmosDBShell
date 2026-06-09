@@ -65,7 +65,7 @@ try {
 
     Write-Host 'Generating coverage report...' -ForegroundColor Cyan
     $reports = ($coverageFiles.FullName -join ';')
-    dotnet reportgenerator `
+    dotnet tool run reportgenerator `
         "-reports:$reports" `
         "-targetdir:$reportDir" `
         '-reporttypes:Html;TextSummary' `

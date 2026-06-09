@@ -35,14 +35,19 @@ public class ShellObjectParseTests
     }
 
     [Theory]
-    [InlineData("0")]
-    [InlineData("42")]
-    public void Parse_NumericToken_ReturnsIdentifier(string input)
+    [InlineData("0", 0)]
+    [InlineData("42", 42)]
+    public void Parse_NumericToken_ReturnsNumber(string input, int expected)
     {
-        // Numeric input is lexed as a Number token, which falls through to the
-        // default branch and is wrapped as an identifier carrying the raw text.
         var result = Parse(input);
-        Assert.Equal(input, Assert.IsType<ShellIdentifier>(result).Value);
+        Assert.Equal(expected, Assert.IsType<ShellNumber>(result).Value);
+    }
+
+    [Fact]
+    public void Parse_DecimalToken_ReturnsDecimal()
+    {
+        var result = Parse("1.5");
+        Assert.Equal(1.5, Assert.IsType<ShellDecimal>(result).Value);
     }
 
     [Fact]
