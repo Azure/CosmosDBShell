@@ -334,17 +334,20 @@ internal class ToolOperations
         }
 
         object? convertedValue;
+        var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
         try
         {
-            var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
             convertedValue = rawValue is JsonElement jsonElement
                 ? ConvertJsonElement(jsonElement, targetType)
                 : Convert.ChangeType(rawValue, targetType);
         }
         catch (Exception ex)
         {
-            var errorMessage = $"Invalid value for {memberKind} '{memberDisplay}' on command '{commandName}': {ex.Message}";
-            this.logger?.LogWarning(ex, errorMessage);
+            // Do not include the exception message or the raw value: conversion
+            // failures often echo the offending input (e.g. an AccountKey), which
+            // would leak secrets into both the log and the MCP error response.
+            var errorMessage = $"Invalid value for {memberKind} '{memberDisplay}' on command '{commandName}'. Expected a value of type '{targetType.Name}'.";
+            this.logger?.LogWarning("{Message} (conversion threw {ExceptionType})", errorMessage, ex.GetType().Name);
             return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
         }
 
@@ -355,8 +358,11 @@ internal class ToolOperations
         }
         catch (Exception ex)
         {
-            var errorMessage = $"Failed to set {memberKind} '{memberDisplay}' on command '{commandName}': {ex.Message}";
-            this.logger?.LogWarning(ex, errorMessage);
+            // Do not include the exception message: a property setter may throw a
+            // validation exception that echoes the provided value, which could leak
+            // secrets into the log and the MCP error response.
+            var errorMessage = $"Failed to set {memberKind} '{memberDisplay}' on command '{commandName}'.";
+            this.logger?.LogWarning("{Message} (setter threw {ExceptionType})", errorMessage, ex.GetType().Name);
             return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
         }
 
