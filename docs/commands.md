@@ -571,6 +571,95 @@ index set --mode=consistent --automatic=true
 index set '{"indexingMode":"consistent","automatic":true,"includedPaths":[{"path":"/*"}],"excludedPaths":[]}'
 ```
 
+### udf
+
+Manage JavaScript user-defined functions (UDFs) on a container through subcommands.
+
+```text
+Usage: udf subcommand [name] [value] [-force] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  list, show, exists, create, or delete
+    [name]      The user-defined function id
+    [value]     A JavaScript file (for create)
+
+Options:
+    -force, -f  Replace the user-defined function if it already exists (create)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`list`|Returns the user-defined function ids in the current container.|
+|`show <name>`|Returns the body of a user-defined function.|
+|`exists <name>`|Returns a boolean indicating whether a user-defined function exists. The boolean result can be used directly in `if` and `while` conditions.|
+|`create <name> <file>`|Creates a user-defined function from a JavaScript file. The body can also be piped in. Pass `--force` to replace an existing one.|
+|`delete <name>`|Deletes a user-defined function.|
+
+#### Examples
+
+```bash
+udf list
+udf show myFunc
+udf exists myFunc
+udf create myFunc ./myFunc.js
+udf create myFunc ./myFunc.js --force
+udf delete myFunc
+```
+
+User-defined functions are a Cosmos DB for NoSQL feature invoked from within queries. The `udf` command operates on the current container, the same scope as `index`.
+
+### trigger
+
+Manage JavaScript triggers on a container through subcommands.
+
+```text
+Usage: trigger subcommand [name] [value] [-type <ARG>] [-operation <ARG>] [-force] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  list, show, exists, create, or delete
+    [name]      The trigger id
+    [value]     A JavaScript file (for create)
+
+Options:
+    -type, -t   Trigger type for create: pre or post (required for create)
+    -operation, -op
+                Operation the trigger fires on: all, create, replace, delete, or update (default: all)
+    -force, -f  Replace the trigger if it already exists (create)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`list`|Returns the trigger ids in the current container with their type and operation.|
+|`show <name>`|Returns the body of a trigger.|
+|`exists <name>`|Returns a boolean indicating whether a trigger exists. The boolean result can be used directly in `if` and `while` conditions.|
+|`create <name> <file>`|Creates a trigger from a JavaScript file. The body can also be piped in. `--type` selects `pre` or `post`, `--operation` selects the operation (defaults to `all`), and `--force` replaces an existing one.|
+|`delete <name>`|Deletes a trigger.|
+
+#### Examples
+
+```bash
+trigger list
+trigger show myTrigger
+trigger exists myTrigger
+trigger create myTrigger ./myTrigger.js --type pre --operation create
+trigger create myTrigger ./myTrigger.js --type post --operation all --force
+trigger delete myTrigger
+```
+
+Triggers are a Cosmos DB for NoSQL feature. Pre-triggers and post-triggers are invoked when item operations opt in to them. The `trigger` command operates on the current container, the same scope as `index`.
+
 ## Utilities
 
 ### az

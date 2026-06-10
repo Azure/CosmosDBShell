@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### New features
+
+- `udf` command to manage Cosmos DB for NoSQL user-defined functions on the current container: `list`, `show`, `exists` (returns a boolean usable in `if`/`while` conditions), `create` (from a JavaScript file or piped body, with `--force` to replace), and `delete`. ([#103](https://github.com/Azure/CosmosDBShell/issues/103))
+- `trigger` command to manage Cosmos DB for NoSQL triggers on the current container: `list`, `show`, `exists` (returns a boolean usable in `if`/`while` conditions), `create` (from a JavaScript file or piped body, with `--type` for pre/post, `--operation` for the operation, and `--force` to replace), and `delete`. ([#103](https://github.com/Azure/CosmosDBShell/issues/103))
+
 ## 1.1.4-preview — 2026-05-21
 
 First release on the 1.1 line. A pretty packed cycle. The headline change is **ARM-based control plane for database and container management**, but there’s also a fully reworked CLI, two new item commands, a much friendlier shell experience for newcomers, and a long list of paper-cut fixes.
