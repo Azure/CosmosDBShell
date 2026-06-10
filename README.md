@@ -57,16 +57,17 @@ dotnet test CosmosDBShell.sln
 
 | Folder | Purpose |
 | ------ | ------- |
-| `Azure.Data.Cosmos.Shell.Commands/` | Each shell command is a class (ls, cd, query, mkitem, etc.) |
-| `Azure.Data.Cosmos.Shell.Core/` | Interpreter, state machine, command runner |
-| `Azure.Data.Cosmos.Shell.Parser/` | Lexer and AST for shell syntax |
-| `Azure.Data.Cosmos.Shell.States/` | Shell states (disconnected, connected, in database, in container) |
-| `Azure.Data.Cosmos.Shell.Mcp/` | MCP server for AI/tool integration |
-| `Azure.Data.Cosmos.Shell.Lsp/` | LSP server for editor integration |
-| `Azure.Data.Cosmos.Shell.Util/` | Shared utilities (localization, pattern matching, etc.) |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Commands/` | Each shell command is a class (`ls`, `cd`, `query`, `mkitem`, etc.) |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Core/` | Interpreter, state machine, command runner |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Parser/` | Lexer and AST for shell syntax |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.States/` | Shell states (disconnected, connected, in database, in container) |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Mcp/` | MCP server for AI/tool integration |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Lsp/` | LSP server for editor integration |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Util/` | Shared utilities (localization, pattern matching, etc.) |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.KeyBindings/` | Key binding definitions |
+| `CosmosDBShell/lang/` | Localization files (Fluent `.ftl` format) |
 | `CosmosDBShell.Tests/` | Unit and integration tests |
 | `docs/` | User-facing documentation |
-| `lang/` | Localization files (Fluent `.ftl` format) |
 
 <details>
 <summary><strong>Install from NuGet package artifacts</strong></summary>
