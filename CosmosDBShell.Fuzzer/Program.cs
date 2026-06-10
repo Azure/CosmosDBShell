@@ -17,6 +17,7 @@ public class Program
         // Parse command line arguments
         bool runMcp = false;
         bool runSimple = false;
+        bool runImport = false;
         bool runAll = false;
 
         if (args.Length == 0)
@@ -37,6 +38,10 @@ public class Program
                     case "--simple":
                     case "-s":
                         runSimple = true;
+                        break;
+                    case "--import":
+                    case "-i":
+                        runImport = true;
                         break;
                     case "--all":
                     case "-a":
@@ -60,14 +65,16 @@ public class Program
         {
             runMcp = true;
             runSimple = true;
+            runImport = true;
         }
 
         // If nothing specific was selected, default to all
-        if (!runMcp && !runSimple && !runAll)
+        if (!runMcp && !runSimple && !runImport && !runAll)
         {
             runAll = true;
             runMcp = true;
             runSimple = true;
+            runImport = true;
         }
 
         try
@@ -87,6 +94,15 @@ public class Program
                 Console.WriteLine("=== Running Simple Fuzzer ===");
                 Console.WriteLine();
                 SimpleFuzzer.Run();
+                Console.WriteLine();
+            }
+
+            // Run Import Fuzzer
+            if (runImport)
+            {
+                Console.WriteLine("=== Running Import Fuzzer ===");
+                Console.WriteLine();
+                await ImportFuzzer.RunAsync();
                 Console.WriteLine();
             }
 
@@ -113,6 +129,7 @@ public class Program
         Console.WriteLine("Options:");
         Console.WriteLine("  --mcp, -m      Run MCP (Model Context Protocol) JSON-RPC fuzzing");
         Console.WriteLine("  --simple, -s   Run simple general-purpose fuzzing tests");
+        Console.WriteLine("  --import, -i   Run import parser (JSONL/array/CSV) fuzzing");
         Console.WriteLine("  --all, -a      Run all fuzzers (default if no options specified)");
         Console.WriteLine("  --help, -h     Show this help message");
         Console.WriteLine("  --verbose, -v  Show detailed error information");
@@ -121,6 +138,7 @@ public class Program
         Console.WriteLine("  CosmosDBShell.Fuzzer              # Run all fuzzers");
         Console.WriteLine("  CosmosDBShell.Fuzzer --mcp        # Run only MCP fuzzer");
         Console.WriteLine("  CosmosDBShell.Fuzzer --simple     # Run only simple fuzzer");
+        Console.WriteLine("  CosmosDBShell.Fuzzer --import     # Run only import fuzzer");
         Console.WriteLine("  CosmosDBShell.Fuzzer --mcp --simple # Run both fuzzers");
     }
 }
