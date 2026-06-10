@@ -1,6 +1,8 @@
 ﻿# Azure Cosmos DB Shell
 
-Lightweight CLI for Azure Cosmos DB.
+A terminal-native shell for Azure Cosmos DB — navigate databases like a filesystem, query interactively, and script with variables, loops, and functions. Supports Entra ID, MCP for AI tool integration, and works with the local emulator.
+
+![Azure Cosmos DB Shell Demo](docs/cosmosdbshell-demo.gif)
 
 ## Features
 
@@ -36,7 +38,38 @@ cd MyContainer
 query "SELECT * FROM c"
 ```
 
-## Install from NuGet package artifacts
+## Build from Source
+
+```bash
+git clone https://github.com/Azure/CosmosDBShell.git
+cd CosmosDBShell
+dotnet build CosmosDBShell.sln
+dotnet run --project CosmosDBShell/CosmosDBShell.csproj
+```
+
+Run the tests:
+
+```bash
+dotnet test CosmosDBShell.sln
+```
+
+## Architecture
+
+| Folder | Purpose |
+| ------ | ------- |
+| `Azure.Data.Cosmos.Shell.Commands/` | Each shell command is a class (ls, cd, query, mkitem, etc.) |
+| `Azure.Data.Cosmos.Shell.Core/` | Interpreter, state machine, command runner |
+| `Azure.Data.Cosmos.Shell.Parser/` | Lexer and AST for shell syntax |
+| `Azure.Data.Cosmos.Shell.States/` | Shell states (disconnected, connected, in database, in container) |
+| `Azure.Data.Cosmos.Shell.Mcp/` | MCP server for AI/tool integration |
+| `Azure.Data.Cosmos.Shell.Lsp/` | LSP server for editor integration |
+| `Azure.Data.Cosmos.Shell.Util/` | Shared utilities (localization, pattern matching, etc.) |
+| `CosmosDBShell.Tests/` | Unit and integration tests |
+| `docs/` | User-facing documentation |
+| `lang/` | Localization files (Fluent `.ftl` format) |
+
+<details>
+<summary><strong>Install from NuGet package artifacts</strong></summary>
 
 When consuming build artifacts (`*.nupkg`) from this repo, install as a .NET global tool.
 
@@ -45,7 +78,7 @@ When consuming build artifacts (`*.nupkg`) from this repo, install as a .NET glo
 1. Download the base tool package (`CosmosDBShell.<version>.nupkg`) and the package for your runtime to the same local folder.
 2. Install from that folder with `--add-source` using the base package ID `CosmosDBShell`.
 
-### Runtime-specific package files
+#### Runtime-specific package files
 
 - Linux x64: `CosmosDBShell.linux-x64.<version>.nupkg`
 - Linux ARM64: `CosmosDBShell.linux-arm64.<version>.nupkg`
@@ -54,7 +87,7 @@ When consuming build artifacts (`*.nupkg`) from this repo, install as a .NET glo
 - Windows x64: `CosmosDBShell.win-x64.<version>.nupkg`
 - Windows ARM64: `CosmosDBShell.win-arm64.<version>.nupkg`
 
-### Install command
+#### Install command
 
 After placing the base package and the matching runtime package in the same folder, install with the base package ID:
 
@@ -68,7 +101,7 @@ Windows PowerShell example:
 dotnet tool install --global CosmosDBShell --add-source C:\path\to\nupkgs --version <version>
 ```
 
-### Use, update, uninstall
+#### Use, update, uninstall
 
 Run the tool:
 
@@ -84,17 +117,12 @@ dotnet tool update --global <package-id> --add-source /path/to/nupkgs --version 
 
 Uninstall:
 
-List the installed global tools first so you can identify the exact package ID:
-
 ```bash
 dotnet tool list --global
-```
-
-Then uninstall the tool by its package ID:
-
-```bash
 dotnet tool uninstall --global CosmosDBShell
 ```
+
+</details>
 
 ## Documentation
 
@@ -220,11 +248,10 @@ CS > theme reload                       # rescan the user themes directory
 
 ## How to Contribute
 
-This project welcomes contributions and suggestions. To contribute, see these documents:
+We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for ways to help, project architecture, and PR guidelines.
 
 - [Code of Conduct](./CODE_OF_CONDUCT.md)
 - [Security](./SECURITY.md)
-- [Contributing](./CONTRIBUTING.md)
 
 ## Telemetry
 
