@@ -115,14 +115,14 @@ internal class SprocCommand : CosmosCommand
 
     /// <summary>
     /// Parses the <c>--partition-key</c> value, preserving its JSON type when possible
-    /// and falling back to a string value otherwise.
+    /// (including JSON arrays for hierarchical partition keys) and falling back to a
+    /// string value otherwise.
     /// </summary>
     internal static PartitionKey ParsePartitionKey(string value)
     {
         try
         {
-            using var document = JsonDocument.Parse(value);
-            return CreatePartitionKey(document.RootElement);
+            return CreatePartitionKeyFromArgument(value);
         }
         catch (JsonException)
         {

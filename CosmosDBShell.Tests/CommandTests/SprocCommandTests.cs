@@ -87,6 +87,17 @@ public class SprocCommandTests
     }
 
     [Fact]
+    public void ParsePartitionKey_JsonArray_BuildsHierarchicalPartitionKey()
+    {
+        var expected = new PartitionKeyBuilder()
+            .Add("tenant")
+            .Add("user")
+            .Build();
+
+        Assert.Equal(expected.ToString(), SprocCommand.ParsePartitionKey("[\"tenant\",\"user\"]").ToString());
+    }
+
+    [Fact]
     public void DefaultStoredProcedureBody_IsValidSeedTemplate()
     {
         var body = SprocCommand.DefaultStoredProcedureBody();
