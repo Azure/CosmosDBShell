@@ -630,7 +630,7 @@ Manage JavaScript stored procedures on a container through subcommands.
 Usage: sproc subcommand [name] [value] [-partition-key <ARG>] [-force] [-database <ARG>] [-container <ARG>]
 
 Arguments:
-    subcommand  list, show, create, exec, edit, or delete
+    subcommand  list, show, exists, create, exec, edit, or delete
     [name]      The stored procedure id
     [value]     A JavaScript file (for create) or a JSON array of arguments (for exec)
 
@@ -650,6 +650,7 @@ Options:
 |-|-|
 |`list`|Returns the stored procedure ids in the current container.|
 |`show <name>`|Returns the body of a stored procedure.|
+|`exists <name>`|Returns a boolean indicating whether a stored procedure exists. The boolean result can be used directly in `if` and `while` conditions.|
 |`create <name> <file>`|Creates a stored procedure from a JavaScript file. The body can also be piped in. Pass `--force` to replace an existing one.|
 |`create <name>`|With no file or piped body, seeds a sample stored procedure, opens it in an external editor, and prompts to create or discard on exit. Interactive sessions only; scripts and MCP must pass a file.|
 |`exec <name> [params]`|Executes a stored procedure. `params` is a JSON array of arguments, and `--partition-key` selects the target partition.|
@@ -661,6 +662,7 @@ Options:
 ```bash
 sproc list
 sproc show myProc
+sproc exists myProc
 sproc create myProc ./myProc.js
 sproc create myProc ./myProc.js --force
 sproc create myProc

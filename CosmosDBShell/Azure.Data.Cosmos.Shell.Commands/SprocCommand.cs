@@ -17,6 +17,7 @@ using Spectre.Console;
 [CosmosCommand("sproc")]
 [CosmosExample("sproc list", Description = "List the stored procedures in the current container")]
 [CosmosExample("sproc show myProc", Description = "Display the body of a stored procedure")]
+[CosmosExample("sproc exists myProc", Description = "Check whether a stored procedure exists (usable in if conditions)")]
 [CosmosExample("sproc create myProc ./myProc.js", Description = "Create a stored procedure from a JavaScript file")]
 [CosmosExample("sproc create myProc ./myProc.js --force", Description = "Create or replace a stored procedure")]
 [CosmosExample("sproc edit myProc", Description = "Edit a stored procedure body in an external editor")]
@@ -191,6 +192,7 @@ internal class SprocCommand : CosmosCommand
         {
             "list" or "ls" => await this.ListAsync(container, commandState, token),
             "show" or "cat" => await this.ShowAsync(container, commandState, token),
+            "exists" => await this.ExistsAsync(container, commandState, token),
             "create" or "set" => await this.CreateAsync(container, shell, commandState, token),
             "exec" or "run" => await this.ExecAsync(container, commandState, token),
             "edit" => await this.EditAsync(container, shell, commandState, token),
@@ -266,6 +268,31 @@ internal class SprocCommand : CosmosCommand
         {
             throw NotFound(name, ex);
         }
+    }
+
+    private async Task<CommandState> ExistsAsync(Container container, CommandState commandState, CancellationToken token)
+    {
+        var name = this.RequireName();
+
+        bool exists;
+        try
+        {
+            await container.Scripts.ReadStoredProcedureAsync(name, cancellationToken: token);
+            exists = true;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            exists = false;
+        }
+
+        ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            exists ? "command-sproc-exists-yes" : "command-sproc-exists-no",
+            "name",
+            name));
+
+        commandState.Result = new ShellBool(exists);
+        commandState.IsPrinted = true;
+        return commandState;
     }
 
     private async Task<CommandState> CreateAsync(Container container, ShellInterpreter shell, CommandState commandState, CancellationToken token)
