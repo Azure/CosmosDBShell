@@ -5,6 +5,8 @@
 ### New features
 
 - `sproc` command to manage Cosmos DB for NoSQL stored procedures on the current container: `list`, `show`, `exists` (returns a boolean usable in `if`/`while` conditions), `create` (from a JavaScript file or piped body, with `--force` to replace), `exec` (with a JSON argument array and `--partition-key`), `edit` (interactive external editor), and `delete`. ([#103](https://github.com/Azure/CosmosDBShell/issues/103))
+- `udf` command to manage Cosmos DB for NoSQL user-defined functions on the current container: `list`, `show`, `exists` (returns a boolean usable in `if`/`while` conditions), `create` (from a JavaScript file or piped body, with `--force` to replace), and `delete`. ([#103](https://github.com/Azure/CosmosDBShell/issues/103))
+- `trigger` command to manage Cosmos DB for NoSQL triggers on the current container: `list`, `show`, `exists` (returns a boolean usable in `if`/`while` conditions), `create` (from a JavaScript file or piped body, with `--type` for pre/post, `--operation` for the operation, and `--force` to replace), and `delete`. ([#103](https://github.com/Azure/CosmosDBShell/issues/103))
 
 ## 1.1.4-preview — 2026-05-21
 
