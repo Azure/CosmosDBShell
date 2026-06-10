@@ -411,22 +411,20 @@ internal class SprocCommand : CosmosCommand
             throw new CommandException("sproc", MessageService.GetString("command-sproc-error-not_interactive"));
         }
 
-        string existingBody = string.Empty;
-        bool exists = false;
+        string existingBody;
         try
         {
             var read = await container.Scripts.ReadStoredProcedureAsync(name, cancellationToken: token);
             existingBody = read.Resource.Body;
-            exists = true;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
-            existingBody = string.Empty;
+            throw NotFound(name, ex);
         }
 
-        var newBody = await this.LaunchEditorAsync(exists ? existingBody : DefaultStoredProcedureBody(), name, token);
+        var newBody = await this.LaunchEditorAsync(existingBody, name, token);
 
-        if (exists && string.Equals(newBody, existingBody, StringComparison.Ordinal))
+        if (string.Equals(newBody, existingBody, StringComparison.Ordinal))
         {
             ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-edit-unchanged", "name", name));
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = false }));
@@ -434,12 +432,10 @@ internal class SprocCommand : CosmosCommand
         }
 
         var properties = new StoredProcedureProperties { Id = name, Body = newBody };
-        var response = exists
-            ? await container.Scripts.ReplaceStoredProcedureAsync(properties, cancellationToken: token)
-            : await container.Scripts.CreateStoredProcedureAsync(properties, cancellationToken: token);
+        var response = await container.Scripts.ReplaceStoredProcedureAsync(properties, cancellationToken: token);
 
         ShellInterpreter.WriteLine(MessageService.GetArgsString(
-            exists ? "command-sproc-replaced" : "command-sproc-created",
+            "command-sproc-replaced",
             "name",
             name,
             "charge",

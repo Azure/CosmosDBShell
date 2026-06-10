@@ -653,7 +653,7 @@ Options:
 |`create <name> <file>`|Creates a stored procedure from a JavaScript file. The body can also be piped in. Pass `--force` to replace an existing one.|
 |`create <name>`|With no file or piped body, seeds a sample stored procedure, opens it in an external editor, and prompts to create or discard on exit. Interactive sessions only; scripts and MCP must pass a file.|
 |`exec <name> [params]`|Executes a stored procedure. `params` is a JSON array of arguments, and `--partition-key` selects the target partition.|
-|`edit <name>`|Opens the stored procedure body in an external editor and saves it on exit. Interactive sessions only; not available over MCP or from scripts.|
+|`edit <name>`|Opens an existing stored procedure body in an external editor and saves it on exit. Fails if the stored procedure does not exist; use `create` to add a new one. Interactive sessions only; not available over MCP or from scripts.|
 |`delete <name>`|Deletes a stored procedure.|
 
 #### Examples
