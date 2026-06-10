@@ -203,17 +203,52 @@ internal class SprocCommand : CosmosCommand
 
     private async Task<CommandState> ListAsync(Container container, CommandState commandState, CancellationToken token)
     {
-        var ids = new List<string>();
+        var items = new List<object>();
+        var rows = new List<(string Id, string Modified, int BodyLength)>();
         using var iterator = container.Scripts.GetStoredProcedureQueryIterator<StoredProcedureProperties>();
         while (iterator.HasMoreResults)
         {
             foreach (var properties in await iterator.ReadNextAsync(token))
             {
-                ids.Add(properties.Id);
+                items.Add(new
+                {
+                    id = properties.Id,
+                    lastModified = properties.LastModified,
+                    etag = properties.ETag,
+                    bodyLength = properties.Body?.Length ?? 0,
+                });
+                rows.Add((
+                    properties.Id,
+                    properties.LastModified?.ToString("u") ?? string.Empty,
+                    properties.Body?.Length ?? 0));
             }
         }
 
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(ids));
+        if (rows.Count == 0)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-sproc-list-empty")));
+        }
+        else
+        {
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-title")));
+            var table = new Table();
+            table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-column-id"))));
+            table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-column-modified"))));
+            table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-column-size"))).RightAligned());
+
+            foreach (var row in rows)
+            {
+                table.AddRow(
+                    Theme.FormatTableValue(row.Id),
+                    Theme.FormatTableValue(row.Modified),
+                    Theme.FormatTableValue(row.BodyLength.ToString()));
+            }
+
+            AnsiConsole.Write(table);
+        }
+
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(items));
+        commandState.IsPrinted = true;
         return commandState;
     }
 
@@ -291,6 +326,7 @@ internal class SprocCommand : CosmosCommand
         {
             ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-create-discarded", "name", name));
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, created = false }));
+            commandState.IsPrinted = true;
             return commandState;
         }
 
@@ -340,6 +376,7 @@ internal class SprocCommand : CosmosCommand
             response.RequestCharge.ToString("F2")));
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name }));
+        commandState.IsPrinted = true;
         return commandState;
     }
 
@@ -394,6 +431,7 @@ internal class SprocCommand : CosmosCommand
                 response.RequestCharge.ToString("F2")));
 
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, deleted = true }));
+            commandState.IsPrinted = true;
             return commandState;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -428,6 +466,7 @@ internal class SprocCommand : CosmosCommand
         {
             ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-edit-unchanged", "name", name));
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = false }));
+            commandState.IsPrinted = true;
             return commandState;
         }
 
@@ -442,6 +481,7 @@ internal class SprocCommand : CosmosCommand
             response.RequestCharge.ToString("F2")));
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = true }));
+        commandState.IsPrinted = true;
         return commandState;
     }
 
