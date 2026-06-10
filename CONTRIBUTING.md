@@ -69,7 +69,7 @@ CosmosDBShell/
 ├── Azure.Data.Cosmos.Shell.Mcp/        # MCP (Model Context Protocol) server
 ├── Azure.Data.Cosmos.Shell.Lsp/        # LSP server for editor integration
 ├── Azure.Data.Cosmos.Shell.Util/       # Shared utilities and helpers
-├── Azure.Data.Cosmos.Shell.KeyBindings/# Key binding definitions
+├── Azure.Data.Cosmos.Shell.KeyBindings/ # Key binding definitions
 ├── lang/                               # Localization files (Fluent .ftl)
 └── Program.cs                          # Entry point and CLI option parsing
 
