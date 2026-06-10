@@ -40,6 +40,13 @@ This command is restricted in MCP. Run it manually in the shell.
 #pragma warning restore SA1118 // Parameter should not span multiple lines
 internal class SprocCommand : CosmosCommand
 {
+    /// <summary>
+    /// When the launched editor returns faster than this, assume it handed the
+    /// file to a background instance (for example Windows notepad or 'code'
+    /// without --wait) and prompt the user before reading the file back.
+    /// </summary>
+    private static readonly TimeSpan QuickEditorExit = TimeSpan.FromSeconds(2);
+
     [CosmosParameter("subcommand", RequiredErrorKey = "command-sproc-error-missing_subcommand")]
     public string Subcommand { get; init; } = string.Empty;
 
@@ -271,6 +278,15 @@ internal class SprocCommand : CosmosCommand
         var seed = existingBody ?? DefaultStoredProcedureBody();
         var edited = await this.LaunchEditorAsync(seed, name, token);
 
+        if (!string.IsNullOrWhiteSpace(edited))
+        {
+            AnsiConsole.Clear();
+            ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-create-preview", "name", name));
+            ShellInterpreter.WriteLine();
+            ShellInterpreter.WriteLine(edited);
+            ShellInterpreter.WriteLine();
+        }
+
         if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-sproc-create-confirm"))
         {
             ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-create-discarded", "name", name));
@@ -468,12 +484,25 @@ internal class SprocCommand : CosmosCommand
                 UseShellExecute = false,
             }) ?? throw new InvalidOperationException("Process.Start returned null"))
             {
+                var launched = System.Diagnostics.Stopwatch.StartNew();
                 await process.WaitForExitAsync(token);
+                launched.Stop();
                 if (process.ExitCode != 0)
                 {
                     throw new CommandException(
                         "sproc",
                         MessageService.GetArgsString("command-sproc-edit-exit-nonzero", "editor", editor.DisplayName, "code", process.ExitCode));
+                }
+
+                // Some editors (for example Windows notepad, or 'code' without
+                // --wait) hand the file to a running instance and exit right
+                // away instead of blocking until the window closes. When that
+                // happens, wait for the user to confirm they finished editing
+                // before reading the file back.
+                if (launched.Elapsed < QuickEditorExit)
+                {
+                    ShellInterpreter.WriteLine(MessageService.GetString("command-sproc-edit-wait"));
+                    Console.ReadLine();
                 }
             }
 
