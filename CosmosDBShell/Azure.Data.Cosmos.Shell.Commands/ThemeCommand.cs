@@ -43,9 +43,6 @@ internal class ThemeCommand : CosmosCommand
     [CosmosOption("strict")]
     public bool Strict { get; init; }
 
-    [CosmosOption("editor")]
-    public string? Editor { get; init; }
-
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         var action = (this.Action ?? "current").Trim().ToLowerInvariant();
@@ -655,7 +652,7 @@ internal class ThemeCommand : CosmosCommand
             return ReportUnknownTheme(commandState, requested);
         }
 
-        var editor = ExternalEditor.Resolve(this.Editor);
+        var editor = ExternalEditor.Resolve(null);
         if (editor is null)
         {
             var message = MessageService.GetString("command-theme-edit-no-editor");

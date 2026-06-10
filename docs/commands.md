@@ -111,7 +111,7 @@ pwd                    # /MyDb/MyContainer
 Inspect, switch, load, validate, save, edit, open, and reload shell color themes.
 
 ```text
-Usage: theme [action] [name] [path] [-force] [-strict] [-editor <ARG>]
+Usage: theme [action] [name] [path] [-force] [-strict]
 
 Arguments:
     [action]    What to do: current (default), list, show, use (alias: set),
@@ -124,8 +124,6 @@ Options:
     -force, -f  Overwrite an existing file when saving, or seed the
                 built-in profile to a user file when editing
     -strict     Treat warnings as errors during validate
-    -editor     External editor to launch for `theme edit`
-                (defaults to $VISUAL, $EDITOR, then a platform default)
 ```
 
 Examples:
@@ -140,7 +138,6 @@ theme validate ~/.cosmosdbshell/themes
 theme validate my-theme --strict
 theme save my-theme --force
 theme edit my-theme
-theme edit dark --force --editor "code --wait"
 theme open
 theme reload
 ```
@@ -630,7 +627,7 @@ throughput show --database MyDatabase --container MyContainer
 Manage JavaScript stored procedures on a container through subcommands.
 
 ```text
-Usage: sproc subcommand [name] [value] [-partition-key <ARG>] [-force] [-editor <ARG>] [-database <ARG>] [-container <ARG>]
+Usage: sproc subcommand [name] [value] [-partition-key <ARG>] [-force] [-database <ARG>] [-container <ARG>]
 
 Arguments:
     subcommand  list, show, create, exec, edit, or delete
@@ -641,8 +638,6 @@ Options:
     -partition-key, -pk
                 Partition key used to target a partition when executing (required for exec)
     -force, -f  Replace the stored procedure if it already exists (create)
-    -editor     External editor to launch for 'sproc edit'
-                (defaults to $VISUAL, $EDITOR, then a platform default)
     -database, -db
                 Override database name (Optional)
     -container, -con

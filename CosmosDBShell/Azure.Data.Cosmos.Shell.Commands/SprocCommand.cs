@@ -55,9 +55,6 @@ internal class SprocCommand : CosmosCommand
     [CosmosOption("force", "f")]
     public bool? Force { get; init; }
 
-    [CosmosOption("editor")]
-    public string? Editor { get; init; }
-
     [CosmosOption("database", "db")]
     public string? Database { get; init; }
 
@@ -443,7 +440,7 @@ internal class SprocCommand : CosmosCommand
     /// </summary>
     private async Task<string> LaunchEditorAsync(string initialBody, string name, CancellationToken token)
     {
-        var editor = ExternalEditor.Resolve(this.Editor);
+        var editor = ExternalEditor.Resolve(null);
         if (editor is null)
         {
             throw new CommandException("sproc", MessageService.GetString("command-sproc-error-no_editor"));
