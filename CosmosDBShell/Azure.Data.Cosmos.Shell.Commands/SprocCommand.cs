@@ -1,0 +1,528 @@
+//------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+//------------------------------------------------------------
+
+namespace Azure.Data.Cosmos.Shell.Commands;
+
+using System.Net;
+using System.Text.Json;
+using Azure.Data.Cosmos.Shell.Mcp;
+using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
+using global::Azure.Data.Cosmos.Shell.Core;
+using global::Azure.Data.Cosmos.Shell.States;
+using Microsoft.Azure.Cosmos.Scripts;
+using Spectre.Console;
+
+[CosmosCommand("sproc")]
+[CosmosExample("sproc list", Description = "List the stored procedures in the current container")]
+[CosmosExample("sproc show myProc", Description = "Display the body of a stored procedure")]
+[CosmosExample("sproc create myProc ./myProc.js", Description = "Create a stored procedure from a JavaScript file")]
+[CosmosExample("sproc create myProc ./myProc.js --force", Description = "Create or replace a stored procedure")]
+[CosmosExample("sproc edit myProc", Description = "Edit a stored procedure body in an external editor")]
+[CosmosExample("sproc exec myProc '[\"param1\", \"param2\"]' --partition-key pk1", Description = "Execute a stored procedure with parameters")]
+[CosmosExample("sproc delete myProc", Description = "Delete a stored procedure")]
+#pragma warning disable SA1118 // Parameter should not span multiple lines
+[McpAnnotation(
+    Title = "Stored Procedures",
+    Description = @"
+Manages JavaScript stored procedures on the current Cosmos DB container through subcommands:
+- 'list' returns the stored procedure ids in the container.
+- 'show <name>' returns the body of a stored procedure.
+- 'create <name> <file>' creates a stored procedure from a JavaScript file. Pass --force to replace an existing one.
+- 'exec <name> [params]' executes a stored procedure. 'params' is a JSON array of arguments and --partition-key selects the target partition.
+- 'delete <name>' removes a stored procedure.
+This command is restricted in MCP. Run it manually in the shell.
+",
+    Restricted = true,
+    Destructive = true,
+    OpenWorld = true)]
+#pragma warning restore SA1118 // Parameter should not span multiple lines
+internal class SprocCommand : CosmosCommand
+{
+    [CosmosParameter("subcommand", RequiredErrorKey = "command-sproc-error-missing_subcommand")]
+    public string Subcommand { get; init; } = string.Empty;
+
+    [CosmosParameter("name", IsRequired = false)]
+    public string? Name { get; init; }
+
+    [CosmosParameter("value", IsRequired = false)]
+    public string? Value { get; init; }
+
+    [CosmosOption("partition-key", "pk")]
+    public string? PartitionKey { get; init; }
+
+    [CosmosOption("force", "f")]
+    public bool? Force { get; init; }
+
+    [CosmosOption("editor")]
+    public string? Editor { get; init; }
+
+    [CosmosOption("database", "db")]
+    public string? Database { get; init; }
+
+    [CosmosOption("container", "con")]
+    public string? Container { get; init; }
+
+    /// <summary>
+    /// Normalizes a subcommand token to its canonical lower-case form.
+    /// </summary>
+    internal static string NormalizeSubcommand(string? value) => (value ?? string.Empty).Trim().ToLowerInvariant();
+
+    /// <summary>
+    /// Parses the JSON array of stored procedure arguments. Returns an empty array
+    /// when no value is supplied. Each argument is preserved as a <see cref="JsonElement"/>
+    /// so the Cosmos SDK serializes it with the correct type.
+    /// </summary>
+    internal static object[] ParseExecParams(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(json);
+        }
+        catch (JsonException ex)
+        {
+            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-invalid_params"), ex);
+        }
+
+        using (document)
+        {
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                throw new CommandException("sproc", MessageService.GetString("command-sproc-error-invalid_params"));
+            }
+
+            var parameters = new List<object>();
+            foreach (var element in document.RootElement.EnumerateArray())
+            {
+                parameters.Add(element.Clone());
+            }
+
+            return [.. parameters];
+        }
+    }
+
+    /// <summary>
+    /// Parses the <c>--partition-key</c> value, preserving its JSON type when possible
+    /// and falling back to a string value otherwise.
+    /// </summary>
+    internal static PartitionKey ParsePartitionKey(string value)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(value);
+            return CreatePartitionKey(document.RootElement);
+        }
+        catch (JsonException)
+        {
+            return new PartitionKey(value);
+        }
+    }
+
+    private static CommandException NotFound(string name, Exception inner) =>
+        new("sproc", MessageService.GetArgsString("command-sproc-error-not_found", "name", name), inner);
+
+    /// <summary>
+    /// Returns a sample stored procedure body used to seed the editor when creating
+    /// a new stored procedure without supplying a file. Mirrors the template offered
+    /// by the Azure Databases extension for Visual Studio Code.
+    /// </summary>
+    internal static string DefaultStoredProcedureBody() =>
+        """
+        function sample(prefix) {
+            var collection = getContext().getCollection();
+
+            // Query documents and take 1st item.
+            var isAccepted = collection.queryDocuments(
+                collection.getSelfLink(),
+                'SELECT * FROM root r',
+                function (err, feed, options) {
+                    if (err) throw err;
+
+                    // Check the feed and if empty, set the body to 'no docs found',
+                    // else take 1st element from feed.
+                    if (!feed || !feed.length) {
+                        var response = getContext().getResponse();
+                        response.setBody('no docs found');
+                    } else {
+                        var response = getContext().getResponse();
+                        var body = { prefix: prefix, feed: feed[0] };
+                        response.setBody(JSON.stringify(body));
+                    }
+                });
+
+            if (!isAccepted) throw new Error('The query was not accepted by the server.');
+        }
+
+        """;
+
+    public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+    {
+        var subcommand = NormalizeSubcommand(this.Subcommand);
+        if (subcommand.Length == 0)
+        {
+            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-missing_subcommand"));
+        }
+
+        if (shell.State is not ConnectedState connectedState)
+        {
+            throw new NotConnectedException("sproc");
+        }
+
+        var (_, _, container) = await ResolveContainerAsync(
+            connectedState.Client,
+            shell.State,
+            this.Database,
+            this.Container,
+            "sproc",
+            token);
+
+        return subcommand switch
+        {
+            "list" or "ls" => await this.ListAsync(container, commandState, token),
+            "show" or "cat" => await this.ShowAsync(container, commandState, token),
+            "create" or "set" => await this.CreateAsync(container, shell, commandState, token),
+            "exec" or "run" => await this.ExecAsync(container, commandState, token),
+            "edit" => await this.EditAsync(container, shell, commandState, token),
+            "delete" or "rm" => await this.DeleteAsync(container, commandState, token),
+            _ => throw new CommandException(
+                "sproc",
+                MessageService.GetArgsString("command-sproc-error-invalid_subcommand", "subcommand", subcommand)),
+        };
+    }
+
+    private async Task<CommandState> ListAsync(Container container, CommandState commandState, CancellationToken token)
+    {
+        var ids = new List<string>();
+        using var iterator = container.Scripts.GetStoredProcedureQueryIterator<StoredProcedureProperties>();
+        while (iterator.HasMoreResults)
+        {
+            foreach (var properties in await iterator.ReadNextAsync(token))
+            {
+                ids.Add(properties.Id);
+            }
+        }
+
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(ids));
+        return commandState;
+    }
+
+    private async Task<CommandState> ShowAsync(Container container, CommandState commandState, CancellationToken token)
+    {
+        var name = this.RequireName();
+
+        try
+        {
+            var response = await container.Scripts.ReadStoredProcedureAsync(name, cancellationToken: token);
+            commandState.Result = new ShellText(response.Resource.Body);
+            return commandState;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw NotFound(name, ex);
+        }
+    }
+
+    private async Task<CommandState> CreateAsync(Container container, ShellInterpreter shell, CommandState commandState, CancellationToken token)
+    {
+        var name = this.RequireName();
+        bool force = this.Force == true;
+
+        // When a body is supplied (a file or piped input), create directly. This is
+        // the path used by scripts and the MCP server.
+        var explicitBody = this.TryReadExplicitBody(commandState);
+        if (explicitBody is not null)
+        {
+            return await this.WriteCreateAsync(container, commandState, name, explicitBody, force, token);
+        }
+
+        // No body supplied: seed a default stored procedure and open the editor so an
+        // interactive user can author it, then confirm before creating. Seeding needs a
+        // real terminal, so scripts and MCP must pass a file instead.
+        if (Console.IsInputRedirected || !string.IsNullOrEmpty(shell.CurrentScriptFileName))
+        {
+            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-missing_file"));
+        }
+
+        // Check for an existing stored procedure before opening the editor so the user
+        // is not asked to author a body that cannot be saved. When --force is set, seed
+        // the editor with the existing body so it can be edited in place.
+        string? existingBody = null;
+        try
+        {
+            var read = await container.Scripts.ReadStoredProcedureAsync(name, cancellationToken: token);
+            existingBody = read.Resource.Body;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            existingBody = null;
+        }
+
+        if (existingBody is not null && !force)
+        {
+            throw new CommandException(
+                "sproc",
+                MessageService.GetArgsString("command-sproc-error-already_exists", "name", name));
+        }
+
+        var seed = existingBody ?? DefaultStoredProcedureBody();
+        var edited = await this.LaunchEditorAsync(seed, name, token);
+
+        if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-sproc-create-confirm"))
+        {
+            ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-create-discarded", "name", name));
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, created = false }));
+            return commandState;
+        }
+
+        return await this.WriteCreateAsync(container, commandState, name, edited, force, token);
+    }
+
+    private async Task<CommandState> WriteCreateAsync(Container container, CommandState commandState, string name, string body, bool force, CancellationToken token)
+    {
+        var properties = new StoredProcedureProperties { Id = name, Body = body };
+
+        StoredProcedureResponse response;
+        bool replaced;
+        if (force)
+        {
+            try
+            {
+                response = await container.Scripts.ReplaceStoredProcedureAsync(properties, cancellationToken: token);
+                replaced = true;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                response = await container.Scripts.CreateStoredProcedureAsync(properties, cancellationToken: token);
+                replaced = false;
+            }
+        }
+        else
+        {
+            try
+            {
+                response = await container.Scripts.CreateStoredProcedureAsync(properties, cancellationToken: token);
+                replaced = false;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
+            {
+                throw new CommandException(
+                    "sproc",
+                    MessageService.GetArgsString("command-sproc-error-already_exists", "name", name),
+                    ex);
+            }
+        }
+
+        ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            replaced ? "command-sproc-replaced" : "command-sproc-created",
+            "name",
+            name,
+            "charge",
+            response.RequestCharge.ToString("F2")));
+
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name }));
+        return commandState;
+    }
+
+    private async Task<CommandState> ExecAsync(Container container, CommandState commandState, CancellationToken token)
+    {
+        var name = this.RequireName();
+
+        if (string.IsNullOrWhiteSpace(this.PartitionKey))
+        {
+            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-missing_partition_key"));
+        }
+
+        var parameters = ParseExecParams(this.Value);
+        var partitionKey = ParsePartitionKey(this.PartitionKey);
+
+        try
+        {
+            var response = await container.Scripts.ExecuteStoredProcedureAsync<JsonElement>(
+                name,
+                partitionKey,
+                parameters,
+                cancellationToken: token);
+
+            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                "command-sproc-executed",
+                "name",
+                name,
+                "charge",
+                response.RequestCharge.ToString("F2")));
+
+            commandState.Result = new ShellJson(response.Resource.Clone());
+            return commandState;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw NotFound(name, ex);
+        }
+    }
+
+    private async Task<CommandState> DeleteAsync(Container container, CommandState commandState, CancellationToken token)
+    {
+        var name = this.RequireName();
+
+        try
+        {
+            var response = await container.Scripts.DeleteStoredProcedureAsync(name, cancellationToken: token);
+            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                "command-sproc-deleted",
+                "name",
+                name,
+                "charge",
+                response.RequestCharge.ToString("F2")));
+
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, deleted = true }));
+            return commandState;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw NotFound(name, ex);
+        }
+    }
+
+    private async Task<CommandState> EditAsync(Container container, ShellInterpreter shell, CommandState commandState, CancellationToken token)
+    {
+        var name = this.RequireName();
+
+        if (Console.IsInputRedirected || !string.IsNullOrEmpty(shell.CurrentScriptFileName))
+        {
+            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-not_interactive"));
+        }
+
+        string existingBody = string.Empty;
+        bool exists = false;
+        try
+        {
+            var read = await container.Scripts.ReadStoredProcedureAsync(name, cancellationToken: token);
+            existingBody = read.Resource.Body;
+            exists = true;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            existingBody = string.Empty;
+        }
+
+        var newBody = await this.LaunchEditorAsync(exists ? existingBody : DefaultStoredProcedureBody(), name, token);
+
+        if (exists && string.Equals(newBody, existingBody, StringComparison.Ordinal))
+        {
+            ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-edit-unchanged", "name", name));
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = false }));
+            return commandState;
+        }
+
+        var properties = new StoredProcedureProperties { Id = name, Body = newBody };
+        var response = exists
+            ? await container.Scripts.ReplaceStoredProcedureAsync(properties, cancellationToken: token)
+            : await container.Scripts.CreateStoredProcedureAsync(properties, cancellationToken: token);
+
+        ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            exists ? "command-sproc-replaced" : "command-sproc-created",
+            "name",
+            name,
+            "charge",
+            response.RequestCharge.ToString("F2")));
+
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = true }));
+        return commandState;
+    }
+
+    /// <summary>
+    /// Writes the supplied body to a temporary <c>.js</c> file, opens it in the
+    /// external editor, waits for the editor to close, and returns the edited
+    /// contents. The temporary file is always removed.
+    /// </summary>
+    private async Task<string> LaunchEditorAsync(string initialBody, string name, CancellationToken token)
+    {
+        var editor = ExternalEditor.Resolve(this.Editor);
+        if (editor is null)
+        {
+            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-no_editor"));
+        }
+
+        var tempPath = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            $"cosmos-sproc-{Guid.NewGuid():N}.js");
+
+        try
+        {
+            await File.WriteAllTextAsync(tempPath, initialBody, token);
+
+            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
+                "command-sproc-edit-launching",
+                "name",
+                name,
+                "editor",
+                editor.DisplayName)));
+
+            using (var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = editor.FileName,
+                Arguments = editor.BuildArguments(tempPath),
+                UseShellExecute = false,
+            }) ?? throw new InvalidOperationException("Process.Start returned null"))
+            {
+                await process.WaitForExitAsync(token);
+                if (process.ExitCode != 0)
+                {
+                    throw new CommandException(
+                        "sproc",
+                        MessageService.GetArgsString("command-sproc-edit-exit-nonzero", "editor", editor.DisplayName, "code", process.ExitCode));
+                }
+            }
+
+            return await File.ReadAllTextAsync(tempPath, token);
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(tempPath))
+                {
+                    File.Delete(tempPath);
+                }
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup of the temporary file.
+            }
+        }
+    }
+
+    private string RequireName()
+    {
+        if (string.IsNullOrWhiteSpace(this.Name))
+        {
+            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-missing_name"));
+        }
+
+        return this.Name;
+    }
+
+    private string? TryReadExplicitBody(CommandState commandState)
+    {
+        if (!string.IsNullOrWhiteSpace(this.Value))
+        {
+            if (!File.Exists(this.Value))
+            {
+                throw new CommandException(
+                    "sproc",
+                    MessageService.GetArgsString("command-sproc-error-file_not_found", "file", this.Value));
+            }
+
+            return File.ReadAllText(this.Value);
+        }
+
+        var piped = commandState.Result?.ConvertShellObject(DataType.Text) as string;
+        return string.IsNullOrEmpty(piped) ? null : piped;
+    }
+}

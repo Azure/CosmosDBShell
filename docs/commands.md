@@ -625,6 +625,57 @@ throughput set 4000 --yes
 throughput show --database MyDatabase --container MyContainer
 ```
 
+### sproc
+
+Manage JavaScript stored procedures on a container through subcommands.
+
+```text
+Usage: sproc subcommand [name] [value] [-partition-key <ARG>] [-force] [-editor <ARG>] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  list, show, create, exec, edit, or delete
+    [name]      The stored procedure id
+    [value]     A JavaScript file (for create) or a JSON array of arguments (for exec)
+
+Options:
+    -partition-key, -pk
+                Partition key used to target a partition when executing (required for exec)
+    -force, -f  Replace the stored procedure if it already exists (create)
+    -editor     External editor to launch for 'sproc edit'
+                (defaults to $VISUAL, $EDITOR, then a platform default)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`list`|Returns the stored procedure ids in the current container.|
+|`show <name>`|Returns the body of a stored procedure.|
+|`create <name> <file>`|Creates a stored procedure from a JavaScript file. The body can also be piped in. Pass `--force` to replace an existing one.|
+|`create <name>`|With no file or piped body, seeds a sample stored procedure, opens it in an external editor, and prompts to create or discard on exit. Interactive sessions only; scripts and MCP must pass a file.|
+|`exec <name> [params]`|Executes a stored procedure. `params` is a JSON array of arguments, and `--partition-key` selects the target partition.|
+|`edit <name>`|Opens the stored procedure body in an external editor and saves it on exit. Interactive sessions only; not available over MCP or from scripts.|
+|`delete <name>`|Deletes a stored procedure.|
+
+#### Examples
+
+```bash
+sproc list
+sproc show myProc
+sproc create myProc ./myProc.js
+sproc create myProc ./myProc.js --force
+sproc create myProc
+sproc edit myProc
+sproc exec myProc '["param1", "param2"]' --partition-key pk1
+sproc delete myProc
+```
+
+Stored procedures are a Cosmos DB for NoSQL feature. The `sproc` command operates on the current container, the same scope as `index`.
+
 ## Utilities
 
 ### az

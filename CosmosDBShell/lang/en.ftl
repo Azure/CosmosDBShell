@@ -379,6 +379,35 @@ command-throughput-error-mode_switch_unsupported =
   Switching '{ $resource }' to { $mode } throughput is not supported on this connection.
 
   The Cosmos data-plane SDK can only change the value within the current mode. To switch between manual and autoscale, connect with an Azure AD (token) credential, or use the Azure portal, Azure CLI, or PowerShell.
+command-sproc-description = Manages stored procedures on a container via list, show, create, exec, edit, and delete subcommands.
+command-sproc-description-subcommand = The action to perform: list, show, create, exec, edit, or delete.
+command-sproc-description-name = The stored procedure id.
+command-sproc-description-value = The JavaScript file to read for create, or the JSON array of arguments for exec.
+command-sproc-description-partition-key = The partition key used to target a partition when executing a stored procedure.
+command-sproc-description-force = Replace the stored procedure if it already exists.
+command-sproc-description-editor = External editor to launch for 'sproc edit' (defaults to $VISUAL, $EDITOR, then a platform default).
+command-sproc-description-database = The database containing the container.
+command-sproc-description-container = The container that owns the stored procedures.
+command-sproc-created = Created stored procedure '{ $name }' (RU charge: { $charge }).
+command-sproc-replaced = Replaced stored procedure '{ $name }' (RU charge: { $charge }).
+command-sproc-deleted = Deleted stored procedure '{ $name }' (RU charge: { $charge }).
+command-sproc-executed = Executed stored procedure '{ $name }' (RU charge: { $charge }).
+command-sproc-edit-launching = Editing stored procedure '{ $name }' with { $editor }.
+command-sproc-edit-unchanged = Stored procedure '{ $name }' was not changed.
+command-sproc-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }.
+command-sproc-create-confirm = Create this stored procedure
+command-sproc-create-discarded = Discarded stored procedure '{ $name }'.
+command-sproc-error-missing_subcommand = Missing subcommand. Use one of: list, show, create, exec, edit, delete.
+command-sproc-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: list, show, create, exec, edit, delete.
+command-sproc-error-missing_name = Missing stored procedure name. Specify the id, for example: sproc show myProc.
+command-sproc-error-missing_file = No source provided. Specify a JavaScript file or pipe the body in, for example: sproc create myProc ./myProc.js.
+command-sproc-error-file_not_found = File not found: '{ $file }'.
+command-sproc-error-already_exists = Stored procedure '{ $name }' already exists. Use --force to replace it.
+command-sproc-error-not_found = Stored procedure '{ $name }' was not found.
+command-sproc-error-invalid_params = Invalid parameters. Provide a JSON array of arguments, for example: '["a", 1, true]'.
+command-sproc-error-missing_partition_key = A partition key is required to execute a stored procedure. Use --partition-key.
+command-sproc-error-not_interactive = 'sproc edit' needs an interactive terminal and cannot run from a script or piped input.
+command-sproc-error-no_editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
 
 command-ls-description = List resources in the current context.
 command-ls-description-filter = The filter pattern.
