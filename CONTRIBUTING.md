@@ -56,7 +56,7 @@ dotnet run --project CosmosDBShell/CosmosDBShell.csproj
 dotnet test CosmosDBShell.sln
 ```
 
-In VS Code, you can also build with **Ctrl+Shift+B** (uses the predefined build task).
+In VS Code, you can also build with **Ctrl+Shift+B** (Windows/Linux) or **Cmd+Shift+B** (macOS) (uses the predefined build task).
 
 ### Project Architecture
 
