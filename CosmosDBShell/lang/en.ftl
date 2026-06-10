@@ -241,6 +241,54 @@ command-patch-error-failed = Failed to patch item: { $status } - { $message }
 command-patch-error-not_found = Item '{ $id }' not found.
 command-patch-error-etag_mismatch = Item '{ $id }' was modified since it was last read (ETag mismatch).
 
+command-export-description = Exports items from a container to a JSON Lines, JSON array, or CSV file.
+command-export-description-file = Destination file path.
+command-export-description-database = The database to read from.
+command-export-description-container = The container to read from.
+command-export-description-query = SELECT query whose results are exported (default: SELECT * FROM c).
+command-export-description-max = Maximum number of items to export. 0 means no limit.
+command-export-description-format = Output format: jsonl (default), array, or csv.
+command-export-description-force = Overwrite the destination file if it already exists.
+command-export-success = Exported { $count } { $count ->
+    [one] item
+    *[other] items
+} to { $file } (RU charge: { $charge })
+command-export-error-missing_file = A destination file path is required.
+command-export-error-file_exists = File '{ $file }' already exists. Use --force to overwrite.
+command-export-error-query_failed = Export query failed: { $status } - { $message }
+
+command-import-description = Imports items into a container from a JSON Lines, JSON array, or CSV file.
+command-import-description-file = Source file path.
+command-import-description-database = The database to write to.
+command-import-description-container = The container to write to.
+command-import-description-mode = Write mode: insert (default) or upsert.
+command-import-description-format = Input format: auto (default), jsonl, array, or csv.
+command-import-description-partition-key = For CSV import, the partition key path. Nested paths (e.g. /address/city) place the matching column under that path.
+command-import-description-continue-on-error = Continue importing after individual item write failures. Parse or validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) still abort the import.
+command-import-description-dry-run = Parse the file without writing any items.
+command-import-success = Imported { $count } { $count ->
+    [one] item
+    *[other] items
+} (RU charge: { $charge })
+command-import-success-partial = Imported { $success } { $success ->
+    [one] item
+    *[other] items
+}, { $failed } failed (RU charge: { $charge })
+command-import-all-failed = Failed to import all { $count } items
+command-import-dry-run-success = Dry run: { $count } valid { $count ->
+    [one] item
+    *[other] items
+}
+command-import-error-missing_file = A source file path is required.
+command-import-error-file_not_found = File '{ $file }' was not found.
+command-import-error-blank_line = Line { $line } is blank.
+command-import-error-not_object = Line { $line } is not a JSON object.
+command-import-error-invalid_line_json = Line { $line } is not valid JSON: { $message }
+command-import-error-item_status = Line { $line }: item returned status { $status }.
+command-import-error-item_failed = Line { $line }: { $status } - { $message }
+command-import-error-some_failed = Failed to import { $failed } of { $total } items.
+command-import-error-csv_pk_conflict = CSV column '{ $column }' conflicts with the partition key path '{ $path }': the column holds a scalar value but the path requires it to be a nested object. Rename the column or choose a different partition key path.
+
 
 command-mkdb-description = Creates new database
 command-mkdb-description-name = The database name to create

@@ -1,0 +1,6 @@
+id,name,city,notes
+1,alpha,Berlin,simple
+2,"beta","Paris, France","line1
+line2"
+3,gamma,"He said ""hi""",quoted
+4,delta,,empty

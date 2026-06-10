@@ -1,0 +1,4 @@
+{"id":"1","name":"alpha","city":"Berlin"}
+{"id":"2","name":"beta","city":"Paris"}
+{"id":"3","name":"gamma","nested":{"a":1,"b":[1,2,3]},"flag":true}
+{"id":"4","name":"delta","value":3.14159,"empty":null}
