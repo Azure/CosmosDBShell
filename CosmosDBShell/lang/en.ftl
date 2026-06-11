@@ -346,6 +346,18 @@ command-ls-description-container = The container to list items from
 command-ls-description-key = The property to match against (default: container partition key property)
 command-ls-container = Container { $container }
 command-ls-found_items = found { $count } items.
+command-ls-found_databases =
+    { $count ->
+        [0] No databases found.
+        [one] Found { $display } database.
+       *[other] Found { $display } databases.
+    }
+command-ls-found_containers =
+    { $count ->
+        [0] No containers found in database { $database }.
+        [one] Found { $display } container in database { $database }.
+       *[other] Found { $display } containers in database { $database }.
+    }
 command-ls-error-request_failed = List request failed with status code { $statusCode } ({ $status }).
 command-ls-error-no_content_stream = The list request completed, but Cosmos DB returned no response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
 command-ls-error-empty_content = The list request completed, but Cosmos DB returned an empty response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.

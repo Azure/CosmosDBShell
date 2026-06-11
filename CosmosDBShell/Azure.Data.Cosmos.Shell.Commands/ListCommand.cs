@@ -92,6 +92,12 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
         CosmosCompleteCommand.SetDatabases(state.Client, completionList);
 
+        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_databases", new Dictionary<string, object>
+        {
+            { "count", list.Count },
+            { "display", Theme.FormatTableValue(list.Count.ToString()) },
+        }));
+
         var result = new CommandState
         {
             IsPrinted = true,
@@ -135,6 +141,13 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         }
 
         CosmosCompleteCommand.SetContainers(state.Client, databaseName, completionList);
+
+        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_containers", new Dictionary<string, object>
+        {
+            { "count", list.Count },
+            { "display", Theme.FormatTableValue(list.Count.ToString()) },
+            { "database", Theme.DatabaseNamePromt(databaseName) },
+        }));
 
         var result = new CommandState
         {

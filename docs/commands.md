@@ -58,6 +58,8 @@ Options:
 
 When `ls` is listing items from a container, it defaults to `100` items if `--max` is not specified. If the limit is hit at runtime, the shell prints a message telling you the results were limited. Use `--max <n>` to choose another limit or `--max 0` or a negative value to disable the limit.
 
+`ls` always prints a summary line for how many results it found. When listing databases it reports the database count (or `No databases found.`), when listing containers it reports the container count for the database (or `No containers found in database ...`), and when listing items it reports the item count. The summary makes it clear when a scope is genuinely empty versus when the listing simply returned nothing.
+
 ### cd
 
 Change scope to database or container.
