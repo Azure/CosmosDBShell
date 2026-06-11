@@ -11,8 +11,8 @@ using OpenTelemetry.Trace;
 
 /// <summary>
 /// Owns the distributed-tracing lifecycle for the shell. When enabled it registers
-/// an <see cref="OpenTelemetry"/> tracer provider that records every activity, which
-/// causes the Azure Cosmos DB SDK to emit a sampled W3C <c>traceparent</c>
+/// a <see cref="TracerProvider"/> that records every activity, which causes the
+/// Azure Cosmos DB SDK to emit a sampled W3C <c>traceparent</c>
 /// (the <c>-01</c> flag) on its outgoing requests. An OTLP exporter is added only
 /// when an endpoint is supplied.
 /// </summary>

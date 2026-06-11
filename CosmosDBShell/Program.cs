@@ -120,6 +120,18 @@ internal class Program
                 o.OtlpEndpoint = string.IsNullOrWhiteSpace(otelValue)
                     ? Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT")
                     : otelValue;
+
+                // Validate the endpoint up front so a malformed --otel value (or
+                // OTEL_EXPORTER_OTLP_ENDPOINT) yields a clean error instead of an
+                // unhandled exception when the exporter is created.
+                if (!string.IsNullOrWhiteSpace(o.OtlpEndpoint)
+                    && !Uri.TryCreate(o.OtlpEndpoint, UriKind.Absolute, out _))
+                {
+                    Environment.ExitCode = 1;
+                    ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                        "otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint));
+                    return;
+                }
             }
 
             if (o.StartLspServer)
