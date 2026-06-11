@@ -30,8 +30,10 @@ using Spectre.Console;
 Manages JavaScript stored procedures on the current Cosmos DB container through subcommands:
 - 'list' returns the stored procedure ids in the container.
 - 'show <name>' returns the body of a stored procedure.
+- 'exists <name>' returns whether a stored procedure exists.
 - 'create <name> <file>' creates a stored procedure from a JavaScript file. Pass --force to replace an existing one.
 - 'exec <name> [params]' executes a stored procedure. 'params' is a JSON array of arguments and --partition-key selects the target partition.
+- 'edit <name>' opens an existing stored procedure body in an external editor.
 - 'delete <name>' removes a stored procedure.
 This command is restricted in MCP. Run it manually in the shell.
 ",
@@ -115,8 +117,8 @@ internal class SprocCommand : CosmosCommand
 
     /// <summary>
     /// Parses the <c>--partition-key</c> value, preserving its JSON type when possible
-    /// (including JSON arrays for hierarchical partition keys) and falling back to a
-    /// string value otherwise.
+    /// (including JSON arrays for hierarchical partition keys). Object-shaped or otherwise
+    /// malformed JSON is rejected with a clear error rather than silently coerced.
     /// </summary>
     internal static PartitionKey ParsePartitionKey(string value)
     {
@@ -124,9 +126,9 @@ internal class SprocCommand : CosmosCommand
         {
             return CreatePartitionKeyFromArgument(value);
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
-            return new PartitionKey(value);
+            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-invalid_pk"), ex);
         }
     }
 
@@ -301,7 +303,7 @@ internal class SprocCommand : CosmosCommand
         bool force = this.Force == true;
 
         // When a body is supplied (a file or piped input), create directly. This is
-        // the path used by scripts and the MCP server.
+        // the non-interactive path used by scripts.
         var explicitBody = this.TryReadExplicitBody(commandState);
         if (explicitBody is not null)
         {

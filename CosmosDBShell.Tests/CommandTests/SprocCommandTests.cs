@@ -98,6 +98,12 @@ public class SprocCommandTests
     }
 
     [Fact]
+    public void ParsePartitionKey_JsonObject_Throws()
+    {
+        Assert.Throws<CommandException>(() => SprocCommand.ParsePartitionKey("{\"a\":1}"));
+    }
+
+    [Fact]
     public void DefaultStoredProcedureBody_IsValidSeedTemplate()
     {
         var body = SprocCommand.DefaultStoredProcedureBody();

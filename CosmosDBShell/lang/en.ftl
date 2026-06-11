@@ -379,8 +379,8 @@ command-throughput-error-mode_switch_unsupported =
   Switching '{ $resource }' to { $mode } throughput is not supported on this connection.
 
   The Cosmos data-plane SDK can only change the value within the current mode. To switch between manual and autoscale, connect with an Azure AD (token) credential, or use the Azure portal, Azure CLI, or PowerShell.
-command-sproc-description = Manages stored procedures on a container via list, show, create, exec, edit, and delete subcommands.
-command-sproc-description-subcommand = The action to perform: list, show, create, exec, edit, or delete.
+command-sproc-description = Manages stored procedures on a container via list, show, exists, create, exec, edit, and delete subcommands.
+command-sproc-description-subcommand = The action to perform: list, show, exists, create, exec, edit, or delete.
 command-sproc-description-name = The stored procedure id.
 command-sproc-description-value = The JavaScript file to read for create, or the JSON array of arguments for exec.
 command-sproc-description-partition-key = The partition key used to target a partition when executing a stored procedure.
@@ -413,6 +413,7 @@ command-sproc-error-file_not_found = File not found: '{ $file }'.
 command-sproc-error-already_exists = Stored procedure '{ $name }' already exists. Use --force to replace it.
 command-sproc-error-not_found = Stored procedure '{ $name }' was not found.
 command-sproc-error-invalid_params = Invalid parameters. Provide a JSON array of arguments, for example: '["a", 1, true]'.
+command-sproc-error-invalid_pk = Invalid partition key. Provide a JSON scalar, or a JSON array for a hierarchical partition key.
 command-sproc-error-missing_partition_key = A partition key is required to execute a stored procedure. Use --partition-key.
 command-sproc-error-not_interactive = 'sproc edit' needs an interactive terminal and cannot run from a script or piped input.
 command-sproc-error-no_editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
@@ -759,7 +760,7 @@ command-theme-edit-missing-name = 'theme edit' requires a theme name or path. Ru
 command-theme-edit-builtin-needs-force = '{ $name }' is a built-in theme and has no editable file. Pass --force to copy it to { $path } and edit the copy.
 command-theme-edit-seeded = Seeded built-in theme '{ $name }' to { $path }
 command-theme-edit-launching = Editing { $path } with { $editor }
-command-theme-edit-no-editor = No editor found. Set $VISUAL or $EDITOR, or pass --editor=<command>.
+command-theme-edit-no-editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
 command-theme-edit-launch-failed = Failed to launch editor '{ $editor }' for { $path }: { $message }
 command-theme-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }; theme was not reloaded.
 command-theme-edit-reload-failed = Theme file '{ $path }' could not be reloaded: { $message }
