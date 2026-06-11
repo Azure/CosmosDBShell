@@ -622,7 +622,10 @@ help-EnableLspServer = Enable Language Server Protocol (LSP) server for editor i
 help-McpPort = Enable MCP HTTP server. Optionally specify a port with --mcp <port>; default is 6128.
 help-Verbose = Print full exception details instead of only the message.
 help-Theme = Color theme profile to apply at startup. Falls back to the COSMOSDB_SHELL_THEME environment variable.
+help-Diagnostics = Write timestamped diagnostic logs to a file. Optionally specify a path with --diagnostics <path>; defaults to a timestamped file in the shell configuration directory.
 mcp-error-invalid-port = Error: --mcp port must be greater than 0.
+diagnostics-enabled = Writing diagnostic log to { $path }.
+diagnostics-error-create = Error: could not create diagnostic log at '{ $path }': { $message }
 
 warning-unknown-theme = Unknown theme '{ $name }'. Available themes: { $themes }. Falling back to default.
 

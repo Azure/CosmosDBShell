@@ -130,6 +130,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--connect-subscription <id>` | Azure subscription ID for ARM database and container operations |
 | `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
+| `--diagnostics [path]` | Write timestamped diagnostic logs to a file, or to a timestamped file in the config directory by default |
 | `--verbose` | Print full exception details |
 | `--color-system <n>` | Colors: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
 | `--theme <name>` | Color theme profile to apply at startup (`default`, `light`, `dark`, `monochrome`). Falls back to `COSMOSDB_SHELL_THEME`. |

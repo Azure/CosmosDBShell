@@ -269,6 +269,7 @@ Start the shell with options to customize behavior:
 | `--connect-subscription <id>` | Azure subscription ID for ARM database and container operations at startup |
 | `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations at startup |
 | `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
+| `--diagnostics [path]` | Write timestamped diagnostic logs (commands, timing, errors, connection events) to a file, or to a timestamped file in the config directory by default |
 | `--color-system <n>` | Color scheme: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
 | `--clear-history` | Clear command history on start |
 | `--help` | Show usage information |
@@ -300,4 +301,10 @@ cosmosdbshell --mcp
 
 # Start with MCP server enabled on a custom port
 cosmosdbshell --mcp 5050
+
+# Capture a diagnostic log to the default location in the config directory
+cosmosdbshell --diagnostics
+
+# Capture a diagnostic log to a custom file
+cosmosdbshell --diagnostics mylog.log
 ```

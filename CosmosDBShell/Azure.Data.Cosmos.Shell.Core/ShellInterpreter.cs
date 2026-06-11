@@ -161,6 +161,8 @@ public partial class ShellInterpreter : IDisposable
 
     internal Program.CosmosShellOptions? Options { get; set; }
 
+    internal DiagnosticLog? Diagnostics { get; private set; }
+
     internal int? McpPort { get; set; }
 
     internal Queue<VariableContainer> VariableContainers { get; } = new();
@@ -275,6 +277,11 @@ public partial class ShellInterpreter : IDisposable
         var savedErrOut = this.ErrOutRedirect;
         var savedAppendErr = this.AppendErrRedirection;
 
+        var diagnostics = this.Diagnostics;
+        var stopwatch = diagnostics is null ? null : System.Diagnostics.Stopwatch.StartNew();
+        diagnostics?.LogCommand(command);
+        CommandState? result = null;
+
         try
         {
             try
@@ -283,33 +290,39 @@ public partial class ShellInterpreter : IDisposable
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
-                return new CommandState();
+                result = new CommandState();
+                return result;
             }
             catch (TaskCanceledException e)
             {
                 var shellException = new ShellException(CommandException.GetDisplayMessage(e), e);
                 this.ReportExecutionError(shellException, command);
-                return new ErrorCommandState(shellException);
+                result = new ErrorCommandState(shellException);
+                return result;
             }
             catch (Exception e)
             {
                 this.ReportExecutionError(e, command);
                 var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
-                return new ErrorCommandState(inner);
+                result = new ErrorCommandState(inner);
+                return result;
             }
 
             if (token.IsCancellationRequested)
             {
-                return state;
+                result = state;
+                return result;
             }
 
             if (state is ParserErrorCommandState parserErrorState)
             {
                 this.ReportParserErrors(parserErrorState.Errors, command);
-                return state;
+                result = state;
+                return result;
             }
 
-            return this.PrintState(state);
+            result = this.PrintState(state);
+            return result;
         }
         finally
         {
@@ -317,6 +330,18 @@ public partial class ShellInterpreter : IDisposable
             this.AppendOutRedirection = savedAppendOut;
             this.ErrOutRedirect = savedErrOut;
             this.AppendErrRedirection = savedAppendErr;
+
+            if (diagnostics is not null && stopwatch is not null)
+            {
+                stopwatch.Stop();
+                var succeeded = !(result?.IsError ?? true);
+                if (!succeeded && result is ErrorCommandState errorState)
+                {
+                    diagnostics.LogError(command, errorState.Exception);
+                }
+
+                diagnostics.LogResult(succeeded, stopwatch.Elapsed.TotalMilliseconds, command);
+            }
         }
     }
 
@@ -1106,6 +1131,35 @@ public partial class ShellInterpreter : IDisposable
         this.State = new ConnectedState(client, armContext);
         CosmosCompleteCommand.ClearDatabases();
         CosmosCompleteCommand.ClearContainers();
+        this.Diagnostics?.LogConnect(client.Endpoint, client.ClientOptions.ConnectionMode);
+    }
+
+    /// <summary>
+    /// Enables diagnostic logging for the session, writing entries to
+    /// <paramref name="path"/> when supplied, or to a timestamped file in the
+    /// shell configuration directory otherwise.
+    /// </summary>
+    /// <param name="path">An optional custom log file path.</param>
+    internal void EnableDiagnostics(string? path)
+    {
+        if (this.Diagnostics is not null)
+        {
+            return;
+        }
+
+        var resolvedPath = string.IsNullOrWhiteSpace(path)
+            ? Path.Combine(this.cfgPath, $"diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.log")
+            : Path.GetFullPath(path);
+
+        try
+        {
+            this.Diagnostics = DiagnosticLog.Create(resolvedPath);
+            WriteLine(MessageService.GetArgsString("diagnostics-enabled", "path", this.Diagnostics.Path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            WriteLine(MessageService.GetArgsString("diagnostics-error-create", "path", resolvedPath, "message", ex.Message));
+        }
     }
 
     private void AttachArmContext(CosmosClient client, ArmCosmosContext armContext)
@@ -1298,6 +1352,7 @@ public partial class ShellInterpreter : IDisposable
                 currentTokenSource?.Dispose();
                 this.editorCancelTokenSource?.Dispose();
                 this.State?.Dispose();
+                this.Diagnostics?.Dispose();
             }
 
             this.disposedValue = true;

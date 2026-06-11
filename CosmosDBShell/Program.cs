@@ -108,6 +108,16 @@ internal class Program
                 o.McpPort = mcpValue ?? DefaultMcpPort;
             }
 
+            // --diagnostics supports an optional value: when present without a path,
+            // logging is written to a timestamped file in the config directory.
+            var diagnosticsResult = parseResult.FindResultFor(optionMap.Diagnostics);
+            if (diagnosticsResult is not null)
+            {
+                o.EnableDiagnostics = true;
+                var diagnosticsValue = parseResult.GetValueForOption(optionMap.Diagnostics);
+                o.DiagnosticsPath = string.IsNullOrWhiteSpace(diagnosticsValue) ? null : diagnosticsValue;
+            }
+
             if (o.StartLspServer)
             {
                 // Already handled above, but keep for completeness
@@ -148,6 +158,13 @@ internal class Program
             ApplyTheme(o.Theme);
 
             ShellInterpreter.Instance.Options = o;
+
+            // Enable diagnostic logging before connecting so the startup --connect
+            // event is captured in the log.
+            if (o.EnableDiagnostics)
+            {
+                ShellInterpreter.Instance.EnableDiagnostics(o.DiagnosticsPath);
+            }
 
             if (o.ConnectionString != null)
             {
@@ -450,6 +467,10 @@ internal class Program
         };
         var verbose = new Option<bool>("--verbose", MessageService.GetString("help-Verbose"));
         var theme = new Option<string?>("--theme", MessageService.GetString("help-Theme"));
+        var diagnostics = new Option<string?>("--diagnostics", MessageService.GetString("help-Diagnostics"))
+        {
+            Arity = ArgumentArity.ZeroOrOne,
+        };
 
         var root = new RootCommand("Cosmos DB Shell")
         {
@@ -471,6 +492,7 @@ internal class Program
             lspStdio,
             verbose,
             theme,
+            diagnostics,
         };
 
         var map = new OptionMap(
@@ -491,7 +513,8 @@ internal class Program
             startLspServer,
             lspStdio,
             verbose,
-            theme);
+            theme,
+            diagnostics);
 
         return (root, map);
     }
@@ -517,6 +540,7 @@ internal class Program
             [map.ConnectResourceGroup] = "<name>",
             [map.McpPort] = "[<port>]",
             [map.Theme] = "<name>",
+            [map.Diagnostics] = "[<path>]",
         };
 
         var rows = new List<(string Label, string? Description)>();
@@ -620,7 +644,8 @@ internal class Program
         Option<bool> StartLspServer,
         Option<bool> LspStdio,
         Option<bool> Verbose,
-        Option<string?> Theme);
+        Option<string?> Theme,
+        Option<string?> Diagnostics);
 
     /// <summary>
     /// Maps the most common <c>System.CommandLine</c> parse error messages
@@ -698,5 +723,9 @@ internal class Program
         public bool Verbose { get; set; }
 
         public string? Theme { get; set; }
+
+        public bool EnableDiagnostics { get; set; }
+
+        public string? DiagnosticsPath { get; set; }
     }
 }
