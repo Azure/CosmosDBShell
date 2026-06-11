@@ -168,8 +168,43 @@ jobs:
           --no-restore
           --logger "trx;LogFileName=test-results.trx"
           --results-directory TestResults
-          --collect "Code coverage"
+          --collect "XPlat Code Coverage"
         shell: pwsh
+
+      - name: Generate code coverage report
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $coverageFiles = Get-ChildItem -Path TestResults -Recurse -Filter 'coverage.cobertura.xml' -ErrorAction SilentlyContinue
+          if (-not $coverageFiles) {
+            Write-Host '::warning::No coverage files found; skipping coverage report.'
+            return
+          }
+
+          $reports = ($coverageFiles.FullName -join ';')
+          dotnet tool run reportgenerator `
+            "-reports:$reports" `
+            "-targetdir:TestResults/coverage" `
+            "-reporttypes:Html;MarkdownSummaryGithub;TextSummary" `
+            "-title:CosmosDBShell Code Coverage"
+          if ($LASTEXITCODE -ne 0) {
+            throw "reportgenerator failed with exit code $LASTEXITCODE."
+          }
+
+          $markdown = 'TestResults/coverage/SummaryGithub.md'
+          if (Test-Path $markdown) {
+            Get-Content $markdown | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
+
+      - name: Upload code coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage-report
+          path: TestResults/coverage
+          if-no-files-found: ignore
 
       - name: Run fuzzer smoke test
         working-directory: CosmosDBShell.Fuzzer

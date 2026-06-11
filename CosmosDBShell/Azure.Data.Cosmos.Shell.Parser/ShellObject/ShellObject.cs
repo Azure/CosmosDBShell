@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Parser;
 
+using System.Globalization;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
 
@@ -53,6 +54,14 @@ internal abstract class ShellObject
             case TokenType.String:
                 // Quoted strings are always text
                 return new ShellText(token.Value);
+            case TokenType.Number:
+                return int.TryParse(token.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int numberValue)
+                    ? new ShellNumber(numberValue)
+                    : new ShellIdentifier(token.Value);
+            case TokenType.Decimal:
+                return double.TryParse(token.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double decimalValue)
+                    ? new ShellDecimal(decimalValue)
+                    : new ShellIdentifier(token.Value);
             default:
                 // For any other token type, treat as text
                 return new ShellIdentifier(token.Value);
