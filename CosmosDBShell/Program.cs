@@ -39,6 +39,7 @@ internal class Program
         }
 
         IHost? host = null;
+        TracingBootstrap? tracing = null;
         try
         {
             // --help / --version handled manually so we can render our own
@@ -108,6 +109,19 @@ internal class Program
                 o.McpPort = mcpValue ?? DefaultMcpPort;
             }
 
+            // --otel supports an optional value: when present without an endpoint,
+            // tracing is still enabled (emitting a sampled traceparent) and the
+            // OTLP endpoint, if any, falls back to the standard environment variable.
+            var otelResult = parseResult.FindResultFor(optionMap.Otel);
+            if (otelResult is not null)
+            {
+                o.EnableTracing = true;
+                var otelValue = parseResult.GetValueForOption(optionMap.Otel);
+                o.OtlpEndpoint = string.IsNullOrWhiteSpace(otelValue)
+                    ? Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT")
+                    : otelValue;
+            }
+
             if (o.StartLspServer)
             {
                 // Already handled above, but keep for completeness
@@ -148,6 +162,13 @@ internal class Program
             ApplyTheme(o.Theme);
 
             ShellInterpreter.Instance.Options = o;
+
+            // Enable distributed tracing before any CosmosClient is created so the
+            // Azure SDK pipeline emits a sampled W3C traceparent on its requests.
+            if (o.EnableTracing)
+            {
+                tracing = TracingBootstrap.Initialize(o.OtlpEndpoint);
+            }
 
             if (o.ConnectionString != null)
             {
@@ -286,6 +307,7 @@ internal class Program
         {
             ShellInterpreter.Instance.Dispose();
             host?.Dispose();
+            tracing?.Dispose();
         }
     }
 
@@ -451,6 +473,11 @@ internal class Program
         var verbose = new Option<bool>("--verbose", MessageService.GetString("help-Verbose"));
         var theme = new Option<string?>("--theme", MessageService.GetString("help-Theme"));
 
+        var otel = new Option<string?>("--otel", MessageService.GetString("help-Otel"))
+        {
+            Arity = ArgumentArity.ZeroOrOne,
+        };
+
         var root = new RootCommand("Cosmos DB Shell")
         {
             colorSystem,
@@ -471,6 +498,7 @@ internal class Program
             lspStdio,
             verbose,
             theme,
+            otel,
         };
 
         var map = new OptionMap(
@@ -491,7 +519,8 @@ internal class Program
             startLspServer,
             lspStdio,
             verbose,
-            theme);
+            theme,
+            otel);
 
         return (root, map);
     }
@@ -517,6 +546,7 @@ internal class Program
             [map.ConnectResourceGroup] = "<name>",
             [map.McpPort] = "[<port>]",
             [map.Theme] = "<name>",
+            [map.Otel] = "[<endpoint>]",
         };
 
         var rows = new List<(string Label, string? Description)>();
@@ -620,7 +650,8 @@ internal class Program
         Option<bool> StartLspServer,
         Option<bool> LspStdio,
         Option<bool> Verbose,
-        Option<string?> Theme);
+        Option<string?> Theme,
+        Option<string?> Otel);
 
     /// <summary>
     /// Maps the most common <c>System.CommandLine</c> parse error messages
@@ -698,5 +729,9 @@ internal class Program
         public bool Verbose { get; set; }
 
         public string? Theme { get; set; }
+
+        public bool EnableTracing { get; set; }
+
+        public string? OtlpEndpoint { get; set; }
     }
 }
