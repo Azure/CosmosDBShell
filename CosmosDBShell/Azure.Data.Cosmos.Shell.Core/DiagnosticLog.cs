@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Microsoft.Azure.Cosmos;
 
 /// <summary>
@@ -17,6 +18,10 @@ using Microsoft.Azure.Cosmos;
 internal sealed class DiagnosticLog : IDisposable
 {
     private const int TagWidth = 8;
+
+    private static readonly Regex AccountKeyPattern = new(
+        "(?i)(AccountKey\\s*=\\s*)[^;\\s\"']+",
+        RegexOptions.Compiled);
 
     private readonly object gate = new();
 
@@ -95,6 +100,17 @@ internal sealed class DiagnosticLog : IDisposable
     }
 
     /// <summary>
+    /// Records that a command was canceled before it completed.
+    /// </summary>
+    /// <param name="elapsedMilliseconds">The wall-clock execution time in milliseconds.</param>
+    /// <param name="command">The command text.</param>
+    public void LogCancelled(double elapsedMilliseconds, string command)
+    {
+        var elapsed = elapsedMilliseconds.ToString("0.0", CultureInfo.InvariantCulture);
+        this.WriteLine("RESULT", $"[CANCELLED] {elapsed}ms | {Flatten(command)}");
+    }
+
+    /// <summary>
     /// Records the exception raised by a failed command.
     /// </summary>
     /// <param name="command">The command text.</param>
@@ -136,7 +152,8 @@ internal sealed class DiagnosticLog : IDisposable
             return string.Empty;
         }
 
-        return value.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Trim();
+        var redacted = AccountKeyPattern.Replace(value, "$1***");
+        return redacted.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Trim();
     }
 
     private void WriteHeader()

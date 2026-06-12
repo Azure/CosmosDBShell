@@ -334,13 +334,20 @@ public partial class ShellInterpreter : IDisposable
             if (diagnostics is not null && stopwatch is not null)
             {
                 stopwatch.Stop();
-                var succeeded = !(result?.IsError ?? true);
-                if (!succeeded && result is ErrorCommandState errorState)
+                if (token.IsCancellationRequested)
                 {
-                    diagnostics.LogError(command, errorState.Exception);
+                    diagnostics.LogCancelled(stopwatch.Elapsed.TotalMilliseconds, command);
                 }
+                else
+                {
+                    var succeeded = !(result?.IsError ?? true);
+                    if (!succeeded && result is ErrorCommandState errorState)
+                    {
+                        diagnostics.LogError(command, errorState.Exception);
+                    }
 
-                diagnostics.LogResult(succeeded, stopwatch.Elapsed.TotalMilliseconds, command);
+                    diagnostics.LogResult(succeeded, stopwatch.Elapsed.TotalMilliseconds, command);
+                }
             }
         }
     }

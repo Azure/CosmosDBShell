@@ -123,6 +123,33 @@ public class DiagnosticLogTests : IDisposable
         Assert.EndsWith("[CMD     ] line one line two", line);
     }
 
+    [Fact]
+    public void LogCommand_RedactsAccountKey()
+    {
+        using (var log = DiagnosticLog.Create(this.path))
+        {
+            log.LogCommand("connect \"AccountEndpoint=https://acc.documents.azure.com:443/;AccountKey=SuperSecretKey123==;\"");
+        }
+
+        var line = LastEntry();
+        Assert.DoesNotContain("SuperSecretKey123", line);
+        Assert.Contains("AccountKey=***", line);
+        Assert.Contains("AccountEndpoint=https://acc.documents.azure.com:443/", line);
+    }
+
+    [Fact]
+    public void LogCancelled_WritesCancelledStatus()
+    {
+        using (var log = DiagnosticLog.Create(this.path))
+        {
+            log.LogResult(succeeded: true, elapsedMilliseconds: 5.0, command: "noop");
+            log.LogCancelled(elapsedMilliseconds: 12.5, command: "long-running");
+        }
+
+        var line = LastEntry();
+        Assert.Matches(@"^\[\d{2}:\d{2}:\d{2}\.\d{3}\] \[RESULT  \] \[CANCELLED\] 12\.5ms \| long-running$", line);
+    }
+
     private string LastEntry()
     {
         return File.ReadAllLines(this.path).Last(l => l.StartsWith('['));
@@ -160,6 +187,25 @@ public class DiagnosticLogInterpreterTests : IDisposable
         var entries = File.ReadAllLines(this.path).Where(l => l.StartsWith('[')).ToArray();
         Assert.Contains(entries, l => l.Contains("[CMD     ] $x = 1"));
         Assert.Contains(entries, l => l.Contains("[RESULT  ] [OK]") && l.Contains("$x = 1"));
+    }
+
+    [Fact]
+    public async Task ExecuteCommandAsync_WhenCanceled_DoesNotLogResultAsOk()
+    {
+        var interpreter = new ShellInterpreter();
+        interpreter.EnableDiagnostics(this.path);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await interpreter.ExecuteCommandAsync("$x = 1", cts.Token);
+        interpreter.Dispose();
+
+        var entries = File.ReadAllLines(this.path).Where(l => l.StartsWith('[')).ToArray();
+        var resultEntries = entries.Where(l => l.Contains("[RESULT  ]")).ToArray();
+        Assert.NotEmpty(resultEntries);
+        Assert.All(resultEntries, l => Assert.DoesNotContain("[OK]", l));
+        Assert.Contains(resultEntries, l => l.Contains("[CANCELLED]"));
     }
 }
 
