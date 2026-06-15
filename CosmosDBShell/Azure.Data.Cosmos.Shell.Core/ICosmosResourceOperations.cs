@@ -37,4 +37,8 @@ internal interface ICosmosResourceOperations
     Task<string> GetIndexingPolicyJsonAsync(string databaseName, string containerName, CancellationToken token);
 
     Task<string> ReplaceIndexingPolicyAsync(string databaseName, string containerName, string indexPolicyJson, CancellationToken token);
+
+    Task<ThroughputView> GetThroughputAsync(string databaseName, string? containerName, CancellationToken token);
+
+    Task<ThroughputView> ReplaceThroughputAsync(string databaseName, string? containerName, ThroughputUpdate update, CancellationToken token);
 }

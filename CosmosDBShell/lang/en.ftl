@@ -336,6 +336,19 @@ command-index-error-show_no_args = 'index show' does not take any arguments. Use
 command-index-error-invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-index-error-no_policy = The container has no indexing policy configured.
 
+command-throughput-description = Views or changes the provisioned throughput (RU/s) of a database or container via show, set, manual, and autoscale subcommands.
+command-throughput-description-subcommand = The action to perform: show, set, manual, or autoscale.
+command-throughput-description-ru = The throughput in RU/s to provision (manual RU/s for set/manual, maximum RU/s for autoscale).
+command-throughput-description-database = The database to target, or that contains the target container.
+command-throughput-description-container = The container to read/update the throughput for.
+command-throughput-updated = Throughput updated successfully.
+command-throughput-error-missing_subcommand = Missing subcommand. Use one of: show, set, manual, autoscale.
+command-throughput-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set, manual, autoscale.
+command-throughput-error-missing_ru = No throughput value provided. Specify the RU/s, for example: throughput set 4000.
+command-throughput-error-invalid_ru = Invalid throughput value '{ $ru }'. Provide a positive number of RU/s.
+command-throughput-error-show_no_args = 'throughput show' does not take any arguments. Use 'throughput show' to display the current throughput.
+command-throughput-error-not_configured = Resource '{ $resource }' has no provisioned throughput to change. It may be serverless or use shared database throughput.
+
 command-ls-description = List resources in the current context.
 command-ls-description-filter = The filter pattern.
 command-ls-description-max = Maximum number of items returned when listing container items. Defaults to 100 if omitted. Use 0 or a negative value for no limit.

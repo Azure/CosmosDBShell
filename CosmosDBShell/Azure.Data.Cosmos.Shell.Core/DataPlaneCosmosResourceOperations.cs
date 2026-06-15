@@ -207,6 +207,59 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         return JsonConvert.SerializeObject(replaced.Resource?.IndexingPolicy ?? policy, Formatting.Indented);
     }
 
+    public async Task<ThroughputView> GetThroughputAsync(string databaseName, string? containerName, CancellationToken token)
+    {
+        string scope = containerName is null ? "database" : "container";
+        string resourceName = containerName ?? databaseName;
+        try
+        {
+            var throughputResponse = string.IsNullOrEmpty(containerName)
+                ? await client.GetDatabase(databaseName).ReadThroughputAsync(new RequestOptions(), token)
+                : await client.GetDatabase(databaseName).GetContainer(containerName).ReadThroughputAsync(new RequestOptions(), token);
+            return BuildThroughputView(scope, resourceName, throughputResponse);
+        }
+        catch (CosmosException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+        {
+            return new ThroughputView(scope, resourceName, false, null, null, null, ThroughputAvailability.NotConfigured, null);
+        }
+    }
+
+    public async Task<ThroughputView> ReplaceThroughputAsync(string databaseName, string? containerName, ThroughputUpdate update, CancellationToken token)
+    {
+        string scope = containerName is null ? "database" : "container";
+        string resourceName = containerName ?? databaseName;
+        var properties = update.IsAutoscale
+            ? ThroughputProperties.CreateAutoscaleThroughput(update.Throughput)
+            : ThroughputProperties.CreateManualThroughput(update.Throughput);
+        try
+        {
+            var throughputResponse = string.IsNullOrEmpty(containerName)
+                ? await client.GetDatabase(databaseName).ReplaceThroughputAsync(properties, cancellationToken: token)
+                : await client.GetDatabase(databaseName).GetContainer(containerName).ReplaceThroughputAsync(properties, cancellationToken: token);
+            return BuildThroughputView(scope, resourceName, throughputResponse);
+        }
+        catch (CosmosException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+        {
+            throw new ThroughputNotConfiguredException(resourceName, ex);
+        }
+    }
+
+    private static ThroughputView BuildThroughputView(string scope, string resourceName, ThroughputResponse response)
+    {
+        var resource = response.Resource;
+        int? autoscaleMax = resource?.AutoscaleMaxThroughput;
+        bool isAutoscale = autoscaleMax.HasValue;
+        return new ThroughputView(
+            scope,
+            resourceName,
+            isAutoscale,
+            resource?.Throughput,
+            autoscaleMax,
+            response.MinThroughput,
+            ThroughputAvailability.Available,
+            null);
+    }
+
     private static ContainerProperties GetContainerPropertiesOrThrow(ContainerResponse response)
     {
         return response.Resource ?? throw new ShellException(MessageService.GetString("error-unable_to_read_container"));

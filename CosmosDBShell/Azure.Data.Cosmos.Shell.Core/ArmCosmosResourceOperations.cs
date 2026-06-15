@@ -169,4 +169,80 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
         var updated = response.Value.Data.Resource.IndexingPolicy;
         return CosmosResourceJson.IndentJson(CosmosArmResourceProvider.WriteArmModel(updated));
     }
+
+    public async Task<ThroughputView> GetThroughputAsync(string databaseName, string? containerName, CancellationToken token)
+    {
+        string scope = containerName is null ? "database" : "container";
+        string resourceName = containerName ?? databaseName;
+        try
+        {
+            ThroughputSettingsResourceInfo info;
+            if (string.IsNullOrEmpty(containerName))
+            {
+                var database = await CosmosArmResourceProvider.GetDatabaseAsync(context, databaseName, token);
+                var response = await database.GetCosmosDBSqlDatabaseThroughputSetting().GetAsync(token);
+                info = response.Value.Data.Resource;
+            }
+            else
+            {
+                var container = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+                var response = await container.GetCosmosDBSqlContainerThroughputSetting().GetAsync(token);
+                info = response.Value.Data.Resource;
+            }
+
+            return BuildThroughputView(scope, resourceName, info);
+        }
+        catch (RequestFailedException ex) when (ex.Status == (int)HttpStatusCode.NotFound)
+        {
+            return new ThroughputView(scope, resourceName, false, null, null, null, ThroughputAvailability.NotConfigured, null);
+        }
+    }
+
+    public async Task<ThroughputView> ReplaceThroughputAsync(string databaseName, string? containerName, ThroughputUpdate update, CancellationToken token)
+    {
+        string scope = containerName is null ? "database" : "container";
+        string resourceName = containerName ?? databaseName;
+        var resourceInfo = update.IsAutoscale
+            ? new ThroughputSettingsResourceInfo { AutoscaleSettings = new AutoscaleSettingsResourceInfo(update.Throughput) }
+            : new ThroughputSettingsResourceInfo { Throughput = update.Throughput };
+        var data = new ThroughputSettingsUpdateData(context.Account.Data.Location, resourceInfo);
+        try
+        {
+            ThroughputSettingsResourceInfo info;
+            if (string.IsNullOrEmpty(containerName))
+            {
+                var database = await CosmosArmResourceProvider.GetDatabaseAsync(context, databaseName, token);
+                var operation = await database.GetCosmosDBSqlDatabaseThroughputSetting().CreateOrUpdateAsync(WaitUntil.Completed, data, token);
+                info = operation.Value.Data.Resource;
+            }
+            else
+            {
+                var container = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+                var operation = await container.GetCosmosDBSqlContainerThroughputSetting().CreateOrUpdateAsync(WaitUntil.Completed, data, token);
+                info = operation.Value.Data.Resource;
+            }
+
+            return BuildThroughputView(scope, resourceName, info);
+        }
+        catch (RequestFailedException ex) when (ex.Status is (int)HttpStatusCode.NotFound or (int)HttpStatusCode.BadRequest)
+        {
+            throw new ThroughputNotConfiguredException(resourceName, ex);
+        }
+    }
+
+    private static ThroughputView BuildThroughputView(string scope, string resourceName, ThroughputSettingsResourceInfo info)
+    {
+        int? min = int.TryParse(info.MinimumThroughput, out var parsedMin) ? parsedMin : null;
+        int? autoscaleMax = info.AutoscaleSettings?.MaxThroughput;
+        bool isAutoscale = autoscaleMax.HasValue;
+        return new ThroughputView(
+            scope,
+            resourceName,
+            isAutoscale,
+            info.Throughput,
+            autoscaleMax,
+            min,
+            ThroughputAvailability.Available,
+            null);
+    }
 }
