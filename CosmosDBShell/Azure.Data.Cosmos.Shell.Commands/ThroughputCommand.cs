@@ -20,6 +20,7 @@ using Spectre.Console;
 [CosmosExample("throughput set 4000", Description = "Set manual throughput to 4000 RU/s")]
 [CosmosExample("throughput manual 4000", Description = "Switch to manual provisioning at 4000 RU/s")]
 [CosmosExample("throughput autoscale 10000", Description = "Switch to autoscale with a maximum of 10000 RU/s")]
+[CosmosExample("throughput set 4000 --yes", Description = "Set throughput without the confirmation prompt")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "Throughput",
@@ -54,6 +55,9 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
     [CosmosOption("container", "con")]
     public string? Container { get; init; }
 
+    [CosmosOption("yes", "y", "force")]
+    public bool? Yes { get; init; }
+
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token) =>
         shell.State.AcceptAsync(this, shell, token);
 
@@ -69,20 +73,20 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
             throw new NotInDatabaseException("throughput");
         }
 
-        return await this.ExecuteOnScopeAsync(state, this.Database, this.Container, token);
+        return await this.ExecuteOnScopeAsync(state, shell, this.Database, this.Container, token);
     }
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitDatabaseStateAsync(DatabaseState state, ShellInterpreter shell, CancellationToken token)
     {
         string databaseName = this.Database ?? state.DatabaseName;
-        return await this.ExecuteOnScopeAsync(state, databaseName, this.Container, token);
+        return await this.ExecuteOnScopeAsync(state, shell, databaseName, this.Container, token);
     }
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitContainerStateAsync(ContainerState state, ShellInterpreter shell, CancellationToken token)
     {
         string databaseName = this.Database ?? state.DatabaseName;
         string containerName = this.Container ?? state.ContainerName;
-        return await this.ExecuteOnScopeAsync(state, databaseName, containerName, token);
+        return await this.ExecuteOnScopeAsync(state, shell, databaseName, containerName, token);
     }
 
     private static CommandState BuildResult(ThroughputView view)
@@ -152,7 +156,24 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         return false;
     }
 
-    private async Task<CommandState> ExecuteOnScopeAsync(ConnectedState state, string databaseName, string? containerName, CancellationToken token)
+    // Returns true when the throughput write should proceed. Interactive sessions get a
+    // billing-impact confirmation prompt; --yes/--force, MCP, script, and piped-input
+    // contexts skip it so automation never blocks on Console input.
+    private static bool ConfirmWrite(ShellInterpreter shell, bool yes, string databaseName, string? containerName, bool isAutoscale, int ru)
+    {
+        if (yes || shell.McpPort.HasValue || !string.IsNullOrEmpty(shell.CurrentScriptFileName) || Console.IsInputRedirected)
+        {
+            return true;
+        }
+
+        string resourceName = containerName ?? databaseName;
+        string modeLabel = MessageService.GetString(isAutoscale ? "command-throughput-mode-autoscale" : "command-throughput-mode-manual");
+        string ruText = ru.ToString(CultureInfo.InvariantCulture);
+        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-throughput-confirm_summary", "resource", Markup.Escape(resourceName), "mode", modeLabel, "ru", ruText));
+        return ShellInterpreter.Confirm("command-throughput-confirm");
+    }
+
+    private async Task<CommandState> ExecuteOnScopeAsync(ConnectedState state, ShellInterpreter shell, string databaseName, string? containerName, CancellationToken token)
     {
         bool isWrite;
         bool isAutoscale;
@@ -193,6 +214,12 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         {
             var current = await CosmosResourceFacade.GetThroughputAsync(state, databaseName, containerName, token);
             return BuildResult(current);
+        }
+
+        if (!ConfirmWrite(shell, this.Yes == true, databaseName, containerName, isAutoscale, ru))
+        {
+            ShellInterpreter.WriteLine(MessageService.GetString("command-throughput-cancelled"));
+            return new CommandState { IsPrinted = true };
         }
 
         ThroughputView view;
