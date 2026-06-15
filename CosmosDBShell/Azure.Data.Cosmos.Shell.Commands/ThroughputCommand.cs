@@ -89,11 +89,33 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         return await this.ExecuteOnScopeAsync(state, shell, databaseName, containerName, token);
     }
 
-    private static CommandState BuildResult(ThroughputView view)
+    private static CommandState BuildResult(ShellInterpreter shell, ThroughputView view)
     {
         string mode = view.Availability == ThroughputAvailability.NotConfigured
             ? "none"
             : view.IsAutoscale ? "autoscale" : "manual";
+
+        var root = new JsonObject
+        {
+            ["scope"] = view.Scope,
+            ["resource"] = view.ResourceName,
+            ["mode"] = mode,
+            ["throughput"] = view.Throughput,
+            ["autoscaleMaxThroughput"] = view.AutoscaleMaxThroughput,
+            ["minThroughput"] = view.MinThroughput,
+        };
+
+        using var jsonDoc = JsonDocument.Parse(root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        var result = new ShellJson(jsonDoc.RootElement.Clone());
+
+        // When output is redirected to a file, let the interpreter emit the JSON result
+        // so 'throughput show > out.json' honors the documented JSON contract instead of
+        // writing a console table. Interactive sessions still get the friendly table, and
+        // MCP/piping consume the structured Result regardless.
+        if (!string.IsNullOrEmpty(shell.StdOutRedirect))
+        {
+            return new CommandState { Result = result };
+        }
 
         var table = new Table().HideHeaders();
         table.AddColumn(string.Empty);
@@ -123,20 +145,9 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
 
         AnsiConsole.Write(table);
 
-        var root = new JsonObject
-        {
-            ["scope"] = view.Scope,
-            ["resource"] = view.ResourceName,
-            ["mode"] = mode,
-            ["throughput"] = view.Throughput,
-            ["autoscaleMaxThroughput"] = view.AutoscaleMaxThroughput,
-            ["minThroughput"] = view.MinThroughput,
-        };
-
-        using var jsonDoc = JsonDocument.Parse(root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         return new CommandState
         {
-            Result = new ShellJson(jsonDoc.RootElement.Clone()),
+            Result = result,
             IsPrinted = true,
         };
     }
@@ -213,7 +224,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         if (!isWrite)
         {
             var current = await CosmosResourceFacade.GetThroughputAsync(state, databaseName, containerName, token);
-            return BuildResult(current);
+            return BuildResult(shell, current);
         }
 
         if (!ConfirmWrite(shell, this.Yes == true, databaseName, containerName, isAutoscale, ru))
@@ -251,7 +262,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         }
 
         ShellInterpreter.WriteLine(MessageService.GetString("command-throughput-updated"));
-        return BuildResult(view);
+        return BuildResult(shell, view);
     }
 
     private int RequireRu(bool isAutoscale)
