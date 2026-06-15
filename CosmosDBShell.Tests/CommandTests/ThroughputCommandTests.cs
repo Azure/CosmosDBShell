@@ -95,6 +95,64 @@ public class ThroughputCommandTests
         Assert.Equal(MessageService.GetString("command-throughput-error-show_no_args"), ex.Message);
     }
 
+    [Theory]
+    [InlineData("set", 100)]
+    [InlineData("manual", 399)]
+    public async Task Manual_BelowMinimum_ThrowsCommandException(string subcommand, int ru)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", CreateTestClient());
+        var command = new ThroughputCommand { Subcommand = subcommand, Ru = ru };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), $"throughput {subcommand} {ru}", CancellationToken.None));
+        Assert.Equal(
+            MessageService.GetArgsString("command-throughput-error-manual_min", "ru", ru, "min", 400),
+            ex.Message);
+    }
+
+    [Fact]
+    public async Task Manual_NotMultipleOf100_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", CreateTestClient());
+        var command = new ThroughputCommand { Subcommand = "manual", Ru = 450 };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "throughput manual 450", CancellationToken.None));
+        Assert.Equal(
+            MessageService.GetArgsString("command-throughput-error-manual_increment", "ru", 450, "increment", 100),
+            ex.Message);
+    }
+
+    [Fact]
+    public async Task Autoscale_BelowMinimum_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", CreateTestClient());
+        var command = new ThroughputCommand { Subcommand = "autoscale", Ru = 400 };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "throughput autoscale 400", CancellationToken.None));
+        Assert.Equal(
+            MessageService.GetArgsString("command-throughput-error-autoscale_min", "ru", 400, "min", 1000),
+            ex.Message);
+    }
+
+    [Fact]
+    public async Task Autoscale_NotMultipleOf1000_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", CreateTestClient());
+        var command = new ThroughputCommand { Subcommand = "autoscale", Ru = 1500 };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "throughput autoscale 1500", CancellationToken.None));
+        Assert.Equal(
+            MessageService.GetArgsString("command-throughput-error-autoscale_increment", "ru", 1500, "increment", 1000),
+            ex.Message);
+    }
+
     private static CosmosClient CreateTestClient()
     {
         var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");

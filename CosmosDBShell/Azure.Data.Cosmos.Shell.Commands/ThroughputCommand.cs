@@ -201,7 +201,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         int ru = 0;
         if (isWrite)
         {
-            ru = this.RequireRu();
+            ru = this.RequireRu(isAutoscale);
         }
         else if (this.Ru.HasValue)
         {
@@ -254,20 +254,42 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         return BuildResult(view);
     }
 
-    private int RequireRu()
+    private int RequireRu(bool isAutoscale)
     {
         if (!this.Ru.HasValue)
         {
             throw new CommandException("throughput", MessageService.GetString("command-throughput-error-missing_ru"));
         }
 
-        if (this.Ru.Value <= 0)
+        int value = this.Ru.Value;
+        if (value <= 0)
         {
             throw new CommandException(
                 "throughput",
-                MessageService.GetArgsString("command-throughput-error-invalid_ru", "ru", this.Ru.Value));
+                MessageService.GetArgsString("command-throughput-error-invalid_ru", "ru", value));
         }
 
-        return this.Ru.Value;
+        // Cosmos DB requires manual RU/s in multiples of 100 (minimum 400) and autoscale
+        // maximum RU/s in multiples of 1000 (minimum 1000). Validate up front so the user
+        // gets a clean message instead of a raw server rejection.
+        int minimum = isAutoscale ? 1000 : 400;
+        int increment = isAutoscale ? 1000 : 100;
+        if (value < minimum)
+        {
+            string key = isAutoscale ? "command-throughput-error-autoscale_min" : "command-throughput-error-manual_min";
+            throw new CommandException(
+                "throughput",
+                MessageService.GetArgsString(key, "ru", value, "min", minimum));
+        }
+
+        if (value % increment != 0)
+        {
+            string key = isAutoscale ? "command-throughput-error-autoscale_increment" : "command-throughput-error-manual_increment";
+            throw new CommandException(
+                "throughput",
+                MessageService.GetArgsString(key, "ru", value, "increment", increment));
+        }
+
+        return value;
     }
 }
