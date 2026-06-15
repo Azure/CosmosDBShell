@@ -265,6 +265,7 @@ public partial class ShellInterpreter : IDisposable
     /// <returns>A <see cref="CommandState"/> representing the result of the command execution.</returns>
     public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token)
     {
+        using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
         var state = new CommandState();
         state.SetFormat(Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
 
@@ -1316,7 +1317,10 @@ public partial class ShellInterpreter : IDisposable
         {
             ApplicationName = "CosmosDBShell",
             ConnectionMode = requestedMode,
-            CosmosClientTelemetryOptions = new CosmosClientTelemetryOptions(),
+            CosmosClientTelemetryOptions = new CosmosClientTelemetryOptions
+            {
+                DisableDistributedTracing = false,
+            },
             UseSystemTextJsonSerializerWithOptions = new JsonSerializerOptions()
             {
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
