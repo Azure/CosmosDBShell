@@ -54,6 +54,9 @@ dotnet run --project CosmosDBShell/CosmosDBShell.csproj
 
 # Run tests
 dotnet test CosmosDBShell.sln
+
+# Run tests with code coverage (or use the VS Code `coverage` task)
+./tools/coverage.ps1
 ```
 
 In VS Code, you can also build with **Ctrl+Shift+B** (Windows/Linux) or **Cmd+Shift+B** (macOS) (uses the predefined build task).
@@ -62,19 +65,21 @@ In VS Code, you can also build with **Ctrl+Shift+B** (Windows/Linux) or **Cmd+Sh
 
 ```
 CosmosDBShell/
-├── Azure.Data.Cosmos.Shell.Commands/   # Each shell command (ls, cd, query, etc.)
-├── Azure.Data.Cosmos.Shell.Core/       # Interpreter, state machine, command runner
-├── Azure.Data.Cosmos.Shell.Parser/     # Lexer and AST for shell syntax
-├── Azure.Data.Cosmos.Shell.States/     # Shell state (connected, in database, etc.)
-├── Azure.Data.Cosmos.Shell.Mcp/        # MCP (Model Context Protocol) server
-├── Azure.Data.Cosmos.Shell.Lsp/        # LSP server for editor integration
-├── Azure.Data.Cosmos.Shell.Util/       # Shared utilities and helpers
-├── Azure.Data.Cosmos.Shell.KeyBindings/ # Key binding definitions
-├── lang/                               # Localization files (Fluent .ftl)
-└── Program.cs                          # Entry point and CLI option parsing
+├── Azure.Data.Cosmos.Shell.ArgumentParser/  # CLI argument parsing
+├── Azure.Data.Cosmos.Shell.Commands/        # Each shell command (ls, cd, query, etc.)
+├── Azure.Data.Cosmos.Shell.Core/            # Interpreter, state machine, command runner
+├── Azure.Data.Cosmos.Shell.Parser/          # Lexer and AST for shell syntax
+├── Azure.Data.Cosmos.Shell.States/          # Shell state (connected, in database, etc.)
+├── Azure.Data.Cosmos.Shell.Mcp/             # MCP (Model Context Protocol) server
+├── Azure.Data.Cosmos.Shell.Lsp/             # LSP server for editor integration
+├── Azure.Data.Cosmos.Shell.Lsp.Semantics/   # Semantic analysis for the LSP server
+├── Azure.Data.Cosmos.Shell.Util/            # Shared utilities and helpers
+├── Azure.Data.Cosmos.Shell.KeyBindings/     # Key binding definitions
+├── lang/                                    # Localization files (Fluent .ftl)
+└── Program.cs                               # Entry point and CLI option parsing
 
-CosmosDBShell.Tests/                    # Unit and integration tests
-docs/                                   # User-facing documentation
+CosmosDBShell.Tests/                         # Unit and integration tests
+docs/                                        # User-facing documentation
 ```
 
 ### Key Conventions

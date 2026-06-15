@@ -17,6 +17,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Pipelines and scripting with variables, loops, functions
 - Multi-line input at the prompt — automatic continuation for unclosed blocks/strings, plus explicit `\` line continuation ([docs](docs/navigation.md#multi-line-input))
 - MCP server for AI/tool integration
+- Distributed tracing via OpenTelemetry (`--otel`): emits a sampled W3C `traceparent` on Cosmos requests, with optional OTLP export
 
 ## Quick Start
 
@@ -58,12 +59,14 @@ dotnet test CosmosDBShell.sln
 
 | Folder | Purpose |
 | ------ | ------- |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.ArgumentParser/` | Command-line argument parsing |
 | `CosmosDBShell/Azure.Data.Cosmos.Shell.Commands/` | Each shell command is a class (`ls`, `cd`, `query`, `mkitem`, etc.) |
 | `CosmosDBShell/Azure.Data.Cosmos.Shell.Core/` | Interpreter, state machine, command runner |
 | `CosmosDBShell/Azure.Data.Cosmos.Shell.Parser/` | Lexer and AST for shell syntax |
 | `CosmosDBShell/Azure.Data.Cosmos.Shell.States/` | Shell states (disconnected, connected, in database, in container) |
 | `CosmosDBShell/Azure.Data.Cosmos.Shell.Mcp/` | MCP server for AI/tool integration |
 | `CosmosDBShell/Azure.Data.Cosmos.Shell.Lsp/` | LSP server for editor integration |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Lsp.Semantics/` | Semantic analysis for the LSP server |
 | `CosmosDBShell/Azure.Data.Cosmos.Shell.Util/` | Shared utilities (localization, pattern matching, etc.) |
 | `CosmosDBShell/Azure.Data.Cosmos.Shell.KeyBindings/` | Key binding definitions |
 | `CosmosDBShell/lang/` | Localization files (Fluent `.ftl` format) |
@@ -159,6 +162,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--connect-subscription <id>` | Azure subscription ID for ARM database and container operations |
 | `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
+| `--otel [endpoint]` | Enable distributed tracing (sampled W3C `traceparent`); optional OTLP `endpoint`, else `OTEL_EXPORTER_OTLP_ENDPOINT` |
 | `--verbose` | Print full exception details |
 | `--color-system <n>` | Colors: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
 | `--theme <name>` | Color theme profile to apply at startup (`default`, `light`, `dark`, `monochrome`). Falls back to `COSMOSDB_SHELL_THEME`. |

@@ -622,7 +622,9 @@ help-EnableLspServer = Enable Language Server Protocol (LSP) server for editor i
 help-McpPort = Enable MCP HTTP server. Optionally specify a port with --mcp <port>; default is 6128.
 help-Verbose = Print full exception details instead of only the message.
 help-Theme = Color theme profile to apply at startup. Falls back to the COSMOSDB_SHELL_THEME environment variable.
+help-Otel = Enable distributed tracing so requests carry a sampled W3C traceparent. Optionally specify an OTLP endpoint with --otel <endpoint>; falls back to the OTEL_EXPORTER_OTLP_ENDPOINT environment variable.
 mcp-error-invalid-port = Error: --mcp port must be greater than 0.
+otel-error-invalid-endpoint = Error: --otel endpoint '{ $endpoint }' is not a valid absolute URI.
 
 warning-unknown-theme = Unknown theme '{ $name }'. Available themes: { $themes }. Falling back to default.
 

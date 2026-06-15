@@ -18,6 +18,24 @@
                 ]
             },
             "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "coverage",
+            "detail": "Run unit tests with code coverage and generate a per-namespace report.",
+            "command": "pwsh",
+            "type": "process",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}/tools/coverage.ps1"
+            ],
+            "windows": {
+                "command": "powershell"
+            },
+            "group": "test",
+            "problemMatcher": []
         }
     ]
 }
