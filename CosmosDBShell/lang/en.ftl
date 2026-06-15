@@ -342,12 +342,35 @@ command-throughput-description-ru = The throughput in RU/s to provision (manual 
 command-throughput-description-database = The database to target, or that contains the target container.
 command-throughput-description-container = The container to read/update the throughput for.
 command-throughput-updated = Throughput updated successfully.
+command-throughput-label-scope = Scope
+command-throughput-label-resource = Resource
+command-throughput-label-mode = Mode
+command-throughput-label-throughput = Throughput (RU/s)
+command-throughput-label-max = Max throughput (RU/s)
+command-throughput-label-min = Min throughput (RU/s)
+command-throughput-scope-database = Database
+command-throughput-scope-container = Container
+command-throughput-mode-autoscale = Autoscale
+command-throughput-mode-manual = Manual
+command-throughput-mode-none = Not configured
 command-throughput-error-missing_subcommand = Missing subcommand. Use one of: show, set, manual, autoscale.
 command-throughput-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set, manual, autoscale.
 command-throughput-error-missing_ru = No throughput value provided. Specify the RU/s, for example: throughput set 4000.
 command-throughput-error-invalid_ru = Invalid throughput value '{ $ru }'. Provide a positive number of RU/s.
 command-throughput-error-show_no_args = 'throughput show' does not take any arguments. Use 'throughput show' to display the current throughput.
 command-throughput-error-not_configured = Resource '{ $resource }' has no provisioned throughput to change. It may be serverless or use shared database throughput.
+command-throughput-error-rbac =
+  You do not have permission to change throughput on the selected account.
+
+  Required action: '{ $permission }'
+  Principal id: '{ $id }'
+
+  Learn more: https://aka.ms/cosmos-native-rbac
+
+command-throughput-error-mode_switch_unsupported =
+  Switching '{ $resource }' to { $mode } throughput is not supported on this connection.
+
+  The Cosmos data-plane SDK can only change the value within the current mode. To switch between manual and autoscale, connect with an Azure AD (token) credential, or use the Azure portal, Azure CLI, or PowerShell.
 
 command-ls-description = List resources in the current context.
 command-ls-description-filter = The filter pattern.

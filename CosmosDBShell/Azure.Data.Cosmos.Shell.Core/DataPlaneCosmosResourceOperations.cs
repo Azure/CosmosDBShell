@@ -228,6 +228,28 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     {
         string scope = containerName is null ? "database" : "container";
         string resourceName = containerName ?? databaseName;
+
+        ThroughputResponse currentResponse;
+        try
+        {
+            currentResponse = string.IsNullOrEmpty(containerName)
+                ? await client.GetDatabase(databaseName).ReadThroughputAsync(new RequestOptions(), token)
+                : await client.GetDatabase(databaseName).GetContainer(containerName).ReadThroughputAsync(new RequestOptions(), token);
+        }
+        catch (CosmosException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+        {
+            throw new ThroughputNotConfiguredException(resourceName, ex);
+        }
+
+        // The data-plane SDK can only change the value within the current mode; it
+        // cannot migrate between manual and autoscale. Detect that up front and fail
+        // with a clear error instead of silently leaving the mode unchanged.
+        bool currentIsAutoscale = currentResponse.Resource?.AutoscaleMaxThroughput is not null;
+        if (currentIsAutoscale != update.IsAutoscale)
+        {
+            throw new ThroughputModeSwitchNotSupportedException(resourceName, update.IsAutoscale);
+        }
+
         var properties = update.IsAutoscale
             ? ThroughputProperties.CreateAutoscaleThroughput(update.Throughput)
             : ThroughputProperties.CreateManualThroughput(update.Throughput);

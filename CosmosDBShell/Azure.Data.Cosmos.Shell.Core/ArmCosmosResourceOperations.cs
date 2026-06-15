@@ -212,13 +212,41 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
             if (string.IsNullOrEmpty(containerName))
             {
                 var database = await CosmosArmResourceProvider.GetDatabaseAsync(context, databaseName, token);
-                var operation = await database.GetCosmosDBSqlDatabaseThroughputSetting().CreateOrUpdateAsync(WaitUntil.Completed, data, token);
+                var setting = database.GetCosmosDBSqlDatabaseThroughputSetting();
+                var current = await setting.GetAsync(token);
+                if (IsAutoscale(current.Value.Data.Resource) != update.IsAutoscale)
+                {
+                    if (update.IsAutoscale)
+                    {
+                        await setting.MigrateSqlDatabaseToAutoscaleAsync(WaitUntil.Completed, token);
+                    }
+                    else
+                    {
+                        await setting.MigrateSqlDatabaseToManualThroughputAsync(WaitUntil.Completed, token);
+                    }
+                }
+
+                var operation = await setting.CreateOrUpdateAsync(WaitUntil.Completed, data, token);
                 info = operation.Value.Data.Resource;
             }
             else
             {
                 var container = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
-                var operation = await container.GetCosmosDBSqlContainerThroughputSetting().CreateOrUpdateAsync(WaitUntil.Completed, data, token);
+                var setting = container.GetCosmosDBSqlContainerThroughputSetting();
+                var current = await setting.GetAsync(token);
+                if (IsAutoscale(current.Value.Data.Resource) != update.IsAutoscale)
+                {
+                    if (update.IsAutoscale)
+                    {
+                        await setting.MigrateSqlContainerToAutoscaleAsync(WaitUntil.Completed, token);
+                    }
+                    else
+                    {
+                        await setting.MigrateSqlContainerToManualThroughputAsync(WaitUntil.Completed, token);
+                    }
+                }
+
+                var operation = await setting.CreateOrUpdateAsync(WaitUntil.Completed, data, token);
                 info = operation.Value.Data.Resource;
             }
 
@@ -229,6 +257,8 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
             throw new ThroughputNotConfiguredException(resourceName, ex);
         }
     }
+
+    private static bool IsAutoscale(ThroughputSettingsResourceInfo info) => info.AutoscaleSettings?.MaxThroughput != null;
 
     private static ThroughputView BuildThroughputView(string scope, string resourceName, ThroughputSettingsResourceInfo info)
     {

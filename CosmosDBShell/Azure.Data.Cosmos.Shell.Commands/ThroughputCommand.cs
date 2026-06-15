@@ -4,13 +4,16 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
+using Spectre.Console;
 
 [CosmosCommand("throughput")]
 [CosmosExample("throughput show", Description = "Display the current provisioned throughput (RU/s)")]
@@ -32,6 +35,13 @@ By default the command targets the current scope: the container when in a contai
 #pragma warning restore SA1118 // Parameter should not span multiple lines
 internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, ShellInterpreter>
 {
+    // Matches the Cosmos DB RBAC "action denied" message returned for both data-plane
+    // (CosmosException 403/5302) and control-plane throughput writes. The principal id
+    // can be padded with whitespace inside the brackets.
+    private static readonly Regex RbacPermissionRegex = new(
+        @"principal \[\s*([^\]]+?)\s*\] does not have required RBAC permissions to perform action \[([^\]]+)\]",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     [CosmosParameter("subcommand", RequiredErrorKey = "command-throughput-error-missing_subcommand")]
     public string Subcommand { get; init; } = string.Empty;
 
@@ -81,6 +91,34 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
             ? "none"
             : view.IsAutoscale ? "autoscale" : "manual";
 
+        var table = new Table().HideHeaders();
+        table.AddColumn(string.Empty);
+        table.AddColumn(string.Empty);
+        void Row(string labelKey, string value) =>
+            table.AddRow(
+                Theme.FormatHelpName(Markup.Escape(MessageService.GetString(labelKey))),
+                Theme.FormatTableValue(Markup.Escape(value)));
+
+        Row("command-throughput-label-scope", MessageService.GetString($"command-throughput-scope-{view.Scope}"));
+        Row("command-throughput-label-resource", view.ResourceName);
+        Row("command-throughput-label-mode", MessageService.GetString($"command-throughput-mode-{mode}"));
+        if (view.Throughput.HasValue)
+        {
+            Row("command-throughput-label-throughput", view.Throughput.Value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (view.AutoscaleMaxThroughput.HasValue)
+        {
+            Row("command-throughput-label-max", view.AutoscaleMaxThroughput.Value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (view.MinThroughput.HasValue)
+        {
+            Row("command-throughput-label-min", view.MinThroughput.Value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        AnsiConsole.Write(table);
+
         var root = new JsonObject
         {
             ["scope"] = view.Scope,
@@ -95,7 +133,23 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
+            IsPrinted = true,
         };
+    }
+
+    private static bool TryGetRbacError(Exception e, out string principalId, out string action)
+    {
+        var match = RbacPermissionRegex.Match(e.Message ?? string.Empty);
+        if (match.Success)
+        {
+            principalId = match.Groups[1].Value.Trim();
+            action = match.Groups[2].Value.Trim();
+            return true;
+        }
+
+        principalId = string.Empty;
+        action = string.Empty;
+        return false;
     }
 
     private async Task<CommandState> ExecuteOnScopeAsync(ConnectedState state, string databaseName, string? containerName, CancellationToken token)
@@ -151,6 +205,21 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
             throw new CommandException(
                 "throughput",
                 MessageService.GetArgsString("command-throughput-error-not_configured", "resource", ex.ResourceName),
+                ex);
+        }
+        catch (ThroughputModeSwitchNotSupportedException ex)
+        {
+            string targetMode = MessageService.GetString(ex.TargetIsAutoscale ? "command-throughput-mode-autoscale" : "command-throughput-mode-manual");
+            throw new CommandException(
+                "throughput",
+                MessageService.GetArgsString("command-throughput-error-mode_switch_unsupported", "resource", ex.ResourceName, "mode", targetMode),
+                ex);
+        }
+        catch (Exception ex) when (TryGetRbacError(ex, out var principalId, out var action))
+        {
+            throw new CommandException(
+                "throughput",
+                MessageService.GetArgsString("command-throughput-error-rbac", "id", principalId, "permission", action),
                 ex);
         }
 
