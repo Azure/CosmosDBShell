@@ -10,6 +10,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Navigate with `ls` and `cd` (Account -> Databases -> Containers -> Items)
 - Inspect the current location with `pwd`
 - Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
+- Inspect a query's execution plan and index usage with `query "<sql>" --explain`
 - Bulk roundtrip with `import` / `export` for JSON Lines and JSON array files, plus CSV import/export (CSV import coerces values to strings; `--partition-key` nests a CSV column under a nested partition key path)
 - Manage container indexing policies with `index` (`show`, `add`, `remove`, `set`)
 - Tail the change feed of a container with `watch` (alias `tail`)

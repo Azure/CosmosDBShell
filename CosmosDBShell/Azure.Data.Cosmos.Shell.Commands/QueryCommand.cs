@@ -6,6 +6,7 @@ namespace Azure.Data.Cosmos.Shell.Commands;
 
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
@@ -27,13 +28,14 @@ internal enum MetricTarget
 [CosmosExample("query \"SELECT c.id, c.name FROM c\" -max=10", Description = "Query specific fields with result limit")]
 [CosmosExample("query \"SELECT * FROM c\" -max=0", Description = "Query all matching documents without a limit")]
 [CosmosExample("query \"SELECT * FROM c\" -metrics=Display", Description = "Query with performance metrics displayed")]
+[CosmosExample("query \"SELECT * FROM c WHERE c.city = 'Seattle'\" --explain", Description = "Show the query execution plan and index usage without returning documents")]
 [CosmosExample("query \"SELECT * FROM c\" --database=MyDB --container=Products", Description = "Query specific database and container")]
 [McpAnnotation(
     Title = "Run Query",
     ReadOnly = true,
     Idempotent = true,
     OpenWorld = true,
-    Description = "Executes a Cosmos DB NoSQL query against the current container and returns matching documents. Use the cosmos://docs/nosql-query-language resource for query syntax reference.")]
+    Description = "Executes a Cosmos DB NoSQL query against the current container and returns matching documents. Pass explain=true to return the query execution plan (utilized/potential indexes and a plain-language evaluation) instead of documents. Use the cosmos://docs/nosql-query-language resource for query syntax reference.")]
 internal class QueryCommand : CosmosCommand
 {
     [CosmosParameter("query")]
@@ -57,6 +59,9 @@ internal class QueryCommand : CosmosCommand
     [CosmosOption("container", "con")]
     public string? Container { get; init; }
 
+    [CosmosOption("explain")]
+    public bool? Explain { get; init; }
+
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         if (this.Bucket.HasValue && !BucketCommand.CheckBucket(this.Bucket.Value))
@@ -78,6 +83,11 @@ internal class QueryCommand : CosmosCommand
             this.Container,
             "query",
             token);
+
+        if (this.Explain == true)
+        {
+            return await this.ExecuteExplainAsync(container, shell, token);
+        }
 
         return await this.ExecuteQueryAsync(container, shell, token);
     }
@@ -279,6 +289,320 @@ internal class QueryCommand : CosmosCommand
         returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = documents.ToList() }));
     }
 
+    // Parses the raw IndexMetrics JSON returned by Cosmos (PopulateIndexMetrics = true)
+    // into flat lists of utilized and potential index specifications. The metrics group
+    // single and composite indexes separately; both are flattened here because the
+    // evaluation only cares about whether an index contributed, not its arity.
+    internal static (List<string> Utilized, List<string> Potential) ParseIndexPlan(string? indexMetricsJson)
+    {
+        var utilized = new List<string>();
+        var potential = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(indexMetricsJson))
+        {
+            return (utilized, potential);
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(indexMetricsJson);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return (utilized, potential);
+            }
+
+            if (root.TryGetProperty("UtilizedIndexes", out var utilizedGroup))
+            {
+                AddIndexSpecs(utilizedGroup, utilized);
+            }
+
+            if (root.TryGetProperty("PotentialIndexes", out var potentialGroup))
+            {
+                AddIndexSpecs(potentialGroup, potential);
+            }
+        }
+        catch (JsonException)
+        {
+            // The index metrics payload was not the expected JSON shape; treat as
+            // "no plan details available" rather than failing the explain.
+        }
+
+        return (utilized, potential);
+    }
+
+    // Builds a structured evaluation of an index plan. Pure and side-effect free so it
+    // can be unit tested without a live Cosmos response. A query is reported as a full
+    // scan when no index contributed; otherwise it is an index seek.
+    internal static PlanEvaluation EvaluatePlan(
+        IReadOnlyList<string> utilizedIndexes,
+        IReadOnlyList<string> potentialIndexes,
+        double? indexHitRatio,
+        long? retrievedDocumentCount,
+        long? outputDocumentCount)
+    {
+        bool indexSeek = utilizedIndexes.Count > 0;
+        bool fullScan = !indexSeek;
+        return new PlanEvaluation(
+            fullScan,
+            indexSeek,
+            indexHitRatio,
+            retrievedDocumentCount,
+            outputDocumentCount,
+            utilizedIndexes,
+            potentialIndexes);
+    }
+
+    private static void AddIndexSpecs(JsonElement group, List<string> target)
+    {
+        if (group.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        foreach (var kind in new[] { "SingleIndexes", "CompositeIndexes" })
+        {
+            if (group.TryGetProperty(kind, out var array) && array.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var element in array.EnumerateArray())
+                {
+                    var spec = ExtractIndexSpec(element);
+                    if (!string.IsNullOrEmpty(spec))
+                    {
+                        target.Add(spec);
+                    }
+                }
+            }
+        }
+    }
+
+    private static string? ExtractIndexSpec(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            return element.GetString();
+        }
+
+        if (element.ValueKind == JsonValueKind.Object && element.TryGetProperty("IndexSpec", out var spec) && spec.ValueKind == JsonValueKind.String)
+        {
+            return spec.GetString();
+        }
+
+        return element.ToString();
+    }
+
+    private static List<string> BuildPlanMessages(PlanEvaluation evaluation)
+    {
+        var messages = new List<string>();
+
+        if (evaluation.FullScan)
+        {
+            messages.Add(MessageService.GetString("command-query-explain-full_scan"));
+        }
+        else
+        {
+            messages.Add(MessageService.GetArgsString(
+                "command-query-explain-index_seek",
+                "indexes",
+                string.Join(", ", evaluation.UtilizedIndexes)));
+        }
+
+        if (evaluation.PotentialIndexes.Count > 0)
+        {
+            messages.Add(MessageService.GetArgsString(
+                "command-query-explain-recommend_index",
+                "indexes",
+                string.Join(", ", evaluation.PotentialIndexes)));
+        }
+
+        if (evaluation.IndexHitRatio.HasValue)
+        {
+            messages.Add(MessageService.GetArgsString(
+                "command-query-explain-hit_ratio",
+                "ratio",
+                evaluation.IndexHitRatio.Value));
+        }
+
+        return messages;
+    }
+
+    private static ShellJson BuildExplainJson(string? query, PlanEvaluation evaluation, double requestCharge, IReadOnlyList<string> messages)
+    {
+        var element = JsonSerializer.SerializeToElement(new
+        {
+            query,
+            estimate = true,
+            plan = new
+            {
+                utilizedIndexes = evaluation.UtilizedIndexes,
+                potentialIndexes = evaluation.PotentialIndexes,
+                indexHitRatio = evaluation.IndexHitRatio,
+                retrievedDocumentCount = evaluation.RetrievedDocumentCount,
+                outputDocumentCount = evaluation.OutputDocumentCount,
+                requestCharge,
+            },
+            evaluation = new
+            {
+                fullScan = evaluation.FullScan,
+                indexSeek = evaluation.IndexSeek,
+                messages,
+            },
+        });
+
+        return new ShellJson(element);
+    }
+
+    private static void RenderExplain(PlanEvaluation evaluation, double requestCharge, IReadOnlyList<string> messages)
+    {
+        AnsiConsole.MarkupLine(MessageService.GetString("command-query-explain-header"));
+
+        foreach (var message in messages)
+        {
+            AnsiConsole.MarkupLine(Markup.Escape(message));
+        }
+
+        var table = new Table();
+        table.AddColumns(string.Empty, string.Empty);
+        table.HideHeaders();
+        table.AddRow(
+            Theme.FormatHelpName(Markup.Escape(MessageService.GetString("command-query-explain-utilized"))),
+            Theme.FormatTableValue(Markup.Escape(evaluation.UtilizedIndexes.Count > 0 ? string.Join(", ", evaluation.UtilizedIndexes) : "-")));
+        table.AddRow(
+            Theme.FormatHelpName(Markup.Escape(MessageService.GetString("command-query-explain-potential"))),
+            Theme.FormatTableValue(Markup.Escape(evaluation.PotentialIndexes.Count > 0 ? string.Join(", ", evaluation.PotentialIndexes) : "-")));
+        table.AddRow(
+            Theme.FormatHelpName(Markup.Escape(MessageService.GetString("command-query-index_hit_ratio"))),
+            Theme.FormatTableValue(Markup.Escape(evaluation.IndexHitRatio?.ToString(CultureInfo.InvariantCulture) ?? "N/A")));
+        table.AddRow(
+            Theme.FormatHelpName(Markup.Escape(MessageService.GetString("command-query-retrieved"))),
+            Theme.FormatTableValue(Markup.Escape(evaluation.RetrievedDocumentCount?.ToString(CultureInfo.InvariantCulture) ?? "N/A")));
+        table.AddRow(
+            Theme.FormatHelpName(Markup.Escape(MessageService.GetString("command-query-output"))),
+            Theme.FormatTableValue(Markup.Escape(evaluation.OutputDocumentCount?.ToString(CultureInfo.InvariantCulture) ?? "N/A")));
+        table.AddRow(
+            Theme.FormatHelpName(Markup.Escape(MessageService.GetString("command-query-explain-charge"))),
+            Theme.FormatTableValue(Markup.Escape(requestCharge.ToString(CultureInfo.InvariantCulture))));
+        AnsiConsole.Write(table);
+
+        AnsiConsole.MarkupLine(MessageService.GetString("command-query-explain-estimate_note"));
+    }
+
+    private async Task ThrowIfRequestFailedAsync(ResponseMessage response, ShellInterpreter shell)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var errorContent = string.Empty;
+        if (response.Content != null)
+        {
+            using var errorStreamReader = new StreamReader(response.Content);
+            errorContent = await errorStreamReader.ReadToEndAsync();
+        }
+
+        var message = string.IsNullOrWhiteSpace(response.ErrorMessage) ? errorContent : response.ErrorMessage;
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            message = MessageService.GetString("command-query-error-request_failed", new Dictionary<string, object>
+            {
+                { "statusCode", (int)response.StatusCode },
+                { "status", response.StatusCode },
+            });
+        }
+        else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest
+            && shell.TryReportQueryError(this.Query ?? string.Empty, message))
+        {
+            // The shell has already emitted a compiler-style diagnostic with
+            // line/column/caret; throw a marker exception so ReportExecutionError
+            // stays silent.
+            throw new CommandReportedException("query", new InvalidOperationException(message));
+        }
+
+        throw CommandException.FromResponseStatus("query", response.StatusCode, message);
+    }
+
+    private async Task<CommandState> ExecuteExplainAsync(Container container, ShellInterpreter shell, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(this.Query))
+        {
+            throw new CommandException("query", MessageService.GetString("command-query-error-empty_query"));
+        }
+
+        var returnState = new CommandState();
+        returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+
+        try
+        {
+            // The query must execute to obtain index metrics; Cosmos has no zero-cost
+            // EXPLAIN. Reading only the first page keeps the RU cost low while still
+            // reflecting the plan and index usage chosen by the query engine.
+            var options = new QueryRequestOptions
+            {
+                PopulateIndexMetrics = true,
+                MaxItemCount = 1,
+            };
+
+            if (this.Bucket.HasValue)
+            {
+                options.ThroughputBucket = this.Bucket.Value;
+            }
+
+            using var feedIterator = container.GetItemQueryStreamIterator(this.Query, null, options);
+
+            ResponseMessage? response = null;
+            if (feedIterator.HasMoreResults)
+            {
+                response = await feedIterator.ReadNextAsync(token);
+                await this.ThrowIfRequestFailedAsync(response, shell);
+            }
+
+            var cumulative = response?.Diagnostics.GetQueryMetrics()?.CumulativeMetrics;
+            double requestCharge = response?.Diagnostics.GetQueryMetrics()?.TotalRequestCharge ?? 0;
+
+            var (utilized, potential) = ParseIndexPlan(response?.IndexMetrics);
+            var evaluation = EvaluatePlan(
+                utilized,
+                potential,
+                cumulative?.IndexHitRatio,
+                cumulative?.RetrievedDocumentCount,
+                cumulative?.OutputDocumentCount);
+            var messages = BuildPlanMessages(evaluation);
+
+            // Emit JSON only for machine consumers (MCP, output redirection) or when
+            // the user explicitly asked for JSON. Interactive sessions get the
+            // human-readable table even though JSon is the default enum value.
+            var explicitJson = string.Equals(this.OutputFormat, "json", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(this.OutputFormat, "js", StringComparison.OrdinalIgnoreCase);
+
+            if (shell.McpPort.HasValue || shell.StdOutRedirect != null || explicitJson)
+            {
+                returnState.Result = BuildExplainJson(this.Query, evaluation, requestCharge, messages);
+                return returnState;
+            }
+
+            RenderExplain(evaluation, requestCharge, messages);
+            returnState.IsPrinted = true;
+            return returnState;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException e)
+        {
+            throw new CommandException("query", e);
+        }
+        catch (CommandReportedException)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            throw new CommandException("query", e);
+        }
+    }
+
     private async Task<CommandState> ExecuteQueryAsync(Container container, ShellInterpreter shell, CancellationToken token)
     {
         var returnState = new CommandState();
@@ -320,35 +644,7 @@ internal class QueryCommand : CosmosCommand
 
                 var response = await feedIterator.ReadNextAsync(token);
 
-                if (!response.IsSuccessStatusCode)
-                {
-                    var errorContent = string.Empty;
-                    if (response.Content != null)
-                    {
-                        using var errorStreamReader = new StreamReader(response.Content);
-                        errorContent = await errorStreamReader.ReadToEndAsync();
-                    }
-
-                    var message = string.IsNullOrWhiteSpace(response.ErrorMessage) ? errorContent : response.ErrorMessage;
-                    if (string.IsNullOrWhiteSpace(message))
-                    {
-                        message = MessageService.GetString("command-query-error-request_failed", new Dictionary<string, object>
-                        {
-                            { "statusCode", (int)response.StatusCode },
-                            { "status", response.StatusCode },
-                        });
-                    }
-                    else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest
-                        && shell.TryReportQueryError(this.Query ?? string.Empty, message))
-                    {
-                        // The shell has already emitted a compiler-style
-                        // diagnostic with line/column/caret; throw a marker
-                        // exception so ReportExecutionError stays silent.
-                        throw new CommandReportedException("query", new InvalidOperationException(message));
-                    }
-
-                    throw CommandException.FromResponseStatus("query", response.StatusCode, message);
-                }
+                await this.ThrowIfRequestFailedAsync(response, shell);
 
                 if (response.Content == null)
                 {

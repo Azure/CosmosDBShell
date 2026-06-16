@@ -314,4 +314,94 @@ public class QueryCommandTests
             Assert.Contains(propertyToMetric[prop], metricNames);
         }
     }
+
+    [Fact]
+    public void EvaluatePlan_NoUtilizedIndexes_ReportsFullScan()
+    {
+        var evaluation = QueryCommand.EvaluatePlan(
+            utilizedIndexes: [],
+            potentialIndexes: [],
+            indexHitRatio: 0,
+            retrievedDocumentCount: 1000,
+            outputDocumentCount: 1);
+
+        Assert.True(evaluation.FullScan);
+        Assert.False(evaluation.IndexSeek);
+        Assert.Empty(evaluation.UtilizedIndexes);
+    }
+
+    [Fact]
+    public void EvaluatePlan_WithUtilizedIndexes_ReportsIndexSeek()
+    {
+        var evaluation = QueryCommand.EvaluatePlan(
+            utilizedIndexes: ["/city/?"],
+            potentialIndexes: [],
+            indexHitRatio: 1,
+            retrievedDocumentCount: 1,
+            outputDocumentCount: 1);
+
+        Assert.False(evaluation.FullScan);
+        Assert.True(evaluation.IndexSeek);
+        Assert.Equal(1, evaluation.IndexHitRatio);
+        Assert.Collection(evaluation.UtilizedIndexes, spec => Assert.Equal("/city/?", spec));
+    }
+
+    [Fact]
+    public void EvaluatePlan_PreservesPotentialIndexRecommendations()
+    {
+        var evaluation = QueryCommand.EvaluatePlan(
+            utilizedIndexes: ["/city/?"],
+            potentialIndexes: ["/age/?"],
+            indexHitRatio: 0.5,
+            retrievedDocumentCount: 200,
+            outputDocumentCount: 100);
+
+        Assert.True(evaluation.IndexSeek);
+        Assert.Collection(evaluation.PotentialIndexes, spec => Assert.Equal("/age/?", spec));
+        Assert.Equal(200, evaluation.RetrievedDocumentCount);
+        Assert.Equal(100, evaluation.OutputDocumentCount);
+    }
+
+    [Fact]
+    public void ParseIndexPlan_ExtractsSingleAndCompositeIndexSpecs()
+    {
+        const string indexMetrics = """
+        {
+            "UtilizedIndexes": {
+                "SingleIndexes": [ { "IndexSpec": "/city/?" } ],
+                "CompositeIndexes": [ { "IndexSpec": "(/age ASC, /name ASC)" } ]
+            },
+            "PotentialIndexes": {
+                "SingleIndexes": [ { "IndexSpec": "/status/?" } ],
+                "CompositeIndexes": []
+            }
+        }
+        """;
+
+        var (utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+
+        Assert.Equal(["/city/?", "(/age ASC, /name ASC)"], utilized);
+        Assert.Equal(["/status/?"], potential);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ParseIndexPlan_NullOrEmpty_ReturnsEmptyLists(string? indexMetrics)
+    {
+        var (utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+
+        Assert.Empty(utilized);
+        Assert.Empty(potential);
+    }
+
+    [Fact]
+    public void ParseIndexPlan_MalformedJson_ReturnsEmptyLists()
+    {
+        var (utilized, potential) = QueryCommand.ParseIndexPlan("{ not valid json");
+
+        Assert.Empty(utilized);
+        Assert.Empty(potential);
+    }
 }
