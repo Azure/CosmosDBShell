@@ -592,7 +592,7 @@ internal class QueryCommand : CosmosCommand
 
             // Emit JSON only for machine consumers (MCP, output redirection) or when
             // the user explicitly asked for JSON. Interactive sessions get the
-            // human-readable table even though JSon is the default enum value.
+            // human-readable table even though JSON is the default enum value.
             var explicitJson = string.Equals(this.OutputFormat, "json", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(this.OutputFormat, "js", StringComparison.OrdinalIgnoreCase);
 
