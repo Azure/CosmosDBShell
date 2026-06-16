@@ -19,11 +19,21 @@ internal sealed class DiagnosticLog : IDisposable
 {
     private const int TagWidth = 8;
 
-    private static readonly Regex AccountKeyPattern = new(
-        "(?i)(AccountKey\\s*=\\s*)[^;\\s\"']+",
+    private static readonly Regex JwtPattern = new(
+        "eyJ[A-Za-z0-9_-]+\\.eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+",
+        RegexOptions.Compiled);
+
+    private static readonly Regex BearerPattern = new(
+        "(?i)(Bearer\\s+)[A-Za-z0-9._~+/=-]+",
+        RegexOptions.Compiled);
+
+    private static readonly Regex KeyTokenPattern = new(
+        "(?i)(AccountKey|SharedAccessKey|SharedAccessSignature|password|passwd|pwd|sig|token|secret|apikey|api[_-]?key)(\\s*[=:]\\s*\"?)[^;\\s\"',}&]+",
         RegexOptions.Compiled);
 
     private readonly object gate = new();
+
+    private readonly List<string> secrets = new();
 
     private StreamWriter? writer;
 
@@ -83,7 +93,7 @@ internal sealed class DiagnosticLog : IDisposable
     /// <param name="command">The command text.</param>
     public void LogCommand(string command)
     {
-        this.WriteLine("CMD", Flatten(command));
+        this.WriteLine("CMD", this.Flatten(command));
     }
 
     /// <summary>
@@ -96,7 +106,7 @@ internal sealed class DiagnosticLog : IDisposable
     {
         var status = succeeded ? "[OK]" : "[FAIL]";
         var elapsed = elapsedMilliseconds.ToString("0.0", CultureInfo.InvariantCulture);
-        this.WriteLine("RESULT", $"{status} {elapsed}ms | {Flatten(command)}");
+        this.WriteLine("RESULT", $"{status} {elapsed}ms | {this.Flatten(command)}");
     }
 
     /// <summary>
@@ -107,7 +117,7 @@ internal sealed class DiagnosticLog : IDisposable
     public void LogCancelled(double elapsedMilliseconds, string command)
     {
         var elapsed = elapsedMilliseconds.ToString("0.0", CultureInfo.InvariantCulture);
-        this.WriteLine("RESULT", $"[CANCELLED] {elapsed}ms | {Flatten(command)}");
+        this.WriteLine("RESULT", $"[CANCELLED] {elapsed}ms | {this.Flatten(command)}");
     }
 
     /// <summary>
@@ -117,7 +127,33 @@ internal sealed class DiagnosticLog : IDisposable
     /// <param name="exception">The exception that was raised.</param>
     public void LogError(string command, Exception exception)
     {
-        this.WriteLine("ERROR", $"{Flatten(command)} -> {exception.GetType().Name}: {Flatten(exception.Message)}");
+        this.WriteLine("ERROR", $"{this.Flatten(command)} -> {exception.GetType().Name}: {this.Flatten(exception.Message)}");
+    }
+
+    /// <summary>
+    /// Registers a literal secret value (such as an account key or connection string)
+    /// that must be redacted from every subsequent log entry. Both the raw and
+    /// URL-encoded forms are masked.
+    /// </summary>
+    /// <param name="value">The secret literal to redact; ignored when null or empty.</param>
+    public void AddSecret(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return;
+        }
+
+        lock (this.gate)
+        {
+            if (!this.secrets.Contains(value))
+            {
+                this.secrets.Add(value);
+
+                // Longest-first so a short secret that is a substring of a longer one
+                // cannot pre-empt the longer match and leave a partial leak.
+                this.secrets.Sort(static (a, b) => b.Length.CompareTo(a.Length));
+            }
+        }
     }
 
     /// <inheritdoc/>
@@ -145,14 +181,41 @@ internal sealed class DiagnosticLog : IDisposable
         }
     }
 
-    private static string Flatten(string value)
+    internal static string MaskSecrets(string value, IReadOnlyList<string> secrets)
+    {
+        foreach (var secret in secrets)
+        {
+            if (string.IsNullOrEmpty(secret))
+            {
+                continue;
+            }
+
+            foreach (var form in new[] { secret, Uri.EscapeDataString(secret) })
+            {
+                value = Regex.Replace(value, Regex.Escape(form), "redacted:secret", RegexOptions.IgnoreCase);
+            }
+        }
+
+        value = JwtPattern.Replace(value, "redacted:jwt");
+        value = BearerPattern.Replace(value, "$1redacted");
+        value = KeyTokenPattern.Replace(value, "$1$2redacted");
+        return value;
+    }
+
+    private string Flatten(string value)
     {
         if (string.IsNullOrEmpty(value))
         {
             return string.Empty;
         }
 
-        var redacted = AccountKeyPattern.Replace(value, "$1***");
+        string[] snapshot;
+        lock (this.gate)
+        {
+            snapshot = this.secrets.ToArray();
+        }
+
+        var redacted = MaskSecrets(value, snapshot);
         return redacted.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Trim();
     }
 

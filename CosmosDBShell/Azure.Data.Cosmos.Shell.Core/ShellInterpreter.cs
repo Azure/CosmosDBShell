@@ -43,6 +43,8 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly string cfgPath;
 
+    private readonly HashSet<string> diagnosticSecrets = new(StringComparer.Ordinal);
+
     private LineEditor? lineEditor;
 
     private CosmosShellPrompt? cosmosShellPrompt;
@@ -684,6 +686,7 @@ public partial class ShellInterpreter : IDisposable
 
             connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(endpoint, accountKey);
             hasKey = true;
+            this.RegisterDiagnosticSecret(accountKey);
         }
         else if (!hasKey)
         {
@@ -693,7 +696,12 @@ public partial class ShellInterpreter : IDisposable
                 var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
                 connectionString = $"AccountEndpoint={endpoint};AccountKey={envKey};";
                 hasKey = true;
+                this.RegisterDiagnosticSecret(envKey);
             }
+        }
+        else
+        {
+            this.RegisterDiagnosticSecret(parsedCs?.MasterKey);
         }
 
         if (hasKey)
@@ -1161,12 +1169,28 @@ public partial class ShellInterpreter : IDisposable
         try
         {
             this.Diagnostics = DiagnosticLog.Create(resolvedPath);
+            foreach (var secret in this.diagnosticSecrets)
+            {
+                this.Diagnostics.AddSecret(secret);
+            }
+
             WriteLine(MessageService.GetArgsString("diagnostics-enabled", "path", this.Diagnostics.Path));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             WriteLine(MessageService.GetArgsString("diagnostics-error-create", "path", resolvedPath, "message", ex.Message));
         }
+    }
+
+    private void RegisterDiagnosticSecret(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return;
+        }
+
+        this.diagnosticSecrets.Add(value);
+        this.Diagnostics?.AddSecret(value);
     }
 
     private void AttachArmContext(CosmosClient client, ArmCosmosContext armContext)

@@ -133,8 +133,65 @@ public class DiagnosticLogTests : IDisposable
 
         var line = LastEntry();
         Assert.DoesNotContain("SuperSecretKey123", line);
-        Assert.Contains("AccountKey=***", line);
+        Assert.Contains("AccountKey=redacted", line);
         Assert.Contains("AccountEndpoint=https://acc.documents.azure.com:443/", line);
+    }
+
+    [Fact]
+    public void LogCommand_RedactsRegisteredSecretLiteral()
+    {
+        using (var log = DiagnosticLog.Create(this.path))
+        {
+            log.AddSecret("MyMasterKeyABC123==");
+            log.LogError("query c.value", new InvalidOperationException("auth failed for key MyMasterKeyABC123== retry"));
+        }
+
+        var line = LastEntry();
+        Assert.DoesNotContain("MyMasterKeyABC123", line);
+        Assert.Contains("redacted:secret", line);
+    }
+
+    [Fact]
+    public void LogCommand_RedactsUrlEncodedSecretLiteral()
+    {
+        var secret = "a b+c/d=";
+        using (var log = DiagnosticLog.Create(this.path))
+        {
+            log.AddSecret(secret);
+            log.LogCommand($"echo {Uri.EscapeDataString(secret)}");
+        }
+
+        var line = LastEntry();
+        Assert.DoesNotContain(Uri.EscapeDataString(secret), line);
+        Assert.Contains("redacted:secret", line);
+    }
+
+    [Fact]
+    public void LogCommand_RedactsSasSignatureAndBearerToken()
+    {
+        using (var log = DiagnosticLog.Create(this.path))
+        {
+            log.LogCommand("connect \"https://acc.table.core.windows.net/?sig=Z9b2cQ%3D%3D&se=2030\"");
+            log.LogError("auth", new InvalidOperationException("Authorization: Bearer eyJabc.def.ghi denied"));
+        }
+
+        var lines = File.ReadAllLines(this.path).Where(l => l.StartsWith('[')).ToArray();
+        Assert.Contains(lines, l => l.Contains("sig=redacted"));
+        Assert.Contains(lines, l => l.Contains("Bearer redacted"));
+    }
+
+    [Fact]
+    public void LogCommand_DoesNotRedactLegitimateDocumentFields()
+    {
+        using (var log = DiagnosticLog.Create(this.path))
+        {
+            log.LogCommand("mkitem '{\"id\":\"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\"partitionKey\":\"orders\"}'");
+        }
+
+        var line = LastEntry();
+        Assert.Contains("3fa85f64-5717-4562-b3fc-2c963f66afa6", line);
+        Assert.Contains("partitionKey", line);
+        Assert.DoesNotContain("redacted", line);
     }
 
     [Fact]
