@@ -383,9 +383,30 @@ internal class QueryCommand : CosmosCommand
             return element.GetString();
         }
 
-        if (element.ValueKind == JsonValueKind.Object && element.TryGetProperty("IndexSpec", out var spec) && spec.ValueKind == JsonValueKind.String)
+        if (element.ValueKind == JsonValueKind.Object)
         {
-            return spec.GetString();
+            if (element.TryGetProperty("IndexSpec", out var spec) && spec.ValueKind == JsonValueKind.String)
+            {
+                return spec.GetString();
+            }
+
+            if (element.TryGetProperty("IndexSpecs", out var specs) && specs.ValueKind == JsonValueKind.Array)
+            {
+                var paths = new List<string>();
+                foreach (var path in specs.EnumerateArray())
+                {
+                    if (path.ValueKind == JsonValueKind.String)
+                    {
+                        var value = path.GetString();
+                        if (!string.IsNullOrEmpty(value))
+                        {
+                            paths.Add(value);
+                        }
+                    }
+                }
+
+                return string.Join(", ", paths);
+            }
         }
 
         return element.ToString();

@@ -369,7 +369,7 @@ public class QueryCommandTests
         {
             "UtilizedIndexes": {
                 "SingleIndexes": [ { "IndexSpec": "/city/?" } ],
-                "CompositeIndexes": [ { "IndexSpec": "(/age ASC, /name ASC)" } ]
+                "CompositeIndexes": [ { "IndexSpecs": [ "/age ASC", "/name ASC" ] } ]
             },
             "PotentialIndexes": {
                 "SingleIndexes": [ { "IndexSpec": "/status/?" } ],
@@ -380,7 +380,7 @@ public class QueryCommandTests
 
         var (utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
 
-        Assert.Equal(["/city/?", "(/age ASC, /name ASC)"], utilized);
+        Assert.Equal(["/city/?", "/age ASC, /name ASC"], utilized);
         Assert.Equal(["/status/?"], potential);
     }
 
