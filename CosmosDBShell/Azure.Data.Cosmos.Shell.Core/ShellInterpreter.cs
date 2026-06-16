@@ -919,7 +919,7 @@ public partial class ShellInterpreter : IDisposable
                 dacOptions.AuthorityHost = authorityHostUri;
             }
 
-            var dacCredential = new DefaultAzureCredential(dacOptions);
+            var dacCredential = new DefaultAzureCredential(dacOptions); // CodeQL [SM05137] Interactive developer CLI, not a hosted service: this is the last-resort fallback that adopts the developer's local identity (Azure CLI/azd, Visual Studio, env vars, or VM managed identity). No fixed service identity exists to pin to.
             client = new CosmosClient(endpoint, dacCredential, options);
 
             try
