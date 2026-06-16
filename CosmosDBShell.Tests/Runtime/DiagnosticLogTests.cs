@@ -196,7 +196,7 @@ public class DiagnosticLogInterpreterTests : IDisposable
         interpreter.EnableDiagnostics(this.path);
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         await interpreter.ExecuteCommandAsync("$x = 1", cts.Token);
         interpreter.Dispose();
