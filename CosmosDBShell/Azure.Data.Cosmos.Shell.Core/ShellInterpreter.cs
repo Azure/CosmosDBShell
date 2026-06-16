@@ -669,7 +669,7 @@ public partial class ShellInterpreter : IDisposable
         {
             WriteLine(MessageService.GetString("shell-connect-key-auth"));
             var keyMode = mode ?? (isEmulator ? ConnectionMode.Gateway : ConnectionMode.Direct);
-            var keyOptions = CreateClientOptions(connectionString, keyMode);
+            var keyOptions = CreateClientOptions(keyMode);
             client = new CosmosClient(connectionString, keyOptions);
 
             AccountProperties keyProps;
@@ -700,7 +700,7 @@ public partial class ShellInterpreter : IDisposable
 
         // Token-based auth paths
         var requestedMode = mode ?? ConnectionMode.Direct;
-        var options = CreateClientOptions(connectionString, requestedMode);
+        var options = CreateClientOptions(requestedMode);
 
         // Step 2: VisualStudioCodeCredential (when launched from VS Code extension)
         if (client == null && useVSCodeCredential)
@@ -1311,7 +1311,7 @@ public partial class ShellInterpreter : IDisposable
         return Console.ReadLine();
     }
 
-    private static CosmosClientOptions CreateClientOptions(string connectionString, ConnectionMode requestedMode)
+    private static CosmosClientOptions CreateClientOptions(ConnectionMode requestedMode)
     {
         var options = new CosmosClientOptions
         {
@@ -1326,12 +1326,6 @@ public partial class ShellInterpreter : IDisposable
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             },
         };
-
-        // do not check certificates for emulator - work around on osx issue
-        if (ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString))
-        {
-            options.ServerCertificateCustomValidationCallback = (cert, chain, errors) => true;
-        }
 
         return options;
     }
