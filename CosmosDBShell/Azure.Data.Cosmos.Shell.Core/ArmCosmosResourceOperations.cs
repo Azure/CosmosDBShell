@@ -172,12 +172,13 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
 
     public async Task<ThroughputView> GetThroughputAsync(string databaseName, string? containerName, CancellationToken token)
     {
-        string scope = containerName is null ? "database" : "container";
-        string resourceName = containerName ?? databaseName;
+        bool isContainer = !string.IsNullOrEmpty(containerName);
+        string scope = isContainer ? "container" : "database";
+        string resourceName = isContainer ? containerName! : databaseName;
         try
         {
             ThroughputSettingsResourceInfo info;
-            if (string.IsNullOrEmpty(containerName))
+            if (!isContainer)
             {
                 var database = await CosmosArmResourceProvider.GetDatabaseAsync(context, databaseName, token);
                 var response = await database.GetCosmosDBSqlDatabaseThroughputSetting().GetAsync(token);
@@ -200,8 +201,9 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
 
     public async Task<ThroughputView> ReplaceThroughputAsync(string databaseName, string? containerName, ThroughputUpdate update, CancellationToken token)
     {
-        string scope = containerName is null ? "database" : "container";
-        string resourceName = containerName ?? databaseName;
+        bool isContainer = !string.IsNullOrEmpty(containerName);
+        string scope = isContainer ? "container" : "database";
+        string resourceName = isContainer ? containerName! : databaseName;
         var resourceInfo = update.IsAutoscale
             ? new ThroughputSettingsResourceInfo { AutoscaleSettings = new AutoscaleSettingsResourceInfo(update.Throughput) }
             : new ThroughputSettingsResourceInfo { Throughput = update.Throughput };
@@ -209,7 +211,7 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
         try
         {
             ThroughputSettingsResourceInfo info;
-            if (string.IsNullOrEmpty(containerName))
+            if (!isContainer)
             {
                 var database = await CosmosArmResourceProvider.GetDatabaseAsync(context, databaseName, token);
                 var setting = database.GetCosmosDBSqlDatabaseThroughputSetting();

@@ -68,26 +68,33 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitConnectedStateAsync(ConnectedState state, ShellInterpreter shell, CancellationToken token)
     {
-        if (string.IsNullOrEmpty(this.Database))
+        string? database = NormalizeOption(this.Database);
+        if (database is null)
         {
             throw new NotInDatabaseException("throughput");
         }
 
-        return await this.ExecuteOnScopeAsync(state, shell, this.Database, this.Container, token);
+        return await this.ExecuteOnScopeAsync(state, shell, database, NormalizeOption(this.Container), token);
     }
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitDatabaseStateAsync(DatabaseState state, ShellInterpreter shell, CancellationToken token)
     {
-        string databaseName = this.Database ?? state.DatabaseName;
-        return await this.ExecuteOnScopeAsync(state, shell, databaseName, this.Container, token);
+        string databaseName = NormalizeOption(this.Database) ?? state.DatabaseName;
+        return await this.ExecuteOnScopeAsync(state, shell, databaseName, NormalizeOption(this.Container), token);
     }
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitContainerStateAsync(ContainerState state, ShellInterpreter shell, CancellationToken token)
     {
-        string databaseName = this.Database ?? state.DatabaseName;
-        string containerName = this.Container ?? state.ContainerName;
+        string databaseName = NormalizeOption(this.Database) ?? state.DatabaseName;
+        string containerName = NormalizeOption(this.Container) ?? state.ContainerName;
         return await this.ExecuteOnScopeAsync(state, shell, databaseName, containerName, token);
     }
+
+    // Treat an explicitly empty option (e.g. --container "") as "not provided" so it
+    // falls back to the current scope instead of flowing an empty name into the SDK,
+    // which would surface as a confusing BadRequest.
+    private static string? NormalizeOption(string? value) =>
+        string.IsNullOrEmpty(value) ? null : value;
 
     private static CommandState BuildResult(ShellInterpreter shell, ThroughputView view)
     {

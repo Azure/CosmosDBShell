@@ -209,11 +209,12 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
 
     public async Task<ThroughputView> GetThroughputAsync(string databaseName, string? containerName, CancellationToken token)
     {
-        string scope = containerName is null ? "database" : "container";
-        string resourceName = containerName ?? databaseName;
+        bool isContainer = !string.IsNullOrEmpty(containerName);
+        string scope = isContainer ? "container" : "database";
+        string resourceName = isContainer ? containerName! : databaseName;
         try
         {
-            var throughputResponse = string.IsNullOrEmpty(containerName)
+            var throughputResponse = !isContainer
                 ? await client.GetDatabase(databaseName).ReadThroughputAsync(new RequestOptions(), token)
                 : await client.GetDatabase(databaseName).GetContainer(containerName).ReadThroughputAsync(new RequestOptions(), token);
             return BuildThroughputView(scope, resourceName, throughputResponse);
@@ -226,13 +227,14 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
 
     public async Task<ThroughputView> ReplaceThroughputAsync(string databaseName, string? containerName, ThroughputUpdate update, CancellationToken token)
     {
-        string scope = containerName is null ? "database" : "container";
-        string resourceName = containerName ?? databaseName;
+        bool isContainer = !string.IsNullOrEmpty(containerName);
+        string scope = isContainer ? "container" : "database";
+        string resourceName = isContainer ? containerName! : databaseName;
 
         ThroughputResponse currentResponse;
         try
         {
-            currentResponse = string.IsNullOrEmpty(containerName)
+            currentResponse = !isContainer
                 ? await client.GetDatabase(databaseName).ReadThroughputAsync(new RequestOptions(), token)
                 : await client.GetDatabase(databaseName).GetContainer(containerName).ReadThroughputAsync(new RequestOptions(), token);
         }
@@ -255,7 +257,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
             : ThroughputProperties.CreateManualThroughput(update.Throughput);
         try
         {
-            var throughputResponse = string.IsNullOrEmpty(containerName)
+            var throughputResponse = !isContainer
                 ? await client.GetDatabase(databaseName).ReplaceThroughputAsync(properties, cancellationToken: token)
                 : await client.GetDatabase(databaseName).GetContainer(containerName).ReplaceThroughputAsync(properties, cancellationToken: token);
             return BuildThroughputView(scope, resourceName, throughputResponse);
