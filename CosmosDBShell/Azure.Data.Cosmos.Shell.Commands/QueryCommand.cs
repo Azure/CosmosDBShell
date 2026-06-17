@@ -409,7 +409,7 @@ internal class QueryCommand : CosmosCommand
             }
         }
 
-        return element.ToString();
+        return null;
     }
 
     private static List<string> BuildPlanMessages(PlanEvaluation evaluation)
@@ -571,10 +571,11 @@ internal class QueryCommand : CosmosCommand
 
             using var feedIterator = container.GetItemQueryStreamIterator(this.Query, null, options);
 
-            ResponseMessage? response = null;
-            if (feedIterator.HasMoreResults)
+            using ResponseMessage? response = feedIterator.HasMoreResults
+                ? await feedIterator.ReadNextAsync(token)
+                : null;
+            if (response is not null)
             {
-                response = await feedIterator.ReadNextAsync(token);
                 await this.ThrowIfRequestFailedAsync(response, shell);
             }
 
@@ -663,7 +664,7 @@ internal class QueryCommand : CosmosCommand
                     break;
                 }
 
-                var response = await feedIterator.ReadNextAsync(token);
+                using var response = await feedIterator.ReadNextAsync(token);
 
                 await this.ThrowIfRequestFailedAsync(response, shell);
 
