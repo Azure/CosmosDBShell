@@ -204,9 +204,9 @@ export COSMOSDB_SHELL_THEME=monochrome
 cosmosdbshell
 
 # Inspect or switch at runtime.
-CS > theme list
-CS > theme show light       # preview a profile without switching
-CS > theme use light        # switch for the rest of the session
+❯ theme list
+❯ theme show light       # preview a profile without switching
+❯ theme use light        # switch for the rest of the session
 ```
 
 ### Custom themes
@@ -240,14 +240,14 @@ Color values must be empty or one standard ANSI 16 color name (`black`, `maroon`
 Runtime commands for working with files:
 
 ```bash
-CS > theme load ./my-theme.toml         # load and switch to a file ad-hoc
-CS > theme validate ./my-theme.toml     # validate a file without loading or switching
-CS > theme validate ~/.cosmosdbshell/themes  # validate every TOML file in a directory
-CS > theme validate my-theme --strict   # treat warnings as errors
-CS > theme save my-theme                # write the active theme to ~/.cosmosdbshell/themes/my-theme.toml
-CS > theme save my-theme ./out.toml     # save to a custom path
-CS > theme save my-theme --force        # overwrite an existing file
-CS > theme reload                       # rescan the user themes directory
+❯ theme load ./my-theme.toml         # load and switch to a file ad-hoc
+❯ theme validate ./my-theme.toml     # validate a file without loading or switching
+❯ theme validate ~/.cosmosdbshell/themes  # validate every TOML file in a directory
+❯ theme validate my-theme --strict   # treat warnings as errors
+❯ theme save my-theme                # write the active theme to ~/.cosmosdbshell/themes/my-theme.toml
+❯ theme save my-theme ./out.toml     # save to a custom path
+❯ theme save my-theme --force        # overwrite an existing file
+❯ theme reload                       # rescan the user themes directory
 ```
 
 `theme save` writes a self-contained theme file with every color and style slot populated, so the saved file can be moved or edited without depending on another custom profile.

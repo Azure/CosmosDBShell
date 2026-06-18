@@ -232,7 +232,7 @@ public class ThemeProfileTests
                 ("FormatUnknownCommand", Theme.FormatUnknownCommand("nope")),
                 ("FormatScriptPath", Theme.FormatScriptPath("seed.csh")),
                 ("FormatArgumentName", Theme.FormatArgumentName("--max")),
-                ("ConnectedStatePromt", Theme.ConnectedStatePromt("CS >")),
+                ("ConnectedStatePromt", Theme.ConnectedStatePromt(CosmosShellPrompt.PromptMarker)),
                 ("DatabaseNamePromt", Theme.DatabaseNamePromt("MyDb")),
                 ("ContainerNamePromt", Theme.ContainerNamePromt("MyContainer")),
                 ("FormatRedirection", Theme.FormatRedirection(">>")),

@@ -1307,7 +1307,7 @@ public partial class ShellInterpreter : IDisposable
 
     private static string? PromptFallback()
     {
-        Console.Write(CosmosShellPrompt.PromptText + "> ");
+        Console.Write(CosmosShellPrompt.PromptMarker + " ");
         return Console.ReadLine();
     }
 

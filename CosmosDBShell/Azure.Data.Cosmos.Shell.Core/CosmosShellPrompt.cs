@@ -12,11 +12,16 @@ using Spectre.Console;
 
 internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IStateVisitor<string, object?>
 {
-    internal const string PromptText = "CS ";
+    internal const string OfflineAccountName = "offline";
+    internal const string AsciiPromptMarker = ">";
+    internal const string FancyPromptMarker = "❯";
+
     private readonly ShellInterpreter shell = shell ?? throw new ArgumentNullException(nameof(shell));
     private Markup prompt = new(string.Empty);
     private State? oldState;
     private ThemeOptions? oldTheme;
+
+    internal static string PromptMarker => SupportsFancyPromptMarker() ? FancyPromptMarker : AsciiPromptMarker;
 
     internal bool InContinuation { get; set; }
 
@@ -55,24 +60,42 @@ internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IS
 
     Task<string> IStateVisitor<string, object?>.VisitConnectedStateAsync(ConnectedState state, object? data, CancellationToken token)
     {
-        return Task.FromResult(Theme.ConnectedStatePromt(PromptText + ">"));
+        return Task.FromResult($"{GetAccountSegment(state)}{Theme.ConnectedStatePromt(PromptMarker)}");
     }
 
     Task<string> IStateVisitor<string, object?>.VisitContainerStateAsync(ContainerState state, object? data, CancellationToken token)
     {
         var db = Markup.Escape(state.DatabaseName);
         var cn = Markup.Escape(state.ContainerName);
-        return Task.FromResult($"{Theme.ConnectedStatePromt(PromptText)} {Theme.DatabaseNamePromt(db)}/{Theme.ContainerNamePromt(cn)} {Theme.ConnectedStatePromt(">")}");
+        return Task.FromResult($"{GetAccountSegment(state)}{Theme.DatabaseNamePromt(db)}/{Theme.ContainerNamePromt(cn)} {Theme.ConnectedStatePromt(PromptMarker)}");
     }
 
     Task<string> IStateVisitor<string, object?>.VisitDatabaseStateAsync(DatabaseState state, object? data, CancellationToken token)
     {
         var db = Markup.Escape(state.DatabaseName);
-        return Task.FromResult($"{Theme.ConnectedStatePromt(PromptText)} {Theme.DatabaseNamePromt(db)} {Theme.ConnectedStatePromt(">")}");
+        return Task.FromResult($"{GetAccountSegment(state)}{Theme.DatabaseNamePromt(db)} {Theme.ConnectedStatePromt(PromptMarker)}");
     }
 
     Task<string> IStateVisitor<string, object?>.VisitDisconnectedStateAsync(DisconnectedState state, object? data, CancellationToken token)
     {
-        return Task.FromResult(Theme.DisconnectedStatePromt(PromptText + ">"));
+        return Task.FromResult($"{Theme.FormatMuted(OfflineAccountName)} {Theme.DisconnectedStatePromt(PromptMarker)}");
+    }
+
+    private static string GetAccountSegment(ConnectedState state)
+    {
+        var account = state.ArmContext?.AccountName ?? CosmosArmResourceProvider.GetAccountNameFromEndpoint(state.Client.Endpoint);
+        return string.IsNullOrEmpty(account) ? string.Empty : $"{Theme.ConnectedStatePromt(Markup.Escape(account))} ";
+    }
+
+    private static bool SupportsFancyPromptMarker()
+    {
+        if (Console.IsOutputRedirected)
+        {
+            return false;
+        }
+
+        return string.Equals(Console.OutputEncoding.WebName, "utf-8", StringComparison.OrdinalIgnoreCase)
+            || Console.OutputEncoding.CodePage == System.Text.Encoding.Unicode.CodePage
+            || Console.OutputEncoding.CodePage == System.Text.Encoding.BigEndianUnicode.CodePage;
     }
 }

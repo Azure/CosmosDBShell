@@ -198,7 +198,7 @@ internal class ThemeCommand : CosmosCommand
             Row("command", Theme.FormatCommand("connect"));
             Row("unknown command", Theme.FormatUnknownCommand("nope"));
             Row("argument name", Theme.FormatArgumentName("--max"));
-            Row("connected prompt", Theme.ConnectedStatePromt("CS >"));
+            Row("connected prompt", Theme.ConnectedStatePromt(CosmosShellPrompt.PromptMarker));
             Row("database name", Theme.DatabaseNamePromt("MyDb"));
             Row("container name", Theme.ContainerNamePromt("MyContainer"));
             Row("redirection", Theme.FormatRedirection(">>"));
