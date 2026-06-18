@@ -41,23 +41,23 @@ public class CommandExecutionTests : TestBase
     [Fact]
     public async Task Command_ValuedOptions_AreBoundBeforeExecution()
     {
-        // settings binds --db / --con then fails on the missing connection.
+        // info binds --db / --con then fails on the missing connection.
         await Assert.ThrowsAsync<NotConnectedException>(
-            () => RunSingleAsync("settings --db=mydb --con=mycon"));
+            () => RunSingleAsync("info --db=mydb --con=mycon"));
     }
 
     [Fact]
     public async Task Command_UnknownOption_Throws()
     {
         await Assert.ThrowsAsync<UnknownOptionException>(
-            () => RunSingleAsync("settings --bogus=1"));
+            () => RunSingleAsync("info --bogus=1"));
     }
 
     [Fact]
     public async Task Command_OptionMissingValue_Throws()
     {
         await Assert.ThrowsAsync<CommandException>(
-            () => RunSingleAsync("settings --db"));
+            () => RunSingleAsync("info --db"));
     }
 
     [Fact]

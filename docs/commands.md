@@ -775,13 +775,32 @@ Arguments:
     [bucket]    Bucket number: 0=clear, 1-5=valid buckets (Optional)
 ```
 
-### settings
+### info
 
-Show account overview or container settings.
+Show configuration and usage statistics for the current container, database, or
+account, depending on what is in scope.
+
+When a container is in scope it reports the partition key, throughput (min/max
+RU/s), analytical TTL, geospatial and full-text policies, plus the document
+count and data/total storage size. When only a database is in scope it reports
+the container count, aggregate document count, total storage, and shared
+throughput. When neither is in scope (the account root) it reports account
+metadata: read/write regions and the database count.
 
 ```text
-Usage: settings
+Usage: info [--partitions] [--detailed] [--database=<name>] [--container=<name>]
+
+Options:
+    --partitions, -p    Add the per-physical-partition document distribution (consumes request units)
+    --detailed, -d      Add storage breakdown and top partition keys (performs a full scan and consumes request units)
+    --database, -db     Target database name
+    --container, -con   Target container name
 ```
+
+The default report uses low-cost metadata reads. The `--partitions` and
+`--detailed` options issue queries against the data and therefore consume
+request units; at the account root, `--detailed` aggregates every container's
+storage and document count across all databases. This command is read-only.
 
 ### help
 

@@ -113,18 +113,18 @@ public class AdditionalCommandsTests : EmulatorFixtureTestBase
     }
 
     [Fact]
-    public async Task Settings_AtDatabaseLevel_ReturnsAccountOverview()
+    public async Task Info_AtDatabaseLevel_ReturnsAccountOverview()
     {
-        var state = await ExecuteAsync("settings");
+        var state = await ExecuteAsync("info");
         Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
     }
 
     [Fact]
-    public async Task Settings_AtContainerLevel_ReturnsContainerSettings()
+    public async Task Info_AtContainerLevel_ReturnsContainerSettings()
     {
         await ExecuteAsync($"cd {Fixture.ContainerName}");
 
-        var state = await ExecuteAsync("settings");
+        var state = await ExecuteAsync("info");
         Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
 
         var json = IntegrationTestBase.GetJson(state);

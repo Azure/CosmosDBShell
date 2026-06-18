@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### New features
+
+- The `settings` command has been renamed to `info` and now reports usage statistics alongside configuration. For a container it adds the document count and data/total storage size; for a database (when only a database is in scope) it reports the container count, aggregate document count, total storage, and shared throughput; at the account root it adds the database count. `--partitions` adds the per-physical-partition document distribution, and `--detailed` adds a storage breakdown plus the top partition keys by document count for a container, the per-container breakdown for a database, or per-database aggregate totals for the account. ([#108](https://github.com/Azure/CosmosDBShell/issues/108))
+
 ## 1.1.4-preview — 2026-05-21
 
 First release on the 1.1 line. A pretty packed cycle. The headline change is **ARM-based control plane for database and container management**, but there’s also a fully reworked CLI, two new item commands, a much friendlier shell experience for newcomers, and a long list of paper-cut fixes.
