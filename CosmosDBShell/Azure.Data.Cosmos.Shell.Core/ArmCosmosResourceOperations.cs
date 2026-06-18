@@ -186,7 +186,7 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
             }
             else
             {
-                var container = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+                var container = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName!, token);
                 var response = await container.GetCosmosDBSqlContainerThroughputSetting().GetAsync(token);
                 info = response.Value.Data.Resource;
             }
@@ -233,7 +233,7 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
             }
             else
             {
-                var container = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+                var container = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName!, token);
                 var setting = container.GetCosmosDBSqlContainerThroughputSetting();
                 var current = await setting.GetAsync(token);
                 if (IsAutoscale(current.Value.Data.Resource) != update.IsAutoscale)
