@@ -718,7 +718,7 @@ udf edit myFunc
 udf delete myFunc
 ```
 
-User-defined functions are a Cosmos DB for NoSQL feature invoked from within queries. The `udf` command operates on the current container, the same scope as `index`.
+User-defined functions are a Cosmos DB for NoSQL feature invoked from within queries. The `udf` command operates on the current container, the same scope as `index`. Like `sproc` and `trigger`, it is restricted from MCP and must be run manually in the shell.
 
 ### trigger
 
@@ -768,7 +768,7 @@ trigger edit myTrigger
 trigger delete myTrigger
 ```
 
-Triggers are a Cosmos DB for NoSQL feature. Pre-triggers and post-triggers are invoked when item operations opt in to them. The `trigger` command operates on the current container, the same scope as `index`.
+Triggers are a Cosmos DB for NoSQL feature. Pre-triggers and post-triggers are invoked when item operations opt in to them. The `trigger` command operates on the current container, the same scope as `index`. Like `sproc` and `udf`, it is restricted from MCP and must be run manually in the shell.
 
 ## Utilities
 
