@@ -65,15 +65,12 @@ internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IS
 
     Task<string> IStateVisitor<string, object?>.VisitContainerStateAsync(ContainerState state, object? data, CancellationToken token)
     {
-        var db = Markup.Escape(state.DatabaseName);
-        var cn = Markup.Escape(state.ContainerName);
-        return Task.FromResult($"{GetAccountSegment(state)}{Theme.DatabaseNamePromt(db)}/{Theme.ContainerNamePromt(cn)} {Theme.ConnectedStatePromt(PromptMarker)}");
+        return Task.FromResult($"{GetAccountSegment(state)}{Theme.DatabaseNamePromt(state.DatabaseName)}/{Theme.ContainerNamePromt(state.ContainerName)} {Theme.ConnectedStatePromt(PromptMarker)}");
     }
 
     Task<string> IStateVisitor<string, object?>.VisitDatabaseStateAsync(DatabaseState state, object? data, CancellationToken token)
     {
-        var db = Markup.Escape(state.DatabaseName);
-        return Task.FromResult($"{GetAccountSegment(state)}{Theme.DatabaseNamePromt(db)} {Theme.ConnectedStatePromt(PromptMarker)}");
+        return Task.FromResult($"{GetAccountSegment(state)}{Theme.DatabaseNamePromt(state.DatabaseName)} {Theme.ConnectedStatePromt(PromptMarker)}");
     }
 
     Task<string> IStateVisitor<string, object?>.VisitDisconnectedStateAsync(DisconnectedState state, object? data, CancellationToken token)
@@ -84,7 +81,7 @@ internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IS
     private static string GetAccountSegment(ConnectedState state)
     {
         var account = state.ArmContext?.AccountName ?? CosmosArmResourceProvider.GetAccountNameFromEndpoint(state.Client.Endpoint);
-        return string.IsNullOrEmpty(account) ? string.Empty : $"{Theme.ConnectedStatePromt(Markup.Escape(account))} ";
+        return string.IsNullOrEmpty(account) ? string.Empty : $"{Theme.ConnectedStatePromt(account)} ";
     }
 
     private static bool SupportsFancyPromptMarker()
