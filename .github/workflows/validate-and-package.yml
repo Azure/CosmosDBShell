@@ -226,7 +226,8 @@ jobs:
         if: >-
           always() &&
           (github.event_name != 'pull_request' ||
-           github.event.pull_request.head.repo.full_name == github.repository)
+           github.event.pull_request.head.repo.full_name == github.repository) &&
+          hashFiles('TestResults/coverage/Cobertura.xml') != ''
         uses: actions/upload-code-coverage@v1
         with:
           file: TestResults/coverage/Cobertura.xml
