@@ -681,7 +681,7 @@ Manage JavaScript user-defined functions (UDFs) on a container through subcomman
 Usage: udf subcommand [name] [value] [-force] [-database <ARG>] [-container <ARG>]
 
 Arguments:
-    subcommand  list, show, exists, create, or delete
+    subcommand  list, show, exists, create, edit, or delete
     [name]      The user-defined function id
     [value]     A JavaScript file (for create)
 
@@ -701,6 +701,8 @@ Options:
 |`show <name>`|Returns the body of a user-defined function.|
 |`exists <name>`|Returns a boolean indicating whether a user-defined function exists. The boolean result can be used directly in `if` and `while` conditions.|
 |`create <name> <file>`|Creates a user-defined function from a JavaScript file. The body can also be piped in. Pass `--force` to replace an existing one.|
+|`create <name>`|With no file or piped body, seeds a sample user-defined function, opens it in an external editor, and prompts to create or discard on exit. Interactive sessions only; scripts must pass a file. The `udf` command is not available over MCP.|
+|`edit <name>`|Opens an existing user-defined function body in an external editor and saves it on exit. Fails if the user-defined function does not exist; use `create` to add a new one. Interactive sessions only; not available over MCP or from scripts.|
 |`delete <name>`|Deletes a user-defined function.|
 
 #### Examples
@@ -711,6 +713,8 @@ udf show myFunc
 udf exists myFunc
 udf create myFunc ./myFunc.js
 udf create myFunc ./myFunc.js --force
+udf create myFunc
+udf edit myFunc
 udf delete myFunc
 ```
 
@@ -724,7 +728,7 @@ Manage JavaScript triggers on a container through subcommands.
 Usage: trigger subcommand [name] [value] [-type <ARG>] [-operation <ARG>] [-force] [-database <ARG>] [-container <ARG>]
 
 Arguments:
-    subcommand  list, show, exists, create, or delete
+    subcommand  list, show, exists, create, edit, or delete
     [name]      The trigger id
     [value]     A JavaScript file (for create)
 
@@ -747,6 +751,8 @@ Options:
 |`show <name>`|Returns the body of a trigger.|
 |`exists <name>`|Returns a boolean indicating whether a trigger exists. The boolean result can be used directly in `if` and `while` conditions.|
 |`create <name> <file>`|Creates a trigger from a JavaScript file. The body can also be piped in. `--type` selects `pre` or `post`, `--operation` selects the operation (defaults to `all`), and `--force` replaces an existing one.|
+|`create <name> --type <pre\|post>`|With no file or piped body, seeds a sample trigger, opens it in an external editor, and prompts to create or discard on exit. `--type` is still required. Interactive sessions only; scripts must pass a file. The `trigger` command is not available over MCP.|
+|`edit <name>`|Opens an existing trigger body in an external editor and saves it on exit, preserving the trigger type and operation. Fails if the trigger does not exist; use `create` to add a new one. Interactive sessions only; not available over MCP or from scripts.|
 |`delete <name>`|Deletes a trigger.|
 
 #### Examples
@@ -757,6 +763,8 @@ trigger show myTrigger
 trigger exists myTrigger
 trigger create myTrigger ./myTrigger.js --type pre --operation create
 trigger create myTrigger ./myTrigger.js --type post --operation all --force
+trigger create myTrigger --type pre
+trigger edit myTrigger
 trigger delete myTrigger
 ```
 

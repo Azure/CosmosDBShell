@@ -21,4 +21,14 @@ public class UdfCommandTests
     {
         Assert.Equal(expected, UdfCommand.NormalizeSubcommand(input));
     }
+
+    [Fact]
+    public void DefaultUserDefinedFunctionBody_IsValidSeedTemplate()
+    {
+        var body = UdfCommand.DefaultUserDefinedFunctionBody();
+
+        Assert.False(string.IsNullOrWhiteSpace(body));
+        Assert.Contains("function tax", body);
+        Assert.Contains("return income", body);
+    }
 }

@@ -63,4 +63,15 @@ public class TriggerCommandTests
     {
         Assert.Throws<CommandException>(() => TriggerCommand.ParseTriggerOperation(input));
     }
+
+    [Fact]
+    public void DefaultTriggerBody_IsValidSeedTemplate()
+    {
+        var body = TriggerCommand.DefaultTriggerBody();
+
+        Assert.False(string.IsNullOrWhiteSpace(body));
+        Assert.Contains("function trigger", body);
+        Assert.Contains("getContext()", body);
+        Assert.Contains("request.setBody", body);
+    }
 }
