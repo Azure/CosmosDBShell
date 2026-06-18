@@ -571,6 +571,56 @@ index set --mode=consistent --automatic=true
 index set '{"indexingMode":"consistent","automatic":true,"includedPaths":[{"path":"/*"}],"excludedPaths":[]}'
 ```
 
+### throughput
+
+View or change the provisioned throughput (RU/s) of a database or container through subcommands.
+
+```text
+Usage: throughput subcommand [ru] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  show, set, manual, or autoscale
+    [ru]        Throughput in RU/s (manual RU/s for set/manual, maximum RU/s for autoscale)
+
+Options:
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+    -yes, -y, -force
+                Skip the confirmation prompt before applying a change (Optional)
+```
+
+By default the command targets the current scope: the container when in a container, otherwise the database. Use `--database` and `--container` to target a specific resource.
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`show`|Reads and returns the current throughput as JSON, including the mode (`manual`, `autoscale`, or `none`), provisioned RU/s, autoscale maximum, and minimum.|
+|`set <RUs>`|Sets manual throughput to the given RU/s. Alias of `manual`.|
+|`manual <RUs>`|Switches to manual provisioning at the given RU/s.|
+|`autoscale <maxRUs>`|Switches to autoscale with the given maximum RU/s.|
+
+Throughput changes apply to the resource's own provisioned throughput. Containers inside a shared-throughput database, and serverless accounts, have no dedicated throughput to change.
+
+Throughput values are validated before the request is sent: manual RU/s must be at least 400 and a multiple of 100, and autoscale maximum RU/s must be at least 1000 and a multiple of 1000.
+
+Switching between `manual` and `autoscale` is a mode migration. Over an Azure AD (token) connection this is performed automatically. Over a key-based (data-plane) connection the SDK cannot migrate modes, so a mode switch is rejected with guidance to use a token connection, the Azure portal, Azure CLI, or PowerShell; changing the RU/s value within the current mode still works.
+
+Write operations (`set`, `manual`, `autoscale`) ask for confirmation before applying, because throughput changes can affect your bill. Pass `--yes` (`-y`/`--force`) to skip the prompt. The prompt is also skipped automatically in non-interactive contexts (MCP, script execution, or piped input).
+
+#### Examples
+
+```bash
+throughput show
+throughput set 4000
+throughput manual 4000
+throughput autoscale 10000
+throughput set 4000 --yes
+throughput show --database MyDatabase --container MyContainer
+```
+
 ## Utilities
 
 ### az

@@ -230,20 +230,82 @@ public partial class ShellInterpreter : IDisposable
         var yes = char.ToUpper(MessageService.GetString("yes_char")[0]);
         var no = char.ToUpper(MessageService.GetString("no_char")[0]);
 
-        while (true)
+        // Take over Ctrl+C handling for the lifetime of the prompt so it cancels the
+        // question (returns false) instead of being swallowed by the global cancel-key
+        // handler, which would leave this blocking ReadKey loop spinning forever.
+        var restoreControlC = TrySetTreatControlCAsInput(true, out var originalTreatControlCAsInput);
+        try
         {
-            Console.Write($"{MessageService.GetString(message)} ({yes}/{no})?");
-            var key = Console.ReadKey();
-            WriteLine();
-            if (char.ToUpper(key.KeyChar) == yes)
+            while (true)
             {
-                return true;
-            }
+                Console.Write($"{MessageService.GetString(message)} ({yes}/{no})?");
 
-            if (char.ToUpper(key.KeyChar) == no || key.Key == ConsoleKey.Escape)
-            {
-                return false;
+                ConsoleKeyInfo key;
+                try
+                {
+                    key = Console.ReadKey(intercept: true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // No interactive console available (e.g. redirected input). Treat as
+                    // a declined prompt rather than throwing.
+                    WriteLine();
+                    return false;
+                }
+
+                if (key.Key == ConsoleKey.C && key.Modifiers.HasFlag(ConsoleModifiers.Control))
+                {
+                    WriteLine("^C");
+                    return false;
+                }
+
+                if (key.Key == ConsoleKey.Escape)
+                {
+                    WriteLine();
+                    return false;
+                }
+
+                // intercept:true suppresses the echo, so mirror the keystroke ourselves.
+                Console.Write(key.KeyChar);
+                WriteLine();
+
+                if (char.ToUpper(key.KeyChar) == yes)
+                {
+                    return true;
+                }
+
+                if (char.ToUpper(key.KeyChar) == no)
+                {
+                    return false;
+                }
             }
+        }
+        finally
+        {
+            if (restoreControlC)
+            {
+                TrySetTreatControlCAsInput(originalTreatControlCAsInput, out _);
+            }
+        }
+    }
+
+    private static bool TrySetTreatControlCAsInput(bool value, out bool originalValue)
+    {
+        try
+        {
+            originalValue = Console.TreatControlCAsInput;
+            Console.TreatControlCAsInput = value;
+            return true;
+        }
+        catch (IOException)
+        {
+            originalValue = false;
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            originalValue = false;
+            return false;
         }
     }
 

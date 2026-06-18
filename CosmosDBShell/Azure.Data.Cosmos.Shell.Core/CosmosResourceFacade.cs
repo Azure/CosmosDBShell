@@ -82,6 +82,16 @@ internal static class CosmosResourceFacade
         return For(state).ReplaceIndexingPolicyAsync(databaseName, containerName, indexPolicyJson, token);
     }
 
+    public static Task<ThroughputView> GetThroughputAsync(ConnectedState state, string databaseName, string? containerName, CancellationToken token)
+    {
+        return For(state).GetThroughputAsync(databaseName, containerName, token);
+    }
+
+    public static Task<ThroughputView> ReplaceThroughputAsync(ConnectedState state, string databaseName, string? containerName, ThroughputUpdate update, CancellationToken token)
+    {
+        return For(state).ReplaceThroughputAsync(databaseName, containerName, update, token);
+    }
+
     private static ICosmosResourceOperations For(ConnectedState state)
     {
         return state.ArmContext is { } armContext

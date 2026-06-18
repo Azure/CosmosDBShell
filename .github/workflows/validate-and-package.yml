@@ -160,6 +160,14 @@ jobs:
             throw "dotnet build failed with exit code $exitCode."
           }
 
+          # Treat build warnings as failures so a PR cannot be merged while
+          # it introduces compiler or analyzer warnings. The distinct
+          # warnings have already been surfaced as annotations and in the
+          # job step summary above.
+          if ($warnings.Count -gt 0) {
+            throw "dotnet build produced $($warnings.Count) warning(s). Resolve them before merging."
+          }
+
       - name: Test solution
         run: >-
           dotnet test CosmosDBShell.sln
