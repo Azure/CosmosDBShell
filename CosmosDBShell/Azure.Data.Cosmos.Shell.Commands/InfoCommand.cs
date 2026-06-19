@@ -89,168 +89,6 @@ internal class InfoCommand : CosmosCommand
         }
     }
 
-    private async Task<CommandState> ShowContainerSettingsAsync(ConnectedState state, string databaseName, string containerName, CommandState commandState, CancellationToken token)
-    {
-        await ValidateContainerExistsAsync(state, databaseName, containerName, "info", token);
-        var view = await CosmosResourceFacade.GetContainerSettingsAsync(state, databaseName, containerName, token);
-        var mcpTable = new Dictionary<string, object?>();
-
-        // Scale section - fail gracefully if it cannot be read
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-scale-heading")));
-
-        AnsiConsole.Markup("\t");
-        switch (view.Throughput)
-        {
-            case ThroughputAvailability.Available:
-                var minDisplay = view.MinThroughput?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? MessageService.GetString("command-settings-na");
-                var maxDisplay = view.MaxThroughput?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? MessageService.GetString("command-settings-na");
-                AnsiConsole.MarkupLine(MessageService.GetArgsString("command-settings-scale-usage", "min", minDisplay, "max", maxDisplay));
-                if (view.MinThroughput.HasValue)
-                {
-                    mcpTable["minThroughput"] = view.MinThroughput.Value;
-                }
-
-                if (view.MaxThroughput.HasValue)
-                {
-                    mcpTable["maxThroughput"] = view.MaxThroughput.Value;
-                }
-
-                break;
-            case ThroughputAvailability.NotConfigured:
-                AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
-                break;
-            default:
-                if (TryGetPrincipalIdFromRbacMessage(view.ThroughputErrorMessage, out var rbacId, out var rbacRequest, out var rbacPermission))
-                {
-                    AskForRBacPermissions(rbacId ?? string.Empty, rbacRequest ?? string.Empty, rbacPermission ?? string.Empty);
-                }
-                else
-                {
-                    AnsiConsole.MarkupLine(Theme.FormatError(view.ThroughputErrorMessage ?? string.Empty));
-                }
-
-                break;
-        }
-
-        AnsiConsole.MarkupLine(string.Empty);
-
-        mcpTable["id"] = view.ContainerName;
-        mcpTable["partitionKey"] = view.PartitionKeyPaths;
-        mcpTable["analyticalTTL"] = view.AnalyticalStorageTtl;
-
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-title")));
-
-        var table = new Table();
-        table.AddColumns(string.Empty, string.Empty);
-
-        string ttl;
-        if (view.AnalyticalStorageTtl == null ||
-            view.AnalyticalStorageTtl == 0)
-        {
-            ttl = MessageService.GetString("command-settings-Off");
-        }
-        else if (view.AnalyticalStorageTtl == -1)
-        {
-            ttl = MessageService.GetString("command-settings-On");
-        }
-        else
-        {
-            ttl = MessageService.GetArgsString(
-                  "command-settings-ttl-seconds",
-                  "seconds",
-                  view.AnalyticalStorageTtl);
-        }
-
-        table.AddRow(MessageService.GetString("command-settings-ttl-label"), Theme.FormatTableValue(ttl));
-
-        if (view.GeospatialType is { } geospatialType)
-        {
-            string geospatialLabel = string.Equals(geospatialType, "Geography", StringComparison.OrdinalIgnoreCase)
-                ? MessageService.GetString("command-settings-geospatial-geography")
-                : MessageService.GetString("command-settings-geospatial-geometry");
-            table.AddRow(MessageService.GetString("command-settings-geospatial-label"), Theme.FormatTableValue(geospatialLabel));
-            mcpTable["geospatialType"] = geospatialType;
-        }
-
-        table.AddRow(MessageService.GetString("command-settings-partition-key-label"), Theme.FormatTableValue(string.Join(',', view.PartitionKeyPaths)));
-        table.HideHeaders();
-        AnsiConsole.Write(table);
-
-        // Full Text Policy section - show N/A when policy is unset
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-fulltext-title")));
-
-        if (view.FullTextPolicy is { } fullText)
-        {
-            var fullTextTable = new Table();
-            fullTextTable.AddColumns(string.Empty, string.Empty);
-
-            var defaultLanguage = string.IsNullOrEmpty(fullText.DefaultLanguage)
-                ? MessageService.GetString("command-settings-na")
-                : fullText.DefaultLanguage;
-            fullTextTable.AddRow(
-                MessageService.GetString("command-settings-fulltext-default-language-label"),
-                Theme.FormatTableValue(defaultLanguage));
-
-            var mcpPaths = new List<Dictionary<string, object?>>();
-            foreach (var path in fullText.Paths)
-            {
-                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), Theme.FormatTableValue(path.Path));
-                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-language-label"), Theme.FormatTableValue(path.Language ?? string.Empty));
-                mcpPaths.Add(new Dictionary<string, object?>
-                {
-                    { "path", path.Path },
-                    { "language", path.Language },
-                });
-            }
-
-            mcpTable["fullTextPolicy"] = mcpPaths;
-            fullTextTable.HideHeaders();
-            AnsiConsole.Write(fullTextTable);
-        }
-        else
-        {
-            AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
-        }
-
-        // Usage section - document count and storage size
-        var container = state.Client.GetDatabase(databaseName).GetContainer(containerName);
-        var usage = await ReadContainerUsageAsync(container, token);
-        mcpTable["documentCount"] = usage.DocumentCount;
-        mcpTable["dataSizeKb"] = usage.DataSizeKb;
-        mcpTable["indexSizeKb"] = usage.IndexSizeKb;
-        mcpTable["totalSizeKb"] = usage.TotalSizeKb;
-
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-usage-heading")));
-
-        var usageTable = new Table();
-        usageTable.AddColumns(string.Empty, string.Empty);
-        usageTable.HideHeaders();
-        usageTable.AddRow(MessageService.GetString("command-stats-label-document-count"), Theme.FormatTableValue(FormatCount(usage.DocumentCount)));
-        usageTable.AddRow(MessageService.GetString("command-stats-label-data-size"), Theme.FormatTableValue(FormatSize(usage.DataSizeKb)));
-        if (this.Detailed)
-        {
-            usageTable.AddRow(MessageService.GetString("command-stats-label-index-size"), Theme.FormatTableValue(FormatSize(usage.IndexSizeKb)));
-        }
-
-        usageTable.AddRow(MessageService.GetString("command-stats-label-total-size"), Theme.FormatTableValue(FormatSize(usage.TotalSizeKb)));
-        AnsiConsole.Write(usageTable);
-
-        if (this.Partitions)
-        {
-            mcpTable["partitions"] = await WritePartitionDistributionAsync(container, token);
-        }
-
-        if (this.Detailed)
-        {
-            mcpTable["topPartitionKeys"] = await WriteTopPartitionKeysAsync(container, view.PartitionKeyPaths, token);
-        }
-
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-        commandState.IsPrinted = true;
-        return commandState;
-    }
-
     private static bool TryGetPrincipalIdFromRbacException(Exception e, out string? principalId, out string? request, out string? permission)
     {
         return TryGetPrincipalIdFromRbacMessage(e.Message, out principalId, out request, out permission);
@@ -280,124 +118,6 @@ internal class InfoCommand : CosmosCommand
     {
         AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
         ShellInterpreter.WriteLine(MessageService.GetArgsString("command-settings-rbac-error", "id", principalId, "request", request, "permission", permission));
-    }
-
-    private async Task<CommandState> ShowDatabaseSettingsAsync(ConnectedState state, string databaseName, CommandState commandState, CancellationToken token)
-    {
-        await ValidateDatabaseExistsAsync(state, databaseName, "info", token);
-
-        var database = state.Client.GetDatabase(databaseName);
-
-        long totalDocuments = 0;
-        long totalSizeKb = 0;
-        var perContainer = new List<Dictionary<string, object?>>();
-        var rows = new List<(string Name, long? Count, long? SizeKb)>();
-
-        await foreach (var name in EnumerateContainerNamesAsync(state, databaseName, "info", token))
-        {
-            var usage = await ReadContainerUsageAsync(database.GetContainer(name), token);
-            if (usage.DocumentCount is { } count)
-            {
-                totalDocuments += count;
-            }
-
-            if (usage.TotalSizeKb is { } size)
-            {
-                totalSizeKb += size;
-            }
-
-            rows.Add((name, usage.DocumentCount, usage.TotalSizeKb));
-            perContainer.Add(new Dictionary<string, object?>
-            {
-                ["id"] = name,
-                ["documentCount"] = usage.DocumentCount,
-                ["totalSizeKb"] = usage.TotalSizeKb,
-            });
-        }
-
-        var mcpTable = new Dictionary<string, object?>
-        {
-            ["id"] = databaseName,
-            ["containerCount"] = rows.Count,
-            ["documentCount"] = totalDocuments,
-            ["totalSizeKb"] = totalSizeKb,
-        };
-
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-database-heading")));
-
-        var table = new Table();
-        table.AddColumns(string.Empty, string.Empty);
-        table.HideHeaders();
-        table.AddRow(MessageService.GetString("command-stats-database-label-id"), Theme.FormatTableValue(databaseName));
-        table.AddRow(MessageService.GetString("command-stats-database-label-container-count"), Theme.FormatTableValue(rows.Count.ToString(CultureInfo.InvariantCulture)));
-        table.AddRow(MessageService.GetString("command-stats-database-label-total-documents"), Theme.FormatTableValue(FormatCount(totalDocuments)));
-        table.AddRow(MessageService.GetString("command-stats-database-label-total-size"), Theme.FormatTableValue(FormatSize(totalSizeKb)));
-        AnsiConsole.Write(table);
-
-        await WriteDatabaseThroughputAsync(database, mcpTable, token);
-
-        if (this.Detailed && rows.Count > 0)
-        {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-containers-heading")));
-            var containerTable = new Table();
-            containerTable.AddColumn(MessageService.GetString("command-stats-containers-col-name"));
-            containerTable.AddColumn(MessageService.GetString("command-stats-containers-col-count"));
-            containerTable.AddColumn(MessageService.GetString("command-stats-containers-col-size"));
-            foreach (var row in rows.OrderByDescending(r => r.SizeKb ?? 0))
-            {
-                containerTable.AddRow(
-                    Theme.FormatTableValue(row.Name),
-                    Theme.FormatTableValue(FormatCount(row.Count)),
-                    Theme.FormatTableValue(FormatSize(row.SizeKb)));
-            }
-
-            AnsiConsole.Write(containerTable);
-        }
-
-        mcpTable["containers"] = perContainer;
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-        commandState.IsPrinted = true;
-        return commandState;
-    }
-
-    private async Task<CommandState> PrintOverviewAsync(ConnectedState state, CommandState commandState, CancellationToken token)
-    {
-        var client = state.Client;
-        var acc = await client.ReadAccountAsync();
-
-        var databaseNames = new List<string>();
-        await foreach (var name in EnumerateDatabaseNamesAsync(state, "info", token))
-        {
-            databaseNames.Add(name);
-        }
-
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-overview")));
-
-        var table = new Table();
-        table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
-        table.AddRow(MessageService.GetString("command-settings-account_id"), Theme.FormatTableValue(acc.Id), MessageService.GetString("command-settings-read_locations"), Theme.FormatTableValue(string.Join(", ", acc.ReadableRegions.Select(location => location.Name))));
-        table.AddRow(MessageService.GetString("command-settings-uri"), Theme.FormatTableValue(client.Endpoint.ToString()), MessageService.GetString("command-settings-write_locations"), Theme.FormatTableValue(string.Join(", ", acc.WritableRegions.Select(location => location.Name))));
-        table.AddRow(MessageService.GetString("command-stats-account-label-database-count"), Theme.FormatTableValue(databaseNames.Count.ToString(CultureInfo.InvariantCulture)), string.Empty, string.Empty);
-        table.HideHeaders();
-        AnsiConsole.Write(table);
-
-        var mcpTable = new Dictionary<string, object?>
-        {
-            ["accountId"] = acc.Id,
-            ["uri"] = client.Endpoint.ToString(),
-            ["readLocations"] = acc.ReadableRegions.Select(location => location.Name).ToArray(),
-            ["writeLocations"] = acc.WritableRegions.Select(location => location.Name).ToArray(),
-            ["databaseCount"] = databaseNames.Count,
-        };
-
-        if (this.Detailed)
-        {
-            await WriteAccountDatabaseBreakdownAsync(state, databaseNames, mcpTable, token);
-        }
-
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-        commandState.IsPrinted = true;
-        return commandState;
     }
 
     private static async Task WriteAccountDatabaseBreakdownAsync(ConnectedState state, IReadOnlyList<string> databaseNames, Dictionary<string, object?> mcpTable, CancellationToken token)
@@ -747,6 +467,286 @@ internal class InfoCommand : CosmosCommand
         }
 
         return string.Create(CultureInfo.InvariantCulture, $"{value:0.##} {units[unit]}");
+    }
+
+    private async Task<CommandState> ShowContainerSettingsAsync(ConnectedState state, string databaseName, string containerName, CommandState commandState, CancellationToken token)
+    {
+        await ValidateContainerExistsAsync(state, databaseName, containerName, "info", token);
+        var view = await CosmosResourceFacade.GetContainerSettingsAsync(state, databaseName, containerName, token);
+        var mcpTable = new Dictionary<string, object?>();
+
+        // Scale section - fail gracefully if it cannot be read
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-scale-heading")));
+
+        AnsiConsole.Markup("\t");
+        switch (view.Throughput)
+        {
+            case ThroughputAvailability.Available:
+                var minDisplay = view.MinThroughput?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? MessageService.GetString("command-settings-na");
+                var maxDisplay = view.MaxThroughput?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? MessageService.GetString("command-settings-na");
+                AnsiConsole.MarkupLine(MessageService.GetArgsString("command-settings-scale-usage", "min", minDisplay, "max", maxDisplay));
+                if (view.MinThroughput.HasValue)
+                {
+                    mcpTable["minThroughput"] = view.MinThroughput.Value;
+                }
+
+                if (view.MaxThroughput.HasValue)
+                {
+                    mcpTable["maxThroughput"] = view.MaxThroughput.Value;
+                }
+
+                break;
+            case ThroughputAvailability.NotConfigured:
+                AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
+                break;
+            default:
+                if (TryGetPrincipalIdFromRbacMessage(view.ThroughputErrorMessage, out var rbacId, out var rbacRequest, out var rbacPermission))
+                {
+                    AskForRBacPermissions(rbacId ?? string.Empty, rbacRequest ?? string.Empty, rbacPermission ?? string.Empty);
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine(Theme.FormatError(view.ThroughputErrorMessage ?? string.Empty));
+                }
+
+                break;
+        }
+
+        AnsiConsole.MarkupLine(string.Empty);
+
+        mcpTable["id"] = view.ContainerName;
+        mcpTable["partitionKey"] = view.PartitionKeyPaths;
+        mcpTable["analyticalTTL"] = view.AnalyticalStorageTtl;
+
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-title")));
+
+        var table = new Table();
+        table.AddColumns(string.Empty, string.Empty);
+
+        string ttl;
+        if (view.AnalyticalStorageTtl == null ||
+            view.AnalyticalStorageTtl == 0)
+        {
+            ttl = MessageService.GetString("command-settings-Off");
+        }
+        else if (view.AnalyticalStorageTtl == -1)
+        {
+            ttl = MessageService.GetString("command-settings-On");
+        }
+        else
+        {
+            ttl = MessageService.GetArgsString(
+                  "command-settings-ttl-seconds",
+                  "seconds",
+                  view.AnalyticalStorageTtl);
+        }
+
+        table.AddRow(MessageService.GetString("command-settings-ttl-label"), Theme.FormatTableValue(ttl));
+
+        if (view.GeospatialType is { } geospatialType)
+        {
+            string geospatialLabel = string.Equals(geospatialType, "Geography", StringComparison.OrdinalIgnoreCase)
+                ? MessageService.GetString("command-settings-geospatial-geography")
+                : MessageService.GetString("command-settings-geospatial-geometry");
+            table.AddRow(MessageService.GetString("command-settings-geospatial-label"), Theme.FormatTableValue(geospatialLabel));
+            mcpTable["geospatialType"] = geospatialType;
+        }
+
+        table.AddRow(MessageService.GetString("command-settings-partition-key-label"), Theme.FormatTableValue(string.Join(',', view.PartitionKeyPaths)));
+        table.HideHeaders();
+        AnsiConsole.Write(table);
+
+        // Full Text Policy section - show N/A when policy is unset
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-fulltext-title")));
+
+        if (view.FullTextPolicy is { } fullText)
+        {
+            var fullTextTable = new Table();
+            fullTextTable.AddColumns(string.Empty, string.Empty);
+
+            var defaultLanguage = string.IsNullOrEmpty(fullText.DefaultLanguage)
+                ? MessageService.GetString("command-settings-na")
+                : fullText.DefaultLanguage;
+            fullTextTable.AddRow(
+                MessageService.GetString("command-settings-fulltext-default-language-label"),
+                Theme.FormatTableValue(defaultLanguage));
+
+            var mcpPaths = new List<Dictionary<string, object?>>();
+            foreach (var path in fullText.Paths)
+            {
+                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), Theme.FormatTableValue(path.Path));
+                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-language-label"), Theme.FormatTableValue(path.Language ?? string.Empty));
+                mcpPaths.Add(new Dictionary<string, object?>
+                {
+                    { "path", path.Path },
+                    { "language", path.Language },
+                });
+            }
+
+            mcpTable["fullTextPolicy"] = mcpPaths;
+            fullTextTable.HideHeaders();
+            AnsiConsole.Write(fullTextTable);
+        }
+        else
+        {
+            AnsiConsole.Markup("\t");
+            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
+        }
+
+        // Usage section - document count and storage size
+        var container = state.Client.GetDatabase(databaseName).GetContainer(containerName);
+        var usage = await ReadContainerUsageAsync(container, token);
+        mcpTable["documentCount"] = usage.DocumentCount;
+        mcpTable["dataSizeKb"] = usage.DataSizeKb;
+        mcpTable["indexSizeKb"] = usage.IndexSizeKb;
+        mcpTable["totalSizeKb"] = usage.TotalSizeKb;
+
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-usage-heading")));
+
+        var usageTable = new Table();
+        usageTable.AddColumns(string.Empty, string.Empty);
+        usageTable.HideHeaders();
+        usageTable.AddRow(MessageService.GetString("command-stats-label-document-count"), Theme.FormatTableValue(FormatCount(usage.DocumentCount)));
+        usageTable.AddRow(MessageService.GetString("command-stats-label-data-size"), Theme.FormatTableValue(FormatSize(usage.DataSizeKb)));
+        if (this.Detailed)
+        {
+            usageTable.AddRow(MessageService.GetString("command-stats-label-index-size"), Theme.FormatTableValue(FormatSize(usage.IndexSizeKb)));
+        }
+
+        usageTable.AddRow(MessageService.GetString("command-stats-label-total-size"), Theme.FormatTableValue(FormatSize(usage.TotalSizeKb)));
+        AnsiConsole.Write(usageTable);
+
+        if (this.Partitions)
+        {
+            mcpTable["partitions"] = await WritePartitionDistributionAsync(container, token);
+        }
+
+        if (this.Detailed)
+        {
+            mcpTable["topPartitionKeys"] = await WriteTopPartitionKeysAsync(container, view.PartitionKeyPaths, token);
+        }
+
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
+        commandState.IsPrinted = true;
+        return commandState;
+    }
+
+    private async Task<CommandState> ShowDatabaseSettingsAsync(ConnectedState state, string databaseName, CommandState commandState, CancellationToken token)
+    {
+        await ValidateDatabaseExistsAsync(state, databaseName, "info", token);
+
+        var database = state.Client.GetDatabase(databaseName);
+
+        long totalDocuments = 0;
+        long totalSizeKb = 0;
+        var perContainer = new List<Dictionary<string, object?>>();
+        var rows = new List<(string Name, long? Count, long? SizeKb)>();
+
+        await foreach (var name in EnumerateContainerNamesAsync(state, databaseName, "info", token))
+        {
+            var usage = await ReadContainerUsageAsync(database.GetContainer(name), token);
+            if (usage.DocumentCount is { } count)
+            {
+                totalDocuments += count;
+            }
+
+            if (usage.TotalSizeKb is { } size)
+            {
+                totalSizeKb += size;
+            }
+
+            rows.Add((name, usage.DocumentCount, usage.TotalSizeKb));
+            perContainer.Add(new Dictionary<string, object?>
+            {
+                ["id"] = name,
+                ["documentCount"] = usage.DocumentCount,
+                ["totalSizeKb"] = usage.TotalSizeKb,
+            });
+        }
+
+        var mcpTable = new Dictionary<string, object?>
+        {
+            ["id"] = databaseName,
+            ["containerCount"] = rows.Count,
+            ["documentCount"] = totalDocuments,
+            ["totalSizeKb"] = totalSizeKb,
+        };
+
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-database-heading")));
+
+        var table = new Table();
+        table.AddColumns(string.Empty, string.Empty);
+        table.HideHeaders();
+        table.AddRow(MessageService.GetString("command-stats-database-label-id"), Theme.FormatTableValue(databaseName));
+        table.AddRow(MessageService.GetString("command-stats-database-label-container-count"), Theme.FormatTableValue(rows.Count.ToString(CultureInfo.InvariantCulture)));
+        table.AddRow(MessageService.GetString("command-stats-database-label-total-documents"), Theme.FormatTableValue(FormatCount(totalDocuments)));
+        table.AddRow(MessageService.GetString("command-stats-database-label-total-size"), Theme.FormatTableValue(FormatSize(totalSizeKb)));
+        AnsiConsole.Write(table);
+
+        await WriteDatabaseThroughputAsync(database, mcpTable, token);
+
+        if (this.Detailed && rows.Count > 0)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-containers-heading")));
+            var containerTable = new Table();
+            containerTable.AddColumn(MessageService.GetString("command-stats-containers-col-name"));
+            containerTable.AddColumn(MessageService.GetString("command-stats-containers-col-count"));
+            containerTable.AddColumn(MessageService.GetString("command-stats-containers-col-size"));
+            foreach (var row in rows.OrderByDescending(r => r.SizeKb ?? 0))
+            {
+                containerTable.AddRow(
+                    Theme.FormatTableValue(row.Name),
+                    Theme.FormatTableValue(FormatCount(row.Count)),
+                    Theme.FormatTableValue(FormatSize(row.SizeKb)));
+            }
+
+            AnsiConsole.Write(containerTable);
+        }
+
+        mcpTable["containers"] = perContainer;
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
+        commandState.IsPrinted = true;
+        return commandState;
+    }
+
+    private async Task<CommandState> PrintOverviewAsync(ConnectedState state, CommandState commandState, CancellationToken token)
+    {
+        var client = state.Client;
+        var acc = await client.ReadAccountAsync();
+
+        var databaseNames = new List<string>();
+        await foreach (var name in EnumerateDatabaseNamesAsync(state, "info", token))
+        {
+            databaseNames.Add(name);
+        }
+
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-overview")));
+
+        var table = new Table();
+        table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
+        table.AddRow(MessageService.GetString("command-settings-account_id"), Theme.FormatTableValue(acc.Id), MessageService.GetString("command-settings-read_locations"), Theme.FormatTableValue(string.Join(", ", acc.ReadableRegions.Select(location => location.Name))));
+        table.AddRow(MessageService.GetString("command-settings-uri"), Theme.FormatTableValue(client.Endpoint.ToString()), MessageService.GetString("command-settings-write_locations"), Theme.FormatTableValue(string.Join(", ", acc.WritableRegions.Select(location => location.Name))));
+        table.AddRow(MessageService.GetString("command-stats-account-label-database-count"), Theme.FormatTableValue(databaseNames.Count.ToString(CultureInfo.InvariantCulture)), string.Empty, string.Empty);
+        table.HideHeaders();
+        AnsiConsole.Write(table);
+
+        var mcpTable = new Dictionary<string, object?>
+        {
+            ["accountId"] = acc.Id,
+            ["uri"] = client.Endpoint.ToString(),
+            ["readLocations"] = acc.ReadableRegions.Select(location => location.Name).ToArray(),
+            ["writeLocations"] = acc.WritableRegions.Select(location => location.Name).ToArray(),
+            ["databaseCount"] = databaseNames.Count,
+        };
+
+        if (this.Detailed)
+        {
+            await WriteAccountDatabaseBreakdownAsync(state, databaseNames, mcpTable, token);
+        }
+
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
+        commandState.IsPrinted = true;
+        return commandState;
     }
 
     internal sealed record ContainerUsageStats(long? DocumentCount, long? DataSizeKb, long? TotalSizeKb)
