@@ -78,13 +78,10 @@ public class ServerSideProgrammingTests : ConnectedEmulatorTestBase
             var create = await ExecuteAsync($"sproc create echoProc \"{ShellPath(bodyFile)}\" --database {dbName} --container scripts");
             Assert.False(create.IsError, FormatError(create));
 
-            CommandState exec;
-            try
-            {
-                exec = await ExecuteAsync($"sproc exec echoProc '[\"hello\"]' --partition-key pk1 --database {dbName} --container scripts");
-            }
-            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.BadRequest
-                && ex.Message.Contains("Server-side script execution is not supported", StringComparison.Ordinal))
+            var exec = await ExecuteAsync($"sproc exec echoProc '[\"hello\"]' --partition-key pk1 --database {dbName} --container scripts");
+
+            if (exec is ErrorCommandState { Exception: CosmosException { StatusCode: HttpStatusCode.BadRequest } cosmosEx }
+                && cosmosEx.Message.Contains("Server-side script execution is not supported", StringComparison.Ordinal))
             {
                 throw SkipException.ForSkip("The Cosmos DB emulator does not support server-side script execution.");
             }
