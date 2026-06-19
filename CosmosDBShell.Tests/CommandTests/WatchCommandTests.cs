@@ -5,11 +5,14 @@
 namespace CosmosShell.Tests.CommandTests;
 
 using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.States;
 
 /// <summary>
 /// Unit tests for <see cref="WatchCommand"/>. Covers the pure helpers that
 /// parse change feed response bodies and build the change feed start position,
-/// which can be exercised without a live Cosmos DB connection.
+/// plus the option-validation and not-connected guards, all of which can be
+/// exercised without a live Cosmos DB connection.
 /// </summary>
 public class WatchCommandTests
 {
@@ -85,5 +88,34 @@ public class WatchCommandTests
     public void ResolveInterval_ValueBelowMinimum_IsClamped(double seconds)
     {
         Assert.Equal(TimeSpan.FromSeconds(0.1), WatchCommand.ResolveInterval(seconds));
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void ResolveInterval_NonFiniteValue_ThrowsCommandException(double seconds)
+    {
+        Assert.Throws<CommandException>(() => WatchCommand.ResolveInterval(seconds));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_NullShell_ThrowsArgumentNullException()
+    {
+        var command = new WatchCommand();
+
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => command.ExecuteAsync(null!, new CommandState(), "watch", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Disconnected_ThrowsNotConnected()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new WatchCommand();
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "watch", TestContext.Current.CancellationToken));
     }
 }

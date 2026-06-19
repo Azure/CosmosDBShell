@@ -234,20 +234,82 @@ public partial class ShellInterpreter : IDisposable
         var yes = char.ToUpper(MessageService.GetString("yes_char")[0]);
         var no = char.ToUpper(MessageService.GetString("no_char")[0]);
 
-        while (true)
+        // Take over Ctrl+C handling for the lifetime of the prompt so it cancels the
+        // question (returns false) instead of being swallowed by the global cancel-key
+        // handler, which would leave this blocking ReadKey loop spinning forever.
+        var restoreControlC = TrySetTreatControlCAsInput(true, out var originalTreatControlCAsInput);
+        try
         {
-            Console.Write($"{MessageService.GetString(message)} ({yes}/{no})?");
-            var key = Console.ReadKey();
-            WriteLine();
-            if (char.ToUpper(key.KeyChar) == yes)
+            while (true)
             {
-                return true;
-            }
+                Console.Write($"{MessageService.GetString(message)} ({yes}/{no})?");
 
-            if (char.ToUpper(key.KeyChar) == no || key.Key == ConsoleKey.Escape)
-            {
-                return false;
+                ConsoleKeyInfo key;
+                try
+                {
+                    key = Console.ReadKey(intercept: true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // No interactive console available (e.g. redirected input). Treat as
+                    // a declined prompt rather than throwing.
+                    WriteLine();
+                    return false;
+                }
+
+                if (key.Key == ConsoleKey.C && key.Modifiers.HasFlag(ConsoleModifiers.Control))
+                {
+                    WriteLine("^C");
+                    return false;
+                }
+
+                if (key.Key == ConsoleKey.Escape)
+                {
+                    WriteLine();
+                    return false;
+                }
+
+                // intercept:true suppresses the echo, so mirror the keystroke ourselves.
+                Console.Write(key.KeyChar);
+                WriteLine();
+
+                if (char.ToUpper(key.KeyChar) == yes)
+                {
+                    return true;
+                }
+
+                if (char.ToUpper(key.KeyChar) == no)
+                {
+                    return false;
+                }
             }
+        }
+        finally
+        {
+            if (restoreControlC)
+            {
+                TrySetTreatControlCAsInput(originalTreatControlCAsInput, out _);
+            }
+        }
+    }
+
+    private static bool TrySetTreatControlCAsInput(bool value, out bool originalValue)
+    {
+        try
+        {
+            originalValue = Console.TreatControlCAsInput;
+            Console.TreatControlCAsInput = value;
+            return true;
+        }
+        catch (IOException)
+        {
+            originalValue = false;
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            originalValue = false;
+            return false;
         }
     }
 
@@ -269,6 +331,7 @@ public partial class ShellInterpreter : IDisposable
     /// <returns>A <see cref="CommandState"/> representing the result of the command execution.</returns>
     public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token)
     {
+        using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
         var state = new CommandState();
         state.SetFormat(Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
 
@@ -711,7 +774,7 @@ public partial class ShellInterpreter : IDisposable
         {
             WriteLine(MessageService.GetString("shell-connect-key-auth"));
             var keyMode = mode ?? (isEmulator ? ConnectionMode.Gateway : ConnectionMode.Direct);
-            var keyOptions = CreateClientOptions(connectionString, keyMode);
+            var keyOptions = CreateClientOptions(keyMode);
             client = new CosmosClient(connectionString, keyOptions);
 
             AccountProperties keyProps;
@@ -742,7 +805,7 @@ public partial class ShellInterpreter : IDisposable
 
         // Token-based auth paths
         var requestedMode = mode ?? ConnectionMode.Direct;
-        var options = CreateClientOptions(connectionString, requestedMode);
+        var options = CreateClientOptions(requestedMode);
 
         // Step 2: VisualStudioCodeCredential (when launched from VS Code extension)
         if (client == null && useVSCodeCredential)
@@ -961,7 +1024,7 @@ public partial class ShellInterpreter : IDisposable
                 dacOptions.AuthorityHost = authorityHostUri;
             }
 
-            var dacCredential = new DefaultAzureCredential(dacOptions);
+            var dacCredential = new DefaultAzureCredential(dacOptions); // CodeQL [SM05137] Interactive developer CLI, not a hosted service: this is the last-resort fallback that adopts the developer's local identity (Azure CLI/azd, Visual Studio, env vars, or VM managed identity). No fixed service identity exists to pin to.
             client = new CosmosClient(endpoint, dacCredential, options);
 
             try
@@ -1399,24 +1462,21 @@ public partial class ShellInterpreter : IDisposable
         return Console.ReadLine();
     }
 
-    private static CosmosClientOptions CreateClientOptions(string connectionString, ConnectionMode requestedMode)
+    private static CosmosClientOptions CreateClientOptions(ConnectionMode requestedMode)
     {
         var options = new CosmosClientOptions
         {
             ApplicationName = "CosmosDBShell",
             ConnectionMode = requestedMode,
-            CosmosClientTelemetryOptions = new CosmosClientTelemetryOptions(),
+            CosmosClientTelemetryOptions = new CosmosClientTelemetryOptions
+            {
+                DisableDistributedTracing = false,
+            },
             UseSystemTextJsonSerializerWithOptions = new JsonSerializerOptions()
             {
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             },
         };
-
-        // do not check certificates for emulator - work around on osx issue
-        if (ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString))
-        {
-            options.ServerCertificateCustomValidationCallback = (cert, chain, errors) => true;
-        }
 
         return options;
     }

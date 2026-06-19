@@ -95,6 +95,8 @@
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
     <PackageReference Include="OmniSharp.Extensions.LanguageServer" />
+    <PackageReference Include="OpenTelemetry" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
     <PackageReference Include="RadLine" />
     <PackageReference Include="Azure.Core" />
     <PackageReference Include="Newtonsoft.Json" />

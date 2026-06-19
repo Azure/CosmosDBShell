@@ -1,6 +1,8 @@
 ﻿# Azure Cosmos DB Shell
 
-Lightweight CLI for Azure Cosmos DB.
+A terminal-native shell for Azure Cosmos DB — navigate databases like a filesystem, query interactively, and script with variables, loops, and functions. Supports Entra ID, MCP for AI tool integration, and works with the local emulator.
+
+![Azure Cosmos DB Shell Demo](docs/cosmosdbshell-demo.gif)
 
 ## Features
 
@@ -15,6 +17,7 @@ Lightweight CLI for Azure Cosmos DB.
 - Pipelines and scripting with variables, loops, functions
 - Multi-line input at the prompt — automatic continuation for unclosed blocks/strings, plus explicit `\` line continuation ([docs](docs/navigation.md#multi-line-input))
 - MCP server for AI/tool integration
+- Distributed tracing via OpenTelemetry (`--otel`): emits a sampled W3C `traceparent` on Cosmos requests, with optional OTLP export
 
 ## Quick Start
 
@@ -37,7 +40,41 @@ cd MyContainer
 query "SELECT * FROM c"
 ```
 
-## Install from NuGet package artifacts
+## Build from Source
+
+```bash
+git clone https://github.com/Azure/CosmosDBShell.git
+cd CosmosDBShell
+dotnet build CosmosDBShell.sln
+dotnet run --project CosmosDBShell/CosmosDBShell.csproj
+```
+
+Run the tests:
+
+```bash
+dotnet test CosmosDBShell.sln
+```
+
+## Architecture
+
+| Folder | Purpose |
+| ------ | ------- |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.ArgumentParser/` | Command-line argument parsing |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Commands/` | Each shell command is a class (`ls`, `cd`, `query`, `mkitem`, etc.) |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Core/` | Interpreter, state machine, command runner |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Parser/` | Lexer and AST for shell syntax |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.States/` | Shell states (disconnected, connected, in database, in container) |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Mcp/` | MCP server for AI/tool integration |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Lsp/` | LSP server for editor integration |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Lsp.Semantics/` | Semantic analysis for the LSP server |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.Util/` | Shared utilities (localization, pattern matching, etc.) |
+| `CosmosDBShell/Azure.Data.Cosmos.Shell.KeyBindings/` | Key binding definitions |
+| `CosmosDBShell/lang/` | Localization files (Fluent `.ftl` format) |
+| `CosmosDBShell.Tests/` | Unit and integration tests |
+| `docs/` | User-facing documentation |
+
+<details>
+<summary><strong>Install from NuGet package artifacts</strong></summary>
 
 When consuming build artifacts (`*.nupkg`) from this repo, install as a .NET global tool.
 
@@ -46,7 +83,7 @@ When consuming build artifacts (`*.nupkg`) from this repo, install as a .NET glo
 1. Download the base tool package (`CosmosDBShell.<version>.nupkg`) and the package for your runtime to the same local folder.
 2. Install from that folder with `--add-source` using the base package ID `CosmosDBShell`.
 
-### Runtime-specific package files
+#### Runtime-specific package files
 
 - Linux x64: `CosmosDBShell.linux-x64.<version>.nupkg`
 - Linux ARM64: `CosmosDBShell.linux-arm64.<version>.nupkg`
@@ -55,7 +92,7 @@ When consuming build artifacts (`*.nupkg`) from this repo, install as a .NET glo
 - Windows x64: `CosmosDBShell.win-x64.<version>.nupkg`
 - Windows ARM64: `CosmosDBShell.win-arm64.<version>.nupkg`
 
-### Install command
+#### Install command
 
 After placing the base package and the matching runtime package in the same folder, install with the base package ID:
 
@@ -69,7 +106,7 @@ Windows PowerShell example:
 dotnet tool install --global CosmosDBShell --add-source C:\path\to\nupkgs --version <version>
 ```
 
-### Use, update, uninstall
+#### Use, update, uninstall
 
 Run the tool:
 
@@ -85,17 +122,12 @@ dotnet tool update --global <package-id> --add-source /path/to/nupkgs --version 
 
 Uninstall:
 
-List the installed global tools first so you can identify the exact package ID:
-
 ```bash
 dotnet tool list --global
-```
-
-Then uninstall the tool by its package ID:
-
-```bash
 dotnet tool uninstall --global CosmosDBShell
 ```
+
+</details>
 
 ## Documentation
 
@@ -131,6 +163,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
 | `--diagnostics [path]` | Write timestamped diagnostic logs to a file, or to a timestamped file in the config directory by default |
+| `--otel [endpoint]` | Enable distributed tracing (sampled W3C `traceparent`); optional OTLP `endpoint`, else `OTEL_EXPORTER_OTLP_ENDPOINT` |
 | `--verbose` | Print full exception details |
 | `--color-system <n>` | Colors: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
 | `--theme <name>` | Color theme profile to apply at startup (`default`, `light`, `dark`, `monochrome`). Falls back to `COSMOSDB_SHELL_THEME`. |
@@ -222,11 +255,10 @@ CS > theme reload                       # rescan the user themes directory
 
 ## How to Contribute
 
-This project welcomes contributions and suggestions. To contribute, see these documents:
+We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for ways to help, project architecture, and PR guidelines.
 
 - [Code of Conduct](./CODE_OF_CONDUCT.md)
 - [Security](./SECURITY.md)
-- [Contributing](./CONTRIBUTING.md)
 
 ## Telemetry
 

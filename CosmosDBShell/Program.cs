@@ -39,6 +39,7 @@ internal class Program
         }
 
         IHost? host = null;
+        TracingBootstrap? tracing = null;
         try
         {
             // --help / --version handled manually so we can render our own
@@ -118,6 +119,31 @@ internal class Program
                 o.DiagnosticsPath = string.IsNullOrWhiteSpace(diagnosticsValue) ? null : diagnosticsValue;
             }
 
+            // --otel supports an optional value: when present without an endpoint,
+            // tracing is still enabled (emitting a sampled traceparent) and the
+            // OTLP endpoint, if any, falls back to the standard environment variable.
+            var otelResult = parseResult.FindResultFor(optionMap.Otel);
+            if (otelResult is not null)
+            {
+                o.EnableTracing = true;
+                var otelValue = parseResult.GetValueForOption(optionMap.Otel);
+                o.OtlpEndpoint = string.IsNullOrWhiteSpace(otelValue)
+                    ? Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT")
+                    : otelValue;
+
+                // Validate the endpoint up front so a malformed --otel value (or
+                // OTEL_EXPORTER_OTLP_ENDPOINT) yields a clean error instead of an
+                // unhandled exception when the exporter is created.
+                if (!string.IsNullOrWhiteSpace(o.OtlpEndpoint)
+                    && !Uri.TryCreate(o.OtlpEndpoint, UriKind.Absolute, out _))
+                {
+                    Environment.ExitCode = 1;
+                    ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                        "otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint));
+                    return;
+                }
+            }
+
             if (o.StartLspServer)
             {
                 // Already handled above, but keep for completeness
@@ -164,6 +190,13 @@ internal class Program
             if (o.EnableDiagnostics)
             {
                 ShellInterpreter.Instance.EnableDiagnostics(o.DiagnosticsPath);
+            }
+
+            // Enable distributed tracing before any CosmosClient is created so the
+            // Azure SDK pipeline emits a sampled W3C traceparent on its requests.
+            if (o.EnableTracing)
+            {
+                tracing = TracingBootstrap.Initialize(o.OtlpEndpoint);
             }
 
             if (o.ConnectionString != null)
@@ -303,6 +336,7 @@ internal class Program
         {
             ShellInterpreter.Instance.Dispose();
             host?.Dispose();
+            tracing?.Dispose();
         }
     }
 
@@ -472,6 +506,11 @@ internal class Program
             Arity = ArgumentArity.ZeroOrOne,
         };
 
+        var otel = new Option<string?>("--otel", MessageService.GetString("help-Otel"))
+        {
+            Arity = ArgumentArity.ZeroOrOne,
+        };
+
         var root = new RootCommand("Cosmos DB Shell")
         {
             colorSystem,
@@ -493,6 +532,7 @@ internal class Program
             verbose,
             theme,
             diagnostics,
+            otel,
         };
 
         var map = new OptionMap(
@@ -514,7 +554,8 @@ internal class Program
             lspStdio,
             verbose,
             theme,
-            diagnostics);
+            diagnostics,
+            otel);
 
         return (root, map);
     }
@@ -541,6 +582,7 @@ internal class Program
             [map.McpPort] = "[<port>]",
             [map.Theme] = "<name>",
             [map.Diagnostics] = "[<path>]",
+            [map.Otel] = "[<endpoint>]",
         };
 
         var rows = new List<(string Label, string? Description)>();
@@ -645,7 +687,8 @@ internal class Program
         Option<bool> LspStdio,
         Option<bool> Verbose,
         Option<string?> Theme,
-        Option<string?> Diagnostics);
+        Option<string?> Diagnostics,
+        Option<string?> Otel);
 
     /// <summary>
     /// Maps the most common <c>System.CommandLine</c> parse error messages
@@ -727,5 +770,9 @@ internal class Program
         public bool EnableDiagnostics { get; set; }
 
         public string? DiagnosticsPath { get; set; }
+
+        public bool EnableTracing { get; set; }
+
+        public string? OtlpEndpoint { get; set; }
     }
 }

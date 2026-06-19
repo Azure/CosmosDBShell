@@ -6,9 +6,63 @@ namespace CosmosShell.Tests.CommandTests;
 
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.States;
+using Azure.Data.Cosmos.Shell.Util;
+using Microsoft.Azure.Cosmos;
 
 public class RmCommandTests
 {
+    private static CosmosClient CreateTestClient()
+    {
+        var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");
+        return new CosmosClient(connectionString);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_NoPatternAndNoPipeInput_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var command = new RmCommand { Pattern = null };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm", TestContext.Current.CancellationToken));
+        Assert.Equal(MessageService.GetString("command-rm-error-no_filter"), ex.Message);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Disconnected_ThrowsNotConnected()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new RmCommand { Pattern = "test-*" };
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm test-*", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ConnectedWithoutDatabaseAndContainer_ThrowsNotInContainer()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ConnectedState(CreateTestClient());
+        var command = new RmCommand { Pattern = "test-*" };
+
+        await Assert.ThrowsAsync<NotInContainerException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm test-*", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_InDatabaseWithoutContainer_ThrowsNotInContainer()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDb", CreateTestClient());
+        var command = new RmCommand { Pattern = "test-*" };
+
+        await Assert.ThrowsAsync<NotInContainerException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm test-*", TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public void TryGetPartitionKeyElements_ReturnsAllHierarchicalValues()
     {

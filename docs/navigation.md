@@ -270,6 +270,7 @@ Start the shell with options to customize behavior:
 | `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations at startup |
 | `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
 | `--diagnostics [path]` | Write timestamped diagnostic logs (commands, timing, errors, connection events) to a file, or to a timestamped file in the config directory by default |
+| `--otel [endpoint]` | Enable distributed tracing so requests carry a sampled W3C `traceparent`. Optionally export spans to an OTLP `endpoint`; falls back to the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable |
 | `--color-system <n>` | Color scheme: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
 | `--clear-history` | Clear command history on start |
 | `--help` | Show usage information |
@@ -283,6 +284,7 @@ Start the shell with options to customize behavior:
 | `COSMOSDB_SHELL_ACCOUNT_KEY` | Account key for authentication |
 | `COSMOSDB_SHELL_FORMAT` | Default output format |
 | `COSMOSDB_SHELL_CSVSEP` | CSV column separator |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Default OTLP endpoint used by `--otel` when no endpoint is supplied |
 
 **Examples:**
 
@@ -307,4 +309,10 @@ cosmosdbshell --diagnostics
 
 # Capture a diagnostic log to a custom file
 cosmosdbshell --diagnostics mylog.log
+
+# Enable distributed tracing (emits a sampled traceparent on Cosmos requests)
+cosmosdbshell --otel
+
+# Enable distributed tracing and export spans to an OTLP collector
+cosmosdbshell --otel http://localhost:4317
 ```

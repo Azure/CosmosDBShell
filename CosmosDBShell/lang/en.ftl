@@ -336,6 +336,50 @@ command-index-error-show_no_args = 'index show' does not take any arguments. Use
 command-index-error-invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-index-error-no_policy = The container has no indexing policy configured.
 
+command-throughput-description = Views or changes the provisioned throughput (RU/s) of a database or container via show, set, manual, and autoscale subcommands.
+command-throughput-description-subcommand = The action to perform: show, set, manual, or autoscale.
+command-throughput-description-ru = The throughput in RU/s to provision (manual RU/s for set/manual, maximum RU/s for autoscale).
+command-throughput-description-database = The database to target, or that contains the target container.
+command-throughput-description-container = The container to read/update the throughput for.
+command-throughput-description-yes = Skip the confirmation prompt before applying a throughput change.
+command-throughput-updated = Throughput updated successfully.
+command-throughput-confirm_summary = About to set { $mode } throughput to { $ru } RU/s on '{ $resource }'. This may affect your bill.
+command-throughput-confirm = Apply this throughput change
+command-throughput-cancelled = Throughput change cancelled.
+command-throughput-label-scope = Scope
+command-throughput-label-resource = Resource
+command-throughput-label-mode = Mode
+command-throughput-label-throughput = Throughput (RU/s)
+command-throughput-label-max = Max throughput (RU/s)
+command-throughput-label-min = Min throughput (RU/s)
+command-throughput-scope-database = Database
+command-throughput-scope-container = Container
+command-throughput-mode-autoscale = Autoscale
+command-throughput-mode-manual = Manual
+command-throughput-mode-none = Not configured
+command-throughput-error-missing_subcommand = Missing subcommand. Use one of: show, set, manual, autoscale.
+command-throughput-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set, manual, autoscale.
+command-throughput-error-missing_ru = No throughput value provided. Specify the RU/s, for example: throughput set 4000.
+command-throughput-error-invalid_ru = Invalid throughput value '{ $ru }'. Provide a positive number of RU/s.
+command-throughput-error-manual_min = Manual throughput must be at least { $min } RU/s. '{ $ru }' is too low.
+command-throughput-error-manual_increment = Manual throughput must be a multiple of { $increment } RU/s. '{ $ru }' is not.
+command-throughput-error-autoscale_min = Autoscale maximum throughput must be at least { $min } RU/s. '{ $ru }' is too low.
+command-throughput-error-autoscale_increment = Autoscale maximum throughput must be a multiple of { $increment } RU/s. '{ $ru }' is not.
+command-throughput-error-show_no_args = 'throughput show' does not take any arguments. Use 'throughput show' to display the current throughput.
+command-throughput-error-not_configured = Resource '{ $resource }' has no provisioned throughput to change. It may be serverless or use shared database throughput.
+command-throughput-error-rbac =
+  You do not have permission to change throughput on the selected account.
+
+  Required action: '{ $permission }'
+  Principal id: '{ $id }'
+
+  Learn more: https://aka.ms/cosmos-native-rbac
+
+command-throughput-error-mode_switch_unsupported =
+  Switching '{ $resource }' to { $mode } throughput is not supported on this connection.
+
+  The Cosmos data-plane SDK can only change the value within the current mode. To switch between manual and autoscale, connect with an Azure AD (token) credential, or use the Azure portal, Azure CLI, or PowerShell.
+
 command-ls-description = List resources in the current context.
 command-ls-description-filter = The filter pattern.
 command-ls-description-max = Maximum number of items returned when listing container items. Defaults to 100 if omitted. Use 0 or a negative value for no limit.
@@ -623,9 +667,11 @@ help-McpPort = Enable MCP HTTP server. Optionally specify a port with --mcp <por
 help-Verbose = Print full exception details instead of only the message.
 help-Theme = Color theme profile to apply at startup. Falls back to the COSMOSDB_SHELL_THEME environment variable.
 help-Diagnostics = Write timestamped diagnostic logs to a file. Optionally specify a path with --diagnostics <path>; defaults to a timestamped file in the shell configuration directory.
+help-Otel = Enable distributed tracing so requests carry a sampled W3C traceparent. Optionally specify an OTLP endpoint with --otel <endpoint>; falls back to the OTEL_EXPORTER_OTLP_ENDPOINT environment variable.
 mcp-error-invalid-port = Error: --mcp port must be greater than 0.
 diagnostics-enabled = Writing diagnostic log to { $path }.
 diagnostics-error-create = Error: could not create diagnostic log at '{ $path }': { $message }
+otel-error-invalid-endpoint = Error: --otel endpoint '{ $endpoint }' is not a valid absolute URI.
 
 warning-unknown-theme = Unknown theme '{ $name }'. Available themes: { $themes }. Falling back to default.
 
