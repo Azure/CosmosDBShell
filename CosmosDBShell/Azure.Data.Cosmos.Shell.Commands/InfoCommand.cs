@@ -17,7 +17,6 @@ using Spectre.Console;
 
 [CosmosCommand("info")]
 [CosmosExample("info", Description = "Display configuration and usage statistics for the current container, database, or account")]
-[CosmosExample("info --format=json", Description = "Display info in JSON format")]
 [CosmosExample("info --database=MyDB --container=Products", Description = "Display info for a specific database and container")]
 [CosmosExample("info --partitions", Description = "Add the per-physical-partition document distribution for a container")]
 [CosmosExample("info --detailed", Description = "Add a storage breakdown and top partition keys (performs a full scan)")]

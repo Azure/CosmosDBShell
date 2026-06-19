@@ -56,7 +56,7 @@ public class ErrorHandlingTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task SettingsWithoutConnection_ReturnsError()
+    public async Task InfoWithoutConnection_ReturnsError()
     {
         var state = await RunScriptAsync("info");
 

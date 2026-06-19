@@ -113,7 +113,7 @@ public class AdditionalCommandsTests : EmulatorFixtureTestBase
     }
 
     [Fact]
-    public async Task Info_AtDatabaseLevel_ReturnsAccountOverview()
+    public async Task Info_AtDatabaseLevel_ReturnsDatabaseInfo()
     {
         var state = await ExecuteAsync("info");
         Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
