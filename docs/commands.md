@@ -697,7 +697,7 @@ Options:
 
 |Subcommand|Behavior|
 |-|-|
-|`list`|Returns the user-defined function ids in the current container.|
+|`list`|Lists the user-defined functions in the current container. The interactive table shows id and body size; the structured JSON result contains `id`, `etag`, and `bodyLength` for each.|
 |`show <name>`|Returns the body of a user-defined function.|
 |`exists <name>`|Returns a boolean indicating whether a user-defined function exists. The boolean result can be used directly in `if` and `while` conditions.|
 |`create <name> <file>`|Creates a user-defined function from a JavaScript file. The body can also be piped in. Pass `--force` to replace an existing one.|
@@ -747,7 +747,7 @@ Options:
 
 |Subcommand|Behavior|
 |-|-|
-|`list`|Returns the trigger ids in the current container with their type and operation.|
+|`list`|Lists the triggers in the current container. The interactive table shows id, type, operation, and body size; the structured JSON result contains `id`, `triggerType`, `triggerOperation`, `etag`, and `bodyLength` for each.|
 |`show <name>`|Returns the body of a trigger.|
 |`exists <name>`|Returns a boolean indicating whether a trigger exists. The boolean result can be used directly in `if` and `while` conditions.|
 |`create <name> <file>`|Creates a trigger from a JavaScript file. The body can also be piped in. `--type` selects `pre` or `post`, `--operation` selects the operation (defaults to `all`), and `--force` replaces an existing one.|

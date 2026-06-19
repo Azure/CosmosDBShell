@@ -62,6 +62,32 @@ public class ServerSideProgrammingTests : ConnectedEmulatorTestBase
     }
 
     [Fact]
+    public async Task Sproc_Exec_ReturnsResultBody()
+    {
+        var (dbName, _) = await CreateContainerAsync();
+
+        var bodyFile = WriteTempScript(
+            "sproc",
+            "function echo(input) { getContext().getResponse().setBody(input); }");
+
+        try
+        {
+            var create = await ExecuteAsync($"sproc create echoProc \"{ShellPath(bodyFile)}\" --database {dbName} --container scripts");
+            Assert.False(create.IsError, FormatError(create));
+
+            var exec = await ExecuteAsync($"sproc exec echoProc '[\"hello\"]' --partition-key pk1 --database {dbName} --container scripts");
+            Assert.False(exec.IsError, FormatError(exec));
+
+            var result = IntegrationTestBase.GetJson(exec);
+            Assert.Equal("hello", result.GetString());
+        }
+        finally
+        {
+            File.Delete(bodyFile);
+        }
+    }
+
+    [Fact]
     public async Task Udf_CreateListShowExists_AndDelete()
     {
         var (dbName, container) = await CreateContainerAsync();
