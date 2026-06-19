@@ -4,7 +4,6 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
-using System.Globalization;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
@@ -68,8 +67,8 @@ internal class PatchCommand : CosmosCommand
             throw new CommandException("patch", MessageService.GetString("command-patch-error-missing_op"));
         }
 
-        var op = NormalizeOperation(this.Op);
-        if (!IsSupportedOperation(op))
+        var op = PatchOperationFactory.Normalize(this.Op);
+        if (!PatchOperationFactory.IsSupported(op))
         {
             throw new CommandException(
                 "patch",
@@ -96,7 +95,7 @@ internal class PatchCommand : CosmosCommand
             "patch",
             token);
 
-        var operation = BuildPatchOperation(op, this.Path!, this.Value);
+        var operation = PatchOperationFactory.Build("patch", op, this.Path!, this.Value);
 
         var requestOptions = string.IsNullOrEmpty(this.ETag)
             ? null
@@ -158,133 +157,5 @@ internal class PatchCommand : CosmosCommand
                     CommandException.GetDisplayMessage(ce)),
                 ce);
         }
-    }
-
-    private static PatchOperation BuildPatchOperation(string opRaw, string path, string? value)
-    {
-        var op = NormalizeOperation(opRaw);
-
-        switch (op)
-        {
-            case "remove":
-                if (value is not null)
-                {
-                    throw new CommandException(
-                        "patch",
-                        MessageService.GetString("command-patch-error-unexpected_value_for_remove"));
-                }
-
-                return PatchOperation.Remove(path);
-
-            case "add":
-                return PatchOperation.Add(path, ParseValue(op, value));
-
-            case "set":
-                return PatchOperation.Set(path, ParseValue(op, value));
-
-            case "replace":
-                return PatchOperation.Replace(path, ParseValue(op, value));
-
-            case "incr":
-            case "increment":
-                return BuildIncrementOperation(path, value);
-
-            default:
-                throw new CommandException(
-                    "patch",
-                    MessageService.GetString(
-                        "command-patch-error-unsupported_op",
-                        new Dictionary<string, object> { { "op", op } }));
-        }
-    }
-
-    private static string NormalizeOperation(string op) => op.Trim().ToLowerInvariant();
-
-    private static bool IsSupportedOperation(string op)
-    {
-        return op is "set" or "add" or "replace" or "remove" or "incr" or "increment";
-    }
-
-    private static PatchOperation BuildIncrementOperation(string path, string? rawValue)
-    {
-        if (rawValue == null)
-        {
-            throw new CommandException(
-                "patch",
-                MessageService.GetString(
-                    "command-patch-error-missing_value_for_op",
-                    new Dictionary<string, object> { { "op", "incr" } }));
-        }
-
-        var trimmed = rawValue.Trim();
-        if (long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
-        {
-            return PatchOperation.Increment(path, intValue);
-        }
-
-        if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue))
-        {
-            return PatchOperation.Increment(path, doubleValue);
-        }
-
-        throw new CommandException(
-            "patch",
-            MessageService.GetString("command-patch-error-increment_number"));
-    }
-
-    private static object? ParseValue(string op, string? rawValue)
-    {
-        if (rawValue == null)
-        {
-            throw new CommandException(
-                "patch",
-                MessageService.GetString(
-                    "command-patch-error-missing_value_for_op",
-                    new Dictionary<string, object> { { "op", op } }));
-        }
-
-        var trimmed = rawValue.Trim();
-        if (LooksLikeJsonLiteral(trimmed))
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(trimmed);
-                return JsonSerializer.Deserialize<object?>(doc.RootElement.GetRawText());
-            }
-            catch (JsonException)
-            {
-                // Fall through and treat as plain string.
-            }
-        }
-
-        return rawValue;
-    }
-
-    private static bool LooksLikeJsonLiteral(string trimmed)
-    {
-        if (trimmed.Length == 0)
-        {
-            return false;
-        }
-
-        var first = trimmed[0];
-        if (first == '{' || first == '[' || first == '"')
-        {
-            return true;
-        }
-
-        if (first == '-' || char.IsDigit(first))
-        {
-            return true;
-        }
-
-        if (string.Equals(trimmed, "true", StringComparison.Ordinal)
-            || string.Equals(trimmed, "false", StringComparison.Ordinal)
-            || string.Equals(trimmed, "null", StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        return false;
     }
 }
