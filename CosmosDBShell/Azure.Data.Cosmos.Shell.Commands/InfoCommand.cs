@@ -339,6 +339,12 @@ internal class InfoCommand : CosmosCommand
 
                 groups.Add((string.Join(" / ", keyParts), count));
             }
+
+            // Trim to the top N as results stream in so memory stays bounded for high-cardinality partition keys.
+            if (groups.Count >= TopPartitionKeyLimit * 4)
+            {
+                groups = groups.OrderByDescending(g => g.Count).Take(TopPartitionKeyLimit).ToList();
+            }
         }
 
         var table = new Table();
@@ -656,12 +662,15 @@ internal class InfoCommand : CosmosCommand
             }
 
             rows.Add((name, usage.DocumentCount, usage.TotalSizeKb));
-            perContainer.Add(new Dictionary<string, object?>
+            if (this.Detailed)
             {
-                ["id"] = name,
-                ["documentCount"] = usage.DocumentCount,
-                ["totalSizeKb"] = usage.TotalSizeKb,
-            });
+                perContainer.Add(new Dictionary<string, object?>
+                {
+                    ["id"] = name,
+                    ["documentCount"] = usage.DocumentCount,
+                    ["totalSizeKb"] = usage.TotalSizeKb,
+                });
+            }
         }
 
         var mcpTable = new Dictionary<string, object?>
@@ -703,7 +712,11 @@ internal class InfoCommand : CosmosCommand
             AnsiConsole.Write(containerTable);
         }
 
-        mcpTable["containers"] = perContainer;
+        if (this.Detailed)
+        {
+            mcpTable["containers"] = perContainer;
+        }
+
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
         commandState.IsPrinted = true;
         return commandState;
