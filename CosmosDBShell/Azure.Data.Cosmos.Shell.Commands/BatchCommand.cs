@@ -20,6 +20,7 @@ using global::Azure.Data.Cosmos.Shell.States;
 [CosmosExample("batch add '{\"op\":\"patch\",\"id\":\"3\",\"operations\":[{\"op\":\"set\",\"path\":\"/status\",\"value\":\"done\"}]}'", Description = "Queue a patch operation onto the active batch")]
 [CosmosExample("batch execute", Description = "Execute the queued operations atomically")]
 [CosmosExample("batch status", Description = "Show the active batch and its queued operations")]
+[CosmosExample("batch show", Description = "Print the queued operations as a JSON array")]
 [CosmosExample("batch cancel", Description = "Discard the active batch")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
@@ -29,7 +30,7 @@ Executes multiple write operations against a single partition key as one atomic 
 
 Subcommands:
 - 'run <json> --partition-key <pk>' parses a JSON array of operations and executes them atomically in one call.
-- 'begin --partition-key <pk>' starts a stateful batch; 'add <json>' queues operations; 'execute' commits them; 'cancel' discards them; 'status' reports the pending batch.
+- 'begin --partition-key <pk>' starts a stateful batch; 'add <json>' queues operations; 'execute' commits them; 'cancel' discards them; 'status' reports the pending batch; 'show' prints the queued operations as a JSON array.
 
 Each operation is a JSON object:
 - {""op"":""create"",""item"":{...}}
@@ -71,6 +72,7 @@ internal class BatchCommand : CosmosCommand
             "execute" or "exec" or "commit" => await this.ExecuteBatchAsync(shell, token),
             "cancel" or "abort" => Cancel(shell),
             "status" => Status(shell),
+            "show" => Show(shell),
             "" => throw new CommandException("batch", MessageService.GetString("command-batch-error-missing_subcommand")),
             _ => throw new CommandException(
                 "batch",
@@ -138,6 +140,21 @@ internal class BatchCommand : CosmosCommand
         }
 
         using var document = JsonDocument.Parse(root.ToJsonString());
+        return new CommandState { Result = new ShellJson(document.RootElement.Clone()) };
+    }
+
+    private static CommandState Show(ShellInterpreter shell)
+    {
+        var operations = new JsonArray();
+        if (shell.CurrentBatch is { } batch)
+        {
+            foreach (var operation in batch.Operations)
+            {
+                operations.Add(JsonNode.Parse(operation.RawOperation.GetRawText()));
+            }
+        }
+
+        using var document = JsonDocument.Parse(operations.ToJsonString());
         return new CommandState { Result = new ShellJson(document.RootElement.Clone()) };
     }
 

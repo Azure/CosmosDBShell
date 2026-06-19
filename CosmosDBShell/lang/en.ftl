@@ -241,8 +241,8 @@ command-patch-error-failed = Failed to patch item: { $status } - { $message }
 command-patch-error-not_found = Item '{ $id }' not found.
 command-patch-error-etag_mismatch = Item '{ $id }' was modified since it was last read (ETag mismatch).
 
-command-batch-description = Executes multiple write operations against a single partition key as one atomic transactional batch, either in a single call (run) or as a stateful batch (begin, add, execute, cancel, status).
-command-batch-description-subcommand = The action to perform: run, begin, add, execute, cancel, or status.
+command-batch-description = Executes multiple write operations against a single partition key as one atomic transactional batch, either in a single call (run) or as a stateful batch (begin, add, execute, cancel, status, show).
+command-batch-description-subcommand = The action to perform: run, begin, add, execute, cancel, status, or show.
 command-batch-description-data = The batch operations as a JSON array, or a single operation as a JSON object.
 command-batch-description-partition-key = The partition key shared by every operation in the batch.
 command-batch-description-database = The database containing the target container.
@@ -260,8 +260,8 @@ command-batch-cancelled = Discarded the pending batch ({ $count } { $count ->
     [one] operation
     *[other] operations
 }).
-command-batch-error-missing_subcommand = Missing subcommand. Use one of: run, begin, add, execute, cancel, status.
-command-batch-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: run, begin, add, execute, cancel, status.
+command-batch-error-missing_subcommand = Missing subcommand. Use one of: run, begin, add, execute, cancel, status, show.
+command-batch-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: run, begin, add, execute, cancel, status, show.
 command-batch-error-missing_pk = A partition key is required. Specify it with --partition-key.
 command-batch-error-invalid_pk_json = Partition key must be a JSON scalar value or a JSON array of values for hierarchical partition keys.
 command-batch-error-missing_data = Batch operations are required. Provide a JSON array of operations.

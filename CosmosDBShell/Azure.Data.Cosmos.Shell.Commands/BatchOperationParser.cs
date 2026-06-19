@@ -65,14 +65,15 @@ internal static class BatchOperationParser
         }
 
         var op = opElement.GetString()!.Trim().ToLowerInvariant();
+        var raw = element.Clone();
 
         switch (op)
         {
             case "create":
-                return new BatchOperationSpec { Kind = BatchOperationKind.Create, Item = RequireItem(commandName, element, op), Id = ExtractItemId(element) };
+                return new BatchOperationSpec { Kind = BatchOperationKind.Create, Item = RequireItem(commandName, element, op), Id = ExtractItemId(element), RawOperation = raw };
 
             case "upsert":
-                return new BatchOperationSpec { Kind = BatchOperationKind.Upsert, Item = RequireItem(commandName, element, op), Id = ExtractItemId(element) };
+                return new BatchOperationSpec { Kind = BatchOperationKind.Upsert, Item = RequireItem(commandName, element, op), Id = ExtractItemId(element), RawOperation = raw };
 
             case "replace":
                 var item = RequireItem(commandName, element, op);
@@ -82,7 +83,7 @@ internal static class BatchOperationParser
                     throw new CommandException(commandName, MessageService.GetArgsString("command-batch-error-missing_id", "op", op));
                 }
 
-                return new BatchOperationSpec { Kind = BatchOperationKind.Replace, Item = item, Id = replaceId };
+                return new BatchOperationSpec { Kind = BatchOperationKind.Replace, Item = item, Id = replaceId, RawOperation = raw };
 
             case "delete":
                 var deleteId = ExtractExplicitId(element);
@@ -91,7 +92,7 @@ internal static class BatchOperationParser
                     throw new CommandException(commandName, MessageService.GetArgsString("command-batch-error-missing_id", "op", op));
                 }
 
-                return new BatchOperationSpec { Kind = BatchOperationKind.Delete, Id = deleteId };
+                return new BatchOperationSpec { Kind = BatchOperationKind.Delete, Id = deleteId, RawOperation = raw };
 
             case "patch":
                 var patchId = ExtractExplicitId(element);
@@ -100,7 +101,7 @@ internal static class BatchOperationParser
                     throw new CommandException(commandName, MessageService.GetArgsString("command-batch-error-missing_id", "op", op));
                 }
 
-                return new BatchOperationSpec { Kind = BatchOperationKind.Patch, Id = patchId, PatchOperations = ParsePatchOperations(commandName, element) };
+                return new BatchOperationSpec { Kind = BatchOperationKind.Patch, Id = patchId, PatchOperations = ParsePatchOperations(commandName, element), RawOperation = raw };
 
             default:
                 throw new CommandException(

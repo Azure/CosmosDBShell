@@ -125,6 +125,29 @@ public class BatchOperationTests : EmulatorFixtureTestBase
     }
 
     [Fact]
+    public async Task StatefulBatch_Show_PrintsQueuedOperationsAsJsonArray()
+    {
+        await CreateBatchContainerAsync();
+        const string pk = "tenant-show";
+
+        await ExecuteAsync($"batch begin --partition-key {pk}");
+        await ExecuteAsync($"batch add '{{\"op\":\"create\",\"item\":{{\"id\":\"sh1\",\"pk\":\"{pk}\"}}}}'");
+        await ExecuteAsync($"batch add '{{\"op\":\"delete\",\"id\":\"sh2\"}}'");
+
+        var output = await ExecuteWithOutputAsync("batch show");
+        var array = JsonDocument.Parse(output).RootElement;
+
+        Assert.Equal(JsonValueKind.Array, array.ValueKind);
+        Assert.Equal(2, array.GetArrayLength());
+        Assert.Equal("create", array[0].GetProperty("op").GetString());
+        Assert.Equal("sh1", array[0].GetProperty("item").GetProperty("id").GetString());
+        Assert.Equal("delete", array[1].GetProperty("op").GetString());
+        Assert.Equal("sh2", array[1].GetProperty("id").GetString());
+
+        await ExecuteAsync("batch cancel");
+    }
+
+    [Fact]
     public async Task BatchAdd_WithoutBegin_ReturnsError()
     {
         await CreateBatchContainerAsync();

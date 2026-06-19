@@ -24,4 +24,6 @@ internal sealed class BatchOperationSpec
     public JsonElement? Item { get; init; }
 
     public IReadOnlyList<PatchOperation>? PatchOperations { get; init; }
+
+    public JsonElement RawOperation { get; init; }
 }

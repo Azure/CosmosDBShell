@@ -301,7 +301,7 @@ Execute multiple write operations against a single partition key as one atomic C
 Usage: batch subcommand [data] --partition-key <ARG> [-database <ARG>] [-container <ARG>]
 
 Arguments:
-    subcommand  The action to perform: run, begin, add, execute, cancel, or status
+    subcommand  The action to perform: run, begin, add, execute, cancel, status, or show
     [data]      Batch operations as a JSON array, or a single operation as a JSON object (Optional)
 
 Options:
@@ -323,6 +323,7 @@ Options:
 |`execute`|Commit the queued operations atomically and clear the active batch.|
 |`cancel`|Discard the active batch without executing it.|
 |`status`|Report the active batch and its queued operations as JSON.|
+|`show`|Print the queued operations as a JSON array (the same shape accepted by `run`/`add`).|
 
 When a stateful batch is active the prompt shows a `[batch:N]` indicator, where `N` is the number of queued operations.
 
@@ -369,6 +370,7 @@ batch begin --partition-key a
 batch add '{"op":"upsert","item":{"id":"3","pk":"a"}}'
 batch add '{"op":"patch","id":"3","operations":[{"op":"set","path":"/status","value":"done"}]}'
 batch status
+batch show       # prints the queued operations as a JSON array
 batch execute
 ```
 

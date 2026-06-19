@@ -170,4 +170,17 @@ public class BatchCommandTests
         // The parser disposes the source JsonDocument internally; the cloned item must remain valid.
         Assert.Equal("Ada", specs[0].Item!.Value.GetProperty("name").GetString());
     }
+
+    [Fact]
+    public void Parse_RawOperation_PreservesOriginalOperationJson()
+    {
+        var specs = BatchOperationParser.Parse(
+            "batch",
+            "[{\"op\":\"create\",\"item\":{\"id\":\"1\"}},{\"op\":\"patch\",\"id\":\"1\",\"operations\":[{\"op\":\"set\",\"path\":\"/n\",\"value\":1}]}]");
+
+        Assert.Equal("create", specs[0].RawOperation.GetProperty("op").GetString());
+        Assert.Equal("1", specs[0].RawOperation.GetProperty("item").GetProperty("id").GetString());
+        Assert.Equal("patch", specs[1].RawOperation.GetProperty("op").GetString());
+        Assert.Equal(1, specs[1].RawOperation.GetProperty("operations").GetArrayLength());
+    }
 }
