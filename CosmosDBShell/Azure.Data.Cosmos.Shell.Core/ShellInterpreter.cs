@@ -283,6 +283,7 @@ public partial class ShellInterpreter : IDisposable
         var stopwatch = diagnostics is null ? null : System.Diagnostics.Stopwatch.StartNew();
         diagnostics?.LogCommand(command);
         CommandState? result = null;
+        var wasCancelled = false;
 
         try
         {
@@ -292,6 +293,7 @@ public partial class ShellInterpreter : IDisposable
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
+                wasCancelled = true;
                 result = new CommandState();
                 return result;
             }
@@ -312,6 +314,7 @@ public partial class ShellInterpreter : IDisposable
 
             if (token.IsCancellationRequested)
             {
+                wasCancelled = true;
                 result = state;
                 return result;
             }
@@ -336,7 +339,7 @@ public partial class ShellInterpreter : IDisposable
             if (diagnostics is not null && stopwatch is not null)
             {
                 stopwatch.Stop();
-                if (token.IsCancellationRequested)
+                if (wasCancelled)
                 {
                     diagnostics.LogCancelled(stopwatch.Elapsed.TotalMilliseconds, command);
                 }
@@ -1163,7 +1166,7 @@ public partial class ShellInterpreter : IDisposable
         }
 
         var resolvedPath = string.IsNullOrWhiteSpace(path)
-            ? Path.Combine(this.cfgPath, $"diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.log")
+            ? Path.Combine(this.cfgPath, $"diagnostics-{DateTime.Now:yyyyMMdd-HHmmss-fff}.log")
             : Path.GetFullPath(path);
 
         try
