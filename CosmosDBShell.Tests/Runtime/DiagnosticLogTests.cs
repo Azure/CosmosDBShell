@@ -112,6 +112,36 @@ public class DiagnosticLogTests : IDisposable
     }
 
     [Fact]
+    public void LogParserErrors_WritesErrorMessages()
+    {
+        using (var log = DiagnosticLog.Create(this.path))
+        {
+            var errors = new[]
+            {
+                new Azure.Data.Cosmos.Shell.Parser.ParseError(0, 1, "Unexpected token", Azure.Data.Cosmos.Shell.Parser.ErrorLevel.Error),
+                new Azure.Data.Cosmos.Shell.Parser.ParseError(5, 1, "Missing argument", Azure.Data.Cosmos.Shell.Parser.ErrorLevel.Warning),
+            };
+
+            log.LogParserErrors("dir |", errors);
+        }
+
+        var line = LastEntry();
+        Assert.Contains("[ERROR   ] dir | -> error: Unexpected token; warning: Missing argument", line);
+    }
+
+    [Fact]
+    public void LogParserErrors_NoErrors_WritesNothing()
+    {
+        using (var log = DiagnosticLog.Create(this.path))
+        {
+            log.LogParserErrors("dir", Array.Empty<Azure.Data.Cosmos.Shell.Parser.ParseError>());
+        }
+
+        var lines = File.ReadAllLines(this.path);
+        Assert.DoesNotContain(lines, l => l.Contains("[ERROR", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void LogCommand_FlattensMultiLineCommand()
     {
         using (var log = DiagnosticLog.Create(this.path))

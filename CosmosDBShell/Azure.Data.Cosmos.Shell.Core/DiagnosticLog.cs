@@ -6,6 +6,7 @@ namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Azure.Data.Cosmos.Shell.Parser;
 using Microsoft.Azure.Cosmos;
 
 /// <summary>
@@ -128,6 +129,32 @@ internal sealed class DiagnosticLog : IDisposable
     public void LogError(string command, Exception exception)
     {
         this.WriteLine("ERROR", $"{this.Flatten(command)} -> {exception.GetType().Name}: {this.Flatten(exception.Message)}");
+    }
+
+    /// <summary>
+    /// Records the parser errors that prevented a command from executing.
+    /// </summary>
+    /// <param name="command">The command text.</param>
+    /// <param name="errors">The parser errors to record.</param>
+    public void LogParserErrors(string command, IEnumerable<ParseError> errors)
+    {
+        if (errors is null)
+        {
+            return;
+        }
+
+        var detail = string.Join(
+            "; ",
+            errors
+                .Where(static error => error is not null)
+                .Select(static error => $"{(error.ErrorLevel == ErrorLevel.Warning ? "warning" : "error")}: {error.Message}"));
+
+        if (string.IsNullOrEmpty(detail))
+        {
+            return;
+        }
+
+        this.WriteLine("ERROR", $"{this.Flatten(command)} -> {this.Flatten(detail)}");
     }
 
     /// <summary>

@@ -409,9 +409,16 @@ public partial class ShellInterpreter : IDisposable
                 else
                 {
                     var succeeded = !(result?.IsError ?? true);
-                    if (!succeeded && result is ErrorCommandState errorState)
+                    if (!succeeded)
                     {
-                        diagnostics.LogError(command, errorState.Exception);
+                        if (result is ErrorCommandState errorState)
+                        {
+                            diagnostics.LogError(command, errorState.Exception);
+                        }
+                        else if (result is ParserErrorCommandState parserErrorResult)
+                        {
+                            diagnostics.LogParserErrors(command, parserErrorResult.Errors);
+                        }
                     }
 
                     diagnostics.LogResult(succeeded, stopwatch.Elapsed.TotalMilliseconds, command);
