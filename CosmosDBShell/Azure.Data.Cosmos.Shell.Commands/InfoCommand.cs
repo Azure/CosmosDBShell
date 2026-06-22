@@ -681,7 +681,11 @@ internal class InfoCommand : CosmosCommand
         var usage = await ReadContainerUsageAsync(container, token);
         mcpTable["documentCount"] = usage.DocumentCount;
         mcpTable["dataSizeKb"] = usage.DataSizeKb;
-        mcpTable["indexSizeKb"] = usage.IndexSizeKb;
+        if (this.Detailed)
+        {
+            mcpTable["indexSizeKb"] = usage.IndexSizeKb;
+        }
+
         mcpTable["totalSizeKb"] = usage.TotalSizeKb;
 
         AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-usage-heading")));
