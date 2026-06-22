@@ -1331,6 +1331,17 @@ public partial class ShellInterpreter : IDisposable
             else
             {
                 output = state.Result?.ConvertShellObject(Parser.DataType.Text) as string;
+
+                // When a text result carries a highlighter (e.g. script bodies), apply it
+                // when writing to the terminal. Redirection and piping still receive plain
+                // text so downstream tooling and tests are unaffected.
+                if (output != null && string.IsNullOrEmpty(this.StdOutRedirect)
+                    && state.Result is ShellText { Highlighter: { } highlighter })
+                {
+                    AnsiConsole.MarkupLine(highlighter(output));
+                    state.Result = null;
+                    return state;
+                }
             }
 
             if (output != null)

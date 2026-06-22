@@ -237,7 +237,7 @@ internal class TriggerCommand : CosmosCommand
         try
         {
             var response = await container.Scripts.ReadTriggerAsync(name, cancellationToken: token);
-            commandState.Result = new ShellText(response.Resource.Body);
+            commandState.Result = new ShellText(response.Resource.Body) { Highlighter = JavaScriptOutputHighlighter.BuildMarkup };
             return commandState;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
