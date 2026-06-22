@@ -60,6 +60,8 @@ When `ls` is listing items from a container, it defaults to `100` items if `--ma
 
 `ls` always prints a summary line for how many results it found. When listing databases it reports the database count (or `No databases found.`), when listing containers it reports the container count for the database (or `No containers found in database ...`), and when listing items it reports the item count. The summary makes it clear when a scope is genuinely empty versus when the listing simply returned nothing.
 
+When listing databases or containers over an Azure Resource Manager (ARM) connection returns nothing at all, `ls` also prints a warning hint pointing at the most common non-empty causes (the connected identity may lack control-plane read access, or you may be connected to the wrong account). This avoids a silent empty result being mistaken for an empty account or database. Data-plane connections do not show this hint, since an empty result there is genuinely empty.
+
 ### cd
 
 Change scope to database or container.

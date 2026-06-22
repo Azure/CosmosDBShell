@@ -358,6 +358,8 @@ command-ls-found_containers =
         [one] Found { $display } container in database { $database }.
        *[other] Found { $display } containers in database { $database }.
     }
+command-ls-empty_databases_hint = No databases were returned. If you expected some, the connected identity may lack account-level read access, or you may be connected to a different account. Run 'connect' to verify the target account.
+command-ls-empty_containers_hint = No containers were returned for database { $database }. If you expected some, the connected identity may lack read access to this database, or you may be targeting the wrong account.
 command-ls-error-request_failed = List request failed with status code { $statusCode } ({ $status }).
 command-ls-error-no_content_stream = The list request completed, but Cosmos DB returned no response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
 command-ls-error-empty_content = The list request completed, but Cosmos DB returned an empty response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
