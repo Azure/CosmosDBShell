@@ -212,6 +212,7 @@ internal class InfoCommand : CosmosCommand
     {
         int? min = null;
         int? max = null;
+        bool serverless = false;
         try
         {
             var throughput = await database.ReadThroughputAsync(new RequestOptions(), token);
@@ -222,10 +223,19 @@ internal class InfoCommand : CosmosCommand
         {
             // Database has no shared throughput; containers provide their own.
         }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest && ThroughputErrors.IsServerlessThroughputError(ex.Message))
+        {
+            serverless = true;
+        }
 
         AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-throughput-heading")));
 
-        if (min.HasValue || max.HasValue)
+        if (serverless)
+        {
+            AnsiConsole.Markup("\t");
+            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-scale-serverless")));
+        }
+        else if (min.HasValue || max.HasValue)
         {
             var table = new Table();
             table.AddColumns(string.Empty, string.Empty);
@@ -504,6 +514,9 @@ internal class InfoCommand : CosmosCommand
                 break;
             case ThroughputAvailability.NotConfigured:
                 AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
+                break;
+            case ThroughputAvailability.Serverless:
+                AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-scale-serverless")));
                 break;
             default:
                 if (TryGetPrincipalIdFromRbacMessage(view.ThroughputErrorMessage, out var rbacId, out var rbacRequest, out var rbacPermission))

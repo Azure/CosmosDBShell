@@ -122,6 +122,10 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
         {
             throughputAvailability = ThroughputAvailability.NotConfigured;
         }
+        catch (RequestFailedException ex) when (ex.Status == (int)HttpStatusCode.BadRequest && ThroughputErrors.IsServerlessThroughputError(ex.Message))
+        {
+            throughputAvailability = ThroughputAvailability.Serverless;
+        }
         catch (Exception ex)
         {
             throughputAvailability = ThroughputAvailability.Unavailable;

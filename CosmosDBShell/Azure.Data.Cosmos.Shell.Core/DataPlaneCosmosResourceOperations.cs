@@ -153,6 +153,10 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         {
             dpAvailability = ThroughputAvailability.NotConfigured;
         }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.BadRequest && ThroughputErrors.IsServerlessThroughputError(ex.Message))
+        {
+            dpAvailability = ThroughputAvailability.Serverless;
+        }
         catch (Exception ex)
         {
             dpAvailability = ThroughputAvailability.Unavailable;

@@ -790,6 +790,10 @@ count, total storage, and shared throughput. When neither is in scope (the
 account root) it reports account metadata: read/write regions and the database
 count.
 
+On serverless accounts, throughput/offer settings are not available, so the
+scale section reports that throughput settings are not available for serverless
+accounts instead of failing.
+
 ```text
 Usage: info [--partitions] [--detailed] [--database=<name>] [--container=<name>]
 

@@ -531,6 +531,7 @@ command-info-description = Shows configuration and usage statistics for the curr
 command-info-description-format = Output format (json, table)
 command-settings-scale-heading = Scale
 command-settings-scale-usage = Based on usage, your container throughput will scale from { $min } RU/s (10% of max RU/s) - { $max } RU/s
+command-settings-scale-serverless = Throughput settings are not available for serverless accounts.
 command-settings-title = Settings
 command-settings-na = N/A
 command-settings-ttl-label = Time to Live

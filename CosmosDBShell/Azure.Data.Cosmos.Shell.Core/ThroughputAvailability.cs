@@ -9,4 +9,5 @@ internal enum ThroughputAvailability
     Available,
     NotConfigured,
     Unavailable,
+    Serverless,
 }
