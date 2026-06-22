@@ -781,11 +781,14 @@ Show configuration and usage statistics for the current container, database, or
 account, depending on what is in scope.
 
 When a container is in scope it reports the partition key, throughput (min/max
-RU/s), analytical TTL, geospatial and full-text policies, plus the document
-count and data/total storage size. When only a database is in scope it reports
-the container count, aggregate document count, total storage, and shared
-throughput. When neither is in scope (the account root) it reports account
-metadata: read/write regions and the database count.
+RU/s), analytical TTL, geospatial and full-text policies, a compact indexing
+policy summary (indexing mode, automatic flag, and included/excluded path counts
+plus any composite, spatial, or vector index counts), plus the document count and
+data/total storage size. Use `index show` for the full indexing policy JSON. When
+only a database is in scope it reports the container count, aggregate document
+count, total storage, and shared throughput. When neither is in scope (the
+account root) it reports account metadata: read/write regions and the database
+count.
 
 ```text
 Usage: info [--partitions] [--detailed] [--database=<name>] [--container=<name>]

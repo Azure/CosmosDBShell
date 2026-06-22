@@ -599,6 +599,70 @@ internal class InfoCommand : CosmosCommand
             AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
         }
 
+        // Indexing Policy section - compact summary; use 'index show' for the full policy
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-indexing-title")));
+
+        if (view.IndexingPolicy is { } indexing)
+        {
+            var indexingTable = new Table();
+            indexingTable.AddColumns(string.Empty, string.Empty);
+
+            indexingTable.AddRow(
+                MessageService.GetString("command-settings-indexing-mode-label"),
+                Theme.FormatTableValue(indexing.IndexingMode));
+            indexingTable.AddRow(
+                MessageService.GetString("command-settings-indexing-automatic-label"),
+                Theme.FormatTableValue(indexing.Automatic.ToString(CultureInfo.InvariantCulture)));
+            indexingTable.AddRow(
+                MessageService.GetString("command-settings-indexing-paths-label"),
+                Theme.FormatTableValue(MessageService.GetArgsString(
+                    "command-settings-indexing-paths-value",
+                    "included",
+                    indexing.IncludedPathCount,
+                    "excluded",
+                    indexing.ExcludedPathCount)));
+
+            if (indexing.CompositeIndexCount > 0)
+            {
+                indexingTable.AddRow(
+                    MessageService.GetString("command-settings-indexing-composite-label"),
+                    Theme.FormatTableValue(indexing.CompositeIndexCount.ToString(CultureInfo.InvariantCulture)));
+            }
+
+            if (indexing.SpatialIndexCount > 0)
+            {
+                indexingTable.AddRow(
+                    MessageService.GetString("command-settings-indexing-spatial-label"),
+                    Theme.FormatTableValue(indexing.SpatialIndexCount.ToString(CultureInfo.InvariantCulture)));
+            }
+
+            if (indexing.VectorIndexCount > 0)
+            {
+                indexingTable.AddRow(
+                    MessageService.GetString("command-settings-indexing-vector-label"),
+                    Theme.FormatTableValue(indexing.VectorIndexCount.ToString(CultureInfo.InvariantCulture)));
+            }
+
+            indexingTable.HideHeaders();
+            AnsiConsole.Write(indexingTable);
+
+            mcpTable["indexingPolicy"] = new Dictionary<string, object?>
+            {
+                { "indexingMode", indexing.IndexingMode },
+                { "automatic", indexing.Automatic },
+                { "includedPaths", indexing.IncludedPathCount },
+                { "excludedPaths", indexing.ExcludedPathCount },
+                { "compositeIndexes", indexing.CompositeIndexCount },
+                { "spatialIndexes", indexing.SpatialIndexCount },
+                { "vectorIndexes", indexing.VectorIndexCount },
+            };
+        }
+        else
+        {
+            AnsiConsole.Markup("\t");
+            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
+        }
+
         // Usage section - document count and storage size
         var container = state.Client.GetDatabase(databaseName).GetContainer(containerName);
         var usage = await ReadContainerUsageAsync(container, token);

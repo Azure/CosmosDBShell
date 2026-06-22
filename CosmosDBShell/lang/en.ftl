@@ -545,6 +545,14 @@ command-settings-fulltext-title = Full Text Policy
 command-settings-fulltext-default-language-label = Default language
 command-settings-fulltext-path-label = Full Text Path
 command-settings-fulltext-language-label = Language
+command-settings-indexing-title = Indexing Policy
+command-settings-indexing-mode-label = Indexing mode
+command-settings-indexing-automatic-label = Automatic
+command-settings-indexing-paths-label = Paths
+command-settings-indexing-paths-value = { $included } included, { $excluded } excluded
+command-settings-indexing-composite-label = Composite indexes
+command-settings-indexing-spatial-label = Spatial indexes
+command-settings-indexing-vector-label = Vector indexes
 command-settings-rbac-error =
   You need the '{ $permission }' RBAC role permission for '{ $request }' for the selected account.
 

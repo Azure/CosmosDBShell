@@ -132,6 +132,22 @@ public class AdditionalCommandsTests : EmulatorFixtureTestBase
     }
 
     [Fact]
+    public async Task Info_AtContainerLevel_IncludesIndexingPolicySummary()
+    {
+        await ExecuteAsync($"cd {Fixture.ContainerName}");
+
+        var state = await ExecuteAsync("info");
+        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
+
+        var json = IntegrationTestBase.GetJson(state);
+        Assert.True(json.TryGetProperty("indexingPolicy", out var indexing));
+        Assert.False(string.IsNullOrEmpty(indexing.GetProperty("indexingMode").GetString()));
+        Assert.True(indexing.TryGetProperty("automatic", out _));
+        Assert.True(indexing.TryGetProperty("includedPaths", out _));
+        Assert.True(indexing.TryGetProperty("excludedPaths", out _));
+    }
+
+    [Fact]
     public async Task Create_Item_AddsItemToContainer()
     {
         await ExecuteAsync($"cd {Fixture.ContainerName}");

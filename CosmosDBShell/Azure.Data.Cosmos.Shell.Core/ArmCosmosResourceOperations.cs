@@ -138,7 +138,8 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
             throughputAvailability,
             throughputError,
             GeospatialType: null,
-            FullTextPolicy: null);
+            FullTextPolicy: null,
+            IndexingPolicy: null);
     }
 
     public async Task<string> GetIndexingPolicyJsonAsync(string databaseName, string containerName, CancellationToken token)
