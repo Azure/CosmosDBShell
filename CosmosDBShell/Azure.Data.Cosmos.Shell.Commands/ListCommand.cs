@@ -92,6 +92,17 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
         CosmosCompleteCommand.SetDatabases(state.Client, completionList);
 
+        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_databases", new Dictionary<string, object>
+        {
+            { "count", list.Count },
+            { "display", Theme.FormatTableValue(list.Count.ToString()) },
+        }));
+
+        if (completionList.Count == 0 && state.ArmContext is not null)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_databases_hint")));
+        }
+
         var result = new CommandState
         {
             IsPrinted = true,
@@ -135,6 +146,21 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         }
 
         CosmosCompleteCommand.SetContainers(state.Client, databaseName, completionList);
+
+        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_containers", new Dictionary<string, object>
+        {
+            { "count", list.Count },
+            { "display", Theme.FormatTableValue(list.Count.ToString()) },
+            { "database", Theme.DatabaseNamePromt(databaseName) },
+        }));
+
+        if (completionList.Count == 0 && state.ArmContext is not null)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_containers_hint", new Dictionary<string, object>
+            {
+                { "database", databaseName },
+            })));
+        }
 
         var result = new CommandState
         {
