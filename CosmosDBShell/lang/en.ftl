@@ -348,15 +348,15 @@ command-ls-container = Container { $container }
 command-ls-found_items = found { $count } items.
 command-ls-found_databases =
     { $count ->
-        [0] No databases found.
-        [one] Found { $display } database.
-       *[other] Found { $display } databases.
+        [0] no databases found.
+        [one] found { $display } database.
+       *[other] found { $display } databases.
     }
 command-ls-found_containers =
     { $count ->
-        [0] No containers found in database { $database }.
-        [one] Found { $display } container in database { $database }.
-       *[other] Found { $display } containers in database { $database }.
+        [0] no containers found in database { $database }.
+        [one] found { $display } container in database { $database }.
+       *[other] found { $display } containers in database { $database }.
     }
 command-ls-empty_databases_hint = No databases were returned. If you expected some, the connected identity may lack account-level read access, or you may be connected to a different account. Run 'connect' to verify the target account.
 command-ls-empty_containers_hint = No containers were returned for database { $database }. If you expected some, the connected identity may lack read access to this database, or you may be targeting the wrong account.
