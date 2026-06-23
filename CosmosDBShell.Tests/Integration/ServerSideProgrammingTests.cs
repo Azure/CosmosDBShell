@@ -179,7 +179,7 @@ public class ServerSideProgrammingTests : ConnectedEmulatorTestBase
 
     private static string WriteTempScript(string prefix, string body)
     {
-        var path = Path.Combine(Path.GetTempPath(), $"cosmos-{prefix}-{Guid.NewGuid():N}.js");
+        var path = Path.Join(Path.GetTempPath(), $"cosmos-{Path.GetFileName(prefix)}-{Guid.NewGuid():N}.js");
         File.WriteAllText(path, body);
         return path;
     }

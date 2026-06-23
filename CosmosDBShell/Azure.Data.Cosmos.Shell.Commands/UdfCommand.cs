@@ -414,7 +414,7 @@ internal class UdfCommand : CosmosCommand
             throw new CommandException("udf", MessageService.GetString("command-udf-error-no_editor"));
         }
 
-        var tempPath = System.IO.Path.Combine(
+        var tempPath = System.IO.Path.Join(
             System.IO.Path.GetTempPath(),
             $"cosmos-udf-{Guid.NewGuid():N}.js");
 

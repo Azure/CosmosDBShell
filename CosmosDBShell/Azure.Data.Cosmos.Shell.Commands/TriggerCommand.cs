@@ -490,7 +490,7 @@ internal class TriggerCommand : CosmosCommand
             throw new CommandException("trigger", MessageService.GetString("command-trigger-error-no_editor"));
         }
 
-        var tempPath = System.IO.Path.Combine(
+        var tempPath = System.IO.Path.Join(
             System.IO.Path.GetTempPath(),
             $"cosmos-trigger-{Guid.NewGuid():N}.js");
 

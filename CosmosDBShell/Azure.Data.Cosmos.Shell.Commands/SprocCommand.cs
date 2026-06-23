@@ -527,7 +527,7 @@ internal class SprocCommand : CosmosCommand
             throw new CommandException("sproc", MessageService.GetString("command-sproc-error-no_editor"));
         }
 
-        var tempPath = System.IO.Path.Combine(
+        var tempPath = System.IO.Path.Join(
             System.IO.Path.GetTempPath(),
             $"cosmos-sproc-{Guid.NewGuid():N}.js");
 
