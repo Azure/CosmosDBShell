@@ -162,6 +162,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--connect-subscription <id>` | Azure subscription ID for ARM database and container operations |
 | `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
+| `--diagnostics [path]` | Write timestamped diagnostic logs to a file, or to a timestamped file in the config directory by default |
 | `--otel [endpoint]` | Enable distributed tracing (sampled W3C `traceparent`); optional OTLP `endpoint`, else `OTEL_EXPORTER_OTLP_ENDPOINT` |
 | `--verbose` | Print full exception details |
 | `--color-system <n>` | Colors: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
