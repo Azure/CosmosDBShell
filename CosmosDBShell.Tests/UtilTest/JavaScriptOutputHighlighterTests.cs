@@ -59,6 +59,22 @@ public class JavaScriptOutputHighlighterTests
     }
 
     [Fact]
+    public void NestedBrackets_CycleColorsByDepth()
+    {
+        // depth 0 -> '(', depth 1 -> '{', depth 2 -> '[' (next nested opener).
+        var markup = JavaScriptOutputHighlighter.BuildMarkup("f({ a: [1] })");
+
+        Assert.Contains($"[{Theme.GetBracketColor(0)}]([/]", markup);
+        Assert.Contains($"[{Theme.GetBracketColor(1)}]{{[/]", markup);
+        Assert.Contains($"[{Theme.GetBracketColor(2)}][[[/]", markup);
+
+        // Closing brackets reuse the color of their matching opener.
+        Assert.Contains($"[{Theme.GetBracketColor(2)}]]][/]", markup);
+        Assert.Contains($"[{Theme.GetBracketColor(1)}]}}[/]", markup);
+        Assert.Contains($"[{Theme.GetBracketColor(0)}])[/]", markup);
+    }
+
+    [Fact]
     public void EmptySource_ReturnsEmpty()
     {
         Assert.Equal(string.Empty, JavaScriptOutputHighlighter.BuildMarkup(string.Empty));
