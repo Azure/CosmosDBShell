@@ -53,7 +53,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         string databaseName = this.Database ?? state.DatabaseName;
         string containerName = this.Container ?? state.ContainerName;
 
-        return await this.ListContainerItemsAsync(state, databaseName, containerName, token);
+        return await this.ListContainerItemsAsync(state, shell, databaseName, containerName, token);
     }
 
     Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitDisconnectedStateAsync(DisconnectedState state, ShellInterpreter interpreter, CancellationToken token)
@@ -67,7 +67,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         {
             if (!string.IsNullOrEmpty(this.Container))
             {
-                return await this.ListContainerItemsAsync(state, this.Database, this.Container, token);
+                return await this.ListContainerItemsAsync(state, interpreter, this.Database, this.Container, token);
             }
 
             return await this.ListDatabaseContainersAsync(state, this.Database, token);
@@ -118,7 +118,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         // If container is specified, list items in that container
         if (!string.IsNullOrEmpty(this.Container))
         {
-            return await this.ListContainerItemsAsync(state, databaseName, this.Container, token);
+            return await this.ListContainerItemsAsync(state, interpreter, databaseName, this.Container, token);
         }
 
         // Default behavior: list containers in the database
@@ -170,14 +170,13 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         return result;
     }
 
-    private async Task<CommandState> ListContainerItemsAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    private async Task<CommandState> ListContainerItemsAsync(ConnectedState state, ShellInterpreter interpreter, string databaseName, string containerName, CancellationToken token)
     {
         // Validate database and container exist
         await ValidateContainerExistsAsync(state, databaseName, containerName, "ls", token);
 
         var client = state.Client;
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
-        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-container", new Dictionary<string, object> { { "container", Theme.ContainerNamePromt(container.Id) } }));
         var opt = new QueryRequestOptions();
         var effectiveMaxItemCount = ResultLimit.ResolveMaxItemCount(this.Max);
         if (effectiveMaxItemCount.HasValue)
@@ -227,7 +226,21 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         }
 
         returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = list }));
-        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object> { { "count", Theme.FormatTableValue(list.Count.ToString()) } }));
+
+        // Print the items before the summary so the count lands at the end, matching how `ls`
+        // reports databases and containers. PrintState clears Result after printing, so preserve
+        // it for downstream piping and mark the state as already printed.
+        var rendered = returnState.Result;
+        interpreter.PrintState(returnState);
+        returnState.Result = rendered;
+        returnState.IsPrinted = true;
+
+        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object>
+        {
+            { "count", list.Count },
+            { "display", Theme.FormatTableValue(list.Count.ToString()) },
+            { "container", Theme.ContainerNamePromt(container.Id) },
+        }));
         if (limitReached && effectiveMaxItemCount.HasValue)
         {
             AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));

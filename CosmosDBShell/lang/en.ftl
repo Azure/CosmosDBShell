@@ -388,8 +388,12 @@ command-ls-description-recursive = List items recursively
 command-ls-description-database = The database to list from
 command-ls-description-container = The container to list items from
 command-ls-description-key = The property to match against (default: container partition key property)
-command-ls-container = Container { $container }
-command-ls-found_items = found { $count } items.
+command-ls-found_items =
+    { $count ->
+        [0] no items found in container { $container }.
+        [one] found { $display } item in container { $container }.
+       *[other] found { $display } items in container { $container }.
+    }
 command-ls-found_databases =
     { $count ->
         [0] no databases found.
