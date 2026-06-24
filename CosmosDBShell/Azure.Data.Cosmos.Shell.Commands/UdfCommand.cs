@@ -186,7 +186,7 @@ internal class UdfCommand : CosmosCommand
         try
         {
             var response = await container.Scripts.ReadUserDefinedFunctionAsync(name, cancellationToken: token);
-            commandState.Result = new ShellText(response.Resource.Body) { Highlighter = JavaScriptOutputHighlighter.BuildMarkup };
+            commandState.Result = new ShellText(response.Resource.Body ?? string.Empty) { Highlighter = JavaScriptOutputHighlighter.BuildMarkup };
             return commandState;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)

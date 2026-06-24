@@ -23,7 +23,7 @@ public class JavaScriptOutputHighlighterTests
     }
 
     [Fact]
-    public void StringsAndTemplateLiterals_UseLiteralColor()
+    public void StringsAndTemplateLiterals_UseStringColor()
     {
         var markup = JavaScriptOutputHighlighter.BuildMarkup("var s = 'hi'; var t = `bye`;");
 
@@ -32,7 +32,7 @@ public class JavaScriptOutputHighlighterTests
     }
 
     [Fact]
-    public void Numbers_UseLiteralColor()
+    public void Numbers_UseNumberColor()
     {
         var markup = JavaScriptOutputHighlighter.BuildMarkup("var x = 42;");
 

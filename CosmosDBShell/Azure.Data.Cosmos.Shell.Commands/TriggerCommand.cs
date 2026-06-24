@@ -237,7 +237,7 @@ internal class TriggerCommand : CosmosCommand
         try
         {
             var response = await container.Scripts.ReadTriggerAsync(name, cancellationToken: token);
-            commandState.Result = new ShellText(response.Resource.Body) { Highlighter = JavaScriptOutputHighlighter.BuildMarkup };
+            commandState.Result = new ShellText(response.Resource.Body ?? string.Empty) { Highlighter = JavaScriptOutputHighlighter.BuildMarkup };
             return commandState;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -446,9 +446,10 @@ internal class TriggerCommand : CosmosCommand
             throw NotFound(name, ex);
         }
 
-        var newBody = await this.LaunchEditorAsync(existing.Body, name, token);
+        var existingBody = existing.Body ?? string.Empty;
+        var newBody = await this.LaunchEditorAsync(existingBody, name, token);
 
-        if (string.Equals(newBody, existing.Body, StringComparison.Ordinal))
+        if (string.Equals(newBody, existingBody, StringComparison.Ordinal))
         {
             ShellInterpreter.WriteLine(MessageService.GetArgsString("command-trigger-edit-unchanged", "name", name));
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = false }));
