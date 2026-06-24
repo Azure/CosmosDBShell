@@ -225,6 +225,7 @@ internal class InfoCommand : CosmosCommand
         int? min = null;
         int? max = null;
         bool serverless = false;
+        string? throughputError = null;
         try
         {
             var throughput = await database.ReadThroughputAsync(new RequestOptions(), token);
@@ -239,10 +240,27 @@ internal class InfoCommand : CosmosCommand
         {
             serverless = true;
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // RBAC (401/403) or transient failures should not abort info after earlier sections printed.
+            throughputError = ex.Message;
+        }
 
         AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-throughput-heading")));
 
-        if (serverless)
+        if (throughputError is not null)
+        {
+            AnsiConsole.Markup("\t");
+            if (TryGetPrincipalIdFromRbacMessage(throughputError, out var rbacId, out var rbacRequest, out var rbacPermission))
+            {
+                AskForRBacPermissions(rbacId ?? string.Empty, rbacRequest ?? string.Empty, rbacPermission ?? string.Empty);
+            }
+            else
+            {
+                AnsiConsole.MarkupLine(Theme.FormatError(throughputError));
+            }
+        }
+        else if (serverless)
         {
             AnsiConsole.Markup("\t");
             AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-scale-serverless")));

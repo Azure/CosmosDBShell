@@ -16,6 +16,10 @@
 - `theme` command to inspect and switch the REPL color theme: `list`, `show [name]`, `use`/`set`, `load` and `validate` a TOML theme file, `save` the active theme, `edit` (external editor with reload on exit), `open` the user themes folder, and `reload`. Ships with built-in `default`, `light`, `dark`, and `monochrome` themes.
 - `filter` command to transform piped JSON command output with jq-inspired expressions — field access, indexing, `map`, `length`, and pipelines — for example `query "SELECT * FROM c" | filter '.items | map({id, status})'`.
 
+### Breaking changes
+
+- The `settings` command has been renamed to `info` and is no longer available under its old name. Update scripts and aliases that invoke `settings` to use `info` instead. ([#108](https://github.com/Azure/CosmosDBShell/issues/108))
+
 ## 1.1.4-preview — 2026-05-21
 
 First release on the 1.1 line. A pretty packed cycle. The headline change is **ARM-based control plane for database and container management**, but there’s also a fully reworked CLI, two new item commands, a much friendlier shell experience for newcomers, and a long list of paper-cut fixes.
