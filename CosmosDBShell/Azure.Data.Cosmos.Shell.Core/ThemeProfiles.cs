@@ -29,23 +29,22 @@ internal static class ThemeProfiles
     };
 
     /// <summary>
-    /// Palette tuned for light terminal backgrounds. Bracket cycle uses darker hues
-    /// (purple/maroon/navy) so they remain visible on white. The per-type literal
-    /// slots are cleared so every literal falls back to <c>purple</c> for contrast on
-    /// white, instead of the dark theme's aqua/lime/blue.
+    /// Palette tuned for light terminal backgrounds, matching VS Code's light theme JSON
+    /// coloring: green keys, blue strings, green numbers, blue <c>true</c>/<c>false</c>/<c>null</c>,
+    /// and red string escapes. Bracket cycle uses blue/green/purple so pairs stay visible on white.
     /// </summary>
     public static ThemeOptions Light { get; } = Default with
     {
-        BracketCycle = ["purple", "maroon", "navy"],
+        BracketCycle = ["blue", "green", "purple"],
         LiteralColor = "purple",
-        StringColor = string.Empty,
-        NumberColor = string.Empty,
-        BooleanColor = string.Empty,
-        NullColor = string.Empty,
-        StringEscapeColor = "navy",
+        StringColor = "blue",
+        NumberColor = "green",
+        BooleanColor = "blue",
+        NullColor = "blue",
+        StringEscapeColor = "red",
         ContainerNameColor = "purple",
         ConnectedPromptColor = "navy",
-        JsonPropertyColor = "navy",
+        JsonPropertyColor = "green",
         JsonPathColor = "navy",
         VariableColor = "navy",
         HelpAccentColor = "navy",
