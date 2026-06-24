@@ -8,6 +8,7 @@ using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
+using Microsoft.Azure.Cosmos;
 
 /// <summary>
 /// Offline unit tests for <see cref="InfoCommand"/>. These cover the
@@ -32,7 +33,7 @@ public class InfoCommandTests
     public async Task Info_ContainerWithoutDatabase_ThrowsCommandException()
     {
         using var shell = ShellInterpreter.CreateInstance();
-        shell.State = new ConnectedState(null!);
+        shell.State = new ConnectedState(CreateTestClient());
         var command = new InfoCommand { Container = "Products" };
 
         var exception = await Assert.ThrowsAsync<CommandException>(
@@ -45,7 +46,7 @@ public class InfoCommandTests
     public async Task Info_PartitionsWithoutContainer_ThrowsCommandException()
     {
         using var shell = ShellInterpreter.CreateInstance();
-        shell.State = new DatabaseState("TestDatabase", null!);
+        shell.State = new DatabaseState("TestDatabase", CreateTestClient());
         var command = new InfoCommand { Partitions = true };
 
         var exception = await Assert.ThrowsAsync<CommandException>(
@@ -117,5 +118,11 @@ public class InfoCommandTests
     public void FormatSize_Null_ReturnsNotAvailable()
     {
         Assert.Equal(MessageService.GetString("command-stats-na"), InfoCommand.FormatSize(null));
+    }
+
+    private static CosmosClient CreateTestClient()
+    {
+        var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");
+        return new CosmosClient(connectionString);
     }
 }
