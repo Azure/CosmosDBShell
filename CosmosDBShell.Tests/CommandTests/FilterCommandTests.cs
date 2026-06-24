@@ -442,7 +442,7 @@ public class FilterCommandTests
         };
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => command.ExecuteAsync(shell, state, string.Empty, cts.Token));

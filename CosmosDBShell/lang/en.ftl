@@ -336,6 +336,161 @@ command-index-error-show_no_args = 'index show' does not take any arguments. Use
 command-index-error-invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-index-error-no_policy = The container has no indexing policy configured.
 
+command-throughput-description = Views or changes the provisioned throughput (RU/s) of a database or container via show, set, manual, and autoscale subcommands.
+command-throughput-description-subcommand = The action to perform: show, set, manual, or autoscale.
+command-throughput-description-ru = The throughput in RU/s to provision (manual RU/s for set/manual, maximum RU/s for autoscale).
+command-throughput-description-database = The database to target, or that contains the target container.
+command-throughput-description-container = The container to read/update the throughput for.
+command-throughput-description-yes = Skip the confirmation prompt before applying a throughput change.
+command-throughput-updated = Throughput updated successfully.
+command-throughput-confirm_summary = About to set { $mode } throughput to { $ru } RU/s on '{ $resource }'. This may affect your bill.
+command-throughput-confirm = Apply this throughput change
+command-throughput-cancelled = Throughput change cancelled.
+command-throughput-label-scope = Scope
+command-throughput-label-resource = Resource
+command-throughput-label-mode = Mode
+command-throughput-label-throughput = Throughput (RU/s)
+command-throughput-label-max = Max throughput (RU/s)
+command-throughput-label-min = Min throughput (RU/s)
+command-throughput-scope-database = Database
+command-throughput-scope-container = Container
+command-throughput-mode-autoscale = Autoscale
+command-throughput-mode-manual = Manual
+command-throughput-mode-none = Not configured
+command-throughput-error-missing_subcommand = Missing subcommand. Use one of: show, set, manual, autoscale.
+command-throughput-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set, manual, autoscale.
+command-throughput-error-missing_ru = No throughput value provided. Specify the RU/s, for example: throughput set 4000.
+command-throughput-error-invalid_ru = Invalid throughput value '{ $ru }'. Provide a positive number of RU/s.
+command-throughput-error-manual_min = Manual throughput must be at least { $min } RU/s. '{ $ru }' is too low.
+command-throughput-error-manual_increment = Manual throughput must be a multiple of { $increment } RU/s. '{ $ru }' is not.
+command-throughput-error-autoscale_min = Autoscale maximum throughput must be at least { $min } RU/s. '{ $ru }' is too low.
+command-throughput-error-autoscale_increment = Autoscale maximum throughput must be a multiple of { $increment } RU/s. '{ $ru }' is not.
+command-throughput-error-show_no_args = 'throughput show' does not take any arguments. Use 'throughput show' to display the current throughput.
+command-throughput-error-not_configured = Resource '{ $resource }' has no provisioned throughput to change. It may be serverless or use shared database throughput.
+command-throughput-error-rbac =
+  You do not have permission to change throughput on the selected account.
+
+  Required action: '{ $permission }'
+  Principal id: '{ $id }'
+
+  Learn more: https://aka.ms/cosmos-native-rbac
+
+command-throughput-error-mode_switch_unsupported =
+  Switching '{ $resource }' to { $mode } throughput is not supported on this connection.
+
+  The Cosmos data-plane SDK can only change the value within the current mode. To switch between manual and autoscale, connect with an Azure AD (token) credential, or use the Azure portal, Azure CLI, or PowerShell.
+command-sproc-description = Manages stored procedures on a container via list, show, exists, create, exec, edit, and delete subcommands.
+command-sproc-description-subcommand = The action to perform: list, show, exists, create, exec, edit, or delete.
+command-sproc-description-name = The stored procedure id.
+command-sproc-description-value = The JavaScript file to read for create, or the JSON array of arguments for exec.
+command-sproc-description-partition-key = The partition key used to target a partition when executing a stored procedure.
+command-sproc-description-force = Replace the stored procedure if it already exists.
+command-sproc-description-database = The database containing the container.
+command-sproc-description-container = The container that owns the stored procedures.
+command-sproc-created = Created stored procedure '{ $name }' (RU charge: { $charge }).
+command-sproc-replaced = Replaced stored procedure '{ $name }' (RU charge: { $charge }).
+command-sproc-deleted = Deleted stored procedure '{ $name }' (RU charge: { $charge }).
+command-sproc-executed = Executed stored procedure '{ $name }' (RU charge: { $charge }).
+command-sproc-edit-launching = Editing stored procedure '{ $name }' with { $editor }.
+command-sproc-edit-unchanged = Stored procedure '{ $name }' was not changed.
+command-sproc-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }.
+command-sproc-edit-wait = The editor returned immediately. Finish editing, save the file, then press Enter to continue...
+command-sproc-create-preview = Stored procedure '{ $name }':
+command-sproc-create-confirm = Create this stored procedure
+command-sproc-create-discarded = Discarded stored procedure '{ $name }'.
+command-sproc-list-empty = No stored procedures found.
+command-sproc-list-title = Stored procedures
+command-sproc-list-column-id = Id
+command-sproc-list-column-modified = Last Modified
+command-sproc-list-column-size = Size (chars)
+command-sproc-exists-yes = Stored procedure '{ $name }' exists.
+command-sproc-exists-no = Stored procedure '{ $name }' does not exist.
+command-sproc-error-missing_subcommand = Missing subcommand. Use one of: list, show, exists, create, exec, edit, delete.
+command-sproc-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: list, show, exists, create, exec, edit, delete.
+command-sproc-error-missing_name = Missing stored procedure name. Specify the id, for example: sproc show myProc.
+command-sproc-error-missing_file = No source provided. Specify a JavaScript file or pipe the body in, for example: sproc create myProc ./myProc.js.
+command-sproc-error-file_not_found = File not found: '{ $file }'.
+command-sproc-error-already_exists = Stored procedure '{ $name }' already exists. Use --force to replace it.
+command-sproc-error-not_found = Stored procedure '{ $name }' was not found.
+command-sproc-error-invalid_params = Invalid parameters. Provide a JSON array of arguments, for example: '["a", 1, true]'.
+command-sproc-error-invalid_pk = Invalid partition key. Provide a JSON scalar, or a JSON array for a hierarchical partition key.
+command-sproc-error-missing_partition_key = A partition key is required to execute a stored procedure. Use --partition-key.
+command-sproc-error-not_interactive = 'sproc edit' needs an interactive terminal and cannot run from a script or piped input.
+command-sproc-error-no_editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
+
+command-udf-description = Manages user-defined functions on a container via list, show, exists, create, edit, and delete subcommands.
+command-udf-description-subcommand = The action to perform: list, show, exists, create, edit, or delete.
+command-udf-description-name = The user-defined function id.
+command-udf-description-value = The JavaScript file to read for create.
+command-udf-description-force = Replace the user-defined function if it already exists.
+command-udf-description-database = The database containing the container.
+command-udf-description-container = The container that owns the user-defined functions.
+command-udf-created = Created user-defined function '{ $name }' (RU charge: { $charge }).
+command-udf-replaced = Replaced user-defined function '{ $name }' (RU charge: { $charge }).
+command-udf-deleted = Deleted user-defined function '{ $name }' (RU charge: { $charge }).
+command-udf-edit-launching = Editing user-defined function '{ $name }' with { $editor }.
+command-udf-edit-unchanged = User-defined function '{ $name }' was not changed.
+command-udf-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }.
+command-udf-edit-wait = The editor returned immediately. Finish editing, save the file, then press Enter to continue...
+command-udf-create-preview = User-defined function '{ $name }':
+command-udf-create-confirm = Create this user-defined function
+command-udf-create-discarded = Discarded user-defined function '{ $name }'.
+command-udf-list-empty = No user-defined functions found.
+command-udf-list-title = User-defined functions
+command-udf-list-column-id = Id
+command-udf-list-column-size = Size (chars)
+command-udf-exists-yes = User-defined function '{ $name }' exists.
+command-udf-exists-no = User-defined function '{ $name }' does not exist.
+command-udf-error-missing_subcommand = Missing subcommand. Use one of: list, show, exists, create, edit, delete.
+command-udf-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: list, show, exists, create, edit, delete.
+command-udf-error-missing_name = Missing user-defined function name. Specify the id, for example: udf show myFunc.
+command-udf-error-missing_file = No source provided. Specify a JavaScript file or pipe the body in, for example: udf create myFunc ./myFunc.js.
+command-udf-error-file_not_found = File not found: '{ $file }'.
+command-udf-error-already_exists = User-defined function '{ $name }' already exists. Use --force to replace it.
+command-udf-error-not_found = User-defined function '{ $name }' was not found.
+command-udf-error-not_interactive = 'udf edit' needs an interactive terminal and cannot run from a script or piped input.
+command-udf-error-no_editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
+
+command-trigger-description = Manages triggers on a container via list, show, exists, create, edit, and delete subcommands.
+command-trigger-description-subcommand = The action to perform: list, show, exists, create, edit, or delete.
+command-trigger-description-name = The trigger id.
+command-trigger-description-value = The JavaScript file to read for create.
+command-trigger-description-type = The trigger type for create: pre or post.
+command-trigger-description-operation = The operation the trigger fires on: all, create, replace, delete, or update. Defaults to all.
+command-trigger-description-force = Replace the trigger if it already exists.
+command-trigger-description-database = The database containing the container.
+command-trigger-description-container = The container that owns the triggers.
+command-trigger-created = Created trigger '{ $name }' (RU charge: { $charge }).
+command-trigger-replaced = Replaced trigger '{ $name }' (RU charge: { $charge }).
+command-trigger-deleted = Deleted trigger '{ $name }' (RU charge: { $charge }).
+command-trigger-edit-launching = Editing trigger '{ $name }' with { $editor }.
+command-trigger-edit-unchanged = Trigger '{ $name }' was not changed.
+command-trigger-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }.
+command-trigger-edit-wait = The editor returned immediately. Finish editing, save the file, then press Enter to continue...
+command-trigger-create-preview = Trigger '{ $name }':
+command-trigger-create-confirm = Create this trigger
+command-trigger-create-discarded = Discarded trigger '{ $name }'.
+command-trigger-list-empty = No triggers found.
+command-trigger-list-title = Triggers
+command-trigger-list-column-id = Id
+command-trigger-list-column-type = Type
+command-trigger-list-column-operation = Operation
+command-trigger-list-column-size = Size (chars)
+command-trigger-exists-yes = Trigger '{ $name }' exists.
+command-trigger-exists-no = Trigger '{ $name }' does not exist.
+command-trigger-error-missing_subcommand = Missing subcommand. Use one of: list, show, exists, create, edit, delete.
+command-trigger-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: list, show, exists, create, edit, delete.
+command-trigger-error-missing_name = Missing trigger name. Specify the id, for example: trigger show myTrigger.
+command-trigger-error-missing_file = No source provided. Specify a JavaScript file or pipe the body in, for example: trigger create myTrigger ./myTrigger.js --type pre.
+command-trigger-error-file_not_found = File not found: '{ $file }'.
+command-trigger-error-already_exists = Trigger '{ $name }' already exists. Use --force to replace it.
+command-trigger-error-not_found = Trigger '{ $name }' was not found.
+command-trigger-error-missing_type = A trigger type is required. Use --type pre or --type post.
+command-trigger-error-invalid_type = Invalid trigger type '{ $type }'. Use pre or post.
+command-trigger-error-invalid_operation = Invalid trigger operation '{ $operation }'. Use all, create, replace, delete, or update.
+command-trigger-error-not_interactive = 'trigger edit' needs an interactive terminal and cannot run from a script or piped input.
+command-trigger-error-no_editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
+
 command-ls-description = List resources in the current context.
 command-ls-description-filter = The filter pattern.
 command-ls-description-max = Maximum number of items returned when listing container items. Defaults to 100 if omitted. Use 0 or a negative value for no limit.
@@ -344,8 +499,26 @@ command-ls-description-recursive = List items recursively
 command-ls-description-database = The database to list from
 command-ls-description-container = The container to list items from
 command-ls-description-key = The property to match against (default: container partition key property)
-command-ls-container = Container { $container }
-command-ls-found_items = found { $count } items.
+command-ls-found_items =
+    { $count ->
+        [0] no items found in container { $container }.
+        [one] found { $display } item in container { $container }.
+       *[other] found { $display } items in container { $container }.
+    }
+command-ls-found_databases =
+    { $count ->
+        [0] no databases found.
+        [one] found { $display } database.
+       *[other] found { $display } databases.
+    }
+command-ls-found_containers =
+    { $count ->
+        [0] no containers found in database { $database }.
+        [one] found { $display } container in database { $database }.
+       *[other] found { $display } containers in database { $database }.
+    }
+command-ls-empty_databases_hint = No databases were returned. If you expected some, the connected identity may lack account-level read access, or you may be connected to a different account. Run 'connect' to verify the target account.
+command-ls-empty_containers_hint = No containers were returned for database { $database }. If you expected some, the connected identity may lack read access to this database, or you may be targeting the wrong account.
 command-ls-error-request_failed = List request failed with status code { $statusCode } ({ $status }).
 command-ls-error-no_content_stream = The list request completed, but Cosmos DB returned no response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
 command-ls-error-empty_content = The list request completed, but Cosmos DB returned an empty response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
@@ -673,8 +846,11 @@ help-EnableLspServer = Enable Language Server Protocol (LSP) server for editor i
 help-McpPort = Enable MCP HTTP server. Optionally specify a port with --mcp <port>; default is 6128.
 help-Verbose = Print full exception details instead of only the message.
 help-Theme = Color theme profile to apply at startup. Falls back to the COSMOSDB_SHELL_THEME environment variable.
+help-Diagnostics = Write timestamped diagnostic logs to a file. Optionally specify a path with --diagnostics <path>; defaults to a timestamped file in the shell configuration directory.
 help-Otel = Enable distributed tracing so requests carry a sampled W3C traceparent. Optionally specify an OTLP endpoint with --otel <endpoint>; falls back to the OTEL_EXPORTER_OTLP_ENDPOINT environment variable.
 mcp-error-invalid-port = Error: --mcp port must be greater than 0.
+diagnostics-enabled = Writing diagnostic log to { $path }.
+diagnostics-error-create = Error: could not create diagnostic log at '{ $path }': { $message }
 otel-error-invalid-endpoint = Error: --otel endpoint '{ $endpoint }' is not a valid absolute URI.
 
 warning-unknown-theme = Unknown theme '{ $name }'. Available themes: { $themes }. Falling back to default.
@@ -685,7 +861,6 @@ command-theme-description-name = Theme name (for show/use/save/edit) or path to 
 command-theme-description-path = Optional path. For 'save' the file path to write (default: ~/.cosmosdbshell/themes/<name>.toml). For 'load' and 'validate' the TOML file to read.
 command-theme-description-force = Overwrite an existing file when saving, or seed the built-in profile when editing.
 command-theme-description-strict = Treat warnings as errors when validating.
-command-theme-description-editor = External editor to launch (defaults to $VISUAL, $EDITOR, then a platform default).
 command-theme-active = Active theme: { $name }
 command-theme-applied = Switched to theme: { $name }
 command-theme-sample-heading = Sample of theme '{ $name }':
@@ -713,7 +888,7 @@ command-theme-edit-missing-name = 'theme edit' requires a theme name or path. Ru
 command-theme-edit-builtin-needs-force = '{ $name }' is a built-in theme and has no editable file. Pass --force to copy it to { $path } and edit the copy.
 command-theme-edit-seeded = Seeded built-in theme '{ $name }' to { $path }
 command-theme-edit-launching = Editing { $path } with { $editor }
-command-theme-edit-no-editor = No editor found. Set $VISUAL or $EDITOR, or pass --editor=<command>.
+command-theme-edit-no-editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
 command-theme-edit-launch-failed = Failed to launch editor '{ $editor }' for { $path }: { $message }
 command-theme-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }; theme was not reloaded.
 command-theme-edit-reload-failed = Theme file '{ $path }' could not be reloaded: { $message }

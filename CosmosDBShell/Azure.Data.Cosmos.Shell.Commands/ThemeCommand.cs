@@ -43,9 +43,6 @@ internal class ThemeCommand : CosmosCommand
     [CosmosOption("strict")]
     public bool Strict { get; init; }
 
-    [CosmosOption("editor")]
-    public string? Editor { get; init; }
-
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         var action = (this.Action ?? "current").Trim().ToLowerInvariant();
@@ -198,7 +195,7 @@ internal class ThemeCommand : CosmosCommand
             Row("command", Theme.FormatCommand("connect"));
             Row("unknown command", Theme.FormatUnknownCommand("nope"));
             Row("argument name", Theme.FormatArgumentName("--max"));
-            Row("connected prompt", Theme.ConnectedStatePromt("CS >"));
+            Row("connected prompt", Theme.ConnectedStatePromt(CosmosShellPrompt.PromptMarker));
             Row("database name", Theme.DatabaseNamePromt("MyDb"));
             Row("container name", Theme.ContainerNamePromt("MyContainer"));
             Row("redirection", Theme.FormatRedirection(">>"));
@@ -206,7 +203,10 @@ internal class ThemeCommand : CosmosCommand
             Row("json property", Theme.FormatJsonProperty("\"id\""));
             Row("json punctuation", Theme.FormatJsonBracket(":"));
             Row("string literal", Theme.FormatStringLiteral("\"hello\""));
+            Row("string escape", Theme.FormatStringLiteral("\"line\\nbreak\""));
             Row("number literal", Theme.FormatNumberLiteral("42"));
+            Row("boolean literal", Theme.FormatBooleanLiteral("true"));
+            Row("null literal", Theme.FormatJsonNull("null"));
             Row("keyword", Theme.FormatKeyword("if"));
             Row("operator", Theme.FormatOperator("+"));
             Row("error", Theme.FormatError("not found"));
@@ -655,7 +655,7 @@ internal class ThemeCommand : CosmosCommand
             return ReportUnknownTheme(commandState, requested);
         }
 
-        var editor = ExternalEditor.Resolve(this.Editor);
+        var editor = ExternalEditor.Resolve(null);
         if (editor is null)
         {
             var message = MessageService.GetString("command-theme-edit-no-editor");

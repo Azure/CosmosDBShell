@@ -75,4 +75,39 @@ public class ControlFlowTests : IntegrationTestBase
         var n = Assert.IsType<ShellNumber>(i);
         Assert.Equal(1, n.Value);
     }
+
+    [Fact]
+    public async Task IfElse_CommandExpressionCondition_TrueBranch()
+    {
+        var state = await RunScriptAsync("if (echo \"true\") { $x = 1 } else { $x = 2 }");
+
+        Assert.False(state.IsError, FormatError(state));
+        var x = GetVariable("x");
+        var n = Assert.IsType<ShellNumber>(x);
+        Assert.Equal(1, n.Value);
+    }
+
+    [Fact]
+    public async Task IfElse_CommandExpressionCondition_FalseBranch()
+    {
+        var state = await RunScriptAsync("if (echo \"false\") { $x = 1 } else { $x = 2 }");
+
+        Assert.False(state.IsError, FormatError(state));
+        var x = GetVariable("x");
+        var n = Assert.IsType<ShellNumber>(x);
+        Assert.Equal(2, n.Value);
+    }
+
+    [Fact]
+    public async Task CommandStatement_DoesNotInheritIsPrintedFromPriorCommand()
+    {
+        // A prior command that already printed its own output sets IsPrinted on the shared
+        // state. The following command's output must still be printed and not suppressed.
+        var outputFile = CaptureOutputFile();
+        var state = await RunScriptAsync("{ version\necho \"AFTER\" }");
+
+        Assert.False(state.IsError, FormatError(state));
+        var output = await ReadRedirectAsync(outputFile);
+        Assert.Contains("AFTER", output, StringComparison.Ordinal);
+    }
 }

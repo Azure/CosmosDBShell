@@ -58,6 +58,10 @@ Options:
 
 When `ls` is listing items from a container, it defaults to `100` items if `--max` is not specified. If the limit is hit at runtime, the shell prints a message telling you the results were limited. Use `--max <n>` to choose another limit or `--max 0` or a negative value to disable the limit.
 
+`ls` always prints a summary line for how many results it found, and the line names the scope it listed: when listing databases it reports the database count (or `no databases found.`), when listing containers it reports the container count for the database (or `no containers found in database ...`), and when listing items it reports the item count for the container (or `no items found in container ...`). The summary makes it clear when a scope is genuinely empty versus when the listing simply returned nothing.
+
+When listing databases or containers over an Azure Resource Manager (ARM) connection returns nothing at all, `ls` also prints a warning hint pointing at the most common non-empty causes (the connected identity may lack control-plane read access, or you may be connected to the wrong account). This avoids a silent empty result being mistaken for an empty account or database. Data-plane connections do not show this hint, since an empty result there is genuinely empty.
+
 ### cd
 
 Change scope to database or container.
@@ -107,7 +111,7 @@ pwd                    # /MyDb/MyContainer
 Inspect, switch, load, validate, save, edit, open, and reload shell color themes.
 
 ```text
-Usage: theme [action] [name] [path] [-force] [-strict] [-editor <ARG>]
+Usage: theme [action] [name] [path] [-force] [-strict]
 
 Arguments:
     [action]    What to do: current (default), list, show, use (alias: set),
@@ -120,8 +124,6 @@ Options:
     -force, -f  Overwrite an existing file when saving, or seed the
                 built-in profile to a user file when editing
     -strict     Treat warnings as errors during validate
-    -editor     External editor to launch for `theme edit`
-                (defaults to $VISUAL, $EDITOR, then a platform default)
 ```
 
 Examples:
@@ -136,7 +138,6 @@ theme validate ~/.cosmosdbshell/themes
 theme validate my-theme --strict
 theme save my-theme --force
 theme edit my-theme
-theme edit dark --force --editor "code --wait"
 theme open
 theme reload
 ```
@@ -570,6 +571,204 @@ index remove /address/*
 index set --mode=consistent --automatic=true
 index set '{"indexingMode":"consistent","automatic":true,"includedPaths":[{"path":"/*"}],"excludedPaths":[]}'
 ```
+
+### throughput
+
+View or change the provisioned throughput (RU/s) of a database or container through subcommands.
+
+```text
+Usage: throughput subcommand [ru] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  show, set, manual, or autoscale
+    [ru]        Throughput in RU/s (manual RU/s for set/manual, maximum RU/s for autoscale)
+
+Options:
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+    -yes, -y, -force
+                Skip the confirmation prompt before applying a change (Optional)
+```
+
+By default the command targets the current scope: the container when in a container, otherwise the database. Use `--database` and `--container` to target a specific resource.
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`show`|Reads and returns the current throughput as JSON, including the mode (`manual`, `autoscale`, or `none`), provisioned RU/s, autoscale maximum, and minimum.|
+|`set <RUs>`|Sets manual throughput to the given RU/s. Alias of `manual`.|
+|`manual <RUs>`|Switches to manual provisioning at the given RU/s.|
+|`autoscale <maxRUs>`|Switches to autoscale with the given maximum RU/s.|
+
+Throughput changes apply to the resource's own provisioned throughput. Containers inside a shared-throughput database, and serverless accounts, have no dedicated throughput to change.
+
+Throughput values are validated before the request is sent: manual RU/s must be at least 400 and a multiple of 100, and autoscale maximum RU/s must be at least 1000 and a multiple of 1000.
+
+Switching between `manual` and `autoscale` is a mode migration. Over an Azure AD (token) connection this is performed automatically. Over a key-based (data-plane) connection the SDK cannot migrate modes, so a mode switch is rejected with guidance to use a token connection, the Azure portal, Azure CLI, or PowerShell; changing the RU/s value within the current mode still works.
+
+Write operations (`set`, `manual`, `autoscale`) ask for confirmation before applying, because throughput changes can affect your bill. Pass `--yes` (`-y`/`--force`) to skip the prompt. The prompt is also skipped automatically in non-interactive contexts (MCP, script execution, or piped input).
+
+#### Examples
+
+```bash
+throughput show
+throughput set 4000
+throughput manual 4000
+throughput autoscale 10000
+throughput set 4000 --yes
+throughput show --database MyDatabase --container MyContainer
+```
+
+### sproc
+
+Manage JavaScript stored procedures on a container through subcommands.
+
+```text
+Usage: sproc subcommand [name] [value] [-partition-key <ARG>] [-force] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  list, show, exists, create, exec, edit, or delete
+    [name]      The stored procedure id
+    [value]     A JavaScript file (for create) or a JSON array of arguments (for exec)
+
+Options:
+    -partition-key, -pk
+                Partition key used to target a partition when executing (required for exec)
+    -force, -f  Replace the stored procedure if it already exists (create)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`list`|Lists the stored procedures in the current container. The interactive table shows id, last modified, and body size; the structured JSON result contains `id`, `lastModified`, `etag`, and `bodyLength` for each.|
+|`show <name>`|Returns the body of a stored procedure.|
+|`exists <name>`|Returns a boolean indicating whether a stored procedure exists. The boolean result can be used directly in `if` and `while` conditions.|
+|`create <name> <file>`|Creates a stored procedure from a JavaScript file. The body can also be piped in. Pass `--force` to replace an existing one.|
+|`create <name>`|With no file or piped body, seeds a sample stored procedure, opens it in an external editor, and prompts to create or discard on exit. Interactive sessions only; scripts must pass a file. The `sproc` command is not available over MCP.|
+|`exec <name> [params]`|Executes a stored procedure. `params` is a JSON array of arguments, and `--partition-key` selects the target partition.|
+|`edit <name>`|Opens an existing stored procedure body in an external editor and saves it on exit. Fails if the stored procedure does not exist; use `create` to add a new one. Interactive sessions only; not available over MCP or from scripts.|
+|`delete <name>`|Deletes a stored procedure.|
+
+#### Examples
+
+```bash
+sproc list
+sproc show myProc
+sproc exists myProc
+sproc create myProc ./myProc.js
+sproc create myProc ./myProc.js --force
+sproc create myProc
+sproc edit myProc
+sproc exec myProc '["param1", "param2"]' --partition-key pk1
+sproc delete myProc
+```
+
+Stored procedures are a Cosmos DB for NoSQL feature. The `sproc` command operates on the current container, the same scope as `index`.
+
+### udf
+
+Manage JavaScript user-defined functions (UDFs) on a container through subcommands.
+
+```text
+Usage: udf subcommand [name] [value] [-force] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  list, show, exists, create, edit, or delete
+    [name]      The user-defined function id
+    [value]     A JavaScript file (for create)
+
+Options:
+    -force, -f  Replace the user-defined function if it already exists (create)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`list`|Lists the user-defined functions in the current container. The interactive table shows id and body size; the structured JSON result contains `id`, `etag`, and `bodyLength` for each.|
+|`show <name>`|Returns the body of a user-defined function.|
+|`exists <name>`|Returns a boolean indicating whether a user-defined function exists. The boolean result can be used directly in `if` and `while` conditions.|
+|`create <name> <file>`|Creates a user-defined function from a JavaScript file. The body can also be piped in. Pass `--force` to replace an existing one.|
+|`create <name>`|With no file or piped body, seeds a sample user-defined function, opens it in an external editor, and prompts to create or discard on exit. Interactive sessions only; scripts must pass a file. The `udf` command is not available over MCP.|
+|`edit <name>`|Opens an existing user-defined function body in an external editor and saves it on exit. Fails if the user-defined function does not exist; use `create` to add a new one. Interactive sessions only; not available over MCP or from scripts.|
+|`delete <name>`|Deletes a user-defined function.|
+
+#### Examples
+
+```bash
+udf list
+udf show myFunc
+udf exists myFunc
+udf create myFunc ./myFunc.js
+udf create myFunc ./myFunc.js --force
+udf create myFunc
+udf edit myFunc
+udf delete myFunc
+```
+
+User-defined functions are a Cosmos DB for NoSQL feature invoked from within queries. The `udf` command operates on the current container, the same scope as `index`. Like `sproc` and `trigger`, it is restricted from MCP and must be run manually in the shell.
+
+### trigger
+
+Manage JavaScript triggers on a container through subcommands.
+
+```text
+Usage: trigger subcommand [name] [value] [-type <ARG>] [-operation <ARG>] [-force] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  list, show, exists, create, edit, or delete
+    [name]      The trigger id
+    [value]     A JavaScript file (for create)
+
+Options:
+    -type, -t   Trigger type for create: pre or post (required for create)
+    -operation, -op
+                Operation the trigger fires on: all, create, replace, delete, or update (default: all)
+    -force, -f  Replace the trigger if it already exists (create)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`list`|Lists the triggers in the current container. The interactive table shows id, type, operation, and body size; the structured JSON result contains `id`, `triggerType`, `triggerOperation`, `etag`, and `bodyLength` for each.|
+|`show <name>`|Returns the body of a trigger.|
+|`exists <name>`|Returns a boolean indicating whether a trigger exists. The boolean result can be used directly in `if` and `while` conditions.|
+|`create <name> <file>`|Creates a trigger from a JavaScript file. The body can also be piped in. `--type` selects `pre` or `post`, `--operation` selects the operation (defaults to `all`), and `--force` replaces an existing one.|
+|`create <name> --type <pre\|post>`|With no file or piped body, seeds a sample trigger, opens it in an external editor, and prompts to create or discard on exit. `--type` is still required. Interactive sessions only; scripts must pass a file. The `trigger` command is not available over MCP.|
+|`edit <name>`|Opens an existing trigger body in an external editor and saves it on exit, preserving the trigger type and operation. Fails if the trigger does not exist; use `create` to add a new one. Interactive sessions only; not available over MCP or from scripts.|
+|`delete <name>`|Deletes a trigger.|
+
+#### Examples
+
+```bash
+trigger list
+trigger show myTrigger
+trigger exists myTrigger
+trigger create myTrigger ./myTrigger.js --type pre --operation create
+trigger create myTrigger ./myTrigger.js --type post --operation all --force
+trigger create myTrigger --type pre
+trigger edit myTrigger
+trigger delete myTrigger
+```
+
+Triggers are a Cosmos DB for NoSQL feature. Pre-triggers and post-triggers are invoked when item operations opt in to them. The `trigger` command operates on the current container, the same scope as `index`. Like `sproc` and `udf`, it is restricted from MCP and must be run manually in the shell.
 
 ## Utilities
 

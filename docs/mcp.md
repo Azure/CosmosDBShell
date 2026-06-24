@@ -40,6 +40,8 @@ The MCP server runs locally with your user permissions. Connected clients can ex
 - Query and retrieve documents
 - Create, update, and delete resources
 
+Server-side programming commands — stored procedures (`sproc`), user-defined functions (`udf`), and triggers (`trigger`) — are restricted from MCP. Run those commands manually in the shell.
+
 Database and container resource actions are executed through Azure Resource Manager when an ARM context is attached (Entra ID connections). MCP sessions connected with account keys, emulator credentials, or static data-plane tokens fall back to the Cosmos DB data plane for these actions.
 
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.

@@ -5,6 +5,13 @@
 ### New features
 
 - The `settings` command has been renamed to `info` and now reports usage statistics alongside configuration. For a container it adds the document count and data/total storage size; for a database (when only a database is in scope) it reports the container count, aggregate document count, total storage, and shared throughput; at the account root it adds the database count. `--partitions` adds the per-physical-partition document distribution, and `--detailed` adds a storage breakdown plus the top partition keys by document count for a container, the per-container breakdown for a database, or per-database aggregate totals for the account. ([#108](https://github.com/Azure/CosmosDBShell/issues/108))
+- `sproc` command to manage Cosmos DB for NoSQL stored procedures on the current container: `list`, `show`, `exists` (returns a boolean usable in `if`/`while` conditions), `create` (from a JavaScript file or piped body, with `--force` to replace), `exec` (with a JSON argument array and `--partition-key`), `edit` (interactive external editor), and `delete`. ([#103](https://github.com/Azure/CosmosDBShell/issues/103))
+- `udf` command to manage Cosmos DB for NoSQL user-defined functions on the current container: `list`, `show`, `exists` (returns a boolean usable in `if`/`while` conditions), `create` (from a JavaScript file or piped body, or interactively in an external editor when no body is supplied, with `--force` to replace), `edit` (interactive external editor), and `delete`. ([#103](https://github.com/Azure/CosmosDBShell/issues/103))
+- `trigger` command to manage Cosmos DB for NoSQL triggers on the current container: `list`, `show`, `exists` (returns a boolean usable in `if`/`while` conditions), `create` (from a JavaScript file or piped body, or interactively in an external editor when no body is supplied, with `--type` for pre/post, `--operation` for the operation, and `--force` to replace), `edit` (interactive external editor that preserves the trigger type and operation), and `delete`. ([#103](https://github.com/Azure/CosmosDBShell/issues/103))
+
+### Breaking changes
+
+- Removed the `--editor` option from `theme edit`. The external editor is now always resolved from `$VISUAL`, then `$EDITOR`, then a platform default — consistent with `sproc edit`, `udf edit`, and `trigger edit`. Set `$VISUAL` or `$EDITOR` to choose a specific editor.
 
 ## 1.1.4-preview — 2026-05-21
 

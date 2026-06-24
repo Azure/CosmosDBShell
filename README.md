@@ -13,6 +13,9 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Bulk roundtrip with `import` / `export` for JSON Lines and JSON array files, plus CSV import/export (CSV import coerces values to strings; `--partition-key` nests a CSV column under a nested partition key path)
 - Manage container indexing policies with `index` (`show`, `add`, `remove`, `set`)
 - Inspect container/database/account configuration and usage statistics with `info` (partition key, throughput, policies, indexing policy summary, document count, storage size, regions; `--partitions` and `--detailed` for distribution analysis)
+- Manage stored procedures with `sproc` (`list`, `show`, `exists`, `create`, `exec`, `edit`, `delete`)
+- Manage user-defined functions with `udf` (`list`, `show`, `exists`, `create`, `edit`, `delete`)
+- Manage triggers with `trigger` (`list`, `show`, `exists`, `create`, `edit`, `delete`)
 - Tail the change feed of a container with `watch` (alias `tail`)
 - Database and container management commands prefer Azure Resource Manager when connected with Entra ID, with data-plane fallback for key, emulator, and static-token connections
 - Pipelines and scripting with variables, loops, functions
@@ -163,6 +166,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--connect-subscription <id>` | Azure subscription ID for ARM database and container operations |
 | `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
+| `--diagnostics [path]` | Write timestamped diagnostic logs to a file, or to a timestamped file in the config directory by default |
 | `--otel [endpoint]` | Enable distributed tracing (sampled W3C `traceparent`); optional OTLP `endpoint`, else `OTEL_EXPORTER_OTLP_ENDPOINT` |
 | `--verbose` | Print full exception details |
 | `--color-system <n>` | Colors: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
@@ -205,9 +209,9 @@ export COSMOSDB_SHELL_THEME=monochrome
 cosmosdbshell
 
 # Inspect or switch at runtime.
-CS > theme list
-CS > theme show light       # preview a profile without switching
-CS > theme use light        # switch for the rest of the session
+❯ theme list
+❯ theme show light       # preview a profile without switching
+❯ theme use light        # switch for the rest of the session
 ```
 
 ### Custom themes
@@ -238,17 +242,19 @@ unknown_command = "bold red"
 
 Color values must be empty or one standard ANSI 16 color name (`black`, `maroon`, `green`, `olive`, `navy`, `purple`, `teal`, `silver`, `grey`, `red`, `lime`, `yellow`, `blue`, `fuchsia`, `aqua`, `white`). Style values may combine modifiers (`bold`, `dim`, `italic`, `underline`, `strikethrough`, `invert`, `conceal`, `slowblink`, `rapidblink`) with at most one ANSI 16 color. Empty string means "use the terminal's default foreground".
 
+The `literal` key colors every JSON/JavaScript literal at once. To match an editor more closely you can override individual literal types with `string`, `number`, `boolean`, and `null`; any you leave unset fall back to `literal`. The `string_escape` key colors backslash escape sequences (`\n`, `\"`, `\uXXXX`) inside strings; leave it unset to color escapes the same as the surrounding string.
+
 Runtime commands for working with files:
 
 ```bash
-CS > theme load ./my-theme.toml         # load and switch to a file ad-hoc
-CS > theme validate ./my-theme.toml     # validate a file without loading or switching
-CS > theme validate ~/.cosmosdbshell/themes  # validate every TOML file in a directory
-CS > theme validate my-theme --strict   # treat warnings as errors
-CS > theme save my-theme                # write the active theme to ~/.cosmosdbshell/themes/my-theme.toml
-CS > theme save my-theme ./out.toml     # save to a custom path
-CS > theme save my-theme --force        # overwrite an existing file
-CS > theme reload                       # rescan the user themes directory
+❯ theme load ./my-theme.toml         # load and switch to a file ad-hoc
+❯ theme validate ./my-theme.toml     # validate a file without loading or switching
+❯ theme validate ~/.cosmosdbshell/themes  # validate every TOML file in a directory
+❯ theme validate my-theme --strict   # treat warnings as errors
+❯ theme save my-theme                # write the active theme to ~/.cosmosdbshell/themes/my-theme.toml
+❯ theme save my-theme ./out.toml     # save to a custom path
+❯ theme save my-theme --force        # overwrite an existing file
+❯ theme reload                       # rescan the user themes directory
 ```
 
 `theme save` writes a self-contained theme file with every color and style slot populated, so the saved file can be moved or edited without depending on another custom profile.

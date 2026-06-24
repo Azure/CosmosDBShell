@@ -35,11 +35,40 @@ internal sealed record ThemeOptions
 
     public string RedirectionColor { get; init; } = "green";
 
-    public string JsonPropertyColor { get; init; } = "aqua";
+    public string JsonPropertyColor { get; init; } = "green";
 
     public string JsonPunctuationColor { get; init; } = "yellow";
 
-    public string LiteralColor { get; init; } = "fuchsia";
+    public string LiteralColor { get; init; } = "aqua";
+
+    /// <summary>
+    /// Gets the color for string literals. Empty falls back to <see cref="LiteralColor"/>,
+    /// so themes that only set <c>literal</c> keep coloring every literal the same.
+    /// </summary>
+    public string StringColor { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets the color for numeric literals. Empty falls back to <see cref="LiteralColor"/>.
+    /// </summary>
+    public string NumberColor { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets the color for boolean literals (<c>true</c>/<c>false</c>). Empty falls back to
+    /// <see cref="LiteralColor"/>.
+    /// </summary>
+    public string BooleanColor { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets the color for the <c>null</c> literal. Empty falls back to <see cref="LiteralColor"/>.
+    /// </summary>
+    public string NullColor { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets the color for backslash escape sequences (e.g. <c>\n</c>, <c>\"</c>,
+    /// <c>\uXXXX</c>) inside string literals. Empty (or a value equal to the resolved
+    /// string color) colors escapes the same as the rest of the string.
+    /// </summary>
+    public string StringEscapeColor { get; init; } = string.Empty;
 
     /// <summary>
     /// Gets the color applied to variable references (e.g. <c>$foo</c>) in the

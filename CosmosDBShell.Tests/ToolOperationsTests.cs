@@ -106,6 +106,21 @@ public class ToolOperationsTests
     }
 
     [Fact]
+    public void GetTool_MarksStoredProceduresRestrictedForMcp()
+    {
+        var factory = new CommandRunner().Commands["sproc"];
+
+        Assert.True(factory.McpRestricted);
+
+        var tool = ToolOperations.GetTool(factory);
+
+        Assert.Contains("cannot be invoked through MCP", tool.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(tool.Annotations);
+        Assert.True(tool.Annotations!.DestructiveHint);
+        Assert.True(tool.Annotations.OpenWorldHint);
+    }
+
+    [Fact]
     public void GetTool_DoesNotAppendWarningForUnrestrictedCommands()
     {
         var factory = new CommandRunner().Commands["query"];
