@@ -487,7 +487,10 @@ internal class InfoCommand : CosmosCommand
         var builder = new StringBuilder("c");
         foreach (var segment in path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            builder.Append('[').Append('"').Append(segment.Replace("\"", "\\\"", StringComparison.Ordinal)).Append('"').Append(']');
+            var escaped = segment
+                .Replace("\\", "\\\\", StringComparison.Ordinal)
+                .Replace("\"", "\\\"", StringComparison.Ordinal);
+            builder.Append('[').Append('"').Append(escaped).Append('"').Append(']');
         }
 
         return builder.ToString();
