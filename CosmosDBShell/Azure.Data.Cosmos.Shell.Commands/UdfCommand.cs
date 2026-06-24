@@ -117,7 +117,7 @@ internal class UdfCommand : CosmosCommand
 
         return subcommand switch
         {
-            "list" or "ls" => await this.ListAsync(container, commandState, token),
+            "list" or "ls" => await this.ListAsync(container, shell, commandState, token),
             "show" or "cat" => await this.ShowAsync(container, commandState, token),
             "exists" => await this.ExistsAsync(container, commandState, token),
             "create" or "set" => await this.CreateAsync(container, shell, commandState, token),
@@ -132,7 +132,7 @@ internal class UdfCommand : CosmosCommand
     private static CommandException NotFound(string name, Exception inner) =>
         new("udf", MessageService.GetArgsString("command-udf-error-not_found", "name", name), inner);
 
-    private async Task<CommandState> ListAsync(Container container, CommandState commandState, CancellationToken token)
+    private async Task<CommandState> ListAsync(Container container, ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
         var items = new List<object>();
         var rows = new List<(string Id, int BodyLength)>();
@@ -151,6 +151,16 @@ internal class UdfCommand : CosmosCommand
                     properties.Id,
                     properties.Body?.Length ?? 0));
             }
+        }
+
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(items));
+
+        // When output is redirected, let the interpreter emit the JSON result so
+        // `udf list > out.json` honors the documented JSON contract instead of
+        // writing a console table. Interactive sessions still get the table.
+        if (!string.IsNullOrEmpty(shell.StdOutRedirect))
+        {
+            return commandState;
         }
 
         if (rows.Count == 0)
@@ -174,7 +184,6 @@ internal class UdfCommand : CosmosCommand
             AnsiConsole.Write(table);
         }
 
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(items));
         commandState.IsPrinted = true;
         return commandState;
     }

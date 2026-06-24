@@ -192,7 +192,7 @@ internal class SprocCommand : CosmosCommand
 
         return subcommand switch
         {
-            "list" or "ls" => await this.ListAsync(container, commandState, token),
+            "list" or "ls" => await this.ListAsync(container, shell, commandState, token),
             "show" or "cat" => await this.ShowAsync(container, commandState, token),
             "exists" => await this.ExistsAsync(container, commandState, token),
             "create" or "set" => await this.CreateAsync(container, shell, commandState, token),
@@ -205,7 +205,7 @@ internal class SprocCommand : CosmosCommand
         };
     }
 
-    private async Task<CommandState> ListAsync(Container container, CommandState commandState, CancellationToken token)
+    private async Task<CommandState> ListAsync(Container container, ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
         var items = new List<object>();
         var rows = new List<(string Id, string Modified, int BodyLength)>();
@@ -226,6 +226,16 @@ internal class SprocCommand : CosmosCommand
                     properties.LastModified?.ToString("u") ?? string.Empty,
                     properties.Body?.Length ?? 0));
             }
+        }
+
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(items));
+
+        // When output is redirected, let the interpreter emit the JSON result so
+        // `sproc list > out.json` honors the documented JSON contract instead of
+        // writing a console table. Interactive sessions still get the table.
+        if (!string.IsNullOrEmpty(shell.StdOutRedirect))
+        {
+            return commandState;
         }
 
         if (rows.Count == 0)
@@ -251,7 +261,6 @@ internal class SprocCommand : CosmosCommand
             AnsiConsole.Write(table);
         }
 
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(items));
         commandState.IsPrinted = true;
         return commandState;
     }
