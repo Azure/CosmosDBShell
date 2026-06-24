@@ -12,6 +12,9 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
 - Bulk roundtrip with `import` / `export` for JSON Lines and JSON array files, plus CSV import/export (CSV import coerces values to strings; `--partition-key` nests a CSV column under a nested partition key path)
 - Manage container indexing policies with `index` (`show`, `add`, `remove`, `set`)
+- Manage stored procedures with `sproc` (`list`, `show`, `exists`, `create`, `exec`, `edit`, `delete`)
+- Manage user-defined functions with `udf` (`list`, `show`, `exists`, `create`, `edit`, `delete`)
+- Manage triggers with `trigger` (`list`, `show`, `exists`, `create`, `edit`, `delete`)
 - Tail the change feed of a container with `watch` (alias `tail`)
 - Database and container management commands prefer Azure Resource Manager when connected with Entra ID, with data-plane fallback for key, emulator, and static-token connections
 - Pipelines and scripting with variables, loops, functions
@@ -237,6 +240,8 @@ unknown_command = "bold red"
 ```
 
 Color values must be empty or one standard ANSI 16 color name (`black`, `maroon`, `green`, `olive`, `navy`, `purple`, `teal`, `silver`, `grey`, `red`, `lime`, `yellow`, `blue`, `fuchsia`, `aqua`, `white`). Style values may combine modifiers (`bold`, `dim`, `italic`, `underline`, `strikethrough`, `invert`, `conceal`, `slowblink`, `rapidblink`) with at most one ANSI 16 color. Empty string means "use the terminal's default foreground".
+
+The `literal` key colors every JSON/JavaScript literal at once. To match an editor more closely you can override individual literal types with `string`, `number`, `boolean`, and `null`; any you leave unset fall back to `literal`. The `string_escape` key colors backslash escape sequences (`\n`, `\"`, `\uXXXX`) inside strings; leave it unset to color escapes the same as the surrounding string.
 
 Runtime commands for working with files:
 

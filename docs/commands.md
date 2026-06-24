@@ -111,7 +111,7 @@ pwd                    # /MyDb/MyContainer
 Inspect, switch, load, validate, save, edit, open, and reload shell color themes.
 
 ```text
-Usage: theme [action] [name] [path] [-force] [-strict] [-editor <ARG>]
+Usage: theme [action] [name] [path] [-force] [-strict]
 
 Arguments:
     [action]    What to do: current (default), list, show, use (alias: set),
@@ -124,8 +124,6 @@ Options:
     -force, -f  Overwrite an existing file when saving, or seed the
                 built-in profile to a user file when editing
     -strict     Treat warnings as errors during validate
-    -editor     External editor to launch for `theme edit`
-                (defaults to $VISUAL, $EDITOR, then a platform default)
 ```
 
 Examples:
@@ -140,7 +138,6 @@ theme validate ~/.cosmosdbshell/themes
 theme validate my-theme --strict
 theme save my-theme --force
 theme edit my-theme
-theme edit dark --force --editor "code --wait"
 theme open
 theme reload
 ```
@@ -624,6 +621,154 @@ throughput autoscale 10000
 throughput set 4000 --yes
 throughput show --database MyDatabase --container MyContainer
 ```
+
+### sproc
+
+Manage JavaScript stored procedures on a container through subcommands.
+
+```text
+Usage: sproc subcommand [name] [value] [-partition-key <ARG>] [-force] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  list, show, exists, create, exec, edit, or delete
+    [name]      The stored procedure id
+    [value]     A JavaScript file (for create) or a JSON array of arguments (for exec)
+
+Options:
+    -partition-key, -pk
+                Partition key used to target a partition when executing (required for exec)
+    -force, -f  Replace the stored procedure if it already exists (create)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`list`|Lists the stored procedures in the current container. The interactive table shows id, last modified, and body size; the structured JSON result contains `id`, `lastModified`, `etag`, and `bodyLength` for each.|
+|`show <name>`|Returns the body of a stored procedure.|
+|`exists <name>`|Returns a boolean indicating whether a stored procedure exists. The boolean result can be used directly in `if` and `while` conditions.|
+|`create <name> <file>`|Creates a stored procedure from a JavaScript file. The body can also be piped in. Pass `--force` to replace an existing one.|
+|`create <name>`|With no file or piped body, seeds a sample stored procedure, opens it in an external editor, and prompts to create or discard on exit. Interactive sessions only; scripts must pass a file. The `sproc` command is not available over MCP.|
+|`exec <name> [params]`|Executes a stored procedure. `params` is a JSON array of arguments, and `--partition-key` selects the target partition.|
+|`edit <name>`|Opens an existing stored procedure body in an external editor and saves it on exit. Fails if the stored procedure does not exist; use `create` to add a new one. Interactive sessions only; not available over MCP or from scripts.|
+|`delete <name>`|Deletes a stored procedure.|
+
+#### Examples
+
+```bash
+sproc list
+sproc show myProc
+sproc exists myProc
+sproc create myProc ./myProc.js
+sproc create myProc ./myProc.js --force
+sproc create myProc
+sproc edit myProc
+sproc exec myProc '["param1", "param2"]' --partition-key pk1
+sproc delete myProc
+```
+
+Stored procedures are a Cosmos DB for NoSQL feature. The `sproc` command operates on the current container, the same scope as `index`.
+
+### udf
+
+Manage JavaScript user-defined functions (UDFs) on a container through subcommands.
+
+```text
+Usage: udf subcommand [name] [value] [-force] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  list, show, exists, create, edit, or delete
+    [name]      The user-defined function id
+    [value]     A JavaScript file (for create)
+
+Options:
+    -force, -f  Replace the user-defined function if it already exists (create)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`list`|Lists the user-defined functions in the current container. The interactive table shows id and body size; the structured JSON result contains `id`, `etag`, and `bodyLength` for each.|
+|`show <name>`|Returns the body of a user-defined function.|
+|`exists <name>`|Returns a boolean indicating whether a user-defined function exists. The boolean result can be used directly in `if` and `while` conditions.|
+|`create <name> <file>`|Creates a user-defined function from a JavaScript file. The body can also be piped in. Pass `--force` to replace an existing one.|
+|`create <name>`|With no file or piped body, seeds a sample user-defined function, opens it in an external editor, and prompts to create or discard on exit. Interactive sessions only; scripts must pass a file. The `udf` command is not available over MCP.|
+|`edit <name>`|Opens an existing user-defined function body in an external editor and saves it on exit. Fails if the user-defined function does not exist; use `create` to add a new one. Interactive sessions only; not available over MCP or from scripts.|
+|`delete <name>`|Deletes a user-defined function.|
+
+#### Examples
+
+```bash
+udf list
+udf show myFunc
+udf exists myFunc
+udf create myFunc ./myFunc.js
+udf create myFunc ./myFunc.js --force
+udf create myFunc
+udf edit myFunc
+udf delete myFunc
+```
+
+User-defined functions are a Cosmos DB for NoSQL feature invoked from within queries. The `udf` command operates on the current container, the same scope as `index`. Like `sproc` and `trigger`, it is restricted from MCP and must be run manually in the shell.
+
+### trigger
+
+Manage JavaScript triggers on a container through subcommands.
+
+```text
+Usage: trigger subcommand [name] [value] [-type <ARG>] [-operation <ARG>] [-force] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  list, show, exists, create, edit, or delete
+    [name]      The trigger id
+    [value]     A JavaScript file (for create)
+
+Options:
+    -type, -t   Trigger type for create: pre or post (required for create)
+    -operation, -op
+                Operation the trigger fires on: all, create, replace, delete, or update (default: all)
+    -force, -f  Replace the trigger if it already exists (create)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`list`|Lists the triggers in the current container. The interactive table shows id, type, operation, and body size; the structured JSON result contains `id`, `triggerType`, `triggerOperation`, `etag`, and `bodyLength` for each.|
+|`show <name>`|Returns the body of a trigger.|
+|`exists <name>`|Returns a boolean indicating whether a trigger exists. The boolean result can be used directly in `if` and `while` conditions.|
+|`create <name> <file>`|Creates a trigger from a JavaScript file. The body can also be piped in. `--type` selects `pre` or `post`, `--operation` selects the operation (defaults to `all`), and `--force` replaces an existing one.|
+|`create <name> --type <pre\|post>`|With no file or piped body, seeds a sample trigger, opens it in an external editor, and prompts to create or discard on exit. `--type` is still required. Interactive sessions only; scripts must pass a file. The `trigger` command is not available over MCP.|
+|`edit <name>`|Opens an existing trigger body in an external editor and saves it on exit, preserving the trigger type and operation. Fails if the trigger does not exist; use `create` to add a new one. Interactive sessions only; not available over MCP or from scripts.|
+|`delete <name>`|Deletes a trigger.|
+
+#### Examples
+
+```bash
+trigger list
+trigger show myTrigger
+trigger exists myTrigger
+trigger create myTrigger ./myTrigger.js --type pre --operation create
+trigger create myTrigger ./myTrigger.js --type post --operation all --force
+trigger create myTrigger --type pre
+trigger edit myTrigger
+trigger delete myTrigger
+```
+
+Triggers are a Cosmos DB for NoSQL feature. Pre-triggers and post-triggers are invoked when item operations opt in to them. The `trigger` command operates on the current container, the same scope as `index`. Like `sproc` and `udf`, it is restricted from MCP and must be run manually in the shell.
 
 ## Utilities
 
