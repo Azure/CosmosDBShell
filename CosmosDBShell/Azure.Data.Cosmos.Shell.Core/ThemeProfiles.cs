@@ -26,6 +26,7 @@ internal static class ThemeProfiles
         BooleanColor = "blue",
         NullColor = "blue",
         StringEscapeColor = "olive",
+        VariableColor = "teal",
     };
 
     /// <summary>
