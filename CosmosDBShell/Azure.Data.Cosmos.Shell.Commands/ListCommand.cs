@@ -231,7 +231,14 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         // reports databases and containers. PrintState clears Result after printing, so preserve
         // it for downstream piping and mark the state as already printed.
         var rendered = returnState.Result;
-        interpreter.PrintState(returnState);
+        var printState = interpreter.PrintState(returnState);
+        if (printState.IsError)
+        {
+            // Output generation/redirection failed; surface the error instead of
+            // continuing to print the summary as if the listing succeeded.
+            return printState;
+        }
+
         returnState.Result = rendered;
         returnState.IsPrinted = true;
 
