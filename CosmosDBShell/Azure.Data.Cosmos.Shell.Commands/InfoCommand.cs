@@ -46,22 +46,34 @@ internal class InfoCommand : CosmosCommand
             throw new NotConnectedException("info");
         }
 
+        // Resolve database and container from options and current state
+        string? databaseName = this.Database;
+        string? containerName = this.Container;
+
+        if (shell.State is ContainerState cs)
+        {
+            databaseName ??= cs.DatabaseName;
+            containerName ??= cs.ContainerName;
+        }
+        else if (shell.State is DatabaseState ds)
+        {
+            databaseName ??= ds.DatabaseName;
+        }
+
+        // Fail fast on option combinations that would otherwise be silently ignored
+        // by falling back to a broader scope.
+        if (!string.IsNullOrEmpty(containerName) && string.IsNullOrEmpty(databaseName))
+        {
+            throw new CommandException("info", MessageService.GetString("command-info-error-container-without-database"));
+        }
+
+        if (this.Partitions && string.IsNullOrEmpty(containerName))
+        {
+            throw new CommandException("info", MessageService.GetString("command-info-error-partitions-requires-container"));
+        }
+
         try
         {
-            // Resolve database and container from options and current state
-            string? databaseName = this.Database;
-            string? containerName = this.Container;
-
-            if (shell.State is ContainerState cs)
-            {
-                databaseName ??= cs.DatabaseName;
-                containerName ??= cs.ContainerName;
-            }
-            else if (shell.State is DatabaseState ds)
-            {
-                databaseName ??= ds.DatabaseName;
-            }
-
             // If both database and container are resolved, show container settings
             if (!string.IsNullOrEmpty(databaseName) && !string.IsNullOrEmpty(containerName))
             {
@@ -77,7 +89,7 @@ internal class InfoCommand : CosmosCommand
             // Otherwise show account overview
             return await this.PrintOverviewAsync(connectedState, commandState, token);
         }
-        catch (Exception e)
+        catch (Exception e) when (e is not OperationCanceledException)
         {
             if (TryGetPrincipalIdFromRbacException(e, out var id, out var request, out var permission))
             {

@@ -29,6 +29,32 @@ public class InfoCommandTests
     }
 
     [Fact]
+    public async Task Info_ContainerWithoutDatabase_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ConnectedState(null!);
+        var command = new InfoCommand { Container = "Products" };
+
+        var exception = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "info --container=Products", CancellationToken.None));
+
+        Assert.Contains(MessageService.GetString("command-info-error-container-without-database"), exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Info_PartitionsWithoutContainer_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", null!);
+        var command = new InfoCommand { Partitions = true };
+
+        var exception = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "info --partitions", CancellationToken.None));
+
+        Assert.Contains(MessageService.GetString("command-info-error-partitions-requires-container"), exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ParseResourceUsage_ExtractsCountAndSizes()
     {
         var usage = InfoCommand.ParseResourceUsage("documentsCount=42;documentsSize=128;collectionSize=160");
