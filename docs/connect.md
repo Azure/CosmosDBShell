@@ -39,7 +39,7 @@ When ARM is in use, the identity needs data-plane RBAC for item operations and A
 
 ### Known limitation: strict native data-plane RBAC with non-Entra connections
 
-Account-key connections, `COSMOSDB_SHELL_TOKEN` connections, and emulator connections do not attach an ARM context, so resource commands (`mkdb`, `mkcon`, `rmdb`, `rmcon`, `indexpolicy`, container `settings`) fall back to the data plane. If you connect to a real Azure Cosmos DB account that has [native data-plane RBAC](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-setup-rbac) enforced (key-based and control-plane writes disabled), those commands will be rejected by the service even with a valid static credential, because the request never reaches Azure Resource Manager.
+Account-key connections, `COSMOSDB_SHELL_TOKEN` connections, and emulator connections do not attach an ARM context, so resource commands (`mkdb`, `mkcon`, `rmdb`, `rmcon`, `index`, container `settings`) fall back to the data plane. If you connect to a real Azure Cosmos DB account that has [native data-plane RBAC](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-setup-rbac) enforced (key-based and control-plane writes disabled), those commands will be rejected by the service even with a valid static credential, because the request never reaches Azure Resource Manager.
 
 To use resource commands against such an account, connect with an Entra ID credential — `--tenant`, `--managed-identity`, `--connect-vscode-credential`, or the endpoint-only `DefaultAzureCredential` form — and (optionally) supply `--subscription` and `--resource-group` to skip ARM discovery.
 
@@ -114,7 +114,7 @@ For sovereign clouds or custom Entra environments, use `--authority-host`:
 connect https://myaccount.documents.azure.com:443/ --authority-host=https://login.microsoftonline.us/
 ```
 
-When `--subscription` and `--resource-group` are supplied, the shell also needs to pick an Azure Resource Manager endpoint for control-plane operations (mkdb, mkcon, rmdb, rmcon, indexpolicy). It resolves the ARM endpoint in this order:
+When `--subscription` and `--resource-group` are supplied, the shell also needs to pick an Azure Resource Manager endpoint for control-plane operations (mkdb, mkcon, rmdb, rmcon, index). It resolves the ARM endpoint in this order:
 
 1. Match the authority host against the built-in table of known Azure clouds (Public, China, US Gov, Germany).
 2. If no match, match the Cosmos endpoint suffix (e.g. `.documents.azure.us`) against the same table.

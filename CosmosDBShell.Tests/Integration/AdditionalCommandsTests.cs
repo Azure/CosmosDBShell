@@ -83,7 +83,7 @@ public class AdditionalCommandsTests : EmulatorFixtureTestBase
     public async Task IndexPolicy_Read_ReturnsPolicyJson()
     {
         await ExecuteAsync($"cd {Fixture.ContainerName}");
-        var state = await ExecuteAsync("indexpolicy");
+        var state = await ExecuteAsync("indexpolicy show");
         Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
 
         var json = IntegrationTestBase.GetJson(state);
@@ -96,7 +96,7 @@ public class AdditionalCommandsTests : EmulatorFixtureTestBase
         await ExecuteAsync($"cd {Fixture.ContainerName}");
 
         var policy = "{\"indexingMode\":\"consistent\",\"automatic\":true,\"includedPaths\":[{\"path\":\"/*\"}],\"excludedPaths\":[{\"path\":\"/\\\"_etag\\\"/?\"}]}";
-        var state = await ExecuteAsync($"indexpolicy '{policy}'");
+        var state = await ExecuteAsync($"indexpolicy set '{policy}'");
         Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
 
         var json = IntegrationTestBase.GetJson(state);
@@ -108,7 +108,7 @@ public class AdditionalCommandsTests : EmulatorFixtureTestBase
     {
         await ExecuteAsync($"cd {Fixture.ContainerName}");
 
-        var state = await ExecuteAsync("indexpolicy 'not json'");
+        var state = await ExecuteAsync("indexpolicy set '{not json}'");
         Assert.True(state.IsError);
     }
 
