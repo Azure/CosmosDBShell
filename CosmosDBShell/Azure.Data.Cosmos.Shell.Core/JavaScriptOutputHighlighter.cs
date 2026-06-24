@@ -11,7 +11,8 @@ using Spectre.Console;
 /// applying the colors defined in <see cref="Theme"/>. Used when displaying the bodies of
 /// server-side scripts (stored procedures, triggers, user-defined functions), which Cosmos DB
 /// stores as JavaScript. The scan is intentionally lightweight: it recognizes comments,
-/// string and template literals, numbers, brackets, and a fixed keyword set; everything else is
+/// string and template literals, numbers, the <c>true</c>/<c>false</c>/<c>null</c> literals,
+/// brackets, and a fixed keyword set; everything else is
 /// emitted as plain (escaped) text. Brackets receive depth-cycled colors so matching pairs share
 /// a color, matching the behavior of <see cref="JsonOutputHighlighter"/>.
 /// </summary>
@@ -127,7 +128,13 @@ internal static class JavaScriptOutputHighlighter
                 }
 
                 var word = source[start..i];
-                sb.Append(Keywords.Contains(word) ? Theme.FormatKeyword(word) : Markup.Escape(word));
+                sb.Append(word switch
+                {
+                    "true" or "false" => Theme.FormatBooleanLiteral(word),
+                    "null" => Theme.FormatJsonNull(word),
+                    _ when Keywords.Contains(word) => Theme.FormatKeyword(word),
+                    _ => Markup.Escape(word),
+                });
                 continue;
             }
 

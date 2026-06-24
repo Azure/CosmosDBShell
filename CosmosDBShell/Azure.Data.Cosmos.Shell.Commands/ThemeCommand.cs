@@ -203,7 +203,10 @@ internal class ThemeCommand : CosmosCommand
             Row("json property", Theme.FormatJsonProperty("\"id\""));
             Row("json punctuation", Theme.FormatJsonBracket(":"));
             Row("string literal", Theme.FormatStringLiteral("\"hello\""));
+            Row("string escape", Theme.FormatStringLiteral("\"line\\nbreak\""));
             Row("number literal", Theme.FormatNumberLiteral("42"));
+            Row("boolean literal", Theme.FormatBooleanLiteral("true"));
+            Row("null literal", Theme.FormatJsonNull("null"));
             Row("keyword", Theme.FormatKeyword("if"));
             Row("operator", Theme.FormatOperator("+"));
             Row("error", Theme.FormatError("not found"));

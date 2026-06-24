@@ -16,19 +16,33 @@ internal static class ThemeProfiles
     /// Default palette tuned for dark terminal backgrounds. Uses ANSI 16 colors only,
     /// so it follows the terminal's configured palette (Solarized, Dracula, Campbell,
     /// etc.). Headers and table values are bold/unstyled rather than colored so they
-    /// stay readable on light backgrounds too.
+    /// stay readable on light backgrounds too. Literal colors are split per type
+    /// (string/number/boolean/null) to approximate VS Code's default dark theme.
     /// </summary>
-    public static ThemeOptions Default { get; } = new();
+    public static ThemeOptions Default { get; } = new()
+    {
+        StringColor = "aqua",
+        NumberColor = "lime",
+        BooleanColor = "blue",
+        NullColor = "blue",
+        StringEscapeColor = "olive",
+    };
 
     /// <summary>
     /// Palette tuned for light terminal backgrounds. Bracket cycle uses darker hues
-    /// (purple/maroon/navy) so they remain visible on white, and the JSON literal
-    /// color shifts from <c>fuchsia</c> (very pale on white) to <c>purple</c>.
+    /// (purple/maroon/navy) so they remain visible on white. The per-type literal
+    /// slots are cleared so every literal falls back to <c>purple</c> for contrast on
+    /// white, instead of the dark theme's aqua/lime/blue.
     /// </summary>
     public static ThemeOptions Light { get; } = Default with
     {
         BracketCycle = ["purple", "maroon", "navy"],
         LiteralColor = "purple",
+        StringColor = string.Empty,
+        NumberColor = string.Empty,
+        BooleanColor = string.Empty,
+        NullColor = string.Empty,
+        StringEscapeColor = "navy",
         ContainerNameColor = "purple",
         ConnectedPromptColor = "navy",
         JsonPropertyColor = "navy",
@@ -64,6 +78,11 @@ internal static class ThemeProfiles
         JsonPropertyColor = string.Empty,
         JsonPunctuationColor = string.Empty,
         LiteralColor = string.Empty,
+        StringColor = string.Empty,
+        NumberColor = string.Empty,
+        BooleanColor = string.Empty,
+        NullColor = string.Empty,
+        StringEscapeColor = string.Empty,
         VariableColor = string.Empty,
         JsonPathColor = string.Empty,
         KeywordColor = string.Empty,

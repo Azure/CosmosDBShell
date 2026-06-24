@@ -241,6 +241,8 @@ unknown_command = "bold red"
 
 Color values must be empty or one standard ANSI 16 color name (`black`, `maroon`, `green`, `olive`, `navy`, `purple`, `teal`, `silver`, `grey`, `red`, `lime`, `yellow`, `blue`, `fuchsia`, `aqua`, `white`). Style values may combine modifiers (`bold`, `dim`, `italic`, `underline`, `strikethrough`, `invert`, `conceal`, `slowblink`, `rapidblink`) with at most one ANSI 16 color. Empty string means "use the terminal's default foreground".
 
+The `literal` key colors every JSON/JavaScript literal at once. To match an editor more closely you can override individual literal types with `string`, `number`, `boolean`, and `null`; any you leave unset fall back to `literal`. The `string_escape` key colors backslash escape sequences (`\n`, `\"`, `\uXXXX`) inside strings; leave it unset to color escapes the same as the surrounding string.
+
 Runtime commands for working with files:
 
 ```bash

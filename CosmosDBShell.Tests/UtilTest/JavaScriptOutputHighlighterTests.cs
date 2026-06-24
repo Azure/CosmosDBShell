@@ -27,8 +27,8 @@ public class JavaScriptOutputHighlighterTests
     {
         var markup = JavaScriptOutputHighlighter.BuildMarkup("var s = 'hi'; var t = `bye`;");
 
-        Assert.Contains($"[{Theme.LiteralColorName}]'hi'[/]", markup);
-        Assert.Contains($"[{Theme.LiteralColorName}]`bye`[/]", markup);
+        Assert.Contains($"[{Theme.StringColorName}]'hi'[/]", markup);
+        Assert.Contains($"[{Theme.StringColorName}]`bye`[/]", markup);
     }
 
     [Fact]
@@ -36,7 +36,33 @@ public class JavaScriptOutputHighlighterTests
     {
         var markup = JavaScriptOutputHighlighter.BuildMarkup("var x = 42;");
 
-        Assert.Contains($"[{Theme.LiteralColorName}]42[/]", markup);
+        Assert.Contains($"[{Theme.NumberColorName}]42[/]", markup);
+    }
+
+    [Fact]
+    public void BooleanAndNull_UseLiteralColorsNotKeywordColor()
+    {
+        var markup = JavaScriptOutputHighlighter.BuildMarkup("var b = true; var c = false; var d = null;");
+
+        Assert.Contains($"[{Theme.BooleanColorName}]true[/]", markup);
+        Assert.Contains($"[{Theme.BooleanColorName}]false[/]", markup);
+        Assert.Contains($"[{Theme.NullColorName}]null[/]", markup);
+
+        // They must not be colored as keywords.
+        Assert.DoesNotContain($"[{Theme.KeywordColorName}]true[/]", markup);
+        Assert.DoesNotContain($"[{Theme.KeywordColorName}]null[/]", markup);
+    }
+
+    [Fact]
+    public void StringEscapes_AreColoredWithEscapeColor()
+    {
+        // The literal text contains a backslash-n escape inside a single-quoted string.
+        var markup = JavaScriptOutputHighlighter.BuildMarkup("var s = 'a\\nb';");
+
+        Assert.Contains($"[{Theme.StringEscapeColorName}]\\n[/]", markup);
+        // The surrounding string body still uses the string color.
+        Assert.Contains($"[{Theme.StringColorName}]'a[/]", markup);
+        Assert.Contains($"[{Theme.StringColorName}]b'[/]", markup);
     }
 
     [Fact]
