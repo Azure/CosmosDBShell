@@ -334,7 +334,7 @@ internal class SprocCommand : CosmosCommand
         try
         {
             var read = await container.Scripts.ReadStoredProcedureAsync(name, cancellationToken: token);
-            existingBody = read.Resource.Body;
+            existingBody = read.Resource.Body ?? string.Empty;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
@@ -491,7 +491,7 @@ internal class SprocCommand : CosmosCommand
         try
         {
             var read = await container.Scripts.ReadStoredProcedureAsync(name, cancellationToken: token);
-            existingBody = read.Resource.Body;
+            existingBody = read.Resource.Body ?? string.Empty;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
