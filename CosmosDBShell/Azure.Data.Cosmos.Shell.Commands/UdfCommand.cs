@@ -132,7 +132,7 @@ internal class UdfCommand : CosmosCommand
     private static CommandException NotFound(string name, Exception inner) =>
         new("udf", MessageService.GetArgsString("command-udf-error-not_found", "name", name), inner);
 
-    private async Task<CommandState> ListAsync(Container container, ShellInterpreter shell, CommandState commandState, CancellationToken token)
+    internal async Task<CommandState> ListAsync(Container container, ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
         var items = new List<object>();
         var rows = new List<(string Id, int BodyLength)>();
@@ -188,7 +188,7 @@ internal class UdfCommand : CosmosCommand
         return commandState;
     }
 
-    private async Task<CommandState> ShowAsync(Container container, CommandState commandState, CancellationToken token)
+    internal async Task<CommandState> ShowAsync(Container container, CommandState commandState, CancellationToken token)
     {
         var name = this.RequireName();
 
@@ -204,7 +204,7 @@ internal class UdfCommand : CosmosCommand
         }
     }
 
-    private async Task<CommandState> ExistsAsync(Container container, CommandState commandState, CancellationToken token)
+    internal async Task<CommandState> ExistsAsync(Container container, CommandState commandState, CancellationToken token)
     {
         var name = this.RequireName();
 
@@ -294,7 +294,7 @@ internal class UdfCommand : CosmosCommand
         return await this.WriteCreateAsync(container, commandState, name, edited, force, token);
     }
 
-    private async Task<CommandState> WriteCreateAsync(Container container, CommandState commandState, string name, string body, bool force, CancellationToken token)
+    internal async Task<CommandState> WriteCreateAsync(Container container, CommandState commandState, string name, string body, bool force, CancellationToken token)
     {
         var properties = new UserDefinedFunctionProperties { Id = name, Body = body };
 
@@ -341,7 +341,7 @@ internal class UdfCommand : CosmosCommand
         return commandState;
     }
 
-    private async Task<CommandState> DeleteAsync(Container container, CommandState commandState, CancellationToken token)
+    internal async Task<CommandState> DeleteAsync(Container container, CommandState commandState, CancellationToken token)
     {
         var name = this.RequireName();
 

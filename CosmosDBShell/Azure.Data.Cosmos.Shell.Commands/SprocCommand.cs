@@ -205,7 +205,7 @@ internal class SprocCommand : CosmosCommand
         };
     }
 
-    private async Task<CommandState> ListAsync(Container container, ShellInterpreter shell, CommandState commandState, CancellationToken token)
+    internal async Task<CommandState> ListAsync(Container container, ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
         var items = new List<object>();
         var rows = new List<(string Id, string Modified, int BodyLength)>();
@@ -265,7 +265,7 @@ internal class SprocCommand : CosmosCommand
         return commandState;
     }
 
-    private async Task<CommandState> ShowAsync(Container container, CommandState commandState, CancellationToken token)
+    internal async Task<CommandState> ShowAsync(Container container, CommandState commandState, CancellationToken token)
     {
         var name = this.RequireName();
 
@@ -281,7 +281,7 @@ internal class SprocCommand : CosmosCommand
         }
     }
 
-    private async Task<CommandState> ExistsAsync(Container container, CommandState commandState, CancellationToken token)
+    internal async Task<CommandState> ExistsAsync(Container container, CommandState commandState, CancellationToken token)
     {
         var name = this.RequireName();
 
@@ -371,7 +371,7 @@ internal class SprocCommand : CosmosCommand
         return await this.WriteCreateAsync(container, commandState, name, edited, force, token);
     }
 
-    private async Task<CommandState> WriteCreateAsync(Container container, CommandState commandState, string name, string body, bool force, CancellationToken token)
+    internal async Task<CommandState> WriteCreateAsync(Container container, CommandState commandState, string name, string body, bool force, CancellationToken token)
     {
         var properties = new StoredProcedureProperties { Id = name, Body = body };
 
@@ -418,7 +418,7 @@ internal class SprocCommand : CosmosCommand
         return commandState;
     }
 
-    private async Task<CommandState> ExecAsync(Container container, CommandState commandState, CancellationToken token)
+    internal async Task<CommandState> ExecAsync(Container container, CommandState commandState, CancellationToken token)
     {
         var name = this.RequireName();
 
@@ -454,7 +454,7 @@ internal class SprocCommand : CosmosCommand
         }
     }
 
-    private async Task<CommandState> DeleteAsync(Container container, CommandState commandState, CancellationToken token)
+    internal async Task<CommandState> DeleteAsync(Container container, CommandState commandState, CancellationToken token)
     {
         var name = this.RequireName();
 
