@@ -736,8 +736,8 @@ public partial class ShellInterpreter : IHighlighter
         }
 
         // Appends the text in [start, end) as escaped plain markup, but renders any
-        // ';' command separators that fall in this range using the redirection
-        // color so they stand out from operators, strings, and variables.
+        // ';' command separators that fall in this range using the operator
+        // color so they stand out from strings, variables, and plain text.
         private void AppendPlain(int start, int end)
         {
             var i = start;
@@ -745,7 +745,7 @@ public partial class ShellInterpreter : IHighlighter
             {
                 if (this.text[i] == ';' && this.separatorPositions.Contains(i))
                 {
-                    this.result.Append(Theme.FormatRedirection(";"));
+                    this.result.Append(Theme.FormatOperator(";"));
                     i++;
                     continue;
                 }
