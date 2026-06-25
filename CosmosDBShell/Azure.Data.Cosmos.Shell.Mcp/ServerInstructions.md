@@ -25,7 +25,7 @@ NAVIGATION:
 - Path chaining is supported: 'cd MyDatabase/MyContainer' navigates multiple levels at once.
 - Use 'ls' at any level to list resources (databases, containers, or items depending on context).
 - Always verify your current context before running commands — most commands operate on the current scope.
-- When a command supports --db and --con options, prefer passing them explicitly to ensure it targets the correct database and container regardless of the current navigation state. This is the default-safe choice for MCP clients. Commands that support these options include: 'query', 'ls', 'cd', 'create', 'mkitem', 'settings', 'indexpolicy', and 'print'.
+- When a command supports --db and --con options, prefer passing them explicitly to ensure it targets the correct database and container regardless of the current navigation state. This is the default-safe choice for MCP clients. Commands that support these options include: 'query', 'ls', 'cd', 'create', 'mkitem', 'settings', 'index', and 'print'.
 - Prefer patterns like 'query "SELECT * FROM c" --db=MyDatabase --con=MyContainer' over 'cd MyDatabase/MyContainer' followed by 'query ...'.
 - Use `pwd` as an optional convenience when you need to inspect the current location, but do not treat it as the primary way to scope later commands.
 
