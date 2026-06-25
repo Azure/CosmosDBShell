@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.100-preview — 2026-06-25
 
 ### New features
 
