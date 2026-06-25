@@ -26,7 +26,7 @@ Each path must start with a forward slash (/).
 
 Supports custom indexing policy via the --index_policy option as a JSON string.
 The JSON format follows the Cosmos DB indexing policy schema.
-Use the 'indexpolicy' command to read or update the indexing policy of an existing container.
+Use the 'index' command to read or update the indexing policy of an existing container.
 ")]
 #pragma warning restore SA1118 // Parameter should not span multiple lines
 internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState, ShellInterpreter>
