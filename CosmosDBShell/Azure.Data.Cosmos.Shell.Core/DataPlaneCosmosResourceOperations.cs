@@ -268,6 +268,15 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         }
     }
 
+    public Task<ThroughputBucketsView> GetThroughputBucketsAsync(string databaseName, string containerName, CancellationToken token) =>
+        throw new ThroughputBucketsNotSupportedException();
+
+    public Task<ThroughputBucketsView> SetThroughputBucketAsync(string databaseName, string containerName, int bucketId, int maxThroughputPercentage, CancellationToken token) =>
+        throw new ThroughputBucketsNotSupportedException();
+
+    public Task<ThroughputBucketsView> ClearThroughputBucketAsync(string databaseName, string containerName, int bucketId, CancellationToken token) =>
+        throw new ThroughputBucketsNotSupportedException();
+
     private static ThroughputView BuildThroughputView(string scope, string resourceName, ThroughputResponse response)
     {
         var resource = response.Resource;

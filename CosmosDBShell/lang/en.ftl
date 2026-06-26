@@ -684,12 +684,38 @@ command-echo-description = Displays messages.
 command-echo-description-messages = The messages to display.
 command-echo-description-no_newline = Do not append a newline
 
-command-bucket-description = Gets or sets the current throughput bucket.
-command-bucket-description-bucket = If specified the number of the bucket to switch to.
-command-bucket-currrent = Current throughput bucket: { $bucket }
+command-bucket-description = Manages throughput buckets: client-side bucket selection plus container bucket limits via show, set, and clear.
+command-bucket-description-action = The action: a bucket id (0-5) to select client-side, or show, set, or clear for container limits.
+command-bucket-description-id = The throughput bucket id (1-5) to set or clear a limit for.
+command-bucket-description-percent = The maximum percentage (1-100) of container throughput the bucket may use.
+command-bucket-description-database = The database to target, or that contains the target container.
+command-bucket-description-container = The container whose throughput bucket limits to read or change.
+command-bucket-description-yes = Skip the confirmation prompt before changing a bucket limit.
+command-bucket-current = Current throughput bucket: { $bucket }
 command-bucket-no_bucket = No throughput bucket is currently set.
 command-bucket-reset_bucket = Reset throughput bucket to default.
 command-bucket-switched_bucket = Switched to throughput bucket { $bucket }
+command-bucket-label-id = Bucket
+command-bucket-label-percent = Max throughput %
+command-bucket-no_limits = No throughput bucket limits are configured on '{ $resource }'.
+command-bucket-set_done = Throughput bucket limit updated successfully.
+command-bucket-clear_done = Throughput bucket limit removed successfully.
+command-bucket-cancelled = Throughput bucket change cancelled.
+command-bucket-confirm = Apply this throughput bucket change
+command-bucket-confirm_set_summary = About to limit bucket { $id } to { $percent }% of throughput on '{ $container }'.
+command-bucket-confirm_clear_summary = About to remove the limit for bucket { $id } on '{ $container }'.
+command-bucket-error-invalid_subcommand = Unknown bucket action '{ $subcommand }'. Use a bucket id (0-5), or one of: show, set, clear.
+command-bucket-error-unexpected_args = Unexpected arguments. Use 'bucket' or 'bucket <0-5>' for client selection, or 'bucket show|set|clear' for container limits.
+command-bucket-error-container_required = A container is required. Move into a container or pass --container.
+command-bucket-error-missing_id = Missing bucket id. Specify a bucket id (1-5), for example: bucket set 3 50.
+command-bucket-error-invalid_id = Invalid bucket id '{ $id }'. Valid range is 1-5.
+command-bucket-error-missing_percent = Missing percentage. Specify a value (1-100), for example: bucket set 3 50.
+command-bucket-error-invalid_percent = Invalid percentage '{ $percent }'. Valid range is 1-100.
+command-bucket-error-not_configured = Resource '{ $resource }' has no provisioned throughput, so bucket limits cannot be configured. It may be serverless or use shared database throughput.
+command-bucket-error-arm_required =
+  Throughput bucket limits can only be configured on an Azure AD (Entra) connection.
+
+  Connect with an Entra credential, or use the Azure portal, Azure CLI, or PowerShell. The client-side 'bucket <0-5>' selection still works on any connection.
 
 
 command-settings-description = Shows various settings for databases and containers.

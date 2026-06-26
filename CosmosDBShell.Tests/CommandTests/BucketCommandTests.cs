@@ -39,7 +39,7 @@ public class BucketCommandTests
     {
         using var shell = ShellInterpreter.CreateInstance();
         shell.State = new DisconnectedState();
-        var command = new BucketCommand { Bucket = 3 };
+        var command = new BucketCommand { Action = "3" };
 
         await Assert.ThrowsAsync<NotConnectedException>(
             () => command.ExecuteAsync(shell, new CommandState(), "bucket 3", CancellationToken.None));
@@ -50,7 +50,7 @@ public class BucketCommandTests
     {
         using var shell = ShellInterpreter.CreateInstance();
         shell.State = new ConnectedState(CreateTestClient());
-        var command = new BucketCommand { Bucket = 3 };
+        var command = new BucketCommand { Action = "3" };
 
         await Assert.ThrowsAsync<NotInDatabaseException>(
             () => command.ExecuteAsync(shell, new CommandState(), "bucket 3", CancellationToken.None));
@@ -62,7 +62,7 @@ public class BucketCommandTests
         var client = CreateTestClient();
         using var shell = ShellInterpreter.CreateInstance();
         shell.State = new DatabaseState("TestDatabase", client);
-        var command = new BucketCommand { Bucket = 3 };
+        var command = new BucketCommand { Action = "3" };
 
         var state = await command.ExecuteAsync(shell, new CommandState(), "bucket 3", CancellationToken.None);
 
@@ -77,7 +77,7 @@ public class BucketCommandTests
         client.ClientOptions.ThroughputBucket = 4;
         using var shell = ShellInterpreter.CreateInstance();
         shell.State = new DatabaseState("TestDatabase", client);
-        var command = new BucketCommand { Bucket = 0 };
+        var command = new BucketCommand { Action = "0" };
 
         var state = await command.ExecuteAsync(shell, new CommandState(), "bucket 0", CancellationToken.None);
 
@@ -104,12 +104,59 @@ public class BucketCommandTests
         var client = CreateTestClient();
         using var shell = ShellInterpreter.CreateInstance();
         shell.State = new DatabaseState("TestDatabase", client);
-        var command = new BucketCommand { Bucket = 99 };
+        var command = new BucketCommand { Action = "99" };
 
         var state = await command.ExecuteAsync(shell, new CommandState(), "bucket 99", CancellationToken.None);
 
         Assert.False(state.IsError);
         Assert.Null(client.ClientOptions.ThroughputBucket);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_InDatabase_InvalidSubcommand_ThrowsCommandException()
+    {
+        var client = CreateTestClient();
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", client);
+        var command = new BucketCommand { Action = "bogus" };
+
+        await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "bucket bogus", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_InDatabase_ShowWithoutContainer_ThrowsCommandException()
+    {
+        var client = CreateTestClient();
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", client);
+        var command = new BucketCommand { Action = "show" };
+
+        await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "bucket show", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Connected_ServerActionWithoutDatabase_ThrowsNotInDatabase()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ConnectedState(CreateTestClient());
+        var command = new BucketCommand { Action = "show" };
+
+        await Assert.ThrowsAsync<NotInDatabaseException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "bucket show", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_InDatabase_ClientSelectionWithExtraArgs_ThrowsCommandException()
+    {
+        var client = CreateTestClient();
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", client);
+        var command = new BucketCommand { Action = "3", Id = 1 };
+
+        await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "bucket 3", CancellationToken.None));
     }
 
     private static CosmosClient CreateTestClient()

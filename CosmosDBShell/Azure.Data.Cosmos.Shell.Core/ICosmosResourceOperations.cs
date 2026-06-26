@@ -41,4 +41,10 @@ internal interface ICosmosResourceOperations
     Task<ThroughputView> GetThroughputAsync(string databaseName, string? containerName, CancellationToken token);
 
     Task<ThroughputView> ReplaceThroughputAsync(string databaseName, string? containerName, ThroughputUpdate update, CancellationToken token);
+
+    Task<ThroughputBucketsView> GetThroughputBucketsAsync(string databaseName, string containerName, CancellationToken token);
+
+    Task<ThroughputBucketsView> SetThroughputBucketAsync(string databaseName, string containerName, int bucketId, int maxThroughputPercentage, CancellationToken token);
+
+    Task<ThroughputBucketsView> ClearThroughputBucketAsync(string databaseName, string containerName, int bucketId, CancellationToken token);
 }

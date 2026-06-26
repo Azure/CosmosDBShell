@@ -92,6 +92,21 @@ internal static class CosmosResourceFacade
         return For(state).ReplaceThroughputAsync(databaseName, containerName, update, token);
     }
 
+    public static Task<ThroughputBucketsView> GetThroughputBucketsAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    {
+        return For(state).GetThroughputBucketsAsync(databaseName, containerName, token);
+    }
+
+    public static Task<ThroughputBucketsView> SetThroughputBucketAsync(ConnectedState state, string databaseName, string containerName, int bucketId, int maxThroughputPercentage, CancellationToken token)
+    {
+        return For(state).SetThroughputBucketAsync(databaseName, containerName, bucketId, maxThroughputPercentage, token);
+    }
+
+    public static Task<ThroughputBucketsView> ClearThroughputBucketAsync(ConnectedState state, string databaseName, string containerName, int bucketId, CancellationToken token)
+    {
+        return For(state).ClearThroughputBucketAsync(databaseName, containerName, bucketId, token);
+    }
+
     private static ICosmosResourceOperations For(ConnectedState state)
     {
         return state.ArmContext is { } armContext
