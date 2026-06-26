@@ -167,6 +167,8 @@ public partial class ShellInterpreter : IDisposable
 
     internal int? McpPort { get; set; }
 
+    internal PendingBatchState? CurrentBatch { get; set; }
+
     internal Queue<VariableContainer> VariableContainers { get; } = new();
 
     /// <summary>
@@ -1217,6 +1219,7 @@ public partial class ShellInterpreter : IDisposable
     {
         this.State?.Dispose();
         this.State = new ConnectedState(client, armContext);
+        this.CurrentBatch = null;
         CosmosCompleteCommand.ClearDatabases();
         CosmosCompleteCommand.ClearContainers();
         this.Diagnostics?.LogConnect(client.Endpoint, client.ClientOptions.ConnectionMode);
@@ -1281,6 +1284,7 @@ public partial class ShellInterpreter : IDisposable
     {
         this.State?.Dispose();
         this.State = new DisconnectedState();
+        this.CurrentBatch = null;
     }
 
     internal void PrintCommand(string cmdString)

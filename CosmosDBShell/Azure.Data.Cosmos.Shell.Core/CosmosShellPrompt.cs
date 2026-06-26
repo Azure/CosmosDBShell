@@ -20,6 +20,7 @@ internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IS
     private Markup prompt = new(string.Empty);
     private State? oldState;
     private ThemeOptions? oldTheme;
+    private string? oldBatchSignature;
 
     internal static string PromptMarker => SupportsFancyPromptMarker() ? FancyPromptMarker : AsciiPromptMarker;
 
@@ -39,10 +40,12 @@ internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IS
             return (new Markup(Theme.FormatMuted("...")), 1);
         }
 
-        if (this.oldState != this.shell.State || !ReferenceEquals(this.oldTheme, Theme.Current))
+        var batchSignature = this.GetBatchSignature();
+        if (this.oldState != this.shell.State || !ReferenceEquals(this.oldTheme, Theme.Current) || this.oldBatchSignature != batchSignature)
         {
             this.oldState = this.shell.State;
             this.oldTheme = Theme.Current;
+            this.oldBatchSignature = batchSignature;
             this.prompt = new Markup(this.GetPromptString());
         }
 
@@ -54,8 +57,21 @@ internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IS
         this.oldState ??= this.shell.State;
         this.oldTheme ??= Theme.Current;
 #pragma warning disable VSTHRD002 // Synchronously waiting - required by ILineEditorPrompt interface
-        return this.oldState.AcceptAsync(this, null, default).Result ?? string.Empty;
+        var basePrompt = this.oldState.AcceptAsync(this, null, default).Result ?? string.Empty;
 #pragma warning restore VSTHRD002
+        var batch = this.shell.CurrentBatch;
+        if (batch is not null)
+        {
+            basePrompt += " " + Theme.FormatMuted(Markup.Escape($"[batch:{batch.Operations.Count}]"));
+        }
+
+        return basePrompt;
+    }
+
+    private string GetBatchSignature()
+    {
+        var batch = this.shell.CurrentBatch;
+        return batch is null ? string.Empty : batch.Operations.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     Task<string> IStateVisitor<string, object?>.VisitConnectedStateAsync(ConnectedState state, object? data, CancellationToken token)
