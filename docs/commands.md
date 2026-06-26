@@ -531,7 +531,7 @@ Arguments:
 
 ### index
 
-Manage the indexing policy of a container through subcommands.
+Manage the indexing policy of a container through subcommands. Aliased as `indexpolicy`.
 
 ```text
 Usage: index subcommand [paths ...] [-mode <ARG>] [-automatic <ARG>] [-database <ARG>] [-container <ARG>]

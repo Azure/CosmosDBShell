@@ -11,7 +11,7 @@ using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 
 /// <summary>
-/// Offline unit tests for <see cref="IndexPolicyCommand"/>, <see cref="RmContainerCommand"/>,
+/// Offline unit tests for <see cref="IndexCommand"/>, <see cref="RmContainerCommand"/>,
 /// and <see cref="EditCommand"/>. These cover the not-connected and wrong-scope branches
 /// that execute before any network or external-process call.
 /// </summary>
@@ -22,10 +22,10 @@ public class ContainerScopedCommandTests
     {
         using var shell = ShellInterpreter.CreateInstance();
         shell.State = new DisconnectedState();
-        var command = new IndexPolicyCommand();
+        var command = new IndexCommand { Subcommand = "show" };
 
         await Assert.ThrowsAsync<NotConnectedException>(
-            () => command.ExecuteAsync(shell, new CommandState(), "indexpolicy", CancellationToken.None));
+            () => command.ExecuteAsync(shell, new CommandState(), "indexpolicy show", CancellationToken.None));
     }
 
     [Fact]
@@ -33,10 +33,10 @@ public class ContainerScopedCommandTests
     {
         using var shell = ShellInterpreter.CreateInstance();
         shell.State = new ConnectedState(CreateTestClient());
-        var command = new IndexPolicyCommand();
+        var command = new IndexCommand { Subcommand = "show" };
 
         await Assert.ThrowsAsync<NotInContainerException>(
-            () => command.ExecuteAsync(shell, new CommandState(), "indexpolicy", CancellationToken.None));
+            () => command.ExecuteAsync(shell, new CommandState(), "indexpolicy show", CancellationToken.None));
     }
 
     [Fact]
@@ -44,10 +44,10 @@ public class ContainerScopedCommandTests
     {
         using var shell = ShellInterpreter.CreateInstance();
         shell.State = new DatabaseState("TestDatabase", CreateTestClient());
-        var command = new IndexPolicyCommand();
+        var command = new IndexCommand { Subcommand = "show" };
 
         await Assert.ThrowsAsync<NotInContainerException>(
-            () => command.ExecuteAsync(shell, new CommandState(), "indexpolicy", CancellationToken.None));
+            () => command.ExecuteAsync(shell, new CommandState(), "indexpolicy show", CancellationToken.None));
     }
 
     [Fact]

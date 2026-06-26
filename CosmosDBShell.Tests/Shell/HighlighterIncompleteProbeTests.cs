@@ -62,4 +62,32 @@ public class HighlighterIncompleteProbeTests
         Assert.NotNull(seg);
         Assert.NotEqual(ErrorColor, seg.Style.Foreground);
     }
+
+    [Fact]
+    public void SemicolonSeparatedStatements_HighlightEveryCommand()
+    {
+        const string input = "echo \"foobar\" ; echo \"foobar\"";
+        var highlighter = (IHighlighter)ShellInterpreter.Instance;
+
+        var res = Assert.IsType<Markup>(highlighter.BuildHighlightedText(input));
+
+        var segs = res.GetSegments(AnsiConsole.Console).ToList();
+
+        // The full line round-trips with no text loss or duplication.
+        var rendered = string.Concat(segs.Select(s => s.Text));
+        Assert.Equal(input, rendered);
+
+        // Both commands (before and after the ';') must receive identical command
+        // highlighting. Before the fix the highlighter stopped at the ';' and the
+        // second 'echo' fell through as uncolored plain text.
+        var echoSegs = segs.Where(s => s.Text.Trim() == "echo").ToList();
+        Assert.Equal(2, echoSegs.Count);
+        Assert.NotEqual(ErrorColor, echoSegs[0].Style.Foreground);
+        Assert.Equal(echoSegs[0].Style, echoSegs[1].Style);
+
+        // The ';' separator is colored distinctly (its own non-default segment).
+        var semicolonSeg = segs.FirstOrDefault(s => s.Text == ";");
+        Assert.NotNull(semicolonSeg);
+        Assert.NotEqual(Color.Default, semicolonSeg.Style.Foreground);
+    }
 }

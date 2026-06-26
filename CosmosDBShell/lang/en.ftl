@@ -310,14 +310,6 @@ command-mkcon-error_partition_key_slash = Partition key path must start with a f
 command-mkcon-error_invalid_index_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-mkcon-description-index_policy = The indexing policy as a JSON string. Follows the Cosmos DB indexing policy schema.
 
-command-indexpolicy-description = Reads or updates the indexing policy of a container.
-command-indexpolicy-description-policy = The indexing policy as a JSON string. If omitted, the current policy is displayed.
-command-indexpolicy-description-database = The database containing the container
-command-indexpolicy-description-container = The container to read/update the indexing policy for
-command-indexpolicy-updated = Indexing policy updated successfully.
-command-indexpolicy-error_invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
-command-indexpolicy-error_no_policy = The container has no indexing policy configured.
-
 command-index-description = Manages the indexing policy of a container via show, add, remove, and set subcommands.
 command-index-description-subcommand = The action to perform: show, add, remove, or set.
 command-index-description-paths = The indexing paths to add or remove, or a full indexing policy JSON document for set.

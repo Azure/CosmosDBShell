@@ -608,7 +608,7 @@ public partial class ShellInterpreter : IDisposable
             this.StdOutRedirect = null;
             try
             {
-                this.ClearHighlightStatement();
+                this.ClearHighlightStatements();
                 var input = this.Editor != null ? await this.Editor.ReadLine(this.editorCancelTokenSource.Token) : PromptFallback();
                 var command = ProcessInteractiveLine(
                     input,

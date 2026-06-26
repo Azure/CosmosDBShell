@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.100-preview — 2026-06-25
 
 ### New features
 
@@ -19,6 +19,8 @@
 ### Breaking changes
 
 - The `settings` command has been renamed to `info` and is no longer available under its old name. Update scripts and aliases that invoke `settings` to use `info` instead. ([#108](https://github.com/Azure/CosmosDBShell/issues/108))
+- The standalone `indexpolicy` command has been removed and is now an alias of `index`. Its old grammar no longer works: use `indexpolicy show` (was `indexpolicy`) to display the policy and `indexpolicy set '<json>'` (was `indexpolicy '<json>'`) to replace it, or just use the `index` command, which also supports incremental `add`/`remove` and `--mode`/`--automatic` patches.
+- Removed the `--editor` option from `theme edit`. The external editor is now always resolved from `$VISUAL`, then `$EDITOR`, then a platform default — consistent with `sproc edit`, `udf edit`, and `trigger edit`. Set `$VISUAL` or `$EDITOR` to choose a specific editor.
 
 ## 1.1.4-preview — 2026-05-21
 
