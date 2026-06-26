@@ -485,11 +485,13 @@ internal class InfoCommand : CosmosCommand
     internal static string BuildPartitionKeyPathExpression(string path)
     {
         var builder = new StringBuilder("c");
-        foreach (var segment in path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var escaped = segment
+        var escapedSegments = path
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(segment => segment
                 .Replace("\\", "\\\\", StringComparison.Ordinal)
-                .Replace("\"", "\\\"", StringComparison.Ordinal);
+                .Replace("\"", "\\\"", StringComparison.Ordinal));
+        foreach (var escaped in escapedSegments)
+        {
             builder.Append('[').Append('"').Append(escaped).Append('"').Append(']');
         }
 
