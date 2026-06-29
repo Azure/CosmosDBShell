@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Core;
 
+using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
 using global::Azure;
@@ -278,7 +279,37 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
         }
     }
 
+    public async Task<ThroughputBucketsView> GetThroughputBucketsAsync(string databaseName, string containerName, CancellationToken token)
+    {
+        var container = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+        try
+        {
+            var response = await container.GetCosmosDBSqlContainerThroughputSetting().GetAsync(token);
+            return BuildBucketsView(containerName, response.Value.Data.Resource);
+        }
+        catch (RequestFailedException ex) when (ex.Status is (int)HttpStatusCode.NotFound or (int)HttpStatusCode.BadRequest)
+        {
+            throw new ThroughputNotConfiguredException(containerName, ex);
+        }
+    }
+
+    public Task<ThroughputBucketsView> SetThroughputBucketAsync(string databaseName, string containerName, int bucketId, int maxThroughputPercentage, CancellationToken token) =>
+        this.UpdateBucketsAsync(databaseName, containerName, bucketId, maxThroughputPercentage, token);
+
+    public Task<ThroughputBucketsView> ClearThroughputBucketAsync(string databaseName, string containerName, int bucketId, CancellationToken token) =>
+        this.UpdateBucketsAsync(databaseName, containerName, bucketId, null, token);
+
     private static bool IsAutoscale(ThroughputSettingsResourceInfo info) => info.AutoscaleSettings?.MaxThroughput != null;
+
+    private static ThroughputBucketsView BuildBucketsView(string resourceName, ThroughputSettingsResourceInfo info)
+    {
+        int? autoscaleMax = info.AutoscaleSettings?.MaxThroughput;
+        var buckets = info.ThroughputBuckets
+            .Select(bucket => new ThroughputBucketView(bucket.Id, bucket.MaxThroughputPercentage))
+            .OrderBy(bucket => bucket.Id)
+            .ToList();
+        return new ThroughputBucketsView(resourceName, autoscaleMax.HasValue, info.Throughput, autoscaleMax, buckets);
+    }
 
     private static ThroughputView BuildThroughputView(string scope, string resourceName, ThroughputSettingsResourceInfo info)
     {
@@ -294,5 +325,50 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
             min,
             ThroughputAvailability.Available,
             null);
+    }
+
+    private async Task<ThroughputBucketsView> UpdateBucketsAsync(string databaseName, string containerName, int bucketId, int? maxThroughputPercentage, CancellationToken token)
+    {
+        var container = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+        var setting = container.GetCosmosDBSqlContainerThroughputSetting();
+
+        ThroughputSettingsResourceInfo current;
+        try
+        {
+            var response = await setting.GetAsync(token);
+            current = response.Value.Data.Resource;
+        }
+        catch (RequestFailedException ex) when (ex.Status is (int)HttpStatusCode.NotFound or (int)HttpStatusCode.BadRequest)
+        {
+            throw new ThroughputNotConfiguredException(containerName, ex);
+        }
+
+        // Buckets ride along with the throughput resource, so the update payload must carry
+        // the current provisioning (manual RU/s or autoscale max) or the service would
+        // reject it. Rebuild the bucket list, replacing or removing only the target id.
+        var resourceInfo = IsAutoscale(current)
+            ? new ThroughputSettingsResourceInfo { AutoscaleSettings = new AutoscaleSettingsResourceInfo(current.AutoscaleSettings!.MaxThroughput) }
+            : new ThroughputSettingsResourceInfo { Throughput = current.Throughput };
+
+        foreach (var existing in current.ThroughputBuckets.Where(existing => existing.Id != bucketId))
+        {
+            resourceInfo.ThroughputBuckets.Add(new CosmosDBThroughputBucket(existing.Id, existing.MaxThroughputPercentage));
+        }
+
+        if (maxThroughputPercentage.HasValue)
+        {
+            resourceInfo.ThroughputBuckets.Add(new CosmosDBThroughputBucket(bucketId, maxThroughputPercentage.Value));
+        }
+
+        var data = new ThroughputSettingsUpdateData(context.Account.Data.Location, resourceInfo);
+        try
+        {
+            var operation = await setting.CreateOrUpdateAsync(WaitUntil.Completed, data, token);
+            return BuildBucketsView(containerName, operation.Value.Data.Resource);
+        }
+        catch (RequestFailedException ex) when (ex.Status is (int)HttpStatusCode.NotFound or (int)HttpStatusCode.BadRequest)
+        {
+            throw new ThroughputNotConfiguredException(containerName, ex);
+        }
     }
 }

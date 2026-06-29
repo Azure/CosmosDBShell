@@ -965,14 +965,40 @@ Options:
 
 ### bucket
 
-Get or set SDK throughput bucket.
+Manage throughput buckets: client-side bucket selection plus container bucket limits.
 
 ```text
-Usage: bucket [bucket]
+Usage: bucket [action] [id] [percent] [-database <db>] [-container <con>] [-yes]
 
 Arguments:
-    [bucket]    Bucket number: 0=clear, 1-5=valid buckets (Optional)
+    [action]    A bucket id (0-5) to select client-side, or show, set, or clear for
+                container limits (Optional)
+    [id]        The throughput bucket id (1-5) to set or clear a limit for (Optional)
+    [percent]   The maximum percentage (1-100) of container throughput the bucket
+                may use (Optional)
+
+Options:
+    -database, -db    The database to target, or that contains the target container (Optional)
+    -container, -con  The container whose throughput bucket limits to read or change (Optional)
+    -yes, -y, -force  Skip the confirmation prompt before changing a bucket limit (Optional)
 ```
+
+The `bucket` command has two surfaces:
+
+- **Client-side selection** (works on any connected database or container scope):
+  - `bucket` shows this client's current throughput bucket selection.
+  - `bucket <1-5>` tags this client's requests with the given throughput bucket.
+  - `bucket 0` clears the client-side selection.
+- **Container limits** (read with `show`, change with `set`/`clear`):
+  - `bucket show` lists the throughput bucket limits configured on the current container.
+  - `bucket set <1-5> <1-100>` limits a bucket to a maximum percentage of the container's throughput.
+  - `bucket clear <1-5>` removes a bucket's configured limit.
+
+The container-limit subcommands operate on the current container (or the one named by
+`-container`) and require provisioned throughput. They are control-plane operations that
+are only available on an Azure AD (Entra) connection; on key-based or emulator connections
+they return an error directing you to the portal, Azure CLI, or PowerShell. The client-side
+`bucket <0-5>` selection still works on any connection.
 
 ### info
 
