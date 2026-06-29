@@ -293,6 +293,22 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
         return new ThroughputBucketsView(resourceName, autoscaleMax.HasValue, info.Throughput, autoscaleMax, buckets);
     }
 
+    private static ThroughputView BuildThroughputView(string scope, string resourceName, ThroughputSettingsResourceInfo info)
+    {
+        int? min = int.TryParse(info.MinimumThroughput, out var parsedMin) ? parsedMin : null;
+        int? autoscaleMax = info.AutoscaleSettings?.MaxThroughput;
+        bool isAutoscale = autoscaleMax.HasValue;
+        return new ThroughputView(
+            scope,
+            resourceName,
+            isAutoscale,
+            info.Throughput,
+            autoscaleMax,
+            min,
+            ThroughputAvailability.Available,
+            null);
+    }
+
     private async Task<ThroughputBucketsView> UpdateBucketsAsync(string databaseName, string containerName, int bucketId, int? maxThroughputPercentage, CancellationToken token)
     {
         var container = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
@@ -316,12 +332,9 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
             ? new ThroughputSettingsResourceInfo { AutoscaleSettings = new AutoscaleSettingsResourceInfo(current.AutoscaleSettings!.MaxThroughput) }
             : new ThroughputSettingsResourceInfo { Throughput = current.Throughput };
 
-        foreach (var existing in current.ThroughputBuckets)
+        foreach (var existing in current.ThroughputBuckets.Where(existing => existing.Id != bucketId))
         {
-            if (existing.Id != bucketId)
-            {
-                resourceInfo.ThroughputBuckets.Add(new CosmosDBThroughputBucket(existing.Id, existing.MaxThroughputPercentage));
-            }
+            resourceInfo.ThroughputBuckets.Add(new CosmosDBThroughputBucket(existing.Id, existing.MaxThroughputPercentage));
         }
 
         if (maxThroughputPercentage.HasValue)
@@ -339,21 +352,5 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
         {
             throw new ThroughputNotConfiguredException(containerName, ex);
         }
-    }
-
-    private static ThroughputView BuildThroughputView(string scope, string resourceName, ThroughputSettingsResourceInfo info)
-    {
-        int? min = int.TryParse(info.MinimumThroughput, out var parsedMin) ? parsedMin : null;
-        int? autoscaleMax = info.AutoscaleSettings?.MaxThroughput;
-        bool isAutoscale = autoscaleMax.HasValue;
-        return new ThroughputView(
-            scope,
-            resourceName,
-            isAutoscale,
-            info.Throughput,
-            autoscaleMax,
-            min,
-            ThroughputAvailability.Available,
-            null);
     }
 }

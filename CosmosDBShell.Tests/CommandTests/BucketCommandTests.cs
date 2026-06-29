@@ -159,6 +159,30 @@ public class BucketCommandTests
             () => command.ExecuteAsync(shell, new CommandState(), "bucket 3", CancellationToken.None));
     }
 
+    [Fact]
+    public async Task ExecuteAsync_InDatabase_ShowWithExtraArgs_ThrowsCommandException()
+    {
+        var client = CreateTestClient();
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", client);
+        var command = new BucketCommand { Action = "show", Id = 3 };
+
+        await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "bucket show 3", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_InDatabase_ClearWithPercent_ThrowsCommandException()
+    {
+        var client = CreateTestClient();
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", client);
+        var command = new BucketCommand { Action = "clear", Id = 3, Percent = 50 };
+
+        await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "bucket clear 3 50", CancellationToken.None));
+    }
+
     private static CosmosClient CreateTestClient()
     {
         var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");

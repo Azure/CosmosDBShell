@@ -277,6 +277,13 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
 
     private async Task<CommandState> ExecuteServerAsync(ConnectedState state, ShellInterpreter shell, string databaseName, string? containerName, CancellationToken token)
     {
+        var kind = this.Classify();
+        if ((kind == BucketActionKind.ServerShow && (this.Id.HasValue || this.Percent.HasValue))
+            || (kind == BucketActionKind.ServerClear && this.Percent.HasValue))
+        {
+            throw new CommandException("bucket", MessageService.GetString("command-bucket-error-unexpected_args"));
+        }
+
         if (string.IsNullOrEmpty(containerName))
         {
             throw new CommandException("bucket", MessageService.GetString("command-bucket-error-container_required"));
