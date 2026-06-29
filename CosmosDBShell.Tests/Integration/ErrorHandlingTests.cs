@@ -56,9 +56,9 @@ public class ErrorHandlingTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task SettingsWithoutConnection_ReturnsError()
+    public async Task InfoWithoutConnection_ReturnsError()
     {
-        var state = await RunScriptAsync("settings");
+        var state = await RunScriptAsync("info");
 
         Assert.True(state.IsError);
         Assert.Equal(MessageService.GetString("error-not_connected_account"), GetErrorMessage(state));

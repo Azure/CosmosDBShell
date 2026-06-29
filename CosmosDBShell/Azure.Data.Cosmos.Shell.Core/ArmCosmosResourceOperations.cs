@@ -122,6 +122,10 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
         {
             throughputAvailability = ThroughputAvailability.NotConfigured;
         }
+        catch (RequestFailedException ex) when (ex.Status == (int)HttpStatusCode.BadRequest && ThroughputErrors.IsServerlessThroughputError(ex.Message))
+        {
+            throughputAvailability = ThroughputAvailability.Serverless;
+        }
         catch (Exception ex)
         {
             throughputAvailability = ThroughputAvailability.Unavailable;
@@ -129,6 +133,19 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
         }
 
         var armResource = resource.Data.Resource;
+        ContainerIndexingPolicyView? indexingView = null;
+        if (armResource.IndexingPolicy is { } indexingPolicy)
+        {
+            indexingView = new ContainerIndexingPolicyView(
+                indexingPolicy.IndexingMode?.ToString() ?? string.Empty,
+                indexingPolicy.IsAutomatic ?? false,
+                indexingPolicy.IncludedPaths?.Count ?? 0,
+                indexingPolicy.ExcludedPaths?.Count ?? 0,
+                indexingPolicy.CompositeIndexes?.Count ?? 0,
+                indexingPolicy.SpatialIndexes?.Count ?? 0,
+                indexingPolicy.VectorIndexes?.Count ?? 0);
+        }
+
         return new ContainerSettingsView(
             armResource.ContainerName,
             armResource.PartitionKey?.Paths?.ToArray() ?? [],
@@ -138,7 +155,8 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
             throughputAvailability,
             throughputError,
             GeospatialType: null,
-            FullTextPolicy: null);
+            FullTextPolicy: null,
+            IndexingPolicy: indexingView);
     }
 
     public async Task<string> GetIndexingPolicyJsonAsync(string databaseName, string containerName, CancellationToken token)

@@ -12,12 +12,16 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
 - Bulk roundtrip with `import` / `export` for JSON Lines and JSON array files, plus CSV import/export (CSV import coerces values to strings; `--partition-key` nests a CSV column under a nested partition key path)
 - Manage container indexing policies with `index` (`show`, `add`, `remove`, `set`)
+- Inspect container/database/account configuration and usage statistics with `info` (partition key, throughput, policies, indexing policy summary, document count, storage size, regions; `--partitions` and `--detailed` for distribution analysis)
+- View and scale provisioned RU/s with `throughput` (`show`, `set`/`manual`, `autoscale`)
 - Manage stored procedures with `sproc` (`list`, `show`, `exists`, `create`, `exec`, `edit`, `delete`)
 - Manage user-defined functions with `udf` (`list`, `show`, `exists`, `create`, `edit`, `delete`)
 - Manage triggers with `trigger` (`list`, `show`, `exists`, `create`, `edit`, `delete`)
 - Tail the change feed of a container with `watch` (alias `tail`)
 - Database and container management commands prefer Azure Resource Manager when connected with Entra ID, with data-plane fallback for key, emulator, and static-token connections
 - Pipelines and scripting with variables, loops, functions
+- Transform piped JSON output with `filter` using jq-inspired expressions (field access, indexing, `map`, `length`, pipelines)
+- Edit local files in your external editor with `edit`, and customize REPL colors with `theme` (`list`, `show`, `use`, `load`, `validate`, `save`, `edit`; built-in default/light/dark/monochrome)
 - Multi-line input at the prompt — automatic continuation for unclosed blocks/strings, plus explicit `\` line continuation ([docs](docs/navigation.md#multi-line-input))
 - MCP server for AI/tool integration
 - Distributed tracing via OpenTelemetry (`--otel`): emits a sampled W3C `traceparent` on Cosmos requests, with optional OTLP export
