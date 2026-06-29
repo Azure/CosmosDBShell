@@ -153,6 +153,10 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         {
             dpAvailability = ThroughputAvailability.NotConfigured;
         }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.BadRequest && ThroughputErrors.IsServerlessThroughputError(ex.Message))
+        {
+            dpAvailability = ThroughputAvailability.Serverless;
+        }
         catch (Exception ex)
         {
             dpAvailability = ThroughputAvailability.Unavailable;
@@ -175,6 +179,19 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
             fullTextView = new ContainerFullTextPolicyView(fullTextPolicy.DefaultLanguage, paths);
         }
 
+        ContainerIndexingPolicyView? indexingView = null;
+        if (properties.IndexingPolicy is { } indexingPolicy)
+        {
+            indexingView = new ContainerIndexingPolicyView(
+                indexingPolicy.IndexingMode.ToString(),
+                indexingPolicy.Automatic,
+                indexingPolicy.IncludedPaths?.Count ?? 0,
+                indexingPolicy.ExcludedPaths?.Count ?? 0,
+                indexingPolicy.CompositeIndexes?.Count ?? 0,
+                indexingPolicy.SpatialIndexes?.Count ?? 0,
+                indexingPolicy.VectorIndexes?.Count ?? 0);
+        }
+
         return new ContainerSettingsView(
             properties.Id,
             properties.PartitionKeyPaths?.ToArray() ?? (properties.PartitionKeyPath != null ? [properties.PartitionKeyPath] : []),
@@ -184,7 +201,8 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
             dpAvailability,
             dpError,
             geospatialType,
-            fullTextView);
+            fullTextView,
+            indexingView);
     }
 
     public async Task<string> GetIndexingPolicyJsonAsync(string databaseName, string containerName, CancellationToken token)

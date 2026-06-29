@@ -1000,13 +1000,39 @@ are only available on an Azure AD (Entra) connection; on key-based or emulator c
 they return an error directing you to the portal, Azure CLI, or PowerShell. The client-side
 `bucket <0-5>` selection still works on any connection.
 
-### settings
+### info
 
-Show account overview or container settings.
+Show configuration and usage statistics for the current container, database, or
+account, depending on what is in scope.
+
+When a container is in scope it reports the partition key, throughput (min/max
+RU/s), analytical TTL, geospatial and full-text policies, a compact indexing
+policy summary (indexing mode, automatic flag, and included/excluded path counts
+plus any composite, spatial, or vector index counts), plus the document count and
+data/total storage size. Use `index show` for the full indexing policy JSON. When
+only a database is in scope it reports the container count, aggregate document
+count, total storage, and shared throughput. When neither is in scope (the
+account root) it reports account metadata: read/write regions and the database
+count.
+
+On serverless accounts, throughput/offer settings are not available, so the
+scale section reports that throughput settings are not available for serverless
+accounts instead of failing.
 
 ```text
-Usage: settings
+Usage: info [--partitions] [--detailed] [--database=<name>] [--container=<name>]
+
+Options:
+    --partitions, -p    Add the per-physical-partition document distribution (consumes request units)
+    --detailed, -d      Add storage breakdown and top partition keys (performs a full scan and consumes request units)
+    --database, -db     Target database name
+    --container, -con   Target container name
 ```
+
+The default report uses low-cost metadata reads. The `--partitions` and
+`--detailed` options issue queries against the data and therefore consume
+request units; at the account root, `--detailed` aggregates every container's
+storage and document count across all databases. This command is read-only.
 
 ### help
 

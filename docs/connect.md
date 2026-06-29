@@ -22,7 +22,7 @@ The `--authority-host` option is passed through to whichever credential is creat
 
 ## Azure Resource Manager Context
 
-Database and container resource operations (listing, navigating to, creating, deleting, and reading settings for databases and containers) prefer Azure Resource Manager (ARM) when an ARM context is attached. Item operations always use the Cosmos DB data plane.
+Database and container resource operations (listing, navigating to, creating, deleting, and reading configuration for databases and containers) prefer Azure Resource Manager (ARM) when an ARM context is attached. Item operations always use the Cosmos DB data plane.
 
 ARM context is attached only for Entra ID credential flows: `VisualStudioCodeCredential`, `ManagedIdentityCredential`, `InteractiveBrowserCredential`, `DeviceCodeCredential`, and `DefaultAzureCredential`. Account-key connections, emulator connections, and `COSMOSDB_SHELL_TOKEN` connections do not attach ARM context, so resource operations fall back to the Cosmos DB data plane.
 
@@ -39,7 +39,7 @@ When ARM is in use, the identity needs data-plane RBAC for item operations and A
 
 ### Known limitation: strict native data-plane RBAC with non-Entra connections
 
-Account-key connections, `COSMOSDB_SHELL_TOKEN` connections, and emulator connections do not attach an ARM context, so resource commands (`mkdb`, `mkcon`, `rmdb`, `rmcon`, `index`, container `settings`) fall back to the data plane. If you connect to a real Azure Cosmos DB account that has [native data-plane RBAC](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-setup-rbac) enforced (key-based and control-plane writes disabled), those commands will be rejected by the service even with a valid static credential, because the request never reaches Azure Resource Manager.
+Account-key connections, `COSMOSDB_SHELL_TOKEN` connections, and emulator connections do not attach an ARM context, so resource commands (`mkdb`, `mkcon`, `rmdb`, `rmcon`, `index`, container `info`) fall back to the data plane. If you connect to a real Azure Cosmos DB account that has [native data-plane RBAC](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-setup-rbac) enforced (key-based and control-plane writes disabled), those commands will be rejected by the service even with a valid static credential, because the request never reaches Azure Resource Manager.
 
 To use resource commands against such an account, connect with an Entra ID credential — `--tenant`, `--managed-identity`, `--connect-vscode-credential`, or the endpoint-only `DefaultAzureCredential` form — and (optionally) supply `--subscription` and `--resource-group` to skip ARM discovery.
 
