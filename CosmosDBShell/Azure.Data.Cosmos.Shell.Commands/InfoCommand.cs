@@ -165,10 +165,29 @@ internal class InfoCommand : CosmosCommand
         return false;
     }
 
-    private static void AskForRBacPermissions(string principalId, string request, string permission)
+    private static void AskForRBacPermissions(string principalId, string request, string permission, string indent = "")
     {
-        AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
-        ShellInterpreter.WriteLine(MessageService.GetArgsString("command-settings-rbac-error", "id", principalId, "request", request, "permission", permission));
+        var message = MessageService.GetArgsString("command-settings-rbac-error", "id", principalId, "request", request, "permission", permission);
+        var lines = message.Replace("\r\n", "\n").Split('\n');
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            if (i == 0)
+            {
+                AnsiConsole.Markup(indent + Theme.FormatError(MessageService.GetString("error")) + " ");
+                ShellInterpreter.WriteLine(line);
+            }
+            else if (line.Length == 0)
+            {
+                ShellInterpreter.WriteLine();
+            }
+            else
+            {
+                AnsiConsole.Markup(indent);
+                ShellInterpreter.WriteLine(line);
+            }
+        }
     }
 
     private static async Task WriteAccountDatabaseBreakdownAsync(ConnectedState state, IReadOnlyList<string> databaseNames, Dictionary<string, object?> mcpTable, bool renderOutput, CancellationToken token)
@@ -312,13 +331,13 @@ internal class InfoCommand : CosmosCommand
 
         if (throughputError is not null)
         {
-            AnsiConsole.Markup("\t");
             if (TryGetPrincipalIdFromRbacMessage(throughputError, out var rbacId, out var rbacRequest, out var rbacPermission))
             {
-                AskForRBacPermissions(rbacId ?? string.Empty, rbacRequest ?? string.Empty, rbacPermission ?? string.Empty);
+                AskForRBacPermissions(rbacId ?? string.Empty, rbacRequest ?? string.Empty, rbacPermission ?? string.Empty, indent: "\t");
             }
             else
             {
+                AnsiConsole.Markup("\t");
                 AnsiConsole.MarkupLine(Theme.FormatError(throughputError));
             }
         }
@@ -607,7 +626,6 @@ internal class InfoCommand : CosmosCommand
         if (renderOutput)
         {
             AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-scale-heading")));
-            AnsiConsole.Markup("\t");
         }
 
         switch (view.Throughput)
@@ -617,6 +635,7 @@ internal class InfoCommand : CosmosCommand
                 var maxDisplay = view.MaxThroughput?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? MessageService.GetString("command-settings-na");
                 if (renderOutput)
                 {
+                    AnsiConsole.Markup("\t");
                     AnsiConsole.MarkupLine(MessageService.GetArgsString("command-settings-scale-usage", "min", minDisplay, "max", maxDisplay));
                 }
 
@@ -634,6 +653,7 @@ internal class InfoCommand : CosmosCommand
             case ThroughputAvailability.NotConfigured:
                 if (renderOutput)
                 {
+                    AnsiConsole.Markup("\t");
                     AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
                 }
 
@@ -641,6 +661,7 @@ internal class InfoCommand : CosmosCommand
             case ThroughputAvailability.Serverless:
                 if (renderOutput)
                 {
+                    AnsiConsole.Markup("\t");
                     AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-scale-serverless")));
                 }
 
@@ -650,10 +671,11 @@ internal class InfoCommand : CosmosCommand
                 {
                     if (TryGetPrincipalIdFromRbacMessage(view.ThroughputErrorMessage, out var rbacId, out var rbacRequest, out var rbacPermission))
                     {
-                        AskForRBacPermissions(rbacId ?? string.Empty, rbacRequest ?? string.Empty, rbacPermission ?? string.Empty);
+                        AskForRBacPermissions(rbacId ?? string.Empty, rbacRequest ?? string.Empty, rbacPermission ?? string.Empty, indent: "\t");
                     }
                     else
                     {
+                        AnsiConsole.Markup("\t");
                         AnsiConsole.MarkupLine(Theme.FormatError(view.ThroughputErrorMessage ?? string.Empty));
                     }
                 }
