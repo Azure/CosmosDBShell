@@ -115,7 +115,7 @@ internal class InfoCommand : CosmosCommand
         }
     }
 
-    private static bool ShouldRenderTables(string? format, ShellInterpreter shell, CommandState commandState)
+    internal static bool ShouldRenderTables(string? format, ShellInterpreter shell, CommandState commandState)
     {
         if (string.IsNullOrWhiteSpace(format))
         {
@@ -132,7 +132,12 @@ internal class InfoCommand : CosmosCommand
         if (string.Equals(format, "table", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "tbl", StringComparison.OrdinalIgnoreCase))
         {
             commandState.OutputFormat = OutputFormat.Table;
-            return true;
+
+            // When stdout is redirected (e.g. `info --format table > out.txt`) the rich
+            // Spectre tables would be written to the console rather than the redirect
+            // target, leaving the file empty. Yield to PrintState so the redirected
+            // output is produced via CommandState.GenerateOutputText() with OutputFormat.Table.
+            return string.IsNullOrEmpty(shell.StdOutRedirect);
         }
 
         throw new CommandException(

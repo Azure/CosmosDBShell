@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "id": "1",
+      "pk": 1,
+      "test": "Hello",
+      "_rid": "xdM9AIW7CToBAAAAAAAAAA==",
+      "_self": "dbs/xdM9AA==/colls/xdM9AIW7CTo=/docs/xdM9AIW7CToBAAAAAAAAAA==/",
+      "_etag": "\u00229f00ca8f-0000-0d00-0000-6978dd8d0000\u0022",
+      "_attachments": "attachments/",
+      "_ts": 1769528717
+    },
+    {
+      "id": "2",
+      "pk": 2,
+      "test": "World",
+      "_rid": "xdM9AIW7CToCAAAAAAAAAA==",
+      "_self": "dbs/xdM9AA==/colls/xdM9AIW7CTo=/docs/xdM9AIW7CToCAAAAAAAAAA==/",
+      "_etag": "\u00229f00cc8f-0000-0d00-0000-6978dd8d0000\u0022",
+      "_attachments": "attachments/",
+      "_ts": 1769528717, 
+      "aa" : true,
+      "bb" : false,
+      "c" : null
+      
+    }
+  ]
+}

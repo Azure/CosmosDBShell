@@ -135,6 +135,36 @@ public class InfoCommandTests
         Assert.Equal(MessageService.GetString("command-stats-na"), InfoCommand.FormatSize(null));
     }
 
+    [Theory]
+    [InlineData("table")]
+    [InlineData("tbl")]
+    public void ShouldRenderTables_TableFormatWithRedirect_YieldsToPrintState(string format)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.StdOutRedirect = "out.txt";
+        var commandState = new CommandState();
+
+        var render = InfoCommand.ShouldRenderTables(format, shell, commandState);
+
+        Assert.False(render);
+        Assert.Equal(OutputFormat.Table, commandState.OutputFormat);
+    }
+
+    [Theory]
+    [InlineData("table")]
+    [InlineData("tbl")]
+    public void ShouldRenderTables_TableFormatWithoutRedirect_RendersTables(string format)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.StdOutRedirect = null;
+        var commandState = new CommandState();
+
+        var render = InfoCommand.ShouldRenderTables(format, shell, commandState);
+
+        Assert.True(render);
+        Assert.Equal(OutputFormat.Table, commandState.OutputFormat);
+    }
+
     private static CosmosClient CreateTestClient()
     {
         var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");

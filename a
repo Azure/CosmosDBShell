@@ -1,0 +1,23 @@
+{
+  "minThroughput": 1000,
+  "maxThroughput": 4000,
+  "id": "Bikes",
+  "partitionKey": [
+    "/categoryId"
+  ],
+  "analyticalTTL": null,
+  "geospatialType": "Geography",
+  "fullTextPolicy": [],
+  "indexingPolicy": {
+    "indexingMode": "Consistent",
+    "automatic": true,
+    "includedPaths": 1,
+    "excludedPaths": 1,
+    "compositeIndexes": 0,
+    "spatialIndexes": 0,
+    "vectorIndexes": 0
+  },
+  "documentCount": 295,
+  "dataSizeKb": 327,
+  "totalSizeKb": 404
+}
