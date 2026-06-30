@@ -154,7 +154,7 @@ public class InfoCommandIntegrationTests : ConnectedEmulatorTestBase
 
     private async Task<string> ExecuteWithOutputAsync(string command)
     {
-        var outputFile = Path.Combine(Path.GetTempPath(), $"info-json-{Guid.NewGuid():N}.json");
+        var outputFile = Path.GetTempFileName();
         try
         {
             var state = await ExecuteAsync($"{command} > \"{ShellPath(outputFile)}\"");
@@ -169,7 +169,7 @@ public class InfoCommandIntegrationTests : ConnectedEmulatorTestBase
             {
                 File.Delete(outputFile);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // Best-effort cleanup
             }

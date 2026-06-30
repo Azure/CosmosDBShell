@@ -101,9 +101,14 @@ internal class InfoCommand : CosmosCommand
                 if (renderOutput)
                 {
                     AskForRBacPermissions(id ?? string.Empty, request ?? string.Empty, permission ?? string.Empty);
+                    commandState.Result = null;
+                    commandState.IsPrinted = true;
+                    return commandState;
                 }
 
-                return commandState;
+                throw new CommandException(
+                    "info",
+                    MessageService.GetArgsString("command-settings-rbac-error", "id", id ?? string.Empty, "request", request ?? string.Empty, "permission", permission ?? string.Empty));
             }
 
             throw new CommandException("info", e);
