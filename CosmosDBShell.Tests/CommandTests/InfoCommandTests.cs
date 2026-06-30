@@ -56,6 +56,21 @@ public class InfoCommandTests
     }
 
     [Fact]
+    public async Task Info_InvalidFormat_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ConnectedState(CreateTestClient());
+        var command = new InfoCommand { Format = "xml" };
+
+        var exception = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "info --format xml", CancellationToken.None));
+
+        Assert.Equal(
+            MessageService.GetArgsString("command-info-error-invalid-format", "format", "xml"),
+            exception.Message);
+    }
+
+    [Fact]
     public void ParseResourceUsage_ExtractsCountAndSizes()
     {
         var usage = InfoCommand.ParseResourceUsage("documentsCount=42;documentsSize=128;collectionSize=160");
