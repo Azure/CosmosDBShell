@@ -200,7 +200,11 @@ public class InfoCommandIntegrationTests : ConnectedEmulatorTestBase
             {
                 File.Delete(outputFile);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (IOException)
+            {
+                // Best-effort cleanup
+            }
+            catch (UnauthorizedAccessException)
             {
                 // Best-effort cleanup
             }
