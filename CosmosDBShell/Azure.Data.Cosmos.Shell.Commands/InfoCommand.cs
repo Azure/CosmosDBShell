@@ -394,17 +394,26 @@ internal class InfoCommand : CosmosCommand
         long total = counts.Sum();
         var result = new List<Dictionary<string, object?>>(counts.Count);
 
-        var table = new Table();
-        table.AddColumn(MessageService.GetString("command-stats-partitions-col-partition"));
-        table.AddColumn(MessageService.GetString("command-stats-partitions-col-count"));
-        table.AddColumn(MessageService.GetString("command-stats-partitions-col-share"));
+        Table? table = null;
+        if (renderOutput)
+        {
+            table = new Table();
+            table.AddColumn(MessageService.GetString("command-stats-partitions-col-partition"));
+            table.AddColumn(MessageService.GetString("command-stats-partitions-col-count"));
+            table.AddColumn(MessageService.GetString("command-stats-partitions-col-share"));
+        }
+
         for (int i = 0; i < counts.Count; i++)
         {
             double share = total > 0 ? (double)counts[i] / total * 100 : 0;
-            table.AddRow(
-                Theme.FormatTableValue((i + 1).ToString(CultureInfo.InvariantCulture)),
-                Theme.FormatTableValue(FormatCount(counts[i])),
-                Theme.FormatTableValue(string.Create(CultureInfo.InvariantCulture, $"{share:0.#}%")));
+            if (table is not null)
+            {
+                table.AddRow(
+                    Theme.FormatTableValue((i + 1).ToString(CultureInfo.InvariantCulture)),
+                    Theme.FormatTableValue(FormatCount(counts[i])),
+                    Theme.FormatTableValue(string.Create(CultureInfo.InvariantCulture, $"{share:0.#}%")));
+            }
+
             result.Add(new Dictionary<string, object?>
             {
                 ["partition"] = i + 1,
@@ -413,7 +422,7 @@ internal class InfoCommand : CosmosCommand
             });
         }
 
-        if (renderOutput)
+        if (table is not null)
         {
             AnsiConsole.Write(table);
         }
@@ -484,12 +493,21 @@ internal class InfoCommand : CosmosCommand
             }
         }
 
-        var table = new Table();
-        table.AddColumn(MessageService.GetString("command-stats-detailed-col-key"));
-        table.AddColumn(MessageService.GetString("command-stats-detailed-col-count"));
+        Table? table = null;
+        if (renderOutput)
+        {
+            table = new Table();
+            table.AddColumn(MessageService.GetString("command-stats-detailed-col-key"));
+            table.AddColumn(MessageService.GetString("command-stats-detailed-col-count"));
+        }
+
         foreach (var group in groups.OrderByDescending(g => g.Count).Take(TopPartitionKeyLimit))
         {
-            table.AddRow(Theme.FormatTableValue(group.Key), Theme.FormatTableValue(FormatCount(group.Count)));
+            if (table is not null)
+            {
+                table.AddRow(Theme.FormatTableValue(group.Key), Theme.FormatTableValue(FormatCount(group.Count)));
+            }
+
             result.Add(new Dictionary<string, object?>
             {
                 ["partitionKey"] = group.Key,
@@ -497,7 +515,7 @@ internal class InfoCommand : CosmosCommand
             });
         }
 
-        if (renderOutput)
+        if (table is not null)
         {
             AnsiConsole.Write(table);
         }
