@@ -994,16 +994,21 @@ scale section reports that throughput settings are not available for serverless
 accounts instead of failing.
 
 ```text
-Usage: info [--partitions] [--detailed] [--database=<name>] [--container=<name>]
+Usage: info [--partitions] [--detailed] [--format=<json|table>] [--database=<name>] [--container=<name>]
 
 Options:
     --partitions, -p    Add the per-physical-partition document distribution (consumes request units)
     --detailed, -d      Add storage breakdown and top partition keys (performs a full scan and consumes request units)
+    --format, -f        Output format: table or json
     --database, -db     Target database name
     --container, -con   Target container name
 ```
 
-The default report uses low-cost metadata reads. The `--partitions` and
+The default interactive report is rendered as tables. Use `--format json` for a
+machine-readable JSON object; redirecting `info` output to a file also writes JSON
+so CI and scripts can parse the result directly. When `--format table` is combined
+with redirection, the report is written to the file as a plain-text grid instead of
+the rich console layout. The `--partitions` and
 `--detailed` options issue queries against the data and therefore consume
 request units; at the account root, `--detailed` aggregates every container's
 storage and document count across all databases. This command is read-only.
