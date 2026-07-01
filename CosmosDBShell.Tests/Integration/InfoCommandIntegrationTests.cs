@@ -74,6 +74,37 @@ public class InfoCommandIntegrationTests : ConnectedEmulatorTestBase
     }
 
     [Fact]
+    public async Task Info_Container_FormatTable_RedirectsGrid()
+    {
+        var dbName = $"InfoTest_{Guid.NewGuid():N}";
+        CreatedDatabases.Add(dbName);
+
+        await ExecuteAsync($"mkdb {dbName}");
+        await ExecuteAsync($"cd {dbName}");
+        await ExecuteAsync("mkcon Items /id");
+        await ExecuteAsync("cd Items");
+        await ExecuteAsync("mkitem \"{ \\\"id\\\": \\\"a\\\" }\"");
+
+        var output = await ExecuteWithOutputAsync("info --format table");
+
+        Assert.False(string.IsNullOrWhiteSpace(output), "Expected non-empty redirected table output");
+        Assert.Contains("Items", output, StringComparison.Ordinal);
+
+        // The redirected --format table path must yield the grid rendering, not JSON.
+        var isJson = true;
+        try
+        {
+            using var document = JsonDocument.Parse(output);
+        }
+        catch (JsonException)
+        {
+            isJson = false;
+        }
+
+        Assert.False(isJson, "Redirected --format table output should be a grid, not JSON");
+    }
+
+    [Fact]
     public async Task Info_Container_Partitions_ReportsWithoutError()
     {
         var dbName = $"InfoTest_{Guid.NewGuid():N}";

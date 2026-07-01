@@ -733,10 +733,11 @@ internal class InfoCommand : CosmosCommand
                   view.AnalyticalStorageTtl);
         }
 
-        var table = new Table();
+        Table? table = null;
         if (renderOutput)
         {
             AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-title")));
+            table = new Table();
             table.AddColumns(string.Empty, string.Empty);
             table.AddRow(MessageService.GetString("command-settings-ttl-label"), Theme.FormatTableValue(ttl));
         }
@@ -748,7 +749,7 @@ internal class InfoCommand : CosmosCommand
                 : MessageService.GetString("command-settings-geospatial-geometry");
             if (renderOutput)
             {
-                table.AddRow(MessageService.GetString("command-settings-geospatial-label"), Theme.FormatTableValue(geospatialLabel));
+                table!.AddRow(MessageService.GetString("command-settings-geospatial-label"), Theme.FormatTableValue(geospatialLabel));
             }
 
             mcpTable["geospatialType"] = geospatialType;
@@ -756,7 +757,7 @@ internal class InfoCommand : CosmosCommand
 
         if (renderOutput)
         {
-            table.AddRow(MessageService.GetString("command-settings-partition-key-label"), Theme.FormatTableValue(string.Join(',', view.PartitionKeyPaths)));
+            table!.AddRow(MessageService.GetString("command-settings-partition-key-label"), Theme.FormatTableValue(string.Join(',', view.PartitionKeyPaths)));
             table.HideHeaders();
             AnsiConsole.Write(table);
         }
@@ -769,22 +770,26 @@ internal class InfoCommand : CosmosCommand
 
         if (view.FullTextPolicy is { } fullText)
         {
-            var fullTextTable = new Table();
-            fullTextTable.AddColumns(string.Empty, string.Empty);
+            Table? fullTextTable = null;
+            if (renderOutput)
+            {
+                fullTextTable = new Table();
+                fullTextTable.AddColumns(string.Empty, string.Empty);
 
-            var defaultLanguage = string.IsNullOrEmpty(fullText.DefaultLanguage)
-                ? MessageService.GetString("command-settings-na")
-                : fullText.DefaultLanguage;
-            fullTextTable.AddRow(
-                MessageService.GetString("command-settings-fulltext-default-language-label"),
-                Theme.FormatTableValue(defaultLanguage));
+                var defaultLanguage = string.IsNullOrEmpty(fullText.DefaultLanguage)
+                    ? MessageService.GetString("command-settings-na")
+                    : fullText.DefaultLanguage;
+                fullTextTable.AddRow(
+                    MessageService.GetString("command-settings-fulltext-default-language-label"),
+                    Theme.FormatTableValue(defaultLanguage));
+            }
 
             var mcpPaths = new List<Dictionary<string, object?>>();
             foreach (var path in fullText.Paths)
             {
                 if (renderOutput)
                 {
-                    fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), Theme.FormatTableValue(path.Path));
+                    fullTextTable!.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), Theme.FormatTableValue(path.Path));
                     fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-language-label"), Theme.FormatTableValue(path.Language ?? string.Empty));
                 }
 
@@ -798,7 +803,7 @@ internal class InfoCommand : CosmosCommand
             mcpTable["fullTextPolicy"] = mcpPaths;
             if (renderOutput)
             {
-                fullTextTable.HideHeaders();
+                fullTextTable!.HideHeaders();
                 AnsiConsole.Write(fullTextTable);
             }
         }
@@ -816,47 +821,47 @@ internal class InfoCommand : CosmosCommand
 
         if (view.IndexingPolicy is { } indexing)
         {
-            var indexingTable = new Table();
-            indexingTable.AddColumns(string.Empty, string.Empty);
-
-            indexingTable.AddRow(
-                MessageService.GetString("command-settings-indexing-mode-label"),
-                Theme.FormatTableValue(indexing.IndexingMode));
-            indexingTable.AddRow(
-                MessageService.GetString("command-settings-indexing-automatic-label"),
-                Theme.FormatTableValue(indexing.Automatic.ToString(CultureInfo.InvariantCulture)));
-            indexingTable.AddRow(
-                MessageService.GetString("command-settings-indexing-paths-label"),
-                Theme.FormatTableValue(MessageService.GetArgsString(
-                    "command-settings-indexing-paths-value",
-                    "included",
-                    indexing.IncludedPathCount,
-                    "excluded",
-                    indexing.ExcludedPathCount)));
-
-            if (indexing.CompositeIndexCount > 0)
-            {
-                indexingTable.AddRow(
-                    MessageService.GetString("command-settings-indexing-composite-label"),
-                    Theme.FormatTableValue(indexing.CompositeIndexCount.ToString(CultureInfo.InvariantCulture)));
-            }
-
-            if (indexing.SpatialIndexCount > 0)
-            {
-                indexingTable.AddRow(
-                    MessageService.GetString("command-settings-indexing-spatial-label"),
-                    Theme.FormatTableValue(indexing.SpatialIndexCount.ToString(CultureInfo.InvariantCulture)));
-            }
-
-            if (indexing.VectorIndexCount > 0)
-            {
-                indexingTable.AddRow(
-                    MessageService.GetString("command-settings-indexing-vector-label"),
-                    Theme.FormatTableValue(indexing.VectorIndexCount.ToString(CultureInfo.InvariantCulture)));
-            }
-
             if (renderOutput)
             {
+                var indexingTable = new Table();
+                indexingTable.AddColumns(string.Empty, string.Empty);
+
+                indexingTable.AddRow(
+                    MessageService.GetString("command-settings-indexing-mode-label"),
+                    Theme.FormatTableValue(indexing.IndexingMode));
+                indexingTable.AddRow(
+                    MessageService.GetString("command-settings-indexing-automatic-label"),
+                    Theme.FormatTableValue(indexing.Automatic.ToString(CultureInfo.InvariantCulture)));
+                indexingTable.AddRow(
+                    MessageService.GetString("command-settings-indexing-paths-label"),
+                    Theme.FormatTableValue(MessageService.GetArgsString(
+                        "command-settings-indexing-paths-value",
+                        "included",
+                        indexing.IncludedPathCount,
+                        "excluded",
+                        indexing.ExcludedPathCount)));
+
+                if (indexing.CompositeIndexCount > 0)
+                {
+                    indexingTable.AddRow(
+                        MessageService.GetString("command-settings-indexing-composite-label"),
+                        Theme.FormatTableValue(indexing.CompositeIndexCount.ToString(CultureInfo.InvariantCulture)));
+                }
+
+                if (indexing.SpatialIndexCount > 0)
+                {
+                    indexingTable.AddRow(
+                        MessageService.GetString("command-settings-indexing-spatial-label"),
+                        Theme.FormatTableValue(indexing.SpatialIndexCount.ToString(CultureInfo.InvariantCulture)));
+                }
+
+                if (indexing.VectorIndexCount > 0)
+                {
+                    indexingTable.AddRow(
+                        MessageService.GetString("command-settings-indexing-vector-label"),
+                        Theme.FormatTableValue(indexing.VectorIndexCount.ToString(CultureInfo.InvariantCulture)));
+                }
+
                 indexingTable.HideHeaders();
                 AnsiConsole.Write(indexingTable);
             }
