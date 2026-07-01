@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.114-preview — 2026-07-01
+## 1.1.115-preview — 2026-07-01
 
 A large feature cycle on top of 1.1.4-preview. The shell gains a stack of new commands — configurable **color themes**, a native **`filter`** language, change-feed **`watch`**, **`index`** and **`throughput`** management, bulk **`import`/`export`**, and server-side **`sproc`/`udf`/`trigger`** programming — plus a reworked **`info`** command (formerly `settings`) with usage statistics and JSON output, first-class observability through **`--diagnostics`** and **`--otel`**, and hardening of the MCP server.
 
