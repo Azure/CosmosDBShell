@@ -747,17 +747,17 @@ internal class InfoCommand : CosmosCommand
             string geospatialLabel = string.Equals(geospatialType, "Geography", StringComparison.OrdinalIgnoreCase)
                 ? MessageService.GetString("command-settings-geospatial-geography")
                 : MessageService.GetString("command-settings-geospatial-geometry");
-            if (renderOutput)
+            if (table is not null)
             {
-                table!.AddRow(MessageService.GetString("command-settings-geospatial-label"), Theme.FormatTableValue(geospatialLabel));
+                table.AddRow(MessageService.GetString("command-settings-geospatial-label"), Theme.FormatTableValue(geospatialLabel));
             }
 
             mcpTable["geospatialType"] = geospatialType;
         }
 
-        if (renderOutput)
+        if (table is not null)
         {
-            table!.AddRow(MessageService.GetString("command-settings-partition-key-label"), Theme.FormatTableValue(string.Join(',', view.PartitionKeyPaths)));
+            table.AddRow(MessageService.GetString("command-settings-partition-key-label"), Theme.FormatTableValue(string.Join(',', view.PartitionKeyPaths)));
             table.HideHeaders();
             AnsiConsole.Write(table);
         }
@@ -787,9 +787,9 @@ internal class InfoCommand : CosmosCommand
             var mcpPaths = new List<Dictionary<string, object?>>();
             foreach (var path in fullText.Paths)
             {
-                if (renderOutput)
+                if (fullTextTable is not null)
                 {
-                    fullTextTable!.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), Theme.FormatTableValue(path.Path));
+                    fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), Theme.FormatTableValue(path.Path));
                     fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-language-label"), Theme.FormatTableValue(path.Language ?? string.Empty));
                 }
 
@@ -801,9 +801,9 @@ internal class InfoCommand : CosmosCommand
             }
 
             mcpTable["fullTextPolicy"] = mcpPaths;
-            if (renderOutput)
+            if (fullTextTable is not null)
             {
-                fullTextTable!.HideHeaders();
+                fullTextTable.HideHeaders();
                 AnsiConsole.Write(fullTextTable);
             }
         }
