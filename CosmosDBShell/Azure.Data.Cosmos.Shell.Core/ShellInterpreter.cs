@@ -324,8 +324,9 @@ public partial class ShellInterpreter : IDisposable
         }
         catch (ObjectDisposedException)
         {
-            // A concurrent REPL/MCP command tick already disposed and replaced currentTokenSource
-            // (see the TokenSource/UserCancellationTokenSource getters) — nothing left to cancel.
+            // currentTokenSource may have been disposed by another code path after being returned from
+            // TokenSource/UserCancellationTokenSource. Clear the static reference so future cancels don't hit a disposed CTS.
+            currentTokenSource = null;
         }
 
         this.editorCancelTokenSource.Cancel();
