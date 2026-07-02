@@ -206,6 +206,52 @@ public class ToolOperationsCallToolTests
     }
 
     [Fact]
+    public async Task CallTool_AfterSharedTokenSourceDisposedExternally_StillReturnsSuccessResult()
+    {
+        // Reproduces the startup `--connect` bug: Program.cs used to capture
+        // ShellInterpreter.UserCancellationTokenSource in a `using`, disposing the shared
+        // static token the instant the initial connect finished. Every MCP tool call
+        // afterward hit ToolOperations.OnCallToolsAsync -> CancelPrompt() ->
+        // currentTokenSource.Cancel(), which threw ObjectDisposedException on an object
+        // still referenced by the static field. Simulate that exact precondition here
+        // without touching Program.cs's process-level startup path.
+        using (ShellInterpreter.UserCancellationTokenSource)
+        {
+            // Disposed on scope exit while still being the shared static instance.
+        }
+
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["messages"] = Json("[\"hello\", \"world\"]"),
+        };
+
+        var saved = AnsiConsole.Console;
+        try
+        {
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.Yes,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(new StringWriter()),
+            });
+
+            var result = await tool.CallToolHandler(CallContext("echo", arguments), CancellationToken.None);
+
+            var (isError, root, document) = ReadResult(result);
+            using (document)
+            {
+                Assert.False(isError);
+                Assert.Equal("hello world", root.GetProperty("result").GetString());
+            }
+        }
+        finally
+        {
+            AnsiConsole.Console = saved;
+        }
+    }
+
+    [Fact]
     public async Task ListTools_ReturnsRegisteredTools()
     {
         var tool = CreateToolOperations();

@@ -318,7 +318,16 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     public void CancelPrompt()
     {
-        currentTokenSource?.Cancel();
+        try
+        {
+            currentTokenSource?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // A concurrent REPL/MCP command tick already disposed and replaced currentTokenSource
+            // (see the TokenSource/UserCancellationTokenSource getters) — nothing left to cancel.
+        }
+
         this.editorCancelTokenSource.Cancel();
         this.editorCancelTokenSource = new CancellationTokenSource();
     }
