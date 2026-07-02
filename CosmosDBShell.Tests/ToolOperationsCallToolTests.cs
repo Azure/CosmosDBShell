@@ -208,7 +208,7 @@ public class ToolOperationsCallToolTests
     [Fact]
     public async Task CallTool_AfterSharedTokenSourceDisposedExternally_StillReturnsSuccessResult()
     {
-        // Reproduces the startup `--connect` bug: Program.cs used to capture
+        // Reproduces the startup `--connect` bug: Program.cs captures
         // ShellInterpreter.UserCancellationTokenSource in a `using`, disposing the shared
         // static token the instant the initial connect finished. Every MCP tool call
         // afterward hit ToolOperations.OnCallToolsAsync -> CancelPrompt() ->
