@@ -318,7 +318,6 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     public void CancelPrompt()
     {
-
         var tokenSource = currentTokenSource;
         try
         {
