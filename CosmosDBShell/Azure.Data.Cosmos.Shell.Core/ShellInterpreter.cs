@@ -318,15 +318,19 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     public void CancelPrompt()
     {
+
+        var tokenSource = currentTokenSource;
         try
         {
-            currentTokenSource?.Cancel();
+            tokenSource?.Cancel();
         }
         catch (ObjectDisposedException)
         {
-            // currentTokenSource may have been disposed by another code path after being returned from
-            // TokenSource/UserCancellationTokenSource. Clear the static reference so future cancels don't hit a disposed CTS.
-            currentTokenSource = null;
+            // If the token source was disposed without being replaced, clear it so future calls don't keep throwing.
+            if (ReferenceEquals(currentTokenSource, tokenSource))
+            {
+                currentTokenSource = null;
+            }
         }
 
         this.editorCancelTokenSource.Cancel();
