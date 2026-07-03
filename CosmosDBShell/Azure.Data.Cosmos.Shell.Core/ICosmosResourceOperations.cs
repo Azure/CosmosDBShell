@@ -38,6 +38,14 @@ internal interface ICosmosResourceOperations
 
     Task<string> ReplaceIndexingPolicyAsync(string databaseName, string containerName, string indexPolicyJson, CancellationToken token);
 
+    Task<ContainerTtlView> GetTimeToLiveAsync(string databaseName, string containerName, CancellationToken token);
+
+    Task<ContainerTtlView> ReplaceTimeToLiveAsync(string databaseName, string containerName, int? defaultTimeToLive, CancellationToken token);
+
+    Task<ConflictResolutionView> GetConflictResolutionPolicyAsync(string databaseName, string containerName, CancellationToken token);
+
+    Task<ConflictResolutionView> ReplaceConflictResolutionPolicyAsync(string databaseName, string containerName, ConflictResolutionUpdate update, CancellationToken token);
+
     Task<ThroughputView> GetThroughputAsync(string databaseName, string? containerName, CancellationToken token);
 
     Task<ThroughputView> ReplaceThroughputAsync(string databaseName, string? containerName, ThroughputUpdate update, CancellationToken token);

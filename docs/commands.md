@@ -622,6 +622,90 @@ throughput set 4000 --yes
 throughput show --database MyDatabase --container MyContainer
 ```
 
+### ttl
+
+View or change the default time-to-live (TTL) of a container through subcommands.
+
+```text
+Usage: ttl subcommand [seconds] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  show, set, on, or off
+    [seconds]   Default time-to-live in seconds for the set subcommand (must be positive)
+
+Options:
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+The command operates on a container. By default it targets the current container. Use `--database` and `--container` to target a specific container.
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`show`|Reads and returns the current TTL configuration as JSON. `status` is `disabled` (items never expire), `no-default` (TTL is on but items expire only when they carry their own `ttl` property), or `enabled` (items expire after `defaultTimeToLiveSeconds`).|
+|`set <seconds>`|Enables TTL with a positive default expiration in seconds.|
+|`on`|Enables TTL with no container default (equivalent to a default TTL of `-1`); only items with their own `ttl` property expire.|
+|`off`|Disables TTL so items never expire.|
+
+The seconds value is validated before the request is sent: `set` requires a positive number, and `show`, `on`, and `off` reject a seconds argument.
+
+#### Examples
+
+```bash
+ttl show
+ttl set 86400
+ttl on
+ttl off
+ttl show --database MyDatabase --container MyContainer
+```
+
+### conflict
+
+View or change the conflict resolution policy of a container through subcommands.
+
+```text
+Usage: conflict subcommand [-mode <ARG>] [-path <ARG>] [-procedure <ARG>] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  show or set
+
+Options:
+    -mode, -m   Conflict resolution mode: lastWriterWins or custom (Optional)
+    -path, -p   Resolution path for lastWriterWins mode, for example /_ts (Optional)
+    -procedure, -proc, -sproc
+                Stored procedure id that resolves conflicts for custom mode (Optional)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+The command operates on a container. By default it targets the current container. Use `--database` and `--container` to target a specific container.
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`show`|Reads and returns the current policy as JSON, including the mode (`LastWriterWins` or `Custom`), the resolution path (last-writer-wins), and the resolution stored procedure (custom).|
+|`set`|Updates the policy. Pass `--mode` to choose `lastWriterWins` or `custom`. For last-writer-wins pass `--path` to name the property that decides the winner (defaults to `/_ts`). For custom pass `--procedure` to name the stored procedure that resolves conflicts. Options that are not supplied keep their current value.|
+
+`--path` applies only to last-writer-wins mode and `--procedure` applies only to custom mode; combining them with the wrong mode is rejected before the request is sent.
+
+Conflict resolution policies only take effect on accounts configured for multi-region writes.
+
+#### Examples
+
+```bash
+conflict show
+conflict set --mode lastWriterWins --path /_ts
+conflict set --mode custom --procedure resolveConflicts
+conflict show --database MyDatabase --container MyContainer
+```
+
 ### sproc
 
 Manage JavaScript stored procedures on a container through subcommands.

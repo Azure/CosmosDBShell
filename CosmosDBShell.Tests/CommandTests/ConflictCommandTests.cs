@@ -1,0 +1,148 @@
+// ------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+// ------------------------------------------------------------
+
+namespace CosmosShell.Tests.CommandTests;
+
+using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.States;
+using Azure.Data.Cosmos.Shell.Util;
+using Microsoft.Azure.Cosmos;
+
+/// <summary>
+/// Offline unit tests for <see cref="ConflictCommand"/>. These cover the not-connected,
+/// wrong-scope, and argument-validation branches that execute before any network call,
+/// plus the pure mode-normalization helper.
+/// </summary>
+public class ConflictCommandTests
+{
+    [Fact]
+    public async Task Disconnected_ThrowsNotConnected()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new ConflictCommand { Subcommand = "show" };
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict show", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Connected_NoContainer_ThrowsNotInContainer()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ConnectedState(CreateTestClient());
+        var command = new ConflictCommand { Subcommand = "show" };
+
+        await Assert.ThrowsAsync<NotInContainerException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict show", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Database_NoContainer_ThrowsNotInContainer()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", CreateTestClient());
+        var command = new ConflictCommand { Subcommand = "show" };
+
+        await Assert.ThrowsAsync<NotInContainerException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict show", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task InvalidSubcommand_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ContainerState("TestContainer", "TestDatabase", CreateTestClient());
+        var command = new ConflictCommand { Subcommand = "bogus" };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict bogus", CancellationToken.None));
+        Assert.Equal(
+            MessageService.GetArgsString("command-conflict-error-invalid_subcommand", "subcommand", "bogus"),
+            ex.Message);
+    }
+
+    [Fact]
+    public async Task Set_NoArguments_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ContainerState("TestContainer", "TestDatabase", CreateTestClient());
+        var command = new ConflictCommand { Subcommand = "set" };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict set", CancellationToken.None));
+        Assert.Equal(MessageService.GetString("command-conflict-error-missing_set_args"), ex.Message);
+    }
+
+    [Fact]
+    public async Task Set_InvalidMode_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ContainerState("TestContainer", "TestDatabase", CreateTestClient());
+        var command = new ConflictCommand { Subcommand = "set", Mode = "bogus" };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict set --mode bogus", CancellationToken.None));
+        Assert.Equal(MessageService.GetString("command-conflict-error-invalid_mode"), ex.Message);
+    }
+
+    [Fact]
+    public async Task Set_CustomWithPath_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ContainerState("TestContainer", "TestDatabase", CreateTestClient());
+        var command = new ConflictCommand { Subcommand = "set", Mode = "custom", Path = "/_ts" };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict set --mode custom --path /_ts", CancellationToken.None));
+        Assert.Equal(MessageService.GetString("command-conflict-error-path_with_custom"), ex.Message);
+    }
+
+    [Fact]
+    public async Task Set_LastWriterWinsWithProcedure_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ContainerState("TestContainer", "TestDatabase", CreateTestClient());
+        var command = new ConflictCommand { Subcommand = "set", Mode = "lastWriterWins", Procedure = "resolve" };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict set --mode lastWriterWins --procedure resolve", CancellationToken.None));
+        Assert.Equal(MessageService.GetString("command-conflict-error-procedure_with_lww"), ex.Message);
+    }
+
+    [Theory]
+    [InlineData("lastWriterWins", "lastWriterWins")]
+    [InlineData("lastwriterwins", "lastWriterWins")]
+    [InlineData("lww", "lastWriterWins")]
+    [InlineData("last-writer-wins", "lastWriterWins")]
+    [InlineData("custom", "custom")]
+    [InlineData("CUSTOM", "custom")]
+    public void NormalizeMode_ReturnsCanonicalMode(string input, string expected)
+    {
+        Assert.Equal(expected, ConflictCommand.NormalizeMode(input));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void NormalizeMode_EmptyReturnsNull(string? input)
+    {
+        Assert.Null(ConflictCommand.NormalizeMode(input));
+    }
+
+    [Fact]
+    public void NormalizeMode_InvalidThrowsCommandException()
+    {
+        var ex = Assert.Throws<CommandException>(() => ConflictCommand.NormalizeMode("bogus"));
+        Assert.Equal(MessageService.GetString("command-conflict-error-invalid_mode"), ex.Message);
+    }
+
+    private static CosmosClient CreateTestClient()
+    {
+        var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");
+        return new CosmosClient(connectionString);
+    }
+}

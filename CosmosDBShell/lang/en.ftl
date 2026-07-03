@@ -328,6 +328,35 @@ command-index-error-show_no_args = 'index show' does not take any arguments. Use
 command-index-error-invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-index-error-no_policy = The container has no indexing policy configured.
 
+command-ttl-description = Views or changes the default time-to-live (TTL) of a container via show, set, on, and off subcommands.
+command-ttl-description-subcommand = The action to perform: show, set, on, or off.
+command-ttl-description-seconds = The default time-to-live in seconds for the set subcommand (must be positive).
+command-ttl-description-database = The database containing the container.
+command-ttl-description-container = The container to read/update the TTL for.
+command-ttl-updated = Time-to-live updated successfully.
+command-ttl-error-missing_subcommand = Missing subcommand. Use one of: show, set, on, off.
+command-ttl-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set, on, off.
+command-ttl-error-missing_seconds = No seconds value provided. Specify a positive number of seconds, for example: ttl set 86400.
+command-ttl-error-invalid_seconds = Invalid seconds value '{ $seconds }'. Provide a positive number of seconds, or use 'ttl on' for no default and 'ttl off' to disable.
+command-ttl-error-show_no_args = 'ttl show' does not take any arguments. Use 'ttl show' to display the current configuration.
+command-ttl-error-toggle_no_args = This subcommand does not take a seconds value. Use 'ttl set <seconds>' to set a default expiration.
+
+command-conflict-description = Views or changes the conflict resolution policy of a container via show and set subcommands.
+command-conflict-description-subcommand = The action to perform: show or set.
+command-conflict-description-mode = The conflict resolution mode to set (lastWriterWins or custom).
+command-conflict-description-path = The conflict resolution path for last-writer-wins mode, for example /_ts.
+command-conflict-description-procedure = The stored procedure id that resolves conflicts for custom mode.
+command-conflict-description-database = The database containing the container.
+command-conflict-description-container = The container to read/update the conflict resolution policy for.
+command-conflict-updated = Conflict resolution policy updated successfully.
+command-conflict-error-missing_subcommand = Missing subcommand. Use one of: show, set.
+command-conflict-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set.
+command-conflict-error-missing_set_args = Nothing to set. Provide --mode, --path, or --procedure.
+command-conflict-error-invalid_mode = Invalid value for --mode. Use lastWriterWins or custom.
+command-conflict-error-missing_procedure = Custom conflict resolution requires a stored procedure. Provide --procedure <name>.
+command-conflict-error-path_with_custom = --path cannot be used with custom mode. Use --procedure to name the resolving stored procedure.
+command-conflict-error-procedure_with_lww = --procedure cannot be used with lastWriterWins mode. Use --path to name the resolution path.
+
 command-throughput-description = Views or changes the provisioned throughput (RU/s) of a database or container via show, set, manual, and autoscale subcommands.
 command-throughput-description-subcommand = The action to perform: show, set, manual, or autoscale.
 command-throughput-description-ru = The throughput in RU/s to provision (manual RU/s for set/manual, maximum RU/s for autoscale).

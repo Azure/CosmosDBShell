@@ -82,6 +82,26 @@ internal static class CosmosResourceFacade
         return For(state).ReplaceIndexingPolicyAsync(databaseName, containerName, indexPolicyJson, token);
     }
 
+    public static Task<ContainerTtlView> GetTimeToLiveAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    {
+        return For(state).GetTimeToLiveAsync(databaseName, containerName, token);
+    }
+
+    public static Task<ContainerTtlView> ReplaceTimeToLiveAsync(ConnectedState state, string databaseName, string containerName, int? defaultTimeToLive, CancellationToken token)
+    {
+        return For(state).ReplaceTimeToLiveAsync(databaseName, containerName, defaultTimeToLive, token);
+    }
+
+    public static Task<ConflictResolutionView> GetConflictResolutionPolicyAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    {
+        return For(state).GetConflictResolutionPolicyAsync(databaseName, containerName, token);
+    }
+
+    public static Task<ConflictResolutionView> ReplaceConflictResolutionPolicyAsync(ConnectedState state, string databaseName, string containerName, ConflictResolutionUpdate update, CancellationToken token)
+    {
+        return For(state).ReplaceConflictResolutionPolicyAsync(databaseName, containerName, update, token);
+    }
+
     public static Task<ThroughputView> GetThroughputAsync(ConnectedState state, string databaseName, string? containerName, CancellationToken token)
     {
         return For(state).GetThroughputAsync(databaseName, containerName, token);
