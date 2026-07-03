@@ -42,6 +42,10 @@ internal interface ICosmosResourceOperations
 
     Task<ContainerTtlView> ReplaceTimeToLiveAsync(string databaseName, string containerName, int? defaultTimeToLive, CancellationToken token);
 
+    Task<ContainerAnalyticalTtlView> GetAnalyticalTimeToLiveAsync(string databaseName, string containerName, CancellationToken token);
+
+    Task<ContainerAnalyticalTtlView> ReplaceAnalyticalTimeToLiveAsync(string databaseName, string containerName, long? analyticalTimeToLive, CancellationToken token);
+
     Task<ConflictResolutionView> GetConflictResolutionPolicyAsync(string databaseName, string containerName, CancellationToken token);
 
     Task<ConflictResolutionView> ReplaceConflictResolutionPolicyAsync(string databaseName, string containerName, ConflictResolutionUpdate update, CancellationToken token);

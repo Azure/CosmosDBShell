@@ -128,6 +128,41 @@ public class TtlCommandTests
         Assert.Equal(expected, TtlCommand.StatusFor(defaultTimeToLive));
     }
 
+    [Theory]
+    [InlineData(null, "disabled")]
+    [InlineData(0L, "disabled")]
+    [InlineData(-1L, "enabled")]
+    [InlineData(1L, "enabled")]
+    [InlineData(2592000L, "enabled")]
+    public void AnalyticalStatusFor_MapsRawTtlToStatus(long? analyticalTimeToLive, string expected)
+    {
+        Assert.Equal(expected, TtlCommand.AnalyticalStatusFor(analyticalTimeToLive));
+    }
+
+    [Fact]
+    public async Task Analytical_Show_WithSeconds_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ContainerState("TestContainer", "TestDatabase", CreateTestClient());
+        var command = new TtlCommand { Subcommand = "show", Seconds = 3600, Analytical = true };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "ttl show 3600 --analytical", CancellationToken.None));
+        Assert.Equal(MessageService.GetString("command-ttl-error-show_no_args"), ex.Message);
+    }
+
+    [Fact]
+    public async Task Analytical_Set_MissingSeconds_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ContainerState("TestContainer", "TestDatabase", CreateTestClient());
+        var command = new TtlCommand { Subcommand = "set", Analytical = true };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "ttl set --analytical", CancellationToken.None));
+        Assert.Equal(MessageService.GetString("command-ttl-error-missing_seconds"), ex.Message);
+    }
+
     private static CosmosClient CreateTestClient()
     {
         var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");

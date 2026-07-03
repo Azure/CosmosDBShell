@@ -328,12 +328,14 @@ command-index-error-show_no_args = 'index show' does not take any arguments. Use
 command-index-error-invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-index-error-no_policy = The container has no indexing policy configured.
 
-command-ttl-description = Views or changes the default time-to-live (TTL) of a container via show, set, on, and off subcommands.
+command-ttl-description = Views or changes the time-to-live (TTL) of a container via show, set, on, and off subcommands. Use --analytical to target the analytical store TTL.
 command-ttl-description-subcommand = The action to perform: show, set, on, or off.
-command-ttl-description-seconds = The default time-to-live in seconds for the set subcommand (must be positive).
+command-ttl-description-seconds = The time-to-live in seconds for the set subcommand (must be positive).
+command-ttl-description-analytical = Target the container's analytical store TTL instead of the default item TTL.
 command-ttl-description-database = The database containing the container.
 command-ttl-description-container = The container to read/update the TTL for.
 command-ttl-updated = Time-to-live updated successfully.
+command-ttl-analytical-updated = Analytical store time-to-live updated successfully.
 command-ttl-error-missing_subcommand = Missing subcommand. Use one of: show, set, on, off.
 command-ttl-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set, on, off.
 command-ttl-error-missing_seconds = No seconds value provided. Specify a positive number of seconds, for example: ttl set 86400.

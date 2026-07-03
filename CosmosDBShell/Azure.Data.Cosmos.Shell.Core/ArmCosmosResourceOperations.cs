@@ -204,6 +204,22 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
         return new ContainerTtlView(response.Value.Data.Resource.DefaultTtl);
     }
 
+    public async Task<ContainerAnalyticalTtlView> GetAnalyticalTimeToLiveAsync(string databaseName, string containerName, CancellationToken token)
+    {
+        var resource = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+        return new ContainerAnalyticalTtlView(resource.Data.Resource.AnalyticalStorageTtl);
+    }
+
+    public async Task<ContainerAnalyticalTtlView> ReplaceAnalyticalTimeToLiveAsync(string databaseName, string containerName, long? analyticalTimeToLive, CancellationToken token)
+    {
+        var resource = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+        var data = resource.Data.Resource;
+        data.AnalyticalStorageTtl = analyticalTimeToLive;
+        var content = new CosmosDBSqlContainerCreateOrUpdateContent(resource.Data.Location, data);
+        var response = await resource.UpdateAsync(WaitUntil.Completed, content, token);
+        return new ContainerAnalyticalTtlView(response.Value.Data.Resource.AnalyticalStorageTtl);
+    }
+
     public async Task<ConflictResolutionView> GetConflictResolutionPolicyAsync(string databaseName, string containerName, CancellationToken token)
     {
         var resource = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);

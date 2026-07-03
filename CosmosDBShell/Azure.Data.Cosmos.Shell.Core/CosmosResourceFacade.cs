@@ -92,6 +92,16 @@ internal static class CosmosResourceFacade
         return For(state).ReplaceTimeToLiveAsync(databaseName, containerName, defaultTimeToLive, token);
     }
 
+    public static Task<ContainerAnalyticalTtlView> GetAnalyticalTimeToLiveAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    {
+        return For(state).GetAnalyticalTimeToLiveAsync(databaseName, containerName, token);
+    }
+
+    public static Task<ContainerAnalyticalTtlView> ReplaceAnalyticalTimeToLiveAsync(ConnectedState state, string databaseName, string containerName, long? analyticalTimeToLive, CancellationToken token)
+    {
+        return For(state).ReplaceAnalyticalTimeToLiveAsync(databaseName, containerName, analyticalTimeToLive, token);
+    }
+
     public static Task<ConflictResolutionView> GetConflictResolutionPolicyAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
     {
         return For(state).GetConflictResolutionPolicyAsync(databaseName, containerName, token);

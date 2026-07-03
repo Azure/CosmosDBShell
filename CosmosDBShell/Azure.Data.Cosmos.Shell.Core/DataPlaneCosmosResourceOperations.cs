@@ -243,6 +243,24 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         return new ContainerTtlView(updated.DefaultTimeToLive);
     }
 
+    public async Task<ContainerAnalyticalTtlView> GetAnalyticalTimeToLiveAsync(string databaseName, string containerName, CancellationToken token)
+    {
+        var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(response);
+        return new ContainerAnalyticalTtlView(props.AnalyticalStoreTimeToLiveInSeconds);
+    }
+
+    public async Task<ContainerAnalyticalTtlView> ReplaceAnalyticalTimeToLiveAsync(string databaseName, string containerName, long? analyticalTimeToLive, CancellationToken token)
+    {
+        var container = client.GetDatabase(databaseName).GetContainer(containerName);
+        var current = await container.ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(current);
+        props.AnalyticalStoreTimeToLiveInSeconds = analyticalTimeToLive is { } seconds ? checked((int)seconds) : null;
+        var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
+        var updated = GetContainerPropertiesOrThrow(replaced);
+        return new ContainerAnalyticalTtlView(updated.AnalyticalStoreTimeToLiveInSeconds);
+    }
+
     public async Task<ConflictResolutionView> GetConflictResolutionPolicyAsync(string databaseName, string containerName, CancellationToken token)
     {
         var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);

@@ -624,16 +624,18 @@ throughput show --database MyDatabase --container MyContainer
 
 ### ttl
 
-View or change the default time-to-live (TTL) of a container through subcommands.
+View or change the time-to-live (TTL) of a container through subcommands.
 
 ```text
-Usage: ttl subcommand [seconds] [-database <ARG>] [-container <ARG>]
+Usage: ttl subcommand [seconds] [-analytical] [-database <ARG>] [-container <ARG>]
 
 Arguments:
     subcommand  show, set, on, or off
-    [seconds]   Default time-to-live in seconds for the set subcommand (must be positive)
+    [seconds]   Time-to-live in seconds for the set subcommand (must be positive)
 
 Options:
+    -analytical, -a
+                Target the analytical store TTL instead of the default item TTL (Optional)
     -database, -db
                 Override database name (Optional)
     -container, -con
@@ -653,6 +655,17 @@ The command operates on a container. By default it targets the current container
 
 The seconds value is validated before the request is sent: `set` requires a positive number, and `show`, `on`, and `off` reject a seconds argument.
 
+#### Analytical store TTL
+
+Pass `--analytical` (or `-a`) to operate on the container's analytical store TTL instead of the default item TTL. The analytical store must be supported by the account.
+
+|Subcommand|Behavior with `--analytical`|
+|-|-|
+|`show`|Returns the analytical status (`disabled` or `enabled`) and `analyticalTimeToLiveSeconds`.|
+|`set <seconds>`|Retains analytical data for a positive number of seconds.|
+|`on`|Enables the analytical store with indefinite retention (a TTL of `-1`).|
+|`off`|Disables the analytical store.|
+
 #### Examples
 
 ```bash
@@ -661,6 +674,10 @@ ttl set 86400
 ttl on
 ttl off
 ttl show --database MyDatabase --container MyContainer
+ttl show --analytical
+ttl set 2592000 --analytical
+ttl on --analytical
+ttl off --analytical
 ```
 
 ### conflict
