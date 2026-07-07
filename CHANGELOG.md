@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### New features
+
+- **`--dry-run` for destructive delete commands.** `rm`, `rmcon`, `rmdb`, and `delete` accept `--dry-run` to preview the effect without deleting anything: `rm` reports how many items match the pattern, and `rmcon`/`rmdb` report the container or database that would be removed. No confirmation prompt is shown and no changes are made. ([#156](https://github.com/Azure/CosmosDBShell/issues/156))
+
 ## 1.1.115-preview — 2026-07-01
 
 A large feature cycle on top of 1.1.4-preview. The shell gains a stack of new commands — configurable **color themes**, a native **`filter`** language, change-feed **`watch`**, **`index`** and **`throughput`** management, bulk **`import`/`export`**, and server-side **`sproc`/`udf`/`trigger`** programming — plus a reworked **`info`** command (formerly `settings`) with usage statistics and JSON output, first-class observability through **`--diagnostics`** and **`--otel`**, and hardening of the MCP server.
