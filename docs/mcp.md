@@ -70,3 +70,24 @@ Your MCP client may use a remote LLM. Command outputs, query results, and file c
 - [ ] Review and approve destructive operations manually
 - [ ] Don't share secrets (keys, PII) in prompts or outputs
 - [ ] Disable MCP mode when not actively using it
+
+## Tool Results
+
+Every tool result carries the same machine-readable JSON payload in two places:
+
+- **`structuredContent`** — the payload as first-class structured content, for clients that consume MCP structured results.
+- **A text content block** — the identical payload serialized as JSON text, so clients that only read text content blocks continue to work.
+
+Both representations are always byte-for-byte equivalent.
+
+### Payload shape
+
+| Field | When present | Description |
+| ----- | ------------ | ----------- |
+| `result` | Successful commands that produce output | The command result as JSON (objects, arrays, or a scalar). Text-only results are represented as a JSON string. |
+| `outputText` | CSV output commands with non-empty text | The CSV rendering of the result. Omitted when the CSV output is empty or whitespace. |
+| `error` | Failed commands | The error message. |
+| `currentLocation` | Always | The shell's current navigation path (for example `/MyDatabase/MyContainer`), or `null` when disconnected. |
+
+Successful results set `result` (and optionally `outputText`); failed results set `error` and mark the tool result as an error. `currentLocation` is always included so a client can track navigation state across calls.
+
