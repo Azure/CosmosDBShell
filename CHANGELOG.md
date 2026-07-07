@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### New features
+
+- `throughput` write subcommands (`set`/`manual`/`autoscale`) now accept `--dry-run` to preview the change — reporting current vs. planned mode and RU/s as JSON (and a table interactively) — without applying it or prompting for confirmation. A first slice of dry-run mode (item G1). ([#164](https://github.com/Azure/CosmosDBShell/issues/164))
+
 ## 1.1.115-preview — 2026-07-01
 
 A large feature cycle on top of 1.1.4-preview. The shell gains a stack of new commands — configurable **color themes**, a native **`filter`** language, change-feed **`watch`**, **`index`** and **`throughput`** management, bulk **`import`/`export`**, and server-side **`sproc`/`udf`/`trigger`** programming — plus a reworked **`info`** command (formerly `settings`) with usage statistics and JSON output, first-class observability through **`--diagnostics`** and **`--otel`**, and hardening of the MCP server.

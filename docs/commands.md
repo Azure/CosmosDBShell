@@ -590,6 +590,7 @@ Options:
                 Override container name (Optional)
     -yes, -y, -force
                 Skip the confirmation prompt before applying a change (Optional)
+    -dry-run    Preview the change without applying it (Optional)
 ```
 
 By default the command targets the current scope: the container when in a container, otherwise the database. Use `--database` and `--container` to target a specific resource.
@@ -611,6 +612,8 @@ Switching between `manual` and `autoscale` is a mode migration. Over an Azure AD
 
 Write operations (`set`, `manual`, `autoscale`) ask for confirmation before applying, because throughput changes can affect your bill. Pass `--yes` (`-y`/`--force`) to skip the prompt. The prompt is also skipped automatically in non-interactive contexts (MCP, script execution, or piped input).
 
+Pass `--dry-run` with a write subcommand to preview the change without applying it. The command reads the current throughput and reports the current vs. planned mode and RU/s as JSON (and a table interactively); no write is performed and no confirmation is required.
+
 #### Examples
 
 ```bash
@@ -619,6 +622,7 @@ throughput set 4000
 throughput manual 4000
 throughput autoscale 10000
 throughput set 4000 --yes
+throughput autoscale 10000 --dry-run
 throughput show --database MyDatabase --container MyContainer
 ```
 
