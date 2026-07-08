@@ -274,8 +274,12 @@ internal class Program
                 }
                 catch (Exception ex)
                 {
-                    var exitCode = ErrorCommandState.CustomExitCodeMapper?.Invoke(ex) ?? 3;
-                    Environment.ExitCode = exitCode;
+                    // Use the same exit-code resolution as ErrorCommandState so that
+                    // ArgumentException / UnknownOptionException → 2, NotConnected → 3,
+                    // CosmosException (via CustomExitCodeMapper) → mapped code, else → 1.
+                    var syntheticState = new ErrorCommandState(ex);
+                    Environment.ExitCode = syntheticState.ExitCode;
+
                     if (machineMode)
                     {
                         var msg = ex.Message;
@@ -601,7 +605,7 @@ internal class Program
         {
             Arity = ArgumentArity.ZeroOrOne,
         };
-        var outputFormat = new Option<string?>("--output", "Output format (json, ndjson, json-full, table)");
+        var outputFormat = new Option<string?>("--output", MessageService.GetString("help-OutputFormat"));
         outputFormat.AddValidator(result =>
         {
             var value = result.GetValueForOption(outputFormat);
@@ -616,7 +620,7 @@ internal class Program
                 result.ErrorMessage = MessageService.GetString("error-invalid_output_format", new Dictionary<string, object> { { "format", value } }) ?? $"Invalid format '{value}'";
             }
         });
-        var quiet = new Option<bool>("--quiet", "Suppress non-result messages");
+        var quiet = new Option<bool>("--quiet", MessageService.GetString("help-Quiet"));
 
         var root = new RootCommand("Cosmos DB Shell")
         {

@@ -168,17 +168,21 @@ public partial class ShellInterpreter : IDisposable
 
     internal Program.CosmosShellOptions? Options { get; set; }
 
-internal bool IsMachineMode
-{
-    get
+    internal bool IsMachineMode
     {
-        var format = this.Options?.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
-        return this.Quiet
-            || (!string.IsNullOrEmpty(format)
-                && !string.Equals(format, "table", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(format, "tbl", StringComparison.OrdinalIgnoreCase));
+        get
+        {
+            if (this.Quiet)
+            {
+                return true;
+            }
+
+            var fmt = this.Options?.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+            return !string.IsNullOrEmpty(fmt)
+                && !string.Equals(fmt, "table", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(fmt, "tbl", StringComparison.OrdinalIgnoreCase);
+        }
     }
-}
 
     internal DiagnosticLog? Diagnostics { get; private set; }
 
@@ -202,7 +206,7 @@ internal bool IsMachineMode
     /// <param name="par">An array of objects to format.</param>
     public static void WriteLine(string message, params object[] par)
     {
-        if (Instance.Quiet)
+        if (Instance.IsMachineMode)
         {
             return;
         }
@@ -216,7 +220,7 @@ internal bool IsMachineMode
     /// <param name="message">The message to write.</param>
     public static void WriteLine(string message)
     {
-        if (Instance.Quiet)
+        if (Instance.IsMachineMode)
         {
             return;
         }
@@ -229,7 +233,7 @@ internal bool IsMachineMode
     /// </summary>
     public static void WriteLine()
     {
-        if (Instance.Quiet)
+        if (Instance.IsMachineMode)
         {
             return;
         }
@@ -244,7 +248,7 @@ internal bool IsMachineMode
     /// <param name="par">An array of objects to format.</param>
     public static void Write(string message, params object[] par)
     {
-        if (Instance.Quiet)
+        if (Instance.IsMachineMode)
         {
             return;
         }
@@ -258,7 +262,7 @@ internal bool IsMachineMode
     /// <param name="message">The message to write.</param>
     public static void Write(string message)
     {
-        if (Instance.Quiet)
+        if (Instance.IsMachineMode)
         {
             return;
         }

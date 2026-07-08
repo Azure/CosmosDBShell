@@ -19,6 +19,11 @@ public partial class CommandState
     /// </summary>
     public virtual bool IsError => false;
 
+    /// <summary>
+    /// Gets the process exit code that should be set when this command state is emitted.
+    /// <c>0</c> means success (matches Issue #155 and POSIX convention).
+    /// Override in error states to return a non-zero code (e.g. 1 = general error, 2 = bad args, 3 = not-connected, 4 = not-found, 5 = throttled).
+    /// </summary>
     public virtual int ExitCode => 0;
 
     /// <summary>

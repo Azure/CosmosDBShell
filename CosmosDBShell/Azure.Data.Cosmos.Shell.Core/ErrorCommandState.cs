@@ -23,27 +23,39 @@ internal class ErrorCommandState(Exception exception) : CommandState
         get
         {
             var ex = this.Exception;
-            while (ex is Azure.Data.Cosmos.Shell.Core.CommandException ce && ce.InnerException != null)
-            {
-                ex = ce.InnerException;
-            }
 
-            if (ex is System.ArgumentException || ex is Azure.Data.Cosmos.Shell.Core.UnknownOptionException)
+            // Walk the CommandException chain and apply the mapper at each level so that a
+            // CosmosException (or any other typed exception) nested inside a CommandException
+            // is still mapped to the right HTTP-status exit code.
+            while (ex != null)
             {
-                return 2;
-            }
-
-            if (ex is Azure.Data.Cosmos.Shell.Core.NotConnectedException)
-            {
-                return 3;
-            }
-
-            if (CustomExitCodeMapper != null)
-            {
-                var mapped = CustomExitCodeMapper(ex);
-                if (mapped.HasValue)
+                if (ex is System.ArgumentException || ex is Azure.Data.Cosmos.Shell.Core.UnknownOptionException)
                 {
-                    return mapped.Value;
+                    return 2;
+                }
+
+                if (ex is Azure.Data.Cosmos.Shell.Core.NotConnectedException)
+                {
+                    return 3;
+                }
+
+                if (CustomExitCodeMapper != null)
+                {
+                    var mapped = CustomExitCodeMapper(ex);
+                    if (mapped.HasValue)
+                    {
+                        return mapped.Value;
+                    }
+                }
+
+                // Keep unwrapping only through CommandException so we don't hide other wrappers.
+                if (ex is Azure.Data.Cosmos.Shell.Core.CommandException ce && ce.InnerException != null)
+                {
+                    ex = ce.InnerException;
+                }
+                else
+                {
+                    break;
                 }
             }
 

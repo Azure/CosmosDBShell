@@ -404,19 +404,29 @@ internal class QueryCommand : CosmosCommand
 
                     if (shell.StdOutRedirect == null || !string.Equals("csv", this.OutputFormat, StringComparison.OrdinalIgnoreCase))
                     {
-                        var element = System.Text.Json.JsonSerializer.SerializeToElement(
-                            new Dictionary<string, object?>()
-                            {
-                                { "command", "query" },
-                                { "status", "success" },
-                                { "requestCharge", queryMetrics?.TotalRequestCharge ?? 0 },
-                                { "continuationToken", response.ContinuationToken },
-                                { "count", aggregatedDocuments.Count },
-                                { "items", aggregatedDocuments },
-                                { "queryMetrics", metricProperty },
-                                { "indexMetrics", parsedIndexMetrics ?? new Dictionary<string, object>() },
-                            });
-                        returnState.Result = new ShellJson(element);
+                        // Only use the structured envelope for json-full; for json/ndjson/table,
+                        // delegate to GeneratePlainResultDocument so --output json stays a raw array
+                        // and is consistent with the non-metrics code path.
+                        if (returnState.OutputFormat == Azure.Data.Cosmos.Shell.Core.OutputFormat.JsonFull)
+                        {
+                            var element = System.Text.Json.JsonSerializer.SerializeToElement(
+                                new Dictionary<string, object?>()
+                                {
+                                    { "command", "query" },
+                                    { "status", "success" },
+                                    { "requestCharge", queryMetrics?.TotalRequestCharge ?? 0 },
+                                    { "continuationToken", response.ContinuationToken },
+                                    { "count", aggregatedDocuments.Count },
+                                    { "items", aggregatedDocuments },
+                                    { "queryMetrics", metricProperty },
+                                    { "indexMetrics", parsedIndexMetrics ?? new Dictionary<string, object>() },
+                                });
+                            returnState.Result = new ShellJson(element);
+                        }
+                        else
+                        {
+                            GeneratePlainResultDocument(returnState, aggregatedDocuments, queryMetrics?.TotalRequestCharge ?? 0, response.ContinuationToken);
+                        }
                     }
                     else
                     {
