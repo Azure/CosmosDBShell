@@ -561,10 +561,23 @@ public class ExecuteCommandExceptionTests
         var state3 = new ErrorCommandState(ex3);
         Assert.Equal(3, state3.ExitCode);
 
-        // Map status codes for CosmosException (using reflection or mock if possible, but testing the switch directly)
-        // Since CosmosException requires a lot to mock, we'll test UnknownOptionException
         var ex4 = new UnknownOptionException("cmd", "unknown option", "--fake");
         var state4 = new ErrorCommandState(ex4);
         Assert.Equal(2, state4.ExitCode);
-    }
+
+        var originalMapper = ErrorCommandState.CustomExitCodeMapper;
+        try
+        {
+            ErrorCommandState.CustomExitCodeMapper = ex => ex is InvalidOperationException ? 42 : null;
+
+            var state5 = new ErrorCommandState(new InvalidOperationException("mapped"));
+            Assert.Equal(42, state5.ExitCode);
+
+            var state6 = new ErrorCommandState(new CommandException("cmd", new InvalidOperationException("mapped")));
+            Assert.Equal(42, state6.ExitCode);
+        }
+        finally
+        {
+            ErrorCommandState.CustomExitCodeMapper = originalMapper;
+        }
 }
