@@ -96,6 +96,11 @@ internal static class McpResponseFactory
             payload["result"] = resultNode;
         }
 
+        if (commandState.RequestCharge.HasValue)
+        {
+            payload["requestCharge"] = commandState.RequestCharge.Value;
+        }
+
         if (commandState.OutputFormat == OutputFormat.CSV)
         {
             var outputText = commandState.GenerateOutputText();

@@ -114,6 +114,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
 
         var totalCount = 0;
+        double totalCharge = 0;
 
         // Process pipe input if available
         if (hasPipeInput && commandState.Result is ShellJson jsonResult)
@@ -160,7 +161,8 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         {
                             try
                             {
-                                await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElements), cancellationToken: token);
+                                var deleteResponse = await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElements), cancellationToken: token);
+                                totalCharge += deleteResponse.RequestCharge;
                                 totalCount++;
                             }
                             catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -196,7 +198,8 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         {
                             try
                             {
-                                await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElements), cancellationToken: token);
+                                var deleteResponse = await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElements), cancellationToken: token);
+                                totalCharge += deleteResponse.RequestCharge;
                                 totalCount++;
                             }
                             catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -259,7 +262,8 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                     {
                         try
                         {
-                            await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElements), cancellationToken: token);
+                            var deleteResponse = await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElements), cancellationToken: token);
+                            totalCharge += deleteResponse.RequestCharge;
                             totalCount++;
                         }
                         catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -290,6 +294,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                     }));
         }
 
+        commandState.RequestCharge = totalCharge;
         return new ExitCode(0);
     }
 

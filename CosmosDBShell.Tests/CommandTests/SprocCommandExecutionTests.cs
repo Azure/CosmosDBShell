@@ -204,6 +204,7 @@ public class SprocCommandExecutionTests
 
         var json = Assert.IsType<JsonElement>(state.Result!.ConvertShellObject(DataType.Json));
         Assert.True(json.GetProperty("ok").GetBoolean());
+        Assert.Equal(2.0, state.RequestCharge);
     }
 
     [Fact]

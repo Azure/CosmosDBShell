@@ -446,6 +446,7 @@ internal class SprocCommand : CosmosCommand
                 response.RequestCharge.ToString("F2")));
 
             commandState.Result = new ShellJson(response.Resource.Clone());
+            commandState.RequestCharge = response.RequestCharge;
             return commandState;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)

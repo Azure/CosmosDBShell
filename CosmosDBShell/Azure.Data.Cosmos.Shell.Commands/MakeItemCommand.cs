@@ -65,6 +65,7 @@ internal class MakeItemCommand : CosmosCommand
 
         var returnState = new CommandState();
         returnState.Result = new ShellJson(SuccessDocument.RootElement.Clone());
+        returnState.RequestCharge = commandState.RequestCharge;
         return returnState;
     }
 
@@ -130,6 +131,7 @@ internal class MakeItemCommand : CosmosCommand
     {
         if (!string.IsNullOrEmpty(jsonOpt))
         {
+            double totalCharge = 0;
             try
             {
                 using var doc = JsonDocument.Parse(jsonOpt);
@@ -149,6 +151,7 @@ internal class MakeItemCommand : CosmosCommand
                                 ? await container.UpsertItemAsync(element, cancellationToken: token)
                                 : await container.CreateItemAsync(element, cancellationToken: token);
                             charge += result.RequestCharge;
+                            totalCharge += result.RequestCharge;
 
                             if (result.StatusCode == System.Net.HttpStatusCode.Created)
                             {
@@ -273,6 +276,8 @@ internal class MakeItemCommand : CosmosCommand
                             ? await container.UpsertItemAsync(root, cancellationToken: token)
                             : await container.CreateItemAsync(root, cancellationToken: token);
 
+                        totalCharge += result.RequestCharge;
+
                         if (result.StatusCode == System.Net.HttpStatusCode.Created)
                         {
                             var key = force ? "command-mkitem-upserted-created" : "command-mkitem-created-success";
@@ -314,6 +319,8 @@ internal class MakeItemCommand : CosmosCommand
             {
                 throw new CommandException("mkitem", MessageService.GetArgsString("json_error_parsing_arg", "message", ex.Message), ex);
             }
+
+            commandState.RequestCharge = totalCharge;
         }
     }
 }

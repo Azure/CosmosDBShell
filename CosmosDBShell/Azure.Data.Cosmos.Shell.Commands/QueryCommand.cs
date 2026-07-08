@@ -284,6 +284,7 @@ internal class QueryCommand : CosmosCommand
         var returnState = new CommandState();
         returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
         var aggregatedDocuments = new List<JsonElement>();
+        double totalRequestCharge = 0;
 
         try
         {
@@ -367,6 +368,7 @@ internal class QueryCommand : CosmosCommand
                 var queryMetrics = response.Diagnostics.GetQueryMetrics();
                 if (queryMetrics != null)
                 {
+                    totalRequestCharge += queryMetrics.TotalRequestCharge;
                     AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", queryMetrics.TotalRequestCharge.ToString() } }));
                 }
 
@@ -524,6 +526,7 @@ internal class QueryCommand : CosmosCommand
                 AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
             }
 
+            returnState.RequestCharge = totalRequestCharge;
             return returnState;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)

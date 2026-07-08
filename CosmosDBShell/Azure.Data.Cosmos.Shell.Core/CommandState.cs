@@ -28,6 +28,12 @@ public partial class CommandState
 
     internal bool IsPrinted { get; set; }
 
+    /// <summary>
+    /// Gets or sets the Cosmos DB request charge (in RUs) consumed by the command, when applicable.
+    /// Data-plane commands set this so consumers such as the MCP structured payload can report cost uniformly.
+    /// </summary>
+    internal double? RequestCharge { get; set; }
+
     internal bool BreakBlock { get; set; } = false;
 
     internal bool ContinueBlock { get; set; } = false;

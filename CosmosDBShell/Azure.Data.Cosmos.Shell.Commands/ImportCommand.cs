@@ -542,6 +542,7 @@ internal class ImportCommand : CosmosCommand
         return new CommandState
         {
             Result = new ShellJson(SuccessDocument.RootElement.Clone()),
+            RequestCharge = charge,
         };
     }
 

@@ -86,8 +86,9 @@ Both representations are always byte-for-byte equivalent.
 | ----- | ------------ | ----------- |
 | `result` | Successful commands that produce output | The command result as JSON (objects, arrays, or a scalar). Text-only results are represented as a JSON string. |
 | `outputText` | CSV output commands with non-empty text | The CSV rendering of the result. Omitted when the CSV output is empty or whitespace. |
+| `requestCharge` | Data-plane commands that consume request units | The Cosmos DB request charge (in RUs) consumed by the command, as a number. |
 | `error` | Failed commands | The error message. |
 | `currentLocation` | Always | The shell's current navigation path (for example `/MyDatabase/MyContainer`), or `null` when disconnected. |
 
-Successful results set `result` (and optionally `outputText`); failed results set `error` and mark the tool result as an error. `currentLocation` is always included so a client can track navigation state across calls.
+Successful results set `result` (and optionally `outputText`); failed results set `error` and mark the tool result as an error. `currentLocation` is always included so a client can track navigation state across calls. Data-plane commands (`query`, `print`, `mkitem`, `replace`, `patch`, `rm`, `import`, `export`, and `sproc exec`) additionally set `requestCharge` so a client can track RU cost across calls.
 

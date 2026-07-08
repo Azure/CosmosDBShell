@@ -107,6 +107,7 @@ internal class ExportCommand : CosmosCommand
         return new CommandState
         {
             Result = new ShellJson(SuccessDocument.RootElement.Clone()),
+            RequestCharge = charge,
         };
     }
 

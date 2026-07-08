@@ -57,6 +57,7 @@ internal class PrintCommand : CosmosCommand
 
             if (response.IsSuccessStatusCode)
             {
+                commandState.RequestCharge = response.Headers.RequestCharge;
                 using var reader = new StreamReader(response.Content);
                 var content = await reader.ReadToEndAsync();
 

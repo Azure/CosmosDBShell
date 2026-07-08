@@ -5,6 +5,7 @@
 ### Improvements
 
 - **Structured (JSON) tool results for MCP.** MCP tool results now carry the machine-readable JSON payload (`result`/`outputText`/`error` plus `currentLocation`) as first-class `structuredContent` in addition to the existing JSON text block, so agents can consume structured results directly. The two representations are kept byte-for-byte equivalent, and text-only clients are unaffected. ([#154](https://github.com/Azure/CosmosDBShell/issues/154))
+- **Request charge in MCP structured results.** Data-plane commands (`query`, `print`, `mkitem`, `replace`, `patch`, `rm`, `import`, `export`, and `sproc exec`) now report the Cosmos DB request charge (in RUs) consumed by the operation as a uniform `requestCharge` field on the MCP tool result, so agents can track RU cost consistently across calls. ([#162](https://github.com/Azure/CosmosDBShell/issues/162))
 
 ## 1.1.115-preview — 2026-07-01
 

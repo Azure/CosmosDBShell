@@ -144,4 +144,35 @@ public class McpResponseFactoryTests
         Assert.Equal("boom", structured.GetProperty("error").GetString());
         Assert.Equal("/TestDatabase", structured.GetProperty("currentLocation").GetString());
     }
+
+    [Fact]
+    public void CreateSuccess_IncludesRequestChargeWhenSet()
+    {
+        var commandState = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { result = "success" })),
+            RequestCharge = 4.25,
+        };
+
+        var result = McpResponseFactory.CreateSuccess(commandState, new ConnectedState(null!));
+
+        Assert.NotNull(result.StructuredContent);
+        var structured = result.StructuredContent!.Value;
+        Assert.True(structured.TryGetProperty("requestCharge", out var requestCharge));
+        Assert.Equal(4.25, requestCharge.GetDouble());
+    }
+
+    [Fact]
+    public void CreateSuccess_OmitsRequestChargeWhenNotSet()
+    {
+        var commandState = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { result = "success" })),
+        };
+
+        var result = McpResponseFactory.CreateSuccess(commandState, new ConnectedState(null!));
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.False(result.StructuredContent!.Value.TryGetProperty("requestCharge", out _));
+    }
 }

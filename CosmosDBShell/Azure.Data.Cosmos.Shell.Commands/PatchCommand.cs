@@ -130,6 +130,7 @@ internal class PatchCommand : CosmosCommand
             return new CommandState
             {
                 Result = new ShellJson(SuccessDocument.RootElement.Clone()),
+                RequestCharge = response.RequestCharge,
             };
         }
         catch (CosmosException ce) when (ce.StatusCode == System.Net.HttpStatusCode.NotFound)
