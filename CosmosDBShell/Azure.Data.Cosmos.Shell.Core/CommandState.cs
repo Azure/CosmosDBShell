@@ -19,6 +19,8 @@ public partial class CommandState
     /// </summary>
     public virtual bool IsError => false;
 
+    public virtual int ExitCode => 0;
+
     /// <summary>
     /// Gets or sets the output format for the command result.
     /// </summary>
@@ -55,6 +57,14 @@ public partial class CommandState
         {
             this.OutputFormat = OutputFormat.Table;
         }
+        else if (string.Equals(outputFormat, "ndjson", StringComparison.OrdinalIgnoreCase))
+        {
+            this.OutputFormat = OutputFormat.NDJson;
+        }
+        else if (string.Equals(outputFormat, "json-full", StringComparison.OrdinalIgnoreCase))
+        {
+            this.OutputFormat = OutputFormat.JsonFull;
+        }
         else
         {
             throw new ShellException(MessageService.GetString("error-invalid_output_format", new Dictionary<string, object> { { "format", outputFormat } }));
@@ -78,6 +88,7 @@ public partial class CommandState
         switch (this.OutputFormat)
         {
             case OutputFormat.JSon:
+            case OutputFormat.JsonFull:
                 {
                     var options = new JsonWriterOptions
                     {
@@ -90,6 +101,45 @@ public partial class CommandState
 
                     writer.Flush();
                     return Encoding.UTF8.GetString(stream.ToArray());
+                }
+
+            case OutputFormat.NDJson:
+                {
+                    var sb = new StringBuilder();
+                    if (json.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in json.EnumerateArray())
+                        {
+                            sb.AppendLine(JsonSerializer.Serialize(item));
+                        }
+                    }
+                    else if (json.ValueKind == JsonValueKind.Object)
+                    {
+                        if (json.TryGetProperty("documents", out var docs) && docs.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var item in docs.EnumerateArray())
+                            {
+                                sb.AppendLine(JsonSerializer.Serialize(item));
+                            }
+                        }
+                        else if (json.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var item in items.EnumerateArray())
+                            {
+                                sb.AppendLine(JsonSerializer.Serialize(item));
+                            }
+                        }
+                        else
+                        {
+                            sb.AppendLine(JsonSerializer.Serialize(json));
+                        }
+                    }
+                    else
+                    {
+                        sb.AppendLine(JsonSerializer.Serialize(json));
+                    }
+
+                    return sb.ToString();
                 }
 
             case OutputFormat.CSV:

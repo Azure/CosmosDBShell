@@ -103,6 +103,11 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     public bool Echo { get; set; } = true;
 
+    /// <summary>
+    /// Gets or sets a value indicating whether non-result output is suppressed.
+    /// </summary>
+    public bool Quiet { get; set; }
+
     internal static CancellationTokenSource TokenSource
     {
         get
@@ -163,6 +168,8 @@ public partial class ShellInterpreter : IDisposable
 
     internal Program.CosmosShellOptions? Options { get; set; }
 
+    internal bool IsMachineMode => this.Quiet || (!string.IsNullOrEmpty(this.Options?.OutputFormat) && !string.Equals(this.Options.OutputFormat, "table", StringComparison.OrdinalIgnoreCase) && !string.Equals(this.Options.OutputFormat, "tbl", StringComparison.OrdinalIgnoreCase));
+
     internal DiagnosticLog? Diagnostics { get; private set; }
 
     internal int? McpPort { get; set; }
@@ -185,6 +192,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="par">An array of objects to format.</param>
     public static void WriteLine(string message, params object[] par)
     {
+        if (Instance.Quiet)
+        {
+            return;
+        }
+
         Console.WriteLine(message, par);
     }
 
@@ -194,6 +206,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="message">The message to write.</param>
     public static void WriteLine(string message)
     {
+        if (Instance.Quiet)
+        {
+            return;
+        }
+
         Console.WriteLine(message);
     }
 
@@ -202,6 +219,11 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     public static void WriteLine()
     {
+        if (Instance.Quiet)
+        {
+            return;
+        }
+
         Console.WriteLine();
     }
 
@@ -212,6 +234,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="par">An array of objects to format.</param>
     public static void Write(string message, params object[] par)
     {
+        if (Instance.Quiet)
+        {
+            return;
+        }
+
         Console.Write(message, par);
     }
 
@@ -221,6 +248,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="message">The message to write.</param>
     public static void Write(string message)
     {
+        if (Instance.Quiet)
+        {
+            return;
+        }
+
         Console.Write(message);
     }
 
@@ -547,6 +579,11 @@ public partial class ShellInterpreter : IDisposable
 
     internal static void ReportError(string message, params object[] par)
     {
+        if (Instance.Quiet)
+        {
+            return;
+        }
+
         AnsiConsole.MarkupLine(Theme.FormatError(message), par);
     }
 
@@ -565,24 +602,36 @@ public partial class ShellInterpreter : IDisposable
     {
         var version = GetDisplayVersion(typeof(VersionCommand).Assembly);
         var versionString = MessageService.GetArgsString("command-version", "version", version);
-        AnsiConsole.MarkupLine(versionString);
+        if (!this.Quiet)
+        {
+            AnsiConsole.MarkupLine(versionString);
+        }
 
         var port = this.McpPort;
         if (port != null)
         {
             var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
-            AnsiConsole.MarkupLine(Theme.FormatWarning(mcpPortString));
+            if (!this.Quiet)
+            {
+                AnsiConsole.MarkupLine(Theme.FormatWarning(mcpPortString));
+            }
         }
         else
         {
-            AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
+            if (!this.Quiet)
+            {
+                AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
+            }
         }
 
         var repoUrl = GetRepositoryUrl(typeof(VersionCommand).Assembly);
         if (!string.IsNullOrEmpty(repoUrl))
         {
             var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
-            AnsiConsole.MarkupLine(repoString);
+            if (!this.Quiet)
+            {
+                AnsiConsole.MarkupLine(repoString);
+            }
         }
 
         if (commandState != null)
@@ -611,7 +660,7 @@ public partial class ShellInterpreter : IDisposable
         // First-run hint: if the shell starts without a connection, point users at
         // the `connect` command. Otherwise users can land at the prompt with no
         // obvious next step (see issue #81).
-        if (this.State is DisconnectedState)
+        if (this.State is DisconnectedState && !this.Quiet)
         {
             AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("shell-not_connected_hint")));
         }
@@ -1387,26 +1436,43 @@ public partial class ShellInterpreter : IDisposable
             if (e is OperationCanceledException)
             {
                 var canceled = MessageService.GetString("runtime-error-canceled");
-                if (!string.IsNullOrEmpty(canceled))
+                if (!string.IsNullOrEmpty(canceled) && !this.IsMachineMode)
                 {
                     AnsiConsole.MarkupLine(Theme.FormatWarning(canceled));
+                }
+                else if (this.IsMachineMode)
+                {
+                    Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", message = canceled ?? "Canceled" }));
                 }
 
                 return new ErrorCommandState(e);
             }
 
             var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
-            AnsiConsole.MarkupLine($"{Theme.FormatError(prefix + ":")} {Markup.Escape(e.Message)}");
-            if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
+            if (this.IsMachineMode)
             {
-                AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
-            }
+                var msg = e.Message;
+                if (e is IShellExceptionWithHint hinted1 && !string.IsNullOrEmpty(hinted1.Hint))
+                {
+                    msg += " " + hinted1.Hint;
+                }
 
-            var inner = e.InnerException;
-            while (inner != null)
+                Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", message = msg }));
+            }
+            else
             {
-                AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
-                inner = inner.InnerException;
+                AnsiConsole.MarkupLine($"{Theme.FormatError(prefix + ":")} {Markup.Escape(e.Message)}");
+                if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
+                {
+                    AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
+                }
+
+                var inner = e.InnerException;
+                while (inner != null)
+                {
+                    AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
+                    inner = inner.InnerException;
+                }
             }
 
             return new ErrorCommandState(e);
@@ -1870,6 +1936,16 @@ public partial class ShellInterpreter : IDisposable
             {
                 File.WriteAllText(this.ErrOutRedirect, errTxt);
             }
+        }
+        else if (this.IsMachineMode)
+        {
+            var msg = prefix + e.Message;
+            if (!string.IsNullOrEmpty(hint))
+            {
+                msg += " " + hint;
+            }
+
+            Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", message = msg }));
         }
         else if (this.Options?.Verbose == true)
         {

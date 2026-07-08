@@ -23,4 +23,14 @@ public enum OutputFormat
     /// Output as an aligned text table.
     /// </summary>
     Table,
+
+    /// <summary>
+    /// Output in Newline Delimited JSON (NDJSON) format.
+    /// </summary>
+    NDJson,
+
+    /// <summary>
+    /// Output in JSON format wrapped in a structured execution envelope.
+    /// </summary>
+    JsonFull,
 }

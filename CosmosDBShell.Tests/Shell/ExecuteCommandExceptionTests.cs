@@ -545,4 +545,26 @@ public class ExecuteCommandExceptionTests
 
         Assert.False(state.IsError);
     }
+
+    [Fact]
+    public void ErrorCommandState_ExitCode_MapsExceptionsCorrectly()
+    {
+        var ex1 = new Exception("Generic error");
+        var state1 = new ErrorCommandState(ex1);
+        Assert.Equal(1, state1.ExitCode);
+
+        var ex2 = new ArgumentException("Bad args");
+        var state2 = new ErrorCommandState(ex2);
+        Assert.Equal(2, state2.ExitCode);
+
+        var ex3 = new NotConnectedException("test");
+        var state3 = new ErrorCommandState(ex3);
+        Assert.Equal(3, state3.ExitCode);
+
+        // Map status codes for CosmosException (using reflection or mock if possible, but testing the switch directly)
+        // Since CosmosException requires a lot to mock, we'll test UnknownOptionException
+        var ex4 = new UnknownOptionException("cmd", "unknown option", "--fake");
+        var state4 = new ErrorCommandState(ex4);
+        Assert.Equal(2, state4.ExitCode);
+    }
 }

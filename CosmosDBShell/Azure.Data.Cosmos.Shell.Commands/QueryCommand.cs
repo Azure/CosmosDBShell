@@ -274,15 +274,31 @@ internal class QueryCommand : CosmosCommand
         }
     }
 
-    private static void GeneratePlainResultDocument(CommandState returnState, IEnumerable<JsonElement> documents)
+    private static void GeneratePlainResultDocument(CommandState returnState, IEnumerable<JsonElement> documents, double requestCharge = 0, string? continuationToken = null)
     {
-        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = documents.ToList() }));
+        var itemsList = documents.ToList();
+        if (returnState.OutputFormat == Azure.Data.Cosmos.Shell.Core.OutputFormat.JsonFull)
+        {
+            returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                command = "query",
+                status = "success",
+                requestCharge = requestCharge,
+                continuationToken = continuationToken,
+                count = itemsList.Count,
+                items = itemsList,
+            }));
+        }
+        else
+        {
+            returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(itemsList));
+        }
     }
 
     private async Task<CommandState> ExecuteQueryAsync(Container container, ShellInterpreter shell, CancellationToken token)
     {
         var returnState = new CommandState();
-        returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+        returnState.SetFormat(this.OutputFormat ?? shell.Options.OutputFormat);
         var aggregatedDocuments = new List<JsonElement>();
 
         try
@@ -384,10 +400,14 @@ internal class QueryCommand : CosmosCommand
                     if (shell.StdOutRedirect == null || !string.Equals("csv", this.OutputFormat, StringComparison.OrdinalIgnoreCase))
                     {
                         var element = System.Text.Json.JsonSerializer.SerializeToElement(
-                            new Dictionary<string, object>()
+                            new Dictionary<string, object?>()
                             {
-                                { "documents", aggregatedDocuments },
+                                { "command", "query" },
+                                { "status", "success" },
                                 { "requestCharge", queryMetrics?.TotalRequestCharge ?? 0 },
+                                { "continuationToken", response.ContinuationToken },
+                                { "count", aggregatedDocuments.Count },
+                                { "items", aggregatedDocuments },
                                 { "queryMetrics", metricProperty },
                                 { "indexMetrics", parsedIndexMetrics ?? new Dictionary<string, object>() },
                             });
@@ -395,7 +415,7 @@ internal class QueryCommand : CosmosCommand
                     }
                     else
                     {
-                        GeneratePlainResultDocument(returnState, aggregatedDocuments);
+                        GeneratePlainResultDocument(returnState, aggregatedDocuments, queryMetrics?.TotalRequestCharge ?? 0, response.ContinuationToken);
                         var sb = new StringBuilder();
                         var first = true;
                         var sep = ShellInterpreter.CSVSeparator;
@@ -450,7 +470,7 @@ internal class QueryCommand : CosmosCommand
                 }
                 else if (this.Metrics == MetricTarget.Display)
                 {
-                    GeneratePlainResultDocument(returnState, aggregatedDocuments);
+                    GeneratePlainResultDocument(returnState, aggregatedDocuments, queryMetrics?.TotalRequestCharge ?? 0, response.ContinuationToken);
 
                     var displayMetrics = GetMetrics(response);
                     string Fmt(string name) => (string)displayMetrics.First(m => (string)m["metric"] == name)["formattedValue"];
@@ -509,7 +529,7 @@ internal class QueryCommand : CosmosCommand
                 }
                 else
                 {
-                    GeneratePlainResultDocument(returnState, aggregatedDocuments);
+                    GeneratePlainResultDocument(returnState, aggregatedDocuments, queryMetrics?.TotalRequestCharge ?? 0, response.ContinuationToken);
                 }
 
                 if (ResultLimit.IsLimitReached(aggregatedDocuments.Count, effectiveMaxItemCount))

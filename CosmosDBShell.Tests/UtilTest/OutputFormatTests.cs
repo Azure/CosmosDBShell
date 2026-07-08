@@ -94,6 +94,31 @@ public class OutputFormatTests
     }
 
     [Fact]
+    void TestNDJson()
+    {
+        var input = """
+        {
+            "items": [
+                { "id": 12, "name": "alpha", "answer": 53 },
+                { "id": 13, "name": "beta" }
+            ]
+        }
+        """;
+        var element = JsonSerializer.Deserialize<JsonElement>(input);
+
+        var commandState = new CommandState();
+        commandState.Result = new ShellJson(element);
+        commandState.OutputFormat = OutputFormat.NDJson;
+
+        var output = commandState.GenerateOutputText();
+        var lines = output.TrimEnd('\r', '\n').Split(Environment.NewLine);
+
+        Assert.Equal(2, lines.Length);
+        Assert.Contains("\"id\":12", StripWS(lines[0]));
+        Assert.Contains("\"id\":13", StripWS(lines[1]));
+    }
+
+    [Fact]
     void TestSetFormatTable()
     {
         var commandState = new CommandState();
@@ -105,6 +130,9 @@ public class OutputFormatTests
 
         commandState.SetFormat("tbl");
         Assert.Equal(OutputFormat.Table, commandState.OutputFormat);
+
+        commandState.SetFormat("ndjson");
+        Assert.Equal(OutputFormat.NDJson, commandState.OutputFormat);
     }
 
     private string StripWS(string input)

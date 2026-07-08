@@ -75,7 +75,7 @@ internal class Program
                 }
 
                 ShellInterpreter.WriteLine(BuildHelpText());
-                Environment.ExitCode = 1;
+                Environment.ExitCode = 2;
                 return;
             }
 
@@ -98,6 +98,8 @@ internal class Program
                 LspStdio = parseResult.GetValueForOption(optionMap.LspStdio),
                 Verbose = parseResult.GetValueForOption(optionMap.Verbose),
                 Theme = parseResult.GetValueForOption(optionMap.Theme),
+                OutputFormat = parseResult.GetValueForOption(optionMap.OutputFormat),
+                Quiet = parseResult.GetValueForOption(optionMap.Quiet),
             };
 
             // --mcp supports an optional value: when the option is present without
@@ -174,16 +176,46 @@ internal class Program
                 return;
             }
 
-            AnsiConsole.Profile.Capabilities.ColorSystem = o.ColorSystem switch
+            var machineMode = o.Quiet || (!string.IsNullOrEmpty(o.OutputFormat) && !string.Equals(o.OutputFormat, "table", StringComparison.OrdinalIgnoreCase) && !string.Equals(o.OutputFormat, "tbl", StringComparison.OrdinalIgnoreCase));
+            AnsiConsole.Profile.Capabilities.ColorSystem = machineMode ? ColorSystem.NoColors : o.ColorSystem switch
             {
                 1 => ColorSystem.Standard,
                 2 => ColorSystem.TrueColor,
                 _ => ColorSystem.NoColors,
             };
 
+            if (machineMode)
+            {
+                // Mitigate Log Bleed: Silence underlying third-party engines (like the Cosmos SDK)
+                // that might dump diagnostic traces directly to standard output, corrupting JSON output.
+                System.Diagnostics.Trace.Listeners.Clear();
+            }
+
+            ErrorCommandState.CustomExitCodeMapper = (ex) =>
+            {
+                if (ex is CosmosException cosmosEx)
+                {
+                    return (int)cosmosEx.StatusCode switch
+                    {
+                        401 or 403 => 3,
+                        404 => 4,
+                        429 => 5,
+                        _ => 1,
+                    };
+                }
+
+                return null;
+            };
+
+            if (!string.IsNullOrEmpty(o.OutputFormat))
+            {
+                Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", o.OutputFormat);
+            }
+
             ApplyTheme(o.Theme);
 
             ShellInterpreter.Instance.Options = o;
+            ShellInterpreter.Instance.Quiet = o.Quiet;
 
             // Enable diagnostic logging before connecting so the startup --connect
             // event is captured in the log.
@@ -287,7 +319,7 @@ internal class Program
                     var state = await ShellInterpreter.Instance.ExecuteCommandAsync(script, default);
                     if (state.IsError)
                     {
-                        Environment.ExitCode = 1;
+                        Environment.ExitCode = state.ExitCode;
                         if (executeAndContinueCommand is null)
                         {
                             await StopHostAsync(host, hostTask);
@@ -311,7 +343,7 @@ internal class Program
                 var state = await ShellInterpreter.Instance.ExecuteCommandAsync(explicitCommand, default);
                 if (state.IsError)
                 {
-                    Environment.ExitCode = 1;
+                    Environment.ExitCode = state.ExitCode;
                     if (executeAndContinueCommand is null)
                     {
                         await StopHostAsync(host, hostTask);
@@ -510,6 +542,8 @@ internal class Program
         {
             Arity = ArgumentArity.ZeroOrOne,
         };
+        var outputFormat = new Option<string?>("--output", "Output format (json, ndjson, table)");
+        var quiet = new Option<bool>("--quiet", "Suppress non-result messages");
 
         var root = new RootCommand("Cosmos DB Shell")
         {
@@ -533,6 +567,8 @@ internal class Program
             theme,
             diagnostics,
             otel,
+            outputFormat,
+            quiet,
         };
 
         var map = new OptionMap(
@@ -555,7 +591,9 @@ internal class Program
             verbose,
             theme,
             diagnostics,
-            otel);
+            otel,
+            outputFormat,
+            quiet);
 
         return (root, map);
     }
@@ -583,6 +621,7 @@ internal class Program
             [map.Theme] = "<name>",
             [map.Diagnostics] = "[<path>]",
             [map.Otel] = "[<endpoint>]",
+            [map.OutputFormat] = "<json|ndjson|table>",
         };
 
         var rows = new List<(string Label, string? Description)>();
@@ -688,7 +727,9 @@ internal class Program
         Option<bool> Verbose,
         Option<string?> Theme,
         Option<string?> Diagnostics,
-        Option<string?> Otel);
+        Option<string?> Otel,
+        Option<string?> OutputFormat,
+        Option<bool> Quiet);
 
     /// <summary>
     /// Maps the most common <c>System.CommandLine</c> parse error messages
@@ -774,5 +815,9 @@ internal class Program
         public bool EnableTracing { get; set; }
 
         public string? OtlpEndpoint { get; set; }
+
+        public string? OutputFormat { get; set; }
+
+        public bool Quiet { get; set; }
     }
 }
