@@ -168,7 +168,17 @@ public partial class ShellInterpreter : IDisposable
 
     internal Program.CosmosShellOptions? Options { get; set; }
 
-    internal bool IsMachineMode => this.Quiet || (!string.IsNullOrEmpty(this.Options?.OutputFormat) && !string.Equals(this.Options.OutputFormat, "table", StringComparison.OrdinalIgnoreCase) && !string.Equals(this.Options.OutputFormat, "tbl", StringComparison.OrdinalIgnoreCase));
+internal bool IsMachineMode
+{
+    get
+    {
+        var format = this.Options?.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+        return this.Quiet
+            || (!string.IsNullOrEmpty(format)
+                && !string.Equals(format, "table", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(format, "tbl", StringComparison.OrdinalIgnoreCase));
+    }
+}
 
     internal DiagnosticLog? Diagnostics { get; private set; }
 
