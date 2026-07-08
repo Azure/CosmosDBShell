@@ -67,7 +67,8 @@ public partial class CommandState
         }
         else
         {
-            throw new ShellException(MessageService.GetString("error-invalid_output_format", new Dictionary<string, object> { { "format", outputFormat } }));
+            var msg = MessageService.GetString("error-invalid_output_format", new Dictionary<string, object> { { "format", outputFormat } });
+            throw new ArgumentException(msg ?? $"Invalid format '{outputFormat}'");
         }
     }
 

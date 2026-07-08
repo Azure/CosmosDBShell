@@ -298,7 +298,7 @@ internal class QueryCommand : CosmosCommand
     private async Task<CommandState> ExecuteQueryAsync(Container container, ShellInterpreter shell, CancellationToken token)
     {
         var returnState = new CommandState();
-        returnState.SetFormat(this.OutputFormat ?? shell.Options.OutputFormat);
+        returnState.SetFormat(this.OutputFormat ?? shell.Options?.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
         var aggregatedDocuments = new List<JsonElement>();
 
         try
@@ -379,11 +379,16 @@ internal class QueryCommand : CosmosCommand
                 }
 
                 using var queryDocument = JsonDocument.Parse(responseContent);
-                ShellInterpreter.WriteLine(MessageService.GetString("command-query-fetched", new Dictionary<string, object> { { "count", queryDocument.RootElement.GetProperty("_count").ToString() } }));
                 var queryMetrics = response.Diagnostics.GetQueryMetrics();
-                if (queryMetrics != null)
+
+                if (!shell.IsMachineMode)
                 {
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", queryMetrics.TotalRequestCharge.ToString() } }));
+                    ShellInterpreter.WriteLine(MessageService.GetString("command-query-fetched", new Dictionary<string, object> { { "count", queryDocument.RootElement.GetProperty("_count").ToString() } }));
+                    
+                    if (queryMetrics != null)
+                    {
+                        AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", queryMetrics.TotalRequestCharge.ToString() } }));
+                    }
                 }
 
                 var pageDocuments = queryDocument.RootElement.GetProperty("Documents");

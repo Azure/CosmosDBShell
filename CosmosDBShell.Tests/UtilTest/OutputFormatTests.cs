@@ -133,6 +133,9 @@ public class OutputFormatTests
 
         commandState.SetFormat("ndjson");
         Assert.Equal(OutputFormat.NDJson, commandState.OutputFormat);
+
+        commandState.SetFormat("json-full");
+        Assert.Equal(OutputFormat.JsonFull, commandState.OutputFormat);
     }
 
     private string StripWS(string input)

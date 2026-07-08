@@ -542,7 +542,21 @@ internal class Program
         {
             Arity = ArgumentArity.ZeroOrOne,
         };
-        var outputFormat = new Option<string?>("--output", "Output format (json, ndjson, table)");
+        var outputFormat = new Option<string?>("--output", "Output format (json, ndjson, json-full, table)");
+        outputFormat.AddValidator(result =>
+        {
+            var value = result.GetValueForOption(outputFormat);
+            if (value != null &&
+                !string.Equals(value, "json", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(value, "js", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(value, "ndjson", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(value, "table", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(value, "tbl", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(value, "json-full", StringComparison.OrdinalIgnoreCase))
+            {
+                result.ErrorMessage = MessageService.GetString("error-invalid_output_format", new Dictionary<string, object> { { "format", value } }) ?? $"Invalid format '{value}'";
+            }
+        });
         var quiet = new Option<bool>("--quiet", "Suppress non-result messages");
 
         var root = new RootCommand("Cosmos DB Shell")
@@ -621,7 +635,7 @@ internal class Program
             [map.Theme] = "<name>",
             [map.Diagnostics] = "[<path>]",
             [map.Otel] = "[<endpoint>]",
-            [map.OutputFormat] = "<json|ndjson|table>",
+            [map.OutputFormat] = "<json|json-full|ndjson|table>",
         };
 
         var rows = new List<(string Label, string? Description)>();

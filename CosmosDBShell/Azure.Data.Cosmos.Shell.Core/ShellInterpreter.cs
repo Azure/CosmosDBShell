@@ -660,7 +660,7 @@ public partial class ShellInterpreter : IDisposable
         // First-run hint: if the shell starts without a connection, point users at
         // the `connect` command. Otherwise users can land at the prompt with no
         // obvious next step (see issue #81).
-        if (this.State is DisconnectedState && !this.Quiet)
+        if (this.State is DisconnectedState && !this.Quiet && !this.IsMachineMode)
         {
             AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("shell-not_connected_hint")));
         }
@@ -1410,7 +1410,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 if (string.IsNullOrEmpty(this.StdOutRedirect))
                 {
-                    WriteLine(output);
+                    Console.WriteLine(output);
                 }
                 else
                 {
@@ -1442,7 +1442,7 @@ public partial class ShellInterpreter : IDisposable
                 }
                 else if (this.IsMachineMode)
                 {
-                    Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", message = canceled ?? "Canceled" }));
+                    Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", message = string.IsNullOrEmpty(canceled) ? "Canceled" : canceled }));
                 }
 
                 return new ErrorCommandState(e);
