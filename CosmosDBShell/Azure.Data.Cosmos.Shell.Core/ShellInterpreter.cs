@@ -602,7 +602,7 @@ public partial class ShellInterpreter : IDisposable
     {
         var version = GetDisplayVersion(typeof(VersionCommand).Assembly);
         var versionString = MessageService.GetArgsString("command-version", "version", version);
-        if (!this.Quiet)
+        if (!this.Quiet && !this.IsMachineMode)
         {
             AnsiConsole.MarkupLine(versionString);
         }
@@ -611,14 +611,14 @@ public partial class ShellInterpreter : IDisposable
         if (port != null)
         {
             var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
-            if (!this.Quiet)
+            if (!this.Quiet && !this.IsMachineMode)
             {
                 AnsiConsole.MarkupLine(Theme.FormatWarning(mcpPortString));
             }
         }
         else
         {
-            if (!this.Quiet)
+            if (!this.Quiet && !this.IsMachineMode)
             {
                 AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
             }
@@ -628,7 +628,7 @@ public partial class ShellInterpreter : IDisposable
         if (!string.IsNullOrEmpty(repoUrl))
         {
             var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
-            if (!this.Quiet)
+            if (!this.Quiet && !this.IsMachineMode)
             {
                 AnsiConsole.MarkupLine(repoString);
             }
@@ -647,7 +647,10 @@ public partial class ShellInterpreter : IDisposable
 
             var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
             commandState.Result = new ShellJson(jsonElement);
-            commandState.IsPrinted = true;
+            if (!this.IsMachineMode)
+            {
+                commandState.IsPrinted = true;
+            }
         }
     }
 

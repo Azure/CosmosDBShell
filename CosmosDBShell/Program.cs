@@ -102,6 +102,37 @@ internal class Program
                 Quiet = parseResult.GetValueForOption(optionMap.Quiet),
             };
 
+            var machineMode = o.Quiet || (!string.IsNullOrEmpty(o.OutputFormat) && !string.Equals(o.OutputFormat, "table", StringComparison.OrdinalIgnoreCase) && !string.Equals(o.OutputFormat, "tbl", StringComparison.OrdinalIgnoreCase));
+            AnsiConsole.Profile.Capabilities.ColorSystem = machineMode ? ColorSystem.NoColors : o.ColorSystem switch
+            {
+                1 => ColorSystem.Standard,
+                2 => ColorSystem.TrueColor,
+                _ => ColorSystem.NoColors,
+            };
+
+            if (machineMode)
+            {
+                // Mitigate Log Bleed: Silence underlying third-party engines (like the Cosmos SDK)
+                // that might dump diagnostic traces directly to standard output, corrupting JSON output.
+                System.Diagnostics.Trace.Listeners.Clear();
+            }
+
+            ErrorCommandState.CustomExitCodeMapper = (ex) =>
+            {
+                if (ex is CosmosException cosmosEx)
+                {
+                    return (int)cosmosEx.StatusCode switch
+                    {
+                        401 or 403 => 3,
+                        404 => 4,
+                        429 => 5,
+                        _ => 1,
+                    };
+                }
+
+                return null;
+            };
+
             // --mcp supports an optional value: when the option is present without
             // an integer, fall back to the default port.
             var mcpResult = parseResult.FindResultFor(optionMap.McpPort);
@@ -139,9 +170,17 @@ internal class Program
                 if (!string.IsNullOrWhiteSpace(o.OtlpEndpoint)
                     && !Uri.TryCreate(o.OtlpEndpoint, UriKind.Absolute, out _))
                 {
-                    Environment.ExitCode = 1;
-                    ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                        "otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint));
+                    Environment.ExitCode = 2; // bad arguments
+                    var msg = MessageService.GetArgsString("otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint);
+                    if (machineMode)
+                    {
+                        Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", message = msg ?? "Invalid OTEL endpoint" }));
+                    }
+                    else
+                    {
+                        ShellInterpreter.WriteLine(msg);
+                    }
+
                     return;
                 }
             }
@@ -156,8 +195,17 @@ internal class Program
 
             if (!string.IsNullOrWhiteSpace(o.ExecuteAndQuit) && !string.IsNullOrWhiteSpace(o.ExecuteAndContinue))
             {
-                Environment.ExitCode = 1;
-                ShellInterpreter.WriteLine(MessageService.GetString("error-mutually-exclusive-options"));
+                Environment.ExitCode = 2; // bad arguments
+                var msg = MessageService.GetString("error-mutually-exclusive-options");
+                if (machineMode)
+                {
+                    Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", message = msg ?? "Mutually exclusive options" }));
+                }
+                else
+                {
+                    ShellInterpreter.WriteLine(msg);
+                }
+
                 return;
             }
 
@@ -176,36 +224,7 @@ internal class Program
                 return;
             }
 
-            var machineMode = o.Quiet || (!string.IsNullOrEmpty(o.OutputFormat) && !string.Equals(o.OutputFormat, "table", StringComparison.OrdinalIgnoreCase) && !string.Equals(o.OutputFormat, "tbl", StringComparison.OrdinalIgnoreCase));
-            AnsiConsole.Profile.Capabilities.ColorSystem = machineMode ? ColorSystem.NoColors : o.ColorSystem switch
-            {
-                1 => ColorSystem.Standard,
-                2 => ColorSystem.TrueColor,
-                _ => ColorSystem.NoColors,
-            };
 
-            if (machineMode)
-            {
-                // Mitigate Log Bleed: Silence underlying third-party engines (like the Cosmos SDK)
-                // that might dump diagnostic traces directly to standard output, corrupting JSON output.
-                System.Diagnostics.Trace.Listeners.Clear();
-            }
-
-            ErrorCommandState.CustomExitCodeMapper = (ex) =>
-            {
-                if (ex is CosmosException cosmosEx)
-                {
-                    return (int)cosmosEx.StatusCode switch
-                    {
-                        401 or 403 => 3,
-                        404 => 4,
-                        429 => 5,
-                        _ => 1,
-                    };
-                }
-
-                return null;
-            };
 
             if (!string.IsNullOrEmpty(o.OutputFormat))
             {
@@ -255,10 +274,23 @@ internal class Program
                 }
                 catch (Exception ex)
                 {
-                    Environment.ExitCode = 1;
-                    if (ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id, out var permission))
+                    var exitCode = ErrorCommandState.CustomExitCodeMapper?.Invoke(ex) ?? 3;
+                    Environment.ExitCode = exitCode;
+                    if (machineMode)
                     {
-                        ConnectCommand.AskForRBacPermissions(id ?? string.Empty, permission ?? string.Empty);
+                        var msg = ex.Message;
+                        if (ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id, out var permission))
+                        {
+                            msg = MessageService.GetArgsString("command-connect-rbac-error", "id", id, "permission", permission) ?? ex.Message;
+                        }
+
+                        Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", message = msg }));
+                        return;
+                    }
+
+                    if (ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id2, out var permission2))
+                    {
+                        ConnectCommand.AskForRBacPermissions(id2 ?? string.Empty, permission2 ?? string.Empty);
                         return;
                     }
 
@@ -274,8 +306,17 @@ internal class Program
             {
                 if (mcpPort <= 0)
                 {
-                    AnsiConsole.WriteLine(MessageService.GetString("mcp-error-invalid-port"));
-                    Environment.ExitCode = 1;
+                    Environment.ExitCode = 2; // bad arguments
+                    var msg = MessageService.GetString("mcp-error-invalid-port") ?? "Invalid MCP port";
+                    if (machineMode)
+                    {
+                        Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", message = msg }));
+                    }
+                    else
+                    {
+                        AnsiConsole.WriteLine(msg);
+                    }
+
                     return;
                 }
 
@@ -285,8 +326,17 @@ internal class Program
                 }
                 catch (Exception ex)
                 {
-                    AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-creating-server", "message", ex.Message));
                     Environment.ExitCode = 1;
+                    var msg = MessageService.GetArgsString("mcp-error-creating-server", "message", ex.Message) ?? $"Error creating MCP server: {ex.Message}";
+                    if (machineMode)
+                    {
+                        Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", message = msg }));
+                    }
+                    else
+                    {
+                        AnsiConsole.WriteLine(msg);
+                    }
+
                     return;
                 }
 
@@ -303,7 +353,16 @@ internal class Program
                         }
                         catch (Exception ex)
                         {
-                            AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-server-failed-start", "message", ex.Message));
+                            var msg = MessageService.GetArgsString("mcp-error-server-failed-start", "message", ex.Message) ?? $"MCP server failed to start: {ex.Message}";
+                            if (machineMode)
+                            {
+                                Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", message = msg }));
+                            }
+                            else
+                            {
+                                AnsiConsole.WriteLine(msg);
+                            }
+
                             Environment.ExitCode = 1;
                         }
                     });

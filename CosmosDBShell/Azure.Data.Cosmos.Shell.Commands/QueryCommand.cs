@@ -477,59 +477,62 @@ internal class QueryCommand : CosmosCommand
                 {
                     GeneratePlainResultDocument(returnState, aggregatedDocuments, queryMetrics?.TotalRequestCharge ?? 0, response.ContinuationToken);
 
-                    var displayMetrics = GetMetrics(response);
-                    string Fmt(string name) => (string)displayMetrics.First(m => (string)m["metric"] == name)["formattedValue"];
-
-                    var table = new Table();
-                    table.AddColumns(MessageService.GetString("command-query-document_header"), MessageService.GetString("command-query-count_header"), MessageService.GetString("command-query-size_header"));
-
-                    table.AddRow(MessageService.GetString("command-query-retrieved"), Theme.FormatTableValue(Fmt("Retrieved document count")), Theme.FormatTableValue(Fmt("Retrieved document size")));
-                    table.AddRow(MessageService.GetString("command-query-output"), Theme.FormatTableValue(Fmt("Output document count")), Theme.FormatTableValue(Fmt("Output document size")));
-                    AnsiConsole.Write(table);
-
-                    table = new Table();
-                    table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
-                    table.HideHeaders();
-                    table.AddRow(MessageService.GetString("command-query-document_load"), Theme.FormatTableValue(Fmt("Document load time")), MessageService.GetString("command-query-document_write"), Theme.FormatTableValue(Fmt("Document write time")));
-                    table.AddRow(MessageService.GetString("command-query-query_preparation"), Theme.FormatTableValue(Fmt("Query preparation time")), MessageService.GetString("command-query-runtime_execution"), Theme.FormatTableValue(Fmt("Runtime execution time")));
-                    table.AddRow(MessageService.GetString("command-query-vm_execution"), Theme.FormatTableValue(Fmt("VMExecution execution time")));
-                    table.AddEmptyRow();
-                    table.AddRow(MessageService.GetString("command-query-total"), Theme.FormatTableValue(Fmt("Total time")));
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-query-time_label"));
-                    AnsiConsole.Write(table);
-
-                    table = new Table();
-                    table.AddColumns(MessageService.GetString("command-query-index_hit_ratio"), MessageService.GetString("command-query-index_lookup_time"));
-                    table.AddRow(Theme.FormatTableValue(Fmt("Index hit ratio")), Theme.FormatTableValue(Fmt("Index lookup time")));
-                    AnsiConsole.Write(table);
-
-                    if (response.IndexMetrics != null)
+                    if (!shell.IsMachineMode)
                     {
-                        var indexTable = new Table();
+                        var displayMetrics = GetMetrics(response);
+                        string Fmt(string name) => (string)displayMetrics.First(m => (string)m["metric"] == name)["formattedValue"];
 
-                        indexTable.AddColumns(MessageService.GetString("command-query-index_metrics"), MessageService.GetString("command-query-index_spec"), MessageService.GetString("command-query-index_score"));
+                        var table = new Table();
+                        table.AddColumns(MessageService.GetString("command-query-document_header"), MessageService.GetString("command-query-count_header"), MessageService.GetString("command-query-size_header"));
 
-                        var parsedIndexMetrics = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(response.IndexMetrics);
+                        table.AddRow(MessageService.GetString("command-query-retrieved"), Theme.FormatTableValue(Fmt("Retrieved document count")), Theme.FormatTableValue(Fmt("Retrieved document size")));
+                        table.AddRow(MessageService.GetString("command-query-output"), Theme.FormatTableValue(Fmt("Output document count")), Theme.FormatTableValue(Fmt("Output document size")));
+                        AnsiConsole.Write(table);
 
-                        if (parsedIndexMetrics?.TryGetValue("UtilizedIndexes", out var utilizedIndices) == true)
+                        table = new Table();
+                        table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
+                        table.HideHeaders();
+                        table.AddRow(MessageService.GetString("command-query-document_load"), Theme.FormatTableValue(Fmt("Document load time")), MessageService.GetString("command-query-document_write"), Theme.FormatTableValue(Fmt("Document write time")));
+                        table.AddRow(MessageService.GetString("command-query-query_preparation"), Theme.FormatTableValue(Fmt("Query preparation time")), MessageService.GetString("command-query-runtime_execution"), Theme.FormatTableValue(Fmt("Runtime execution time")));
+                        table.AddRow(MessageService.GetString("command-query-vm_execution"), Theme.FormatTableValue(Fmt("VMExecution execution time")));
+                        table.AddEmptyRow();
+                        table.AddRow(MessageService.GetString("command-query-total"), Theme.FormatTableValue(Fmt("Total time")));
+                        AnsiConsole.MarkupLine(MessageService.GetString("command-query-time_label"));
+                        AnsiConsole.Write(table);
+
+                        table = new Table();
+                        table.AddColumns(MessageService.GetString("command-query-index_hit_ratio"), MessageService.GetString("command-query-index_lookup_time"));
+                        table.AddRow(Theme.FormatTableValue(Fmt("Index hit ratio")), Theme.FormatTableValue(Fmt("Index lookup time")));
+                        AnsiConsole.Write(table);
+
+                        if (response.IndexMetrics != null)
                         {
-                            if (utilizedIndices is JsonElement jo)
-                            {
-                                AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-utilized_single"), jo.GetProperty("SingleIndexes"));
-                                AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-utilized_composite"), jo.GetProperty("CompositeIndexes"));
-                            }
-                        }
+                            var indexTable = new Table();
 
-                        if (parsedIndexMetrics?.TryGetValue("PotentialIndexes", out var potentialIndices) == true)
-                        {
-                            if (potentialIndices is JsonElement jo)
-                            {
-                                AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-potential_single"), jo.GetProperty("SingleIndexes"));
-                                AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-potential_composite"), jo.GetProperty("CompositeIndexes"));
-                            }
-                        }
+                            indexTable.AddColumns(MessageService.GetString("command-query-index_metrics"), MessageService.GetString("command-query-index_spec"), MessageService.GetString("command-query-index_score"));
 
-                        AnsiConsole.Write(indexTable);
+                            var parsedIndexMetrics = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(response.IndexMetrics);
+
+                            if (parsedIndexMetrics?.TryGetValue("UtilizedIndexes", out var utilizedIndices) == true)
+                            {
+                                if (utilizedIndices is JsonElement jo)
+                                {
+                                    AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-utilized_single"), jo.GetProperty("SingleIndexes"));
+                                    AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-utilized_composite"), jo.GetProperty("CompositeIndexes"));
+                                }
+                            }
+
+                            if (parsedIndexMetrics?.TryGetValue("PotentialIndexes", out var potentialIndices) == true)
+                            {
+                                if (potentialIndices is JsonElement jo)
+                                {
+                                    AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-potential_single"), jo.GetProperty("SingleIndexes"));
+                                    AddIndexTable(indexTable, MessageService.GetString("command-query-index_metric-potential_composite"), jo.GetProperty("CompositeIndexes"));
+                                }
+                            }
+
+                            AnsiConsole.Write(indexTable);
+                        }
                     }
                 }
                 else
@@ -544,7 +547,7 @@ internal class QueryCommand : CosmosCommand
                 }
             }
 
-            if (limitReached && effectiveMaxItemCount.HasValue)
+            if (limitReached && effectiveMaxItemCount.HasValue && !shell.IsMachineMode)
             {
                 AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
             }
