@@ -45,6 +45,8 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly HashSet<string> diagnosticSecrets = new(StringComparer.Ordinal);
 
+    private TokenCredential? activeCredential;
+
     private LineEditor? lineEditor;
 
     private CosmosShellPrompt? cosmosShellPrompt;
@@ -136,6 +138,19 @@ public partial class ShellInterpreter : IDisposable
     }
 
     internal Dictionary<string, DefStatement> Functions { get; } = [];
+
+    /// <summary>
+    /// Gets the token credential backing the current connection, or <c>null</c> when the
+    /// connection uses an account key or emulator credentials (no Entra identity available).
+    /// </summary>
+    internal TokenCredential? ActiveCredential => this.activeCredential;
+
+    /// <summary>
+    /// Gets a label describing how the current connection authenticated (for example
+    /// <c>DefaultAzureCredential</c>, <c>ManagedIdentityCredential</c>, <c>AccountKey</c>,
+    /// or <c>Emulator</c>), or <c>null</c> when not connected.
+    /// </summary>
+    internal string? ActiveCredentialType { get; private set; }
 
     internal string HistoryFile { get; private set; }
 
@@ -819,7 +834,7 @@ public partial class ShellInterpreter : IDisposable
             }
 
             WriteLine(MessageService.GetArgsString("command-connect-connected", "account", keyProps.Id));
-            this.Connect(client);
+            this.Connect(client, credentialTypeOverride: isEmulator ? "Emulator" : "AccountKey");
             return;
         }
 
@@ -905,7 +920,7 @@ public partial class ShellInterpreter : IDisposable
             }
 
             WriteLine(MessageService.GetArgsString("command-connect-connected", "account", tokenProps.Id));
-            this.Connect(client);
+            this.Connect(client, credential: credential);
             return;
         }
 
@@ -1112,7 +1127,7 @@ public partial class ShellInterpreter : IDisposable
         var explicitlyRequested = IsArmContextExplicitlyRequested(subscriptionId, resourceGroupName);
         if (!explicitlyRequested)
         {
-            this.Connect(client);
+            this.Connect(client, credential: credential);
             WriteLine(MessageService.GetArgsString("command-connect-connected", "account", accountId));
 
             ArmCosmosContext? discoveredArmContext;
@@ -1134,7 +1149,7 @@ public partial class ShellInterpreter : IDisposable
         }
 
         var armContext = await this.TryDiscoverArmContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, authorityHostUri, token);
-        this.Connect(client, armContext);
+        this.Connect(client, armContext, credential);
         WriteLine(MessageService.GetArgsString("command-connect-connected", "account", accountId));
     }
 
@@ -1226,10 +1241,12 @@ public partial class ShellInterpreter : IDisposable
     /// <summary>
     /// Connects to a client &amp; disposes old state.
     /// </summary>
-    internal void Connect(CosmosClient client, ArmCosmosContext? armContext = null)
+    internal void Connect(CosmosClient client, ArmCosmosContext? armContext = null, TokenCredential? credential = null, string? credentialTypeOverride = null)
     {
         this.State?.Dispose();
         this.State = new ConnectedState(client, armContext);
+        this.activeCredential = credential;
+        this.ActiveCredentialType = credentialTypeOverride ?? credential?.GetType().Name;
         CosmosCompleteCommand.ClearDatabases();
         CosmosCompleteCommand.ClearContainers();
         this.Diagnostics?.LogConnect(client.Endpoint, client.ClientOptions.ConnectionMode);
@@ -1294,6 +1311,8 @@ public partial class ShellInterpreter : IDisposable
     {
         this.State?.Dispose();
         this.State = new DisconnectedState();
+        this.activeCredential = null;
+        this.ActiveCredentialType = null;
     }
 
     internal void PrintCommand(string cmdString)

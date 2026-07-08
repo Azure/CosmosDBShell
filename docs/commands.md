@@ -34,6 +34,71 @@ Disconnect the current connection.
 Usage: disconnect
 ```
 
+## Diagnostics
+
+### whoami
+
+Show the authenticated identity and credential type for the current connection.
+
+For Microsoft Entra ID connections (interactive browser, device code, managed
+identity, Visual Studio Code, static token, or `DefaultAzureCredential`) it
+acquires a Cosmos DB access token and decodes the principal id, tenant id,
+application id, user principal name, display name, identity type, and token
+expiry from the token claims. The token signature is not validated; the claims
+are used for local display only.
+
+Account-key and emulator connections use a master key and have no Entra
+identity, so only the credential type is reported.
+
+```text
+Usage: whoami [--format=<table|json|csv>]
+
+Options:
+    --format, -f    Output format: table (default), json, or csv
+```
+
+Data-plane RBAC role assignments are a control-plane concept and are not
+reported. The default interactive report is rendered as a table; use
+`--format json` or `--format csv` for machine-readable output, and redirecting
+output writes a JSON object so scripts can parse the result directly. The
+`COSMOSDB_SHELL_FORMAT` environment variable sets the default format. This
+command is read-only.
+
+### can-i
+
+Probe whether the current identity can perform an action against a container
+without mutating data.
+
+```text
+Usage: can-i <action> [--database=<name>] [--container=<name>] [--format=<table|json|csv>]
+
+Arguments:
+    <action>            The action to probe: read, query, write, or manage
+
+Options:
+    --database, -db     Target database name (defaults to the current database)
+    --container, -con   Target container name (defaults to the current container)
+    --format, -f        Output format: table (default), json, or csv
+```
+
+The probe issues a safe, non-mutating data-plane request and reports `allow`,
+`deny`, or `indeterminate` based on the response:
+
+- `read` — a point read of a random id.
+- `query` — a `COUNT` query.
+- `write` — a delete of a random, almost-certainly-nonexistent id (non-mutating).
+  A `deny` means no delete permission; an `allow` is a heuristic inference that
+  write access is present.
+- `manage` — cannot be probed on the data plane without a mutating or
+  control-plane operation, so it is always reported as `indeterminate`.
+
+Account-key and emulator connections use a master key and are reported as
+`allow` with method `key`. Entra connections use method `probe` and include the
+HTTP status code observed. The default interactive report is rendered as a
+table; use `--format json` or `--format csv` for machine-readable output, and
+redirecting output writes a JSON object. The `COSMOSDB_SHELL_FORMAT` environment
+variable sets the default format. This command does not mutate data.
+
 ## Navigation
 
 ### ls

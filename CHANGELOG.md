@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### New features
+
+- **`whoami` and `can-i` access diagnostics.** `whoami` reports the current credential type and, for Microsoft Entra ID connections, the principal, tenant, application id, user principal name, display name, and token expiry decoded from the Cosmos DB access token. `can-i <read|query|write|manage>` probes data-plane access with safe, non-mutating requests and reports `allow`, `deny`, or `indeterminate`. Both commands are data-plane only (no control-plane dependency): account-key and emulator connections are reported from the master key, and RBAC role assignments are not enumerated. Both support `--format` (`table`, `json`, or `csv`). ([#163](https://github.com/Azure/CosmosDBShell/issues/163))
+
 ### Improvements
 
 - **Structured (JSON) tool results for MCP.** MCP tool results now carry the machine-readable JSON payload (`result`/`outputText`/`error` plus `currentLocation`) as first-class `structuredContent` in addition to the existing JSON text block, so agents can consume structured results directly. The two representations are kept byte-for-byte equivalent, and text-only clients are unaffected. ([#154](https://github.com/Azure/CosmosDBShell/issues/154))

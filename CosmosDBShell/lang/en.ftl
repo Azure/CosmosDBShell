@@ -786,6 +786,39 @@ command-version-mcp = MCP running on port { $mcp_port}
 command-version-mcp-off = MCP server is off.
 command-version-repo = Report issues at [link={ $url }]{ $url }[/]
 
+command-whoami-description = Shows the authenticated identity and credential type for the current connection.
+command-whoami-description-format = { command-query-description-format }
+command-whoami-title = Identity
+command-whoami-credential-type = Credential Type
+command-whoami-principal-id = Principal Id
+command-whoami-tenant-id = Tenant Id
+command-whoami-application-id = Application Id
+command-whoami-user-principal-name = User Principal Name
+command-whoami-display-name = Display Name
+command-whoami-identity-type = Identity Type
+command-whoami-token-expires = Token Expires
+command-whoami-key-auth-note = Connected with account-key or emulator credentials; no Entra identity is available.
+command-whoami-token-error = Could not acquire an access token to determine identity: { $message }
+
+command-can-i-description = Probes whether the current identity can perform an action against a container without mutating data.
+command-can-i-description-action = The action to probe: read, query, write, or manage.
+command-can-i-description-database = The database to probe (defaults to the current database).
+command-can-i-description-container = The container to probe (defaults to the current container).
+command-can-i-description-format = { command-query-description-format }
+command-can-i-title = Access Check
+command-can-i-action = Action
+command-can-i-scope = Scope
+command-can-i-decision = Decision
+command-can-i-method = Method
+command-can-i-status = Status Code
+command-can-i-invalid-action = Unknown action '{ $action }'. Use read, query, write, or manage.
+command-can-i-requires-container = A container is required. Provide --database and --container, or run can-i from within a container scope.
+command-can-i-manage-note = 'manage' cannot be probed on the data plane without a mutating or control-plane operation.
+command-can-i-key-note = Connected with a master key (account-key or emulator); all data actions are permitted.
+command-can-i-write-heuristic-note = Heuristic: write access is inferred from delete permission via a non-mutating probe.
+command-can-i-throttled-note = Request was throttled (429); the action appears permitted.
+command-can-i-unexpected-status = The probe returned an unexpected status ({ $status }); access could not be determined.
+
 help-RequiredWord = Required.
 help-ErrorsHeadingText = ERROR(S):
 help-UsageHeadingText  = USAGE:
