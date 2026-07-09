@@ -18,7 +18,12 @@ internal static class PatchOperationFactory
         return op is "set" or "add" or "replace" or "remove" or "incr" or "increment";
     }
 
-    public static PatchOperation Build(string commandName, string opRaw, string path, string? value)
+    public static PatchOperation Build(
+        string commandName,
+        string opRaw,
+        string path,
+        string? value,
+        string unsupportedOpMessageKey = "command-patch-error-unsupported_op")
     {
         var op = Normalize(opRaw);
 
@@ -51,7 +56,7 @@ internal static class PatchOperationFactory
                 throw new CommandException(
                     commandName,
                     MessageService.GetString(
-                        "command-patch-error-unsupported_op",
+                        unsupportedOpMessageKey,
                         new Dictionary<string, object> { { "op", op } }));
         }
     }

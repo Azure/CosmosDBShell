@@ -180,7 +180,12 @@ internal static class BatchOperationParser
                 ? valueElement.GetRawText()
                 : null;
 
-            operations.Add(PatchOperationFactory.Build(commandName, patchOp.GetString()!, patchPath.GetString()!, value));
+            operations.Add(PatchOperationFactory.Build(
+                commandName,
+                patchOp.GetString()!,
+                patchPath.GetString()!,
+                value,
+                "command-batch-error-unsupported_patch_op"));
         }
 
         if (operations.Count == 0)
