@@ -298,7 +298,7 @@ patch set order-42 customer-7 /name "Ada Lovelace" --etag="<etag-from-read>"
 Execute multiple write operations against a single partition key as one atomic Cosmos DB transactional batch. Either run a batch in a single call, or build one up statefully across several commands. Every operation in a batch must share the same partition key, a batch holds between 1 and 100 operations, and if any operation fails the entire batch is rolled back.
 
 ```text
-Usage: batch subcommand [data] --partition-key <ARG> [-database <ARG>] [-container <ARG>]
+Usage: batch subcommand [data] [--partition-key <ARG>] [-database <ARG>] [-container <ARG>]
 
 Arguments:
     subcommand  The action to perform: run, begin, add, execute, cancel, status, or show
@@ -306,7 +306,7 @@ Arguments:
 
 Options:
     --partition-key, --pk
-               The partition key shared by every operation in the batch
+               The partition key shared by every operation in the batch. Required for `run` and `begin`; the stateful `add`, `execute`, `cancel`, `status`, and `show` subcommands use the active batch's partition key.
     -database, -db
                Override database name (Optional)
     -container, -con

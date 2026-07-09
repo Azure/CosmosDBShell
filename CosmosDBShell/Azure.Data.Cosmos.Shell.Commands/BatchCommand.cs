@@ -182,7 +182,22 @@ internal class BatchCommand : CosmosCommand
             token);
 
         var partitionKey = ParsePartitionKey(this.PartitionKeyArgument);
-        return await BatchExecutor.ExecuteAsync("batch", container, partitionKey, specs, token);
+        try
+        {
+            return await BatchExecutor.ExecuteAsync("batch", container, partitionKey, specs, token);
+        }
+        catch (CosmosException ce)
+        {
+            throw new CommandException(
+                "batch",
+                MessageService.GetArgsString(
+                    "command-batch-error-execution_failed",
+                    "status",
+                    ce.StatusCode.ToString(),
+                    "message",
+                    CommandException.GetDisplayMessage(ce)),
+                ce);
+        }
     }
 
     private async Task<CommandState> BeginAsync(ShellInterpreter shell, CancellationToken token)
