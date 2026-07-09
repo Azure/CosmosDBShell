@@ -175,7 +175,8 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
     {
         string? normalizedMode = NormalizeMode(this.Mode);
         string? path = NormalizeOption(this.Path);
-        if (normalizedMode is null && path is null && this.Procedure is null)
+        string? procedure = NormalizeOption(this.Procedure);
+        if (normalizedMode is null && path is null && procedure is null)
         {
             throw new CommandException("conflict", MessageService.GetString("command-conflict-error-missing_set_args"));
         }
@@ -185,7 +186,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
             throw new CommandException("conflict", MessageService.GetString("command-conflict-error-path_with_custom"));
         }
 
-        if (string.Equals(normalizedMode, "lastWriterWins", StringComparison.Ordinal) && this.Procedure is not null)
+        if (string.Equals(normalizedMode, "lastWriterWins", StringComparison.Ordinal) && procedure is not null)
         {
             throw new CommandException("conflict", MessageService.GetString("command-conflict-error-procedure_with_lww"));
         }
@@ -199,6 +200,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         string effectiveMode = normalizedMode ?? (IsCustom(current.Mode) ? "custom" : "lastWriterWins");
 
         string? path = NormalizeOption(this.Path);
+        string? procedure = NormalizeOption(this.Procedure);
 
         ConflictResolutionUpdate update;
         if (IsCustom(effectiveMode))
@@ -208,17 +210,17 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
                 throw new CommandException("conflict", MessageService.GetString("command-conflict-error-path_with_custom"));
             }
 
-            string? procedure = this.Procedure ?? current.ResolutionProcedure;
-            if (string.IsNullOrWhiteSpace(procedure))
+            string? effectiveProcedure = procedure ?? current.ResolutionProcedure;
+            if (string.IsNullOrWhiteSpace(effectiveProcedure))
             {
                 throw new CommandException("conflict", MessageService.GetString("command-conflict-error-missing_procedure"));
             }
 
-            update = new ConflictResolutionUpdate("custom", null, procedure);
+            update = new ConflictResolutionUpdate("custom", null, effectiveProcedure);
         }
         else
         {
-            if (this.Procedure is not null)
+            if (procedure is not null)
             {
                 throw new CommandException("conflict", MessageService.GetString("command-conflict-error-procedure_with_lww"));
             }

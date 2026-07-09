@@ -110,6 +110,37 @@ public class ConflictCommandTests
         Assert.Equal(MessageService.GetString("command-conflict-error-missing_set_args"), ex.Message);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Set_EmptyProcedureOnly_ThrowsMissingSetArgs(string procedure)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ContainerState("TestContainer", "TestDatabase", CreateTestClient());
+        var command = new ConflictCommand { Subcommand = "set", Procedure = procedure };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict set --procedure \"\"", CancellationToken.None));
+        Assert.Equal(MessageService.GetString("command-conflict-error-missing_set_args"), ex.Message);
+    }
+
+    [Fact]
+    public async Task Set_LastWriterWinsWithEmptyProcedure_DoesNotThrowProcedureWithLww()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ContainerState("TestContainer", "TestDatabase", CreateTestClient());
+        var command = new ConflictCommand { Subcommand = "set", Mode = "lastWriterWins", Procedure = string.Empty, Path = "/region" };
+
+        // An empty --procedure must be treated as "not provided", so pre-validation must
+        // not raise procedure_with_lww. The command instead proceeds to the network call,
+        // which fails offline with a different error.
+        var ex = await Record.ExceptionAsync(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict set --mode lastWriterWins --path /region --procedure \"\"", CancellationToken.None));
+        Assert.False(
+            ex is CommandException ce && ce.Message == MessageService.GetString("command-conflict-error-procedure_with_lww"),
+            "Empty --procedure should not trigger procedure_with_lww.");
+    }
+
     [Fact]
     public async Task Set_InvalidMode_ThrowsCommandException()
     {
