@@ -248,7 +248,7 @@ internal partial class ConnectCommand : CosmosCommand
             ["connectionMode"] = client.ClientOptions.ConnectionMode.ToString(),
             ["readRegions"] = acc.ReadableRegions.Select(r => r.Name).ToArray(),
             ["writeRegions"] = acc.WritableRegions.Select(r => r.Name).ToArray(),
-            ["currentLocation"] = currentLocation,
+            ["currentLocation"] = ShellLocation.GetCurrentLocation(shell.State) ?? ShellLocation.NotConnectedText,
         };
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonResult));
         return commandState;
