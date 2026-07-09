@@ -39,12 +39,17 @@ internal class InfoCommand : CosmosCommand
     [CosmosOption("detailed", "d")]
     public bool Detailed { get; init; }
 
+    [CosmosOption("format", "f")]
+    public string? Format { get; init; }
+
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         if (shell.State is not ConnectedState connectedState)
         {
             throw new NotConnectedException("info");
         }
+
+        bool renderOutput = ShouldRenderTables(this.Format, shell, commandState);
 
         // Resolve database and container from options and current state
         string? databaseName = this.Database;
@@ -77,28 +82,67 @@ internal class InfoCommand : CosmosCommand
             // If both database and container are resolved, show container settings
             if (!string.IsNullOrEmpty(databaseName) && !string.IsNullOrEmpty(containerName))
             {
-                return await this.ShowContainerSettingsAsync(connectedState, databaseName, containerName, commandState, token);
+                return await this.ShowContainerSettingsAsync(connectedState, databaseName, containerName, commandState, renderOutput, token);
             }
 
             // If only a database is resolved, show database settings
             if (!string.IsNullOrEmpty(databaseName))
             {
-                return await this.ShowDatabaseSettingsAsync(connectedState, databaseName, commandState, token);
+                return await this.ShowDatabaseSettingsAsync(connectedState, databaseName, commandState, renderOutput, token);
             }
 
             // Otherwise show account overview
-            return await this.PrintOverviewAsync(connectedState, commandState, token);
+            return await this.PrintOverviewAsync(connectedState, commandState, renderOutput, token);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             if (TryGetPrincipalIdFromRbacException(e, out var id, out var request, out var permission))
             {
-                AskForRBacPermissions(id ?? string.Empty, request ?? string.Empty, permission ?? string.Empty);
-                return commandState;
+                if (renderOutput)
+                {
+                    AskForRBacPermissions(id ?? string.Empty, request ?? string.Empty, permission ?? string.Empty);
+                    commandState.Result = null;
+                    commandState.IsPrinted = true;
+                    return commandState;
+                }
+
+                throw new CommandException(
+                    "info",
+                    MessageService.GetArgsString("command-settings-rbac-error", "id", id ?? string.Empty, "request", request ?? string.Empty, "permission", permission ?? string.Empty));
             }
 
             throw new CommandException("info", e);
         }
+    }
+
+    internal static bool ShouldRenderTables(string? format, ShellInterpreter shell, CommandState commandState)
+    {
+        if (string.IsNullOrWhiteSpace(format))
+        {
+            commandState.OutputFormat = OutputFormat.JSon;
+            return string.IsNullOrEmpty(shell.StdOutRedirect);
+        }
+
+        if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "js", StringComparison.OrdinalIgnoreCase))
+        {
+            commandState.OutputFormat = OutputFormat.JSon;
+            return false;
+        }
+
+        if (string.Equals(format, "table", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "tbl", StringComparison.OrdinalIgnoreCase))
+        {
+            commandState.OutputFormat = OutputFormat.Table;
+
+            // When stdout is redirected (e.g. `info --format table > out.txt`) the rich
+            // Spectre tables would be written to the console rather than the redirect
+            // target, leaving the file empty. Yield to PrintState so the redirected
+            // output is produced via CommandState.GenerateOutputText() with OutputFormat.Table.
+            return string.IsNullOrEmpty(shell.StdOutRedirect);
+        }
+
+        throw new CommandException(
+            "info",
+            MessageService.GetArgsString("command-info-error-invalid-format", "format", format));
     }
 
     private static bool TryGetPrincipalIdFromRbacException(Exception e, out string? principalId, out string? request, out string? permission)
@@ -126,17 +170,39 @@ internal class InfoCommand : CosmosCommand
         return false;
     }
 
-    private static void AskForRBacPermissions(string principalId, string request, string permission)
+    private static void AskForRBacPermissions(string principalId, string request, string permission, string indent = "")
     {
-        AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
-        ShellInterpreter.WriteLine(MessageService.GetArgsString("command-settings-rbac-error", "id", principalId, "request", request, "permission", permission));
+        var message = MessageService.GetArgsString("command-settings-rbac-error", "id", principalId, "request", request, "permission", permission);
+        var lines = message.Replace("\r\n", "\n").Split('\n');
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            if (i == 0)
+            {
+                AnsiConsole.Markup(indent + Theme.FormatError(MessageService.GetString("error")) + " ");
+                ShellInterpreter.WriteLine(line);
+            }
+            else if (line.Length == 0)
+            {
+                ShellInterpreter.WriteLine();
+            }
+            else
+            {
+                AnsiConsole.Markup(indent);
+                ShellInterpreter.WriteLine(line);
+            }
+        }
     }
 
-    private static async Task WriteAccountDatabaseBreakdownAsync(ConnectedState state, IReadOnlyList<string> databaseNames, Dictionary<string, object?> mcpTable, CancellationToken token)
+    private static async Task WriteAccountDatabaseBreakdownAsync(ConnectedState state, IReadOnlyList<string> databaseNames, Dictionary<string, object?> mcpTable, bool renderOutput, CancellationToken token)
     {
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-account-databases-heading")));
-        AnsiConsole.Markup("\t");
-        AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-account-detailed-cost-note")));
+        if (renderOutput)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-account-databases-heading")));
+            AnsiConsole.Markup("\t");
+            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-account-detailed-cost-note")));
+        }
 
         long totalContainers = 0;
         long totalDocuments = 0;
@@ -184,6 +250,11 @@ internal class InfoCommand : CosmosCommand
         mcpTable["totalSizeKb"] = totalSizeKb;
         mcpTable["databases"] = perDatabase;
 
+        if (!renderOutput)
+        {
+            return;
+        }
+
         var totalsTable = new Table();
         totalsTable.AddColumns(string.Empty, string.Empty);
         totalsTable.HideHeaders();
@@ -220,7 +291,7 @@ internal class InfoCommand : CosmosCommand
         return ParseResourceUsage(response.Headers[ResourceUsageHeader]);
     }
 
-    private static async Task WriteDatabaseThroughputAsync(Database database, Dictionary<string, object?> mcpTable, CancellationToken token)
+    private static async Task WriteDatabaseThroughputAsync(Database database, Dictionary<string, object?> mcpTable, bool renderOutput, CancellationToken token)
     {
         int? min = null;
         int? max = null;
@@ -246,17 +317,32 @@ internal class InfoCommand : CosmosCommand
             throughputError = ex.Message;
         }
 
+        if (max is { } maxValue)
+        {
+            mcpTable["maxThroughput"] = maxValue;
+        }
+
+        if (min is { } minValue)
+        {
+            mcpTable["minThroughput"] = minValue;
+        }
+
+        if (!renderOutput)
+        {
+            return;
+        }
+
         AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-throughput-heading")));
 
         if (throughputError is not null)
         {
-            AnsiConsole.Markup("\t");
             if (TryGetPrincipalIdFromRbacMessage(throughputError, out var rbacId, out var rbacRequest, out var rbacPermission))
             {
-                AskForRBacPermissions(rbacId ?? string.Empty, rbacRequest ?? string.Empty, rbacPermission ?? string.Empty);
+                AskForRBacPermissions(rbacId ?? string.Empty, rbacRequest ?? string.Empty, rbacPermission ?? string.Empty, indent: "\t");
             }
             else
             {
+                AnsiConsole.Markup("\t");
                 AnsiConsole.MarkupLine(Theme.FormatError(throughputError));
             }
         }
@@ -270,16 +356,14 @@ internal class InfoCommand : CosmosCommand
             var table = new Table();
             table.AddColumns(string.Empty, string.Empty);
             table.HideHeaders();
-            if (max is { } maxValue)
+            if (max is { } renderedMaxValue)
             {
-                table.AddRow(MessageService.GetString("command-stats-throughput-max"), Theme.FormatTableValue(maxValue.ToString(CultureInfo.InvariantCulture)));
-                mcpTable["maxThroughput"] = maxValue;
+                table.AddRow(MessageService.GetString("command-stats-throughput-max"), Theme.FormatTableValue(renderedMaxValue.ToString(CultureInfo.InvariantCulture)));
             }
 
-            if (min is { } minValue)
+            if (min is { } renderedMinValue)
             {
-                table.AddRow(MessageService.GetString("command-stats-throughput-min"), Theme.FormatTableValue(minValue.ToString(CultureInfo.InvariantCulture)));
-                mcpTable["minThroughput"] = minValue;
+                table.AddRow(MessageService.GetString("command-stats-throughput-min"), Theme.FormatTableValue(renderedMinValue.ToString(CultureInfo.InvariantCulture)));
             }
 
             AnsiConsole.Write(table);
@@ -291,11 +375,14 @@ internal class InfoCommand : CosmosCommand
         }
     }
 
-    private static async Task<List<Dictionary<string, object?>>> WritePartitionDistributionAsync(Container container, CancellationToken token)
+    private static async Task<List<Dictionary<string, object?>>> WritePartitionDistributionAsync(Container container, bool renderOutput, CancellationToken token)
     {
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-partitions-heading")));
-        AnsiConsole.Markup("\t");
-        AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-partitions-cost-note")));
+        if (renderOutput)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-partitions-heading")));
+            AnsiConsole.Markup("\t");
+            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-partitions-cost-note")));
+        }
 
         var ranges = await container.GetFeedRangesAsync(token);
         var counts = new List<long>(ranges.Count);
@@ -307,17 +394,26 @@ internal class InfoCommand : CosmosCommand
         long total = counts.Sum();
         var result = new List<Dictionary<string, object?>>(counts.Count);
 
-        var table = new Table();
-        table.AddColumn(MessageService.GetString("command-stats-partitions-col-partition"));
-        table.AddColumn(MessageService.GetString("command-stats-partitions-col-count"));
-        table.AddColumn(MessageService.GetString("command-stats-partitions-col-share"));
+        Table? table = null;
+        if (renderOutput)
+        {
+            table = new Table();
+            table.AddColumn(MessageService.GetString("command-stats-partitions-col-partition"));
+            table.AddColumn(MessageService.GetString("command-stats-partitions-col-count"));
+            table.AddColumn(MessageService.GetString("command-stats-partitions-col-share"));
+        }
+
         for (int i = 0; i < counts.Count; i++)
         {
             double share = total > 0 ? (double)counts[i] / total * 100 : 0;
-            table.AddRow(
-                Theme.FormatTableValue((i + 1).ToString(CultureInfo.InvariantCulture)),
-                Theme.FormatTableValue(FormatCount(counts[i])),
-                Theme.FormatTableValue(string.Create(CultureInfo.InvariantCulture, $"{share:0.#}%")));
+            if (table is not null)
+            {
+                table.AddRow(
+                    Theme.FormatTableValue((i + 1).ToString(CultureInfo.InvariantCulture)),
+                    Theme.FormatTableValue(FormatCount(counts[i])),
+                    Theme.FormatTableValue(string.Create(CultureInfo.InvariantCulture, $"{share:0.#}%")));
+            }
+
             result.Add(new Dictionary<string, object?>
             {
                 ["partition"] = i + 1,
@@ -326,9 +422,12 @@ internal class InfoCommand : CosmosCommand
             });
         }
 
-        AnsiConsole.Write(table);
+        if (table is not null)
+        {
+            AnsiConsole.Write(table);
+        }
 
-        if (total > 0 && counts.Count > 1)
+        if (renderOutput && total > 0 && counts.Count > 1)
         {
             double largestShare = (double)counts.Max() / total * 100;
             AnsiConsole.Markup("\t");
@@ -341,17 +440,24 @@ internal class InfoCommand : CosmosCommand
         return result;
     }
 
-    private static async Task<List<Dictionary<string, object?>>> WriteTopPartitionKeysAsync(Container container, IReadOnlyList<string> partitionKeyPaths, CancellationToken token)
+    private static async Task<List<Dictionary<string, object?>>> WriteTopPartitionKeysAsync(Container container, IReadOnlyList<string> partitionKeyPaths, bool renderOutput, CancellationToken token)
     {
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-detailed-heading")));
-        AnsiConsole.Markup("\t");
-        AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-detailed-cost-note")));
+        if (renderOutput)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-detailed-heading")));
+            AnsiConsole.Markup("\t");
+            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-detailed-cost-note")));
+        }
 
         var result = new List<Dictionary<string, object?>>();
         if (partitionKeyPaths.Count == 0)
         {
-            AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-na")));
+            if (renderOutput)
+            {
+                AnsiConsole.Markup("\t");
+                AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-na")));
+            }
+
             return result;
         }
 
@@ -387,12 +493,21 @@ internal class InfoCommand : CosmosCommand
             }
         }
 
-        var table = new Table();
-        table.AddColumn(MessageService.GetString("command-stats-detailed-col-key"));
-        table.AddColumn(MessageService.GetString("command-stats-detailed-col-count"));
+        Table? table = null;
+        if (renderOutput)
+        {
+            table = new Table();
+            table.AddColumn(MessageService.GetString("command-stats-detailed-col-key"));
+            table.AddColumn(MessageService.GetString("command-stats-detailed-col-count"));
+        }
+
         foreach (var group in groups.OrderByDescending(g => g.Count).Take(TopPartitionKeyLimit))
         {
-            table.AddRow(Theme.FormatTableValue(group.Key), Theme.FormatTableValue(FormatCount(group.Count)));
+            if (table is not null)
+            {
+                table.AddRow(Theme.FormatTableValue(group.Key), Theme.FormatTableValue(FormatCount(group.Count)));
+            }
+
             result.Add(new Dictionary<string, object?>
             {
                 ["partitionKey"] = group.Key,
@@ -400,7 +515,11 @@ internal class InfoCommand : CosmosCommand
             });
         }
 
-        AnsiConsole.Write(table);
+        if (table is not null)
+        {
+            AnsiConsole.Write(table);
+        }
+
         return result;
     }
 
@@ -520,22 +639,29 @@ internal class InfoCommand : CosmosCommand
         return string.Create(CultureInfo.InvariantCulture, $"{value:0.##} {units[unit]}");
     }
 
-    private async Task<CommandState> ShowContainerSettingsAsync(ConnectedState state, string databaseName, string containerName, CommandState commandState, CancellationToken token)
+    private async Task<CommandState> ShowContainerSettingsAsync(ConnectedState state, string databaseName, string containerName, CommandState commandState, bool renderOutput, CancellationToken token)
     {
         await ValidateContainerExistsAsync(state, databaseName, containerName, "info", token);
         var view = await CosmosResourceFacade.GetContainerSettingsAsync(state, databaseName, containerName, token);
         var mcpTable = new Dictionary<string, object?>();
 
         // Scale section - fail gracefully if it cannot be read
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-scale-heading")));
+        if (renderOutput)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-scale-heading")));
+        }
 
-        AnsiConsole.Markup("\t");
         switch (view.Throughput)
         {
             case ThroughputAvailability.Available:
                 var minDisplay = view.MinThroughput?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? MessageService.GetString("command-settings-na");
                 var maxDisplay = view.MaxThroughput?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? MessageService.GetString("command-settings-na");
-                AnsiConsole.MarkupLine(MessageService.GetArgsString("command-settings-scale-usage", "min", minDisplay, "max", maxDisplay));
+                if (renderOutput)
+                {
+                    AnsiConsole.Markup("\t");
+                    AnsiConsole.MarkupLine(MessageService.GetArgsString("command-settings-scale-usage", "min", minDisplay, "max", maxDisplay));
+                }
+
                 if (view.MinThroughput.HasValue)
                 {
                     mcpTable["minThroughput"] = view.MinThroughput.Value;
@@ -548,34 +674,46 @@ internal class InfoCommand : CosmosCommand
 
                 break;
             case ThroughputAvailability.NotConfigured:
-                AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
+                if (renderOutput)
+                {
+                    AnsiConsole.Markup("\t");
+                    AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
+                }
+
                 break;
             case ThroughputAvailability.Serverless:
-                AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-scale-serverless")));
+                if (renderOutput)
+                {
+                    AnsiConsole.Markup("\t");
+                    AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-scale-serverless")));
+                }
+
                 break;
             default:
-                if (TryGetPrincipalIdFromRbacMessage(view.ThroughputErrorMessage, out var rbacId, out var rbacRequest, out var rbacPermission))
+                if (renderOutput)
                 {
-                    AskForRBacPermissions(rbacId ?? string.Empty, rbacRequest ?? string.Empty, rbacPermission ?? string.Empty);
-                }
-                else
-                {
-                    AnsiConsole.MarkupLine(Theme.FormatError(view.ThroughputErrorMessage ?? string.Empty));
+                    if (TryGetPrincipalIdFromRbacMessage(view.ThroughputErrorMessage, out var rbacId, out var rbacRequest, out var rbacPermission))
+                    {
+                        AskForRBacPermissions(rbacId ?? string.Empty, rbacRequest ?? string.Empty, rbacPermission ?? string.Empty, indent: "\t");
+                    }
+                    else
+                    {
+                        AnsiConsole.Markup("\t");
+                        AnsiConsole.MarkupLine(Theme.FormatError(view.ThroughputErrorMessage ?? string.Empty));
+                    }
                 }
 
                 break;
         }
 
-        AnsiConsole.MarkupLine(string.Empty);
+        if (renderOutput)
+        {
+            AnsiConsole.MarkupLine(string.Empty);
+        }
 
         mcpTable["id"] = view.ContainerName;
         mcpTable["partitionKey"] = view.PartitionKeyPaths;
         mcpTable["analyticalTTL"] = view.AnalyticalStorageTtl;
-
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-title")));
-
-        var table = new Table();
-        table.AddColumns(string.Empty, string.Empty);
 
         string ttl;
         if (view.AnalyticalStorageTtl == null ||
@@ -595,41 +733,66 @@ internal class InfoCommand : CosmosCommand
                   view.AnalyticalStorageTtl);
         }
 
-        table.AddRow(MessageService.GetString("command-settings-ttl-label"), Theme.FormatTableValue(ttl));
+        Table? table = null;
+        if (renderOutput)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-title")));
+            table = new Table();
+            table.AddColumns(string.Empty, string.Empty);
+            table.AddRow(MessageService.GetString("command-settings-ttl-label"), Theme.FormatTableValue(ttl));
+        }
 
         if (view.GeospatialType is { } geospatialType)
         {
             string geospatialLabel = string.Equals(geospatialType, "Geography", StringComparison.OrdinalIgnoreCase)
                 ? MessageService.GetString("command-settings-geospatial-geography")
                 : MessageService.GetString("command-settings-geospatial-geometry");
-            table.AddRow(MessageService.GetString("command-settings-geospatial-label"), Theme.FormatTableValue(geospatialLabel));
+            if (table is not null)
+            {
+                table.AddRow(MessageService.GetString("command-settings-geospatial-label"), Theme.FormatTableValue(geospatialLabel));
+            }
+
             mcpTable["geospatialType"] = geospatialType;
         }
 
-        table.AddRow(MessageService.GetString("command-settings-partition-key-label"), Theme.FormatTableValue(string.Join(',', view.PartitionKeyPaths)));
-        table.HideHeaders();
-        AnsiConsole.Write(table);
+        if (table is not null)
+        {
+            table.AddRow(MessageService.GetString("command-settings-partition-key-label"), Theme.FormatTableValue(string.Join(',', view.PartitionKeyPaths)));
+            table.HideHeaders();
+            AnsiConsole.Write(table);
+        }
 
         // Full Text Policy section - show N/A when policy is unset
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-fulltext-title")));
+        if (renderOutput)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-fulltext-title")));
+        }
 
         if (view.FullTextPolicy is { } fullText)
         {
-            var fullTextTable = new Table();
-            fullTextTable.AddColumns(string.Empty, string.Empty);
+            Table? fullTextTable = null;
+            if (renderOutput)
+            {
+                fullTextTable = new Table();
+                fullTextTable.AddColumns(string.Empty, string.Empty);
 
-            var defaultLanguage = string.IsNullOrEmpty(fullText.DefaultLanguage)
-                ? MessageService.GetString("command-settings-na")
-                : fullText.DefaultLanguage;
-            fullTextTable.AddRow(
-                MessageService.GetString("command-settings-fulltext-default-language-label"),
-                Theme.FormatTableValue(defaultLanguage));
+                var defaultLanguage = string.IsNullOrEmpty(fullText.DefaultLanguage)
+                    ? MessageService.GetString("command-settings-na")
+                    : fullText.DefaultLanguage;
+                fullTextTable.AddRow(
+                    MessageService.GetString("command-settings-fulltext-default-language-label"),
+                    Theme.FormatTableValue(defaultLanguage));
+            }
 
             var mcpPaths = new List<Dictionary<string, object?>>();
             foreach (var path in fullText.Paths)
             {
-                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), Theme.FormatTableValue(path.Path));
-                fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-language-label"), Theme.FormatTableValue(path.Language ?? string.Empty));
+                if (fullTextTable is not null)
+                {
+                    fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-path-label"), Theme.FormatTableValue(path.Path));
+                    fullTextTable.AddRow(MessageService.GetString("command-settings-fulltext-language-label"), Theme.FormatTableValue(path.Language ?? string.Empty));
+                }
+
                 mcpPaths.Add(new Dictionary<string, object?>
                 {
                     { "path", path.Path },
@@ -638,61 +801,70 @@ internal class InfoCommand : CosmosCommand
             }
 
             mcpTable["fullTextPolicy"] = mcpPaths;
-            fullTextTable.HideHeaders();
-            AnsiConsole.Write(fullTextTable);
+            if (fullTextTable is not null)
+            {
+                fullTextTable.HideHeaders();
+                AnsiConsole.Write(fullTextTable);
+            }
         }
-        else
+        else if (renderOutput)
         {
             AnsiConsole.Markup("\t");
             AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
         }
 
         // Indexing Policy section - compact summary; use 'index show' for the full policy
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-indexing-title")));
+        if (renderOutput)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-indexing-title")));
+        }
 
         if (view.IndexingPolicy is { } indexing)
         {
-            var indexingTable = new Table();
-            indexingTable.AddColumns(string.Empty, string.Empty);
-
-            indexingTable.AddRow(
-                MessageService.GetString("command-settings-indexing-mode-label"),
-                Theme.FormatTableValue(indexing.IndexingMode));
-            indexingTable.AddRow(
-                MessageService.GetString("command-settings-indexing-automatic-label"),
-                Theme.FormatTableValue(indexing.Automatic.ToString(CultureInfo.InvariantCulture)));
-            indexingTable.AddRow(
-                MessageService.GetString("command-settings-indexing-paths-label"),
-                Theme.FormatTableValue(MessageService.GetArgsString(
-                    "command-settings-indexing-paths-value",
-                    "included",
-                    indexing.IncludedPathCount,
-                    "excluded",
-                    indexing.ExcludedPathCount)));
-
-            if (indexing.CompositeIndexCount > 0)
+            if (renderOutput)
             {
-                indexingTable.AddRow(
-                    MessageService.GetString("command-settings-indexing-composite-label"),
-                    Theme.FormatTableValue(indexing.CompositeIndexCount.ToString(CultureInfo.InvariantCulture)));
-            }
+                var indexingTable = new Table();
+                indexingTable.AddColumns(string.Empty, string.Empty);
 
-            if (indexing.SpatialIndexCount > 0)
-            {
                 indexingTable.AddRow(
-                    MessageService.GetString("command-settings-indexing-spatial-label"),
-                    Theme.FormatTableValue(indexing.SpatialIndexCount.ToString(CultureInfo.InvariantCulture)));
-            }
-
-            if (indexing.VectorIndexCount > 0)
-            {
+                    MessageService.GetString("command-settings-indexing-mode-label"),
+                    Theme.FormatTableValue(indexing.IndexingMode));
                 indexingTable.AddRow(
-                    MessageService.GetString("command-settings-indexing-vector-label"),
-                    Theme.FormatTableValue(indexing.VectorIndexCount.ToString(CultureInfo.InvariantCulture)));
-            }
+                    MessageService.GetString("command-settings-indexing-automatic-label"),
+                    Theme.FormatTableValue(indexing.Automatic.ToString(CultureInfo.InvariantCulture)));
+                indexingTable.AddRow(
+                    MessageService.GetString("command-settings-indexing-paths-label"),
+                    Theme.FormatTableValue(MessageService.GetArgsString(
+                        "command-settings-indexing-paths-value",
+                        "included",
+                        indexing.IncludedPathCount,
+                        "excluded",
+                        indexing.ExcludedPathCount)));
 
-            indexingTable.HideHeaders();
-            AnsiConsole.Write(indexingTable);
+                if (indexing.CompositeIndexCount > 0)
+                {
+                    indexingTable.AddRow(
+                        MessageService.GetString("command-settings-indexing-composite-label"),
+                        Theme.FormatTableValue(indexing.CompositeIndexCount.ToString(CultureInfo.InvariantCulture)));
+                }
+
+                if (indexing.SpatialIndexCount > 0)
+                {
+                    indexingTable.AddRow(
+                        MessageService.GetString("command-settings-indexing-spatial-label"),
+                        Theme.FormatTableValue(indexing.SpatialIndexCount.ToString(CultureInfo.InvariantCulture)));
+                }
+
+                if (indexing.VectorIndexCount > 0)
+                {
+                    indexingTable.AddRow(
+                        MessageService.GetString("command-settings-indexing-vector-label"),
+                        Theme.FormatTableValue(indexing.VectorIndexCount.ToString(CultureInfo.InvariantCulture)));
+                }
+
+                indexingTable.HideHeaders();
+                AnsiConsole.Write(indexingTable);
+            }
 
             mcpTable["indexingPolicy"] = new Dictionary<string, object?>
             {
@@ -705,7 +877,7 @@ internal class InfoCommand : CosmosCommand
                 { "vectorIndexes", indexing.VectorIndexCount },
             };
         }
-        else
+        else if (renderOutput)
         {
             AnsiConsole.Markup("\t");
             AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
@@ -723,37 +895,40 @@ internal class InfoCommand : CosmosCommand
 
         mcpTable["totalSizeKb"] = usage.TotalSizeKb;
 
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-usage-heading")));
-
-        var usageTable = new Table();
-        usageTable.AddColumns(string.Empty, string.Empty);
-        usageTable.HideHeaders();
-        usageTable.AddRow(MessageService.GetString("command-stats-label-document-count"), Theme.FormatTableValue(FormatCount(usage.DocumentCount)));
-        usageTable.AddRow(MessageService.GetString("command-stats-label-data-size"), Theme.FormatTableValue(FormatSize(usage.DataSizeKb)));
-        if (this.Detailed)
+        if (renderOutput)
         {
-            usageTable.AddRow(MessageService.GetString("command-stats-label-index-size"), Theme.FormatTableValue(FormatSize(usage.IndexSizeKb)));
-        }
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-usage-heading")));
 
-        usageTable.AddRow(MessageService.GetString("command-stats-label-total-size"), Theme.FormatTableValue(FormatSize(usage.TotalSizeKb)));
-        AnsiConsole.Write(usageTable);
+            var usageTable = new Table();
+            usageTable.AddColumns(string.Empty, string.Empty);
+            usageTable.HideHeaders();
+            usageTable.AddRow(MessageService.GetString("command-stats-label-document-count"), Theme.FormatTableValue(FormatCount(usage.DocumentCount)));
+            usageTable.AddRow(MessageService.GetString("command-stats-label-data-size"), Theme.FormatTableValue(FormatSize(usage.DataSizeKb)));
+            if (this.Detailed)
+            {
+                usageTable.AddRow(MessageService.GetString("command-stats-label-index-size"), Theme.FormatTableValue(FormatSize(usage.IndexSizeKb)));
+            }
+
+            usageTable.AddRow(MessageService.GetString("command-stats-label-total-size"), Theme.FormatTableValue(FormatSize(usage.TotalSizeKb)));
+            AnsiConsole.Write(usageTable);
+        }
 
         if (this.Partitions)
         {
-            mcpTable["partitions"] = await WritePartitionDistributionAsync(container, token);
+            mcpTable["partitions"] = await WritePartitionDistributionAsync(container, renderOutput, token);
         }
 
         if (this.Detailed)
         {
-            mcpTable["topPartitionKeys"] = await WriteTopPartitionKeysAsync(container, view.PartitionKeyPaths, token);
+            mcpTable["topPartitionKeys"] = await WriteTopPartitionKeysAsync(container, view.PartitionKeyPaths, renderOutput, token);
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-        commandState.IsPrinted = true;
+        commandState.IsPrinted = renderOutput;
         return commandState;
     }
 
-    private async Task<CommandState> ShowDatabaseSettingsAsync(ConnectedState state, string databaseName, CommandState commandState, CancellationToken token)
+    private async Task<CommandState> ShowDatabaseSettingsAsync(ConnectedState state, string databaseName, CommandState commandState, bool renderOutput, CancellationToken token)
     {
         await ValidateDatabaseExistsAsync(state, databaseName, "info", token);
 
@@ -797,20 +972,23 @@ internal class InfoCommand : CosmosCommand
             ["totalSizeKb"] = totalSizeKb,
         };
 
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-database-heading")));
+        if (renderOutput)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-database-heading")));
 
-        var table = new Table();
-        table.AddColumns(string.Empty, string.Empty);
-        table.HideHeaders();
-        table.AddRow(MessageService.GetString("command-stats-database-label-id"), Theme.FormatTableValue(databaseName));
-        table.AddRow(MessageService.GetString("command-stats-database-label-container-count"), Theme.FormatTableValue(rows.Count.ToString(CultureInfo.InvariantCulture)));
-        table.AddRow(MessageService.GetString("command-stats-database-label-total-documents"), Theme.FormatTableValue(FormatCount(totalDocuments)));
-        table.AddRow(MessageService.GetString("command-stats-database-label-total-size"), Theme.FormatTableValue(FormatSize(totalSizeKb)));
-        AnsiConsole.Write(table);
+            var table = new Table();
+            table.AddColumns(string.Empty, string.Empty);
+            table.HideHeaders();
+            table.AddRow(MessageService.GetString("command-stats-database-label-id"), Theme.FormatTableValue(databaseName));
+            table.AddRow(MessageService.GetString("command-stats-database-label-container-count"), Theme.FormatTableValue(rows.Count.ToString(CultureInfo.InvariantCulture)));
+            table.AddRow(MessageService.GetString("command-stats-database-label-total-documents"), Theme.FormatTableValue(FormatCount(totalDocuments)));
+            table.AddRow(MessageService.GetString("command-stats-database-label-total-size"), Theme.FormatTableValue(FormatSize(totalSizeKb)));
+            AnsiConsole.Write(table);
+        }
 
-        await WriteDatabaseThroughputAsync(database, mcpTable, token);
+        await WriteDatabaseThroughputAsync(database, mcpTable, renderOutput, token);
 
-        if (this.Detailed && rows.Count > 0)
+        if (renderOutput && this.Detailed && rows.Count > 0)
         {
             AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-containers-heading")));
             var containerTable = new Table();
@@ -834,11 +1012,11 @@ internal class InfoCommand : CosmosCommand
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-        commandState.IsPrinted = true;
+        commandState.IsPrinted = renderOutput;
         return commandState;
     }
 
-    private async Task<CommandState> PrintOverviewAsync(ConnectedState state, CommandState commandState, CancellationToken token)
+    private async Task<CommandState> PrintOverviewAsync(ConnectedState state, CommandState commandState, bool renderOutput, CancellationToken token)
     {
         var client = state.Client;
         var acc = await client.ReadAccountAsync();
@@ -849,15 +1027,18 @@ internal class InfoCommand : CosmosCommand
             databaseNames.Add(name);
         }
 
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-overview")));
+        if (renderOutput)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-overview")));
 
-        var table = new Table();
-        table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
-        table.AddRow(MessageService.GetString("command-settings-account_id"), Theme.FormatTableValue(acc.Id), MessageService.GetString("command-settings-read_locations"), Theme.FormatTableValue(string.Join(", ", acc.ReadableRegions.Select(location => location.Name))));
-        table.AddRow(MessageService.GetString("command-settings-uri"), Theme.FormatTableValue(client.Endpoint.ToString()), MessageService.GetString("command-settings-write_locations"), Theme.FormatTableValue(string.Join(", ", acc.WritableRegions.Select(location => location.Name))));
-        table.AddRow(MessageService.GetString("command-stats-account-label-database-count"), Theme.FormatTableValue(databaseNames.Count.ToString(CultureInfo.InvariantCulture)), string.Empty, string.Empty);
-        table.HideHeaders();
-        AnsiConsole.Write(table);
+            var table = new Table();
+            table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
+            table.AddRow(MessageService.GetString("command-settings-account_id"), Theme.FormatTableValue(acc.Id), MessageService.GetString("command-settings-read_locations"), Theme.FormatTableValue(string.Join(", ", acc.ReadableRegions.Select(location => location.Name))));
+            table.AddRow(MessageService.GetString("command-settings-uri"), Theme.FormatTableValue(client.Endpoint.ToString()), MessageService.GetString("command-settings-write_locations"), Theme.FormatTableValue(string.Join(", ", acc.WritableRegions.Select(location => location.Name))));
+            table.AddRow(MessageService.GetString("command-stats-account-label-database-count"), Theme.FormatTableValue(databaseNames.Count.ToString(CultureInfo.InvariantCulture)), string.Empty, string.Empty);
+            table.HideHeaders();
+            AnsiConsole.Write(table);
+        }
 
         var mcpTable = new Dictionary<string, object?>
         {
@@ -870,11 +1051,11 @@ internal class InfoCommand : CosmosCommand
 
         if (this.Detailed)
         {
-            await WriteAccountDatabaseBreakdownAsync(state, databaseNames, mcpTable, token);
+            await WriteAccountDatabaseBreakdownAsync(state, databaseNames, mcpTable, renderOutput, token);
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-        commandState.IsPrinted = true;
+        commandState.IsPrinted = renderOutput;
         return commandState;
     }
 

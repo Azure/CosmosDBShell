@@ -4,6 +4,7 @@
 
 namespace CosmosShell.Tests.Integration;
 
+using System.Text.Json;
 using System.Threading.Tasks;
 
 using Xunit;
@@ -31,6 +32,76 @@ public class InfoCommandIntegrationTests : ConnectedEmulatorTestBase
         var state = await ExecuteAsync("info");
         Assert.False(state.IsError, FormatError(state));
         Assert.NotNull(state.Result);
+    }
+
+    [Fact]
+    public async Task Info_Container_FormatJson_RedirectsJson()
+    {
+        var dbName = $"InfoTest_{Guid.NewGuid():N}";
+        CreatedDatabases.Add(dbName);
+
+        await ExecuteAsync($"mkdb {dbName}");
+        await ExecuteAsync($"cd {dbName}");
+        await ExecuteAsync("mkcon Items /id");
+        await ExecuteAsync("cd Items");
+        await ExecuteAsync("mkitem \"{ \\\"id\\\": \\\"a\\\" }\"");
+
+        var output = await ExecuteWithOutputAsync("info --format json");
+        using var document = JsonDocument.Parse(output);
+        var root = document.RootElement;
+
+        Assert.Equal("Items", root.GetProperty("id").GetString());
+        Assert.True(root.TryGetProperty("partitionKey", out var partitionKey));
+        Assert.Equal(JsonValueKind.Array, partitionKey.ValueKind);
+        Assert.True(root.TryGetProperty("documentCount", out _));
+    }
+
+    [Fact]
+    public async Task Info_Container_RedirectWithoutFormat_DefaultsToJson()
+    {
+        var dbName = $"InfoTest_{Guid.NewGuid():N}";
+        CreatedDatabases.Add(dbName);
+
+        await ExecuteAsync($"mkdb {dbName}");
+        await ExecuteAsync($"cd {dbName}");
+        await ExecuteAsync("mkcon Items /id");
+        await ExecuteAsync("cd Items");
+
+        var output = await ExecuteWithOutputAsync("info");
+        using var document = JsonDocument.Parse(output);
+
+        Assert.Equal("Items", document.RootElement.GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public async Task Info_Container_FormatTable_RedirectsGrid()
+    {
+        var dbName = $"InfoTest_{Guid.NewGuid():N}";
+        CreatedDatabases.Add(dbName);
+
+        await ExecuteAsync($"mkdb {dbName}");
+        await ExecuteAsync($"cd {dbName}");
+        await ExecuteAsync("mkcon Items /id");
+        await ExecuteAsync("cd Items");
+        await ExecuteAsync("mkitem \"{ \\\"id\\\": \\\"a\\\" }\"");
+
+        var output = await ExecuteWithOutputAsync("info --format table");
+
+        Assert.False(string.IsNullOrWhiteSpace(output), "Expected non-empty redirected table output");
+        Assert.Contains("Items", output, StringComparison.Ordinal);
+
+        // The redirected --format table path must yield the grid rendering, not JSON.
+        var isJson = true;
+        try
+        {
+            using var document = JsonDocument.Parse(output);
+        }
+        catch (JsonException)
+        {
+            isJson = false;
+        }
+
+        Assert.False(isJson, "Redirected --format table output should be a grid, not JSON");
     }
 
     [Fact]
@@ -110,5 +181,33 @@ public class InfoCommandIntegrationTests : ConnectedEmulatorTestBase
         var state = await ExecuteAsync("info --detailed");
         Assert.False(state.IsError, FormatError(state));
         Assert.NotNull(state.Result);
+    }
+
+    private async Task<string> ExecuteWithOutputAsync(string command)
+    {
+        var outputFile = Path.GetTempFileName();
+        try
+        {
+            var state = await ExecuteAsync($"{command} > \"{ShellPath(outputFile)}\"");
+            Assert.False(state.IsError, FormatError(state));
+
+            Assert.True(File.Exists(outputFile), $"Expected output file at {outputFile}");
+            return await ReadRedirectAsync(outputFile);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(outputFile);
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Best-effort cleanup
+            }
+        }
     }
 }

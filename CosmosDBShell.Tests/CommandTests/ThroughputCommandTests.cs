@@ -153,6 +153,48 @@ public class ThroughputCommandTests
             ex.Message);
     }
 
+    // A --dry-run of a write must still validate the RU/s arguments before reading the
+    // account, so an invalid preview fails cleanly instead of implying a valid plan.
+    [Theory]
+    [InlineData("set")]
+    [InlineData("manual")]
+    [InlineData("autoscale")]
+    public async Task DryRun_MissingRu_ThrowsCommandException(string subcommand)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", CreateTestClient());
+        var command = new ThroughputCommand { Subcommand = subcommand, DryRun = true };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), $"throughput {subcommand} --dry-run", CancellationToken.None));
+        Assert.Equal(MessageService.GetString("command-throughput-error-missing_ru"), ex.Message);
+    }
+
+    [Fact]
+    public async Task DryRun_InvalidRu_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", CreateTestClient());
+        var command = new ThroughputCommand { Subcommand = "autoscale", Ru = 400, DryRun = true };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "throughput autoscale 400 --dry-run", CancellationToken.None));
+        Assert.Equal(
+            MessageService.GetArgsString("command-throughput-error-autoscale_min", "ru", 400, "min", 1000),
+            ex.Message);
+    }
+
+    [Fact]
+    public async Task DryRun_Disconnected_ThrowsNotConnected()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new ThroughputCommand { Subcommand = "set", Ru = 4000, DryRun = true };
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "throughput set 4000 --dry-run", CancellationToken.None));
+    }
+
     private static CosmosClient CreateTestClient()
     {
         var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");
