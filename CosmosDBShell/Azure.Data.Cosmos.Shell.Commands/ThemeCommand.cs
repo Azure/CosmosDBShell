@@ -139,7 +139,7 @@ internal class ThemeCommand : CosmosCommand
     {
         var name = ResolveActiveName();
         ShellInterpreter.MarkupLine(MessageService.GetArgsString("command-theme-active", "name", Markup.Escape(name)));
-        commandState.IsPrinted = true;
+        commandState.IsPrinted = !ShellInterpreter.Instance.IsMachineMode;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { active = name }));
         return commandState;
     }
@@ -168,7 +168,7 @@ internal class ThemeCommand : CosmosCommand
             });
         }
 
-        commandState.IsPrinted = true;
+        commandState.IsPrinted = !ShellInterpreter.Instance.IsMachineMode;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { themes = items }));
         return commandState;
     }
@@ -185,48 +185,52 @@ internal class ThemeCommand : CosmosCommand
         try
         {
             Theme.Apply(profile);
-            ShellInterpreter.MarkupLine(MessageService.GetArgsString("command-theme-sample-heading", "name", Markup.Escape(profileName.ToLowerInvariant())));
 
-            var table = new Table().HideHeaders();
-            table.AddColumn(string.Empty);
-            table.AddColumn(string.Empty);
-            void Row(string role, string sample) => table.AddRow(Markup.Escape(role), sample);
+            if (!ShellInterpreter.Instance.IsMachineMode)
+            {
+                ShellInterpreter.MarkupLine(MessageService.GetArgsString("command-theme-sample-heading", "name", Markup.Escape(profileName.ToLowerInvariant())));
 
-            Row("command", Theme.FormatCommand("connect"));
-            Row("unknown command", Theme.FormatUnknownCommand("nope"));
-            Row("argument name", Theme.FormatArgumentName("--max"));
-            Row("connected prompt", Theme.ConnectedStatePromt(CosmosShellPrompt.PromptMarker));
-            Row("database name", Theme.DatabaseNamePromt("MyDb"));
-            Row("container name", Theme.ContainerNamePromt("MyContainer"));
-            Row("redirection", Theme.FormatRedirection(">>"));
-            Row("redirection target", Theme.FormatRedirectionDestination("out.json"));
-            Row("json property", Theme.FormatJsonProperty("\"id\""));
-            Row("json punctuation", Theme.FormatJsonBracket(":"));
-            Row("string literal", Theme.FormatStringLiteral("\"hello\""));
-            Row("string escape", Theme.FormatStringLiteral("\"line\\nbreak\""));
-            Row("number literal", Theme.FormatNumberLiteral("42"));
-            Row("boolean literal", Theme.FormatBooleanLiteral("true"));
-            Row("null literal", Theme.FormatJsonNull("null"));
-            Row("keyword", Theme.FormatKeyword("if"));
-            Row("operator", Theme.FormatOperator("+"));
-            Row("error", Theme.FormatError("not found"));
-            Row("warning", Theme.FormatWarning("retry?"));
-            Row("muted", Theme.FormatMuted("2026-05-11"));
-            Row("table value", Theme.FormatTableValue("West US"));
-            Row("directory", Theme.FormatDirectory("docs"));
-            Row("help header", Theme.FormatHelpHeader("Connection"));
-            Row("help name", Theme.FormatHelpName("--theme"));
-            Row("help description", Theme.FormatHelpDescription("Switches the active color theme."));
-            Row("brackets", string.Concat(Theme.FormatBracket("{", 0), Theme.FormatBracket("[", 1), Theme.FormatBracket("(", 2), Theme.FormatBracket(")", 2), Theme.FormatBracket("]", 1), Theme.FormatBracket("}", 0)));
+                var table = new Table().HideHeaders();
+                table.AddColumn(string.Empty);
+                table.AddColumn(string.Empty);
+                void Row(string role, string sample) => table.AddRow(Markup.Escape(role), sample);
 
-            AnsiConsole.Write(table);
+                Row("command", Theme.FormatCommand("connect"));
+                Row("unknown command", Theme.FormatUnknownCommand("nope"));
+                Row("argument name", Theme.FormatArgumentName("--max"));
+                Row("connected prompt", Theme.ConnectedStatePromt(CosmosShellPrompt.PromptMarker));
+                Row("database name", Theme.DatabaseNamePromt("MyDb"));
+                Row("container name", Theme.ContainerNamePromt("MyContainer"));
+                Row("redirection", Theme.FormatRedirection(">>"));
+                Row("redirection target", Theme.FormatRedirectionDestination("out.json"));
+                Row("json property", Theme.FormatJsonProperty("\"id\""));
+                Row("json punctuation", Theme.FormatJsonBracket(":"));
+                Row("string literal", Theme.FormatStringLiteral("\"hello\""));
+                Row("string escape", Theme.FormatStringLiteral("\"line\\nbreak\""));
+                Row("number literal", Theme.FormatNumberLiteral("42"));
+                Row("boolean literal", Theme.FormatBooleanLiteral("true"));
+                Row("null literal", Theme.FormatJsonNull("null"));
+                Row("keyword", Theme.FormatKeyword("if"));
+                Row("operator", Theme.FormatOperator("+"));
+                Row("error", Theme.FormatError("not found"));
+                Row("warning", Theme.FormatWarning("retry?"));
+                Row("muted", Theme.FormatMuted("2026-05-11"));
+                Row("table value", Theme.FormatTableValue("West US"));
+                Row("directory", Theme.FormatDirectory("docs"));
+                Row("help header", Theme.FormatHelpHeader("Connection"));
+                Row("help name", Theme.FormatHelpName("--theme"));
+                Row("help description", Theme.FormatHelpDescription("Switches the active color theme."));
+                Row("brackets", string.Concat(Theme.FormatBracket("{", 0), Theme.FormatBracket("[", 1), Theme.FormatBracket("(", 2), Theme.FormatBracket(")", 2), Theme.FormatBracket("]", 1), Theme.FormatBracket("}", 0)));
+
+                AnsiConsole.Write(table);
+            }
         }
         finally
         {
             Theme.Apply(saved);
         }
 
-        commandState.IsPrinted = true;
+        commandState.IsPrinted = !ShellInterpreter.Instance.IsMachineMode;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { previewed = profileName.ToLowerInvariant() }));
         return commandState;
     }
@@ -247,7 +251,7 @@ internal class ThemeCommand : CosmosCommand
         Theme.Apply(profile);
         var name = this.Name.ToLowerInvariant();
         ShellInterpreter.MarkupLine(MessageService.GetArgsString("command-theme-applied", "name", Markup.Escape(name)));
-        commandState.IsPrinted = true;
+        commandState.IsPrinted = !ShellInterpreter.Instance.IsMachineMode;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { applied = name }));
         return commandState;
     }
@@ -279,7 +283,7 @@ internal class ThemeCommand : CosmosCommand
                 ShellInterpreter.MarkupLine(Theme.FormatWarning(warning));
             }
 
-            commandState.IsPrinted = true;
+            commandState.IsPrinted = !ShellInterpreter.Instance.IsMachineMode;
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {
                 loaded = result.Name,
@@ -350,7 +354,7 @@ internal class ThemeCommand : CosmosCommand
                 "path",
                 Markup.Escape(System.IO.Path.GetFullPath(path))));
             ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString("command-theme-save-hint-reload", "name", this.Name)));
-            commandState.IsPrinted = true;
+            commandState.IsPrinted = !ShellInterpreter.Instance.IsMachineMode;
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {
                 saved = this.Name,
@@ -416,7 +420,7 @@ internal class ThemeCommand : CosmosCommand
                 return new ErrorCommandState(new CommandException("theme", strictMessage));
             }
 
-            commandState.IsPrinted = true;
+            commandState.IsPrinted = !ShellInterpreter.Instance.IsMachineMode;
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {
                 valid = true,
@@ -447,7 +451,7 @@ internal class ThemeCommand : CosmosCommand
         {
             var emptyMessage = MessageService.GetArgsString("command-theme-validate-no-files", "directory", directory);
             ShellInterpreter.MarkupLine(Theme.FormatMuted(emptyMessage));
-            commandState.IsPrinted = true;
+            commandState.IsPrinted = !ShellInterpreter.Instance.IsMachineMode;
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {
                 directory,
@@ -516,7 +520,7 @@ internal class ThemeCommand : CosmosCommand
             Markup.Escape(directory));
         ShellInterpreter.MarkupLine(summary);
 
-        commandState.IsPrinted = true;
+        commandState.IsPrinted = !ShellInterpreter.Instance.IsMachineMode;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
             directory,
@@ -565,7 +569,7 @@ internal class ThemeCommand : CosmosCommand
             "path",
             Markup.Escape(targetPath)));
 
-        commandState.IsPrinted = true;
+        commandState.IsPrinted = !ShellInterpreter.Instance.IsMachineMode;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { opened = targetPath }));
         return commandState;
     }
@@ -731,7 +735,7 @@ internal class ThemeCommand : CosmosCommand
                 ShellInterpreter.MarkupLine(Theme.FormatWarning(warning));
             }
 
-            commandState.IsPrinted = true;
+            commandState.IsPrinted = !ShellInterpreter.Instance.IsMachineMode;
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {
                 edited = result.Name,
@@ -771,7 +775,7 @@ internal class ThemeCommand : CosmosCommand
             ShellInterpreter.MarkupLine(Theme.FormatWarning(warning));
         }
 
-        commandState.IsPrinted = true;
+        commandState.IsPrinted = !ShellInterpreter.Instance.IsMachineMode;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
             reloaded = loaded,
