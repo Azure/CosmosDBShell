@@ -114,7 +114,7 @@ internal class EditCommand : CosmosCommand
         }
 
         ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString("command-edit-saved", "path", path)));
-        commandState.IsPrinted = true;
+commandState.IsPrinted = !shell.IsMachineMode;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { edited = path }));
         return Task.FromResult(commandState);
     }
