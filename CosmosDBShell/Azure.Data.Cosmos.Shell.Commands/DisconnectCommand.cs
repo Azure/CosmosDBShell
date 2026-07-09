@@ -23,9 +23,12 @@ internal class DisconnectCommand : CosmosCommand
             var endpoint = connectedState.Client.Endpoint.Host;
             shell.Disconnect();
 
-            ShellInterpreter.MarkupLine(MessageService.GetArgsString("command-disconnect-success", "endpoint", endpoint));
+            if (!shell.IsMachineMode)
+            {
+                ShellInterpreter.MarkupLine(MessageService.GetArgsString("command-disconnect-success", "endpoint", endpoint));
+            }
 
-            commandState.IsPrinted = true;
+            commandState.IsPrinted = !shell.IsMachineMode;
             var jsonResult = new Dictionary<string, object?>
             {
                 ["disconnected"] = true,
