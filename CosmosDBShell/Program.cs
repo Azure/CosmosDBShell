@@ -142,7 +142,7 @@ internal class Program
             };
 
             var fmt = o.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
-            var machineMode = o.Quiet
+            machineMode = o.Quiet
                 || (!string.IsNullOrEmpty(fmt)
                     && !string.Equals(fmt, "table", StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(fmt, "tbl", StringComparison.OrdinalIgnoreCase));

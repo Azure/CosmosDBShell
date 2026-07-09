@@ -277,21 +277,31 @@ internal class QueryCommand : CosmosCommand
     private static void GeneratePlainResultDocument(CommandState returnState, IEnumerable<JsonElement> documents, double requestCharge = 0, string? continuationToken = null)
     {
         var itemsList = documents.ToList();
-        if (returnState.OutputFormat == Azure.Data.Cosmos.Shell.Core.OutputFormat.JsonFull)
+        if (returnState.OutputFormat == Azure.Data.Cosmos.Shell.Core.OutputFormat.JSon)
         {
             returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {
                 command = "query",
                 status = "success",
-                requestCharge = requestCharge,
+                requestCharge = (queryMetrics?.TotalRequestCharge) ?? 0,
                 continuationToken = continuationToken,
                 count = itemsList.Count,
                 items = itemsList,
             }));
         }
-        else if (returnState.OutputFormat == Azure.Data.Cosmos.Shell.Core.OutputFormat.JSon)
+        else if (returnState.OutputFormat == Azure.Data.Cosmos.Shell.Core.OutputFormat.JsonFull)
         {
-            returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(itemsList));
+            // keep json-full either identical or more telemetry as intended
+            returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                command = "query",
+                status = "success",
+                requestCharge = (queryMetrics?.TotalRequestCharge) ?? 0,
+                continuationToken = continuationToken,
+                count = itemsList.Count,
+                items = itemsList,
+                // add any extra telemetry fields here
+            }));
         }
         else
         {
