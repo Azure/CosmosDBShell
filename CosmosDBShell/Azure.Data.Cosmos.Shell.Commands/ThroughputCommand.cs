@@ -194,6 +194,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
                 ["mode"] = plannedMode,
                 ["throughput"] = plannedAutoscale ? null : plannedRu,
                 ["autoscaleMaxThroughput"] = plannedAutoscale ? plannedRu : null,
+                ["minThroughput"] = plannedAutoscale ? plannedRu / 10 : (int?)null,
             },
         };
 

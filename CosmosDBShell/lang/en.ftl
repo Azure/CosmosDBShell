@@ -94,16 +94,20 @@ command-help-description-plain = Disable styling and colors for script or limite
 command-rmdb-description = Removes database
 command-rmdb-description-name = The database to remove.
 command-rmdb-description-force = Force to remove the database without confirmation.
+command-rmdb-description-dry-run = Preview the deletion without deleting the database.
 command-rmdb-error-not_allowed_in_container = { error-not_allowed_in_container }
 command-rmdb-error-database_not_found = Database { $db } not found.
 command-rmdb-deleted_db = Deleted database { $db }.
+command-rmdb-dry-run-plan = Dry run: Would delete database { $db }. No changes were made.
 command-rmdb-confirm_db_deletion = Are you sure you want to delete this database
 
 command-rmcon-description = Removes container
 command-rmcon-description-name = The database or container to remove.
 command-rmcon-description-force = Force to remove the container without confirmation.
 command-rmcon-description-database = The database containing the container to remove
+command-rmcon-description-dry-run = Preview the deletion without deleting the container.
 command-rmcon-deleted_container = Deleted container { $container }
+command-rmcon-dry-run-plan = Dry run: Would delete container { $container }. No changes were made.
 command-rmcon-error-container_not_found = Container { $container } not found.
 command-rmcon-confirm_container_deletion = Are you sure you want to delete this container
 
@@ -113,10 +117,15 @@ command-rm-description-force = Force to remove items without confirmation.
 command-rm-description-database = The database containing the items to remove
 command-rm-description-container = The container containing the items to remove
 command-rm-description-key = The property name to match the pattern against (defaults to partition key)
+command-rm-description-dry-run = Preview how many items would be deleted without deleting them.
 command-rm-deleted_items = Deleted { $count } { $count ->
     [one] item
     *[other] items
 }.
+command-rm-dry-run-plan = Dry run: Would delete { $count } { $count ->
+    [one] item
+    *[other] items
+}. No changes were made.
 command-rm-error-no_filter = Filter is missing.
 command-rm-warning-missing-partition-key = Warning: Cannot delete item with id '{ $id }' - missing partition key '{ $partitionKey }'
 command-rm-no-matches = No items matched the pattern '{ $pattern }' for key '{ $key }'
@@ -578,6 +587,7 @@ command-delete-description-pattern = The items/container/database to delete.
 command-delete-description-force = Force to delete without confirmation.
 command-delete-description-database = The database for the delete operation
 command-delete-description-container = The container for deleting items
+command-delete-description-dry-run = Preview the deletion without applying it.
 command-delete-error-invalid_item_type = You need to specify an item type: 'item', 'database' or 'container' as first parameter.
 
 command-create-description = Creates items/container or databases.

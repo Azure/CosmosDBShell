@@ -299,11 +299,24 @@ patch set order-42 customer-7 /name "Ada Lovelace" --etag="<etag-from-read>"
 Remove items from container.
 
 ```text
-Usage: rm pattern
+Usage: rm pattern [options]
 
 Arguments:
     pattern     Pattern for items to remove
+
+Options:
+    --database, --db
+                Database containing the items to remove
+    --container, --con
+                Container containing the items to remove
+    --key, -k   Property name to match the pattern against (defaults to partition key)
+    --dry-run   Preview how many items would be deleted without deleting them
 ```
+
+Examples:
+
+- `rm test-*` deletes every item whose partition key starts with `test-`.
+- `rm test-* --dry-run` reports how many items match without deleting anything.
 
 ### export
 
@@ -483,10 +496,14 @@ Examples:
 Remove database.
 
 ```text
-Usage: rmdb name
+Usage: rmdb name [force] [options]
 
 Arguments:
     name        The database to remove
+    [force]     Skip the confirmation prompt when `true` (Optional)
+
+Options:
+    --dry-run   Preview the deletion without deleting the database
 ```
 
 ### rmcon
@@ -494,10 +511,16 @@ Arguments:
 Remove container.
 
 ```text
-Usage: rmcon name
+Usage: rmcon name [force] [options]
 
 Arguments:
     name        The container to remove
+    [force]     Skip the confirmation prompt when `true` (Optional)
+
+Options:
+    --database, --db
+                Database containing the container to remove
+    --dry-run   Preview the deletion without deleting the container
 ```
 
 ### create
@@ -522,12 +545,21 @@ Options:
 Delete item, container, or database.
 
 ```text
-Usage: delete item pattern
+Usage: delete item pattern [options]
 
 Arguments:
     item        Object type: item, container, or database
     pattern     Items/container/database to delete
+
+Options:
+    --database, --db
+                Database to target for item/container deletes (forwarded to rm/rmcon)
+    --container, --con
+                Container to target for item deletes (forwarded to rm)
+    --dry-run   Preview the deletion without applying it
 ```
+
+The `--dry-run` flag is forwarded to the underlying `rm`, `rmcon`, or `rmdb` operation, so `delete item test-* --dry-run` previews the affected items without deleting them.
 
 ### index
 
