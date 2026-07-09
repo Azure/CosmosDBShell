@@ -73,15 +73,6 @@ internal partial class ConnectCommand : CosmosCommand
             }
         }
 
-        try
-        {
-            await shell.ConnectAsync(...);
-            var returnState = new CommandState
-            {
-                IsPrinted = !shell.IsMachineMode,
-            };
-            ...
-        }
 
         ConnectionMode? connectionMode = null;
         if (!string.IsNullOrWhiteSpace(this.Mode))
