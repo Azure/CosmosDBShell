@@ -51,6 +51,28 @@ public class TtlCommandTests
     }
 
     [Fact]
+    public async Task Connected_EmptyDatabaseAndContainer_ThrowsNotInContainer()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ConnectedState(CreateTestClient());
+        var command = new TtlCommand { Subcommand = "show", Database = string.Empty, Container = string.Empty };
+
+        await Assert.ThrowsAsync<NotInContainerException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "ttl show --database \"\" --container \"\"", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Database_EmptyContainer_ThrowsNotInContainer()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", CreateTestClient());
+        var command = new TtlCommand { Subcommand = "show", Container = string.Empty };
+
+        await Assert.ThrowsAsync<NotInContainerException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "ttl show --container \"\"", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task InvalidSubcommand_ThrowsCommandException()
     {
         using var shell = ShellInterpreter.CreateInstance();

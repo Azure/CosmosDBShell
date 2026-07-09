@@ -59,9 +59,11 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitConnectedStateAsync(ConnectedState state, ShellInterpreter shell, CancellationToken token)
     {
-        if (!string.IsNullOrEmpty(this.Database) && !string.IsNullOrEmpty(this.Container))
+        string? database = NormalizeOption(this.Database);
+        string? container = NormalizeOption(this.Container);
+        if (database is not null && container is not null)
         {
-            return await this.ExecuteOnContainerAsync(state, this.Database, this.Container, token);
+            return await this.ExecuteOnContainerAsync(state, database, container, token);
         }
 
         throw new NotInContainerException("conflict");
@@ -69,11 +71,12 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitDatabaseStateAsync(DatabaseState state, ShellInterpreter shell, CancellationToken token)
     {
-        string databaseName = this.Database ?? state.DatabaseName;
+        string databaseName = NormalizeOption(this.Database) ?? state.DatabaseName;
+        string? container = NormalizeOption(this.Container);
 
-        if (!string.IsNullOrEmpty(this.Container))
+        if (container is not null)
         {
-            return await this.ExecuteOnContainerAsync(state, databaseName, this.Container, token);
+            return await this.ExecuteOnContainerAsync(state, databaseName, container, token);
         }
 
         throw new NotInContainerException("conflict");
@@ -81,8 +84,8 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitContainerStateAsync(ContainerState state, ShellInterpreter shell, CancellationToken token)
     {
-        string databaseName = this.Database ?? state.DatabaseName;
-        string containerName = this.Container ?? state.ContainerName;
+        string databaseName = NormalizeOption(this.Database) ?? state.DatabaseName;
+        string containerName = NormalizeOption(this.Container) ?? state.ContainerName;
 
         return await this.ExecuteOnContainerAsync(state, databaseName, containerName, token);
     }
@@ -109,6 +112,12 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
     }
 
     private static bool IsCustom(string mode) => string.Equals(mode, "custom", StringComparison.OrdinalIgnoreCase);
+
+    // Treat an explicitly empty option (e.g. --container "" or --path "") as "not
+    // provided" so it falls back to the current scope or existing value instead of
+    // flowing an empty/invalid value into the SDK.
+    private static string? NormalizeOption(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
 
     private static CommandState BuildResult(string containerName, ConflictResolutionView view)
     {
@@ -165,12 +174,13 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
     private string? PreValidateSet()
     {
         string? normalizedMode = NormalizeMode(this.Mode);
-        if (normalizedMode is null && this.Path is null && this.Procedure is null)
+        string? path = NormalizeOption(this.Path);
+        if (normalizedMode is null && path is null && this.Procedure is null)
         {
             throw new CommandException("conflict", MessageService.GetString("command-conflict-error-missing_set_args"));
         }
 
-        if (string.Equals(normalizedMode, "custom", StringComparison.Ordinal) && this.Path is not null)
+        if (string.Equals(normalizedMode, "custom", StringComparison.Ordinal) && path is not null)
         {
             throw new CommandException("conflict", MessageService.GetString("command-conflict-error-path_with_custom"));
         }
@@ -188,10 +198,12 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         var current = await CosmosResourceFacade.GetConflictResolutionPolicyAsync(state, databaseName, containerName, token);
         string effectiveMode = normalizedMode ?? (IsCustom(current.Mode) ? "custom" : "lastWriterWins");
 
+        string? path = NormalizeOption(this.Path);
+
         ConflictResolutionUpdate update;
         if (IsCustom(effectiveMode))
         {
-            if (this.Path is not null)
+            if (path is not null)
             {
                 throw new CommandException("conflict", MessageService.GetString("command-conflict-error-path_with_custom"));
             }
@@ -211,8 +223,8 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
                 throw new CommandException("conflict", MessageService.GetString("command-conflict-error-procedure_with_lww"));
             }
 
-            string path = this.Path ?? current.ResolutionPath ?? "/_ts";
-            update = new ConflictResolutionUpdate("lastWriterWins", path, null);
+            string resolutionPath = path ?? current.ResolutionPath ?? "/_ts";
+            update = new ConflictResolutionUpdate("lastWriterWins", resolutionPath, null);
         }
 
         var view = await CosmosResourceFacade.ReplaceConflictResolutionPolicyAsync(state, databaseName, containerName, update, token);

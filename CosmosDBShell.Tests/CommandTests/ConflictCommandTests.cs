@@ -51,6 +51,28 @@ public class ConflictCommandTests
     }
 
     [Fact]
+    public async Task Connected_EmptyDatabaseAndContainer_ThrowsNotInContainer()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ConnectedState(CreateTestClient());
+        var command = new ConflictCommand { Subcommand = "show", Database = string.Empty, Container = string.Empty };
+
+        await Assert.ThrowsAsync<NotInContainerException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict show --database \"\" --container \"\"", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Database_EmptyContainer_ThrowsNotInContainer()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DatabaseState("TestDatabase", CreateTestClient());
+        var command = new ConflictCommand { Subcommand = "show", Container = string.Empty };
+
+        await Assert.ThrowsAsync<NotInContainerException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict show --container \"\"", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task InvalidSubcommand_ThrowsCommandException()
     {
         using var shell = ShellInterpreter.CreateInstance();
@@ -73,6 +95,18 @@ public class ConflictCommandTests
 
         var ex = await Assert.ThrowsAsync<CommandException>(
             () => command.ExecuteAsync(shell, new CommandState(), "conflict set", CancellationToken.None));
+        Assert.Equal(MessageService.GetString("command-conflict-error-missing_set_args"), ex.Message);
+    }
+
+    [Fact]
+    public async Task Set_EmptyPathOnly_ThrowsMissingSetArgs()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ContainerState("TestContainer", "TestDatabase", CreateTestClient());
+        var command = new ConflictCommand { Subcommand = "set", Path = string.Empty };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict set --path \"\"", CancellationToken.None));
         Assert.Equal(MessageService.GetString("command-conflict-error-missing_set_args"), ex.Message);
     }
 
