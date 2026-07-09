@@ -2330,13 +2330,23 @@ public partial class ShellInterpreter : IDisposable
     {
         string FormatLevel(string text) => isWarning ? Theme.FormatWarning(text) : Theme.FormatError(text);
 
-        var hasOrigin = !string.IsNullOrEmpty(origin);
-        if (this.IsMachineMode && fileBuffer == null)
-        {
-            var msg = hasOrigin ? $"{origin}:{lineNumber}:{rendered.SourceColumn}: {message}" : message;
-            Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = isWarning ? "warning" : "error", message = msg }));
-            return;
-        }
+var hasOrigin = !string.IsNullOrEmpty(origin);
+if (this.IsMachineMode)
+{
+    var msg = hasOrigin ? $"{origin}:{lineNumber}:{rendered.SourceColumn}: {message}" : message;
+    var payload = System.Text.Json.JsonSerializer.Serialize(new { status = isWarning ? "warning" : "error", message = msg });
+
+    if (fileBuffer != null)
+    {
+        fileBuffer.Append(payload).Append(Environment.NewLine);
+    }
+    else
+    {
+        Console.Error.WriteLine(payload);
+    }
+
+    return;
+}
 
         // When the diagnostic originates from a script file we prepend the
         // "file:line:col:" prefix in front of the level prefix (cargo / clang
