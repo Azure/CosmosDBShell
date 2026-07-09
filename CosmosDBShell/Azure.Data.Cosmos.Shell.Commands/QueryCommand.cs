@@ -279,15 +279,7 @@ internal class QueryCommand : CosmosCommand
         var itemsList = documents.ToList();
         if (returnState.OutputFormat == Azure.Data.Cosmos.Shell.Core.OutputFormat.JSon)
         {
-            returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
-            {
-                command = "query",
-                status = "success",
-                requestCharge = (queryMetrics?.TotalRequestCharge) ?? 0,
-                continuationToken = continuationToken,
-                count = itemsList.Count,
-                items = itemsList,
-            }));
+            returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(itemsList));
         }
         else if (returnState.OutputFormat == Azure.Data.Cosmos.Shell.Core.OutputFormat.JsonFull)
         {
