@@ -50,7 +50,7 @@ internal class Program
             var preCommandArgs = TakePreCommandArgs(args);
             if (preCommandArgs.Any(a => a is "--help" or "-h" or "-?" or "/?" or "/h"))
             {
-                ShellInterpreter.WriteLine(BuildHelpText());
+                ShellInterpreter.WriteResult(BuildHelpText());
                 return;
             }
 
@@ -66,6 +66,15 @@ internal class Program
                 resources: new LocalizedCliResources());
             var parser = new System.CommandLine.Parsing.Parser(configuration);
             var parseResult = parser.Parse(args);
+
+            // compute machineMode early so parse-error handling can use it
+            var _preOutputFormat = parseResult.GetValueForOption(optionMap.OutputFormat);
+            var _preQuiet = parseResult.GetValueForOption(optionMap.Quiet);
+            var _fmtCandidate = _preOutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+            var machineMode = _preQuiet
+                || (!string.IsNullOrEmpty(_fmtCandidate)
+                    && !string.Equals(_fmtCandidate, "table", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(_fmtCandidate, "tbl", StringComparison.OrdinalIgnoreCase));
 
             // Initialize exit-code mapper early so any ErrorCommandState constructed
             // later (e.g. in connection/parse handlers) uses the same mapping.
@@ -132,17 +141,17 @@ internal class Program
                 Quiet = parseResult.GetValueForOption(optionMap.Quiet),
             };
 
-var fmt = o.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
-var machineMode = o.Quiet
-    || (!string.IsNullOrEmpty(fmt)
-        && !string.Equals(fmt, "table", StringComparison.OrdinalIgnoreCase)
-        && !string.Equals(fmt, "tbl", StringComparison.OrdinalIgnoreCase));
-AnsiConsole.Profile.Capabilities.ColorSystem = machineMode ? ColorSystem.NoColors : o.ColorSystem switch
-{
-    1 => ColorSystem.Standard,
-    2 => ColorSystem.TrueColor,
-    _ => ColorSystem.NoColors,
-};
+            var fmt = o.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+            var machineMode = o.Quiet
+                || (!string.IsNullOrEmpty(fmt)
+                    && !string.Equals(fmt, "table", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(fmt, "tbl", StringComparison.OrdinalIgnoreCase));
+            AnsiConsole.Profile.Capabilities.ColorSystem = machineMode ? ColorSystem.NoColors : o.ColorSystem switch
+            {
+                1 => ColorSystem.Standard,
+                2 => ColorSystem.TrueColor,
+                _ => ColorSystem.NoColors,
+            };
 
             if (machineMode)
             {
@@ -467,7 +476,7 @@ AnsiConsole.Profile.Capabilities.ColorSystem = machineMode ? ColorSystem.NoColor
         var heading = string.IsNullOrEmpty(commit)
             ? $"{product} {version}"
             : $"{product} {version} ({commit})";
-        ShellInterpreter.WriteLine(heading);
+        ShellInterpreter.WriteResult(heading);
     }
 
     private static async Task StopHostAsync(IHost? host, Task? hostTask)

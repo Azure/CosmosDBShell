@@ -34,7 +34,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
   - 0 — success
   - 1 — generic error (internal)
   - 2 — bad arguments / parse error
-  - 3 — auth/permission (e.g. HTTP 401/403)
+  - 3 — auth/connection failure (e.g. not connected, HTTP 401/403)
   - 4 — not found (HTTP 404)
   - 5 — throttled (HTTP 429)
 
