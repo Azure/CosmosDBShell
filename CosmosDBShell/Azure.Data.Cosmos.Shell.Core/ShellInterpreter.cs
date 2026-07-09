@@ -1458,9 +1458,12 @@ public partial class ShellInterpreter : IDisposable
                 if (output != null && string.IsNullOrEmpty(this.StdOutRedirect)
                     && state.Result is ShellText { Highlighter: { } highlighter })
                 {
-                    MarkupLine(highlighter(output));
-                    state.Result = null;
-                    return state;
+                    if (!this.IsMachineMode)
+                    {
+                        MarkupLine(highlighter(output));
+                        state.Result = null;
+                        return state;
+                    }
                 }
             }
 

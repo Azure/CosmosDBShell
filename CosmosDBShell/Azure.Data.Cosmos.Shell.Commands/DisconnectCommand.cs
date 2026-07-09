@@ -35,8 +35,11 @@ internal class DisconnectCommand : CosmosCommand
         }
         else
         {
-            ShellInterpreter.MarkupLine(MessageService.GetString("command-disconnect-not_connected"));
-            commandState.IsPrinted = true;
+            if (!shell.IsMachineMode)
+            {
+                ShellInterpreter.MarkupLine(MessageService.GetString("command-disconnect-not_connected"));
+                commandState.IsPrinted = true;
+            }
             var jsonResult = new Dictionary<string, object?>
             {
                 ["disconnected"] = false,
