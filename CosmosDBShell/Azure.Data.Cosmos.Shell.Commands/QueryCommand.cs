@@ -290,7 +290,7 @@ internal class QueryCommand : CosmosCommand
                 status = "success",
                 requestCharge = requestCharge,
                 continuationToken = continuationToken,
-                count = itemsList.Count
+                count = itemsList.Count,
                 items = itemsList,
                 // add any extra telemetry fields here
             }));
