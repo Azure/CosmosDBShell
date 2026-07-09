@@ -378,13 +378,13 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     {
         if (policy is null)
         {
-            return new ConflictResolutionView(ConflictResolutionMode.LastWriterWins.ToString(), null, null);
+            return new ConflictResolutionView(ConflictResolutionMode.LastWriterWins.ToString(), "/_ts", null);
         }
 
         bool isCustom = policy.Mode == ConflictResolutionMode.Custom;
         return new ConflictResolutionView(
             policy.Mode.ToString(),
-            isCustom ? null : NullIfEmpty(policy.ResolutionPath),
+            isCustom ? null : (NullIfEmpty(policy.ResolutionPath) ?? "/_ts"),
             isCustom ? NullIfEmpty(policy.ResolutionProcedure) : null);
     }
 

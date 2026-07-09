@@ -332,13 +332,13 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
     {
         if (policy is null)
         {
-            return new ConflictResolutionView(ConflictResolutionMode.LastWriterWins.ToString(), null, null);
+            return new ConflictResolutionView(ConflictResolutionMode.LastWriterWins.ToString(), "/_ts", null);
         }
 
         bool isCustom = policy.Mode == ConflictResolutionMode.Custom;
         return new ConflictResolutionView(
             (policy.Mode ?? ConflictResolutionMode.LastWriterWins).ToString(),
-            isCustom ? null : NullIfEmpty(policy.ConflictResolutionPath),
+            isCustom ? null : (NullIfEmpty(policy.ConflictResolutionPath) ?? "/_ts"),
             isCustom ? NullIfEmpty(policy.ConflictResolutionProcedure) : null);
     }
 

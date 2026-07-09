@@ -4,6 +4,7 @@
 
 namespace CosmosShell.Tests.CommandTests;
 
+using System.Reflection;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.States;
@@ -125,20 +126,22 @@ public class ConflictCommandTests
     }
 
     [Fact]
-    public async Task Set_LastWriterWinsWithEmptyProcedure_DoesNotThrowProcedureWithLww()
+    public void Set_LastWriterWinsWithEmptyProcedure_DoesNotThrowProcedureWithLww()
     {
-        using var shell = ShellInterpreter.CreateInstance();
-        shell.State = new ContainerState("TestContainer", "TestDatabase", CreateTestClient());
         var command = new ConflictCommand { Subcommand = "set", Mode = "lastWriterWins", Procedure = string.Empty, Path = "/region" };
 
         // An empty --procedure must be treated as "not provided", so pre-validation must
-        // not raise procedure_with_lww. The command instead proceeds to the network call,
-        // which fails offline with a different error.
-        var ex = await Record.ExceptionAsync(
-            () => command.ExecuteAsync(shell, new CommandState(), "conflict set --mode lastWriterWins --path /region --procedure \"\"", CancellationToken.None));
-        Assert.False(
-            ex is CommandException ce && ce.Message == MessageService.GetString("command-conflict-error-procedure_with_lww"),
-            "Empty --procedure should not trigger procedure_with_lww.");
+        // not raise procedure_with_lww. Invoke PreValidateSet directly (no network call)
+        // and assert it returns the normalized mode without throwing.
+        var preValidate = typeof(ConflictCommand).GetMethod(
+            "PreValidateSet",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(preValidate);
+
+        object? normalizedMode = null;
+        var ex = Record.Exception(() => normalizedMode = preValidate!.Invoke(command, null));
+        Assert.Null(ex);
+        Assert.Equal("lastWriterWins", normalizedMode);
     }
 
     [Fact]
