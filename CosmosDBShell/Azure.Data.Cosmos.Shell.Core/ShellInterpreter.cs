@@ -241,6 +241,16 @@ public partial class ShellInterpreter : IDisposable
         Console.WriteLine();
     }
 
+    internal static void WriteResult(string message, params object[] par)
+    {
+        Console.WriteLine(message, par);
+    }
+
+    internal static void WriteResult(string message)
+    {
+        Console.WriteLine(message);
+    }
+
     /// <summary>
     /// Writes the specified message to the standard output stream, using the specified format parameters.
     /// </summary>
@@ -1427,7 +1437,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 if (string.IsNullOrEmpty(this.StdOutRedirect))
                 {
-                    Console.WriteLine(output);
+                    WriteResult(output);
                 }
                 else
                 {

@@ -314,4 +314,29 @@ public class QueryCommandTests
             Assert.Contains(propertyToMetric[prop], metricNames);
         }
     }
+
+    [Fact]
+    public async Task Query_WithOutputJsonFull_ProducesQueryEnvelope()
+    {
+        var result = await RunQueryCommandAsync("query \"SELECT * FROM c\" --output json-full");
+
+        var element = JsonSerializer.Deserialize<JsonElement>(result.OutputText);
+        Assert.Equal(JsonValueKind.Object, element.ValueKind);
+        Assert.Equal("query", element.GetProperty("command").GetString());
+        Assert.Equal("success", element.GetProperty("status").GetString());
+        Assert.True(element.GetProperty("requestCharge").GetDouble() >= 0);
+        Assert.True(element.GetProperty("continuationToken").ValueKind == JsonValueKind.String ||
+                    element.GetProperty("continuationToken").ValueKind == JsonValueKind.Null);
+        Assert.Equal(JsonValueKind.Array, element.GetProperty("items").ValueKind);
+        Assert.Equal(element.GetProperty("items").GetArrayLength(), element.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
+    public async Task Query_WithOutputJson_RemainsRawArray()
+    {
+        var result = await RunQueryCommandAsync("query \"SELECT * FROM c\" --output json");
+
+        var element = JsonSerializer.Deserialize<JsonElement>(result.OutputText);
+        Assert.Equal(JsonValueKind.Array, element.ValueKind);
+    }
 }

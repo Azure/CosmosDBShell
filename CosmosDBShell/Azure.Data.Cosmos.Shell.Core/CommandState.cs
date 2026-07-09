@@ -145,7 +145,7 @@ public partial class CommandState
                         sb.AppendLine(JsonSerializer.Serialize(json));
                     }
 
-                    return sb.ToString();
+                    return sb.ToString().TrimEnd('\r', '\n');
                 }
 
             case OutputFormat.CSV:

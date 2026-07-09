@@ -67,14 +67,44 @@ internal class Program
             var parser = new System.CommandLine.Parsing.Parser(configuration);
             var parseResult = parser.Parse(args);
 
-            if (parseResult.Errors.Count > 0)
+            // Initialize exit-code mapper early so any ErrorCommandState constructed
+            // later (e.g. in connection/parse handlers) uses the same mapping.
+            ErrorCommandState.CustomExitCodeMapper = (ex) =>
             {
-                foreach (var error in parseResult.Errors)
+                if (ex is CosmosException cosmosEx)
                 {
-                    ShellInterpreter.WriteLine(error.Message);
+                    return (int)cosmosEx.StatusCode switch
+                    {
+                        401 or 403 => 3,
+                        404 => 4,
+                        429 => 5,
+                        _ => 1,
+                    };
                 }
 
-                ShellInterpreter.WriteLine(BuildHelpText());
+                return null;
+            };
+            if (parseResult.Errors.Count > 0)
+            {
+                if (machineMode)
+                {
+                    foreach (var error in parseResult.Errors)
+                    {
+                        Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", message = error.Message }));
+                    }
+
+                    Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", message = BuildHelpText() }));
+                }
+                else
+                {
+                    foreach (var error in parseResult.Errors)
+                    {
+                        ShellInterpreter.WriteLine(error.Message);
+                    }
+
+                    ShellInterpreter.WriteLine(BuildHelpText());
+                }
+
                 Environment.ExitCode = 2;
                 return;
             }
@@ -116,22 +146,6 @@ internal class Program
                 // that might dump diagnostic traces directly to standard output, corrupting JSON output.
                 System.Diagnostics.Trace.Listeners.Clear();
             }
-
-            ErrorCommandState.CustomExitCodeMapper = (ex) =>
-            {
-                if (ex is CosmosException cosmosEx)
-                {
-                    return (int)cosmosEx.StatusCode switch
-                    {
-                        401 or 403 => 3,
-                        404 => 4,
-                        429 => 5,
-                        _ => 1,
-                    };
-                }
-
-                return null;
-            };
 
             // --mcp supports an optional value: when the option is present without
             // an integer, fall back to the default port.

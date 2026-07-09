@@ -32,6 +32,11 @@ MCP servers will start automatically without manual refresh.
 
 ## Security
 
+### MCP server
+
+- MCP is HTTP-only in this repo.
+- `--mcp [<port>]` — start MCP server; when the option is present without a port the default is `6128`.
+
 ### How MCP Works
 
 The MCP server runs locally with your user permissions. Connected clients can execute shell commands, which means they can:

@@ -26,6 +26,18 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - MCP server for AI/tool integration
 - Distributed tracing via OpenTelemetry (`--otel`): emits a sampled W3C `traceparent` on Cosmos requests, with optional OTLP export
 
+## Machine mode, global flags, and exit codes
+
+- Machine mode: enabled when `--quiet` is set or `--output` is set to a non-table format (e.g. `json`, `ndjson`, `json-full`). In machine mode the shell suppresses human prompts/banners/status and emits structured output suitable for pipelines.
+- Global flags: `--output <json|json-full|ndjson|table>` and `--quiet` are supported.
+- Exit codes:
+  - 0 — success
+  - 1 — generic error (internal)
+  - 2 — bad arguments / parse error
+  - 3 — auth/permission (e.g. HTTP 401/403)
+  - 4 — not found (HTTP 404)
+  - 5 — throttled (HTTP 429)
+
 ## Quick Start
 
 **Requirements:** .NET SDK 10.0+.

@@ -36,6 +36,11 @@ Usage: disconnect
 
 ## Navigation
 
+### Global flags
+
+- `--output <format>` — Controls output format. Allowed values: `json`, `json-full`, `ndjson`, `table` (aliases: `js`, `tbl`). `json` preserves legacy raw-array JSON output; `json-full` emits the telemetry envelope (`command/status/requestCharge/continuationToken/count/items`).
+- `--quiet` — Suppresses interactive/human messages (prompts, banners, status). Use together with `--output` for machine-readable pipelines.
+
 ### ls
 
 List databases, containers, or items.
