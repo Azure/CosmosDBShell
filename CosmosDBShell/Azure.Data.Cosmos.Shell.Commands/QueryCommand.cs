@@ -288,9 +288,9 @@ internal class QueryCommand : CosmosCommand
             {
                 command = "query",
                 status = "success",
-                requestCharge = (queryMetrics?.TotalRequestCharge) ?? 0,
+                requestCharge = requestCharge,
                 continuationToken = continuationToken,
-                count = itemsList.Count,
+                count = itemsList.Count
                 items = itemsList,
                 // add any extra telemetry fields here
             }));
