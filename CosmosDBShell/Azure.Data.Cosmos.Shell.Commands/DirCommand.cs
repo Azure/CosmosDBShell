@@ -160,7 +160,7 @@ internal class DirCommand : CosmosCommand
         });
 
         returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonEntries));
-        returnState.IsPrinted = true;
+        returnState.IsPrinted = !shell.IsMachineMode;
 
         return Task.FromResult(returnState);
     }

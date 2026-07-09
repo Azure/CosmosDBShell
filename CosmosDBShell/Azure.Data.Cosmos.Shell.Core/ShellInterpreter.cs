@@ -1435,7 +1435,7 @@ public partial class ShellInterpreter : IDisposable
                 // syntax highlighting using the configured Spectre.Console theme. File
                 // redirection still receives plain text so downstream tooling and tests
                 // are unaffected.
-                if (state.OutputFormat == OutputFormat.JSon && string.IsNullOrEmpty(this.StdOutRedirect))
+                if (!this.IsMachineMode && state.OutputFormat == OutputFormat.JSon && string.IsNullOrEmpty(this.StdOutRedirect))
                 {
                     var element = (JsonElement?)state.Result.ConvertShellObject(Parser.DataType.Json);
                     if (element.HasValue)
