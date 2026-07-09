@@ -69,3 +69,4 @@ internal class MakeDbCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
         throw new CommandException("mkdb", MessageService.GetString("error-not_allowed_in_container"));
     }
 }
+

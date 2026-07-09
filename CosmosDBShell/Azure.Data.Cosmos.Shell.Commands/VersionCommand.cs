@@ -20,3 +20,4 @@ internal class VersionCommand : CosmosCommand
         return Task.FromResult(commandState);
     }
 }
+

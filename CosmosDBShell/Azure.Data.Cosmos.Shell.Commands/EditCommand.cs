@@ -34,7 +34,7 @@ internal class EditCommand : CosmosCommand
         if (Console.IsInputRedirected || !string.IsNullOrEmpty(shell.CurrentScriptFileName))
         {
             var message = MessageService.GetString("command-edit-not-interactive");
-            AnsiConsole.MarkupLine(Theme.FormatError(message));
+            ShellInterpreter.MarkupLine(Theme.FormatError(message));
             return Task.FromResult<CommandState>(new ErrorCommandState(new CommandException("edit", message)));
         }
 
@@ -56,7 +56,7 @@ internal class EditCommand : CosmosCommand
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
         {
             var message = MessageService.GetArgsString("command-edit-create-failed", "path", path, "message", ex.Message);
-            AnsiConsole.MarkupLine(Theme.FormatError(message));
+            ShellInterpreter.MarkupLine(Theme.FormatError(message));
             return Task.FromResult<CommandState>(new ErrorCommandState(new CommandException("edit", message, ex)));
         }
 
@@ -64,11 +64,11 @@ internal class EditCommand : CosmosCommand
         if (editor is null)
         {
             var message = MessageService.GetString("command-edit-no-editor");
-            AnsiConsole.MarkupLine(Theme.FormatError(message));
+            ShellInterpreter.MarkupLine(Theme.FormatError(message));
             return Task.FromResult<CommandState>(new ErrorCommandState(new CommandException("edit", message)));
         }
 
-        AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
+        ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
             "command-edit-launching",
             "path",
             path,
@@ -97,7 +97,7 @@ internal class EditCommand : CosmosCommand
                 path,
                 "message",
                 ex.Message);
-            AnsiConsole.MarkupLine(Theme.FormatError(message));
+            ShellInterpreter.MarkupLine(Theme.FormatError(message));
             return Task.FromResult<CommandState>(new ErrorCommandState(new CommandException("edit", message, ex)));
         }
 
@@ -109,13 +109,14 @@ internal class EditCommand : CosmosCommand
                 editor.DisplayName,
                 "code",
                 exitCode);
-            AnsiConsole.MarkupLine(Theme.FormatWarning(message));
+            ShellInterpreter.MarkupLine(Theme.FormatWarning(message));
             return Task.FromResult<CommandState>(new ErrorCommandState(new CommandException("edit", message)));
         }
 
-        AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString("command-edit-saved", "path", path)));
+        ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString("command-edit-saved", "path", path)));
         commandState.IsPrinted = true;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { edited = path }));
         return Task.FromResult(commandState);
     }
 }
+

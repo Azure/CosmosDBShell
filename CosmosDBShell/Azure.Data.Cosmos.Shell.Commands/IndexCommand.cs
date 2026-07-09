@@ -422,3 +422,4 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
         return BuildResult(updatedJson);
     }
 }
+

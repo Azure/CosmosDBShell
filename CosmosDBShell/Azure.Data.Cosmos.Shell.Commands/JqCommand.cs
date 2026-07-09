@@ -42,3 +42,4 @@ internal class JqCommand : CosmosCommand
         return new CommandState();
     }
 }
+

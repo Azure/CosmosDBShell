@@ -187,7 +187,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         string resourceName = containerName ?? databaseName;
         string modeLabel = MessageService.GetString(isAutoscale ? "command-throughput-mode-autoscale" : "command-throughput-mode-manual");
         string ruText = ru.ToString(CultureInfo.InvariantCulture);
-        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-throughput-confirm_summary", "resource", Markup.Escape(resourceName), "mode", modeLabel, "ru", ruText));
+        ShellInterpreter.MarkupLine(MessageService.GetArgsString("command-throughput-confirm_summary", "resource", Markup.Escape(resourceName), "mode", modeLabel, "ru", ruText));
         return ShellInterpreter.Confirm("command-throughput-confirm");
     }
 
@@ -311,3 +311,4 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         return value;
     }
 }
+

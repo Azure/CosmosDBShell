@@ -166,7 +166,7 @@ internal class WatchCommand : CosmosCommand
         var collected = (max.HasValue || redirected) ? new List<JsonElement>() : null;
         var count = 0;
 
-        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-watch-started", "container", Theme.ContainerNamePromt(container.Id)));
+        ShellInterpreter.MarkupLine(MessageService.GetArgsString("command-watch-started", "container", Theme.ContainerNamePromt(container.Id)));
 
         try
         {
@@ -196,7 +196,7 @@ internal class WatchCommand : CosmosCommand
                 {
                     if (!redirected)
                     {
-                        AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element));
+                        ShellInterpreter.MarkupLine(JsonOutputHighlighter.BuildMarkup(element));
                     }
 
                     collected?.Add(element);
@@ -220,7 +220,7 @@ internal class WatchCommand : CosmosCommand
             // Ctrl+C: stop tailing and report what was seen so far.
         }
 
-        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-watch-stopped", "count", count.ToString()));
+        ShellInterpreter.MarkupLine(MessageService.GetArgsString("command-watch-stopped", "count", count.ToString()));
 
         var result = new CommandState
         {
@@ -235,3 +235,4 @@ internal class WatchCommand : CosmosCommand
         return result;
     }
 }
+

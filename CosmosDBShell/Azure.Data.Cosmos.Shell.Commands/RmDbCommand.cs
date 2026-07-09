@@ -81,7 +81,7 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
                     UpdateStateAfterDelete(shell, state.Client, state.ArmContext, databaseName);
                     CosmosCompleteCommand.ClearDatabases();
                     var messageArguments = new Dictionary<string, object> { { "db", databaseName } };
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", messageArguments));
+                    ShellInterpreter.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", messageArguments));
                 }
 
                 return 0;
@@ -91,3 +91,4 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
         throw new CommandException("rmdb", MessageService.GetString("command-rmdb-error-database_not_found", new Dictionary<string, object> { { "db", this.Name ?? string.Empty } }));
     }
 }
+

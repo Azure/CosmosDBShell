@@ -251,6 +251,37 @@ public partial class ShellInterpreter : IDisposable
         Console.WriteLine(message);
     }
 
+    public static void MarkupLine(string markup, params object[] args)
+    {
+        if (Instance.IsMachineMode)
+        {
+            return;
+        }
+
+        AnsiConsole.MarkupLine(markup, args);
+    }
+
+    public static void Markup(string markup, params object[] args)
+    {
+        if (Instance.IsMachineMode)
+        {
+            return;
+        }
+
+        AnsiConsole.Markup(markup, args);
+    }
+
+    internal static void WriteError(string message)
+    {
+        if (Instance.IsMachineMode)
+        {
+            Console.Error.WriteLine(JsonSerializer.Serialize(new { status = "error", message }));
+            return;
+        }
+
+        AnsiConsole.MarkupLine(Theme.FormatError(message));
+    }
+
     /// <summary>
     /// Writes the specified message to the standard output stream, using the specified format parameters.
     /// </summary>
@@ -608,7 +639,7 @@ public partial class ShellInterpreter : IDisposable
             return;
         }
 
-        AnsiConsole.MarkupLine(Theme.FormatError(message), par);
+        MarkupLine(Theme.FormatError(message), par);
     }
 
     internal ShellObject GetVariable(string name)
@@ -628,7 +659,7 @@ public partial class ShellInterpreter : IDisposable
         var versionString = MessageService.GetArgsString("command-version", "version", version);
         if (!this.Quiet && !this.IsMachineMode)
         {
-            AnsiConsole.MarkupLine(versionString);
+            MarkupLine(versionString);
         }
 
         var port = this.McpPort;
@@ -637,14 +668,14 @@ public partial class ShellInterpreter : IDisposable
             var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
             if (!this.Quiet && !this.IsMachineMode)
             {
-                AnsiConsole.MarkupLine(Theme.FormatWarning(mcpPortString));
+                MarkupLine(Theme.FormatWarning(mcpPortString));
             }
         }
         else
         {
             if (!this.Quiet && !this.IsMachineMode)
             {
-                AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
+                MarkupLine(MessageService.GetString("command-version-mcp-off"));
             }
         }
 
@@ -654,7 +685,7 @@ public partial class ShellInterpreter : IDisposable
             var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
             if (!this.Quiet && !this.IsMachineMode)
             {
-                AnsiConsole.MarkupLine(repoString);
+                MarkupLine(repoString);
             }
         }
 
@@ -689,7 +720,7 @@ public partial class ShellInterpreter : IDisposable
         // obvious next step (see issue #81).
         if (this.State is DisconnectedState && !this.Quiet && !this.IsMachineMode)
         {
-            AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("shell-not_connected_hint")));
+            MarkupLine(Theme.FormatWarning(MessageService.GetString("shell-not_connected_hint")));
         }
 
         while (this.IsRunning)
@@ -1375,7 +1406,7 @@ public partial class ShellInterpreter : IDisposable
     internal void PrintCommand(string cmdString)
     {
         // Print the shell prompt similar to how it appears when typing command
-        //        AnsiConsole.Markup(new CosmosShellPrompt(this).GetPromptString());
+        //        Markup(new CosmosShellPrompt(this).GetPromptString());
         //        AnsiConsole.Write(" ");
         var txt = ((IHighlighter)Instance).BuildHighlightedText(cmdString);
         AnsiConsole.Write(txt);
@@ -1409,7 +1440,7 @@ public partial class ShellInterpreter : IDisposable
                     var element = (JsonElement?)state.Result.ConvertShellObject(Parser.DataType.Json);
                     if (element.HasValue)
                     {
-                        AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
+                        MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
                         state.Result = null;
                         return state;
                     }
@@ -1427,7 +1458,7 @@ public partial class ShellInterpreter : IDisposable
                 if (output != null && string.IsNullOrEmpty(this.StdOutRedirect)
                     && state.Result is ShellText { Highlighter: { } highlighter })
                 {
-                    AnsiConsole.MarkupLine(highlighter(output));
+                    MarkupLine(highlighter(output));
                     state.Result = null;
                     return state;
                 }
@@ -1465,7 +1496,7 @@ public partial class ShellInterpreter : IDisposable
                 var canceled = MessageService.GetString("runtime-error-canceled");
                 if (!string.IsNullOrEmpty(canceled) && !this.IsMachineMode)
                 {
-                    AnsiConsole.MarkupLine(Theme.FormatWarning(canceled));
+                    MarkupLine(Theme.FormatWarning(canceled));
                 }
                 else if (this.IsMachineMode)
                 {
@@ -1488,16 +1519,16 @@ public partial class ShellInterpreter : IDisposable
             }
             else
             {
-                AnsiConsole.MarkupLine($"{Theme.FormatError(prefix + ":")} {Markup.Escape(e.Message)}");
+                MarkupLine($"{Theme.FormatError(prefix + ":")} {Markup.Escape(e.Message)}");
                 if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
                 {
-                    AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
+                    MarkupLine(Markup.Escape(hinted.Hint));
                 }
 
                 var inner = e.InnerException;
                 while (inner != null)
                 {
-                    AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
+                    MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
                     inner = inner.InnerException;
                 }
             }
@@ -1978,7 +2009,7 @@ public partial class ShellInterpreter : IDisposable
         {
             if (!string.IsNullOrEmpty(prefix))
             {
-                AnsiConsole.MarkupLine(Markup.Escape(prefix.TrimEnd()));
+                MarkupLine(Markup.Escape(prefix.TrimEnd()));
             }
 
             AnsiConsole.WriteException(e, new ExceptionSettings
@@ -1988,10 +2019,10 @@ public partial class ShellInterpreter : IDisposable
         }
         else
         {
-            AnsiConsole.MarkupLine(prefix + Theme.FormatError(e.Message));
+            MarkupLine(prefix + Theme.FormatError(e.Message));
             if (!string.IsNullOrEmpty(hint))
             {
-                AnsiConsole.MarkupLine(Markup.Escape(hint));
+                MarkupLine(Markup.Escape(hint));
             }
 
             if (showInner)
@@ -1999,7 +2030,7 @@ public partial class ShellInterpreter : IDisposable
                 var inner = e.InnerException;
                 while (inner != null)
                 {
-                    AnsiConsole.MarkupLine($"  {Theme.FormatError("->")} {Markup.Escape(inner.Message)}");
+                    MarkupLine($"  {Theme.FormatError("->")} {Markup.Escape(inner.Message)}");
                     inner = inner.InnerException;
                 }
             }
@@ -2034,7 +2065,7 @@ public partial class ShellInterpreter : IDisposable
             }
             else
             {
-                AnsiConsole.MarkupLine(Markup.Escape(e.Hint));
+                MarkupLine(Markup.Escape(e.Hint));
             }
         }
 
@@ -2054,7 +2085,7 @@ public partial class ShellInterpreter : IDisposable
                 }
                 else
                 {
-                    AnsiConsole.MarkupLine(Markup.Escape(csHint));
+                    MarkupLine(Markup.Escape(csHint));
                 }
             }
         }
@@ -2107,11 +2138,11 @@ public partial class ShellInterpreter : IDisposable
         }
         else
         {
-            AnsiConsole.MarkupLine($"{Markup.Escape($"{pe.FileName}:{pe.Line}:{pe.Column}:")} {Theme.FormatError("error:")} {Markup.Escape(pe.Message)}");
+            MarkupLine($"{Markup.Escape($"{pe.FileName}:{pe.Line}:{pe.Column}:")} {Theme.FormatError("error:")} {Markup.Escape(pe.Message)}");
             if (pe.LineText != null)
             {
-                AnsiConsole.MarkupLine("  " + Theme.FormatMuted(pe.LineText));
-                AnsiConsole.MarkupLine("  " + Theme.FormatError(new string(' ', Math.Max(0, pe.Column - 1)) + "^"));
+                MarkupLine("  " + Theme.FormatMuted(pe.LineText));
+                MarkupLine("  " + Theme.FormatError(new string(' ', Math.Max(0, pe.Column - 1)) + "^"));
             }
         }
     }
@@ -2289,12 +2320,19 @@ public partial class ShellInterpreter : IDisposable
     {
         string FormatLevel(string text) => isWarning ? Theme.FormatWarning(text) : Theme.FormatError(text);
 
+        var hasOrigin = !string.IsNullOrEmpty(origin);
+        if (this.IsMachineMode && fileBuffer == null)
+        {
+            var msg = hasOrigin ? $"{origin}:{lineNumber}:{rendered.SourceColumn}: {message}" : message;
+            Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = isWarning ? "warning" : "error", message = msg }));
+            return;
+        }
+
         // When the diagnostic originates from a script file we prepend the
         // "file:line:col:" prefix in front of the level prefix (cargo / clang
         // style) so editors and humans can jump straight to the offending
         // line. Interactive prompt errors keep the trailing " (L:C)" form so
         // they read naturally without a fake file name.
-        var hasOrigin = !string.IsNullOrEmpty(origin);
         if (fileBuffer != null)
         {
             if (hasOrigin)
@@ -2323,16 +2361,16 @@ public partial class ShellInterpreter : IDisposable
             if (hasOrigin)
             {
                 var location = $"{origin}:{lineNumber}:{rendered.SourceColumn}:";
-                AnsiConsole.MarkupLine($"{Theme.FormatMuted(location)} {FormatLevel(levelPrefix + ":")} {m}");
+                MarkupLine($"{Theme.FormatMuted(location)} {FormatLevel(levelPrefix + ":")} {m}");
             }
             else
             {
-                AnsiConsole.MarkupLine($"{FormatLevel(levelPrefix + ":")} {m} {Theme.FormatMuted($"({lineNumber}:{rendered.SourceColumn})")}");
+                MarkupLine($"{FormatLevel(levelPrefix + ":")} {m} {Theme.FormatMuted($"({lineNumber}:{rendered.SourceColumn})")}");
             }
 
             var gutter = $"  > {lineNumber} | ";
-            AnsiConsole.MarkupLine($"{Theme.FormatMuted(gutter)}{Markup.Escape(rendered.Display)}");
-            AnsiConsole.MarkupLine($"{Theme.FormatMuted(new string(' ', gutter.Length) + rendered.CaretLeader)}{FormatLevel(rendered.CaretPad + rendered.CaretMarker)}");
+            MarkupLine($"{Theme.FormatMuted(gutter)}{Markup.Escape(rendered.Display)}");
+            MarkupLine($"{Theme.FormatMuted(new string(' ', gutter.Length) + rendered.CaretLeader)}{FormatLevel(rendered.CaretPad + rendered.CaretMarker)}");
         }
     }
 
@@ -2485,10 +2523,11 @@ public partial class ShellInterpreter : IDisposable
             }
             else
             {
-                AnsiConsole.Markup(Theme.FormatError("Error:"));
+                Markup(Theme.FormatError("Error:"));
                 ShellInterpreter.Instance.WriteLine($"{cmdStr} not found.");
             }
             ShellInterpreter.Instance.WriteLine("```");
         }
         */
 }
+

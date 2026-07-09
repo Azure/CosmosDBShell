@@ -123,3 +123,4 @@ internal class Parameter(PropertyInfo p, CosmosParameterAttribute pAttr)
         SetValue(cmd, this.PropertyInfo, v);
     }
 }
+

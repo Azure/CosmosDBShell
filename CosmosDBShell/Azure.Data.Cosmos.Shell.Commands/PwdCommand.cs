@@ -25,7 +25,7 @@ internal class PwdCommand : CosmosCommand
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         var currentLocation = ShellLocation.GetCurrentLocation(shell.State);
-        AnsiConsole.MarkupLine(ShellLocation.GetCurrentLocationMarkup(shell.State));
+        ShellInterpreter.MarkupLine(ShellLocation.GetCurrentLocationMarkup(shell.State));
 
         commandState.IsPrinted = true;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new

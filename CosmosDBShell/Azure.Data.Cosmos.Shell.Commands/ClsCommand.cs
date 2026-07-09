@@ -26,3 +26,4 @@ internal class ClsCommand : CosmosCommand
         return Task.FromResult(commandState);
     }
 }
+

@@ -19,3 +19,4 @@ internal class ExitCommand : CosmosCommand
         return Task.FromResult(commandState);
     }
 }
+

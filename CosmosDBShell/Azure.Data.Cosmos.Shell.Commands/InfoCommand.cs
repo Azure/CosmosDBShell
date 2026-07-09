@@ -180,7 +180,7 @@ internal class InfoCommand : CosmosCommand
             var line = lines[i];
             if (i == 0)
             {
-                AnsiConsole.Markup(indent + Theme.FormatError(MessageService.GetString("error")) + " ");
+                ShellInterpreter.Markup(indent + Theme.FormatError(MessageService.GetString("error")) + " ");
                 ShellInterpreter.WriteLine(line);
             }
             else if (line.Length == 0)
@@ -189,7 +189,7 @@ internal class InfoCommand : CosmosCommand
             }
             else
             {
-                AnsiConsole.Markup(indent);
+                ShellInterpreter.Markup(indent);
                 ShellInterpreter.WriteLine(line);
             }
         }
@@ -199,9 +199,9 @@ internal class InfoCommand : CosmosCommand
     {
         if (renderOutput)
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-account-databases-heading")));
-            AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-account-detailed-cost-note")));
+            ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-account-databases-heading")));
+            ShellInterpreter.Markup("\t");
+            ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-account-detailed-cost-note")));
         }
 
         long totalContainers = 0;
@@ -332,7 +332,7 @@ internal class InfoCommand : CosmosCommand
             return;
         }
 
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-throughput-heading")));
+        ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-throughput-heading")));
 
         if (throughputError is not null)
         {
@@ -342,14 +342,14 @@ internal class InfoCommand : CosmosCommand
             }
             else
             {
-                AnsiConsole.Markup("\t");
-                AnsiConsole.MarkupLine(Theme.FormatError(throughputError));
+                ShellInterpreter.Markup("\t");
+                ShellInterpreter.MarkupLine(Theme.FormatError(throughputError));
             }
         }
         else if (serverless)
         {
-            AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-scale-serverless")));
+            ShellInterpreter.Markup("\t");
+            ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-scale-serverless")));
         }
         else if (min.HasValue || max.HasValue)
         {
@@ -370,8 +370,8 @@ internal class InfoCommand : CosmosCommand
         }
         else
         {
-            AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-database-shared-throughput-none")));
+            ShellInterpreter.Markup("\t");
+            ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-database-shared-throughput-none")));
         }
     }
 
@@ -379,9 +379,9 @@ internal class InfoCommand : CosmosCommand
     {
         if (renderOutput)
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-partitions-heading")));
-            AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-partitions-cost-note")));
+            ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-partitions-heading")));
+            ShellInterpreter.Markup("\t");
+            ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-partitions-cost-note")));
         }
 
         var ranges = await container.GetFeedRangesAsync(token);
@@ -430,8 +430,8 @@ internal class InfoCommand : CosmosCommand
         if (renderOutput && total > 0 && counts.Count > 1)
         {
             double largestShare = (double)counts.Max() / total * 100;
-            AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
+            ShellInterpreter.Markup("\t");
+            ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
                 "command-stats-partitions-skew",
                 "percent",
                 string.Create(CultureInfo.InvariantCulture, $"{largestShare:0.#}"))));
@@ -444,9 +444,9 @@ internal class InfoCommand : CosmosCommand
     {
         if (renderOutput)
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-detailed-heading")));
-            AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-detailed-cost-note")));
+            ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-detailed-heading")));
+            ShellInterpreter.Markup("\t");
+            ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-detailed-cost-note")));
         }
 
         var result = new List<Dictionary<string, object?>>();
@@ -454,8 +454,8 @@ internal class InfoCommand : CosmosCommand
         {
             if (renderOutput)
             {
-                AnsiConsole.Markup("\t");
-                AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-na")));
+                ShellInterpreter.Markup("\t");
+                ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-stats-na")));
             }
 
             return result;
@@ -648,7 +648,7 @@ internal class InfoCommand : CosmosCommand
         // Scale section - fail gracefully if it cannot be read
         if (renderOutput)
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-scale-heading")));
+            ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-scale-heading")));
         }
 
         switch (view.Throughput)
@@ -658,8 +658,8 @@ internal class InfoCommand : CosmosCommand
                 var maxDisplay = view.MaxThroughput?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? MessageService.GetString("command-settings-na");
                 if (renderOutput)
                 {
-                    AnsiConsole.Markup("\t");
-                    AnsiConsole.MarkupLine(MessageService.GetArgsString("command-settings-scale-usage", "min", minDisplay, "max", maxDisplay));
+                    ShellInterpreter.Markup("\t");
+                    ShellInterpreter.MarkupLine(MessageService.GetArgsString("command-settings-scale-usage", "min", minDisplay, "max", maxDisplay));
                 }
 
                 if (view.MinThroughput.HasValue)
@@ -676,16 +676,16 @@ internal class InfoCommand : CosmosCommand
             case ThroughputAvailability.NotConfigured:
                 if (renderOutput)
                 {
-                    AnsiConsole.Markup("\t");
-                    AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
+                    ShellInterpreter.Markup("\t");
+                    ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
                 }
 
                 break;
             case ThroughputAvailability.Serverless:
                 if (renderOutput)
                 {
-                    AnsiConsole.Markup("\t");
-                    AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-scale-serverless")));
+                    ShellInterpreter.Markup("\t");
+                    ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-scale-serverless")));
                 }
 
                 break;
@@ -698,8 +698,8 @@ internal class InfoCommand : CosmosCommand
                     }
                     else
                     {
-                        AnsiConsole.Markup("\t");
-                        AnsiConsole.MarkupLine(Theme.FormatError(view.ThroughputErrorMessage ?? string.Empty));
+                        ShellInterpreter.Markup("\t");
+                        ShellInterpreter.MarkupLine(Theme.FormatError(view.ThroughputErrorMessage ?? string.Empty));
                     }
                 }
 
@@ -708,7 +708,7 @@ internal class InfoCommand : CosmosCommand
 
         if (renderOutput)
         {
-            AnsiConsole.MarkupLine(string.Empty);
+            ShellInterpreter.MarkupLine(string.Empty);
         }
 
         mcpTable["id"] = view.ContainerName;
@@ -736,7 +736,7 @@ internal class InfoCommand : CosmosCommand
         Table? table = null;
         if (renderOutput)
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-title")));
+            ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-title")));
             table = new Table();
             table.AddColumns(string.Empty, string.Empty);
             table.AddRow(MessageService.GetString("command-settings-ttl-label"), Theme.FormatTableValue(ttl));
@@ -765,7 +765,7 @@ internal class InfoCommand : CosmosCommand
         // Full Text Policy section - show N/A when policy is unset
         if (renderOutput)
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-fulltext-title")));
+            ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-fulltext-title")));
         }
 
         if (view.FullTextPolicy is { } fullText)
@@ -809,14 +809,14 @@ internal class InfoCommand : CosmosCommand
         }
         else if (renderOutput)
         {
-            AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
+            ShellInterpreter.Markup("\t");
+            ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
         }
 
         // Indexing Policy section - compact summary; use 'index show' for the full policy
         if (renderOutput)
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-indexing-title")));
+            ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-indexing-title")));
         }
 
         if (view.IndexingPolicy is { } indexing)
@@ -879,8 +879,8 @@ internal class InfoCommand : CosmosCommand
         }
         else if (renderOutput)
         {
-            AnsiConsole.Markup("\t");
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
+            ShellInterpreter.Markup("\t");
+            ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-settings-na")));
         }
 
         // Usage section - document count and storage size
@@ -897,7 +897,7 @@ internal class InfoCommand : CosmosCommand
 
         if (renderOutput)
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-usage-heading")));
+            ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-usage-heading")));
 
             var usageTable = new Table();
             usageTable.AddColumns(string.Empty, string.Empty);
@@ -974,7 +974,7 @@ internal class InfoCommand : CosmosCommand
 
         if (renderOutput)
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-database-heading")));
+            ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-database-heading")));
 
             var table = new Table();
             table.AddColumns(string.Empty, string.Empty);
@@ -990,7 +990,7 @@ internal class InfoCommand : CosmosCommand
 
         if (renderOutput && this.Detailed && rows.Count > 0)
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-containers-heading")));
+            ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-containers-heading")));
             var containerTable = new Table();
             containerTable.AddColumn(MessageService.GetString("command-stats-containers-col-name"));
             containerTable.AddColumn(MessageService.GetString("command-stats-containers-col-count"));
@@ -1029,7 +1029,7 @@ internal class InfoCommand : CosmosCommand
 
         if (renderOutput)
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-overview")));
+            ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-settings-overview")));
 
             var table = new Table();
             table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
@@ -1066,3 +1066,4 @@ internal class InfoCommand : CosmosCommand
             : null;
     }
 }
+

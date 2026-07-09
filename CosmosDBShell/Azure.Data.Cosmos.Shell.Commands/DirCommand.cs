@@ -117,7 +117,7 @@ internal class DirCommand : CosmosCommand
                 // Simple list mode: just show the name
                 if (entry.IsDirectory)
                 {
-                    AnsiConsole.MarkupLine(Theme.FormatDirectory(entry.Name + "/"));
+                    ShellInterpreter.MarkupLine(Theme.FormatDirectory(entry.Name + "/"));
                 }
                 else
                 {
@@ -129,19 +129,19 @@ internal class DirCommand : CosmosCommand
                 // Detailed mode: show date, size, and name
                 if (entry.IsDirectory)
                 {
-                    AnsiConsole.MarkupLine(Theme.FormatDirectory(entry.Name + "/"));
+                    ShellInterpreter.MarkupLine(Theme.FormatDirectory(entry.Name + "/"));
                 }
                 else
                 {
                     var sizeStr = FormatFileSize(entry.Size ?? 0);
-                    AnsiConsole.MarkupLine($"{Theme.FormatMuted($"{entry.LastModified:yyyy-MM-dd HH:mm}")}  {Theme.FormatTableValue(sizeStr.PadLeft(10))}  {Markup.Escape(entry.Name)}");
+                    ShellInterpreter.MarkupLine($"{Theme.FormatMuted($"{entry.LastModified:yyyy-MM-dd HH:mm}")}  {Theme.FormatTableValue(sizeStr.PadLeft(10))}  {Markup.Escape(entry.Name)}");
                 }
             }
         }
 
         if (!this.ListOnly)
         {
-            AnsiConsole.MarkupLine(MessageService.GetArgsString(
+            ShellInterpreter.MarkupLine(MessageService.GetArgsString(
                 "command-dir-summary",
                 "fileCount",
                 entries.Count(e => !e.IsDirectory),
@@ -192,3 +192,4 @@ internal class DirCommand : CosmosCommand
         public DateTime LastModified { get; init; }
     }
 }
+

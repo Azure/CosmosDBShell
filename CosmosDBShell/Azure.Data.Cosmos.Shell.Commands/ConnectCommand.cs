@@ -67,7 +67,7 @@ internal partial class ConnectCommand : CosmosCommand
         if (shell.State is ConnectedState cs)
         {
             var previousEndpoint = cs.Client.Endpoint.Host;
-            AnsiConsole.MarkupLine(MessageService.GetArgsString("command-connect-switching", "endpoint", previousEndpoint));
+            ShellInterpreter.MarkupLine(MessageService.GetArgsString("command-connect-switching", "endpoint", previousEndpoint));
         }
 
         ConnectionMode? connectionMode = null;
@@ -138,7 +138,7 @@ internal partial class ConnectCommand : CosmosCommand
 
     internal static void AskForRBacPermissions(string principalId, string permission)
     {
-        AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
+        ShellInterpreter.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
         ShellInterpreter.WriteLine(MessageService.GetArgsString("command-connect-rbac-error", "id", principalId, "permission", permission));
     }
 
@@ -150,7 +150,7 @@ internal partial class ConnectCommand : CosmosCommand
     /// </summary>
     internal static void PrintConnectUsageHint(ShellInterpreter shell)
     {
-        AnsiConsole.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-header")));
+        ShellInterpreter.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-header")));
 
         if (shell.App.Commands.TryGetValue("connect", out var factory))
         {
@@ -170,24 +170,24 @@ internal partial class ConnectCommand : CosmosCommand
                 }
 
                 var highlighted = shell.BuildHighlightedMarkup(example);
-                AnsiConsole.MarkupLine($"  {highlighted}");
+                ShellInterpreter.MarkupLine($"  {highlighted}");
                 if (!string.IsNullOrWhiteSpace(description))
                 {
-                    AnsiConsole.MarkupLine($"    {Theme.FormatMuted(description)}");
+                    ShellInterpreter.MarkupLine($"    {Theme.FormatMuted(description)}");
                 }
 
                 shown++;
             }
         }
 
-        AnsiConsole.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-footer")));
+        ShellInterpreter.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-footer")));
     }
 
     private static async Task<CommandState> PrintConnectionInfoAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
         if (shell.State is not ConnectedState connectedState)
         {
-            AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected"));
+            ShellInterpreter.MarkupLine(MessageService.GetString("command-connect-not_connected"));
             PrintConnectUsageHint(shell);
             commandState.IsPrinted = true;
             var notConnectedJson = new Dictionary<string, object?>
@@ -202,7 +202,7 @@ internal partial class ConnectCommand : CosmosCommand
 
         token.ThrowIfCancellationRequested();
         var acc = await client.ReadAccountAsync().WaitAsync(token);
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-connect-info-title")));
+        ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-connect-info-title")));
 
         var table = new Table();
         table.AddColumns(string.Empty, string.Empty);
@@ -247,3 +247,4 @@ internal partial class ConnectCommand : CosmosCommand
         return commandState;
     }
 }
+

@@ -240,11 +240,11 @@ internal class SprocCommand : CosmosCommand
 
         if (rows.Count == 0)
         {
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-sproc-list-empty")));
+            ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-sproc-list-empty")));
         }
         else
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-title")));
+            ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-title")));
             var table = new Table();
             table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-column-id"))));
             table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-column-modified"))));
@@ -544,7 +544,7 @@ internal class SprocCommand : CosmosCommand
         {
             await File.WriteAllTextAsync(tempPath, initialBody, token);
 
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
+            ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
                 "command-sproc-edit-launching",
                 "name",
                 name,
@@ -626,3 +626,4 @@ internal class SprocCommand : CosmosCommand
         return string.IsNullOrEmpty(piped) ? null : piped;
     }
 }
+

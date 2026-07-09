@@ -401,7 +401,7 @@ internal class QueryCommand : CosmosCommand
                     
                     if (queryMetrics != null)
                     {
-                        AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", queryMetrics.TotalRequestCharge.ToString() } }));
+                        ShellInterpreter.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", queryMetrics.TotalRequestCharge.ToString() } }));
                     }
                 }
 
@@ -521,7 +521,7 @@ internal class QueryCommand : CosmosCommand
                         table.AddRow(MessageService.GetString("command-query-vm_execution"), Theme.FormatTableValue(Fmt("VMExecution execution time")));
                         table.AddEmptyRow();
                         table.AddRow(MessageService.GetString("command-query-total"), Theme.FormatTableValue(Fmt("Total time")));
-                        AnsiConsole.MarkupLine(MessageService.GetString("command-query-time_label"));
+                        ShellInterpreter.MarkupLine(MessageService.GetString("command-query-time_label"));
                         AnsiConsole.Write(table);
 
                         table = new Table();
@@ -573,7 +573,7 @@ internal class QueryCommand : CosmosCommand
 
             if (limitReached && effectiveMaxItemCount.HasValue && !shell.IsMachineMode)
             {
-                AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
+                ShellInterpreter.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
             }
 
             return returnState;

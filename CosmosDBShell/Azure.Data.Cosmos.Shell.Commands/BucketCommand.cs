@@ -24,7 +24,7 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
         var isValid = bucket >= 0 && bucket <= 5;
         if (!isValid)
         {
-            AnsiConsole.MarkupLine(MessageService.GetString("error-invalid_bucket_value", new Dictionary<string, object> { { "bucket", bucket } }));
+            ShellInterpreter.MarkupLine(MessageService.GetString("error-invalid_bucket_value", new Dictionary<string, object> { { "bucket", bucket } }));
         }
 
         return isValid;
@@ -67,23 +67,23 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             if (this.Bucket == 0)
             {
                 client.ClientOptions.ThroughputBucket = null;
-                AnsiConsole.MarkupLine(MessageService.GetString("command-bucket-reset_bucket"));
+                ShellInterpreter.MarkupLine(MessageService.GetString("command-bucket-reset_bucket"));
             }
             else
             {
                 client.ClientOptions.ThroughputBucket = this.Bucket;
-                AnsiConsole.MarkupLine(MessageService.GetString("command-bucket-switched_bucket", new Dictionary<string, object> { { "bucket", Theme.FormatTableValue(client.ClientOptions.ThroughputBucket.ToString() ?? string.Empty) } }));
+                ShellInterpreter.MarkupLine(MessageService.GetString("command-bucket-switched_bucket", new Dictionary<string, object> { { "bucket", Theme.FormatTableValue(client.ClientOptions.ThroughputBucket.ToString() ?? string.Empty) } }));
             }
         }
         else
         {
             if (client.ClientOptions.ThroughputBucket.HasValue)
             {
-                AnsiConsole.MarkupLine(MessageService.GetString("command-bucket-currrent", new Dictionary<string, object> { { "bucket", Theme.FormatTableValue(client.ClientOptions.ThroughputBucket.ToString() ?? string.Empty) } }));
+                ShellInterpreter.MarkupLine(MessageService.GetString("command-bucket-currrent", new Dictionary<string, object> { { "bucket", Theme.FormatTableValue(client.ClientOptions.ThroughputBucket.ToString() ?? string.Empty) } }));
             }
             else
             {
-                AnsiConsole.MarkupLine(MessageService.GetString("command-bucket-no_bucket"));
+                ShellInterpreter.MarkupLine(MessageService.GetString("command-bucket-no_bucket"));
             }
         }
 
@@ -96,3 +96,4 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
         return commandState;
     }
 }
+

@@ -23,7 +23,7 @@ internal class DisconnectCommand : CosmosCommand
             var endpoint = connectedState.Client.Endpoint.Host;
             shell.Disconnect();
 
-            AnsiConsole.MarkupLine(MessageService.GetArgsString("command-disconnect-success", "endpoint", endpoint));
+            ShellInterpreter.MarkupLine(MessageService.GetArgsString("command-disconnect-success", "endpoint", endpoint));
 
             commandState.IsPrinted = true;
             var jsonResult = new Dictionary<string, object?>
@@ -35,7 +35,7 @@ internal class DisconnectCommand : CosmosCommand
         }
         else
         {
-            AnsiConsole.MarkupLine(MessageService.GetString("command-disconnect-not_connected"));
+            ShellInterpreter.MarkupLine(MessageService.GetString("command-disconnect-not_connected"));
             commandState.IsPrinted = true;
             var jsonResult = new Dictionary<string, object?>
             {

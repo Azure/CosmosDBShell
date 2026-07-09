@@ -212,11 +212,11 @@ internal class TriggerCommand : CosmosCommand
 
         if (rows.Count == 0)
         {
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-trigger-list-empty")));
+            ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-trigger-list-empty")));
         }
         else
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-trigger-list-title")));
+            ShellInterpreter.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-trigger-list-title")));
             var table = new Table();
             table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-trigger-list-column-id"))));
             table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-trigger-list-column-type"))));
@@ -508,7 +508,7 @@ internal class TriggerCommand : CosmosCommand
         {
             await File.WriteAllTextAsync(tempPath, initialBody, token);
 
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
+            ShellInterpreter.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
                 "command-trigger-edit-launching",
                 "name",
                 name,
@@ -590,3 +590,4 @@ internal class TriggerCommand : CosmosCommand
         return string.IsNullOrEmpty(piped) ? null : piped;
     }
 }
+

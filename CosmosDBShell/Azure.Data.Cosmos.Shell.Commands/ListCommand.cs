@@ -87,12 +87,12 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             }
 
             list.Add(trimmed);
-            AnsiConsole.MarkupLine(Theme.DatabaseNamePromt(trimmed));
+            ShellInterpreter.MarkupLine(Theme.DatabaseNamePromt(trimmed));
         }
 
         CosmosCompleteCommand.SetDatabases(state.Client, completionList);
 
-        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_databases", new Dictionary<string, object>
+        ShellInterpreter.MarkupLine(MessageService.GetString("command-ls-found_databases", new Dictionary<string, object>
         {
             { "count", list.Count },
             { "display", Theme.FormatTableValue(list.Count.ToString()) },
@@ -100,7 +100,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
         if (completionList.Count == 0 && state.ArmContext is not null)
         {
-            AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_databases_hint")));
+            ShellInterpreter.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_databases_hint")));
         }
 
         var result = new CommandState
@@ -142,12 +142,12 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             }
 
             list.Add(trimmed);
-            AnsiConsole.MarkupLine(Theme.ContainerNamePromt(trimmed));
+            ShellInterpreter.MarkupLine(Theme.ContainerNamePromt(trimmed));
         }
 
         CosmosCompleteCommand.SetContainers(state.Client, databaseName, completionList);
 
-        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_containers", new Dictionary<string, object>
+        ShellInterpreter.MarkupLine(MessageService.GetString("command-ls-found_containers", new Dictionary<string, object>
         {
             { "count", list.Count },
             { "display", Theme.FormatTableValue(list.Count.ToString()) },
@@ -156,7 +156,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
         if (completionList.Count == 0 && state.ArmContext is not null)
         {
-            AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_containers_hint", new Dictionary<string, object>
+            ShellInterpreter.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_containers_hint", new Dictionary<string, object>
             {
                 { "database", databaseName },
             })));
@@ -242,7 +242,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         returnState.Result = rendered;
         returnState.IsPrinted = true;
 
-        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object>
+        ShellInterpreter.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object>
         {
             { "count", list.Count },
             { "display", Theme.FormatTableValue(list.Count.ToString()) },
@@ -250,7 +250,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         }));
         if (limitReached && effectiveMaxItemCount.HasValue)
         {
-            AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
+            ShellInterpreter.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
         }
 
         return returnState;
@@ -331,3 +331,4 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         return ResultLimit.IsLimitReached(currentCount, effectiveMaxItemCount) && (usesServerSideTop || iteratorHasMoreResults);
     }
 }
+

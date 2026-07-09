@@ -85,7 +85,7 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
                 {
                     await CosmosResourceFacade.DeleteContainerAsync(state, databaseName, containerName, token);
                     CosmosCompleteCommand.ClearContainers();
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-deleted_container", new Dictionary<string, object> { { "container", containerName } }));
+                    ShellInterpreter.MarkupLine(MessageService.GetString("command-rmcon-deleted_container", new Dictionary<string, object> { { "container", containerName } }));
                 }
 
                 return 0;
@@ -95,3 +95,4 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
         throw new CommandException("rmcon", MessageService.GetString("command-rmcon-error-container_not_found", new Dictionary<string, object> { { "container", this.Name ?? string.Empty } }));
     }
 }
+

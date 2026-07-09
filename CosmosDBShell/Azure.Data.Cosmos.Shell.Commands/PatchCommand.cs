@@ -288,3 +288,4 @@ internal class PatchCommand : CosmosCommand
         return false;
     }
 }
+

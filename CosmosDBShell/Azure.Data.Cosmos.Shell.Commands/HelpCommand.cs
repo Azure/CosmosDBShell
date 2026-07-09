@@ -67,7 +67,7 @@ internal class HelpCommand : CosmosCommand
             }
 
             // Neither command nor statement
-            AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
+            ShellInterpreter.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
             ShellInterpreter.WriteLine(MessageService.GetString("error-command-not-found", MessageService.Args("command", cmdStr)));
             return new ErrorCommandState(new CommandException("help", cmdStr + " not found."));
         }
@@ -154,31 +154,31 @@ internal class HelpCommand : CosmosCommand
             // Styled output
             if (!string.IsNullOrEmpty(cmd.Description))
             {
-                AnsiConsole.MarkupLine($"{INDENT}{Theme.FormatHelpHeader(cmd.Description)}");
+                ShellInterpreter.MarkupLine($"{INDENT}{Theme.FormatHelpHeader(cmd.Description)}");
             }
 
             if (cmd.Aliases.Count > 0)
             {
-                AnsiConsole.MarkupLine($"{INDENT}[dim]{Markup.Escape(MessageService.GetString("help-aliases"))} {Markup.Escape(string.Join(", ", cmd.Aliases))}[/]");
+                ShellInterpreter.MarkupLine($"{INDENT}[dim]{Markup.Escape(MessageService.GetString("help-aliases"))} {Markup.Escape(string.Join(", ", cmd.Aliases))}[/]");
             }
 
             ShellInterpreter.WriteLine();
             WriteSectionHeader(MessageService.GetString("help-usage-heading"));
-            AnsiConsole.Markup(INDENT + Theme.FormatCommand(cmd.CommandName) + " ");
+            ShellInterpreter.Markup(INDENT + Theme.FormatCommand(cmd.CommandName) + " ");
         }
 
         if (!plain && cmd?.Options != null)
         {
             foreach (var p in cmd.Options)
             {
-                AnsiConsole.Markup(INDENT + "[[" + Theme.FormatHelpName("-" + (p.Name.FirstOrDefault() ?? string.Empty)));
+                ShellInterpreter.Markup(INDENT + "[[" + Theme.FormatHelpName("-" + (p.Name.FirstOrDefault() ?? string.Empty)));
 
                 if (!p.PropertyInfo.PropertyType.IsAssignableFrom(typeof(bool)))
                 {
-                    AnsiConsole.Markup($" [dim]{MessageService.GetString("help-arg")}[/]");
+                    ShellInterpreter.Markup($" [dim]{MessageService.GetString("help-arg")}[/]");
                 }
 
-                AnsiConsole.Markup("]] ");
+                ShellInterpreter.Markup("]] ");
             }
         }
 
@@ -194,11 +194,11 @@ internal class HelpCommand : CosmosCommand
 
                 if (p.IsRequired)
                 {
-                    AnsiConsole.Markup(INDENT + Theme.FormatHelpName(name) + " ");
+                    ShellInterpreter.Markup(INDENT + Theme.FormatHelpName(name) + " ");
                 }
                 else
                 {
-                    AnsiConsole.Markup(INDENT + "[[" + Theme.FormatHelpName(name) + "]] ");
+                    ShellInterpreter.Markup(INDENT + "[[" + Theme.FormatHelpName(name) + "]] ");
                 }
             }
 
@@ -291,11 +291,11 @@ internal class HelpCommand : CosmosCommand
                 var (example, description) = examples[i];
                 if (!string.IsNullOrWhiteSpace(description))
                 {
-                    AnsiConsole.MarkupLine(INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}. {Theme.FormatHelpDescription(description)}");
+                    ShellInterpreter.MarkupLine(INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}. {Theme.FormatHelpDescription(description)}");
                 }
                 else
                 {
-                    AnsiConsole.MarkupLine(INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}.");
+                    ShellInterpreter.MarkupLine(INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}.");
                 }
 
                 var parser = new StatementParser(example);
@@ -567,7 +567,7 @@ internal class HelpCommand : CosmosCommand
             return;
         }
 
-        AnsiConsole.MarkupLine(INDENT + Theme.FormatHelpHeader(categoryName));
+        ShellInterpreter.MarkupLine(INDENT + Theme.FormatHelpHeader(categoryName));
         ShellInterpreter.WriteLine();
 
         var table = new Table()
@@ -627,7 +627,7 @@ internal class HelpCommand : CosmosCommand
         // Use consistent styling with command help
         if (!string.IsNullOrWhiteSpace(s.Description))
         {
-            AnsiConsole.MarkupLine($"{INDENT}{Theme.FormatHelpHeader(s.Description)}");
+            ShellInterpreter.MarkupLine($"{INDENT}{Theme.FormatHelpHeader(s.Description)}");
         }
 
         ShellInterpreter.WriteLine();
@@ -662,7 +662,7 @@ internal class HelpCommand : CosmosCommand
 
             // Highlight $ for variables
             highlighted = highlighted.Replace("$", varOpen + "$" + varClose);
-            AnsiConsole.MarkupLine($"{INDENT}{highlighted}");
+            ShellInterpreter.MarkupLine($"{INDENT}{highlighted}");
             ShellInterpreter.WriteLine();
         }
 
@@ -748,7 +748,7 @@ internal class HelpCommand : CosmosCommand
         }
 
         AnsiConsole.Write(table);
-        AnsiConsole.MarkupLine(string.Empty);
+        ShellInterpreter.MarkupLine(string.Empty);
     }
 
     private static void PrintStatementHelps(bool plain)
@@ -801,7 +801,7 @@ internal class HelpCommand : CosmosCommand
             }
 
             AnsiConsole.Write(table);
-            AnsiConsole.MarkupLine(string.Empty);
+            ShellInterpreter.MarkupLine(string.Empty);
         }
     }
 

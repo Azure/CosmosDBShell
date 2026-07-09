@@ -48,3 +48,4 @@ internal class CatCommand : CosmosCommand, IStateVisitor<int, string>
         return Task.FromResult(0);
     }
 }
+

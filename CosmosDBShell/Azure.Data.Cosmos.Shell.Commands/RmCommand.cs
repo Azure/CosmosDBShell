@@ -241,7 +241,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
                     if (!TryGetPartitionKeyElements(element, partitionKeyPropertyNames, out var pkElements))
                     {
-                        AnsiConsole.MarkupLine(
+                        ShellInterpreter.MarkupLine(
                             MessageService.GetString(
                                 "command-rm-warning-missing-partition-key",
                                 new Dictionary<string, object>
@@ -273,14 +273,14 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
         if (totalCount > 0)
         {
-            AnsiConsole.MarkupLine(
+            ShellInterpreter.MarkupLine(
                 MessageService.GetString(
                     "command-rm-deleted_items",
                     new Dictionary<string, object> { { "count", totalCount } }));
         }
         else
         {
-            AnsiConsole.MarkupLine(
+            ShellInterpreter.MarkupLine(
                 MessageService.GetString(
                     "command-rm-no-matches",
                     new Dictionary<string, object>
@@ -310,3 +310,4 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         return partitionKeyElements.Count > 0;
     }
 }
+

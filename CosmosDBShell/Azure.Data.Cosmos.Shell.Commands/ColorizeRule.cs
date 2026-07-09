@@ -19,3 +19,4 @@ internal readonly struct ColorizeRule
 
     public string Style { get; }
 }
+

@@ -44,3 +44,4 @@ internal class EchoCommand : CosmosCommand
         return Task.FromResult(commandState);
     }
 }
+

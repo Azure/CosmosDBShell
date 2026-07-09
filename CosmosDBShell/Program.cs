@@ -108,10 +108,10 @@ internal class Program
                 {
                     foreach (var error in parseResult.Errors)
                     {
-                        ShellInterpreter.WriteLine(error.Message);
+                        Console.Error.WriteLine(error.Message);
                     }
 
-                    ShellInterpreter.WriteLine(BuildHelpText());
+                    ShellInterpreter.WriteResult(BuildHelpText());
                 }
 
                 Environment.ExitCode = 2;
