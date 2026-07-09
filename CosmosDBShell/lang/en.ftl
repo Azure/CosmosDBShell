@@ -339,9 +339,9 @@ command-ttl-analytical-updated = Analytical store time-to-live updated successfu
 command-ttl-error-missing_subcommand = Missing subcommand. Use one of: show, set, on, off.
 command-ttl-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set, on, off.
 command-ttl-error-missing_seconds = No seconds value provided. Specify a positive number of seconds, for example: ttl set 86400.
-command-ttl-error-invalid_seconds = Invalid seconds value '{ $seconds }'. Provide a positive number of seconds, or use 'ttl on' for no default and 'ttl off' to disable.
+command-ttl-error-invalid_seconds = Invalid seconds value '{ $seconds }'. Provide a positive number of seconds, or use 'ttl on' to enable and 'ttl off' to disable.
 command-ttl-error-show_no_args = 'ttl show' does not take any arguments. Use 'ttl show' to display the current configuration.
-command-ttl-error-toggle_no_args = This subcommand does not take a seconds value. Use 'ttl set <seconds>' to set a default expiration.
+command-ttl-error-toggle_no_args = This subcommand does not take a seconds value. Use 'ttl set <seconds>' to specify a TTL in seconds.
 
 command-conflict-description = Views or changes the conflict resolution policy of a container via show and set subcommands.
 command-conflict-description-subcommand = The action to perform: show or set.
