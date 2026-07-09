@@ -1425,6 +1425,13 @@ public partial class ShellInterpreter : IDisposable
             return state;
         }
 
+        if (state is ErrorCommandState errorState)
+        {
+            this.ReportExecutionError(errorState.Exception);
+            state.IsPrinted = true;
+            return state;
+        }
+
         try
         {
             string? output;

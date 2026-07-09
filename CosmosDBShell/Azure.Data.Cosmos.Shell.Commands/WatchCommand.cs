@@ -196,7 +196,14 @@ internal class WatchCommand : CosmosCommand
                 {
                     if (!redirected)
                     {
-                        ShellInterpreter.MarkupLine(JsonOutputHighlighter.BuildMarkup(element));
+                        if (shell.IsMachineMode)
+                        {
+                            ShellInterpreter.WriteResult(JsonSerializer.Serialize(element));
+                        }
+                        else
+                        {
+                            ShellInterpreter.MarkupLine(JsonOutputHighlighter.BuildMarkup(element));
+                        }
                     }
 
                     collected?.Add(element);
