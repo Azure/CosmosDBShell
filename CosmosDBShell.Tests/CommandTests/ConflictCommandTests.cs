@@ -169,6 +169,20 @@ public class ConflictCommandTests
     }
 
     [Fact]
+    public async Task Set_PathAndProcedure_ThrowsCommandExceptionBeforeNetwork()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new ContainerState("TestContainer", "TestDatabase", CreateTestClient());
+        var command = new ConflictCommand { Subcommand = "set", Path = "/region", Procedure = "resolve" };
+
+        // --path and --procedure are mutually exclusive regardless of --mode, so this must
+        // fail fast during PreValidateSet without any network round-trip.
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "conflict set --path /region --procedure resolve", CancellationToken.None));
+        Assert.Equal(MessageService.GetString("command-conflict-error-path_and_procedure"), ex.Message);
+    }
+
+    [Fact]
     public async Task Set_LastWriterWinsWithProcedure_ThrowsCommandException()
     {
         using var shell = ShellInterpreter.CreateInstance();

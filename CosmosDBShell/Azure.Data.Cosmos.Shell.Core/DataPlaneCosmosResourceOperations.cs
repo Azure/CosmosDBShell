@@ -250,12 +250,12 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         return new ContainerAnalyticalTtlView(props.AnalyticalStoreTimeToLiveInSeconds);
     }
 
-    public async Task<ContainerAnalyticalTtlView> ReplaceAnalyticalTimeToLiveAsync(string databaseName, string containerName, long? analyticalTimeToLive, CancellationToken token)
+    public async Task<ContainerAnalyticalTtlView> ReplaceAnalyticalTimeToLiveAsync(string databaseName, string containerName, int? analyticalTimeToLive, CancellationToken token)
     {
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
         var current = await container.ReadContainerAsync(cancellationToken: token);
         var props = GetContainerPropertiesOrThrow(current);
-        props.AnalyticalStoreTimeToLiveInSeconds = analyticalTimeToLive is { } seconds ? checked((int)seconds) : null;
+        props.AnalyticalStoreTimeToLiveInSeconds = analyticalTimeToLive;
         var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
         var updated = GetContainerPropertiesOrThrow(replaced);
         return new ContainerAnalyticalTtlView(updated.AnalyticalStoreTimeToLiveInSeconds);

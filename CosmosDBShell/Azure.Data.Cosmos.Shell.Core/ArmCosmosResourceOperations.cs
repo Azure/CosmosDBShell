@@ -210,7 +210,7 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
         return new ContainerAnalyticalTtlView(resource.Data.Resource.AnalyticalStorageTtl);
     }
 
-    public async Task<ContainerAnalyticalTtlView> ReplaceAnalyticalTimeToLiveAsync(string databaseName, string containerName, long? analyticalTimeToLive, CancellationToken token)
+    public async Task<ContainerAnalyticalTtlView> ReplaceAnalyticalTimeToLiveAsync(string databaseName, string containerName, int? analyticalTimeToLive, CancellationToken token)
     {
         var resource = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
         var data = resource.Data.Resource;

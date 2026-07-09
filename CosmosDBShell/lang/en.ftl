@@ -358,6 +358,7 @@ command-conflict-error-invalid_mode = Invalid value for --mode. Use lastWriterWi
 command-conflict-error-missing_procedure = Custom conflict resolution requires a stored procedure. Provide --procedure <name>.
 command-conflict-error-path_with_custom = --path cannot be used with custom mode. Use --procedure to name the resolving stored procedure.
 command-conflict-error-procedure_with_lww = --procedure cannot be used with lastWriterWins mode. Use --path to name the resolution path.
+command-conflict-error-path_and_procedure = --path and --procedure cannot be combined. Use --path for lastWriterWins or --procedure for custom.
 
 command-throughput-description = Views or changes the provisioned throughput (RU/s) of a database or container via show, set, manual, and autoscale subcommands.
 command-throughput-description-subcommand = The action to perform: show, set, manual, or autoscale.

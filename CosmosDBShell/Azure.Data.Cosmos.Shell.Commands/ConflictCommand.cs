@@ -181,6 +181,11 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
             throw new CommandException("conflict", MessageService.GetString("command-conflict-error-missing_set_args"));
         }
 
+        if (path is not null && procedure is not null)
+        {
+            throw new CommandException("conflict", MessageService.GetString("command-conflict-error-path_and_procedure"));
+        }
+
         if (string.Equals(normalizedMode, "custom", StringComparison.Ordinal) && path is not null)
         {
             throw new CommandException("conflict", MessageService.GetString("command-conflict-error-path_with_custom"));
