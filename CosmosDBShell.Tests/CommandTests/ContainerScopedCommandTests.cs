@@ -97,6 +97,15 @@ public class ContainerScopedCommandTests
         Assert.Equal(MessageService.GetString("command-edit-missing-path"), ex.Message);
     }
 
+    [Fact]
+    public void RmConDryRunLocalizationKey_IsPresent()
+    {
+        var message = MessageService.GetString("command-rmcon-dry-run-plan", new Dictionary<string, object> { { "container", "MyContainer" } });
+
+        Assert.False(string.IsNullOrWhiteSpace(message));
+        Assert.Contains("MyContainer", message);
+    }
+
     private static CosmosClient CreateTestClient()
     {
         var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");

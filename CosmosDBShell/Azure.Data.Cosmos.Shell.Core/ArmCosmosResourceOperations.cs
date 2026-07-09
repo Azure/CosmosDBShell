@@ -188,6 +188,54 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
         return CosmosResourceJson.IndentJson(CosmosArmResourceProvider.WriteArmModel(updated));
     }
 
+    public async Task<ContainerTtlView> GetTimeToLiveAsync(string databaseName, string containerName, CancellationToken token)
+    {
+        var resource = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+        return new ContainerTtlView(resource.Data.Resource.DefaultTtl);
+    }
+
+    public async Task<ContainerTtlView> ReplaceTimeToLiveAsync(string databaseName, string containerName, int? defaultTimeToLive, CancellationToken token)
+    {
+        var resource = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+        var data = resource.Data.Resource;
+        data.DefaultTtl = defaultTimeToLive;
+        var content = new CosmosDBSqlContainerCreateOrUpdateContent(resource.Data.Location, data);
+        var response = await resource.UpdateAsync(WaitUntil.Completed, content, token);
+        return new ContainerTtlView(response.Value.Data.Resource.DefaultTtl);
+    }
+
+    public async Task<ContainerAnalyticalTtlView> GetAnalyticalTimeToLiveAsync(string databaseName, string containerName, CancellationToken token)
+    {
+        var resource = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+        return new ContainerAnalyticalTtlView(resource.Data.Resource.AnalyticalStorageTtl);
+    }
+
+    public async Task<ContainerAnalyticalTtlView> ReplaceAnalyticalTimeToLiveAsync(string databaseName, string containerName, int? analyticalTimeToLive, CancellationToken token)
+    {
+        var resource = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+        var data = resource.Data.Resource;
+        data.AnalyticalStorageTtl = analyticalTimeToLive;
+        var content = new CosmosDBSqlContainerCreateOrUpdateContent(resource.Data.Location, data);
+        var response = await resource.UpdateAsync(WaitUntil.Completed, content, token);
+        return new ContainerAnalyticalTtlView(response.Value.Data.Resource.AnalyticalStorageTtl);
+    }
+
+    public async Task<ConflictResolutionView> GetConflictResolutionPolicyAsync(string databaseName, string containerName, CancellationToken token)
+    {
+        var resource = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+        return ToConflictResolutionView(resource.Data.Resource.ConflictResolutionPolicy);
+    }
+
+    public async Task<ConflictResolutionView> ReplaceConflictResolutionPolicyAsync(string databaseName, string containerName, ConflictResolutionUpdate update, CancellationToken token)
+    {
+        var resource = await CosmosArmResourceProvider.GetContainerAsync(context, databaseName, containerName, token);
+        var data = resource.Data.Resource;
+        data.ConflictResolutionPolicy = BuildConflictResolutionPolicy(update);
+        var content = new CosmosDBSqlContainerCreateOrUpdateContent(resource.Data.Location, data);
+        var response = await resource.UpdateAsync(WaitUntil.Completed, content, token);
+        return ToConflictResolutionView(response.Value.Data.Resource.ConflictResolutionPolicy);
+    }
+
     public async Task<ThroughputView> GetThroughputAsync(string databaseName, string? containerName, CancellationToken token)
     {
         bool isContainer = !string.IsNullOrEmpty(containerName);
@@ -279,6 +327,40 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
     }
 
     private static bool IsAutoscale(ThroughputSettingsResourceInfo info) => info.AutoscaleSettings?.MaxThroughput != null;
+
+    private static ConflictResolutionView ToConflictResolutionView(ConflictResolutionPolicy? policy)
+    {
+        if (policy is null)
+        {
+            return new ConflictResolutionView(ConflictResolutionMode.LastWriterWins.ToString(), "/_ts", null);
+        }
+
+        bool isCustom = policy.Mode == ConflictResolutionMode.Custom;
+        return new ConflictResolutionView(
+            (policy.Mode ?? ConflictResolutionMode.LastWriterWins).ToString(),
+            isCustom ? null : (NullIfEmpty(policy.ConflictResolutionPath) ?? "/_ts"),
+            isCustom ? NullIfEmpty(policy.ConflictResolutionProcedure) : null);
+    }
+
+    private static ConflictResolutionPolicy BuildConflictResolutionPolicy(ConflictResolutionUpdate update)
+    {
+        if (string.Equals(update.Mode, "custom", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ConflictResolutionPolicy
+            {
+                Mode = ConflictResolutionMode.Custom,
+                ConflictResolutionProcedure = update.ResolutionProcedure ?? string.Empty,
+            };
+        }
+
+        return new ConflictResolutionPolicy
+        {
+            Mode = ConflictResolutionMode.LastWriterWins,
+            ConflictResolutionPath = update.ResolutionPath ?? string.Empty,
+        };
+    }
+
+    private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     private static ThroughputView BuildThroughputView(string scope, string resourceName, ThroughputSettingsResourceInfo info)
     {

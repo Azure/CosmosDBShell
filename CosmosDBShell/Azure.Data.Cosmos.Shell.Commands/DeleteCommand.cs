@@ -12,6 +12,7 @@ using global::Azure.Data.Cosmos.Shell.Core;
 [CosmosExample("delete item test-*", Description = "Delete items matching the pattern")]
 [CosmosExample("delete container OldContainer", Description = "Delete a container")]
 [CosmosExample("delete database TestDB", Description = "Delete a database")]
+[CosmosExample("delete item test-* --dry-run", Description = "Preview a deletion without applying it")]
 [McpAnnotation(Restricted = true, Destructive = true)]
 internal class DeleteCommand : CosmosCommand
 {
@@ -27,6 +28,9 @@ internal class DeleteCommand : CosmosCommand
     [CosmosOption("container", "con")]
     public string? Container { get; init; }
 
+    [CosmosOption("dry-run")]
+    public bool? DryRun { get; init; }
+
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(shell);
@@ -38,6 +42,7 @@ internal class DeleteCommand : CosmosCommand
                 Pattern = this.Pattern,
                 Database = this.Database,
                 Container = this.Container,
+                DryRun = this.DryRun,
             };
             await rmCommand.ExecuteAsync(shell, commandState, commandText, token);
         }
@@ -48,6 +53,7 @@ internal class DeleteCommand : CosmosCommand
                 {
                     Name = this.Pattern,
                     Database = this.Database,
+                    DryRun = this.DryRun,
                 },
                 shell,
                 token);
@@ -58,6 +64,7 @@ internal class DeleteCommand : CosmosCommand
                 new RmDbCommand()
                 {
                     Name = this.Pattern,
+                    DryRun = this.DryRun,
                 },
                 shell,
                 token);

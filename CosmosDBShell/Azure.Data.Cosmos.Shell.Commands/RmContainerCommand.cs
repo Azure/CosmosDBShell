@@ -14,6 +14,7 @@ using Spectre.Console;
 [CosmosExample("rmcon OldContainer", Description = "Delete container with confirmation prompt")]
 [CosmosExample("rmcon TempData true", Description = "Delete container without confirmation")]
 [CosmosExample("rmcon TestContainer --database=TestDB", Description = "Delete container from specific database")]
+[CosmosExample("rmcon OldContainer --dry-run", Description = "Preview the deletion without deleting the container")]
 [McpAnnotation(Title = "Remove Container", Restricted = true, Destructive = true)]
 internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpreter>
 {
@@ -25,6 +26,9 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
 
     [CosmosOption("database", "db")]
     public string? Database { get; init; }
+
+    [CosmosOption("dry-run")]
+    public bool? DryRun { get; init; }
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
@@ -81,11 +85,17 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
 
             if (containerName == this.Name)
             {
+                if (this.DryRun == true)
+                {
+                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-dry-run-plan", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } }));
+                    return 0;
+                }
+
                 if (this.Force == true || ShellInterpreter.Confirm("command-rmcon-confirm_container_deletion"))
                 {
                     await CosmosResourceFacade.DeleteContainerAsync(state, databaseName, containerName, token);
                     CosmosCompleteCommand.ClearContainers();
-                    ShellInterpreter.MarkupLine(MessageService.GetString("command-rmcon-deleted_container", new Dictionary<string, object> { { "container", containerName } }));
+                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-deleted_container", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } }));
                 }
 
                 return 0;
