@@ -106,12 +106,12 @@ internal class Program
                 }
                 else
                 {
-foreach (var error in parseResult.Errors)
-{
-    ShellInterpreter.WriteLine(error.Message);
-}
+                    foreach (var error in parseResult.Errors)
+                    {
+                        ShellInterpreter.WriteLine(error.Message);
+                    }
 
-ShellInterpreter.WriteResult(BuildHelpText());
+                    ShellInterpreter.WriteResult(BuildHelpText());
                 }
 
                 Environment.ExitCode = 2;
