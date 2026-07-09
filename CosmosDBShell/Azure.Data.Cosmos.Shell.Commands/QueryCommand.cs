@@ -291,10 +291,7 @@ internal class QueryCommand : CosmosCommand
         }
         else if (returnState.OutputFormat == Azure.Data.Cosmos.Shell.Core.OutputFormat.JSon)
         {
-            returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
-            {
-                items = itemsList,
-            }));
+            returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(itemsList));
         }
         else
         {
