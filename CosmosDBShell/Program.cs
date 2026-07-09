@@ -132,13 +132,17 @@ internal class Program
                 Quiet = parseResult.GetValueForOption(optionMap.Quiet),
             };
 
-            var machineMode = o.Quiet || (!string.IsNullOrEmpty(o.OutputFormat) && !string.Equals(o.OutputFormat, "table", StringComparison.OrdinalIgnoreCase) && !string.Equals(o.OutputFormat, "tbl", StringComparison.OrdinalIgnoreCase));
-            AnsiConsole.Profile.Capabilities.ColorSystem = machineMode ? ColorSystem.NoColors : o.ColorSystem switch
-            {
-                1 => ColorSystem.Standard,
-                2 => ColorSystem.TrueColor,
-                _ => ColorSystem.NoColors,
-            };
+var fmt = o.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+var machineMode = o.Quiet
+    || (!string.IsNullOrEmpty(fmt)
+        && !string.Equals(fmt, "table", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(fmt, "tbl", StringComparison.OrdinalIgnoreCase));
+AnsiConsole.Profile.Capabilities.ColorSystem = machineMode ? ColorSystem.NoColors : o.ColorSystem switch
+{
+    1 => ColorSystem.Standard,
+    2 => ColorSystem.TrueColor,
+    _ => ColorSystem.NoColors,
+};
 
             if (machineMode)
             {
