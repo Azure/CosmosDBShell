@@ -13,7 +13,9 @@ internal class ParserErrorCommandState : CommandState
         this.Errors = errors;
     }
 
-    public ErrorList Errors { get; }
+    public ErrorList Errors { get; init; }
 
     public override bool IsError => true;
+
+    public override int ExitCode => 2;
 }

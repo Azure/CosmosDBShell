@@ -75,12 +75,14 @@ internal class Program
                 }
 
                 ShellInterpreter.WriteLine(BuildHelpText());
-                Environment.ExitCode = 1;
+                Environment.ExitCode = 2;
                 return;
             }
 
             var o = new CosmosShellOptions
             {
+                Output = parseResult.GetValueForOption(optionMap.Output),
+                Quiet = parseResult.GetValueForOption(optionMap.Quiet),
                 ColorSystem = parseResult.GetValueForOption(optionMap.ColorSystem),
                 ExecuteAndQuit = parseResult.GetValueForOption(optionMap.ExecuteAndQuit),
                 ExecuteAndContinue = parseResult.GetValueForOption(optionMap.ExecuteAndContinue),
@@ -163,6 +165,11 @@ internal class Program
             var executeAndContinueCommand = string.IsNullOrWhiteSpace(o.ExecuteAndContinue) ? null : o.ExecuteAndContinue;
             var explicitCommand = executeAndContinueCommand ?? executeAndQuitCommand;
 
+            if (string.IsNullOrWhiteSpace(o.Output) && (!string.IsNullOrWhiteSpace(executeAndQuitCommand) || Console.IsInputRedirected))
+            {
+                o.Output = "ndjson";
+            }
+
             if (o.ClearHistory)
             {
                 if (File.Exists(ShellInterpreter.Instance.HistoryFile))
@@ -174,7 +181,14 @@ internal class Program
                 return;
             }
 
-            AnsiConsole.Profile.Capabilities.ColorSystem = o.ColorSystem switch
+            var colorSystemVal = o.ColorSystem;
+            if (o.Quiet || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
+            {
+                colorSystemVal = 0; // Force NoColors in machine mode
+                o.Quiet = true; // Suppress informational messages to keep output clean
+            }
+
+            AnsiConsole.Profile.Capabilities.ColorSystem = colorSystemVal switch
             {
                 1 => ColorSystem.Standard,
                 2 => ColorSystem.TrueColor,
@@ -223,14 +237,29 @@ internal class Program
                 }
                 catch (Exception ex)
                 {
-                    Environment.ExitCode = 1;
+                    var errorState = new ErrorCommandState(ex);
+                    Environment.ExitCode = errorState.ExitCode;
+
                     if (ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id, out var permission))
                     {
                         ConnectCommand.AskForRBacPermissions(id ?? string.Empty, permission ?? string.Empty);
                         return;
                     }
 
-                    ShellInterpreter.WriteLine(ex.Message);
+                    if (o.Output is "json" or "ndjson")
+                    {
+                        var errObj = new
+                        {
+                            status = "error",
+                            error = ex.Message,
+                        };
+                        Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(errObj));
+                    }
+                    else
+                    {
+                        ShellInterpreter.WriteLine(ex.Message);
+                    }
+
                     return;
                 }
             }
@@ -287,7 +316,7 @@ internal class Program
                     var state = await ShellInterpreter.Instance.ExecuteCommandAsync(script, default);
                     if (state.IsError)
                     {
-                        Environment.ExitCode = 1;
+                        Environment.ExitCode = state.ExitCode;
                         if (executeAndContinueCommand is null)
                         {
                             await StopHostAsync(host, hostTask);
@@ -311,7 +340,7 @@ internal class Program
                 var state = await ShellInterpreter.Instance.ExecuteCommandAsync(explicitCommand, default);
                 if (state.IsError)
                 {
-                    Environment.ExitCode = 1;
+                    Environment.ExitCode = state.ExitCode;
                     if (executeAndContinueCommand is null)
                     {
                         await StopHostAsync(host, hostTask);
@@ -447,6 +476,14 @@ internal class Program
             getDefaultValue: () => 2,
             description: MessageService.GetString("help-ColorSystem"));
 
+        var output = new Option<string?>(
+            aliases: ["--output", "-o"],
+            description: MessageService.GetString("help-OutputFormat")); // Ensure this is defined in en.ftl
+
+        var quiet = new Option<bool>(
+            aliases: ["--quiet", "-q"],
+            description: MessageService.GetString("help-Quiet")); // Ensure this is defined in en.ftl
+
         var executeAndQuit = new Option<string?>("-c", MessageService.GetString("help-ExecuteAndQuit"));
         var executeAndContinue = new Option<string?>("-k", MessageService.GetString("help-ExecuteAndContinue"));
 
@@ -513,6 +550,8 @@ internal class Program
 
         var root = new RootCommand("Cosmos DB Shell")
         {
+            output,
+            quiet,
             colorSystem,
             executeAndQuit,
             executeAndContinue,
@@ -536,6 +575,8 @@ internal class Program
         };
 
         var map = new OptionMap(
+            output,
+            quiet,
             colorSystem,
             executeAndQuit,
             executeAndContinue,
@@ -669,6 +710,8 @@ internal class Program
     }
 
     private sealed record OptionMap(
+        Option<string?> Output,
+        Option<bool> Quiet,
         Option<int> ColorSystem,
         Option<string?> ExecuteAndQuit,
         Option<string?> ExecuteAndContinue,
@@ -731,6 +774,10 @@ internal class Program
 
     public class CosmosShellOptions
     {
+        public string? Output { get; set; }
+
+        public bool Quiet { get; set; }
+
         public int ColorSystem { get; set; } = 2;
 
         public string? ExecuteAndQuit { get; set; }

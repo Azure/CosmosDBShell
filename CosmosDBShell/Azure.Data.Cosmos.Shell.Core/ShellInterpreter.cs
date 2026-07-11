@@ -185,6 +185,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="par">An array of objects to format.</param>
     public static void WriteLine(string message, params object[] par)
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.WriteLine(message, par);
     }
 
@@ -194,6 +199,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="message">The message to write.</param>
     public static void WriteLine(string message)
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.WriteLine(message);
     }
 
@@ -202,6 +212,11 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     public static void WriteLine()
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.WriteLine();
     }
 
@@ -212,6 +227,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="par">An array of objects to format.</param>
     public static void Write(string message, params object[] par)
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.Write(message, par);
     }
 
@@ -221,6 +241,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="message">The message to write.</param>
     public static void Write(string message)
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.Write(message);
     }
 
@@ -1361,7 +1386,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 if (string.IsNullOrEmpty(this.StdOutRedirect))
                 {
-                    WriteLine(output);
+                    Console.Out.WriteLine(output);
                 }
                 else
                 {
@@ -1395,18 +1420,30 @@ public partial class ShellInterpreter : IDisposable
                 return new ErrorCommandState(e);
             }
 
-            var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
-            AnsiConsole.MarkupLine($"{Theme.FormatError(prefix + ":")} {Markup.Escape(e.Message)}");
-            if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
+            if (this.Options?.Output is "json" or "ndjson")
             {
-                AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
+                var errObj = new
+                {
+                    status = "error",
+                    error = e.Message,
+                };
+                Console.Error.WriteLine(JsonSerializer.Serialize(errObj));
             }
-
-            var inner = e.InnerException;
-            while (inner != null)
+            else
             {
-                AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
-                inner = inner.InnerException;
+                var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
+                AnsiConsole.MarkupLine($"{Theme.FormatError(prefix + ":")} {Markup.Escape(e.Message)}");
+                if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
+                {
+                    AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
+                }
+
+                var inner = e.InnerException;
+                while (inner != null)
+                {
+                    AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
+                    inner = inner.InnerException;
+                }
             }
 
             return new ErrorCommandState(e);
@@ -1829,6 +1866,16 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportExecutionError(Exception e, string? sourceText = null)
     {
+        if (this.Options?.Output is "json" or "ndjson")
+        {
+            var errObj = new
+            {
+                status = "error",
+                error = e.Message,
+            };
+            Console.Error.WriteLine(JsonSerializer.Serialize(errObj));
+            return;
+        }
         // The command already emitted a friendly diagnostic; do not print again.
         if (ContainsException<CommandReportedException>(e))
         {
@@ -2059,6 +2106,28 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportParserErrors(ErrorList errors, string commandText)
     {
+        if (this.Options?.Output is "json" or "ndjson" && errors != null && errors.Count > 0)
+        {
+            var errorStrings = new System.Collections.Generic.List<string>();
+            foreach (var err in errors)
+            {
+                if (err != null && err.ErrorLevel == ErrorLevel.Error)
+                {
+                    errorStrings.Add(err.Message ?? "Parser error");
+                }
+            }
+
+            if (errorStrings.Count > 0)
+            {
+                var errObj = new
+                {
+                    status = "error",
+                    error = string.Join("; ", errorStrings),
+                };
+                Console.Error.WriteLine(JsonSerializer.Serialize(errObj));
+                return;
+            }
+        }
         if (errors == null || errors.Count == 0)
         {
             return;
