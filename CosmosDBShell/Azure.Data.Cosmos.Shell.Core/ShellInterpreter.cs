@@ -1386,7 +1386,14 @@ public partial class ShellInterpreter : IDisposable
             {
                 if (string.IsNullOrEmpty(this.StdOutRedirect))
                 {
-                    Console.Out.WriteLine(output);
+                    if (output.EndsWith(Environment.NewLine))
+                    {
+                        Console.Out.Write(output);
+                    }
+                    else
+                    {
+                        Console.Out.WriteLine(output);
+                    }
                 }
                 else
                 {
@@ -1866,7 +1873,7 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportExecutionError(Exception e, string? sourceText = null)
     {
-        if (this.Options?.Output is "json" or "ndjson")
+        if (string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
         {
             var errObj = new
             {
@@ -2106,7 +2113,9 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportParserErrors(ErrorList errors, string commandText)
     {
-        if (this.Options?.Output is "json" or "ndjson" && errors != null && errors.Count > 0)
+        if ((string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase)
+             || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
+            && errors != null && errors.Count > 0)
         {
             var errorStrings = new System.Collections.Generic.List<string>();
             foreach (var err in errors)

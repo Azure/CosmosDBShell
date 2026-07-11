@@ -1,4 +1,4 @@
-﻿# Azure Cosmos DB Shell
+# Azure Cosmos DB Shell
 
 A terminal-native shell for Azure Cosmos DB — navigate databases like a filesystem, query interactively, and script with variables, loops, and functions. Supports Entra ID, MCP for AI tool integration, and works with the local emulator.
 
@@ -159,6 +159,8 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 
 | Option | Description |
 | ------ | ----------- |
+| `--output <format>` | The output format to use (`json`, `ndjson`, `table`, `csv`). Alias: `-o` |
+| `--quiet` | Suppress standard informational output. Alias: `-q` |
 | `-c <cmd>` | Execute and exit |
 | `-k <cmd>` | Execute and stay |
 | `--connect <str>` | Connection string or endpoint URL |
@@ -189,6 +191,19 @@ cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c seed.csh mydb my
 # Run a script from piped command text.
 echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
 ```
+
+## Deterministic Exit Codes
+
+When running scripts or automation, Cosmos DB Shell maps execution failures to a set of stable exit codes (accessible via `$?`, `%ERRORLEVEL%`, or `$LASTEXITCODE`):
+
+- **`0`**: Success
+- **`1`**: Generic / Unhandled Execution Error
+- **`2`**: Bad Arguments or Parser Errors
+- **`3`**: Authentication or Connection Failure
+- **`4`**: Not Found (e.g. Document or Resource not found)
+- **`5`**: Throttled (RU budget exceeded)
+
+> **Machine Mode**: Using `--output json`, `--output ndjson`, or `--quiet` implicitly disables ANSI colors, suppresses connection/informational banners, and redirects early parser/connection exceptions to `STDERR` as structured JSON, guaranteeing that `STDOUT` can be safely piped to downstream JSON parsers.
 
 ## Theming
 

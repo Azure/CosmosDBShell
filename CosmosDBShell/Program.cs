@@ -69,12 +69,31 @@ internal class Program
 
             if (parseResult.Errors.Count > 0)
             {
-                foreach (var error in parseResult.Errors)
+                var outputMode = parseResult.GetValueForOption(optionMap.Output);
+                var isMachineMode = string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase) || 
+                                    string.Equals(outputMode, "ndjson", StringComparison.OrdinalIgnoreCase) ||
+                                    parseResult.GetValueForOption(optionMap.Quiet);
+
+                if (isMachineMode)
                 {
-                    ShellInterpreter.WriteLine(error.Message);
+                    var errorStrings = parseResult.Errors.Select(e => e.Message).ToList();
+                    var errObj = new
+                    {
+                        status = "error",
+                        error = string.Join("; ", errorStrings)
+                    };
+                    Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(errObj));
+                }
+                else
+                {
+                    foreach (var error in parseResult.Errors)
+                    {
+                        ShellInterpreter.WriteLine(error.Message);
+                    }
+
+                    ShellInterpreter.WriteLine(BuildHelpText());
                 }
 
-                ShellInterpreter.WriteLine(BuildHelpText());
                 Environment.ExitCode = 2;
                 return;
             }
@@ -170,6 +189,11 @@ internal class Program
                 o.Output = "ndjson";
             }
 
+            if (!string.IsNullOrWhiteSpace(o.Output))
+            {
+                Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", o.Output);
+            }
+
             if (o.ClearHistory)
             {
                 if (File.Exists(ShellInterpreter.Instance.HistoryFile))
@@ -240,13 +264,16 @@ internal class Program
                     var errorState = new ErrorCommandState(ex);
                     Environment.ExitCode = errorState.ExitCode;
 
-                    if (ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id, out var permission))
+                    if (!string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase)
+                        && !o.Quiet
+                        && ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id, out var permission))
                     {
                         ConnectCommand.AskForRBacPermissions(id ?? string.Empty, permission ?? string.Empty);
                         return;
                     }
 
-                    if (o.Output is "json" or "ndjson")
+                    if (string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
                     {
                         var errObj = new
                         {

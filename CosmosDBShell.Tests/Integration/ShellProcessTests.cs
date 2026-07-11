@@ -166,6 +166,33 @@ public class ShellProcessTests
         Assert.Contains("Current Location", result.StdOut, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task BadArguments_WithOutputJson_ReturnsExitCode2_AndJsonOnStdErr()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--output", "json", "-c", "not a real command"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
+        Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not recognized as an internal or external command", result.StdErr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ConnectionFailure_WithOutputJson_ReturnsExitCode1_AndJsonOnStdErr()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--connect", "AccountEndpoint=https://localhost:8081/;AccountKey=dummy", "--output", "json", "-c", "list databases"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
+        Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static async Task<ShellProcessResult> RunShellAsync(
         string stdinScript,
         CancellationToken cancellationToken)

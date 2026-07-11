@@ -32,6 +32,22 @@ public class OutputFormatTests
     }
 
     [Fact]
+    void TestNdjson()
+    {
+        var input = "[{ \"id\": 12 }, { \"id\": 13 }]";
+        var element = JsonSerializer.Deserialize<JsonElement>(input);
+
+        var commandState = new CommandState();
+        commandState.Result = new ShellJson(element);
+        commandState.OutputFormat = OutputFormat.Ndjson;
+
+        var output = commandState.GenerateOutputText();
+        var expected = "{\"id\":12}" + Environment.NewLine + "{\"id\":13}" + Environment.NewLine;
+
+        Assert.Equal(expected, output);
+    }
+
+    [Fact]
     void TestCSV()
     {
         var input = "{ \"id\": 12, \"Hello\": \"World\", \"Answer\": 53 }";
