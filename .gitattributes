@@ -4,6 +4,17 @@
 * text=auto
 
 ###############################################################################
+# Reduce merge conflicts in append-heavy changelog files.
+#
+# The "union" merge driver keeps lines from BOTH sides of a merge instead of
+# raising a conflict, which is ideal for the Unreleased list in CHANGELOG.md
+# where concurrent PRs each append a new bullet. Review the merged result:
+# union does not de-duplicate or reorder, so entries from both branches are
+# simply kept.
+###############################################################################
+CHANGELOG.md merge=union
+
+###############################################################################
 # Set default behavior for command prompt diff.
 #
 # This is need for earlier builds of msysgit that does not have it on by

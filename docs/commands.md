@@ -299,11 +299,24 @@ patch set order-42 customer-7 /name "Ada Lovelace" --etag="<etag-from-read>"
 Remove items from container.
 
 ```text
-Usage: rm pattern
+Usage: rm pattern [options]
 
 Arguments:
     pattern     Pattern for items to remove
+
+Options:
+    --database, --db
+                Database containing the items to remove
+    --container, --con
+                Container containing the items to remove
+    --key, -k   Property name to match the pattern against (defaults to partition key)
+    --dry-run   Preview how many items would be deleted without deleting them
 ```
+
+Examples:
+
+- `rm test-*` deletes every item whose partition key starts with `test-`.
+- `rm test-* --dry-run` reports how many items match without deleting anything.
 
 ### export
 
@@ -483,10 +496,14 @@ Examples:
 Remove database.
 
 ```text
-Usage: rmdb name
+Usage: rmdb name [force] [options]
 
 Arguments:
     name        The database to remove
+    [force]     Skip the confirmation prompt when `true` (Optional)
+
+Options:
+    --dry-run   Preview the deletion without deleting the database
 ```
 
 ### rmcon
@@ -494,10 +511,16 @@ Arguments:
 Remove container.
 
 ```text
-Usage: rmcon name
+Usage: rmcon name [force] [options]
 
 Arguments:
     name        The container to remove
+    [force]     Skip the confirmation prompt when `true` (Optional)
+
+Options:
+    --database, --db
+                Database containing the container to remove
+    --dry-run   Preview the deletion without deleting the container
 ```
 
 ### create
@@ -522,12 +545,21 @@ Options:
 Delete item, container, or database.
 
 ```text
-Usage: delete item pattern
+Usage: delete item pattern [options]
 
 Arguments:
     item        Object type: item, container, or database
     pattern     Items/container/database to delete
+
+Options:
+    --database, --db
+                Database to target for item/container deletes (forwarded to rm/rmcon)
+    --container, --con
+                Container to target for item deletes (forwarded to rm)
+    --dry-run   Preview the deletion without applying it
 ```
+
+The `--dry-run` flag is forwarded to the underlying `rm`, `rmcon`, or `rmdb` operation, so `delete item test-* --dry-run` previews the affected items without deleting them.
 
 ### index
 
@@ -590,6 +622,7 @@ Options:
                 Override container name (Optional)
     -yes, -y, -force
                 Skip the confirmation prompt before applying a change (Optional)
+    -dry-run    Preview the change without applying it (Optional)
 ```
 
 By default the command targets the current scope: the container when in a container, otherwise the database. Use `--database` and `--container` to target a specific resource.
@@ -611,6 +644,8 @@ Switching between `manual` and `autoscale` is a mode migration. Over an Azure AD
 
 Write operations (`set`, `manual`, `autoscale`) ask for confirmation before applying, because throughput changes can affect your bill. Pass `--yes` (`-y`/`--force`) to skip the prompt. The prompt is also skipped automatically in non-interactive contexts (MCP, script execution, or piped input).
 
+Pass `--dry-run` with a write subcommand to preview the change without applying it. The command reads the current throughput and reports the current vs. planned mode and RU/s as JSON (and a table interactively); no write is performed and no confirmation is required.
+
 #### Examples
 
 ```bash
@@ -619,7 +654,109 @@ throughput set 4000
 throughput manual 4000
 throughput autoscale 10000
 throughput set 4000 --yes
+throughput autoscale 10000 --dry-run
 throughput show --database MyDatabase --container MyContainer
+```
+
+### ttl
+
+View or change the time-to-live (TTL) of a container through subcommands.
+
+```text
+Usage: ttl subcommand [seconds] [-analytical] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  show, set, on, or off
+    [seconds]   Time-to-live in seconds for the set subcommand (must be positive)
+
+Options:
+    -analytical, -a
+                Target the analytical store TTL instead of the default item TTL (Optional)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+The command operates on a container. By default it targets the current container. Use `--database` and `--container` to target a specific container.
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`show`|Reads and returns the current TTL configuration as JSON. `status` is `disabled` (items never expire), `no-default` (TTL is on but items expire only when they carry their own `ttl` property), or `enabled` (items expire after `defaultTimeToLiveSeconds`).|
+|`set <seconds>`|Enables TTL with a positive default expiration in seconds.|
+|`on`|Enables TTL with no container default (equivalent to a default TTL of `-1`); only items with their own `ttl` property expire.|
+|`off`|Disables TTL so items never expire.|
+
+The seconds value is validated before the request is sent: `set` requires a positive number, and `show`, `on`, and `off` reject a seconds argument.
+
+#### Analytical store TTL
+
+Pass `--analytical` (or `-a`) to operate on the container's analytical store TTL instead of the default item TTL. The analytical store must be supported by the account.
+
+|Subcommand|Behavior with `--analytical`|
+|-|-|
+|`show`|Returns the analytical status (`disabled` or `enabled`) and `analyticalTimeToLiveSeconds`.|
+|`set <seconds>`|Retains analytical data for a positive number of seconds.|
+|`on`|Enables the analytical store with indefinite retention (a TTL of `-1`).|
+|`off`|Disables the analytical store.|
+
+#### Examples
+
+```bash
+ttl show
+ttl set 86400
+ttl on
+ttl off
+ttl show --database MyDatabase --container MyContainer
+ttl show --analytical
+ttl set 2592000 --analytical
+ttl on --analytical
+ttl off --analytical
+```
+
+### conflict
+
+View or change the conflict resolution policy of a container through subcommands.
+
+```text
+Usage: conflict subcommand [-mode <ARG>] [-path <ARG>] [-procedure <ARG>] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  show or set
+
+Options:
+    -mode, -m   Conflict resolution mode: lastWriterWins or custom (Optional)
+    -path, -p   Resolution path for lastWriterWins mode, for example /_ts (Optional)
+    -procedure, -proc, -sproc
+                Stored procedure id that resolves conflicts for custom mode (Optional)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+The command operates on a container. By default it targets the current container. Use `--database` and `--container` to target a specific container.
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`show`|Reads and returns the current policy as JSON, including the mode (`LastWriterWins` or `Custom`), the resolution path (last-writer-wins), and the resolution stored procedure (custom).|
+|`set`|Updates the policy. Pass `--mode` to choose `lastWriterWins` or `custom`. For last-writer-wins pass `--path` to name the property that decides the winner (defaults to `/_ts`). For custom pass `--procedure` to name the stored procedure that resolves conflicts. Options that are not supplied keep their current value.|
+
+`--path` applies only to last-writer-wins mode and `--procedure` applies only to custom mode; combining them with the wrong mode is rejected before the request is sent.
+
+Conflict resolution policies only take effect on accounts configured for multi-region writes.
+
+#### Examples
+
+```bash
+conflict show
+conflict set --mode lastWriterWins --path /_ts
+conflict set --mode custom --procedure resolveConflicts
+conflict show --database MyDatabase --container MyContainer
 ```
 
 ### sproc

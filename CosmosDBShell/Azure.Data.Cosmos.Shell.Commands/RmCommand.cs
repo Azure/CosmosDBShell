@@ -17,6 +17,7 @@ using Spectre.Console;
 [CosmosExample("rm *-temp", Description = "Delete all items where partition key matches pattern ending with '-temp'")]
 [CosmosExample("rm old-item-* --key=id", Description = "Delete items where 'id' field matches pattern")]
 [CosmosExample("rm test-* --database=MyDB --container=Items", Description = "Delete items from specific database and container")]
+[CosmosExample("rm test-* --dry-run", Description = "Preview how many items would be deleted without deleting them")]
 [McpAnnotation(Title = "Remove Items", Restricted = true, Destructive = true)]
 internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 {
@@ -34,6 +35,9 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
     [CosmosOption("key", "k")]
     public string? Key { get; init; }
+
+    [CosmosOption("dry-run")]
+    public bool? DryRun { get; init; }
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
@@ -115,6 +119,27 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
         var totalCount = 0;
         double totalCharge = 0;
+        bool dryRun = this.DryRun == true;
+
+        // In dry-run mode, count what would be deleted without issuing any delete.
+        async Task<(bool Deleted, double RequestCharge)> TryDeleteAsync(string id, PartitionKey partitionKey)
+        {
+            if (dryRun)
+            {
+                return (true, 0);
+            }
+
+            try
+            {
+                var deleteResponse = await container.DeleteItemAsync<object>(id, partitionKey, cancellationToken: token);
+                return (true, deleteResponse.RequestCharge);
+            }
+            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                // Item was already deleted, skip
+                return (false, 0);
+            }
+        }
 
         // Process pipe input if available
         if (hasPipeInput && commandState.Result is ShellJson jsonResult)
@@ -159,15 +184,11 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
                         if (id != null && shouldDelete)
                         {
-                            try
+                            var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
+                            if (deleteResult.Deleted)
                             {
-                                var deleteResponse = await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElements), cancellationToken: token);
-                                totalCharge += deleteResponse.RequestCharge;
+                                totalCharge += deleteResult.RequestCharge;
                                 totalCount++;
-                            }
-                            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-                            {
-                                // Item was already deleted, skip
                             }
                         }
                     }
@@ -196,15 +217,11 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         var id = idElement.GetString();
                         if (id != null)
                         {
-                            try
+                            var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
+                            if (deleteResult.Deleted)
                             {
-                                var deleteResponse = await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElements), cancellationToken: token);
-                                totalCharge += deleteResponse.RequestCharge;
+                                totalCharge += deleteResult.RequestCharge;
                                 totalCount++;
-                            }
-                            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-                            {
-                                // Item was already deleted, skip
                             }
                         }
                     }
@@ -260,15 +277,11 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
                     if (shouldDelete)
                     {
-                        try
+                        var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
+                        if (deleteResult.Deleted)
                         {
-                            var deleteResponse = await container.DeleteItemAsync<object>(id, CreatePartitionKey(pkElements), cancellationToken: token);
-                            totalCharge += deleteResponse.RequestCharge;
+                            totalCharge += deleteResult.RequestCharge;
                             totalCount++;
-                        }
-                        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-                        {
-                            // Item was already deleted, skip
                         }
                     }
                 }
@@ -279,7 +292,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         {
             AnsiConsole.MarkupLine(
                 MessageService.GetString(
-                    "command-rm-deleted_items",
+                    dryRun ? "command-rm-dry-run-plan" : "command-rm-deleted_items",
                     new Dictionary<string, object> { { "count", totalCount } }));
         }
         else

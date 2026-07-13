@@ -64,6 +64,37 @@ public class RmCommandTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_DryRun_NoPattern_ThrowsCommandException()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var command = new RmCommand { Pattern = null, DryRun = true };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm --dry-run", TestContext.Current.CancellationToken));
+        Assert.Equal(MessageService.GetString("command-rm-error-no_filter"), ex.Message);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DryRun_Disconnected_ThrowsNotConnected()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new RmCommand { Pattern = "test-*", DryRun = true };
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm test-* --dry-run", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public void RmDryRunLocalizationKey_IsPresent()
+    {
+        var message = MessageService.GetString("command-rm-dry-run-plan", new Dictionary<string, object> { { "count", 3 } });
+
+        Assert.False(string.IsNullOrWhiteSpace(message));
+        Assert.DoesNotContain("command-rm-dry-run-plan", message);
+    }
+
+    [Fact]
     public void TryGetPartitionKeyElements_ReturnsAllHierarchicalValues()
     {
         using var document = JsonDocument.Parse("""

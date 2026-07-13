@@ -225,6 +225,60 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         return JsonConvert.SerializeObject(replaced.Resource?.IndexingPolicy ?? policy, Formatting.Indented);
     }
 
+    public async Task<ContainerTtlView> GetTimeToLiveAsync(string databaseName, string containerName, CancellationToken token)
+    {
+        var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(response);
+        return new ContainerTtlView(props.DefaultTimeToLive);
+    }
+
+    public async Task<ContainerTtlView> ReplaceTimeToLiveAsync(string databaseName, string containerName, int? defaultTimeToLive, CancellationToken token)
+    {
+        var container = client.GetDatabase(databaseName).GetContainer(containerName);
+        var current = await container.ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(current);
+        props.DefaultTimeToLive = defaultTimeToLive;
+        var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
+        var updated = GetContainerPropertiesOrThrow(replaced);
+        return new ContainerTtlView(updated.DefaultTimeToLive);
+    }
+
+    public async Task<ContainerAnalyticalTtlView> GetAnalyticalTimeToLiveAsync(string databaseName, string containerName, CancellationToken token)
+    {
+        var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(response);
+        return new ContainerAnalyticalTtlView(props.AnalyticalStoreTimeToLiveInSeconds);
+    }
+
+    public async Task<ContainerAnalyticalTtlView> ReplaceAnalyticalTimeToLiveAsync(string databaseName, string containerName, int? analyticalTimeToLive, CancellationToken token)
+    {
+        var container = client.GetDatabase(databaseName).GetContainer(containerName);
+        var current = await container.ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(current);
+        props.AnalyticalStoreTimeToLiveInSeconds = analyticalTimeToLive;
+        var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
+        var updated = GetContainerPropertiesOrThrow(replaced);
+        return new ContainerAnalyticalTtlView(updated.AnalyticalStoreTimeToLiveInSeconds);
+    }
+
+    public async Task<ConflictResolutionView> GetConflictResolutionPolicyAsync(string databaseName, string containerName, CancellationToken token)
+    {
+        var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(response);
+        return ToConflictResolutionView(props.ConflictResolutionPolicy);
+    }
+
+    public async Task<ConflictResolutionView> ReplaceConflictResolutionPolicyAsync(string databaseName, string containerName, ConflictResolutionUpdate update, CancellationToken token)
+    {
+        var container = client.GetDatabase(databaseName).GetContainer(containerName);
+        var current = await container.ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(current);
+        props.ConflictResolutionPolicy = BuildConflictResolutionPolicy(update);
+        var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
+        var updated = GetContainerPropertiesOrThrow(replaced);
+        return ToConflictResolutionView(updated.ConflictResolutionPolicy);
+    }
+
     public async Task<ThroughputView> GetThroughputAsync(string databaseName, string? containerName, CancellationToken token)
     {
         bool isContainer = !string.IsNullOrEmpty(containerName);
@@ -319,6 +373,40 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
             throw new InvalidIndexingPolicyJsonException(ex);
         }
     }
+
+    private static ConflictResolutionView ToConflictResolutionView(ConflictResolutionPolicy? policy)
+    {
+        if (policy is null)
+        {
+            return new ConflictResolutionView(ConflictResolutionMode.LastWriterWins.ToString(), "/_ts", null);
+        }
+
+        bool isCustom = policy.Mode == ConflictResolutionMode.Custom;
+        return new ConflictResolutionView(
+            policy.Mode.ToString(),
+            isCustom ? null : (NullIfEmpty(policy.ResolutionPath) ?? "/_ts"),
+            isCustom ? NullIfEmpty(policy.ResolutionProcedure) : null);
+    }
+
+    private static ConflictResolutionPolicy BuildConflictResolutionPolicy(ConflictResolutionUpdate update)
+    {
+        if (string.Equals(update.Mode, "custom", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ConflictResolutionPolicy
+            {
+                Mode = ConflictResolutionMode.Custom,
+                ResolutionProcedure = update.ResolutionProcedure ?? string.Empty,
+            };
+        }
+
+        return new ConflictResolutionPolicy
+        {
+            Mode = ConflictResolutionMode.LastWriterWins,
+            ResolutionPath = update.ResolutionPath ?? string.Empty,
+        };
+    }
+
+    private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     private static ThroughputProperties CreateThroughputProperties(string? scale, int? maxRu)
     {
