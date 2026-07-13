@@ -82,6 +82,36 @@ internal static class CosmosResourceFacade
         return For(state).ReplaceIndexingPolicyAsync(databaseName, containerName, indexPolicyJson, token);
     }
 
+    public static Task<ContainerTtlView> GetTimeToLiveAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    {
+        return For(state).GetTimeToLiveAsync(databaseName, containerName, token);
+    }
+
+    public static Task<ContainerTtlView> ReplaceTimeToLiveAsync(ConnectedState state, string databaseName, string containerName, int? defaultTimeToLive, CancellationToken token)
+    {
+        return For(state).ReplaceTimeToLiveAsync(databaseName, containerName, defaultTimeToLive, token);
+    }
+
+    public static Task<ContainerAnalyticalTtlView> GetAnalyticalTimeToLiveAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    {
+        return For(state).GetAnalyticalTimeToLiveAsync(databaseName, containerName, token);
+    }
+
+    public static Task<ContainerAnalyticalTtlView> ReplaceAnalyticalTimeToLiveAsync(ConnectedState state, string databaseName, string containerName, int? analyticalTimeToLive, CancellationToken token)
+    {
+        return For(state).ReplaceAnalyticalTimeToLiveAsync(databaseName, containerName, analyticalTimeToLive, token);
+    }
+
+    public static Task<ConflictResolutionView> GetConflictResolutionPolicyAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    {
+        return For(state).GetConflictResolutionPolicyAsync(databaseName, containerName, token);
+    }
+
+    public static Task<ConflictResolutionView> ReplaceConflictResolutionPolicyAsync(ConnectedState state, string databaseName, string containerName, ConflictResolutionUpdate update, CancellationToken token)
+    {
+        return For(state).ReplaceConflictResolutionPolicyAsync(databaseName, containerName, update, token);
+    }
+
     public static Task<ThroughputView> GetThroughputAsync(ConnectedState state, string databaseName, string? containerName, CancellationToken token)
     {
         return For(state).GetThroughputAsync(databaseName, containerName, token);
@@ -90,6 +120,21 @@ internal static class CosmosResourceFacade
     public static Task<ThroughputView> ReplaceThroughputAsync(ConnectedState state, string databaseName, string? containerName, ThroughputUpdate update, CancellationToken token)
     {
         return For(state).ReplaceThroughputAsync(databaseName, containerName, update, token);
+    }
+
+    public static Task<ThroughputBucketsView> GetThroughputBucketsAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    {
+        return For(state).GetThroughputBucketsAsync(databaseName, containerName, token);
+    }
+
+    public static Task<ThroughputBucketsView> SetThroughputBucketAsync(ConnectedState state, string databaseName, string containerName, int bucketId, int maxThroughputPercentage, CancellationToken token)
+    {
+        return For(state).SetThroughputBucketAsync(databaseName, containerName, bucketId, maxThroughputPercentage, token);
+    }
+
+    public static Task<ThroughputBucketsView> ClearThroughputBucketAsync(ConnectedState state, string databaseName, string containerName, int bucketId, CancellationToken token)
+    {
+        return For(state).ClearThroughputBucketAsync(databaseName, containerName, bucketId, token);
     }
 
     private static ICosmosResourceOperations For(ConnectedState state)

@@ -13,6 +13,7 @@ using Spectre.Console;
 [CosmosCommand("rmdb")]
 [CosmosExample("rmdb TestDatabase", Description = "Delete database with confirmation prompt")]
 [CosmosExample("rmdb OldDB true", Description = "Delete database without confirmation")]
+[CosmosExample("rmdb TestDatabase --dry-run", Description = "Preview the deletion without deleting the database")]
 [McpAnnotation(Title = "Remove DataBase", Restricted = true, Destructive = true)]
 internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpreter>
 {
@@ -21,6 +22,9 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
 
     [CosmosParameter("force", IsRequired = false, ParameterType = ParameterType.Database)]
     public bool? Force { get; init; }
+
+    [CosmosOption("dry-run")]
+    public bool? DryRun { get; init; }
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
@@ -75,12 +79,18 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
 
             if (databaseName == this.Name)
             {
+                if (this.DryRun == true)
+                {
+                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-dry-run-plan", new Dictionary<string, object> { { "db", Markup.Escape(databaseName) } }));
+                    return 0;
+                }
+
                 if (this.Force is true || ShellInterpreter.Confirm("command-rmdb-confirm_db_deletion"))
                 {
                     await CosmosResourceFacade.DeleteDatabaseAsync(state, databaseName, token);
                     UpdateStateAfterDelete(shell, state.Client, state.ArmContext, databaseName);
                     CosmosCompleteCommand.ClearDatabases();
-                    var messageArguments = new Dictionary<string, object> { { "db", databaseName } };
+                    var messageArguments = new Dictionary<string, object> { { "db", Markup.Escape(databaseName) } };
                     AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", messageArguments));
                 }
 

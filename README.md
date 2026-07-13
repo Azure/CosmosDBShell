@@ -15,6 +15,8 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Manage container indexing policies with `index` (`show`, `add`, `remove`, `set`)
 - Inspect container/database/account configuration and usage statistics with `info` (partition key, throughput, policies, indexing policy summary, document count, storage size, regions; `--partitions` and `--detailed` for distribution analysis)
 - View and scale provisioned RU/s with `throughput` (`show`, `set`/`manual`, `autoscale`)
+- View and set the container default time-to-live with `ttl` (`show`, `set`, `on`, `off`)
+- View and set the container conflict resolution policy with `conflict` (`show`, `set`; last-writer-wins or custom stored procedure)
 - Manage stored procedures with `sproc` (`list`, `show`, `exists`, `create`, `exec`, `edit`, `delete`)
 - Manage user-defined functions with `udf` (`list`, `show`, `exists`, `create`, `edit`, `delete`)
 - Manage triggers with `trigger` (`list`, `show`, `exists`, `create`, `edit`, `delete`)
