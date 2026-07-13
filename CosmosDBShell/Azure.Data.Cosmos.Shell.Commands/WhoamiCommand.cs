@@ -12,6 +12,7 @@ using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Core;
+using global::Azure.Identity;
 using Spectre.Console;
 
 [CosmosCommand("whoami")]
@@ -75,7 +76,7 @@ internal class WhoamiCommand : CosmosCommand
             {
                 throw;
             }
-            catch (Exception ex)
+            catch (AuthenticationFailedException ex)
             {
                 throw new CommandException("whoami", MessageService.GetArgsString("command-whoami-token-error", "message", ex.Message));
             }

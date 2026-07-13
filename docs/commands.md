@@ -59,8 +59,9 @@ Options:
 
 Data-plane RBAC role assignments are a control-plane concept and are not
 reported. The default interactive report is rendered as a table; use
-`--format json` or `--format csv` for machine-readable output, and redirecting
-output writes a JSON object so scripts can parse the result directly. The
+`--format json` or `--format csv` for machine-readable output. Redirected output
+is written in the selected format (JSON by default, or `table`/`csv` when
+`COSMOSDB_SHELL_FORMAT` or `--format` selects them). The
 `COSMOSDB_SHELL_FORMAT` environment variable sets the default format. This
 command is read-only.
 
@@ -95,9 +96,11 @@ The probe issues a safe, non-mutating data-plane request and reports `allow`,
 Account-key and emulator connections use a master key and are reported as
 `allow` with method `key`. Entra connections use method `probe` and include the
 HTTP status code observed. The default interactive report is rendered as a
-table; use `--format json` or `--format csv` for machine-readable output, and
-redirecting output writes a JSON object. The `COSMOSDB_SHELL_FORMAT` environment
-variable sets the default format. This command does not mutate data.
+table; use `--format json` or `--format csv` for machine-readable output.
+Redirected output is written in the selected format (JSON by default, or
+`table`/`csv` when `COSMOSDB_SHELL_FORMAT` or `--format` selects them). The
+`COSMOSDB_SHELL_FORMAT` environment variable sets the default format. This
+command does not mutate data.
 
 ## Navigation
 

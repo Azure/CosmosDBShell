@@ -137,11 +137,15 @@ internal class CanICommand : CosmosCommand
     private static async Task<HttpStatusCode> ProbeWriteAsync(Container container, CancellationToken token)
     {
         // Deleting a random, almost-certainly-nonexistent id is non-mutating: an authorized
-        // caller gets 404 NotFound, an unauthorized caller gets 403 Forbidden.
+        // caller gets 404 NotFound, an unauthorized caller gets 403 Forbidden. The bogus
+        // If-Match ETag guarantees the probe never mutates data: even in the vanishingly
+        // unlikely event that the random id collides with an existing item, the delete fails
+        // with 412 PreconditionFailed (still treated as allow) instead of removing the item.
+        var requestOptions = new ItemRequestOptions { IfMatchEtag = "\"cosmosdb-shell-can-i-probe\"" };
         using var response = await container.DeleteItemStreamAsync(
             Guid.NewGuid().ToString(),
             new PartitionKey(Guid.NewGuid().ToString()),
-            requestOptions: null,
+            requestOptions: requestOptions,
             cancellationToken: token);
         return response.StatusCode;
     }
