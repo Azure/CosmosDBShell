@@ -43,9 +43,10 @@ Show the authenticated identity and credential type for the current connection.
 For Microsoft Entra ID connections (interactive browser, device code, managed
 identity, Visual Studio Code, static token, or `DefaultAzureCredential`) it
 acquires a Cosmos DB access token and decodes the principal id, tenant id,
-application id, user principal name, display name, identity type, and token
-expiry from the token claims. The token signature is not validated; the claims
-are used for local display only.
+application id, user principal name, display name, and identity type from the
+token claims. The token expiry is taken from the acquired token's metadata
+(`ExpiresOn`) rather than the `exp` claim. The token signature is not validated;
+the claims are used for local display only.
 
 Account-key and emulator connections use a master key and have no Entra
 identity, so only the credential type is reported.
@@ -86,7 +87,7 @@ The probe issues a safe, non-mutating data-plane request and reports `allow`,
 `deny`, or `indeterminate` based on the response:
 
 - `read` — a point read of a random id.
-- `query` — a `COUNT` query.
+- `query` — a minimal `SELECT TOP 1` query with a page size of 1.
 - `write` — a delete of a random, almost-certainly-nonexistent id (non-mutating).
   A `deny` means no delete permission; an `allow` is a heuristic inference that
   write access is present.
