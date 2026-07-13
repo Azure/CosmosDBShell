@@ -176,7 +176,23 @@ internal class Program
             if (!string.IsNullOrWhiteSpace(o.ExecuteAndQuit) && !string.IsNullOrWhiteSpace(o.ExecuteAndContinue))
             {
                 Environment.ExitCode = 2;
-                ShellInterpreter.WriteLine(MessageService.GetString("error-mutually-exclusive-options"));
+                var inMachineMode = o.Quiet
+                    || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase);
+
+                if (inMachineMode)
+                {
+                    var errObj = new
+                    {
+                        status = "error",
+                        error = MessageService.GetString("error-mutually-exclusive-options")
+                    };
+                    Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(errObj));
+                }
+                else
+                {
+                    ShellInterpreter.WriteLine(MessageService.GetString("error-mutually-exclusive-options"));
+                }
                 return;
             }
 
