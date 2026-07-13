@@ -38,6 +38,11 @@ internal class ErrorCommandState(Exception exception) : CommandState
                 };
             }
 
+            if (ex is Azure.Data.Cosmos.Shell.Parser.CommandNotFoundException)
+            {
+                return 2;
+            }
+
             if (ex is ArgumentException)
             {
                 return 2;

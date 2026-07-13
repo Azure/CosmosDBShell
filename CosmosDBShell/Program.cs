@@ -158,7 +158,7 @@ internal class Program
                 if (!string.IsNullOrWhiteSpace(o.OtlpEndpoint)
                     && !Uri.TryCreate(o.OtlpEndpoint, UriKind.Absolute, out _))
                 {
-                    Environment.ExitCode = 1;
+                    Environment.ExitCode = 2;
                     ShellInterpreter.WriteLine(MessageService.GetArgsString(
                         "otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint));
                     return;
@@ -175,7 +175,7 @@ internal class Program
 
             if (!string.IsNullOrWhiteSpace(o.ExecuteAndQuit) && !string.IsNullOrWhiteSpace(o.ExecuteAndContinue))
             {
-                Environment.ExitCode = 1;
+                Environment.ExitCode = 2;
                 ShellInterpreter.WriteLine(MessageService.GetString("error-mutually-exclusive-options"));
                 return;
             }
@@ -273,7 +273,11 @@ internal class Program
                         return;
                     }
 
-                    if (string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
+                    var inMachineMode = o.Quiet
+                        || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase);
+
+                    if (inMachineMode)
                     {
                         var errObj = new
                         {

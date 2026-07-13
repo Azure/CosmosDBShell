@@ -1427,7 +1427,7 @@ public partial class ShellInterpreter : IDisposable
                 return new ErrorCommandState(e);
             }
 
-            if (this.Options?.Output is "json" or "ndjson")
+            if (string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
             {
                 var errObj = new
                 {

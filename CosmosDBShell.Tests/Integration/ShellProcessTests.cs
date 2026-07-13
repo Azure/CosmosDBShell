@@ -157,7 +157,7 @@ public class ShellProcessTests
 
         var result = await RunShellAsync(
             stdinScript: null,
-            extraArgs: ["--connect", connectionString, "-c", "connect"],
+            extraArgs: ["--connect", connectionString, "-c", "connect", "--output", "table"],
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
