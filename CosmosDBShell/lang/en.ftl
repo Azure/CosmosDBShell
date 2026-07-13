@@ -94,16 +94,20 @@ command-help-description-plain = Disable styling and colors for script or limite
 command-rmdb-description = Removes database
 command-rmdb-description-name = The database to remove.
 command-rmdb-description-force = Force to remove the database without confirmation.
+command-rmdb-description-dry-run = Preview the deletion without deleting the database.
 command-rmdb-error-not_allowed_in_container = { error-not_allowed_in_container }
 command-rmdb-error-database_not_found = Database { $db } not found.
 command-rmdb-deleted_db = Deleted database { $db }.
+command-rmdb-dry-run-plan = Dry run: Would delete database { $db }. No changes were made.
 command-rmdb-confirm_db_deletion = Are you sure you want to delete this database
 
 command-rmcon-description = Removes container
 command-rmcon-description-name = The database or container to remove.
 command-rmcon-description-force = Force to remove the container without confirmation.
 command-rmcon-description-database = The database containing the container to remove
+command-rmcon-description-dry-run = Preview the deletion without deleting the container.
 command-rmcon-deleted_container = Deleted container { $container }
+command-rmcon-dry-run-plan = Dry run: Would delete container { $container }. No changes were made.
 command-rmcon-error-container_not_found = Container { $container } not found.
 command-rmcon-confirm_container_deletion = Are you sure you want to delete this container
 
@@ -113,10 +117,15 @@ command-rm-description-force = Force to remove items without confirmation.
 command-rm-description-database = The database containing the items to remove
 command-rm-description-container = The container containing the items to remove
 command-rm-description-key = The property name to match the pattern against (defaults to partition key)
+command-rm-description-dry-run = Preview how many items would be deleted without deleting them.
 command-rm-deleted_items = Deleted { $count } { $count ->
     [one] item
     *[other] items
 }.
+command-rm-dry-run-plan = Dry run: Would delete { $count } { $count ->
+    [one] item
+    *[other] items
+}. No changes were made.
 command-rm-error-no_filter = Filter is missing.
 command-rm-warning-missing-partition-key = Warning: Cannot delete item with id '{ $id }' - missing partition key '{ $partitionKey }'
 command-rm-no-matches = No items matched the pattern '{ $pattern }' for key '{ $key }'
@@ -328,12 +337,45 @@ command-index-error-show_no_args = 'index show' does not take any arguments. Use
 command-index-error-invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-index-error-no_policy = The container has no indexing policy configured.
 
+command-ttl-description = Views or changes the time-to-live (TTL) of a container via show, set, on, and off subcommands. Use --analytical to target the analytical store TTL.
+command-ttl-description-subcommand = The action to perform: show, set, on, or off.
+command-ttl-description-seconds = The time-to-live in seconds for the set subcommand (must be positive).
+command-ttl-description-analytical = Target the container's analytical store TTL instead of the default item TTL.
+command-ttl-description-database = The database containing the container.
+command-ttl-description-container = The container to read/update the TTL for.
+command-ttl-updated = Time-to-live updated successfully.
+command-ttl-analytical-updated = Analytical store time-to-live updated successfully.
+command-ttl-error-missing_subcommand = Missing subcommand. Use one of: show, set, on, off.
+command-ttl-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set, on, off.
+command-ttl-error-missing_seconds = No seconds value provided. Specify a positive number of seconds, for example: ttl set 86400.
+command-ttl-error-invalid_seconds = Invalid seconds value '{ $seconds }'. Provide a positive number of seconds, or use 'ttl on' to enable and 'ttl off' to disable.
+command-ttl-error-show_no_args = 'ttl show' does not take any arguments. Use 'ttl show' to display the current configuration.
+command-ttl-error-toggle_no_args = This subcommand does not take a seconds value. Use 'ttl set <seconds>' to specify a TTL in seconds.
+
+command-conflict-description = Views or changes the conflict resolution policy of a container via show and set subcommands.
+command-conflict-description-subcommand = The action to perform: show or set.
+command-conflict-description-mode = The conflict resolution mode to set (lastWriterWins or custom).
+command-conflict-description-path = The conflict resolution path for last-writer-wins mode, for example /_ts.
+command-conflict-description-procedure = The stored procedure id that resolves conflicts for custom mode.
+command-conflict-description-database = The database containing the container.
+command-conflict-description-container = The container to read/update the conflict resolution policy for.
+command-conflict-updated = Conflict resolution policy updated successfully.
+command-conflict-error-missing_subcommand = Missing subcommand. Use one of: show, set.
+command-conflict-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set.
+command-conflict-error-missing_set_args = Nothing to set. Provide --mode, --path, or --procedure.
+command-conflict-error-invalid_mode = Invalid value for --mode. Use lastWriterWins or custom.
+command-conflict-error-missing_procedure = Custom conflict resolution requires a stored procedure. Provide --procedure <name>.
+command-conflict-error-path_with_custom = --path cannot be used with custom mode. Use --procedure to name the resolving stored procedure.
+command-conflict-error-procedure_with_lww = --procedure cannot be used with lastWriterWins mode. Use --path to name the resolution path.
+command-conflict-error-path_and_procedure = --path and --procedure cannot be combined. Use --path for lastWriterWins or --procedure for custom.
+
 command-throughput-description = Views or changes the provisioned throughput (RU/s) of a database or container via show, set, manual, and autoscale subcommands.
 command-throughput-description-subcommand = The action to perform: show, set, manual, or autoscale.
 command-throughput-description-ru = The throughput in RU/s to provision (manual RU/s for set/manual, maximum RU/s for autoscale).
 command-throughput-description-database = The database to target, or that contains the target container.
 command-throughput-description-container = The container to read/update the throughput for.
 command-throughput-description-yes = Skip the confirmation prompt before applying a throughput change.
+command-throughput-description-dry-run = Preview the change (current vs. planned throughput) without applying it.
 command-throughput-updated = Throughput updated successfully.
 command-throughput-confirm_summary = About to set { $mode } throughput to { $ru } RU/s on '{ $resource }'. This may affect your bill.
 command-throughput-confirm = Apply this throughput change
@@ -349,6 +391,10 @@ command-throughput-scope-container = Container
 command-throughput-mode-autoscale = Autoscale
 command-throughput-mode-manual = Manual
 command-throughput-mode-none = Not configured
+command-throughput-dry-run-label-current = Current
+command-throughput-dry-run-label-planned = Planned
+command-throughput-dry-run-mode_value = { $mode }, { $ru } RU/s
+command-throughput-dry-run-note = Dry run: no change was applied.
 command-throughput-error-missing_subcommand = Missing subcommand. Use one of: show, set, manual, autoscale.
 command-throughput-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set, manual, autoscale.
 command-throughput-error-missing_ru = No throughput value provided. Specify the RU/s, for example: throughput set 4000.
@@ -573,6 +619,7 @@ command-delete-description-pattern = The items/container/database to delete.
 command-delete-description-force = Force to delete without confirmation.
 command-delete-description-database = The database for the delete operation
 command-delete-description-container = The container for deleting items
+command-delete-description-dry-run = Preview the deletion without applying it.
 command-delete-error-invalid_item_type = You need to specify an item type: 'item', 'database' or 'container' as first parameter.
 
 command-create-description = Creates items/container or databases.
@@ -684,12 +731,38 @@ command-echo-description = Displays messages.
 command-echo-description-messages = The messages to display.
 command-echo-description-no_newline = Do not append a newline
 
-command-bucket-description = Gets or sets the current throughput bucket.
-command-bucket-description-bucket = If specified the number of the bucket to switch to.
-command-bucket-currrent = Current throughput bucket: { $bucket }
+command-bucket-description = Manages throughput buckets: client-side bucket selection plus container bucket limits via show, set, and clear.
+command-bucket-description-action = The action: a bucket id (0-5) to select client-side, or show, set, or clear for container limits.
+command-bucket-description-id = The throughput bucket id (1-5) to set or clear a limit for.
+command-bucket-description-percent = The maximum percentage (1-100) of container throughput the bucket may use.
+command-bucket-description-database = The database to target, or that contains the target container.
+command-bucket-description-container = The container whose throughput bucket limits to read or change.
+command-bucket-description-yes = Skip the confirmation prompt before changing a bucket limit.
+command-bucket-current = Current throughput bucket: { $bucket }
 command-bucket-no_bucket = No throughput bucket is currently set.
 command-bucket-reset_bucket = Reset throughput bucket to default.
 command-bucket-switched_bucket = Switched to throughput bucket { $bucket }
+command-bucket-label-id = Bucket
+command-bucket-label-percent = Max throughput %
+command-bucket-no_limits = No throughput bucket limits are configured on '{ $resource }'.
+command-bucket-set_done = Throughput bucket limit updated successfully.
+command-bucket-clear_done = Throughput bucket limit removed successfully.
+command-bucket-cancelled = Throughput bucket change cancelled.
+command-bucket-confirm = Apply this throughput bucket change
+command-bucket-confirm_set_summary = About to limit bucket { $id } to { $percent }% of throughput on '{ $container }'.
+command-bucket-confirm_clear_summary = About to remove the limit for bucket { $id } on '{ $container }'.
+command-bucket-error-invalid_subcommand = Unknown bucket action '{ $subcommand }'. Use a bucket id (0-5), or one of: show, set, clear.
+command-bucket-error-unexpected_args = Unexpected arguments. Use 'bucket' or 'bucket <0-5>' for client selection, or 'bucket show|set|clear' for container limits.
+command-bucket-error-container_required = A container is required. Move into a container or pass --container.
+command-bucket-error-missing_id = Missing bucket id. Specify a bucket id (1-5), for example: bucket set 3 50.
+command-bucket-error-invalid_id = Invalid bucket id '{ $id }'. Valid range is 1-5.
+command-bucket-error-missing_percent = Missing percentage. Specify a value (1-100), for example: bucket set 3 50.
+command-bucket-error-invalid_percent = Invalid percentage '{ $percent }'. Valid range is 1-100.
+command-bucket-error-not_configured = Resource '{ $resource }' has no provisioned throughput, so bucket limits cannot be configured. It may be serverless or use shared database throughput.
+command-bucket-error-arm_required =
+  Throughput bucket limits can only be configured on an Azure AD (Entra) connection.
+
+  Connect with an Entra credential, or use the Azure portal, Azure CLI, or PowerShell. The client-side 'bucket <0-5>' selection still works on any connection.
 
 
 command-info-description = Shows configuration and usage statistics for the current container, database, or account.
