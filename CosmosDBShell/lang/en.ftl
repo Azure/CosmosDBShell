@@ -891,6 +891,7 @@ command-can-i-key-note = Connected with a master key (account-key or emulator); 
 command-can-i-write-heuristic-note = Heuristic: write access is inferred from delete permission via a non-mutating probe.
 command-can-i-throttled-note = Request was throttled (429); the action appears permitted.
 command-can-i-unexpected-status = The probe returned an unexpected status ({ $status }); access could not be determined.
+command-can-i-query-notfound-note = The query returned 404 Not Found; the target database or container may not exist, so query access could not be determined.
 
 help-RequiredWord = Required.
 help-ErrorsHeadingText = ERROR(S):

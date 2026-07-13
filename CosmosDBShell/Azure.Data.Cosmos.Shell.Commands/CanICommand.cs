@@ -109,7 +109,15 @@ internal class CanICommand : CosmosCommand
 
         var (decision, statusNote) = MapDecision(statusCode);
         string? note = statusNote;
-        if (action == "write" && decision == "allow")
+        if (action == "query" && statusCode == HttpStatusCode.NotFound)
+        {
+            // For a query, an authorized caller against an empty container still gets 200 OK;
+            // a 404 means the target database or container does not exist, so query access
+            // cannot be inferred from it.
+            decision = "indeterminate";
+            note = MessageService.GetString("command-can-i-query-notfound-note");
+        }
+        else if (action == "write" && decision == "allow")
         {
             note = MessageService.GetString("command-can-i-write-heuristic-note");
         }
@@ -129,7 +137,12 @@ internal class CanICommand : CosmosCommand
 
     private static async Task<HttpStatusCode> ProbeQueryAsync(Container container, CancellationToken token)
     {
-        using var iterator = container.GetItemQueryStreamIterator(new QueryDefinition("SELECT VALUE COUNT(1) FROM c"));
+        // A minimal TOP 1 query with a single-item page proves query authorization without
+        // forcing a full scan (as an aggregate like COUNT would) on large containers.
+        var requestOptions = new QueryRequestOptions { MaxItemCount = 1 };
+        using var iterator = container.GetItemQueryStreamIterator(
+            new QueryDefinition("SELECT TOP 1 c.id FROM c"),
+            requestOptions: requestOptions);
         using var response = await iterator.ReadNextAsync(token);
         return response.StatusCode;
     }
