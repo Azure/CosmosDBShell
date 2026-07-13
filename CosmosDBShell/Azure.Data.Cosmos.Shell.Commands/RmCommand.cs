@@ -242,6 +242,12 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 }
 
                 var response = await feedIterator.ReadNextAsync(token);
+
+                // The scan pages that locate matching items consume RUs regardless of whether
+                // any item is ultimately deleted (including in --dry-run), so include each
+                // page's request charge from the response headers.
+                totalCharge += response.Headers.RequestCharge;
+
                 using var streamReader = new StreamReader(response.Content);
                 var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync());
 

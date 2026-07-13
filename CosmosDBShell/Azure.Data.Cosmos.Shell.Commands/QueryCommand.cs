@@ -365,12 +365,14 @@ internal class QueryCommand : CosmosCommand
 
                 using var queryDocument = JsonDocument.Parse(responseContent);
                 ShellInterpreter.WriteLine(MessageService.GetString("command-query-fetched", new Dictionary<string, object> { { "count", queryDocument.RootElement.GetProperty("_count").ToString() } }));
-                var queryMetrics = response.Diagnostics.GetQueryMetrics();
-                if (queryMetrics != null)
-                {
-                    totalRequestCharge += queryMetrics.TotalRequestCharge;
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", queryMetrics.TotalRequestCharge.ToString() } }));
-                }
+
+                // Cosmos always returns the RU cost in the response headers, whereas query
+                // metrics (and their TotalRequestCharge) can be null when diagnostics are
+                // unavailable. Accumulate and report from the headers so the charge is always
+                // correct; the detailed metrics payload is built separately from the response.
+                var pageRequestCharge = response.Headers.RequestCharge;
+                totalRequestCharge += pageRequestCharge;
+                AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", pageRequestCharge.ToString() } }));
 
                 var pageDocuments = queryDocument.RootElement.GetProperty("Documents");
                 var pageExceedsLimit = PageExceedsLimit(aggregatedDocuments.Count, pageDocuments, effectiveMaxItemCount);
@@ -389,7 +391,7 @@ internal class QueryCommand : CosmosCommand
                             new Dictionary<string, object>()
                             {
                                 { "documents", aggregatedDocuments },
-                                { "requestCharge", queryMetrics?.TotalRequestCharge ?? 0 },
+                                { "requestCharge", pageRequestCharge },
                                 { "queryMetrics", metricProperty },
                                 { "indexMetrics", parsedIndexMetrics ?? new Dictionary<string, object>() },
                             });
