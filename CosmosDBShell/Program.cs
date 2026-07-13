@@ -69,11 +69,12 @@ internal class Program
 
             if (parseResult.Errors.Count > 0)
             {
-                var outputMode = parseResult.GetValueForOption(optionMap.Output);
-                var isMachineMode = string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase) || 
-                                    string.Equals(outputMode, "ndjson", StringComparison.OrdinalIgnoreCase) ||
-                                    parseResult.GetValueForOption(optionMap.Quiet);
-
+var outputMode = parseResult.GetValueForOption(optionMap.Output);
+var isNonInteractive = args.Contains("-c", StringComparer.Ordinal) || Console.IsInputRedirected;
+var isMachineMode = isNonInteractive
+    || string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase)
+    || string.Equals(outputMode, "ndjson", StringComparison.OrdinalIgnoreCase)
+    || parseResult.GetValueForOption(optionMap.Quiet);
                 if (isMachineMode)
                 {
                     var errorStrings = parseResult.Errors.Select(e => e.Message).ToList();
