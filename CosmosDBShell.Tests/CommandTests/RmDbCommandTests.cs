@@ -47,6 +47,26 @@ public class RmDbCommandTests
         Assert.False(string.IsNullOrWhiteSpace(confirmDeletionMessage));
     }
 
+    [Fact]
+    public void RmDbDryRunLocalizationKey_IsPresent()
+    {
+        var message = MessageService.GetString("command-rmdb-dry-run-plan", new Dictionary<string, object> { { "db", "TestDatabase" } });
+
+        Assert.False(string.IsNullOrWhiteSpace(message));
+        Assert.Contains("TestDatabase", message);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DryRun_Disconnected_ThrowsNotConnected()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new RmDbCommand { Name = "TestDatabase", DryRun = true };
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rmdb TestDatabase --dry-run", TestContext.Current.CancellationToken));
+    }
+
     private static CosmosClient CreateTestClient()
     {
         var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");

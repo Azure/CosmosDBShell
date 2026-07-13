@@ -76,4 +76,18 @@ public class DeleteCommandTests
         Assert.False(CreateCommand.IsItem("CONTAINER"));
         Assert.False(CreateCommand.IsDatabase("ITEM"));
     }
+
+    [Theory]
+    [InlineData("item", "test-*")]
+    [InlineData("container", "MyContainer")]
+    [InlineData("database", "MyDb")]
+    public async Task ExecuteAsync_DryRun_Disconnected_ThrowsNotConnected(string item, string pattern)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new DeleteCommand { Item = item, Pattern = pattern, DryRun = true };
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            () => command.ExecuteAsync(shell, new CommandState(), $"delete {item} {pattern} --dry-run", CancellationToken.None));
+    }
 }
