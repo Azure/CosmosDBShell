@@ -517,11 +517,18 @@ internal class Program
                 }
 
                 var token = argResult.Tokens[0].Value;
+                if (string.Equals(token, "js", StringComparison.OrdinalIgnoreCase))
+                {
+                    token = "json";
+                }
+                else if (string.Equals(token, "tbl", StringComparison.OrdinalIgnoreCase))
+                {
+                    token = "table";
+                }
+
                 if (string.Equals(token, "json", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(token, "js", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(token, "ndjson", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(token, "table", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(token, "tbl", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(token, "csv", StringComparison.OrdinalIgnoreCase))
                 {
                     return token;

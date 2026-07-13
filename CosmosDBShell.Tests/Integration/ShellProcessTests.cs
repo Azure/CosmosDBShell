@@ -181,8 +181,17 @@ public class ShellProcessTests
     }
 
     [Fact]
-        Assert.Equal(3, result.ExitCode);
+    public async Task ConnectionFailure_WithOutputJson_ReturnsExitCode3_AndJsonOnStdErr()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--connect", "https://127.0.0.1:1", "--output", "json", "-c", "version"],
+            cancellationToken: TestContext.Current.CancellationToken);
 
+        Assert.Equal(3, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
+        Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
+    }
     private static async Task<ShellProcessResult> RunShellAsync(
         string stdinScript,
         CancellationToken cancellationToken)
