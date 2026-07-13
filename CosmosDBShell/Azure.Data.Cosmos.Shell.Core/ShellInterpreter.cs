@@ -2113,10 +2113,11 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportParserErrors(ErrorList errors, string commandText)
     {
-        if (((this.Options?.Quiet == true)
+        if ((this.Options?.Quiet == true
              || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase)
              || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
             && errors != null && errors.Count > 0)
+        {
             var errorStrings = new System.Collections.Generic.List<string>();
             foreach (var err in errors)
             {
