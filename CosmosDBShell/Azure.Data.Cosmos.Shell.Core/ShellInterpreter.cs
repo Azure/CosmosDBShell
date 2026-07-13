@@ -1427,7 +1427,7 @@ public partial class ShellInterpreter : IDisposable
                 return new ErrorCommandState(e);
             }
 
-            if (string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
+            if (this.Options?.Quiet == true || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
             {
                 var errObj = new
                 {
@@ -1873,7 +1873,7 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportExecutionError(Exception e, string? sourceText = null)
     {
-        if (string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
+        if (this.Options?.Quiet == true || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
         {
             var errObj = new
             {
@@ -2113,10 +2113,10 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportParserErrors(ErrorList errors, string commandText)
     {
-        if ((string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase)
+        if (((this.Options?.Quiet == true)
+             || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase)
              || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
             && errors != null && errors.Count > 0)
-        {
             var errorStrings = new System.Collections.Generic.List<string>();
             foreach (var err in errors)
             {

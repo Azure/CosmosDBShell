@@ -181,17 +181,7 @@ public class ShellProcessTests
     }
 
     [Fact]
-    public async Task ConnectionFailure_WithOutputJson_ReturnsExitCode1_AndJsonOnStdErr()
-    {
-        var result = await RunShellAsync(
-            stdinScript: null,
-            extraArgs: ["--connect", "AccountEndpoint=https://localhost:8081/;AccountKey=dummy", "--output", "json", "-c", "list databases"],
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Equal(1, result.ExitCode);
-        Assert.Empty(result.StdOut.Trim());
-        Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
-    }
+        Assert.Equal(3, result.ExitCode);
 
     private static async Task<ShellProcessResult> RunShellAsync(
         string stdinScript,

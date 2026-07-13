@@ -21,9 +21,30 @@ internal class ErrorCommandState(Exception exception) : CommandState
         get
         {
             var ex = this.Exception;
-            if (ex is CommandException ce)
+            while (true)
             {
-                ex = ce.InnerException ?? ce;
+                if (ex is CommandException ce && ce.InnerException is not null)
+                {
+                    ex = ce.InnerException;
+                    continue;
+                }
+
+                if (ex is ShellException se && se.InnerException is not null)
+                {
+                    ex = se.InnerException;
+                    continue;
+                }
+
+                break;
+            }
+
+            if (ex is Azure.Identity.AuthenticationFailedException
+                || ex is Azure.Identity.CredentialUnavailableException
+                || ex is System.Net.Http.HttpRequestException
+                || ex is System.Net.Sockets.SocketException
+                || ex is TimeoutException)
+            {
+                return 3;
             }
 
             if (ex is Microsoft.Azure.Cosmos.CosmosException cosmosEx)

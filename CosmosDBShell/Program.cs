@@ -509,8 +509,30 @@ internal class Program
 
         var output = new Option<string?>(
             aliases: ["--output", "-o"],
-            description: MessageService.GetString("help-OutputFormat")); // Ensure this is defined in en.ftl
+            parseArgument: argResult =>
+            {
+                if (argResult.Tokens.Count == 0)
+                {
+                    return null;
+                }
 
+                var token = argResult.Tokens[0].Value;
+                if (string.Equals(token, "json", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(token, "js", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(token, "ndjson", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(token, "table", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(token, "tbl", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(token, "csv", StringComparison.OrdinalIgnoreCase))
+                {
+                    return token;
+                }
+
+                argResult.ErrorMessage = MessageService.GetString(
+                    "error-invalid_output_format",
+                    new Dictionary<string, object> { { "format", token } });
+                return null;
+            },
+            description: MessageService.GetString("help-OutputFormat"));
         var quiet = new Option<bool>(
             aliases: ["--quiet", "-q"],
             description: MessageService.GetString("help-Quiet")); // Ensure this is defined in en.ftl
