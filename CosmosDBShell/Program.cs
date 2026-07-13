@@ -69,12 +69,12 @@ internal class Program
 
             if (parseResult.Errors.Count > 0)
             {
-var outputMode = parseResult.GetValueForOption(optionMap.Output);
-var isNonInteractive = args.Contains("-c", StringComparer.Ordinal) || Console.IsInputRedirected;
-var isMachineMode = isNonInteractive
-    || string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase)
-    || string.Equals(outputMode, "ndjson", StringComparison.OrdinalIgnoreCase)
-    || parseResult.GetValueForOption(optionMap.Quiet);
+                var outputMode = parseResult.GetValueForOption(optionMap.Output);
+                var isNonInteractive = args.Contains("-c", StringComparer.Ordinal);
+                var isMachineMode = isNonInteractive
+                    || string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(outputMode, "ndjson", StringComparison.OrdinalIgnoreCase)
+                    || parseResult.GetValueForOption(optionMap.Quiet);
                 if (isMachineMode)
                 {
                     var errorStrings = parseResult.Errors.Select(e => e.Message).ToList();
@@ -160,8 +160,20 @@ var isMachineMode = isNonInteractive
                     && !Uri.TryCreate(o.OtlpEndpoint, UriKind.Absolute, out _))
                 {
                     Environment.ExitCode = 2;
-                    ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                        "otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint));
+                    var msg = MessageService.GetArgsString(
+                        "otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint);
+                    var inMachineMode = o.Quiet
+                        || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase);
+
+                    if (inMachineMode)
+                    {
+                        Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", error = msg }));
+                    }
+                    else
+                    {
+                        ShellInterpreter.WriteLine(msg);
+                    }
                     return;
                 }
             }
