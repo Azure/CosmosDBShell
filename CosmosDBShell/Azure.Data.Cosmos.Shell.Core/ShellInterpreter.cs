@@ -588,26 +588,31 @@ public partial class ShellInterpreter : IDisposable
 
     internal void PrintVersion(CommandState? commandState)
     {
+        var isQuiet = this.Options?.Quiet == true;
         var version = GetDisplayVersion(typeof(VersionCommand).Assembly);
-        var versionString = MessageService.GetArgsString("command-version", "version", version);
-        AnsiConsole.MarkupLine(versionString);
-
         var port = this.McpPort;
-        if (port != null)
-        {
-            var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
-            AnsiConsole.MarkupLine(Theme.FormatWarning(mcpPortString));
-        }
-        else
-        {
-            AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
-        }
-
         var repoUrl = GetRepositoryUrl(typeof(VersionCommand).Assembly);
-        if (!string.IsNullOrEmpty(repoUrl))
+
+        if (!isQuiet)
         {
-            var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
-            AnsiConsole.MarkupLine(repoString);
+            var versionString = MessageService.GetArgsString("command-version", "version", version);
+            AnsiConsole.MarkupLine(versionString);
+
+            if (port != null)
+            {
+                var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
+                AnsiConsole.MarkupLine(Theme.FormatWarning(mcpPortString));
+            }
+            else
+            {
+                AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
+            }
+
+            if (!string.IsNullOrEmpty(repoUrl))
+            {
+                var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
+                AnsiConsole.MarkupLine(repoString);
+            }
         }
 
         if (commandState != null)
@@ -623,7 +628,7 @@ public partial class ShellInterpreter : IDisposable
 
             var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
             commandState.Result = new ShellJson(jsonElement);
-            commandState.IsPrinted = true;
+            commandState.IsPrinted = !isQuiet;
         }
     }
 

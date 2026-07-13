@@ -55,10 +55,12 @@ internal partial class ConnectCommand : CosmosCommand
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
+        var isQuiet = shell.Options?.Quiet == true;
+
         // If no connection string provided, show current connection info
         if (this.ConnectionString is null)
         {
-            return await PrintConnectionInfoAsync(shell, commandState, token);
+            return await PrintConnectionInfoAsync(shell, commandState, token, isQuiet);
         }
 
         // If already connected, inform user about switching accounts.
@@ -67,7 +69,10 @@ internal partial class ConnectCommand : CosmosCommand
         if (shell.State is ConnectedState cs)
         {
             var previousEndpoint = cs.Client.Endpoint.Host;
-            AnsiConsole.MarkupLine(MessageService.GetArgsString("command-connect-switching", "endpoint", previousEndpoint));
+            if (!isQuiet)
+            {
+                AnsiConsole.MarkupLine(MessageService.GetArgsString("command-connect-switching", "endpoint", previousEndpoint));
+            }
         }
 
         ConnectionMode? connectionMode = null;
@@ -95,7 +100,7 @@ internal partial class ConnectCommand : CosmosCommand
             await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, token: token);
             var returnState = new CommandState
             {
-                IsPrinted = true,
+                IsPrinted = !isQuiet,
             };
             var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(this.ConnectionString);
             var resultElement = JsonSerializer.SerializeToElement(new Dictionary<string, string?>
@@ -183,13 +188,16 @@ internal partial class ConnectCommand : CosmosCommand
         AnsiConsole.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-footer")));
     }
 
-    private static async Task<CommandState> PrintConnectionInfoAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
+    private static async Task<CommandState> PrintConnectionInfoAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, bool isQuiet)
     {
         if (shell.State is not ConnectedState connectedState)
         {
-            AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected"));
-            PrintConnectUsageHint(shell);
-            commandState.IsPrinted = true;
+            if (!isQuiet)
+            {
+                AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected"));
+                PrintConnectUsageHint(shell);
+            }
+            commandState.IsPrinted = !isQuiet;
             var notConnectedJson = new Dictionary<string, object?>
             {
                 ["connected"] = false,
@@ -202,36 +210,40 @@ internal partial class ConnectCommand : CosmosCommand
 
         token.ThrowIfCancellationRequested();
         var acc = await client.ReadAccountAsync().WaitAsync(token);
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-connect-info-title")));
-
-        var table = new Table();
-        table.AddColumns(string.Empty, string.Empty);
-        table.HideHeaders();
-
-        table.AddRow(MessageService.GetString("command-connect-info-account"), Theme.FormatTableValue(acc.Id));
-        table.AddRow(MessageService.GetString("command-connect-info-endpoint"), Theme.FormatTableValue(client.Endpoint.ToString()));
-
-        if (connectedState.ArmContext != null)
+        
+        if (!isQuiet)
         {
-            table.AddRow(MessageService.GetString("command-connect-info-arm-account"), Theme.FormatTableValue(connectedState.ArmContext.AccountResourceId.ToString()));
+            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-connect-info-title")));
+
+            var table = new Table();
+            table.AddColumns(string.Empty, string.Empty);
+            table.HideHeaders();
+
+            table.AddRow(MessageService.GetString("command-connect-info-account"), Theme.FormatTableValue(acc.Id));
+            table.AddRow(MessageService.GetString("command-connect-info-endpoint"), Theme.FormatTableValue(client.Endpoint.ToString()));
+
+            if (connectedState.ArmContext != null)
+            {
+                table.AddRow(MessageService.GetString("command-connect-info-arm-account"), Theme.FormatTableValue(connectedState.ArmContext.AccountResourceId.ToString()));
+            }
+
+            // Display the connection mode
+            var connectionMode = client.ClientOptions.ConnectionMode;
+            table.AddRow(MessageService.GetString("command-connect-info-mode"), Theme.FormatTableValue(connectionMode.ToString()));
+
+            // Display the readable/writable regions
+            table.AddRow(MessageService.GetString("command-connect-info-read-regions"), Theme.FormatTableValue(string.Join(", ", acc.ReadableRegions.Select(r => r.Name))));
+            table.AddRow(MessageService.GetString("command-connect-info-write-regions"), Theme.FormatTableValue(string.Join(", ", acc.WritableRegions.Select(r => r.Name))));
+
+            // Show current navigation state
+            string currentLocation = ShellLocation.GetCurrentLocation(shell.State) ?? ShellLocation.NotConnectedText;
+
+            table.AddRow(MessageService.GetString("command-connect-info-location"), Theme.ConnectedStatePromt(currentLocation));
+
+            AnsiConsole.Write(table);
         }
 
-        // Display the connection mode
-        var connectionMode = client.ClientOptions.ConnectionMode;
-        table.AddRow(MessageService.GetString("command-connect-info-mode"), Theme.FormatTableValue(connectionMode.ToString()));
-
-        // Display the readable/writable regions
-        table.AddRow(MessageService.GetString("command-connect-info-read-regions"), Theme.FormatTableValue(string.Join(", ", acc.ReadableRegions.Select(r => r.Name))));
-        table.AddRow(MessageService.GetString("command-connect-info-write-regions"), Theme.FormatTableValue(string.Join(", ", acc.WritableRegions.Select(r => r.Name))));
-
-        // Show current navigation state
-        string currentLocation = ShellLocation.GetCurrentLocation(shell.State) ?? ShellLocation.NotConnectedText;
-
-        table.AddRow(MessageService.GetString("command-connect-info-location"), Theme.ConnectedStatePromt(currentLocation));
-
-        AnsiConsole.Write(table);
-
-        commandState.IsPrinted = true;
+        commandState.IsPrinted = !isQuiet;
         var jsonResult = new Dictionary<string, object?>
         {
             ["connected"] = true,
