@@ -240,8 +240,12 @@ internal class Program
                 return;
             }
 
+            var structuredOutputMode =
+                string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase);
+
             var colorSystemVal = o.ColorSystem;
-            if (o.Quiet || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
+            if (o.Quiet || structuredOutputMode)
             {
                 colorSystemVal = 0; // Force NoColors in machine mode
                 o.Quiet = true; // Suppress informational messages to keep output clean
@@ -255,6 +259,18 @@ internal class Program
             };
 
             ApplyTheme(o.Theme);
+
+            if (structuredOutputMode)
+            {
+                // Keep machine-mode stdout deterministic even if a command
+                // accidentally writes via AnsiConsole instead of command state output.
+                AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+                {
+                    Ansi = AnsiSupport.No,
+                    ColorSystem = ColorSystemSupport.NoColors,
+                    Out = new AnsiConsoleOutput(TextWriter.Null),
+                });
+            }
 
             ShellInterpreter.Instance.Options = o;
 
