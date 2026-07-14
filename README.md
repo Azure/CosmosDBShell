@@ -204,7 +204,7 @@ When running scripts or automation, Cosmos DB Shell maps execution failures to a
 - **`3`**: Auth / connection failure
 - **`4`**: Not found
 - **`5`**: Throttled (RU budget exceeded)
-> **Machine Mode**: Using `--output json`, `--output ndjson`, or `--quiet` (or running `-c` without specifying `--output`) disables ANSI colors, suppresses connection/informational banners, and redirects early parser/connection exceptions to `STDERR` as structured JSON. For most data operations, this ensures that `STDOUT` contains only structured JSON and can be safely piped to downstream parsers (though some diagnostic or interactive commands may still emit plain text).
+> **Machine Mode**: Using `--output json`, `--output ndjson`, or `--quiet` (or running `-c` without specifying `--output`) disables ANSI colors, suppresses connection/informational banners, and redirects early parser/connection exceptions to `STDERR` as structured JSON. Data-operation command output is intended to remain structured on `STDOUT` for parser pipelines; diagnostic or explicitly interactive commands may still emit plain text.
 
 ## Theming
 

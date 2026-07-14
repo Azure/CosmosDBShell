@@ -1351,6 +1351,9 @@ public partial class ShellInterpreter : IDisposable
         try
         {
             string? output;
+            var inMachineMode = this.Options?.Quiet == true
+                || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase);
 
             if (state.Result?.DataType == Parser.DataType.Json)
             {
@@ -1358,7 +1361,9 @@ public partial class ShellInterpreter : IDisposable
                 // syntax highlighting using the configured Spectre.Console theme. File
                 // redirection still receives plain text so downstream tooling and tests
                 // are unaffected.
-                if (state.OutputFormat == OutputFormat.JSon && string.IsNullOrEmpty(this.StdOutRedirect))
+                if (!inMachineMode
+                    && state.OutputFormat == OutputFormat.JSon
+                    && string.IsNullOrEmpty(this.StdOutRedirect))
                 {
                     var element = (JsonElement?)state.Result.ConvertShellObject(Parser.DataType.Json);
                     if (element.HasValue)
@@ -1378,7 +1383,9 @@ public partial class ShellInterpreter : IDisposable
                 // When a text result carries a highlighter (e.g. script bodies), apply it
                 // when writing to the terminal. Redirection and piping still receive plain
                 // text so downstream tooling and tests are unaffected.
-                if (output != null && string.IsNullOrEmpty(this.StdOutRedirect)
+                if (!inMachineMode
+                    && output != null
+                    && string.IsNullOrEmpty(this.StdOutRedirect)
                     && state.Result is ShellText { Highlighter: { } highlighter })
                 {
                     AnsiConsole.MarkupLine(highlighter(output));

@@ -229,51 +229,10 @@ internal class Program
                 Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", o.Output);
             }
 
-            if (o.ClearHistory)
-            {
-                if (File.Exists(ShellInterpreter.Instance.HistoryFile))
-                {
-                    File.Delete(ShellInterpreter.Instance.HistoryFile);
-                }
-
-                ShellInterpreter.WriteLine(MessageService.GetString("shell-hisory_file_deleted"));
-                return;
-            }
-
             var structuredOutputMode =
                 string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase);
             var startupMachineMode = o.Quiet || structuredOutputMode;
-
-            var colorSystemVal = o.ColorSystem;
-            if (startupMachineMode)
-            {
-                colorSystemVal = 0; // Force NoColors in machine mode
-                o.Quiet = true; // Suppress informational messages to keep output clean
-            }
-
-            AnsiConsole.Profile.Capabilities.ColorSystem = colorSystemVal switch
-            {
-                1 => ColorSystem.Standard,
-                2 => ColorSystem.TrueColor,
-                _ => ColorSystem.NoColors,
-            };
-
-            ApplyTheme(o.Theme);
-
-            if (startupMachineMode)
-            {
-                // Keep machine-mode stdout deterministic even if a command
-                // accidentally writes via AnsiConsole instead of command state output.
-                AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
-                {
-                    Ansi = AnsiSupport.No,
-                    ColorSystem = ColorSystemSupport.NoColors,
-                    Out = new AnsiConsoleOutput(TextWriter.Null),
-                });
-            }
-
-            ShellInterpreter.Instance.Options = o;
 
             void WriteStartupError(string message)
             {
@@ -290,6 +249,50 @@ internal class Program
 
                 AnsiConsole.WriteLine(message);
             }
+
+            if (o.ClearHistory)
+            {
+                if (File.Exists(ShellInterpreter.Instance.HistoryFile))
+                {
+                    File.Delete(ShellInterpreter.Instance.HistoryFile);
+                }
+
+                if (!startupMachineMode)
+                {
+                    ShellInterpreter.WriteLine(MessageService.GetString("shell-hisory_file_deleted"));
+                }
+                return;
+            }
+
+            var colorSystemVal = o.ColorSystem;
+            if (startupMachineMode)
+            {
+                colorSystemVal = 0; // Force NoColors in machine mode
+                o.Quiet = true; // Suppress informational messages to keep output clean
+            }
+
+            AnsiConsole.Profile.Capabilities.ColorSystem = colorSystemVal switch
+            {
+                1 => ColorSystem.Standard,
+                2 => ColorSystem.TrueColor,
+                _ => ColorSystem.NoColors,
+            };
+
+            ApplyTheme(o.Theme, startupMachineMode);
+
+            if (startupMachineMode)
+            {
+                // Keep machine-mode stdout deterministic even if a command
+                // accidentally writes via AnsiConsole instead of command state output.
+                AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+                {
+                    Ansi = AnsiSupport.No,
+                    ColorSystem = ColorSystemSupport.NoColors,
+                    Out = new AnsiConsoleOutput(TextWriter.Null),
+                });
+            }
+
+            ShellInterpreter.Instance.Options = o;
 
             // Enable diagnostic logging before connecting so the startup --connect
             // event is captured in the log.
@@ -371,7 +374,7 @@ internal class Program
                 if (mcpPort <= 0)
                 {
                     WriteStartupError(MessageService.GetString("mcp-error-invalid-port"));
-                    Environment.ExitCode = 1;
+                    Environment.ExitCode = 2;
                     return;
                 }
 
@@ -802,7 +805,7 @@ internal class Program
     /// environment variable, then the built-in default. Unknown names emit a warning
     /// to standard output and fall back to the default profile.
     /// </summary>
-    private static void ApplyTheme(string? themeFromCli)
+    private static void ApplyTheme(string? themeFromCli, bool suppressStartupWarnings)
     {
         // Always scan the user themes directory so file-loaded themes are visible
         // to --theme, the COSMOSDB_SHELL_THEME env var, and the in-shell `theme`
@@ -812,7 +815,10 @@ internal class Program
         registry.LoadFromDirectory(ThemeFile.DefaultUserThemesDirectory());
         foreach (var warning in registry.Warnings)
         {
-            ShellInterpreter.WriteLine(warning);
+            if (!suppressStartupWarnings)
+            {
+                ShellInterpreter.WriteLine(warning);
+            }
         }
 
         var requested = !string.IsNullOrWhiteSpace(themeFromCli)
@@ -826,12 +832,15 @@ internal class Program
 
         if (!ThemeProfiles.TryGet(requested, out var profile))
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                "warning-unknown-theme",
-                "name",
-                requested,
-                "themes",
-                string.Join(", ", registry.All.Keys)));
+            if (!suppressStartupWarnings)
+            {
+                ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                    "warning-unknown-theme",
+                    "name",
+                    requested,
+                    "themes",
+                    string.Join(", ", registry.All.Keys)));
+            }
         }
 
         Theme.Apply(profile);

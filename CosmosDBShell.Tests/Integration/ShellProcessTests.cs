@@ -6,6 +6,7 @@ namespace CosmosShell.Tests.Integration;
 
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Azure.Data.Cosmos.Shell.Util;
 
@@ -192,6 +193,55 @@ public class ShellProcessTests
         Assert.Empty(result.StdOut.Trim());
         Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task ExecuteAndQuit_WithoutOutput_EmitsParseableNdjsonOnStdOut()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["-c", "version"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Empty(result.StdErr.Trim());
+
+        var lines = result.StdOut
+            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Assert.NotEmpty(lines);
+
+        foreach (var line in lines)
+        {
+            using var doc = JsonDocument.Parse(line);
+            Assert.True(doc.RootElement.ValueKind == JsonValueKind.Object || doc.RootElement.ValueKind == JsonValueKind.Array);
+        }
+    }
+
+    [Fact]
+    public async Task InvalidMcpPort_WithOutputJson_ReturnsExitCode2_AndJsonOnStdErr()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--output", "json", "--mcp", "0"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
+        Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("port", result.StdErr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ClearHistory_WithOutputJson_DoesNotWriteInformationalStdOut()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--output", "json", "--clear-history"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
+    }
+
     private static async Task<ShellProcessResult> RunShellAsync(
         string stdinScript,
         CancellationToken cancellationToken)
@@ -204,6 +254,11 @@ public class ShellProcessTests
         IEnumerable<string>? extraArgs,
         CancellationToken cancellationToken)
     {
+        var argsList = extraArgs?.ToList();
+        var requiresOwnedStdin = stdinScript != null
+            || (argsList?.Contains("-c") == true)
+            || (argsList?.Contains("-k") == true);
+
         var shellDll = Path.Combine(AppContext.BaseDirectory, "CosmosDBShell.dll");
         if (!File.Exists(shellDll))
         {
@@ -217,7 +272,7 @@ public class ShellProcessTests
             FileName = dotnet,
             WorkingDirectory = AppContext.BaseDirectory,
             UseShellExecute = false,
-            RedirectStandardInput = stdinScript != null,
+            RedirectStandardInput = requiresOwnedStdin,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
@@ -226,9 +281,9 @@ public class ShellProcessTests
         };
 
         startInfo.ArgumentList.Add(shellDll);
-        if (extraArgs != null)
+        if (argsList != null)
         {
-            foreach (var a in extraArgs)
+            foreach (var a in argsList)
             {
                 startInfo.ArgumentList.Add(a);
             }
@@ -265,10 +320,14 @@ public class ShellProcessTests
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        if (stdinScript != null)
+        if (requiresOwnedStdin)
         {
-            await process.StandardInput.WriteAsync(stdinScript);
-            await process.StandardInput.WriteLineAsync();
+            if (stdinScript != null)
+            {
+                await process.StandardInput.WriteAsync(stdinScript);
+                await process.StandardInput.WriteLineAsync();
+            }
+
             process.StandardInput.Close();
         }
 
