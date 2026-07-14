@@ -8,6 +8,10 @@
 - `throughput` write subcommands (`set`/`manual`/`autoscale`) now accept `--dry-run` to preview the change — reporting current vs. planned mode and RU/s as JSON (and a table interactively) — without applying it or prompting for confirmation. A first slice of dry-run mode (item G1). ([#164](https://github.com/Azure/CosmosDBShell/issues/164))
 - **`--dry-run` for destructive delete commands.** `rm`, `rmcon`, `rmdb`, and `delete` accept `--dry-run` to preview the effect without deleting anything: `rm` reports how many items match the pattern, and `rmcon`/`rmdb` report the container or database that would be removed. No confirmation prompt is shown and no changes are made. ([#156](https://github.com/Azure/CosmosDBShell/issues/156))
 
+### Improvements
+
+- **Structured (JSON) tool results for MCP.** MCP tool results now carry the machine-readable JSON payload (`result`/`outputText`/`error` plus `currentLocation`) as first-class `structuredContent` in addition to the existing JSON text block, so agents can consume structured results directly. The two representations are kept byte-for-byte equivalent, and text-only clients are unaffected. ([#154](https://github.com/Azure/CosmosDBShell/issues/154))
+
 ## 1.1.115-preview — 2026-07-01
 
 A large feature cycle on top of 1.1.4-preview. The shell gains a stack of new commands — configurable **color themes**, a native **`filter`** language, change-feed **`watch`**, **`index`** and **`throughput`** management, bulk **`import`/`export`**, and server-side **`sproc`/`udf`/`trigger`** programming — plus a reworked **`info`** command (formerly `settings`) with usage statistics and JSON output, first-class observability through **`--diagnostics`** and **`--otel`**, and hardening of the MCP server.

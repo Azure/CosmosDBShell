@@ -103,4 +103,45 @@ public class McpResponseFactoryTests
         Assert.False(result.IsError);
         Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("currentLocation").ValueKind);
     }
+
+    [Fact]
+    public void CreateSuccess_PopulatesStructuredContentMatchingTextBlock()
+    {
+        var commandState = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                connected = true,
+            })),
+        };
+
+        var result = McpResponseFactory.CreateSuccess(commandState, new ContainerState("TestContainer", "TestDatabase", null!));
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+
+        Assert.NotNull(result.StructuredContent);
+        var structured = result.StructuredContent!.Value;
+
+        // The structured payload and the text rendering must stay in lockstep so clients
+        // that read either representation observe the same contract.
+        Assert.Equal(text, structured.GetRawText());
+        Assert.True(structured.GetProperty("result").GetProperty("connected").GetBoolean());
+        Assert.Equal("/TestDatabase/TestContainer", structured.GetProperty("currentLocation").GetString());
+    }
+
+    [Fact]
+    public void CreateError_PopulatesStructuredContentMatchingTextBlock()
+    {
+        var result = McpResponseFactory.CreateError("boom", new DatabaseState("TestDatabase", null!));
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+
+        Assert.True(result.IsError);
+        Assert.NotNull(result.StructuredContent);
+        var structured = result.StructuredContent!.Value;
+
+        // The structured payload and the text rendering must stay in lockstep so clients
+        // that read either representation observe the same contract.
+        Assert.Equal(text, structured.GetRawText());
+        Assert.Equal("boom", structured.GetProperty("error").GetString());
+        Assert.Equal("/TestDatabase", structured.GetProperty("currentLocation").GetString());
+    }
 }
