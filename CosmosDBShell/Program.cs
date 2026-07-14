@@ -71,11 +71,16 @@ internal class Program
             {
                 var outputMode = parseResult.GetValueForOption(optionMap.Output);
                 var quiet = parseResult.GetValueForOption(optionMap.Quiet);
-                var isNonInteractive = args.Contains("-c", StringComparer.Ordinal) || Console.IsInputRedirected;
-                var isMachineMode = quiet
-                    || string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(outputMode, "ndjson", StringComparison.OrdinalIgnoreCase)
-                    || (isNonInteractive && string.IsNullOrWhiteSpace(outputMode));
+var isNonInteractive = args.Contains("-c", StringComparer.Ordinal) || Console.IsInputRedirected;
+
+var machineModeRequested =
+    args.Contains("--quiet", StringComparer.Ordinal) || args.Contains("-q", StringComparer.Ordinal)
+    || args.Contains("--output", StringComparer.Ordinal) || args.Contains("-o", StringComparer.Ordinal);
+
+var isMachineMode = machineModeRequested
+    || string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase)
+    || string.Equals(outputMode, "ndjson", StringComparison.OrdinalIgnoreCase)
+    || (isNonInteractive && string.IsNullOrWhiteSpace(outputMode));
                 if (isMachineMode)
                 {
                     var errorStrings = parseResult.Errors.Select(e => e.Message).ToList();
