@@ -1878,6 +1878,12 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportExecutionError(Exception e, string? sourceText = null)
     {
+        // The command already emitted a friendly diagnostic; do not print again.
+        if (ContainsException<CommandReportedException>(e))
+        {
+            return;
+        }
+
         if (this.Options?.Quiet == true || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
         {
             var errObj = new
@@ -1886,11 +1892,6 @@ public partial class ShellInterpreter : IDisposable
                 error = e.Message,
             };
             Console.Error.WriteLine(JsonSerializer.Serialize(errObj));
-            return;
-        }
-        // The command already emitted a friendly diagnostic; do not print again.
-        if (ContainsException<CommandReportedException>(e))
-        {
             return;
         }
 
