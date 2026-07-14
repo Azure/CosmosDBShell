@@ -217,7 +217,7 @@ public class ShellProcessTests
             FileName = dotnet,
             WorkingDirectory = AppContext.BaseDirectory,
             UseShellExecute = false,
-            RedirectStandardInput = true,
+            RedirectStandardInput = stdinScript != null,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
@@ -269,10 +269,6 @@ public class ShellProcessTests
         {
             await process.StandardInput.WriteAsync(stdinScript);
             await process.StandardInput.WriteLineAsync();
-            process.StandardInput.Close();
-        }
-        else
-        {
             process.StandardInput.Close();
         }
 
