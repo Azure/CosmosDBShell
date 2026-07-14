@@ -198,8 +198,12 @@ echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;
 
 When running scripts or automation, Cosmos DB Shell maps execution failures to a set of stable exit codes (accessible via `$?`, `%ERRORLEVEL%`, or `$LASTEXITCODE`):
 
+- **`0`**: Success
+- **`1`**: Generic error
+- **`2`**: Bad arguments / parser errors
+- **`3`**: Auth / connection failure
+- **`4`**: Not found
 - **`5`**: Throttled (RU budget exceeded)
-
 > **Machine Mode**: Using `--output json`, `--output ndjson`, or `--quiet` (or running `-c` without specifying `--output`) disables ANSI colors, suppresses connection/informational banners, and redirects early parser/connection exceptions to `STDERR` as structured JSON. For most data operations, this ensures that `STDOUT` contains only structured JSON and can be safely piped to downstream parsers (though some diagnostic or interactive commands may still emit plain text).
 
 ## Theming

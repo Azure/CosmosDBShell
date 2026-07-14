@@ -55,6 +55,9 @@ internal class ErrorCommandState(Exception exception) : CommandState
                     System.Net.HttpStatusCode.Forbidden => 3,
                     System.Net.HttpStatusCode.NotFound => 4,
                     System.Net.HttpStatusCode.TooManyRequests => 5,
+                    System.Net.HttpStatusCode.RequestTimeout => 3,
+                    System.Net.HttpStatusCode.ServiceUnavailable => 3,
+                    System.Net.HttpStatusCode.GatewayTimeout => 3,
                     _ => 1,
                 };
             }
