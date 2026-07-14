@@ -243,9 +243,10 @@ internal class Program
             var structuredOutputMode =
                 string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase);
+            var startupMachineMode = o.Quiet || structuredOutputMode;
 
             var colorSystemVal = o.ColorSystem;
-            if (o.Quiet || structuredOutputMode)
+            if (startupMachineMode)
             {
                 colorSystemVal = 0; // Force NoColors in machine mode
                 o.Quiet = true; // Suppress informational messages to keep output clean
@@ -260,7 +261,7 @@ internal class Program
 
             ApplyTheme(o.Theme);
 
-            if (structuredOutputMode)
+            if (startupMachineMode)
             {
                 // Keep machine-mode stdout deterministic even if a command
                 // accidentally writes via AnsiConsole instead of command state output.
@@ -273,6 +274,22 @@ internal class Program
             }
 
             ShellInterpreter.Instance.Options = o;
+
+            void WriteStartupError(string message)
+            {
+                if (startupMachineMode)
+                {
+                    var errObj = new
+                    {
+                        status = "error",
+                        error = message,
+                    };
+                    Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(errObj));
+                    return;
+                }
+
+                AnsiConsole.WriteLine(message);
+            }
 
             // Enable diagnostic logging before connecting so the startup --connect
             // event is captured in the log.
@@ -353,7 +370,7 @@ internal class Program
             {
                 if (mcpPort <= 0)
                 {
-                    AnsiConsole.WriteLine(MessageService.GetString("mcp-error-invalid-port"));
+                    WriteStartupError(MessageService.GetString("mcp-error-invalid-port"));
                     Environment.ExitCode = 1;
                     return;
                 }
@@ -364,7 +381,7 @@ internal class Program
                 }
                 catch (Exception ex)
                 {
-                    AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-creating-server", "message", ex.Message));
+                    WriteStartupError(MessageService.GetArgsString("mcp-error-creating-server", "message", ex.Message));
                     Environment.ExitCode = 1;
                     return;
                 }
@@ -382,7 +399,7 @@ internal class Program
                         }
                         catch (Exception ex)
                         {
-                            AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-server-failed-start", "message", ex.Message));
+                            WriteStartupError(MessageService.GetArgsString("mcp-error-server-failed-start", "message", ex.Message));
                             Environment.ExitCode = 1;
                         }
                     });
