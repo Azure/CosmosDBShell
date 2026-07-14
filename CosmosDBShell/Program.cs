@@ -69,13 +69,13 @@ internal class Program
 
             if (parseResult.Errors.Count > 0)
             {
-var outputMode = parseResult.GetValueForOption(optionMap.Output);
-var quiet = parseResult.GetValueForOption(optionMap.Quiet);
-var isNonInteractive = args.Contains("-c", StringComparer.Ordinal) || Console.IsInputRedirected;
-var isMachineMode = quiet
-    || string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase)
-    || string.Equals(outputMode, "ndjson", StringComparison.OrdinalIgnoreCase)
-    || (isNonInteractive && string.IsNullOrWhiteSpace(outputMode));
+                var outputMode = parseResult.GetValueForOption(optionMap.Output);
+                var quiet = parseResult.GetValueForOption(optionMap.Quiet);
+                var isNonInteractive = args.Contains("-c", StringComparer.Ordinal) || Console.IsInputRedirected;
+                var isMachineMode = quiet
+                    || string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(outputMode, "ndjson", StringComparison.OrdinalIgnoreCase)
+                    || (isNonInteractive && string.IsNullOrWhiteSpace(outputMode));
                 if (isMachineMode)
                 {
                     var errorStrings = parseResult.Errors.Select(e => e.Message).ToList();
@@ -218,10 +218,10 @@ var isMachineMode = quiet
             var executeAndContinueCommand = string.IsNullOrWhiteSpace(o.ExecuteAndContinue) ? null : o.ExecuteAndContinue;
             var explicitCommand = executeAndContinueCommand ?? executeAndQuitCommand;
 
-if (string.IsNullOrWhiteSpace(o.Output) && !string.IsNullOrWhiteSpace(executeAndQuitCommand))
-{
-    o.Output = "ndjson";
-}
+            if (string.IsNullOrWhiteSpace(o.Output) && !string.IsNullOrWhiteSpace(executeAndQuitCommand))
+            {
+                o.Output = "ndjson";
+            }
 
             if (!string.IsNullOrWhiteSpace(o.Output))
             {
@@ -576,7 +576,7 @@ if (string.IsNullOrWhiteSpace(o.Output) && !string.IsNullOrWhiteSpace(executeAnd
             description: MessageService.GetString("help-OutputFormat"));
         var quiet = new Option<bool>(
             aliases: ["--quiet", "-q"],
-            description: MessageService.GetString("help-Quiet")); // Ensure this is defined in en.ftl
+            description: MessageService.GetString("help-Quiet"));
 
         var executeAndQuit = new Option<string?>("-c", MessageService.GetString("help-ExecuteAndQuit"));
         var executeAndContinue = new Option<string?>("-k", MessageService.GetString("help-ExecuteAndContinue"));
