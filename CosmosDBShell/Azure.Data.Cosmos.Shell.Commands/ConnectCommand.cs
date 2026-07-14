@@ -210,7 +210,9 @@ internal partial class ConnectCommand : CosmosCommand
 
         token.ThrowIfCancellationRequested();
         var acc = await client.ReadAccountAsync().WaitAsync(token);
-        
+        var connectionMode = client.ClientOptions.ConnectionMode;
+        string currentLocation = ShellLocation.GetCurrentLocation(shell.State) ?? ShellLocation.NotConnectedText;
+
         if (!isQuiet)
         {
             AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-connect-info-title")));
@@ -228,7 +230,6 @@ internal partial class ConnectCommand : CosmosCommand
             }
 
             // Display the connection mode
-            var connectionMode = client.ClientOptions.ConnectionMode;
             table.AddRow(MessageService.GetString("command-connect-info-mode"), Theme.FormatTableValue(connectionMode.ToString()));
 
             // Display the readable/writable regions
@@ -236,8 +237,6 @@ internal partial class ConnectCommand : CosmosCommand
             table.AddRow(MessageService.GetString("command-connect-info-write-regions"), Theme.FormatTableValue(string.Join(", ", acc.WritableRegions.Select(r => r.Name))));
 
             // Show current navigation state
-            string currentLocation = ShellLocation.GetCurrentLocation(shell.State) ?? ShellLocation.NotConnectedText;
-
             table.AddRow(MessageService.GetString("command-connect-info-location"), Theme.ConnectedStatePromt(currentLocation));
 
             AnsiConsole.Write(table);

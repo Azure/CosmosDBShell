@@ -299,18 +299,18 @@ internal class Program
                     var errorState = new ErrorCommandState(ex);
                     Environment.ExitCode = errorState.ExitCode;
 
-                    if (!string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
-                        && !string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase)
-                        && !o.Quiet
+                    var inMachineMode = o.Quiet
+                        || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase)
+                        || ((args.Contains("-c", StringComparer.Ordinal) || Console.IsInputRedirected)
+                            && string.IsNullOrWhiteSpace(o.Output));
+
+                    if (!inMachineMode
                         && ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id, out var permission))
                     {
                         ConnectCommand.AskForRBacPermissions(id ?? string.Empty, permission ?? string.Empty);
                         return;
                     }
-
-                    var inMachineMode = o.Quiet
-                        || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase);
 
                     if (inMachineMode)
                     {
@@ -566,7 +566,7 @@ internal class Program
                     || string.Equals(token, "table", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(token, "csv", StringComparison.OrdinalIgnoreCase))
                 {
-                    return token;
+                    return token.ToLowerInvariant();
                 }
 
                 argResult.ErrorMessage = MessageService.GetString(
