@@ -1421,10 +1421,24 @@ public partial class ShellInterpreter : IDisposable
             // exceptions) carry an actionable message; the stack trace is noise
             // for end users. Show only Message chains and let --verbose surface
             // the full exception.
+            var inMachineMode = this.Options?.Quiet == true
+                || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase);
+
             if (e is OperationCanceledException)
             {
                 var canceled = MessageService.GetString("runtime-error-canceled");
-                if (!string.IsNullOrEmpty(canceled))
+
+                if (inMachineMode)
+                {
+                    var errObj = new
+                    {
+                        status = "error",
+                        error = string.IsNullOrEmpty(canceled) ? e.Message : canceled,
+                    };
+                    Console.Error.WriteLine(JsonSerializer.Serialize(errObj));
+                }
+                else if (!string.IsNullOrEmpty(canceled))
                 {
                     AnsiConsole.MarkupLine(Theme.FormatWarning(canceled));
                 }
@@ -1432,7 +1446,7 @@ public partial class ShellInterpreter : IDisposable
                 return new ErrorCommandState(e);
             }
 
-            if (this.Options?.Quiet == true || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
+            if (inMachineMode)
             {
                 var errObj = new
                 {

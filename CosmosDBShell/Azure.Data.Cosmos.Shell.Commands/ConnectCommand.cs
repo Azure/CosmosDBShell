@@ -116,7 +116,7 @@ internal partial class ConnectCommand : CosmosCommand
         }
         catch (Exception e)
         {
-            if (TryGetPrincipalIdFromRbacException(e, out var id, out var permission))
+            if (!isQuiet && TryGetPrincipalIdFromRbacException(e, out var id, out var permission))
             {
                 AskForRBacPermissions(id ?? string.Empty, permission ?? string.Empty);
                 return commandState;
