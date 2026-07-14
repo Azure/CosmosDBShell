@@ -69,13 +69,13 @@ internal class Program
 
             if (parseResult.Errors.Count > 0)
             {
-                var outputMode = parseResult.GetValueForOption(optionMap.Output);
-                var quiet = parseResult.GetValueForOption(optionMap.Quiet);
-                var isNonInteractive = args.Contains("-c", StringComparer.Ordinal) || Console.IsInputRedirected;
-                var isMachineMode = quiet
-                    || string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(outputMode, "ndjson", StringComparison.OrdinalIgnoreCase)
-                    || (isNonInteractive && string.IsNullOrWhiteSpace(outputMode));
+var outputMode = parseResult.GetValueForOption(optionMap.Output);
+var quiet = parseResult.GetValueForOption(optionMap.Quiet);
+var isNonInteractive = args.Contains("-c", StringComparer.Ordinal);
+var isMachineMode = quiet
+    || string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase)
+    || string.Equals(outputMode, "ndjson", StringComparison.OrdinalIgnoreCase)
+    || (isNonInteractive && string.IsNullOrWhiteSpace(outputMode));
                 if (isMachineMode)
                 {
                     var errorStrings = parseResult.Errors.Select(e => e.Message).ToList();
@@ -218,10 +218,10 @@ internal class Program
             var executeAndContinueCommand = string.IsNullOrWhiteSpace(o.ExecuteAndContinue) ? null : o.ExecuteAndContinue;
             var explicitCommand = executeAndContinueCommand ?? executeAndQuitCommand;
 
-            if (string.IsNullOrWhiteSpace(o.Output) && (!string.IsNullOrWhiteSpace(executeAndQuitCommand) || Console.IsInputRedirected))
-            {
-                o.Output = "ndjson";
-            }
+if (string.IsNullOrWhiteSpace(o.Output) && !string.IsNullOrWhiteSpace(executeAndQuitCommand))
+{
+    o.Output = "ndjson";
+}
 
             if (!string.IsNullOrWhiteSpace(o.Output))
             {
