@@ -175,7 +175,7 @@ internal partial class ConnectCommand : CosmosCommand
         }
         catch (Exception e)
         {
-            return new ErrorCommandState(new CommandException("connect", e));
+            return new ErrorCommandState(new CommandException("profile", e));
         }
     }
 

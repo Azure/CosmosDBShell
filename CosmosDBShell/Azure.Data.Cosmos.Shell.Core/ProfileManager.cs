@@ -67,7 +67,13 @@ namespace Azure.Data.Cosmos.Shell.Core
             var dir = Path.GetDirectoryName(profileFilePath)!;
             Directory.CreateDirectory(dir);
             var json = JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(profileFilePath, json);
+
+            // Atomic write: serialize to a temp file first, then replace the target.
+            // This prevents a truncated/corrupt profiles.json if the process is
+            // interrupted mid-write.
+            var tmpPath = profileFilePath + ".tmp";
+            File.WriteAllText(tmpPath, json);
+            File.Move(tmpPath, profileFilePath, overwrite: true);
         }
 
         public static void SaveProfile(string name, ConnectionProfile profile)
