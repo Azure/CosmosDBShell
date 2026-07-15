@@ -53,6 +53,9 @@ internal partial class ConnectCommand : CosmosCommand
     [CosmosOption("vscode-credential", "connect-vscode-credential", Hidden = true)]
     public bool UseVSCodeCredential { get; init; }
 
+    [CosmosOption("disable-arm", Hidden = true)]
+    public bool DisableArm { get; init; }
+
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         // If no connection string provided, show current connection info
@@ -92,7 +95,7 @@ internal partial class ConnectCommand : CosmosCommand
 
         try
         {
-            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, token: token);
+            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, disableArm: this.DisableArm, token: token);
             var returnState = new CommandState
             {
                 IsPrinted = true,

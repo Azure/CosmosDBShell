@@ -272,9 +272,24 @@ Start the shell with options to customize behavior:
 | `--diagnostics [path]` | Write timestamped diagnostic logs (commands, timing, errors, connection events) to a file, or to a timestamped file in the config directory by default |
 | `--otel [endpoint]` | Enable distributed tracing so requests carry a sampled W3C `traceparent`. Optionally export spans to an OTLP `endpoint`; falls back to the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable |
 | `--color-system <n>` | Color scheme: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
+| `--output <format>` | The output format to use (`json`, `ndjson`, `table`, `csv`). Alias: `-o` |
+| `--quiet` | Suppress standard informational and connection banners |
 | `--clear-history` | Clear command history on start |
 | `--help` | Show usage information |
 | `--version` | Show version |
+
+### Machine Mode and Exit Codes
+
+When running scripts or automation, Cosmos DB Shell maps execution failures to a set of stable exit codes (accessible via `$?`, `%ERRORLEVEL%`, or `$LASTEXITCODE`):
+
+- **`0`**: Success
+- **`1`**: Generic / Unhandled Execution Error
+- **`2`**: Bad Arguments or Parser Errors
+- **`3`**: Authentication or Connection Failure
+- **`4`**: Not Found (e.g. Document or Resource not found)
+- **`5`**: Throttled (RU budget exceeded)
+
+> **Machine Mode**: Using `--output json`, `--output ndjson`, or `--quiet` implicitly disables ANSI colors, suppresses connection/informational banners, and redirects early parser/connection exceptions to `STDERR` as structured JSON. For most data operations, this ensures that `STDOUT` contains only structured JSON and can be safely piped to downstream parsers (though some diagnostic or interactive commands may still emit plain text).
 
 ### Environment Variables
 
@@ -315,4 +330,37 @@ cosmosdbshell --otel
 
 # Enable distributed tracing and export spans to an OTLP collector
 cosmosdbshell --otel http://localhost:4317
+```
+
+## Connection Profiles
+
+The `profile` command lets you save, list, switch, and delete named connection profiles, avoiding the need to re‑type long connection strings.
+
+**Naming / validation**
+
+- Profile name must match the regular expression `^[A-Za-z0-9_.-]{1,64}$`.
+- Names are case‑insensitive, 1‑64 characters, and may contain letters, numbers, underscore, dot, or hyphen.
+- Empty names are rejected.
+
+**Sub‑commands**
+
+- `profile save <name>` – Save the current connection as a profile.
+- `profile list` – Show all saved profiles.
+- `profile use <name>` – Connect using the given profile.
+- `profile delete <name>` – Remove a saved profile.
+
+**Examples**
+
+```bash
+# Save current connection as “prod‑account”
+profile save prod-account
+
+# List saved profiles
+profile list
+
+# Switch to a different profile
+profile use dev-account
+
+# Delete a profile
+profile delete old‑test
 ```
