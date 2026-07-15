@@ -145,6 +145,9 @@ public partial class ShellInterpreter : IDisposable
 
     internal string WelcomeMarkerFile => this.welcomeMarkerFile;
 
+    internal Func<bool> IsInteractiveSession { get; set; } =
+        static () => !Console.IsInputRedirected && !Console.IsOutputRedirected;
+
     internal IReadOnlyList<string> History => this.history;
 
     internal string? LastBuffer { get; set; }
@@ -615,6 +618,11 @@ public partial class ShellInterpreter : IDisposable
 
     internal bool ShowWelcomeOnFirstRun()
     {
+        if (!this.IsInteractiveSession())
+        {
+            return false;
+        }
+
         if (File.Exists(this.welcomeMarkerFile))
         {
             return false;

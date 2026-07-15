@@ -30,6 +30,7 @@ public sealed class WelcomeCommandTests
         {
             Console.SetOut(output);
             using var shell = new ShellInterpreter(configPath);
+            shell.IsInteractiveSession = static () => true;
 
             Assert.True(shell.ShowWelcomeOnFirstRun());
             Assert.True(File.Exists(shell.WelcomeMarkerFile));
@@ -93,6 +94,30 @@ public sealed class WelcomeCommandTests
             Assert.DoesNotContain("Report issues", status, StringComparison.Ordinal);
             Assert.DoesNotContain("Not connected", status, StringComparison.Ordinal);
             Assert.Equal(1, status.Count(character => character == '\n'));
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            TryDeleteDirectory(configPath);
+        }
+    }
+
+    [Fact]
+    public void ShowWelcomeOnFirstRun_SkipsWhenNonInteractive()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-welcome-{Guid.NewGuid():N}");
+        var originalOut = Console.Out;
+        using var output = new StringWriter();
+
+        try
+        {
+            Console.SetOut(output);
+            using var shell = new ShellInterpreter(configPath);
+            shell.IsInteractiveSession = static () => false;
+
+            Assert.False(shell.ShowWelcomeOnFirstRun());
+            Assert.False(File.Exists(shell.WelcomeMarkerFile));
+            Assert.DoesNotContain("COSMOS DB SHELL", output.ToString(), StringComparison.Ordinal);
         }
         finally
         {
