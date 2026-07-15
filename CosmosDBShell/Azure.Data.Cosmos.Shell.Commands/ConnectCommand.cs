@@ -158,11 +158,18 @@ internal partial class ConnectCommand : CosmosCommand
 
             ConnectionMode? connectionMode = null;
             if (!string.IsNullOrWhiteSpace(profile.Mode))
+            {
+                if (profile.Mode.Equals("direct", StringComparison.OrdinalIgnoreCase))
+                {
                     connectionMode = ConnectionMode.Direct;
                 }
                 else if (profile.Mode.Equals("gateway", StringComparison.OrdinalIgnoreCase))
                 {
                     connectionMode = ConnectionMode.Gateway;
+                }
+                else
+                {
+                    return new ErrorCommandState(new CommandException("profile", $"Invalid mode '{profile.Mode}'. Re-save the profile."));
                 }
             }
 

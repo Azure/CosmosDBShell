@@ -319,7 +319,7 @@ cosmosdbshell --otel http://localhost:4317
 
 ## Connection Profiles
 
-The `profile` command lets you save, list, switch, and delete named connection profiles, avoiding the need to re-type long connection strings.
+The `profile` command lets you save, list, switch, and delete named connection profiles, avoiding the need to re-type endpoints and connection-mode settings.
 
 **Naming / validation**
 
