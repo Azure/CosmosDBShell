@@ -151,11 +151,13 @@ internal partial class ConnectCommand : CosmosCommand
         try
         {
             // Profiles persist endpoint/mode only, so reconnect uses current credential context.
+            if (string.IsNullOrWhiteSpace(profile.Endpoint))
+            {
+                return new ErrorCommandState(new CommandException("profile", "Saved profile is missing an endpoint. Re-save the profile."));
+            }
+
             ConnectionMode? connectionMode = null;
             if (!string.IsNullOrWhiteSpace(profile.Mode))
-            {
-                if (profile.Mode.Equals("direct", StringComparison.OrdinalIgnoreCase))
-                {
                     connectionMode = ConnectionMode.Direct;
                 }
                 else if (profile.Mode.Equals("gateway", StringComparison.OrdinalIgnoreCase))

@@ -45,7 +45,16 @@ namespace Azure.Data.Cosmos.Shell.Core
                 {
                     foreach (var kvp in parsed)
                     {
-                        normalized[kvp.Key] = kvp.Value;
+                        if (kvp.Value is null)
+                        {
+                            continue;
+                        }
+
+                        normalized[kvp.Key] = new ConnectionProfile
+                        {
+                            Endpoint = kvp.Value.Endpoint ?? string.Empty,
+                            Mode = kvp.Value.Mode,
+                        };
                     }
                 }
 
