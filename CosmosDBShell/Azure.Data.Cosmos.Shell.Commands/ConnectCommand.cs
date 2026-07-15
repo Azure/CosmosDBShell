@@ -153,7 +153,7 @@ internal partial class ConnectCommand : CosmosCommand
             // Profiles persist endpoint/mode only, so reconnect uses current credential context.
             if (string.IsNullOrWhiteSpace(profile.Endpoint))
             {
-                return new ErrorCommandState(new CommandException("profile", "Saved profile is missing an endpoint. Re-save the profile."));
+                throw new CommandException("profile", "Saved profile is missing an endpoint. Re-save the profile.");
             }
 
             ConnectionMode? connectionMode = null;
@@ -169,7 +169,7 @@ internal partial class ConnectCommand : CosmosCommand
                 }
                 else
                 {
-                    return new ErrorCommandState(new CommandException("profile", $"Invalid mode '{profile.Mode}'. Re-save the profile."));
+                    throw new CommandException("profile", $"Invalid mode '{profile.Mode}'. Re-save the profile.");
                 }
             }
 
@@ -185,7 +185,7 @@ internal partial class ConnectCommand : CosmosCommand
         }
         catch (Exception e)
         {
-            return new ErrorCommandState(new CommandException("profile", e));
+            throw new CommandException("profile", e);
         }
     }
 
