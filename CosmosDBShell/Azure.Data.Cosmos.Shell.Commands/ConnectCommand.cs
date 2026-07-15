@@ -172,6 +172,10 @@ internal partial class ConnectCommand : CosmosCommand
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new Dictionary<string, string?> { ["connected"] = profile.Endpoint }));
             return commandState;
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception e)
         {
             return new ErrorCommandState(new CommandException("connect", e));
@@ -235,7 +239,8 @@ internal partial class ConnectCommand : CosmosCommand
         }
 
         var client = connectedState.Client;
-        token.ThrowIfCancellationRequested();
+        token.ThrowIfCancellationRequested();
+        token.ThrowIfCancellationRequested();
         var acc = await client.ReadAccountAsync().WaitAsync(token);
         AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-connect-info-title")));
 

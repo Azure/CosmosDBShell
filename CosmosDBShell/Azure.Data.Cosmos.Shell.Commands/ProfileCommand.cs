@@ -32,7 +32,7 @@ internal class ProfileCommand : CosmosCommand
 
     public override async Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
-        var action = (this.Action ?? "current").Trim().ToLowerInvariant();
+        var action = (this.Action ?? "list").Trim().ToLowerInvariant();
         if (action == "save")
         {
             return await RunSaveAsync(shell, commandState, token);
@@ -79,7 +79,7 @@ internal class ProfileCommand : CosmosCommand
 
         var profile = new ConnectionProfile
         {
-            Endpoint = cs.Client.Endpoint.Host,
+            Endpoint = cs.Client.Endpoint.ToString(),
             Mode = cs.Client.ClientOptions.ConnectionMode.ToString().ToLowerInvariant(),
         };
 
@@ -99,7 +99,10 @@ internal class ProfileCommand : CosmosCommand
         table.AddColumn("Mode");
         foreach (var kvp in profiles)
         {
-            table.AddRow(kvp.Key, kvp.Value.Endpoint, kvp.Value.Mode ?? "default");
+            table.AddRow(
+                Theme.FormatTableValue(kvp.Key),
+                Theme.FormatTableValue(kvp.Value.Endpoint),
+                Theme.FormatTableValue(kvp.Value.Mode ?? "default"));
         }
         AnsiConsole.Write(table);
         commandState.IsPrinted = true;

@@ -41,8 +41,15 @@ namespace Azure.Data.Cosmos.Shell.Core
                 var dict = JsonSerializer.Deserialize<Dictionary<string, ConnectionProfile>>(json, new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true,
-                }) ?? new Dictionary<string, ConnectionProfile>(StringComparer.OrdinalIgnoreCase);
-                return new Dictionary<string, ConnectionProfile>(dict, StringComparer.OrdinalIgnoreCase);
+                }) ?? new Dictionary<string, ConnectionProfile>();
+
+                var result = new Dictionary<string, ConnectionProfile>(StringComparer.OrdinalIgnoreCase);
+                foreach (var kvp in dict)
+                {
+                    result[kvp.Key] = kvp.Value;
+                }
+
+                return result;
             }
         }
 
@@ -59,9 +66,12 @@ namespace Azure.Data.Cosmos.Shell.Core
 
         public static void SaveProfile(string name, ConnectionProfile profile)
         {
-            var all = LoadAll();
-            all[name] = profile;
-            SaveAll(all);
+            lock (_lock)
+            {
+                var all = LoadAll();
+                all[name] = profile;
+                SaveAll(all);
+            }
         }
 
         public static ConnectionProfile? GetProfile(string name)
@@ -72,10 +82,13 @@ namespace Azure.Data.Cosmos.Shell.Core
 
         public static void DeleteProfile(string name)
         {
-            var all = LoadAll();
-            if (all.Remove(name))
+            lock (_lock)
             {
-                SaveAll(all);
+                var all = LoadAll();
+                if (all.Remove(name))
+                {
+                    SaveAll(all);
+                }
             }
         }
 
