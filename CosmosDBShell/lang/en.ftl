@@ -1,5 +1,8 @@
 shell-ready = Cosmos DB shell ready.
 shell-not_connected_hint = Not connected. Run 'connect <endpoint>' to authenticate, or 'help connect' for more options.
+shell-startup-status = Cosmos DB Shell { $version } | MCP { $mcp_status }
+shell-startup-mcp-off = off
+shell-startup-mcp-port = port { $port }
 shell-hisory_file_deleted = History deleted.
 shell-connect-browser-auth = Authenticating via browser. Please complete the login in the browser window that opens.
 shell-connect-devicecode-auth = Browser authentication failed. Falling back to device code authentication.
@@ -87,6 +90,8 @@ help-examples-heading = Examples
 help-aliases = Aliases:
 
 command-help-description = Shows help information for commands
+command-welcome-description = Displays the welcome screen
+command-welcome-result = Welcome screen displayed.
 command-help-description-command = The specific command to get help for
 command-help-description-details = Show detailed help information for each command
 command-help-description-plain = Disable styling and colors for script or limited terminals

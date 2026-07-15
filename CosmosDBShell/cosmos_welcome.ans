@@ -1,0 +1,23 @@
+﻿[?33h[16C[1;30m.[0m
+[11C[36m.-"[4b-.[15C[1;37mCOSMOS DB SHELL[30C[48;2;85;255;255m [0;30;48;2;85;255;255mFIRST RUN [0m
+[5C[1;36m.---'   .---.   '---.[9C>_  TERMINAL-NATIVE DATABASE EXPLORER[0m
+   [1m-([7C/_[4b\[7C)-[0m
+[5C[1;36m'---.  |=[4b|  .---'[9C[0mNavigate databases like a filesystem.[0m
+[11C[36m'-|_[4b|-'    *[8C[1;30mQuery, script, and automate from your terminal.[0m
+    [1;30m-[87b[0m
+[92C[1;30m.[0m
+    [48;2;85;255;255m [30mSTART HERE [0m
+[0m
+    [1;33m01  CONNECT[35C02  LEARN[0m
+[8C[1mconnect <endpoint>[28Chelp[0m
+[8C[1;30mEntra ID, account key, or emulator[12CExplore commands, syntax, and topics[0m
+[0m
+    [1;33m03  NAVIGATE[34C04  QUERY[0m
+[8C[1mls  /  cd <name>  /  pwd[22Cquery "SELECT * FROM c"[0m
+[8C[1;30mAccount  >  DB  >  Container  >  Items[8CRun Cosmos DB SQL interactively[0m
+[88C[1;36m*[0m
+    [48;2;85;255;255m [30mRESOURCES [0m
+[0m
+    [1;36mProject    [34mhttps://github.com/Azure/CosmosDBShell[0m
+    [1;36mDocs[7C[34mhttps://github.com/Azure/CosmosDBShell/blob/main/README.md[0m
+    [1;36mExamples   [34mhttps://github.com/Azure/CosmosDBShell/tree/main/examples[?33l
