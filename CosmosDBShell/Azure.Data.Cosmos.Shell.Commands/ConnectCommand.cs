@@ -166,7 +166,8 @@ internal partial class ConnectCommand : CosmosCommand
 
             await shell.ConnectAsync(profile.Endpoint, null, connectionMode, token: token);
             commandState.IsPrinted = true;
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new Dictionary<string, string?> { ["connected"] = profile.Endpoint }));
+            // Align JSON contract with other connect paths which use the "connected state" key for connect-with-endpoint results.
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new Dictionary<string, string?> { ["connected state"] = profile.Endpoint }));
             return commandState;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)

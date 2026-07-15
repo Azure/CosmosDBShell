@@ -118,7 +118,9 @@ namespace Azure.Data.Cosmos.Shell.Core
         {
             lock (SyncLock)
             {
-                return LoadAllUnsafe();
+                var all = LoadAllUnsafe();
+                // Return a read-only snapshot to prevent callers from mutating the internal dictionary
+                return new System.Collections.ObjectModel.ReadOnlyDictionary<string, ConnectionProfile>(new Dictionary<string, ConnectionProfile>(all, StringComparer.OrdinalIgnoreCase));
             }
         }
     }

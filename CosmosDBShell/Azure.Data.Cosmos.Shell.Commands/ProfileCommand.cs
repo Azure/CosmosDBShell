@@ -108,7 +108,18 @@ internal class ProfileCommand : CosmosCommand
 
         AnsiConsole.Write(table);
         commandState.IsPrinted = true;
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { profiles = profiles }));
+        var defaultModeLabel = MessageService.GetString("command-profile-list-mode-default");
+            var shaped = new List<object>();
+            foreach (var kvp in profiles)
+            {
+                shaped.Add(new {
+                    name = kvp.Key,
+                    endpoint = kvp.Value.Endpoint,
+                    mode = kvp.Value.Mode ?? defaultModeLabel,
+                });
+            }
+
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { profiles = shaped }));
         return commandState;
     }
 
