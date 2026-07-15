@@ -22,7 +22,7 @@ public sealed class WelcomeCommandTests
     [Fact]
     public void ShowWelcomeOnFirstRun_ShowsOnceAndCreatesMarker()
     {
-        var configPath = Path.Combine(Path.GetTempPath(), $"cosmosshell-welcome-{Guid.NewGuid():N}");
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-welcome-{Guid.NewGuid():N}");
         var originalOut = Console.Out;
         using var output = new StringWriter();
 
@@ -39,14 +39,14 @@ public sealed class WelcomeCommandTests
         finally
         {
             Console.SetOut(originalOut);
-            Directory.Delete(configPath, recursive: true);
+            TryDeleteDirectory(configPath);
         }
     }
 
     [Fact]
     public async Task WelcomeCommand_PrintsScreenAndReturnsSuccess()
     {
-        var configPath = Path.Combine(Path.GetTempPath(), $"cosmosshell-welcome-{Guid.NewGuid():N}");
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-welcome-{Guid.NewGuid():N}");
         var originalOut = Console.Out;
         using var output = new StringWriter();
 
@@ -69,14 +69,14 @@ public sealed class WelcomeCommandTests
         finally
         {
             Console.SetOut(originalOut);
-            Directory.Delete(configPath, recursive: true);
+            TryDeleteDirectory(configPath);
         }
     }
 
     [Fact]
     public void PrintStartupStatus_UsesOneCompactLine()
     {
-        var configPath = Path.Combine(Path.GetTempPath(), $"cosmosshell-welcome-{Guid.NewGuid():N}");
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-welcome-{Guid.NewGuid():N}");
         var originalOut = Console.Out;
         using var output = new StringWriter();
 
@@ -97,7 +97,15 @@ public sealed class WelcomeCommandTests
         finally
         {
             Console.SetOut(originalOut);
-            Directory.Delete(configPath, recursive: true);
+            TryDeleteDirectory(configPath);
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            Directory.Delete(path, recursive: true);
         }
     }
 

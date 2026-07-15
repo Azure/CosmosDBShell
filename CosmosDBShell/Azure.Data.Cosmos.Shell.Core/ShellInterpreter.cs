@@ -68,15 +68,15 @@ public partial class ShellInterpreter : IDisposable
         // editor.KeyBindings.Add<ClearInputCommand>(ConsoleKey.Escape);
         // TODO: Support selection commands?
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        this.cfgPath = configPath ?? Path.Combine(appData, "CosmosDBShell");
+        this.cfgPath = configPath ?? Path.Join(appData, "CosmosDBShell");
         this.history = [];
         if (!Directory.Exists(this.cfgPath))
         {
             Directory.CreateDirectory(this.cfgPath);
         }
 
-        this.HistoryFile = Path.Combine(this.cfgPath, "cmd_history");
-        this.welcomeMarkerFile = Path.Combine(this.cfgPath, "welcome_seen");
+        this.HistoryFile = Path.Join(this.cfgPath, "cmd_history");
+        this.welcomeMarkerFile = Path.Join(this.cfgPath, "welcome_seen");
 
         if (File.Exists(this.HistoryFile))
         {

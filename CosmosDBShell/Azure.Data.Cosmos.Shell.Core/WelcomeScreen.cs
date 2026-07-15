@@ -32,6 +32,6 @@ internal static class WelcomeScreen
         using var stream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException($"Stream for embedded resource '{resourceName}' not found.");
         using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
+        return reader.ReadToEnd().TrimStart('\uFEFF');
     }
 }
