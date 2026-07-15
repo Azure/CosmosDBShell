@@ -1,100 +1,115 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text.Json;
+// ------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+// ------------------------------------------------------------
 
 namespace Azure.Data.Cosmos.Shell.Core
 {
-    /// <summary>
-    /// Represents a saved connection profile (non‑secret information only).
-    /// </summary>
-    public class ConnectionProfile
-    {
-        public string Endpoint { get; set; } = string.Empty;
-        public string? Mode { get; set; }
-        public string? LoginHint { get; set; }
-        public string? TenantId { get; set; }
-        public string? ManagedIdentityClientId { get; set; }
-    }
+    using System;
+    using System.Collections.Generic;
+    using System.IO;
+    using System.Text.Json;
 
     /// <summary>
     /// Handles persisting and retrieving connection profiles.
     /// </summary>
     public static class ProfileManager
     {
-        private static readonly object _lock = new();
-        private static readonly string _profileFilePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".cosmosdbshell",
-            "profiles.json");
+        private static readonly object SyncLock = new();
 
-        private static Dictionary<string, ConnectionProfile> LoadAll()
+        private static string GetProfileFilePath()
         {
-            lock (_lock)
-            {
-                if (!File.Exists(_profileFilePath))
-                {
-                    return new Dictionary<string, ConnectionProfile>(StringComparer.OrdinalIgnoreCase);
-                }
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".cosmosdbshell",
+                "profiles.json");
+        }
 
-                var json = File.ReadAllText(_profileFilePath);
-                var dict = JsonSerializer.Deserialize<Dictionary<string, ConnectionProfile>>(json, new JsonSerializerOptions
+        private static Dictionary<string, ConnectionProfile> LoadAllUnsafe()
+        {
+            var profileFilePath = GetProfileFilePath();
+            if (!File.Exists(profileFilePath))
+            {
+                return new Dictionary<string, ConnectionProfile>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            try
+            {
+                var json = File.ReadAllText(profileFilePath);
+                var parsed = JsonSerializer.Deserialize<Dictionary<string, ConnectionProfile>>(json, new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true,
-                }) ?? new Dictionary<string, ConnectionProfile>();
+                });
 
-                var result = new Dictionary<string, ConnectionProfile>(StringComparer.OrdinalIgnoreCase);
-                foreach (var kvp in dict)
+                var normalized = new Dictionary<string, ConnectionProfile>(StringComparer.OrdinalIgnoreCase);
+                if (parsed is not null)
                 {
-                    result[kvp.Key] = kvp.Value;
+                    foreach (var kvp in parsed)
+                    {
+                        normalized[kvp.Key] = kvp.Value;
+                    }
                 }
 
-                return result;
+                return normalized;
+            }
+            catch (JsonException)
+            {
+                return new Dictionary<string, ConnectionProfile>(StringComparer.OrdinalIgnoreCase);
+            }
+            catch (IOException)
+            {
+                return new Dictionary<string, ConnectionProfile>(StringComparer.OrdinalIgnoreCase);
             }
         }
 
-        private static void SaveAll(Dictionary<string, ConnectionProfile> all)
+        private static void SaveAllUnsafe(Dictionary<string, ConnectionProfile> all)
         {
-            lock (_lock)
-            {
-                var dir = Path.GetDirectoryName(_profileFilePath)!;
-                Directory.CreateDirectory(dir);
-                var json = JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(_profileFilePath, json);
-            }
+            var profileFilePath = GetProfileFilePath();
+            var dir = Path.GetDirectoryName(profileFilePath)!;
+            Directory.CreateDirectory(dir);
+            var json = JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(profileFilePath, json);
         }
 
         public static void SaveProfile(string name, ConnectionProfile profile)
         {
-            lock (_lock)
+            lock (SyncLock)
             {
-                var all = LoadAll();
+                var all = LoadAllUnsafe();
                 all[name] = profile;
-                SaveAll(all);
+                SaveAllUnsafe(all);
             }
         }
 
         public static ConnectionProfile? GetProfile(string name)
         {
-            var all = LoadAll();
-            return all.TryGetValue(name, out var profile) ? profile : null;
+            lock (SyncLock)
+            {
+                var all = LoadAllUnsafe();
+                return all.TryGetValue(name, out var profile) ? profile : null;
+            }
         }
 
-        public static void DeleteProfile(string name)
+        public static bool DeleteProfile(string name)
         {
-            lock (_lock)
+            lock (SyncLock)
             {
-                var all = LoadAll();
-                if (all.Remove(name))
+                var all = LoadAllUnsafe();
+                if (!all.Remove(name))
                 {
-                    SaveAll(all);
+                    return false;
                 }
+
+                SaveAllUnsafe(all);
+                return true;
             }
         }
 
         public static IReadOnlyDictionary<string, ConnectionProfile> ListProfiles()
         {
-            return LoadAll();
+            lock (SyncLock)
+            {
+                return LoadAllUnsafe();
+            }
         }
     }
 }

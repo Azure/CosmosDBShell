@@ -680,6 +680,18 @@ command-connect-rbac-error =
 
   Learn more: https://aka.ms/cosmos-native-rbac
 
+command-profile-description = Manage saved connection profiles.
+command-profile-save-missing-name = 'profile save' requires a profile name.
+command-profile-use-missing-name = 'profile use' requires a profile name.
+command-profile-delete-missing-name = 'profile delete' requires a profile name.
+command-profile-invalid-name = Invalid profile name '{ $name }'. Use 1-64 characters from A-Z, a-z, 0-9, underscore (_), dot (.), or hyphen (-).
+command-profile-save-not-connected = Not connected. Connect to an account before running 'profile save'.
+command-profile-saved = Saved profile '{ $name }'.
+command-profile-unknown = Profile '{ $name }' was not found.
+command-profile-delete-not-found = Profile '{ $name }' was not found.
+command-profile-deleted = Deleted profile '{ $name }'.
+command-profile-unknown-action = Unknown 'profile' action '{ $action }'. Available actions: save, list, use, delete.
+
 command-cd-description = Changes to container or database
 command-cd-description-item = The database or container to select.
 command-cd-description-database = The database to navigate to

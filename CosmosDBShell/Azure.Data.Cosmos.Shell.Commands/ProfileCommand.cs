@@ -1,15 +1,19 @@
+// ------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+// ------------------------------------------------------------
+
+namespace Azure.Data.Cosmos.Shell.Commands;
+
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Data.Cosmos.Shell.Core;
-using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Spectre.Console;
-using System.Text.Json;
-
-namespace Azure.Data.Cosmos.Shell.Commands;
 
 /// <summary>
 /// Manage saved connection profiles.
@@ -35,39 +39,32 @@ internal class ProfileCommand : CosmosCommand
         var action = (this.Action ?? "list").Trim().ToLowerInvariant();
         if (action == "save")
         {
-            return await RunSaveAsync(shell, commandState, token);
+            return await this.RunSaveAsync(shell, commandState, token);
         }
         else if (action == "list")
         {
-            return RunList(commandState);
+            return this.RunList(commandState);
         }
         else if (action == "use" || action == "set")
         {
-            return await RunUseAsync(shell, commandState, token);
+            return await this.RunUseAsync(shell, commandState, token);
         }
         else if (action == "delete")
         {
-            return RunDelete(commandState);
+            return this.RunDelete(commandState);
         }
         else
         {
-            return RunUnknownAction(commandState, action);
+            return this.RunUnknownAction(commandState, action);
         }
     }
 
     private async Task<CommandState> RunSaveAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
-        if (string.IsNullOrWhiteSpace(this.Name))
+        if (this.TryValidateName(this.Name, MessageService.GetString("command-profile-save-missing-name"), out var validationError))
         {
-            AnsiConsole.MarkupLine(MessageService.GetString("command-profile-save-missing-name"));
-            return new ErrorCommandState(new CommandException("profile", MessageService.GetString("command-profile-save-missing-name")));
-        }
-
-        if (!NameRegex.IsMatch(this.Name))
-        {
-            var msg = MessageService.GetArgsString("command-profile-invalid-name", "name", this.Name);
-            AnsiConsole.MarkupLine(Theme.FormatError(msg));
-            return new ErrorCommandState(new CommandException("profile", msg));
+            AnsiConsole.MarkupLine(Theme.FormatError(validationError));
+            return new ErrorCommandState(new CommandException("profile", validationError));
         }
 
         if (shell.State is not ConnectedState cs)
@@ -77,16 +74,17 @@ internal class ProfileCommand : CosmosCommand
             return new ErrorCommandState(new CommandException("profile", msg));
         }
 
+        var profileName = this.Name!;
         var profile = new ConnectionProfile
         {
             Endpoint = cs.Client.Endpoint.ToString(),
             Mode = cs.Client.ClientOptions.ConnectionMode.ToString().ToLowerInvariant(),
         };
 
-        ProfileManager.SaveProfile(this.Name, profile);
-        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-profile-saved", "name", this.Name));
+        ProfileManager.SaveProfile(profileName, profile);
+        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-profile-saved", "name", profileName));
         commandState.IsPrinted = true;
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { saved = this.Name }));
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { saved = profileName }));
         return commandState;
     }
 
@@ -104,6 +102,7 @@ internal class ProfileCommand : CosmosCommand
                 Theme.FormatTableValue(kvp.Value.Endpoint),
                 Theme.FormatTableValue(kvp.Value.Mode ?? "default"));
         }
+
         AnsiConsole.Write(table);
         commandState.IsPrinted = true;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { profiles = profiles }));
@@ -112,17 +111,17 @@ internal class ProfileCommand : CosmosCommand
 
     private async Task<CommandState> RunUseAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
-        if (string.IsNullOrWhiteSpace(this.Name))
+        if (this.TryValidateName(this.Name, MessageService.GetString("command-profile-use-missing-name"), out var validationError))
         {
-            var msg = MessageService.GetString("command-profile-use-missing-name");
-            AnsiConsole.MarkupLine(msg);
-            return new ErrorCommandState(new CommandException("profile", msg));
+            AnsiConsole.MarkupLine(Theme.FormatError(validationError));
+            return new ErrorCommandState(new CommandException("profile", validationError));
         }
 
-        var profile = ProfileManager.GetProfile(this.Name);
+        var profileName = this.Name!;
+        var profile = ProfileManager.GetProfile(profileName);
         if (profile is null)
         {
-            var msg = MessageService.GetArgsString("command-profile-unknown", "name", this.Name);
+            var msg = MessageService.GetArgsString("command-profile-unknown", "name", profileName);
             AnsiConsole.MarkupLine(msg);
             return new ErrorCommandState(new CommandException("profile", msg));
         }
@@ -134,17 +133,23 @@ internal class ProfileCommand : CosmosCommand
 
     private CommandState RunDelete(CommandState commandState)
     {
-        if (string.IsNullOrWhiteSpace(this.Name))
+        if (this.TryValidateName(this.Name, MessageService.GetString("command-profile-delete-missing-name"), out var validationError))
         {
-            var msg = MessageService.GetString("command-profile-delete-missing-name");
-            AnsiConsole.MarkupLine(msg);
-            return new ErrorCommandState(new CommandException("profile", msg));
+            AnsiConsole.MarkupLine(Theme.FormatError(validationError));
+            return new ErrorCommandState(new CommandException("profile", validationError));
         }
 
-        ProfileManager.DeleteProfile(this.Name);
-        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-profile-deleted", "name", this.Name));
+        var profileName = this.Name!;
+        if (!ProfileManager.DeleteProfile(profileName))
+        {
+            var notFound = MessageService.GetArgsString("command-profile-delete-not-found", "name", profileName);
+            AnsiConsole.MarkupLine(Theme.FormatError(notFound));
+            return new ErrorCommandState(new CommandException("profile", notFound));
+        }
+
+        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-profile-deleted", "name", profileName));
         commandState.IsPrinted = true;
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { deleted = this.Name }));
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { deleted = profileName }));
         return commandState;
     }
 
@@ -153,5 +158,23 @@ internal class ProfileCommand : CosmosCommand
         var msg = MessageService.GetArgsString("command-profile-unknown-action", "action", action);
         AnsiConsole.MarkupLine(msg);
         return new ErrorCommandState(new CommandException("profile", msg));
+    }
+
+    private bool TryValidateName(string? name, string missingNameMessage, out string errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            errorMessage = missingNameMessage;
+            return true;
+        }
+
+        if (!NameRegex.IsMatch(name))
+        {
+            errorMessage = MessageService.GetArgsString("command-profile-invalid-name", "name", name);
+            return true;
+        }
+
+        errorMessage = string.Empty;
+        return false;
     }
 }

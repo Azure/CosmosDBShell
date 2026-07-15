@@ -319,7 +319,7 @@ cosmosdbshell --otel http://localhost:4317
 
 ## Connection Profiles
 
-The `profile` command lets you save, list, switch, and delete named connection profiles, avoiding the need to re‑type long connection strings.
+The `profile` command lets you save, list, switch, and delete named connection profiles, avoiding the need to re-type long connection strings.
 
 **Naming / validation**
 
@@ -329,15 +329,15 @@ The `profile` command lets you save, list, switch, and delete named connection p
 
 **Sub‑commands**
 
-- `profile save <name>` – Save the current connection as a profile.
-- `profile list` – Show all saved profiles.
-- `profile use <name>` – Connect using the given profile.
-- `profile delete <name>` – Remove a saved profile.
+- `profile save <name>` - Save the current connection as a profile.
+- `profile list` - Show all saved profiles.
+- `profile use <name>` - Connect using the given profile.
+- `profile delete <name>` - Remove a saved profile.
 
 **Examples**
 
 ```bash
-# Save current connection as “prod‑account”
+# Save current connection as "prod-account"
 profile save prod-account
 
 # List saved profiles
@@ -347,5 +347,5 @@ profile list
 profile use dev-account
 
 # Delete a profile
-profile delete old‑test
+profile delete old-test
 ```

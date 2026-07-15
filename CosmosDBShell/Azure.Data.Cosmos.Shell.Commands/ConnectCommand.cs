@@ -53,9 +53,6 @@ internal partial class ConnectCommand : CosmosCommand
     [CosmosOption("vscode-credential", "connect-vscode-credential", Hidden = true)]
     public bool UseVSCodeCredential { get; init; }
 
-    [CosmosOption("disable-arm", Hidden = true)]
-    public bool DisableArm { get; init; }
-
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         // If no connection string provided, show current connection info
@@ -167,15 +164,15 @@ internal partial class ConnectCommand : CosmosCommand
                 }
             }
 
-            await shell.ConnectAsync(profile.Endpoint, profile.LoginHint, connectionMode, tenantId: profile.TenantId, managedIdentityClientId: profile.ManagedIdentityClientId, token: token);
+            await shell.ConnectAsync(profile.Endpoint, null, connectionMode, token: token);
             commandState.IsPrinted = true;
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new Dictionary<string, string?> { ["connected"] = profile.Endpoint }));
             return commandState;
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-            throw;
-        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception e)
         {
             return new ErrorCommandState(new CommandException("connect", e));
@@ -239,7 +236,6 @@ internal partial class ConnectCommand : CosmosCommand
         }
 
         var client = connectedState.Client;
-        token.ThrowIfCancellationRequested();
         token.ThrowIfCancellationRequested();
         var acc = await client.ReadAccountAsync().WaitAsync(token);
         AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-connect-info-title")));
