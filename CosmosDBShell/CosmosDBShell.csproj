@@ -30,6 +30,18 @@
   <ToolPackageRuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</ToolPackageRuntimeIdentifiers>
   </PropertyGroup>
 
+  <!-- Published builds are trimmed by default to reduce the self-contained
+       distribution size. Reflection-based System.Text.Json serialization is
+       retained until source-generated metadata covers the shell's dynamic
+       command and result types. Publish with -p:PublishTrimmed=false to
+       produce a diagnostic untrimmed build. -->
+  <PropertyGroup>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+  </PropertyGroup>
+
   <PropertyGroup>
     <PackageId>CosmosDBShell</PackageId>
     <Authors>Microsoft</Authors>
@@ -114,7 +126,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\CosmosDBShell.Analyzer\CosmosDBShell.Analyzer.csproj">
+    <ProjectReference Include="..\CosmosDBShell.Analyzer\CosmosDBShell.Analyzer.csproj" GlobalPropertiesToRemove="PublishTrimmed;SelfContained">
       <ReferenceOutputAssembly>False</ReferenceOutputAssembly>
 	  <OutputItemType>Analyzer</OutputItemType>
     </ProjectReference>

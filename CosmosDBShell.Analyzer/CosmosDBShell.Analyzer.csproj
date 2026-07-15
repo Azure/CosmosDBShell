@@ -1,7 +1,10 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="PublishTrimmed;SelfContained">
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
 	<IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
+    <PublishTrimmed>false</PublishTrimmed>
+    <SelfContained>false</SelfContained>
     <!-- Avoid ID conflicts with the package project. -->
     <PackageId>*$(MSBuildProjectFile)*</PackageId>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
