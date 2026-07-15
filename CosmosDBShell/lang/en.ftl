@@ -681,6 +681,8 @@ command-connect-rbac-error =
   Learn more: https://aka.ms/cosmos-native-rbac
 
 command-profile-description = Manage saved connection profiles.
+command-profile-description-action = One of: save, list, use, delete (defaults to list).
+command-profile-description-name = Profile name for save, use, or delete.
 command-profile-save-missing-name = 'profile save' requires a profile name.
 command-profile-use-missing-name = 'profile use' requires a profile name.
 command-profile-delete-missing-name = 'profile delete' requires a profile name.

@@ -11,6 +11,9 @@ using Azure.Data.Cosmos.Shell.Util;
 public class ProfileCommandTests
 {
     [Theory]
+    [InlineData("command-profile-description")]
+    [InlineData("command-profile-description-action")]
+    [InlineData("command-profile-description-name")]
     [InlineData("command-profile-save-missing-name")]
     [InlineData("command-profile-use-missing-name")]
     [InlineData("command-profile-delete-missing-name")]
@@ -21,6 +24,10 @@ public class ProfileCommandTests
     [InlineData("command-profile-delete-not-found")]
     [InlineData("command-profile-deleted")]
     [InlineData("command-profile-unknown-action")]
+    [InlineData("command-profile-list-col-name")]
+    [InlineData("command-profile-list-col-endpoint")]
+    [InlineData("command-profile-list-col-mode")]
+    [InlineData("command-profile-list-mode-default")]
     public void LocalizationKeys_AreDefined(string key)
     {
         Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString(key)));
