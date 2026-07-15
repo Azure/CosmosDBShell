@@ -338,7 +338,7 @@ The `profile` command lets you save, list, switch, and delete named connection p
 
 - Profiles store non-secret metadata only (`endpoint` and connection `mode`).
 - Secrets (for example account keys) are not persisted.
-- `profile use` reconnects with the saved endpoint/mode and current credential context (for example existing token/environment-based auth).
+- `profile use` reconnects with the saved endpoint/mode and current credential context (for example existing token, `COSMOSDB_SHELL_ACCOUNT_KEY`, or environment-based auth).
 
 **Examples**
 

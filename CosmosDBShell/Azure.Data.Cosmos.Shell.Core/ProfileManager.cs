@@ -59,6 +59,10 @@ namespace Azure.Data.Cosmos.Shell.Core
             {
                 return new Dictionary<string, ConnectionProfile>(StringComparer.OrdinalIgnoreCase);
             }
+            catch (UnauthorizedAccessException)
+            {
+                return new Dictionary<string, ConnectionProfile>(StringComparer.OrdinalIgnoreCase);
+            }
         }
 
         private static void SaveAllUnsafe(Dictionary<string, ConnectionProfile> all)

@@ -691,6 +691,10 @@ command-profile-unknown = Profile '{ $name }' was not found.
 command-profile-delete-not-found = Profile '{ $name }' was not found.
 command-profile-deleted = Deleted profile '{ $name }'.
 command-profile-unknown-action = Unknown 'profile' action '{ $action }'. Available actions: save, list, use, delete.
+command-profile-list-col-name = Name
+command-profile-list-col-endpoint = Endpoint
+command-profile-list-col-mode = Mode
+command-profile-list-mode-default = default
 
 command-cd-description = Changes to container or database
 command-cd-description-item = The database or container to select.

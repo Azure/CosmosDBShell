@@ -69,19 +69,15 @@ internal class ProfileCommand : CosmosCommand
 
         if (shell.State is not ConnectedState cs)
         {
-            // Bug fix: use Theme.FormatError (consistent with all other validation/error paths)
-            // and escape the message so Spectre markup in the string can't corrupt output.
             var msg = MessageService.GetString("command-profile-save-not-connected");
-            AnsiConsole.MarkupLine(Theme.FormatError(Markup.Escape(msg)));
+            AnsiConsole.MarkupLine(Theme.FormatError(msg));
             return new ErrorCommandState(new CommandException("profile", msg));
         }
 
         var profileName = this.Name!;
 
-        // Only endpoint and connection mode are persisted — no credentials or keys.
-        // Credentials are resolved via Entra ID (or the current auth context) at
-        // connect time when the profile is used.  This is intentional and aligns
-        // with the agentic-roadmap guidance (item A2): avoid secret storage.
+        // Only endpoint and connection mode are persisted; credentials are resolved
+        // from the current auth context when the profile is used.
         var profile = new ConnectionProfile
         {
             Endpoint = cs.Client.Endpoint.ToString(),
@@ -99,15 +95,15 @@ internal class ProfileCommand : CosmosCommand
     {
         var profiles = ProfileManager.ListProfiles();
         var table = new Table();
-        table.AddColumn("Name");
-        table.AddColumn("Endpoint");
-        table.AddColumn("Mode");
+        table.AddColumn(MessageService.GetString("command-profile-list-col-name"));
+        table.AddColumn(MessageService.GetString("command-profile-list-col-endpoint"));
+        table.AddColumn(MessageService.GetString("command-profile-list-col-mode"));
         foreach (var kvp in profiles)
         {
             table.AddRow(
                 Theme.FormatTableValue(kvp.Key),
                 Theme.FormatTableValue(kvp.Value.Endpoint),
-                Theme.FormatTableValue(kvp.Value.Mode ?? "default"));
+                Theme.FormatTableValue(kvp.Value.Mode ?? MessageService.GetString("command-profile-list-mode-default")));
         }
 
         AnsiConsole.Write(table);
@@ -129,7 +125,7 @@ internal class ProfileCommand : CosmosCommand
         if (profile is null)
         {
             var msg = MessageService.GetArgsString("command-profile-unknown", "name", profileName);
-            AnsiConsole.MarkupLine(msg);
+            AnsiConsole.MarkupLine(Theme.FormatError(msg));
             return new ErrorCommandState(new CommandException("profile", msg));
         }
 

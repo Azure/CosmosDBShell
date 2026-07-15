@@ -34,6 +34,33 @@ Disconnect the current connection.
 Usage: disconnect
 ```
 
+### profile
+
+Manage saved connection profiles.
+
+```text
+Usage: profile [action] [name]
+
+Arguments:
+    [action]    One of: save, list, use, delete (defaults to list)
+    [name]      Profile name for save, use, or delete
+```
+
+Profiles store non-secret connection metadata only: the endpoint URI and
+connection mode. Secrets are not written to disk. `profile use` reconnects
+with the saved endpoint/mode and the current credential context, which may
+include `COSMOSDB_SHELL_ACCOUNT_KEY`, an existing token, or other supported
+ambient credentials.
+
+Examples:
+
+```bash
+profile save dev-account
+profile list
+profile use dev-account
+profile delete dev-account
+```
+
 ## Navigation
 
 ### ls
