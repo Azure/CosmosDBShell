@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.States;
+using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 using Spectre.Console;
+using System.Text.Json;
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
@@ -16,7 +19,7 @@ namespace Azure.Data.Cosmos.Shell.Commands;
 [CosmosExample("profile list", Description = "List saved profiles")]
 [CosmosExample("profile use dev", Description = "Connect using saved profile 'dev'")]
 [CosmosExample("profile delete dev", Description = "Delete saved profile 'dev'")]
-public class ProfileCommand : CosmosCommand
+internal class ProfileCommand : CosmosCommand
 {
     private static readonly System.Text.RegularExpressions.Regex NameRegex =
         new System.Text.RegularExpressions.Regex("^[A-Za-z0-9_.-]{1,64}$", System.Text.RegularExpressions.RegexOptions.Compiled);
@@ -30,14 +33,26 @@ public class ProfileCommand : CosmosCommand
     public override async Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         var action = (this.Action ?? "current").Trim().ToLowerInvariant();
-        return action switch
+        if (action == "save")
         {
-            "save" => await RunSaveAsync(shell, commandState, token),
-            "list" => Task.FromResult(RunList(commandState)),
-            "use" or "set" => await RunUseAsync(shell, commandState, token),
-            "delete" => Task.FromResult(RunDelete(commandState)),
-            _ => Task.FromResult(RunUnknownAction(commandState, action)),
-        };
+            return await RunSaveAsync(shell, commandState, token);
+        }
+        else if (action == "list")
+        {
+            return RunList(commandState);
+        }
+        else if (action == "use" || action == "set")
+        {
+            return await RunUseAsync(shell, commandState, token);
+        }
+        else if (action == "delete")
+        {
+            return RunDelete(commandState);
+        }
+        else
+        {
+            return RunUnknownAction(commandState, action);
+        }
     }
 
     private async Task<CommandState> RunSaveAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
@@ -66,9 +81,6 @@ public class ProfileCommand : CosmosCommand
         {
             Endpoint = cs.Client.Endpoint.Host,
             Mode = cs.Client.ClientOptions.ConnectionMode.ToString().ToLowerInvariant(),
-            LoginHint = cs.LoginHint,
-            TenantId = cs.TenantId,
-            ManagedIdentityClientId = cs.ManagedIdentityClientId,
         };
 
         ProfileManager.SaveProfile(this.Name, profile);

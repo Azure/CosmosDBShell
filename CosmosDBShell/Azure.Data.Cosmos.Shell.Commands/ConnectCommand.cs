@@ -95,7 +95,7 @@ internal partial class ConnectCommand : CosmosCommand
 
         try
         {
-            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, disableArm: this.DisableArm, token: token);
+            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, token: token);
             var returnState = new CommandState
             {
                 IsPrinted = true,
@@ -143,6 +143,39 @@ internal partial class ConnectCommand : CosmosCommand
     {
         AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
         ShellInterpreter.WriteLine(MessageService.GetArgsString("command-connect-rbac-error", "id", principalId, "permission", permission));
+    }
+
+    /// <summary>
+    /// Helper used by profile "use" to connect using a saved profile.
+    /// </summary>
+    internal static async Task<CommandState> ExecuteProfileAsync(Core.ConnectionProfile profile, ShellInterpreter shell, CancellationToken token)
+    {
+        var commandState = new CommandState();
+        try
+        {
+            // Map profile values into the existing ConnectAsync surface. Only endpoint and mode are stored today.
+            ConnectionMode? connectionMode = null;
+            if (!string.IsNullOrWhiteSpace(profile.Mode))
+            {
+                if (profile.Mode.Equals("direct", StringComparison.OrdinalIgnoreCase))
+                {
+                    connectionMode = ConnectionMode.Direct;
+                }
+                else if (profile.Mode.Equals("gateway", StringComparison.OrdinalIgnoreCase))
+                {
+                    connectionMode = ConnectionMode.Gateway;
+                }
+            }
+
+            await shell.ConnectAsync(profile.Endpoint, profile.LoginHint, connectionMode, tenantId: profile.TenantId, managedIdentityClientId: profile.ManagedIdentityClientId, token: token);
+            commandState.IsPrinted = true;
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new Dictionary<string, string?> { ["connected"] = profile.Endpoint }));
+            return commandState;
+        }
+        catch (Exception e)
+        {
+            return new ErrorCommandState(new CommandException("connect", e));
+        }
     }
 
     /// <summary>
@@ -202,8 +235,7 @@ internal partial class ConnectCommand : CosmosCommand
         }
 
         var client = connectedState.Client;
-
-        token.ThrowIfCancellationRequested();
+        token.ThrowIfCancellationRequested();
         var acc = await client.ReadAccountAsync().WaitAsync(token);
         AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-connect-info-title")));
 
