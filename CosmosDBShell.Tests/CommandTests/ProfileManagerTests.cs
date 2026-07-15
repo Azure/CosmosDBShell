@@ -73,19 +73,23 @@ public class ProfileManagerTests
     private sealed class TemporaryUserProfileScope : IDisposable
     {
         private readonly string? originalUserProfile;
+        private readonly string? originalHome;
         private readonly string temporaryPath;
 
         public TemporaryUserProfileScope()
         {
             this.originalUserProfile = Environment.GetEnvironmentVariable("USERPROFILE");
+            this.originalHome = Environment.GetEnvironmentVariable("HOME");
             this.temporaryPath = Path.Combine(Path.GetTempPath(), $"cosmosdbshell-profile-tests-{Guid.NewGuid():N}");
             Directory.CreateDirectory(this.temporaryPath);
             Environment.SetEnvironmentVariable("USERPROFILE", this.temporaryPath);
+            Environment.SetEnvironmentVariable("HOME", this.temporaryPath);
         }
 
         public void Dispose()
         {
             Environment.SetEnvironmentVariable("USERPROFILE", this.originalUserProfile);
+            Environment.SetEnvironmentVariable("HOME", this.originalHome);
             if (Directory.Exists(this.temporaryPath))
             {
                 Directory.Delete(this.temporaryPath, recursive: true);

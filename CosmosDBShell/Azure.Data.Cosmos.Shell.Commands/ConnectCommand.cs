@@ -150,7 +150,7 @@ internal partial class ConnectCommand : CosmosCommand
         var commandState = new CommandState();
         try
         {
-            // Map profile values into the existing ConnectAsync surface. Only endpoint and mode are stored today.
+            // Profiles persist endpoint/mode only, so reconnect uses current credential context.
             ConnectionMode? connectionMode = null;
             if (!string.IsNullOrWhiteSpace(profile.Mode))
             {

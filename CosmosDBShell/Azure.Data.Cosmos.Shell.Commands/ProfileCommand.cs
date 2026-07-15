@@ -45,7 +45,7 @@ internal class ProfileCommand : CosmosCommand
         {
             return this.RunList(commandState);
         }
-        else if (action == "use" || action == "set")
+        else if (action == "use")
         {
             return await this.RunUseAsync(shell, commandState, token);
         }
@@ -156,7 +156,7 @@ internal class ProfileCommand : CosmosCommand
     private CommandState RunUnknownAction(CommandState commandState, string action)
     {
         var msg = MessageService.GetArgsString("command-profile-unknown-action", "action", action);
-        AnsiConsole.MarkupLine(msg);
+        AnsiConsole.MarkupLine(Theme.FormatError(msg));
         return new ErrorCommandState(new CommandException("profile", msg));
     }
 
