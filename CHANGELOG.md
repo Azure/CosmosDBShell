@@ -11,6 +11,7 @@
 ### Improvements
 
 - **Structured (JSON) tool results for MCP.** MCP tool results now carry the machine-readable JSON payload (`result`/`outputText`/`error` plus `currentLocation`) as first-class `structuredContent` in addition to the existing JSON text block, so agents can consume structured results directly. The two representations are kept byte-for-byte equivalent, and text-only clients are unaffected. ([#154](https://github.com/Azure/CosmosDBShell/issues/154))
+- **Stable exit-code contract for CI/CD.** Non-interactive runs (`-c`, `-k`, or a script piped on stdin) now return machine-readable process exit codes: `0` success, `1` general failure, `2` authentication/authorization failure, `3` connection/network error, and `4` command/script syntax error. Previously all failures returned `1`. A new [CI/CD guide](docs/ci.md) documents the contract along with GitHub Actions, authentication, and failure-handling guidance. ([#176](https://github.com/Azure/CosmosDBShell/issues/176))
 
 ## 1.1.115-preview — 2026-07-01
 

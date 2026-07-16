@@ -131,9 +131,18 @@ public class ShellProcessTests
             extraArgs: ["not-a-root-option"],
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotEqual(0, result.ExitCode);
+        Assert.Equal(4, result.ExitCode);
         Assert.Contains("Unrecognized argument 'not-a-root-option'", result.StdOut);
         Assert.DoesNotContain("Option '--connect-mode' is defined with a bad format", result.StdOut);
+    }
+
+    [Fact]
+    public async Task StdinPipedScript_SyntaxError_ReturnsSyntaxExitCode()
+    {
+        // An unterminated string is a parser error, which maps to the syntax exit code (4).
+        var result = await RunShellAsync("echo \"unterminated", TestContext.Current.CancellationToken);
+
+        Assert.Equal(4, result.ExitCode);
     }
 
     [Fact]

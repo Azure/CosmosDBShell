@@ -75,7 +75,7 @@ internal class Program
                 }
 
                 ShellInterpreter.WriteLine(BuildHelpText());
-                Environment.ExitCode = 1;
+                Environment.ExitCode = ShellExitCode.SyntaxError;
                 return;
             }
 
@@ -223,7 +223,7 @@ internal class Program
                 }
                 catch (Exception ex)
                 {
-                    Environment.ExitCode = 1;
+                    Environment.ExitCode = ShellExitCode.FromException(ex);
                     if (ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id, out var permission))
                     {
                         ConnectCommand.AskForRBacPermissions(id ?? string.Empty, permission ?? string.Empty);
@@ -287,7 +287,7 @@ internal class Program
                     var state = await ShellInterpreter.Instance.ExecuteCommandAsync(script, default);
                     if (state.IsError)
                     {
-                        Environment.ExitCode = 1;
+                        Environment.ExitCode = ShellExitCode.FromCommandState(state);
                         if (executeAndContinueCommand is null)
                         {
                             await StopHostAsync(host, hostTask);
@@ -311,7 +311,7 @@ internal class Program
                 var state = await ShellInterpreter.Instance.ExecuteCommandAsync(explicitCommand, default);
                 if (state.IsError)
                 {
-                    Environment.ExitCode = 1;
+                    Environment.ExitCode = ShellExitCode.FromCommandState(state);
                     if (executeAndContinueCommand is null)
                     {
                         await StopHostAsync(host, hostTask);
