@@ -51,6 +51,14 @@ runs:
         "exe=$exe" >> $env:GITHUB_OUTPUT
         "cmd=$cmd" >> $env:GITHUB_OUTPUT
 
+    - name: Verify prerequisites
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+          throw "The GitHub CLI (gh) is required by setup-cosmosdb-shell to resolve and download releases, but it was not found on PATH. GitHub-hosted runners include gh by default; on a self-hosted runner, install it from https://cli.github.com/ or add a step that provides gh before this action."
+        }
+
     - name: Resolve release
       id: resolve
       shell: pwsh

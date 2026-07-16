@@ -43,12 +43,15 @@ jobs:
 Pin a specific release for reproducible builds:
 
 ```yaml
-      - uses: Azure/CosmosDBShell/.github/actions/setup-cosmosdb-shell@main
+      - uses: Azure/CosmosDBShell/.github/actions/setup-cosmosdb-shell@v1.1.115
         with:
           version: v1.1.115
 ```
 
-Use `latest` to always track the newest release.
+For full reproducibility, pin both references: the action ref (`@v1.1.115` or a
+commit SHA — not the moving `@main` branch) and the installed shell `version`.
+Use `version: latest` only when you intentionally want to track the newest
+release.
 
 ### Cross-platform matrix
 

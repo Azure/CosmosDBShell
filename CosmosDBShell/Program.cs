@@ -137,7 +137,7 @@ internal class Program
                 if (!string.IsNullOrWhiteSpace(o.OtlpEndpoint)
                     && !Uri.TryCreate(o.OtlpEndpoint, UriKind.Absolute, out _))
                 {
-                    Environment.ExitCode = 1;
+                    Environment.ExitCode = ShellExitCode.SyntaxError;
                     ShellInterpreter.WriteLine(MessageService.GetArgsString(
                         "otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint));
                     return;
@@ -154,7 +154,7 @@ internal class Program
 
             if (!string.IsNullOrWhiteSpace(o.ExecuteAndQuit) && !string.IsNullOrWhiteSpace(o.ExecuteAndContinue))
             {
-                Environment.ExitCode = 1;
+                Environment.ExitCode = ShellExitCode.SyntaxError;
                 ShellInterpreter.WriteLine(MessageService.GetString("error-mutually-exclusive-options"));
                 return;
             }
@@ -243,7 +243,7 @@ internal class Program
                 if (mcpPort <= 0)
                 {
                     AnsiConsole.WriteLine(MessageService.GetString("mcp-error-invalid-port"));
-                    Environment.ExitCode = 1;
+                    Environment.ExitCode = ShellExitCode.SyntaxError;
                     return;
                 }
 
@@ -254,7 +254,7 @@ internal class Program
                 catch (Exception ex)
                 {
                     AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-creating-server", "message", ex.Message));
-                    Environment.ExitCode = 1;
+                    Environment.ExitCode = ShellExitCode.FromException(ex);
                     return;
                 }
 
@@ -272,7 +272,7 @@ internal class Program
                         catch (Exception ex)
                         {
                             AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-server-failed-start", "message", ex.Message));
-                            Environment.ExitCode = 1;
+                            Environment.ExitCode = ShellExitCode.FromException(ex);
                         }
                     });
                 }

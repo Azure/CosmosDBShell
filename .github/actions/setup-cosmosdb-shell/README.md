@@ -17,6 +17,18 @@ steps:
     run: cosmosdbshell --version
 ```
 
+> **Pin for reproducibility.** The example above uses `@main` for readability,
+> but `main` is a moving reference. For reproducible and supply-chain-safe
+> workflows, pin the action to a release tag or a commit SHA, and pin the
+> installed shell `version` to an explicit tag:
+>
+> ```yaml
+> steps:
+>   - uses: Azure/CosmosDBShell/.github/actions/setup-cosmosdb-shell@v1.1.115
+>     with:
+>       version: v1.1.115
+> ```
+
 Once published to the Marketplace as a standalone repository (see below), the
 same action is consumed as:
 

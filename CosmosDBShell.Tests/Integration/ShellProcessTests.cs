@@ -146,6 +146,19 @@ public class ShellProcessTests
     }
 
     [Fact]
+    public async Task MalformedOtelEndpoint_ReturnsSyntaxExitCode()
+    {
+        // A malformed --otel endpoint is an argument-validation failure, which
+        // maps to the syntax exit code (4).
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--otel", "not-a-valid-endpoint", "-c", "version"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(4, result.ExitCode);
+    }
+
+    [Fact]
     public async Task MissingConnectValue_ReportsUserFacingOptionAlias()
     {
         var result = await RunShellAsync(
