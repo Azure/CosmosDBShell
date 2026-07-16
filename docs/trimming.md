@@ -1,6 +1,6 @@
 # Trimming
 
-Published builds are trimmed by default to reduce the self-contained distribution size. Trimming applies to every `dotnet publish` and `dotnet pack` of the application, including the release pipeline and NuGet tool packages.
+Published builds are trimmed by default to reduce the self-contained distribution size. Trimming is the default for `dotnet publish` and `dotnet pack` of the application, including the release pipeline and NuGet tool packages. Individual publishes can opt out with `-p:PublishTrimmed=false`; for example, the framework-dependent artifacts in the official pipeline are published untrimmed because trimming requires a self-contained publish.
 
 Reflection-based `System.Text.Json` serialization is intentionally kept enabled, so dynamic command and result types continue to serialize without source-generated metadata.
 

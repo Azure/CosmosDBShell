@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Publishes and compares the normal and experimental trimmed applications.
+    Publishes and compares an untrimmed baseline against a partial-trimmed build.
 
 .DESCRIPTION
     Creates self-contained single-file baseline and partial-trimming publishes,

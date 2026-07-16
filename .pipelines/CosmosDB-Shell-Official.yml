@@ -226,9 +226,10 @@ extends:
               # Framework-dependent publish for every RID. These omit the bundled
               # .NET runtime, so the archives are a fraction of the self-contained
               # size for machines that already have the ASP.NET Core 10 runtime.
-              # Trimming and single-file are disabled because both require a
-              # self-contained publish. Output lands under out\fdd so the signing
-              # task below (search_root out) signs these binaries as well.
+              # Trimming and single-file are both disabled here because each requires
+              # a self-contained publish; a framework-dependent trimmed publish is
+              # rejected by the SDK (NETSDK1102). Output lands under out\fdd so the
+              # signing task below (search_root out) signs these binaries as well.
               - task: PowerShell@2
                 displayName: "DotNetCore publish framework-dependent (all RIDs)"
                 inputs:
