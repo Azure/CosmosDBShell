@@ -42,6 +42,14 @@
     <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
   </PropertyGroup>
 
+  <!-- Framework-dependent artifacts (published as self-contained false) roll
+       forward to the newest installed 10.x runtime so a machine that has only
+       a later 10.x patch or minor can still run the shell. Ignored by
+       self-contained publishes, which carry their own runtime. -->
+  <PropertyGroup>
+    <RollForward>LatestMinor</RollForward>
+  </PropertyGroup>
+
   <PropertyGroup>
     <PackageId>CosmosDBShell</PackageId>
     <Authors>Microsoft</Authors>

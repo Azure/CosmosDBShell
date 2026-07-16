@@ -223,6 +223,39 @@ extends:
               #     arguments: '--configuration $(BuildConfiguration) -r any --output $(Build.SourcesDirectory)\out\any'
               #     zipAfterPublish: false
 
+              # Framework-dependent publish for every RID. These omit the bundled
+              # .NET runtime, so the archives are a fraction of the self-contained
+              # size for machines that already have the ASP.NET Core 10 runtime.
+              # Trimming and single-file are disabled because both require a
+              # self-contained publish. Output lands under out\fdd so the signing
+              # task below (search_root out) signs these binaries as well.
+              - task: PowerShell@2
+                displayName: "DotNetCore publish framework-dependent (all RIDs)"
+                inputs:
+                  targetType: inline
+                  pwsh: true
+                  script: |
+                    $ErrorActionPreference = 'Stop'
+                    $project    = "$(ReleaseProject)"
+                    $nugetCfg   = "$(Build.SourcesDirectory)\.pipelines\nuget.config"
+                    $fddRoot    = "$(Build.SourcesDirectory)\out\fdd"
+                    $rids = @('win-x64', 'win-arm64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
+                    foreach ($rid in $rids) {
+                      dotnet publish $project `
+                        --configuration "$(BuildConfiguration)" `
+                        -r $rid `
+                        --self-contained false `
+                        -p:PublishSingleFile=false `
+                        -p:PublishTrimmed=false `
+                        -p:EnableCompressionInSingleFile=false `
+                        --output (Join-Path $fddRoot $rid) `
+                        --configfile $nugetCfg
+
+                      if ($LASTEXITCODE -ne 0) {
+                        throw "Framework-dependent publish failed for $rid with exit code $LASTEXITCODE."
+                      }
+                    }
+
               - task: onebranch.pipeline.signing@1
                 displayName: "Sign publish output"
                 inputs:
@@ -291,6 +324,71 @@ extends:
 
                     Write-Host "Generated archives:"
                     Get-ChildItem -Path $zipDir -Filter *.zip | Sort-Object Name | ForEach-Object {
+                      Write-Host " - $($_.Name) [$($_.Length) bytes]"
+                    }
+
+              - task: PowerShell@2
+                displayName: "Zip and validate signed framework-dependent folders"
+                condition: succeeded()
+                inputs:
+                  targetType: inline
+                  pwsh: true
+                  script: |
+                    $ErrorActionPreference = 'Stop'
+                    Add-Type -AssemblyName System.IO.Compression
+                    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+                    $version = "$(CosmosDBShell_PackageVersion)"
+                    $fddRoot = "$(Build.SourcesDirectory)\out\fdd"
+                    $zipDir  = Join-Path "$(Build.SourcesDirectory)\out" 'zip'
+                    New-Item -ItemType Directory -Path $zipDir -Force | Out-Null
+
+                    $rids = @('win-x64', 'win-arm64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
+                    foreach ($rid in $rids) {
+                      $ridDir = Join-Path $fddRoot $rid
+                      if (-not (Test-Path $ridDir)) {
+                        Write-Error "Framework-dependent publish folder for RID '$rid' not found at $ridDir."
+                        exit 1
+                      }
+
+                      $zipPath = Join-Path $zipDir ("cosmosdbshell_fdd_{0}_{1}.zip" -f $rid, $version)
+                      if (Test-Path $zipPath) {
+                        Remove-Item -Path $zipPath -Force
+                      }
+
+                      Write-Host "Creating $zipPath"
+                      [System.IO.Compression.ZipFile]::CreateFromDirectory(
+                        $ridDir,
+                        $zipPath,
+                        [System.IO.Compression.CompressionLevel]::Optimal,
+                        $false)
+
+                      $expectedExe = if ($rid -like 'win-*') { 'CosmosDBShell.exe' } else { 'CosmosDBShell' }
+                      $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+                      try {
+                        if ($archive.Entries.Count -eq 0) {
+                          Write-Error "Generated archive is empty: $zipPath"
+                          exit 1
+                        }
+
+                        # A framework-dependent publish carries the host apphost plus the
+                        # runtimeconfig/deps metadata; assert all three are present.
+                        $hasExe = $archive.Entries | Where-Object { [System.IO.Path]::GetFileName($_.FullName) -ieq $expectedExe }
+                        $hasRuntimeConfig = $archive.Entries | Where-Object { [System.IO.Path]::GetFileName($_.FullName) -ieq 'CosmosDBShell.runtimeconfig.json' }
+                        $hasDeps = $archive.Entries | Where-Object { [System.IO.Path]::GetFileName($_.FullName) -ieq 'CosmosDBShell.deps.json' }
+                        if (-not $hasExe -or -not $hasRuntimeConfig -or -not $hasDeps) {
+                          $sample = ($archive.Entries | Select-Object -First 10 -ExpandProperty FullName) -join ', '
+                          Write-Error "Framework-dependent archive $zipPath is missing expected files (host '$expectedExe', runtimeconfig, deps). First entries: $sample"
+                          exit 1
+                        }
+                      }
+                      finally {
+                        $archive.Dispose()
+                      }
+                    }
+
+                    Write-Host "Generated framework-dependent archives:"
+                    Get-ChildItem -Path $zipDir -Filter 'cosmosdbshell_fdd_*.zip' | Sort-Object Name | ForEach-Object {
                       Write-Host " - $($_.Name) [$($_.Length) bytes]"
                     }
 
