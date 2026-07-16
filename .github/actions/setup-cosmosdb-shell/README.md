@@ -5,6 +5,15 @@ Shell (`cosmosdbshell`) to `PATH` on Linux, macOS, and Windows runners. No .NET
 SDK is required on the runner — the self-contained executable is extracted from
 the per-runtime release package published on each GitHub Release.
 
+## Runner prerequisites
+
+The action's steps run under PowerShell (`shell: pwsh`) and use the GitHub CLI
+(`gh`) to resolve and download release assets. GitHub-hosted runners include
+both by default. On self-hosted runners, ensure PowerShell 7+ and `gh` are
+installed (see [PowerShell](https://learn.microsoft.com/powershell/) and
+[GitHub CLI](https://cli.github.com/)); otherwise the action fails early with an
+actionable message.
+
 ## Usage
 
 ```yaml

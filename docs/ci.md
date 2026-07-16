@@ -97,7 +97,10 @@ stable, machine-readable process exit code. Scripts can branch on these values.
 | `4` | Syntax error | The shell could not parse the command line or script (unbalanced quotes, unexpected end of input, an unknown option format, or an unrecognized CLI argument). |
 
 These values form a public contract: existing codes are never repurposed, and
-new failure categories get new codes. The interactive REPL always exits `0`.
+new failure categories get new codes. A purely interactive REPL — started
+without `-c`, `-k`, or a piped stdin script — always exits `0`. When `-k` runs
+an initial command and then drops into the REPL, the initial command's exit
+code is preserved after the session ends.
 
 ```bash
 cosmosdbshell -c "query \"SELECT * FROM c\""
