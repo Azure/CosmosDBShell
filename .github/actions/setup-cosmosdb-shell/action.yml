@@ -1,0 +1,165 @@
+name: Setup Azure Cosmos DB Shell
+description: Download, cache, and add the Azure Cosmos DB Shell (cosmosdbshell) to PATH for CI workflows.
+author: Microsoft
+
+branding:
+  icon: database
+  color: blue
+
+inputs:
+  version:
+    description: >-
+      Release to install. Use "latest" for the newest release, or pin a tag
+      such as "v1.1.115" (a leading "v" is added automatically if omitted).
+    required: false
+    default: latest
+  token:
+    description: >-
+      GitHub token used to query releases and download assets. Defaults to the
+      workflow token to avoid unauthenticated API rate limits.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  version:
+    description: The resolved release tag that was installed (for example "v1.1.115").
+    value: ${{ steps.resolve.outputs.tag }}
+  path:
+    description: The directory containing the cosmosdbshell executable that was added to PATH.
+    value: ${{ steps.install.outputs.bindir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve platform
+      id: platform
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        $os = if ($IsWindows) { 'win' } elseif ($IsMacOS) { 'osx' } else { 'linux' }
+        $arch = "$env:RUNNER_ARCH".ToLowerInvariant()
+        if ($arch -ne 'x64' -and $arch -ne 'arm64') {
+          throw "Unsupported runner architecture '$env:RUNNER_ARCH'. Supported: X64, ARM64."
+        }
+
+        $rid = "$os-$arch"
+        $exe = if ($IsWindows) { 'CosmosDBShell.exe' } else { 'CosmosDBShell' }
+        $cmd = if ($IsWindows) { 'cosmosdbshell.exe' } else { 'cosmosdbshell' }
+
+        "rid=$rid" >> $env:GITHUB_OUTPUT
+        "exe=$exe" >> $env:GITHUB_OUTPUT
+        "cmd=$cmd" >> $env:GITHUB_OUTPUT
+
+    - name: Resolve release
+      id: resolve
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        $repo = 'Azure/CosmosDBShell'
+        $ver = "${{ inputs.version }}".Trim()
+
+        if ([string]::IsNullOrWhiteSpace($ver) -or $ver -eq 'latest') {
+          $tag = gh api "repos/$repo/releases" --jq '[.[] | select(.draft == false)][0].tag_name'
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            throw "Could not resolve the latest release for $repo."
+          }
+        }
+        else {
+          $tag = if ($ver.StartsWith('v')) { $ver } else { "v$ver" }
+        }
+
+        $dir = Join-Path $env:RUNNER_TOOL_CACHE (Join-Path 'cosmosdbshell' (Join-Path $tag '${{ steps.platform.outputs.rid }}'))
+
+        "tag=$tag" >> $env:GITHUB_OUTPUT
+        "dir=$dir" >> $env:GITHUB_OUTPUT
+        Write-Host "Resolved release tag: $tag"
+
+    - name: Restore cached shell
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.resolve.outputs.dir }}
+        key: cosmosdbshell-${{ steps.resolve.outputs.tag }}-${{ steps.platform.outputs.rid }}
+
+    - name: Install shell
+      id: install
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        $repo = 'Azure/CosmosDBShell'
+        $tag  = '${{ steps.resolve.outputs.tag }}'
+        $rid  = '${{ steps.platform.outputs.rid }}'
+        $dir  = '${{ steps.resolve.outputs.dir }}'
+        $exe  = '${{ steps.platform.outputs.exe }}'
+        $cmd  = '${{ steps.platform.outputs.cmd }}'
+        $target = Join-Path $dir $cmd
+
+        if (-not (Test-Path $target)) {
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("cosmosdbshell-" + [guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+
+          $release = gh api "repos/$repo/releases/tags/$tag" | ConvertFrom-Json
+          $pattern = "^CosmosDBShell\.$([regex]::Escape($rid))\..*\.nupkg$"
+          $asset = $release.assets | Where-Object { $_.name -match $pattern } | Select-Object -First 1
+          if (-not $asset) {
+            throw "Release $tag has no package asset for runtime '$rid' (expected CosmosDBShell.$rid.<version>.nupkg)."
+          }
+
+          Write-Host "Downloading $($asset.name)..."
+          gh release download $tag --repo $repo --pattern $asset.name --dir $tmp
+          if ($LASTEXITCODE -ne 0) { throw "Failed to download asset $($asset.name)." }
+
+          $nupkg = Join-Path $tmp $asset.name
+
+          if ($asset.digest -and $asset.digest.StartsWith('sha256:')) {
+            $expected = $asset.digest.Substring('sha256:'.Length).ToLowerInvariant()
+            $actual = (Get-FileHash -Algorithm SHA256 -Path $nupkg).Hash.ToLowerInvariant()
+            if ($actual -ne $expected) {
+              throw "Checksum mismatch for $($asset.name). Expected $expected, got $actual."
+            }
+            Write-Host "Verified SHA256 checksum."
+          }
+          else {
+            Write-Host "::warning::Release asset did not expose a SHA256 digest; skipping checksum verification."
+          }
+
+          $zip = [System.IO.Path]::ChangeExtension($nupkg, '.zip')
+          Move-Item -Path $nupkg -Destination $zip -Force
+          $extract = Join-Path $tmp 'extract'
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+
+          $found = Get-ChildItem -Path $extract -Recurse -Filter $exe | Select-Object -First 1
+          if (-not $found) {
+            throw "Could not locate '$exe' inside the downloaded package."
+          }
+
+          Copy-Item -Path $found.FullName -Destination $target -Force
+          if (-not $IsWindows) { chmod +x $target }
+          Remove-Item -Path $tmp -Recurse -Force -ErrorAction SilentlyContinue
+
+          Write-Host "Installed cosmosdbshell $tag ($rid) to $dir"
+        }
+        else {
+          Write-Host "Restored cosmosdbshell $tag ($rid) from cache at $dir"
+        }
+
+        $dir >> $env:GITHUB_PATH
+        "bindir=$dir" >> $env:GITHUB_OUTPUT
+
+    - name: Verify installation
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $exe = Join-Path '${{ steps.install.outputs.bindir }}' '${{ steps.platform.outputs.cmd }}'
+        & $exe --version
+        if ($LASTEXITCODE -ne 0) {
+          throw "cosmosdbshell --version exited with code $LASTEXITCODE."
+        }

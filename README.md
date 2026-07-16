@@ -146,6 +146,7 @@ dotnet tool uninstall --global CosmosDBShell
 - [Programming](docs/programming.md) - Variables, control flow, functions
 - [Filter expression language (v1)](docs/filter-v1-spec.md) - Grammar and semantics of the built-in `filter` command
 - [MCP](docs/mcp.md) - Model Context Protocol integration
+- [CI/CD](docs/ci.md) - Install and use `cosmosdbshell` in CI workflows
 
 ## CI And Packaging
 
