@@ -100,6 +100,7 @@ public static class ShellExitCode
         {
             HttpRequestException => true,
             SocketException => true,
+            OperationCanceledException => LooksLikeCosmosTimeout(ex.Message),
             CosmosException cosmos => cosmos.StatusCode is HttpStatusCode.ServiceUnavailable
                 or HttpStatusCode.RequestTimeout
                 or HttpStatusCode.GatewayTimeout,
@@ -108,5 +109,14 @@ public static class ShellExitCode
                 or (int)HttpStatusCode.GatewayTimeout,
             _ => false,
         };
+    }
+
+    private static bool LooksLikeCosmosTimeout(string message)
+    {
+        return message.Contains("Cancellation Token has expired", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("CosmosOperationCanceledException", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("request timed out", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("ReceiveTimeout", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("https://aka.ms/cosmosdb-tsg-request-timeout", StringComparison.OrdinalIgnoreCase);
     }
 }

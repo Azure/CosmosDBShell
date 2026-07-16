@@ -15,10 +15,11 @@ inputs:
     default: latest
   token:
     description: >-
-      GitHub token used to query releases and download assets. Defaults to the
-      workflow token to avoid unauthenticated API rate limits.
+      GitHub token used to query releases and download assets. When omitted, the
+      action falls back to the workflow token (github.token) to avoid
+      unauthenticated API rate limits.
     required: false
-    default: ${{ github.token }}
+    default: ""
 
 outputs:
   version:
@@ -63,7 +64,7 @@ runs:
       id: resolve
       shell: pwsh
       env:
-        GH_TOKEN: ${{ inputs.token }}
+        GH_TOKEN: ${{ inputs.token || github.token }}
       run: |
         $ErrorActionPreference = 'Stop'
 
@@ -97,7 +98,7 @@ runs:
       id: install
       shell: pwsh
       env:
-        GH_TOKEN: ${{ inputs.token }}
+        GH_TOKEN: ${{ inputs.token || github.token }}
       run: |
         $ErrorActionPreference = 'Stop'
 
@@ -136,7 +137,7 @@ runs:
             Write-Host "Verified SHA256 checksum."
           }
           else {
-            Write-Host "::warning::Release asset did not expose a SHA256 digest; skipping checksum verification."
+            Write-Host "Release asset did not expose a SHA256 digest; skipping checksum verification."
           }
 
           $zip = [System.IO.Path]::ChangeExtension($nupkg, '.zip')

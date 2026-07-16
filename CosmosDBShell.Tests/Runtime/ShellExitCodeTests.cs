@@ -96,6 +96,25 @@ public class ShellExitCodeTests
             ShellExitCode.FromException(new RequestFailedException(status, "unavailable")));
     }
 
+    [Theory]
+    [InlineData("Cancellation Token has expired")]
+    [InlineData("CosmosOperationCanceledException: request timed out")]
+    [InlineData("The request timed out. See https://aka.ms/cosmosdb-tsg-request-timeout")]
+    public void FromException_CosmosCancellationTimeout_ReturnsConnectionError(string message)
+    {
+        Assert.Equal(
+            ShellExitCode.ConnectionError,
+            ShellExitCode.FromException(new OperationCanceledException(message)));
+    }
+
+    [Fact]
+    public void FromException_PlainOperationCanceled_ReturnsGeneralFailure()
+    {
+        Assert.Equal(
+            ShellExitCode.GeneralFailure,
+            ShellExitCode.FromException(new OperationCanceledException("operation was canceled")));
+    }
+
     [Fact]
     public void FromException_ClassifiesInnerException()
     {

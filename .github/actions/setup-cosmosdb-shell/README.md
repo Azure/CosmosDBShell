@@ -62,8 +62,8 @@ steps:
    [`actions/cache`](https://github.com/actions/cache), keyed by tag + runtime.
 4. On a cache miss, finds the matching `CosmosDBShell.<rid>.<version>.nupkg`
    release asset through the GitHub API, downloads it, verifies its SHA256
-   digest, extracts the self-contained executable, and adds it to `PATH` as
-   `cosmosdbshell`.
+   digest when the release asset exposes one, extracts the self-contained
+   executable, and adds it to `PATH` as `cosmosdbshell`.
 5. Verifies the install with `cosmosdbshell --version`.
 
 ## Publishing to the Marketplace as `azure/setup-cosmosdb-shell`
