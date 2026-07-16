@@ -2,7 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 // ------------------------------------------------------------
 
-namespace CosmosShell.Tests;
+namespace CosmosShell.Tests.Runtime;
 
 using System.Net;
 using System.Net.Sockets;
