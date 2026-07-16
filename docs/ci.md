@@ -21,7 +21,7 @@ jobs:
   seed:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Setup Azure Cosmos DB Shell
         uses: Azure/CosmosDBShell/.github/actions/setup-cosmosdb-shell@main
@@ -130,7 +130,7 @@ jobs:
   seed:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - uses: azure/login@v2
         with:

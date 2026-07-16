@@ -85,6 +85,17 @@ public class ShellExitCodeTests
         Assert.Equal(ShellExitCode.ConnectionError, ShellExitCode.FromException(ex));
     }
 
+    [Theory]
+    [InlineData((int)HttpStatusCode.ServiceUnavailable)]
+    [InlineData((int)HttpStatusCode.RequestTimeout)]
+    [InlineData((int)HttpStatusCode.GatewayTimeout)]
+    public void FromException_RequestFailedConnectivityStatus_ReturnsConnectionError(int status)
+    {
+        Assert.Equal(
+            ShellExitCode.ConnectionError,
+            ShellExitCode.FromException(new RequestFailedException(status, "unavailable")));
+    }
+
     [Fact]
     public void FromException_ClassifiesInnerException()
     {
