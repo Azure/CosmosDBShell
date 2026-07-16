@@ -219,6 +219,7 @@ internal class Program
                 }
                 catch (OperationCanceledException) when (connectToken.IsCancellationRequested)
                 {
+                    Environment.ExitCode = ShellExitCode.GeneralFailure;
                     return;
                 }
                 catch (Exception ex)

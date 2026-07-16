@@ -53,7 +53,7 @@ steps:
 | Name      | Default             | Description                                                                                       |
 | --------- | ------------------- | ------------------------------------------------------------------------------------------------- |
 | `version` | `latest`            | Release to install. `latest` picks the newest release; otherwise pin a tag (a leading `v` is optional, e.g. `v1.1.115` or `1.1.115`). |
-| `token`   | `${{ github.token }}` | Token used for the releases API and asset download (avoids unauthenticated rate limits).        |
+| `token`   | `''` (empty)        | Token used for the releases API and asset download. When empty, the action falls back to the workflow token (`github.token`) via `GH_TOKEN: ${{ inputs.token || github.token }}`, so `gh` stays authenticated and avoids unauthenticated rate limits. |
 
 ## Outputs
 

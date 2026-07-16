@@ -98,9 +98,11 @@ stable, machine-readable process exit code. Scripts can branch on these values.
 
 These values form a public contract: existing codes are never repurposed, and
 new failure categories get new codes. A purely interactive REPL — started
-without `-c`, `-k`, or a piped stdin script — always exits `0`. When `-k` runs
-an initial command and then drops into the REPL, the initial command's exit
-code is preserved after the session ends.
+without `-c`, `-k`, or a piped stdin script — exits `0` when the session is
+reached and ends normally. Startup failures that happen before the REPL is
+reached (for example a failed `--connect` or an invalid option) still set the
+matching non-zero code. When `-k` runs an initial command and then drops into
+the REPL, the initial command's exit code is preserved after the session ends.
 
 ```bash
 cosmosdbshell -c "query \"SELECT * FROM c\""
