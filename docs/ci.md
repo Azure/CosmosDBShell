@@ -206,8 +206,8 @@ done
 ### Parse JSON output in scripts
 
 Request JSON output and pipe it to a JSON processor. Set the format with the
-`COSMOSDB_SHELL_FORMAT` environment variable or the shell's own `filter`
-command:
+`COSMOSDB_SHELL_FORMAT` environment variable, or per command with the
+`-f`/`--format json` option:
 
 ```bash
 export COSMOSDB_SHELL_FORMAT=json
