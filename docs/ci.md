@@ -118,8 +118,10 @@ are the ones that fit CI runners.
 ### Workload identity federation (OIDC)
 
 `azure/login` with OIDC sets the ambient environment variables that
-`DefaultAzureCredential` reads, so connecting with the endpoint only (no key,
-no tenant) authenticates as the federated identity:
+`DefaultAzureCredential` reads, so connecting with the endpoint only (no
+account key or token) authenticates as the federated identity. Only the
+endpoint is required; `--connect-tenant`, `--connect-subscription`, and
+`--connect-resource-group` are optional and used to make startup deterministic:
 
 ```yaml
 permissions:
@@ -150,8 +152,9 @@ jobs:
             -c "seed.csh"
 ```
 
-Supplying `--connect-subscription` and `--connect-resource-group` skips ARM
-account discovery for a deterministic startup in multi-subscription tenants.
+The extra `--connect-*` options are optional: supplying `--connect-tenant`,
+`--connect-subscription`, and `--connect-resource-group` skips ARM account
+discovery for a deterministic startup in multi-subscription tenants.
 
 ### Managed identity (self-hosted runners)
 
