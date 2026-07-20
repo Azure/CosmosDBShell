@@ -172,9 +172,6 @@ else {
     'CosmosDBShell'
 }
 
-Add-Type -AssemblyName System.IO.Compression
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-
 New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 foreach ($directory in @($baselineDirectory, $trimmedDirectory)) {
     if (Test-Path $directory) {

@@ -30,14 +30,18 @@
   <ToolPackageRuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</ToolPackageRuntimeIdentifiers>
   </PropertyGroup>
 
-  <!-- Published builds are trimmed by default to reduce the self-contained
+  <!-- Published self-contained builds are trimmed by default to reduce the
        distribution size. Reflection-based System.Text.Json serialization is
        retained until source-generated metadata covers the shell's dynamic
        command and result types. Publish with -p:PublishTrimmed=false to
-       produce a diagnostic untrimmed build. -->
-  <PropertyGroup>
+       produce a diagnostic untrimmed build. Trimming is scoped to
+       self-contained publishes because the SDK rejects a trimmed
+       framework-dependent publish (NETSDK1102). -->
+  <PropertyGroup Condition="'$(SelfContained)' == 'true'">
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>partial</TrimMode>
+  </PropertyGroup>
+  <PropertyGroup>
     <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
     <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
   </PropertyGroup>

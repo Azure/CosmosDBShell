@@ -273,8 +273,6 @@ extends:
                   pwsh: true
                   script: |
                     $ErrorActionPreference = 'Stop'
-                    Add-Type -AssemblyName System.IO.Compression
-                    Add-Type -AssemblyName System.IO.Compression.FileSystem
 
                     $version = "$(CosmosDBShell_PackageVersion)"
                     $outDir  = "$(Build.SourcesDirectory)\out"
@@ -336,8 +334,6 @@ extends:
                   pwsh: true
                   script: |
                     $ErrorActionPreference = 'Stop'
-                    Add-Type -AssemblyName System.IO.Compression
-                    Add-Type -AssemblyName System.IO.Compression.FileSystem
 
                     $version = "$(CosmosDBShell_PackageVersion)"
                     $fddRoot = "$(Build.SourcesDirectory)\out\fdd"
