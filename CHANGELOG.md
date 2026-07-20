@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.135-preview — 2026-07-20
+## 1.1.136-preview — 2026-07-20
 
 A focused cycle on top of 1.1.115-preview. New `ttl` and `conflict` commands manage container time-to-live and conflict-resolution policy; the `bucket` command gains control-plane throughput bucket limits; `--dry-run` previews land for `throughput` write subcommands and the destructive delete commands; and MCP tool results now emit structured JSON content. Rounding out the cycle are MCP connectivity fixes for agent clients and CI/pipeline hardening.
 
