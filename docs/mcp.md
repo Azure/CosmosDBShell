@@ -52,6 +52,8 @@ Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an expli
 
 This replaces any opt-in write flag: destructive commands are always allowed to be invoked, but always require confirmation.
 
+The MCP confirmation applies even when a command is invoked with a force / no-prompt argument (for example `rmdb OldDB true`). That argument only skips the *interactive shell* prompt; it does not bypass the MCP elicitation gate.
+
 Database and container resource actions are executed through Azure Resource Manager when an ARM context is attached (Entra ID connections). MCP sessions connected with account keys, emulator credentials, or static data-plane tokens fall back to the Cosmos DB data plane for these actions.
 
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.

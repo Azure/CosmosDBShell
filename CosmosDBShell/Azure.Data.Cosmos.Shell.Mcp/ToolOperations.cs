@@ -51,7 +51,7 @@ internal class ToolOperations
 
             if (RequiresConfirmation(command))
             {
-                description += "Warning: This command is destructive. When invoked through MCP it requires explicit user confirmation before it runs; if the client cannot confirm, the command is refused.";
+                description += "Warning: This command is destructive. When invoked through MCP it always requires explicit user confirmation before it runs — even when a force or no-prompt argument is supplied. If the client cannot confirm, the command is refused.";
             }
             else
             {
@@ -330,8 +330,9 @@ internal class ToolOperations
     {
         var annotation = command.McpAnnotation;
         return command.McpRestricted
-            && (annotation?.Confirmable ?? false)
-            && (annotation?.Destructive ?? false);
+            && annotation is not null
+            && annotation.Confirmable
+            && annotation.Destructive;
     }
 
     private CallToolResult? BindMember(
