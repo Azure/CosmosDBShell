@@ -604,6 +604,68 @@ index set --mode=consistent --automatic=true
 index set '{"indexingMode":"consistent","automatic":true,"includedPaths":[{"path":"/*"}],"excludedPaths":[]}'
 ```
 
+### schema
+
+Infer the schema of a container from a small, bounded sample. The command returns the
+partition key path(s), an indexing policy summary, an estimated document count, and the
+field types inferred from the sample. It is read-only and issues a single bounded query,
+making it a cheap way for agents and users to discover a container's structure without
+re-sampling or guessing field names.
+
+```text
+Usage: schema [-sample <ARG>] [-database <ARG>] [-container <ARG>]
+
+Options:
+    -sample, -s Maximum number of documents to sample (1-100, default 20)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+By default the command targets the current container. Use `--database` and `--container`
+to target a specific resource. The `--sample` value is clamped to the range 1-100 so the
+discovery query always stays bounded.
+
+Inferred fields use dot notation for nested objects (for example `address.city`). Each
+field lists the distinct JSON types observed (`string`, `number`, `boolean`, `object`,
+`array`, or `null`) and the number of sampled documents in which the field was present.
+
+#### Examples
+
+```bash
+schema
+schema --sample=50
+schema --database=MyDB --container=Products
+```
+
+Sample output:
+
+```json
+{
+  "database": "MyDB",
+  "container": "Products",
+  "partitionKeyPaths": ["/category"],
+  "documentCountEstimate": 1280,
+  "sampleSize": 20,
+  "sampledDocuments": 20,
+  "indexingPolicy": {
+    "indexingMode": "consistent",
+    "automatic": true,
+    "includedPaths": 1,
+    "excludedPaths": 1,
+    "compositeIndexes": 0,
+    "spatialIndexes": 0,
+    "vectorIndexes": 0
+  },
+  "fields": [
+    { "path": "id", "types": ["string"], "presence": 20 },
+    { "path": "category", "types": ["string"], "presence": 20 },
+    { "path": "price", "types": ["number"], "presence": 18 }
+  ]
+}
+```
+
 ### throughput
 
 View or change the provisioned throughput (RU/s) of a database or container through subcommands.
