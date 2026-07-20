@@ -193,6 +193,20 @@ cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c seed.csh mydb my
 echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
 ```
 
+## Exit Codes
+
+Non-interactive runs (`-c`, `-k`, or a script piped on stdin) return a stable, machine-readable process exit code so scripts can branch on the result:
+
+| Code | Meaning |
+| ---- | ------- |
+| `0` | Success |
+| `1` | General failure |
+| `2` | Authentication failure (invalid, missing, or expired credentials; `401`/`403`) |
+| `3` | Connection/network error (DNS/socket failure, timeout, `503`) |
+| `4` | Syntax error (the command line or script could not be parsed) |
+
+These values are a public contract: existing codes are never repurposed, and new failure categories get new codes. See the [CI/CD guide](docs/ci.md#exit-code-contract) for full details.
+
 ## Theming
 
 The shell ships with four built-in color profiles that can be selected at startup or swapped at runtime:
