@@ -6,13 +6,13 @@ Reflection-based `System.Text.Json` serialization is intentionally kept enabled,
 
 ## Compare trimmed and untrimmed output
 
-From the repository root on Windows:
+Run the script from the repository root. Because it runs process-level smoke tests against the published binary, run it on an operating system that can execute the chosen `RuntimeIdentifier` (the default `win-x64` requires Windows):
 
 ```powershell
 ./tools/measure-trimming.ps1
 ```
 
-Choose another runtime identifier or increase the startup sample count:
+Choose another runtime identifier or increase the startup sample count. The selected `RuntimeIdentifier` must be executable on the current OS, otherwise the smoke tests fail; for example, run the `linux-x64` measurement on Linux:
 
 ```powershell
 ./tools/measure-trimming.ps1 -RuntimeIdentifier linux-x64 -Iterations 5
