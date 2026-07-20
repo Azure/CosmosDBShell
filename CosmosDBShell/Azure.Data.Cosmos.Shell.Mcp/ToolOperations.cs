@@ -326,6 +326,14 @@ internal class ToolOperations
         return "string";
     }
 
+    private static bool RequiresConfirmation(CommandFactory command)
+    {
+        var annotation = command.McpAnnotation;
+        return command.McpRestricted
+            && (annotation?.Confirmable ?? false)
+            && (annotation?.Destructive ?? false);
+    }
+
     private CallToolResult? BindMember(
         object cmd,
         PropertyInfo property,
@@ -537,11 +545,6 @@ internal class ToolOperations
         }
     }
 
-    private static bool RequiresConfirmation(CommandFactory command)
-    {
-        return command.McpRestricted && (command.McpAnnotation?.Confirmable ?? false);
-    }
-
     // Gates a destructive command behind an MCP elicitation confirmation. Returns
     // null when the operation is approved and should proceed; otherwise returns the
     // CallToolResult to send back (refusal, denial, or a failed confirmation).
@@ -576,7 +579,11 @@ internal class ToolOperations
         {
             result = await elicit(request, cancellationToken);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             this.logger?.LogWarning(ex, "Confirmation prompt for destructive command '{Command}' failed.", commandName);
             return McpResponseFactory.CreateError(
