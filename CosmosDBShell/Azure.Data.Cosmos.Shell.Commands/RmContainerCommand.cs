@@ -15,7 +15,7 @@ using Spectre.Console;
 [CosmosExample("rmcon TempData true", Description = "Delete container without confirmation")]
 [CosmosExample("rmcon TestContainer --database=TestDB", Description = "Delete container from specific database")]
 [CosmosExample("rmcon OldContainer --dry-run", Description = "Preview the deletion without deleting the container")]
-[McpAnnotation(Title = "Remove Container", Restricted = true, Destructive = true)]
+[McpAnnotation(Title = "Remove Container", Restricted = true, Destructive = true, Confirmable = true)]
 internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpreter>
 {
     [CosmosParameter("name", ParameterType = ParameterType.Container)]
