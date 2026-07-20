@@ -587,7 +587,7 @@ internal class ToolOperations
         {
             this.logger?.LogWarning(ex, "Confirmation prompt for destructive command '{Command}' failed.", commandName);
             return McpResponseFactory.CreateError(
-                $"Confirmation for '{commandName}' could not be completed ({ex.Message}). Nothing was executed.",
+                $"Confirmation for '{commandName}' could not be completed ({ex.GetType().Name}). Nothing was executed.",
                 ShellInterpreter.Instance.State);
         }
 

@@ -188,7 +188,7 @@ public class ToolOperationsCallToolTests
             Assert.True(isError);
             var error = root.GetProperty("error").GetString();
             Assert.Contains("could not be completed", error);
-            Assert.Contains("boom", error);
+            Assert.Contains("InvalidOperationException", error);
         }
     }
 
