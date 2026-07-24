@@ -6,7 +6,6 @@ namespace CosmosShell.Tests.CommandTests;
 
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
-using Azure.Data.Cosmos.Shell.Parser;
 
 [Collection(WelcomeConsoleTestCollection.Name)]
 public sealed class WelcomeCommandTests

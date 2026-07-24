@@ -4,8 +4,6 @@
 
 namespace Azure.Data.Cosmos.Shell.Core;
 
-using System.Reflection;
-
 internal static class WelcomeScreen
 {
     private const string ResourceSuffix = "cosmos_welcome.ans";
