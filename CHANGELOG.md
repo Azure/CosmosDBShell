@@ -1,9 +1,13 @@
 # Changelog
 
-## Unreleased
+## 1.1.136-preview — 2026-07-20
+
+A focused cycle on top of 1.1.115-preview. New `ttl` and `conflict` commands manage container time-to-live and conflict-resolution policy; the `bucket` command gains control-plane throughput bucket limits; `--dry-run` previews land for `throughput` write subcommands and the destructive delete commands; and MCP tool results now emit structured JSON content. Rounding out the cycle are MCP connectivity fixes for agent clients and CI/pipeline hardening.
 
 ### New features
 
+- `ttl` command to view and change a container's time-to-live policy: `ttl show` displays the current configuration as JSON (`disabled`, `no-default`, or `enabled`), `ttl set <seconds>` enables TTL with a positive default expiration, `ttl on` enables TTL with no container default (only items with their own `ttl` expire), and `ttl off` disables it. Targets the current container by default, with `--database`/`--container` overrides. ([#151](https://github.com/Azure/CosmosDBShell/pull/151), [#111](https://github.com/Azure/CosmosDBShell/issues/111))
+- `conflict` command to view and change a container's conflict resolution policy: `conflict show` displays the policy as JSON, and `conflict set --mode <lastWriterWins|custom>` sets the mode with `--path` for last-writer-wins (defaults to `/_ts`) or `--procedure` for custom mode; unsupplied options keep their current value. Targets the current container by default, with `--database`/`--container` overrides. ([#151](https://github.com/Azure/CosmosDBShell/pull/151), [#111](https://github.com/Azure/CosmosDBShell/issues/111))
 - `bucket` command now manages container throughput bucket limits in addition to client-side bucket selection. `bucket show` lists the throughput bucket limits configured on the current container, `bucket set <1-5> <1-100>` limits a bucket to a maximum percentage of the container's throughput, and `bucket clear <1-5>` removes a bucket's limit. These control-plane subcommands target the current container (or `--container`) and require an Azure AD (Entra) connection; the existing client-side `bucket`, `bucket <1-5>`, and `bucket 0` selection continues to work on any connection. ([#144](https://github.com/Azure/CosmosDBShell/issues/144))
 - `throughput` write subcommands (`set`/`manual`/`autoscale`) now accept `--dry-run` to preview the change — reporting current vs. planned mode and RU/s as JSON (and a table interactively) — without applying it or prompting for confirmation. A first slice of dry-run mode (item G1). ([#164](https://github.com/Azure/CosmosDBShell/issues/164))
 - **`--dry-run` for destructive delete commands.** `rm`, `rmcon`, `rmdb`, and `delete` accept `--dry-run` to preview the effect without deleting anything: `rm` reports how many items match the pattern, and `rmcon`/`rmdb` report the container or database that would be removed. No confirmation prompt is shown and no changes are made. ([#156](https://github.com/Azure/CosmosDBShell/issues/156))
@@ -11,6 +15,17 @@
 ### Improvements
 
 - **Structured (JSON) tool results for MCP.** MCP tool results now carry the machine-readable JSON payload (`result`/`outputText`/`error` plus `currentLocation`) as first-class `structuredContent` in addition to the existing JSON text block, so agents can consume structured results directly. The two representations are kept byte-for-byte equivalent, and text-only clients are unaffected. ([#154](https://github.com/Azure/CosmosDBShell/issues/154))
+
+### Fixes
+
+- MCP clients that reject unknown protocol versions (for example, Claude Code) can now connect: the server no longer advertises an unsupported protocol version. ([#150](https://github.com/Azure/CosmosDBShell/pull/150))
+- MCP tool calls no longer fail with `ObjectDisposedException: The CancellationTokenSource has been disposed` when the shell cancels a prompt, so agents can invoke tools such as `ls` and `connect` reliably. ([#150](https://github.com/Azure/CosmosDBShell/pull/150))
+
+### Build & pipeline
+
+- Added a CodeQL analysis workflow for C# that builds the solution with `build-mode: manual`, complementing the repository's existing CodeQL default setup. ([#165](https://github.com/Azure/CosmosDBShell/pull/165))
+- Updated GitHub Actions (`actions/checkout`, `actions/setup-dotnet`, `actions/upload-artifact`) to versions that run on Node 24, resolving the Node 20 deprecation warnings. ([#152](https://github.com/Azure/CosmosDBShell/pull/152))
+- Added a `union` merge driver for `CHANGELOG.md` via `.gitattributes` so concurrent PRs that each append an Unreleased entry merge automatically instead of conflicting. ([#172](https://github.com/Azure/CosmosDBShell/pull/172))
 
 ## 1.1.115-preview — 2026-07-01
 
