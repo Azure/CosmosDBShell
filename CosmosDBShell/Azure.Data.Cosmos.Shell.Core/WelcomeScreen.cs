@@ -16,6 +16,7 @@ internal static class WelcomeScreen
     internal static void WriteTo(TextWriter writer)
     {
         writer.Write(Content.Value);
+        writer.Write("\u001b[0m");
         if (!Content.Value.EndsWith('\n'))
         {
             writer.WriteLine();

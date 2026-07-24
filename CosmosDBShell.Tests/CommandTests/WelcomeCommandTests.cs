@@ -14,8 +14,8 @@ public sealed class WelcomeCommandTests
     [Fact]
     public void WelcomeScreen_LoadsEmbeddedAnsiContent()
     {
-        Assert.Contains("COSMOS DB SHELL", WelcomeScreen.Text, StringComparison.Ordinal);
         Assert.Contains("START HERE", WelcomeScreen.Text, StringComparison.Ordinal);
+        Assert.Contains("RESOURCES", WelcomeScreen.Text, StringComparison.Ordinal);
         Assert.Contains("\u001b[", WelcomeScreen.Text, StringComparison.Ordinal);
     }
 
@@ -35,7 +35,7 @@ public sealed class WelcomeCommandTests
             Assert.True(shell.ShowWelcomeOnFirstRun());
             Assert.True(File.Exists(shell.WelcomeMarkerFile));
             Assert.False(shell.ShowWelcomeOnFirstRun());
-            Assert.Equal(1, CountOccurrences(output.ToString(), "COSMOS DB SHELL"));
+            Assert.Equal(1, CountOccurrences(output.ToString(), "START HERE"));
         }
         finally
         {
@@ -65,7 +65,7 @@ public sealed class WelcomeCommandTests
 
             Assert.False(state.IsError);
             Assert.True(state.IsPrinted);
-            Assert.Contains("COSMOS DB SHELL", output.ToString(), StringComparison.Ordinal);
+            Assert.Contains("START HERE", output.ToString(), StringComparison.Ordinal);
         }
         finally
         {
@@ -117,7 +117,7 @@ public sealed class WelcomeCommandTests
 
             Assert.False(shell.ShowWelcomeOnFirstRun());
             Assert.False(File.Exists(shell.WelcomeMarkerFile));
-            Assert.DoesNotContain("COSMOS DB SHELL", output.ToString(), StringComparison.Ordinal);
+            Assert.DoesNotContain("START HERE", output.ToString(), StringComparison.Ordinal);
         }
         finally
         {
