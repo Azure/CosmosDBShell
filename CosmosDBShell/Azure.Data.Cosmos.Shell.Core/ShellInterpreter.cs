@@ -2165,6 +2165,7 @@ public partial class ShellInterpreter : IDisposable
                 return;
             }
         }
+
         if (errors == null || errors.Count == 0)
         {
             return;

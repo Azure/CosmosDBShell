@@ -197,6 +197,7 @@ internal partial class ConnectCommand : CosmosCommand
                 AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected"));
                 PrintConnectUsageHint(shell);
             }
+
             commandState.IsPrinted = !isQuiet;
             var notConnectedJson = new Dictionary<string, object?>
             {

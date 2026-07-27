@@ -71,7 +71,7 @@ internal class Program
             {
                 var outputMode = parseResult.GetValueForOption(optionMap.Output);
                 var quiet = parseResult.GetValueForOption(optionMap.Quiet);
-                var isNonInteractive = args.Contains("-c", StringComparer.Ordinal) || Console.IsInputRedirected;
+                var isNonInteractive = args.Contains("-c", StringComparer.Ordinal);
 
                 var isMachineMode = quiet
                     || string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase)
@@ -83,9 +83,9 @@ internal class Program
                     var errObj = new
                     {
                         status = "error",
-                        error = string.Join("; ", errorStrings)
+                        error = string.Join("; ", errorStrings),
                     };
-                    Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(errObj));
+                    WriteErrorLine(System.Text.Json.JsonSerializer.Serialize(errObj));
                 }
                 else
                 {
@@ -167,17 +167,18 @@ internal class Program
                     var inMachineMode = o.Quiet
                         || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
                         || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase)
-                        || ((args.Contains("-c", StringComparer.Ordinal) || Console.IsInputRedirected)
+                        || (args.Contains("-c", StringComparer.Ordinal)
                             && string.IsNullOrWhiteSpace(o.Output));
 
                     if (inMachineMode)
                     {
-                        Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", error = msg }));
+                        WriteErrorLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", error = msg }));
                     }
                     else
                     {
                         ShellInterpreter.WriteLine(msg);
                     }
+
                     return;
                 }
             }
@@ -196,7 +197,7 @@ internal class Program
                 var inMachineMode = o.Quiet
                     || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase)
-                    || ((args.Contains("-c", StringComparer.Ordinal) || Console.IsInputRedirected)
+                    || (args.Contains("-c", StringComparer.Ordinal)
                         && string.IsNullOrWhiteSpace(o.Output));
 
                 if (inMachineMode)
@@ -204,14 +205,15 @@ internal class Program
                     var errObj = new
                     {
                         status = "error",
-                        error = MessageService.GetString("error-mutually-exclusive-options")
+                        error = MessageService.GetString("error-mutually-exclusive-options"),
                     };
-                    Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(errObj));
+                    WriteErrorLine(System.Text.Json.JsonSerializer.Serialize(errObj));
                 }
                 else
                 {
                     ShellInterpreter.WriteLine(MessageService.GetString("error-mutually-exclusive-options"));
                 }
+
                 return;
             }
 
@@ -243,7 +245,7 @@ internal class Program
                         status = "error",
                         error = message,
                     };
-                    Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(errObj));
+                    WriteErrorLine(System.Text.Json.JsonSerializer.Serialize(errObj));
                     return;
                 }
 
@@ -261,6 +263,7 @@ internal class Program
                 {
                     ShellInterpreter.WriteLine(MessageService.GetString("shell-hisory_file_deleted"));
                 }
+
                 return;
             }
 
@@ -338,7 +341,7 @@ internal class Program
                     var inMachineMode = o.Quiet
                         || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
                         || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase)
-                        || ((args.Contains("-c", StringComparer.Ordinal) || Console.IsInputRedirected)
+                        || (args.Contains("-c", StringComparer.Ordinal)
                             && string.IsNullOrWhiteSpace(o.Output));
 
                     if (!inMachineMode
@@ -355,7 +358,7 @@ internal class Program
                             status = "error",
                             error = ex.Message,
                         };
-                        Console.Error.WriteLine(System.Text.Json.JsonSerializer.Serialize(errObj));
+                        WriteErrorLine(System.Text.Json.JsonSerializer.Serialize(errObj));
                     }
                     else
                     {
@@ -730,6 +733,11 @@ internal class Program
             otel);
 
         return (root, map);
+    }
+
+    private static void WriteErrorLine(string message)
+    {
+        Console.Error.WriteLine(message);
     }
 
     private static string BuildHelpText()
