@@ -75,7 +75,6 @@ internal class Program
 
                 var isMachineMode = quiet
                     || string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(outputMode, "ndjson", StringComparison.OrdinalIgnoreCase)
                     || (isNonInteractive && string.IsNullOrWhiteSpace(outputMode));
                 if (isMachineMode)
                 {
@@ -166,7 +165,6 @@ internal class Program
                         "otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint);
                     var inMachineMode = o.Quiet
                         || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase)
                         || (args.Contains("-c", StringComparer.Ordinal)
                             && string.IsNullOrWhiteSpace(o.Output));
 
@@ -196,7 +194,6 @@ internal class Program
                 Environment.ExitCode = 2;
                 var inMachineMode = o.Quiet
                     || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase)
                     || (args.Contains("-c", StringComparer.Ordinal)
                         && string.IsNullOrWhiteSpace(o.Output));
 
@@ -223,7 +220,7 @@ internal class Program
 
             if (string.IsNullOrWhiteSpace(o.Output) && !string.IsNullOrWhiteSpace(executeAndQuitCommand))
             {
-                o.Output = "ndjson";
+                o.Output = "json";
             }
 
             if (!string.IsNullOrWhiteSpace(o.Output))
@@ -232,8 +229,7 @@ internal class Program
             }
 
             var structuredOutputMode =
-                string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase);
+                string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase);
             var startupMachineMode = o.Quiet || structuredOutputMode;
 
             void WriteStartupError(string message)
@@ -340,7 +336,6 @@ internal class Program
 
                     var inMachineMode = o.Quiet
                         || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(o.Output, "ndjson", StringComparison.OrdinalIgnoreCase)
                         || (args.Contains("-c", StringComparer.Ordinal)
                             && string.IsNullOrWhiteSpace(o.Output));
 
@@ -601,7 +596,6 @@ internal class Program
                 }
 
                 if (string.Equals(token, "json", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(token, "ndjson", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(token, "table", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(token, "csv", StringComparison.OrdinalIgnoreCase))
                 {

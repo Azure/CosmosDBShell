@@ -1352,8 +1352,7 @@ public partial class ShellInterpreter : IDisposable
         {
             string? output;
             var inMachineMode = this.Options?.Quiet == true
-                || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase);
+                || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase);
 
             if (state.Result?.DataType == Parser.DataType.Json)
             {
@@ -1398,14 +1397,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 if (string.IsNullOrEmpty(this.StdOutRedirect))
                 {
-                    if (output.EndsWith(Environment.NewLine))
-                    {
-                        Console.Out.Write(output);
-                    }
-                    else
-                    {
-                        Console.Out.WriteLine(output);
-                    }
+                    Console.Out.WriteLine(output);
                 }
                 else
                 {
@@ -1429,8 +1421,7 @@ public partial class ShellInterpreter : IDisposable
             // for end users. Show only Message chains and let --verbose surface
             // the full exception.
             var inMachineMode = this.Options?.Quiet == true
-                || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase);
+                || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase);
 
             if (e is OperationCanceledException)
             {
@@ -1905,7 +1896,7 @@ public partial class ShellInterpreter : IDisposable
             return;
         }
 
-        if (this.Options?.Quiet == true || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
+        if (this.Options?.Quiet == true || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase))
         {
             var errObj = new
             {
@@ -2141,8 +2132,7 @@ public partial class ShellInterpreter : IDisposable
     private void ReportParserErrors(ErrorList errors, string commandText)
     {
         if ((this.Options?.Quiet == true
-             || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase)
-             || string.Equals(this.Options?.Output, "ndjson", StringComparison.OrdinalIgnoreCase))
+             || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase))
             && errors != null && errors.Count > 0)
         {
             var errorStrings = new System.Collections.Generic.List<string>();

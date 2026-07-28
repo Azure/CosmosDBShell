@@ -60,10 +60,6 @@ public partial class CommandState
         {
             this.OutputFormat = OutputFormat.Table;
         }
-        else if (string.Equals(outputFormat, "ndjson", StringComparison.OrdinalIgnoreCase))
-        {
-            this.OutputFormat = OutputFormat.Ndjson;
-        }
         else
         {
             throw new ArgumentException(MessageService.GetString("error-invalid_output_format", new Dictionary<string, object> { { "format", outputFormat } }));
@@ -132,39 +128,6 @@ public partial class CommandState
                 }
 
                 return ResultToTable(json.EnumerateArray().ToArray()).ToGridString();
-            case OutputFormat.Ndjson:
-                {
-                    var array = json;
-                    if (json.ValueKind == JsonValueKind.Object)
-                    {
-                        if (json.TryGetProperty("documents", out var documents))
-                        {
-                            array = documents;
-                        }
-                        else if (json.TryGetProperty("items", out var items))
-                        {
-                            array = items;
-                        }
-                        else
-                        {
-                            return JsonSerializer.Serialize(json) + Environment.NewLine;
-                        }
-                    }
-
-                    if (array.ValueKind == JsonValueKind.Array)
-                    {
-                        var sb = new StringBuilder();
-                        foreach (var element in array.EnumerateArray())
-                        {
-                            sb.AppendLine(JsonSerializer.Serialize(element));
-                        }
-
-                        return sb.ToString();
-                    }
-
-                    return JsonSerializer.Serialize(array) + Environment.NewLine;
-                }
-
             default:
                 throw new InvalidOperationException("OutputFormat invalid " + this.OutputFormat);
         }

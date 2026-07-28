@@ -195,7 +195,7 @@ public class ShellProcessTests
     }
 
     [Fact]
-    public async Task ExecuteAndQuit_WithoutOutput_EmitsParseableNdjsonOnStdOut()
+    public async Task ExecuteAndQuit_WithoutOutput_EmitsParseableJsonOnStdOut()
     {
         var result = await RunShellAsync(
             stdinScript: null,
@@ -205,15 +205,8 @@ public class ShellProcessTests
         Assert.Equal(0, result.ExitCode);
         Assert.Empty(result.StdErr.Trim());
 
-        var lines = result.StdOut
-            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        Assert.NotEmpty(lines);
-
-        foreach (var line in lines)
-        {
-            using var doc = JsonDocument.Parse(line);
-            Assert.True(doc.RootElement.ValueKind == JsonValueKind.Object || doc.RootElement.ValueKind == JsonValueKind.Array);
-        }
+        using var doc = JsonDocument.Parse(result.StdOut);
+        Assert.True(doc.RootElement.ValueKind == JsonValueKind.Object || doc.RootElement.ValueKind == JsonValueKind.Array);
     }
 
     [Fact]

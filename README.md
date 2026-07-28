@@ -1,4 +1,4 @@
-# Azure Cosmos DB Shell
+﻿# Azure Cosmos DB Shell
 
 A terminal-native shell for Azure Cosmos DB — navigate databases like a filesystem, query interactively, and script with variables, loops, and functions. Supports Entra ID, MCP for AI tool integration, and works with the local emulator.
 
@@ -161,7 +161,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 
 | Option | Description |
 | ------ | ----------- |
-| `--output <format>` | The output format to use (`json`, `ndjson`, `table`, `csv`). Alias: `-o` |
+| `--output <format>` | The output format to use (`json`, `table`, `csv`). Alias: `-o` |
 | `--quiet` | Suppress standard informational output. Alias: `-q` |
 | `-c <cmd>` | Execute and exit |
 | `-k <cmd>` | Execute and stay |
@@ -204,7 +204,7 @@ When running scripts or automation, Cosmos DB Shell maps execution failures to a
 - **`3`**: Auth / connection failure
 - **`4`**: Not found
 - **`5`**: Throttled (RU budget exceeded)
-> **Machine Mode**: Using `--output json`, `--output ndjson`, or `--quiet` (or running `-c` without specifying `--output`) disables ANSI colors, suppresses connection/informational banners, and redirects early parser/connection exceptions to `STDERR` as structured JSON. Data-operation command output is intended to remain structured on `STDOUT` for parser pipelines; diagnostic or explicitly interactive commands may still emit plain text.
+> **Machine Mode**: Using `--output json` or `--quiet` (or running `-c` without specifying `--output`) disables ANSI colors, suppresses connection/informational banners, and redirects early parser/connection exceptions to `STDERR` as structured JSON. Data-operation command output is intended to remain structured on `STDOUT` for parser pipelines; diagnostic or explicitly interactive commands may still emit plain text.
 
 ## Theming
 
