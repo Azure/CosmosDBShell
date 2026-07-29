@@ -223,7 +223,7 @@ internal class WatchCommand : CosmosCommand
         AnsiConsole.MarkupLine(MessageService.GetArgsString("command-watch-stopped", "count", count.ToString()));
 
         var result = new CommandState();
-        result.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+        result.SetFormat(this.OutputFormat);
         if (collected != null)
         {
             result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = collected }));

@@ -121,8 +121,7 @@ internal class InfoCommand : CosmosCommand
         // Redirection, piping, --quiet, and -o json all fall through to the structured
         // JSON/Table output produced by CommandState.GenerateOutputText().
         var interactive = string.IsNullOrEmpty(shell.StdOutRedirect)
-            && shell.Options?.Quiet != true
-            && !string.Equals(shell.Options?.Output, "json", StringComparison.OrdinalIgnoreCase);
+            && !shell.IsMachineMode;
 
         if (string.IsNullOrWhiteSpace(format))
         {

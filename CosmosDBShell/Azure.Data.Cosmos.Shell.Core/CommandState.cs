@@ -14,6 +14,8 @@ using Azure.Data.Cosmos.Shell.Util;
 /// </summary>
 public partial class CommandState
 {
+    private OutputFormat outputFormat;
+
     /// <summary>
     /// Gets a value indicating whether this <see cref="CommandState"/> represents an error state.
     /// </summary>
@@ -25,9 +27,26 @@ public partial class CommandState
     public virtual int ExitCode => 0;
 
     /// <summary>
-    /// Gets or sets the output format for the command result.
+    /// Gets or sets the output format for the command result. Assigning a value marks the
+    /// format as explicitly chosen so <see cref="ShellInterpreter.PrintState"/> does not
+    /// overwrite it with the session default.
     /// </summary>
-    public OutputFormat OutputFormat { get; set; }
+    public OutputFormat OutputFormat
+    {
+        get => this.outputFormat;
+        set
+        {
+            this.outputFormat = value;
+            this.OutputFormatExplicitlySet = true;
+        }
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether <see cref="OutputFormat"/> was explicitly set by a
+    /// command (via a per-command <c>--format</c> option or direct assignment). When false,
+    /// <see cref="ShellInterpreter.PrintState"/> applies the session default format.
+    /// </summary>
+    internal bool OutputFormatExplicitlySet { get; private set; }
 
     internal ShellObject? Result { get; set; }
 
@@ -63,26 +82,13 @@ public partial class CommandState
             return;
         }
 
-        if (string.Equals(outputFormat, "csv", StringComparison.OrdinalIgnoreCase))
+        if (OutputFormats.TryParse(outputFormat, out var parsed))
         {
-            this.OutputFormat = OutputFormat.CSV;
+            this.OutputFormat = parsed;
+            return;
         }
-        else if (string.Equals(outputFormat, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(outputFormat, "js", StringComparison.OrdinalIgnoreCase))
-        {
-            this.OutputFormat = OutputFormat.JSon;
-        }
-        else if (string.Equals(outputFormat, "table", StringComparison.OrdinalIgnoreCase) || string.Equals(outputFormat, "tbl", StringComparison.OrdinalIgnoreCase))
-        {
-            this.OutputFormat = OutputFormat.Table;
-        }
-        else if (string.Equals(outputFormat, "user", StringComparison.OrdinalIgnoreCase))
-        {
-            this.OutputFormat = OutputFormat.User;
-        }
-        else
-        {
-            throw new ArgumentException(MessageService.GetString("error-invalid_output_format", new Dictionary<string, object> { { "format", outputFormat } }));
-        }
+
+        throw new ArgumentException(MessageService.GetString("error-invalid_output_format", new Dictionary<string, object> { { "format", outputFormat } }));
     }
 
     internal string GenerateOutputText()

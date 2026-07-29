@@ -170,6 +170,35 @@ public partial class ShellInterpreter : IDisposable
     internal Queue<VariableContainer> VariableContainers { get; } = new();
 
     /// <summary>
+    /// Gets a value indicating whether the shell is running in machine mode, where
+    /// interactive rendering (friendly views, ANSI colors, banners) is suppressed in
+    /// favor of deterministic structured output. Machine mode is entered via
+    /// <c>--quiet</c>, <c>--output json</c>, or <c>-c</c> (all of which set <c>Quiet</c>
+    /// during startup).
+    /// </summary>
+    internal bool IsMachineMode => this.Options?.Quiet == true;
+
+    /// <summary>
+    /// Gets the session default <see cref="OutputFormat"/> derived from the global
+    /// <c>--output</c> option. When no format is specified it falls back to
+    /// <see cref="OutputFormat.JSon"/> in machine mode and <see cref="OutputFormat.User"/>
+    /// interactively. <see cref="PrintState"/> applies this to any command result that did
+    /// not explicitly choose a format.
+    /// </summary>
+    internal OutputFormat DefaultOutputFormat
+    {
+        get
+        {
+            if (OutputFormats.TryParse(this.Options?.Output, out var format))
+            {
+                return format;
+            }
+
+            return this.IsMachineMode ? OutputFormat.JSon : OutputFormat.User;
+        }
+    }
+
+    /// <summary>
     /// Create a new instance of the <see cref="ShellInterpreter"/> class.
     /// </summary>
     /// <returns>A new instance of the <see cref="ShellInterpreter"/> class.</returns>
@@ -371,7 +400,6 @@ public partial class ShellInterpreter : IDisposable
     {
         using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
         var state = new CommandState();
-        state.SetFormat(Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
 
         // Snapshot redirect state so a '>' / '2>' on this command does not leak into
         // the next command executed against this interpreter instance.
@@ -1352,9 +1380,16 @@ public partial class ShellInterpreter : IDisposable
     {
         try
         {
+            // Apply the session default format when the command did not choose one itself.
+            // This is the single place the global format (from --output) is applied, so
+            // commands never need to read it and new commands inherit it automatically.
+            if (!state.OutputFormatExplicitlySet)
+            {
+                state.OutputFormat = this.DefaultOutputFormat;
+            }
+
             var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
-            var inMachineMode = this.Options?.Quiet == true
-                || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase);
+            var inMachineMode = this.IsMachineMode;
 
             // Interactive, user-facing view: when the command supplied a custom renderer and
             // the effective format is User, let it draw. Redirection, piping, and machine
@@ -1439,8 +1474,7 @@ public partial class ShellInterpreter : IDisposable
             // exceptions) carry an actionable message; the stack trace is noise
             // for end users. Show only Message chains and let --verbose surface
             // the full exception.
-            var inMachineMode = this.Options?.Quiet == true
-                || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase);
+            var inMachineMode = this.IsMachineMode;
 
             if (e is OperationCanceledException)
             {

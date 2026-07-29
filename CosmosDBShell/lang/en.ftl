@@ -85,7 +85,7 @@ help-commands = Commands:
 help-examples = Examples:
 help-examples-heading = Examples
 help-aliases = Aliases:
-help-OutputFormat = The output format to use (json, table, csv).
+help-OutputFormat = The output format to use (user, json, table, csv).
 help-Quiet = Suppresses standard informational output.
 
 command-help-description = Shows help information for commands

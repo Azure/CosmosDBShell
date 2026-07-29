@@ -223,11 +223,6 @@ internal class Program
                 o.Output = "json";
             }
 
-            if (!string.IsNullOrWhiteSpace(o.Output))
-            {
-                Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", o.Output);
-            }
-
             var structuredOutputMode =
                 string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase);
             var startupMachineMode = o.Quiet || structuredOutputMode;
@@ -586,20 +581,15 @@ internal class Program
                 }
 
                 var token = argResult.Tokens[0].Value;
-                if (string.Equals(token, "js", StringComparison.OrdinalIgnoreCase))
+                if (OutputFormats.TryParse(token, out var format))
                 {
-                    token = "json";
-                }
-                else if (string.Equals(token, "tbl", StringComparison.OrdinalIgnoreCase))
-                {
-                    token = "table";
-                }
-
-                if (string.Equals(token, "json", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(token, "table", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(token, "csv", StringComparison.OrdinalIgnoreCase))
-                {
-                    return token.ToLowerInvariant();
+                    return format switch
+                    {
+                        OutputFormat.JSon => "json",
+                        OutputFormat.CSV => "csv",
+                        OutputFormat.Table => "table",
+                        _ => "user",
+                    };
                 }
 
                 argResult.ErrorMessage = MessageService.GetString(

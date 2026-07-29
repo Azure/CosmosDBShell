@@ -284,7 +284,6 @@ public class ShellProcessTests
 
         // Keep the environment minimal and predictable.
         startInfo.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
-        startInfo.Environment.Remove("COSMOSDB_SHELL_FORMAT");
 
         using var process = new Process { StartInfo = startInfo };
         var stdOut = new StringBuilder();

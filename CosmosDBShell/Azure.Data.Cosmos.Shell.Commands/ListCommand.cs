@@ -93,7 +93,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
         var hasArmContext = state.ArmContext is not null;
         var result = new CommandState();
-        result.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+        result.SetFormat(this.OutputFormat);
         result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "database", values = list }));
         result.RenderTabular = () =>
         {
@@ -163,7 +163,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
         var hasArmContext = state.ArmContext is not null;
         var result = new CommandState();
-        result.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+        result.SetFormat(this.OutputFormat);
         result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "container", values = list }));
         result.RenderTabular = () =>
         {
@@ -222,7 +222,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var usesServerSideTop = effectiveMaxItemCount.HasValue && !HasClientSideFilter(this.Filter);
         using var feedIterator = container.GetItemQueryStreamIterator(queryText, requestOptions: opt);
         var returnState = new CommandState();
-        returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+        returnState.SetFormat(this.OutputFormat);
         var list = new List<JsonElement>();
         var limitReached = false;
         while (feedIterator.HasMoreResults)
