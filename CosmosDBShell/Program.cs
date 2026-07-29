@@ -73,9 +73,7 @@ internal class Program
                 var quiet = parseResult.GetValueForOption(optionMap.Quiet);
                 var isNonInteractive = args.Contains("-c", StringComparer.Ordinal);
 
-                var isMachineMode = quiet
-                    || string.Equals(outputMode, "json", StringComparison.OrdinalIgnoreCase)
-                    || (isNonInteractive && string.IsNullOrWhiteSpace(outputMode));
+                var isMachineMode = OutputPolicy.IsMachineMode(outputMode, quiet, isNonInteractive);
                 if (isMachineMode)
                 {
                     var errorStrings = parseResult.Errors.Select(e => e.Message).ToList();
@@ -163,10 +161,8 @@ internal class Program
                     Environment.ExitCode = 2;
                     var msg = MessageService.GetArgsString(
                         "otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint);
-                    var inMachineMode = o.Quiet
-                        || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
-                        || (args.Contains("-c", StringComparer.Ordinal)
-                            && string.IsNullOrWhiteSpace(o.Output));
+                    var inMachineMode = OutputPolicy.IsMachineMode(
+                        o.Output, o.Quiet, args.Contains("-c", StringComparer.Ordinal));
 
                     if (inMachineMode)
                     {
@@ -192,10 +188,8 @@ internal class Program
             if (!string.IsNullOrWhiteSpace(o.ExecuteAndQuit) && !string.IsNullOrWhiteSpace(o.ExecuteAndContinue))
             {
                 Environment.ExitCode = 2;
-                var inMachineMode = o.Quiet
-                    || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
-                    || (args.Contains("-c", StringComparer.Ordinal)
-                        && string.IsNullOrWhiteSpace(o.Output));
+                var inMachineMode = OutputPolicy.IsMachineMode(
+                    o.Output, o.Quiet, args.Contains("-c", StringComparer.Ordinal));
 
                 if (inMachineMode)
                 {
@@ -223,9 +217,8 @@ internal class Program
                 o.Output = "json";
             }
 
-            var structuredOutputMode =
-                string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase);
-            var startupMachineMode = o.Quiet || structuredOutputMode;
+            var startupMachineMode = OutputPolicy.IsMachineMode(
+                o.Output, o.Quiet, !string.IsNullOrWhiteSpace(executeAndQuitCommand));
 
             void WriteStartupError(string message)
             {
@@ -329,10 +322,8 @@ internal class Program
                     var errorState = new ErrorCommandState(ex);
                     Environment.ExitCode = errorState.ExitCode;
 
-                    var inMachineMode = o.Quiet
-                        || string.Equals(o.Output, "json", StringComparison.OrdinalIgnoreCase)
-                        || (args.Contains("-c", StringComparer.Ordinal)
-                            && string.IsNullOrWhiteSpace(o.Output));
+                    var inMachineMode = OutputPolicy.IsMachineMode(
+                        o.Output, o.Quiet, args.Contains("-c", StringComparer.Ordinal));
 
                     if (!inMachineMode
                         && ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id, out var permission))

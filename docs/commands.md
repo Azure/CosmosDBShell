@@ -1157,12 +1157,12 @@ scale section reports that throughput settings are not available for serverless
 accounts instead of failing.
 
 ```text
-Usage: info [--partitions] [--detailed] [--format=<json|table>] [--database=<name>] [--container=<name>]
+Usage: info [--partitions] [--detailed] [--format=<user|json|table|csv>] [--database=<name>] [--container=<name>]
 
 Options:
     --partitions, -p    Add the per-physical-partition document distribution (consumes request units)
     --detailed, -d      Add storage breakdown and top partition keys (performs a full scan and consumes request units)
-    --format, -f        Output format: table or json
+    --format, -f        Output format: user, json, table, or csv
     --database, -db     Target database name
     --container, -con   Target container name
 ```

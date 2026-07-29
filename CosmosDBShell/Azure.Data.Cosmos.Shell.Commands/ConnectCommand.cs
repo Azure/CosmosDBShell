@@ -55,7 +55,7 @@ internal partial class ConnectCommand : CosmosCommand
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
-        var isQuiet = shell.Options?.Quiet == true;
+        var isMachineMode = shell.IsMachineMode;
 
         // If no connection string provided, show current connection info
         if (this.ConnectionString is null)
@@ -69,7 +69,7 @@ internal partial class ConnectCommand : CosmosCommand
         if (shell.State is ConnectedState cs)
         {
             var previousEndpoint = cs.Client.Endpoint.Host;
-            if (!isQuiet)
+            if (!isMachineMode)
             {
                 AnsiConsole.MarkupLine(MessageService.GetArgsString("command-connect-switching", "endpoint", previousEndpoint));
             }
@@ -118,7 +118,7 @@ internal partial class ConnectCommand : CosmosCommand
         }
         catch (Exception e)
         {
-            if (!isQuiet && TryGetPrincipalIdFromRbacException(e, out var id, out var permission))
+            if (!isMachineMode && TryGetPrincipalIdFromRbacException(e, out var id, out var permission))
             {
                 AskForRBacPermissions(id ?? string.Empty, permission ?? string.Empty);
                 return commandState;

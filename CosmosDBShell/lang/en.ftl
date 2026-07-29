@@ -770,10 +770,10 @@ command-bucket-error-arm_required =
 
 
 command-info-description = Shows configuration and usage statistics for the current container, database, or account.
-command-info-description-format = Output format (json, table)
+command-info-description-format = Output format (user, json, table, csv)
 command-info-error-container-without-database = A container was specified without a database. Provide --database, or run info from within a database or container scope.
 command-info-error-partitions-requires-container = --partitions only applies to a container. Specify a container with --database and --container, or run info from within a container scope.
-command-info-error-invalid-format = Unknown info output format '{ $format }'. Use 'json' or 'table'.
+command-info-error-invalid-format = Unknown info output format '{ $format }'. Use 'user', 'json', 'table', or 'csv'.
 command-settings-scale-heading = Scale
 command-settings-scale-usage = Based on usage, your container throughput will scale from { $min } RU/s (10% of max RU/s) - { $max } RU/s
 command-settings-scale-serverless = Throughput settings are not available for serverless accounts.

@@ -173,10 +173,14 @@ public partial class ShellInterpreter : IDisposable
     /// Gets a value indicating whether the shell is running in machine mode, where
     /// interactive rendering (friendly views, ANSI colors, banners) is suppressed in
     /// favor of deterministic structured output. Machine mode is entered via
-    /// <c>--quiet</c>, <c>--output json</c>, or <c>-c</c> (all of which set <c>Quiet</c>
-    /// during startup).
+    /// <c>--quiet</c>, a structured output format (<c>--output json</c> or <c>--output csv</c>),
+    /// or an execute-and-quit (<c>-c</c>) invocation. The human-facing <c>table</c> and
+    /// <c>user</c> formats are not machine mode. See <see cref="OutputPolicy"/>.
     /// </summary>
-    internal bool IsMachineMode => this.Options?.Quiet == true;
+    internal bool IsMachineMode => OutputPolicy.IsMachineMode(
+        this.Options?.Output,
+        this.Options?.Quiet == true,
+        !string.IsNullOrWhiteSpace(this.Options?.ExecuteAndQuit));
 
     /// <summary>
     /// Gets the session default <see cref="OutputFormat"/> derived from the global
@@ -1949,7 +1953,7 @@ public partial class ShellInterpreter : IDisposable
             return;
         }
 
-        if (this.Options?.Quiet == true || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase))
+        if (this.IsMachineMode)
         {
             var errObj = new
             {
@@ -2184,8 +2188,7 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportParserErrors(ErrorList errors, string commandText)
     {
-        if ((this.Options?.Quiet == true
-             || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase))
+        if (this.IsMachineMode
             && errors != null && errors.Count > 0)
         {
             var errorStrings = new System.Collections.Generic.List<string>();
