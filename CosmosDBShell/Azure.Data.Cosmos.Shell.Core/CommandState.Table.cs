@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Core;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using Spectre.Console;
 
 public partial class CommandState
 {
@@ -14,6 +15,36 @@ public partial class CommandState
     {
         var str = obj?.ToString() ?? string.Empty;
         return '"' + str.Replace("\"", "\"\"") + '"';
+    }
+
+    private static bool TryGetListProperty(JsonElement json, out JsonElement array)
+    {
+        foreach (var name in new[] { "values", "items", "databases", "containers" })
+        {
+            if (json.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array)
+            {
+                array = value;
+                return true;
+            }
+        }
+
+        array = default;
+        return false;
+    }
+
+    private static IEnumerable<KeyValuePair<string, string>> EnumerateFields(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in element.EnumerateObject())
+            {
+                yield return new KeyValuePair<string, string>(prop.Name, prop.Value.ToString());
+            }
+        }
+        else
+        {
+            yield return new KeyValuePair<string, string>("value", element.ToString());
+        }
     }
 
     private static Table ResultToTable(IList<JsonElement> results)
@@ -24,14 +55,14 @@ public partial class CommandState
         foreach (var e in results)
         {
             var curColumn = 0;
-            foreach (var prop in e.EnumerateObject())
+            foreach (var field in EnumerateFields(e))
             {
-                if (!headers.TryGetValue(prop.Name, out var index))
+                if (!headers.TryGetValue(field.Key, out var index))
                 {
                     index = curColumn;
                     var list = new List<string?>
                     {
-                        EscapeCSV(prop.Name),
+                        EscapeCSV(field.Key),
                     };
                     for (int i = 0; i < row; i++)
                     {
@@ -46,7 +77,7 @@ public partial class CommandState
                         }
                     }
 
-                    headers[prop.Name] = curColumn;
+                    headers[field.Key] = curColumn;
                     if (columns.Count <= curColumn)
                     {
                         columns.Add(list);
@@ -65,7 +96,7 @@ public partial class CommandState
                     column.Add(null);
                 }
 
-                column.Add(EscapeCSV(prop.Value.ToString()));
+                column.Add(EscapeCSV(field.Value));
                 curColumn += 1;
             }
 
@@ -78,6 +109,27 @@ public partial class CommandState
             while (column.Count <= row)
             {
                 column.Add(null);
+            }
+        }
+
+        return new Table(columns);
+    }
+
+    private static Table FromTabular(TabularData data)
+    {
+        var columns = new List<List<string?>>();
+        var headers = data.Headers;
+        for (int c = 0; c < headers.Count; c++)
+        {
+            columns.Add(new List<string?> { EscapeCSV(headers[c]) });
+        }
+
+        foreach (var row in data.Rows)
+        {
+            for (int c = 0; c < columns.Count; c++)
+            {
+                var value = c < row.Count ? row[c] : string.Empty;
+                columns[c].Add(EscapeCSV(value));
             }
         }
 
@@ -170,52 +222,32 @@ public partial class CommandState
                 return string.Empty;
             }
 
-            var widths = new int[cols];
+            var table = new Spectre.Console.Table();
             for (int j = 0; j < cols; j++)
             {
-                for (int i = 0; i < rows; i++)
-                {
-                    var cell = UnescapeCSV(this[i, j]);
-                    if (cell.Length > widths[j])
-                    {
-                        widths[j] = cell.Length;
-                    }
-                }
+                table.AddColumn(Markup.Escape(UnescapeCSV(this[0, j])));
             }
 
-            var sb = new StringBuilder();
-            for (int i = 0; i < rows; i++)
+            for (int i = 1; i < rows; i++)
             {
+                var cells = new string[cols];
                 for (int j = 0; j < cols; j++)
                 {
-                    if (j > 0)
-                    {
-                        sb.Append("  ");
-                    }
-
-                    var cell = UnescapeCSV(this[i, j]);
-                    sb.Append(cell.PadRight(widths[j]));
+                    cells[j] = Markup.Escape(UnescapeCSV(this[i, j]));
                 }
 
-                sb.AppendLine();
-
-                if (i == 0 && rows > 1)
-                {
-                    for (int j = 0; j < cols; j++)
-                    {
-                        if (j > 0)
-                        {
-                            sb.Append("  ");
-                        }
-
-                        sb.Append(new string('-', widths[j]));
-                    }
-
-                    sb.AppendLine();
-                }
+                table.AddRow(cells);
             }
 
-            return sb.ToString();
+            var writer = new StringWriter();
+            var console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(writer),
+            });
+            console.Write(table);
+            return writer.ToString().TrimEnd();
         }
 
         private static string UnescapeCSV(string? value)

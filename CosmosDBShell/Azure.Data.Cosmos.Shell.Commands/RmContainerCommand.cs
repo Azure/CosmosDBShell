@@ -4,7 +4,9 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
+using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
@@ -30,8 +32,11 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
     [CosmosOption("dry-run")]
     public bool? DryRun { get; init; }
 
+    internal CommandState? Outcome { get; set; }
+
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
+        this.Outcome = commandState;
         await shell.State.AcceptAsync(this, shell, token);
         return commandState;
     }
@@ -87,7 +92,9 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
             {
                 if (this.DryRun == true)
                 {
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-dry-run-plan", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } }));
+                    this.SetOutcome(
+                        JsonSerializer.SerializeToElement(new { container = containerName, dryRun = true, deleted = false }),
+                        () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-dry-run-plan", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } })));
                     return 0;
                 }
 
@@ -95,7 +102,15 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
                 {
                     await CosmosResourceFacade.DeleteContainerAsync(state, databaseName, containerName, token);
                     CosmosCompleteCommand.ClearContainers();
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-deleted_container", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } }));
+                    this.SetOutcome(
+                        JsonSerializer.SerializeToElement(new { container = containerName, deleted = true }),
+                        () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-deleted_container", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } })));
+                }
+                else
+                {
+                    this.SetOutcome(
+                        JsonSerializer.SerializeToElement(new { container = containerName, deleted = false }),
+                        () => { });
                 }
 
                 return 0;
@@ -103,5 +118,17 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
         }
 
         throw new CommandException("rmcon", MessageService.GetString("command-rmcon-error-container_not_found", new Dictionary<string, object> { { "container", this.Name ?? string.Empty } }));
+    }
+
+    private void SetOutcome(JsonElement payload, Action render)
+    {
+        var outcome = this.Outcome;
+        if (outcome is null)
+        {
+            return;
+        }
+
+        outcome.Result = new ShellJson(payload);
+        outcome.RenderUser = render;
     }
 }

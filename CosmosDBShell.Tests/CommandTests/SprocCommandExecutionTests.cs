@@ -42,7 +42,7 @@ public class SprocCommandExecutionTests
         var json = Assert.IsType<JsonElement>(state.Result!.ConvertShellObject(DataType.Json));
         Assert.Equal(JsonValueKind.Array, json.ValueKind);
         Assert.Equal(0, json.GetArrayLength());
-        Assert.True(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class SprocCommandExecutionTests
         Assert.Equal(2, json.GetArrayLength());
         Assert.Equal("alpha", json[0].GetProperty("id").GetString());
         Assert.Equal("function alpha() {}".Length, json[0].GetProperty("bodyLength").GetInt32());
-        Assert.True(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public class SprocCommandExecutionTests
         var command = new SprocCommand { Subcommand = "list" };
         var state = await command.ListAsync(container, shell, new CommandState(), CancellationToken.None);
 
-        Assert.False(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
         var json = Assert.IsType<JsonElement>(state.Result!.ConvertShellObject(DataType.Json));
         Assert.Equal(1, json.GetArrayLength());
     }
@@ -127,7 +127,7 @@ public class SprocCommandExecutionTests
         var state = await command.ExistsAsync(container, new CommandState(), CancellationToken.None);
 
         Assert.Equal(true, state.Result!.ConvertShellObject(DataType.Boolean));
-        Assert.True(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
     }
 
     [Fact]

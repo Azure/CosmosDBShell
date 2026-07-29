@@ -281,24 +281,20 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             }
         }
 
-        if (totalCount > 0)
-        {
-            AnsiConsole.MarkupLine(
-                MessageService.GetString(
-                    dryRun ? "command-rm-dry-run-plan" : "command-rm-deleted_items",
-                    new Dictionary<string, object> { { "count", totalCount } }));
-        }
-        else
-        {
-            AnsiConsole.MarkupLine(
-                MessageService.GetString(
-                    "command-rm-no-matches",
-                    new Dictionary<string, object>
-                    {
-                        { "pattern", this.Pattern ?? "pipe input" },
-                        { "key", string.Join(',', matchKeyPropertyNames) },
-                    }));
-        }
+        string renderMessage = totalCount > 0
+            ? MessageService.GetString(
+                dryRun ? "command-rm-dry-run-plan" : "command-rm-deleted_items",
+                new Dictionary<string, object> { { "count", totalCount } })
+            : MessageService.GetString(
+                "command-rm-no-matches",
+                new Dictionary<string, object>
+                {
+                    { "pattern", this.Pattern ?? "pipe input" },
+                    { "key", string.Join(',', matchKeyPropertyNames) },
+                });
+
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { count = totalCount, dryRun }));
+        commandState.RenderUser = () => AnsiConsole.MarkupLine(renderMessage);
 
         return new ExitCode(0);
     }

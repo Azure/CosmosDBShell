@@ -282,7 +282,7 @@ Start the shell with options to customize behavior:
 | -------- | ----------- |
 | `COSMOSDB_SHELL_TOKEN` | Pre-obtained Entra ID access token (JWT) for single-shot auth |
 | `COSMOSDB_SHELL_ACCOUNT_KEY` | Account key for authentication |
-| `COSMOSDB_SHELL_FORMAT` | Default output format |
+| `COSMOSDB_SHELL_FORMAT` | Default output format: `user` (default; interactive friendly view, machine output falls back to JSON), `json`, `csv`, or `table` |
 | `COSMOSDB_SHELL_CSVSEP` | CSV column separator |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Default OTLP endpoint used by `--otel` when no endpoint is supplied |
 

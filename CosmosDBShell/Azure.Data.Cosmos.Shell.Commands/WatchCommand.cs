@@ -222,14 +222,19 @@ internal class WatchCommand : CosmosCommand
 
         AnsiConsole.MarkupLine(MessageService.GetArgsString("command-watch-stopped", "count", count.ToString()));
 
-        var result = new CommandState
-        {
-            IsPrinted = !redirected,
-        };
+        var result = new CommandState();
         result.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
         if (collected != null)
         {
             result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = collected }));
+        }
+
+        if (!redirected)
+        {
+            // Rows were streamed live to the terminal during the tail, so suppress the
+            // trailing structured dump for the interactive, user-facing view.
+            result.OutputFormat = Azure.Data.Cosmos.Shell.Core.OutputFormat.User;
+            result.RenderUser = () => { };
         }
 
         return result;

@@ -139,10 +139,12 @@ internal class CommandStatement : Statement
     /// </summary>
     public override async Task<CommandState> RunAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
-        // Each command statement re-establishes its own printed state. Without this reset a
-        // prior command that set IsPrinted (for example a condition command in an if/while)
-        // would leak the flag into this statement and suppress its output in PrintState.
-        commandState.IsPrinted = false;
+        // Each command statement re-establishes its own render state. Without this reset a
+        // prior command that supplied a RenderUser delegate (for example a condition command
+        // in an if/while) would leak it into this statement and cause PrintState to render
+        // stale output. The Result itself is intentionally preserved so that piped commands
+        // (command1 | command2) can consume the previous command's output.
+        commandState.RenderUser = null;
 
         // Wire redirections onto the shell so both the command itself (if it inspects
         // StdOutRedirect/ErrOutRedirect) and the post-execution PrintState honor them.

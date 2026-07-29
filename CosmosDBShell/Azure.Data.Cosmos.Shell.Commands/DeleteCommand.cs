@@ -54,6 +54,7 @@ internal class DeleteCommand : CosmosCommand
                     Name = this.Pattern,
                     Database = this.Database,
                     DryRun = this.DryRun,
+                    Outcome = commandState,
                 },
                 shell,
                 token);
@@ -65,6 +66,7 @@ internal class DeleteCommand : CosmosCommand
                 {
                     Name = this.Pattern,
                     DryRun = this.DryRun,
+                    Outcome = commandState,
                 },
                 shell,
                 token);

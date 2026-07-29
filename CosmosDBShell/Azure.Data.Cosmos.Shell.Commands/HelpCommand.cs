@@ -46,8 +46,6 @@ internal class HelpCommand : CosmosCommand
             if (stmtInfo.Name != null)
             {
                 // Found a statement help entry
-                PrintSingleStatementHelp(stmtInfo, plain);
-
                 var stmtJson = new Dictionary<string, object>
                 {
                     ["statement"] = stmtInfo.Name,
@@ -61,7 +59,7 @@ internal class HelpCommand : CosmosCommand
                 var stmtState = new CommandState
                 {
                     Result = new ShellJson(jsonElementStmt),
-                    IsPrinted = true,
+                    RenderUser = () => PrintSingleStatementHelp(stmtInfo, plain),
                 };
                 return stmtState;
             }
@@ -404,7 +402,7 @@ internal class HelpCommand : CosmosCommand
 
         var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(helpJson);
         commandState.Result = new ShellJson(jsonElement);
-        commandState.IsPrinted = true;
+        commandState.RenderUser = () => { };
         return commandState;
     }
 
@@ -418,6 +416,71 @@ internal class HelpCommand : CosmosCommand
             return Task.FromResult(state);
         }
 
+        var allCommandsHelp = new Dictionary<string, object>
+        {
+            ["help"] = MessageService.GetString("help-list-of-available-commands"),
+        };
+
+        var commands = new List<Dictionary<string, object>>();
+        foreach (var cmd in EnumeratePrimaryCommands(app))
+        {
+            var cmdInfo = new Dictionary<string, object>
+            {
+                ["command"] = cmd.CommandName,
+                ["description"] = cmd.Description ?? string.Empty,
+            };
+
+            if (!string.IsNullOrEmpty(cmd.McpDescription))
+            {
+                cmdInfo["mcpDescription"] = cmd.McpDescription;
+            }
+
+            if (cmd.McpRestricted)
+            {
+                cmdInfo["mcpRestricted"] = true;
+            }
+
+            var parameterNames = cmd.Parameters.Select(p => p.Name.FirstOrDefault() ?? string.Empty).Where(n => !string.IsNullOrEmpty(n)).ToList();
+            if (parameterNames.Count > 0)
+            {
+                cmdInfo["parameters"] = parameterNames;
+            }
+
+            var optionNames = cmd.Options.SelectMany(o => o.Name).ToList();
+            if (optionNames.Count > 0)
+            {
+                cmdInfo["options"] = optionNames;
+            }
+
+            commands.Add(cmdInfo);
+        }
+
+        allCommandsHelp["commands"] = commands;
+
+        var statementsJson = new List<Dictionary<string, object>>();
+        foreach (var info in EnumerateStatementHelp())
+        {
+            statementsJson.Add(new Dictionary<string, object>
+            {
+                ["name"] = info.Name,
+                ["key"] = info.Key,
+                ["description"] = info.Description ?? string.Empty,
+                ["syntax"] = info.Syntax ?? string.Empty,
+                ["example"] = info.Example ?? string.Empty,
+            });
+        }
+
+        allCommandsHelp["statements"] = statementsJson;
+
+        var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(allCommandsHelp);
+        commandState.Result = new ShellJson(jsonElement);
+        commandState.RenderUser = () => this.RenderCommandList(app);
+
+        return Task.FromResult(commandState);
+    }
+
+    private void RenderCommandList(CommandRunner app)
+    {
         if (this.Plain)
         {
             ShellInterpreter.WriteLine(MessageService.GetString("help-available-commands"));
@@ -489,68 +552,6 @@ internal class HelpCommand : CosmosCommand
         }
 
         PrintStatementHelps(this.Plain);
-
-        var allCommandsHelp = new Dictionary<string, object>
-        {
-            ["help"] = MessageService.GetString("help-list-of-available-commands"),
-        };
-
-        var commands = new List<Dictionary<string, object>>();
-        foreach (var cmd in EnumeratePrimaryCommands(app))
-        {
-            var cmdInfo = new Dictionary<string, object>
-            {
-                ["command"] = cmd.CommandName,
-                ["description"] = cmd.Description ?? string.Empty,
-            };
-
-            if (!string.IsNullOrEmpty(cmd.McpDescription))
-            {
-                cmdInfo["mcpDescription"] = cmd.McpDescription;
-            }
-
-            if (cmd.McpRestricted)
-            {
-                cmdInfo["mcpRestricted"] = true;
-            }
-
-            var parameterNames = cmd.Parameters.Select(p => p.Name.FirstOrDefault() ?? string.Empty).Where(n => !string.IsNullOrEmpty(n)).ToList();
-            if (parameterNames.Count > 0)
-            {
-                cmdInfo["parameters"] = parameterNames;
-            }
-
-            var optionNames = cmd.Options.SelectMany(o => o.Name).ToList();
-            if (optionNames.Count > 0)
-            {
-                cmdInfo["options"] = optionNames;
-            }
-
-            commands.Add(cmdInfo);
-        }
-
-        allCommandsHelp["commands"] = commands;
-
-        var statementsJson = new List<Dictionary<string, object>>();
-        foreach (var info in EnumerateStatementHelp())
-        {
-            statementsJson.Add(new Dictionary<string, object>
-            {
-                ["name"] = info.Name,
-                ["key"] = info.Key,
-                ["description"] = info.Description ?? string.Empty,
-                ["syntax"] = info.Syntax ?? string.Empty,
-                ["example"] = info.Example ?? string.Empty,
-            });
-        }
-
-        allCommandsHelp["statements"] = statementsJson;
-
-        var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(allCommandsHelp);
-        commandState.Result = new ShellJson(jsonElement);
-        commandState.IsPrinted = true;
-
-        return Task.FromResult(commandState);
     }
 
     private static IEnumerable<CommandFactory> EnumeratePrimaryCommands(CommandRunner app)

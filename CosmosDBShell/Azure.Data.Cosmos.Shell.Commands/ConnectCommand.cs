@@ -60,7 +60,7 @@ internal partial class ConnectCommand : CosmosCommand
         // If no connection string provided, show current connection info
         if (this.ConnectionString is null)
         {
-            return await PrintConnectionInfoAsync(shell, commandState, token, isQuiet);
+            return await PrintConnectionInfoAsync(shell, commandState, token);
         }
 
         // If already connected, inform user about switching accounts.
@@ -100,7 +100,9 @@ internal partial class ConnectCommand : CosmosCommand
             await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, token: token);
             var returnState = new CommandState
             {
-                IsPrinted = !isQuiet,
+                // A successful connect is silent for interactive users; machine mode,
+                // redirection, and MCP still receive the structured connection result.
+                RenderUser = () => { },
             };
             var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(this.ConnectionString);
             var resultElement = JsonSerializer.SerializeToElement(new Dictionary<string, string?>
@@ -188,22 +190,20 @@ internal partial class ConnectCommand : CosmosCommand
         AnsiConsole.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-footer")));
     }
 
-    private static async Task<CommandState> PrintConnectionInfoAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, bool isQuiet)
+    private static async Task<CommandState> PrintConnectionInfoAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
         if (shell.State is not ConnectedState connectedState)
         {
-            if (!isQuiet)
-            {
-                AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected"));
-                PrintConnectUsageHint(shell);
-            }
-
-            commandState.IsPrinted = !isQuiet;
             var notConnectedJson = new Dictionary<string, object?>
             {
                 ["connected"] = false,
             };
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(notConnectedJson));
+            commandState.RenderUser = () =>
+            {
+                AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected"));
+                PrintConnectUsageHint(shell);
+            };
             return commandState;
         }
 
@@ -214,7 +214,19 @@ internal partial class ConnectCommand : CosmosCommand
         var connectionMode = client.ClientOptions.ConnectionMode;
         string currentLocation = ShellLocation.GetCurrentLocation(shell.State) ?? ShellLocation.NotConnectedText;
 
-        if (!isQuiet)
+        var jsonResult = new Dictionary<string, object?>
+        {
+            ["connected"] = true,
+            ["accountId"] = acc.Id,
+            ["endpoint"] = client.Endpoint.ToString(),
+            ["armAccountId"] = connectedState.ArmContext?.AccountResourceId.ToString(),
+            ["connectionMode"] = connectionMode.ToString(),
+            ["readRegions"] = acc.ReadableRegions.Select(r => r.Name).ToArray(),
+            ["writeRegions"] = acc.WritableRegions.Select(r => r.Name).ToArray(),
+            ["currentLocation"] = currentLocation,
+        };
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonResult));
+        commandState.RenderUser = () =>
         {
             AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-connect-info-title")));
 
@@ -241,21 +253,7 @@ internal partial class ConnectCommand : CosmosCommand
             table.AddRow(MessageService.GetString("command-connect-info-location"), Theme.ConnectedStatePromt(currentLocation));
 
             AnsiConsole.Write(table);
-        }
-
-        commandState.IsPrinted = !isQuiet;
-        var jsonResult = new Dictionary<string, object?>
-        {
-            ["connected"] = true,
-            ["accountId"] = acc.Id,
-            ["endpoint"] = client.Endpoint.ToString(),
-            ["armAccountId"] = connectedState.ArmContext?.AccountResourceId.ToString(),
-            ["connectionMode"] = connectionMode.ToString(),
-            ["readRegions"] = acc.ReadableRegions.Select(r => r.Name).ToArray(),
-            ["writeRegions"] = acc.WritableRegions.Select(r => r.Name).ToArray(),
-            ["currentLocation"] = currentLocation,
         };
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonResult));
         return commandState;
     }
 }

@@ -78,9 +78,10 @@ internal class FtabCommand : CosmosCommand
             throw new CommandException("ftab", "The -colorize option is only supported with -format default.");
         }
 
-        if (format == FtabOutputFormat.Default && string.IsNullOrEmpty(shell.StdOutRedirect))
+        if (format == FtabOutputFormat.Default)
         {
-            RenderSpectreTable(tableModel.Headers, tableModel.Rows, colorizeRules);
+            commandState.Result = new ShellText(RenderPlainText(tableModel.Headers, tableModel.Rows));
+            commandState.RenderUser = () => RenderSpectreTable(tableModel.Headers, tableModel.Rows, colorizeRules);
         }
         else
         {
@@ -91,17 +92,9 @@ internal class FtabCommand : CosmosCommand
                 _ => RenderPlainText(tableModel.Headers, tableModel.Rows),
             };
 
-            if (!string.IsNullOrEmpty(shell.StdOutRedirect))
-            {
-                shell.Redirect(output);
-            }
-            else
-            {
-                ShellInterpreter.WriteLine(output);
-            }
+            commandState.Result = new ShellText(output);
         }
 
-        commandState.IsPrinted = true;
         return Task.FromResult(commandState);
     }
 

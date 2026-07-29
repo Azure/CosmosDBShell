@@ -23,25 +23,22 @@ internal class DisconnectCommand : CosmosCommand
             var endpoint = connectedState.Client.Endpoint.Host;
             shell.Disconnect();
 
-            AnsiConsole.MarkupLine(MessageService.GetArgsString("command-disconnect-success", "endpoint", endpoint));
-
-            commandState.IsPrinted = true;
             var jsonResult = new Dictionary<string, object?>
             {
                 ["disconnected"] = true,
                 ["endpoint"] = endpoint,
             };
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonResult));
+            commandState.RenderUser = () => AnsiConsole.MarkupLine(MessageService.GetArgsString("command-disconnect-success", "endpoint", endpoint));
         }
         else
         {
-            AnsiConsole.MarkupLine(MessageService.GetString("command-disconnect-not_connected"));
-            commandState.IsPrinted = true;
             var jsonResult = new Dictionary<string, object?>
             {
                 ["disconnected"] = false,
             };
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonResult));
+            commandState.RenderUser = () => AnsiConsole.MarkupLine(MessageService.GetString("command-disconnect-not_connected"));
         }
 
         return Task.FromResult(commandState);

@@ -33,7 +33,7 @@ public class ThemeCommandDispatchTests
     {
         var state = await RunAsync(new ThemeCommand());
 
-        Assert.True(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
         var json = Assert.IsType<ShellJson>(state.Result);
         Assert.True(json.Value.TryGetProperty("active", out _));
     }

@@ -31,7 +31,22 @@ public partial class CommandState
 
     internal ShellObject? Result { get; set; }
 
-    internal bool IsPrinted { get; set; }
+    /// <summary>
+    /// Gets or sets an optional delegate that renders the result for a human on an
+    /// interactive terminal. When set and the effective format is <see cref="OutputFormat.User"/>,
+    /// <see cref="ShellInterpreter.PrintState"/> invokes it instead of printing raw JSON.
+    /// It is never invoked for redirected, piped, or machine-mode output.
+    /// </summary>
+    internal Action? RenderUser { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional delegate that supplies a <see cref="TabularData"/> for the
+    /// CSV and Table output formats. When set, <see cref="GenerateOutputText"/> renders that
+    /// table (as CSV or a bordered grid depending on <see cref="OutputFormat"/>) instead of
+    /// deriving columns from the JSON result. This lets a command control headers and row
+    /// shape while sharing one source for both machine formats.
+    /// </summary>
+    internal Func<TabularData>? RenderTabular { get; set; }
 
     internal bool BreakBlock { get; set; } = false;
 
@@ -60,6 +75,10 @@ public partial class CommandState
         {
             this.OutputFormat = OutputFormat.Table;
         }
+        else if (string.Equals(outputFormat, "user", StringComparison.OrdinalIgnoreCase))
+        {
+            this.OutputFormat = OutputFormat.User;
+        }
         else
         {
             throw new ArgumentException(MessageService.GetString("error-invalid_output_format", new Dictionary<string, object> { { "format", outputFormat } }));
@@ -82,6 +101,7 @@ public partial class CommandState
         var json = (JsonElement)evaluatedResult;
         switch (this.OutputFormat)
         {
+            case OutputFormat.User:
             case OutputFormat.JSon:
                 {
                     var options = new JsonWriterOptions
@@ -98,6 +118,11 @@ public partial class CommandState
                 }
 
             case OutputFormat.CSV:
+                if (this.RenderTabular is { } csvProvider)
+                {
+                    return FromTabular(csvProvider()).ToString();
+                }
+
                 if (json.ValueKind == JsonValueKind.Object)
                 {
                     if (json.TryGetProperty("documents", out var documents) && json.TryGetProperty("queryMetrics", out _))
@@ -106,12 +131,22 @@ public partial class CommandState
                         return table2.ToString();
                     }
 
+                    if (TryGetListProperty(json, out var csvList))
+                    {
+                        return ResultToTable([.. csvList.EnumerateArray()]).ToString();
+                    }
+
                     return ResultToTable([json]).ToString();
                 }
 
                 var table = ResultToTable(json.EnumerateArray().ToArray());
                 return table.ToString();
             case OutputFormat.Table:
+                if (this.RenderTabular is { } tableProvider)
+                {
+                    return FromTabular(tableProvider()).ToGridString();
+                }
+
                 if (json.ValueKind == JsonValueKind.Object)
                 {
                     if (json.TryGetProperty("documents", out var tDocuments) && json.TryGetProperty("queryMetrics", out _))
@@ -119,9 +154,9 @@ public partial class CommandState
                         return ResultToTable([.. tDocuments.EnumerateArray()]).ToGridString();
                     }
 
-                    if (json.TryGetProperty("items", out var tItems) && tItems.ValueKind == JsonValueKind.Array)
+                    if (TryGetListProperty(json, out var tableList))
                     {
-                        return ResultToTable([.. tItems.EnumerateArray()]).ToGridString();
+                        return ResultToTable([.. tableList.EnumerateArray()]).ToGridString();
                     }
 
                     return ResultToTable([json]).ToGridString();

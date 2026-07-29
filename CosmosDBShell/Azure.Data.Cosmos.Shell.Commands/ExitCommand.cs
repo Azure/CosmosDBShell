@@ -4,7 +4,9 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
+using Azure.Data.Cosmos.Shell.Parser;
 using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
@@ -16,6 +18,8 @@ internal class ExitCommand : CosmosCommand
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         shell.IsRunning = false;
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { status = "ok" }));
+        commandState.RenderUser = () => { };
         return Task.FromResult(commandState);
     }
 }

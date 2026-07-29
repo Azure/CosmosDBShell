@@ -593,42 +593,50 @@ public partial class ShellInterpreter : IDisposable
         var port = this.McpPort;
         var repoUrl = GetRepositoryUrl(typeof(VersionCommand).Assembly);
 
-        if (!isQuiet)
+        if (commandState == null)
         {
-            var versionString = MessageService.GetArgsString("command-version", "version", version);
-            AnsiConsole.MarkupLine(versionString);
-
-            if (port != null)
+            // Startup banner: render immediately for interactive users.
+            if (!isQuiet)
             {
-                var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
-                AnsiConsole.MarkupLine(Theme.FormatWarning(mcpPortString));
-            }
-            else
-            {
-                AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
+                RenderVersionBanner(version, port, repoUrl);
             }
 
-            if (!string.IsNullOrEmpty(repoUrl))
-            {
-                var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
-                AnsiConsole.MarkupLine(repoString);
-            }
+            return;
         }
 
-        if (commandState != null)
+        var json = new Dictionary<string, object?>
         {
-            var json = new Dictionary<string, object?>
-            {
-                ["version"] = version,
-                ["mcpEnabled"] = port != null,
-                ["mcpPort"] = port, // will be null if not enabled
-                ["mcpStatus"] = port != null ? "on" : "off",
-                ["repository"] = repoUrl,
-            };
+            ["version"] = version,
+            ["mcpEnabled"] = port != null,
+            ["mcpPort"] = port, // will be null if not enabled
+            ["mcpStatus"] = port != null ? "on" : "off",
+            ["repository"] = repoUrl,
+        };
 
-            var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
-            commandState.Result = new ShellJson(jsonElement);
-            commandState.IsPrinted = !isQuiet;
+        var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
+        commandState.Result = new ShellJson(jsonElement);
+        commandState.RenderUser = () => RenderVersionBanner(version, port, repoUrl);
+    }
+
+    private static void RenderVersionBanner(string version, int? port, string repoUrl)
+    {
+        var versionString = MessageService.GetArgsString("command-version", "version", version);
+        AnsiConsole.MarkupLine(versionString);
+
+        if (port != null)
+        {
+            var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
+            AnsiConsole.MarkupLine(Theme.FormatWarning(mcpPortString));
+        }
+        else
+        {
+            AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
+        }
+
+        if (!string.IsNullOrEmpty(repoUrl))
+        {
+            var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
+            AnsiConsole.MarkupLine(repoString);
         }
     }
 
@@ -1342,32 +1350,41 @@ public partial class ShellInterpreter : IDisposable
 
     internal CommandState PrintState(CommandState state)
     {
-        if (state.IsPrinted)
-        {
-            // command already printed the state.
-            return state;
-        }
-
         try
         {
-            string? output;
+            var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
             var inMachineMode = this.Options?.Quiet == true
                 || string.Equals(this.Options?.Output, "json", StringComparison.OrdinalIgnoreCase);
+
+            // Interactive, user-facing view: when the command supplied a custom renderer and
+            // the effective format is User, let it draw. Redirection, piping, and machine
+            // mode always fall through to the structured (JSON/CSV/Table) path below.
+            if (!redirected
+                && !inMachineMode
+                && state.OutputFormat == OutputFormat.User
+                && state.RenderUser is { } renderUser)
+            {
+                renderUser();
+                return state;
+            }
+
+            string? output;
 
             if (state.Result?.DataType == Parser.DataType.Json)
             {
                 // When writing JSON to the terminal (not redirected to a file), apply
                 // syntax highlighting using the configured Spectre.Console theme. File
                 // redirection still receives plain text so downstream tooling and tests
-                // are unaffected.
+                // are unaffected. User format with no renderer falls back to JSON here.
                 if (!inMachineMode
-                    && state.OutputFormat == OutputFormat.JSon
-                    && string.IsNullOrEmpty(this.StdOutRedirect))
+                    && !redirected
+                    && (state.OutputFormat == OutputFormat.JSon || state.OutputFormat == OutputFormat.User))
                 {
                     var element = (JsonElement?)state.Result.ConvertShellObject(Parser.DataType.Json);
                     if (element.HasValue)
                     {
                         AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
+                        state.RenderUser = null;
                         state.Result = null;
                         return state;
                     }
@@ -1383,11 +1400,12 @@ public partial class ShellInterpreter : IDisposable
                 // when writing to the terminal. Redirection and piping still receive plain
                 // text so downstream tooling and tests are unaffected.
                 if (!inMachineMode
+                    && !redirected
                     && output != null
-                    && string.IsNullOrEmpty(this.StdOutRedirect)
                     && state.Result is ShellText { Highlighter: { } highlighter })
                 {
                     AnsiConsole.MarkupLine(highlighter(output));
+                    state.RenderUser = null;
                     state.Result = null;
                     return state;
                 }
@@ -1395,7 +1413,7 @@ public partial class ShellInterpreter : IDisposable
 
             if (output != null)
             {
-                if (string.IsNullOrEmpty(this.StdOutRedirect))
+                if (!redirected)
                 {
                     Console.Out.WriteLine(output);
                 }
@@ -1406,6 +1424,7 @@ public partial class ShellInterpreter : IDisposable
             }
 
             // Clear the result after printing
+            state.RenderUser = null;
             state.Result = null;
         }
         catch (Exception e)

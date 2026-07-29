@@ -102,7 +102,7 @@ internal class InfoCommand : CosmosCommand
                 {
                     AskForRBacPermissions(id ?? string.Empty, request ?? string.Empty, permission ?? string.Empty);
                     commandState.Result = null;
-                    commandState.IsPrinted = true;
+                    commandState.RenderUser = () => { };
                     return commandState;
                 }
 
@@ -117,10 +117,17 @@ internal class InfoCommand : CosmosCommand
 
     internal static bool ShouldRenderTables(string? format, ShellInterpreter shell, CommandState commandState)
     {
+        // The rich Spectre tables are only drawn for an interactive, user-facing view.
+        // Redirection, piping, --quiet, and -o json all fall through to the structured
+        // JSON/Table output produced by CommandState.GenerateOutputText().
+        var interactive = string.IsNullOrEmpty(shell.StdOutRedirect)
+            && shell.Options?.Quiet != true
+            && !string.Equals(shell.Options?.Output, "json", StringComparison.OrdinalIgnoreCase);
+
         if (string.IsNullOrWhiteSpace(format))
         {
-            commandState.OutputFormat = OutputFormat.JSon;
-            return string.IsNullOrEmpty(shell.StdOutRedirect);
+            commandState.OutputFormat = interactive ? OutputFormat.User : OutputFormat.JSon;
+            return interactive;
         }
 
         if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "js", StringComparison.OrdinalIgnoreCase))
@@ -131,13 +138,10 @@ internal class InfoCommand : CosmosCommand
 
         if (string.Equals(format, "table", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "tbl", StringComparison.OrdinalIgnoreCase))
         {
-            commandState.OutputFormat = OutputFormat.Table;
-
-            // When stdout is redirected (e.g. `info --format table > out.txt`) the rich
-            // Spectre tables would be written to the console rather than the redirect
-            // target, leaving the file empty. Yield to PrintState so the redirected
-            // output is produced via CommandState.GenerateOutputText() with OutputFormat.Table.
-            return string.IsNullOrEmpty(shell.StdOutRedirect);
+            // Interactive callers get the rich Spectre tables drawn eagerly; redirected or
+            // machine output is produced via GenerateOutputText() with OutputFormat.Table.
+            commandState.OutputFormat = interactive ? OutputFormat.User : OutputFormat.Table;
+            return interactive;
         }
 
         throw new CommandException(
@@ -924,7 +928,7 @@ internal class InfoCommand : CosmosCommand
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-        commandState.IsPrinted = renderOutput;
+        commandState.RenderUser = renderOutput ? () => { } : null;
         return commandState;
     }
 
@@ -1012,7 +1016,7 @@ internal class InfoCommand : CosmosCommand
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-        commandState.IsPrinted = renderOutput;
+        commandState.RenderUser = renderOutput ? () => { } : null;
         return commandState;
     }
 
@@ -1055,7 +1059,7 @@ internal class InfoCommand : CosmosCommand
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-        commandState.IsPrinted = renderOutput;
+        commandState.RenderUser = renderOutput ? () => { } : null;
         return commandState;
     }
 

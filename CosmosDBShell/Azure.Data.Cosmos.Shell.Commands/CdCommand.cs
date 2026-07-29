@@ -258,7 +258,9 @@ internal class CdCommand : CosmosCommand
     {
         var commandState = new CommandState
         {
-            IsPrinted = true,
+            // Navigation is silent for interactive users; the JSON result is still
+            // available for redirection, machine mode, and MCP clients.
+            RenderUser = () => { },
         };
         var jsonString = $"{{\"{key}\": \"{value}\"}}";
         using var jsonDoc = JsonDocument.Parse(jsonString);

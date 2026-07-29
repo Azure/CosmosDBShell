@@ -10,6 +10,12 @@ namespace Azure.Data.Cosmos.Shell.Core;
 public enum OutputFormat
 {
     /// <summary>
+    /// Render the result for a human via the command's <see cref="CommandState.RenderUser"/>
+    /// delegate when writing to an interactive terminal; falls back to JSON otherwise.
+    /// </summary>
+    User,
+
+    /// <summary>
     /// Output in JSON format.
     /// </summary>
     JSon,

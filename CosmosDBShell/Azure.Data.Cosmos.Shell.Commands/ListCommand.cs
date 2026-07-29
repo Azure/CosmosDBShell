@@ -87,27 +87,42 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             }
 
             list.Add(trimmed);
-            AnsiConsole.MarkupLine(Theme.DatabaseNamePromt(trimmed));
         }
 
         CosmosCompleteCommand.SetDatabases(state.Client, completionList);
 
-        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_databases", new Dictionary<string, object>
+        var hasArmContext = state.ArmContext is not null;
+        var result = new CommandState();
+        result.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+        result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "database", values = list }));
+        result.RenderTabular = () =>
         {
-            { "count", list.Count },
-            { "display", Theme.FormatTableValue(list.Count.ToString()) },
-        }));
+            var tabular = new TabularData(MessageService.GetString("command-ls-table-header-database"));
+            foreach (var name in list)
+            {
+                tabular.AddRow(name);
+            }
 
-        if (completionList.Count == 0 && state.ArmContext is not null)
-        {
-            AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_databases_hint")));
-        }
-
-        var result = new CommandState
-        {
-            IsPrinted = true,
+            return tabular;
         };
-        result.Result = new ShellJson(JsonSerializer.SerializeToElement(list));
+        result.RenderUser = () =>
+        {
+            foreach (var name in list)
+            {
+                AnsiConsole.MarkupLine(Theme.DatabaseNamePromt(name));
+            }
+
+            AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_databases", new Dictionary<string, object>
+            {
+                { "count", list.Count },
+                { "display", Theme.FormatTableValue(list.Count.ToString()) },
+            }));
+
+            if (completionList.Count == 0 && hasArmContext)
+            {
+                AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_databases_hint")));
+            }
+        };
         return result;
     }
 
@@ -142,31 +157,46 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             }
 
             list.Add(trimmed);
-            AnsiConsole.MarkupLine(Theme.ContainerNamePromt(trimmed));
         }
 
         CosmosCompleteCommand.SetContainers(state.Client, databaseName, completionList);
 
-        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_containers", new Dictionary<string, object>
+        var hasArmContext = state.ArmContext is not null;
+        var result = new CommandState();
+        result.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+        result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "container", values = list }));
+        result.RenderTabular = () =>
         {
-            { "count", list.Count },
-            { "display", Theme.FormatTableValue(list.Count.ToString()) },
-            { "database", Theme.DatabaseNamePromt(databaseName) },
-        }));
-
-        if (completionList.Count == 0 && state.ArmContext is not null)
-        {
-            AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_containers_hint", new Dictionary<string, object>
+            var tabular = new TabularData(MessageService.GetString("command-ls-table-header-container"));
+            foreach (var name in list)
             {
-                { "database", databaseName },
-            })));
-        }
+                tabular.AddRow(name);
+            }
 
-        var result = new CommandState
-        {
-            IsPrinted = true,
+            return tabular;
         };
-        result.Result = new ShellJson(JsonSerializer.SerializeToElement(list));
+        result.RenderUser = () =>
+        {
+            foreach (var name in list)
+            {
+                AnsiConsole.MarkupLine(Theme.ContainerNamePromt(name));
+            }
+
+            AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_containers", new Dictionary<string, object>
+            {
+                { "count", list.Count },
+                { "display", Theme.FormatTableValue(list.Count.ToString()) },
+                { "database", Theme.DatabaseNamePromt(databaseName) },
+            }));
+
+            if (completionList.Count == 0 && hasArmContext)
+            {
+                AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_containers_hint", new Dictionary<string, object>
+                {
+                    { "database", databaseName },
+                })));
+            }
+        };
         return result;
     }
 
@@ -225,33 +255,27 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             }
         }
 
-        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = list }));
+        var reachedLimit = limitReached && effectiveMaxItemCount.HasValue;
+        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "item", values = list, limitReached = reachedLimit }));
 
-        // Print the items before the summary so the count lands at the end, matching how `ls`
-        // reports databases and containers. PrintState clears Result after printing, so preserve
-        // it for downstream piping and mark the state as already printed.
-        var rendered = returnState.Result;
-        var printState = interpreter.PrintState(returnState);
-        if (printState.IsError)
+        var itemsElement = JsonSerializer.SerializeToElement(new { type = "item", values = list });
+        var containerId = container.Id;
+        var itemCount = list.Count;
+        var limitCount = effectiveMaxItemCount ?? 0;
+        returnState.RenderUser = () =>
         {
-            // Output generation/redirection failed; surface the error instead of
-            // continuing to print the summary as if the listing succeeded.
-            return printState;
-        }
-
-        returnState.Result = rendered;
-        returnState.IsPrinted = true;
-
-        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object>
-        {
-            { "count", list.Count },
-            { "display", Theme.FormatTableValue(list.Count.ToString()) },
-            { "container", Theme.ContainerNamePromt(container.Id) },
-        }));
-        if (limitReached && effectiveMaxItemCount.HasValue)
-        {
-            AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
-        }
+            AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(itemsElement));
+            AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object>
+            {
+                { "count", itemCount },
+                { "display", Theme.FormatTableValue(itemCount.ToString()) },
+                { "container", Theme.ContainerNamePromt(containerId) },
+            }));
+            if (reachedLimit)
+            {
+                AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", limitCount } }));
+            }
+        };
 
         return returnState;
     }

@@ -99,9 +99,9 @@ public class ControlFlowTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task CommandStatement_DoesNotInheritIsPrintedFromPriorCommand()
+    public async Task CommandStatement_DoesNotInheritRendererFromPriorCommand()
     {
-        // A prior command that already printed its own output sets IsPrinted on the shared
+        // A prior command that supplied its own renderer sets RenderUser on the shared
         // state. The following command's output must still be printed and not suppressed.
         var outputFile = CaptureOutputFile();
         var state = await RunScriptAsync("{ version\necho \"AFTER\" }");

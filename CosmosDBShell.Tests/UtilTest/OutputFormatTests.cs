@@ -62,7 +62,6 @@ public class OutputFormatTests
         Assert.Contains("Hello", output);
         Assert.Contains("Answer", output);
         Assert.Contains("World", output);
-        Assert.Contains("---", output);
         Assert.DoesNotContain("\"", output);
     }
 
@@ -84,13 +83,57 @@ public class OutputFormatTests
         commandState.OutputFormat = OutputFormat.Table;
 
         var output = commandState.GenerateOutputText();
-        var lines = output.TrimEnd('\r', '\n').Split(Environment.NewLine);
 
-        Assert.Equal(4, lines.Length);
-        Assert.Equal("id  name   answer", lines[0]);
-        Assert.Equal("--  -----  ------", lines[1]);
-        Assert.Equal("12  alpha  53    ", lines[2]);
-        Assert.Equal("13  beta         ", lines[3]);
+        Assert.Contains("id", output);
+        Assert.Contains("name", output);
+        Assert.Contains("answer", output);
+        Assert.Contains("12", output);
+        Assert.Contains("alpha", output);
+        Assert.Contains("13", output);
+        Assert.Contains("beta", output);
+        Assert.DoesNotContain("\"", output);
+    }
+
+    [Fact]
+    void TestTableCustomHeaderProvider()
+    {
+        var commandState = new CommandState();
+        commandState.OutputFormat = OutputFormat.Table;
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "container", values = new[] { "pktest", "ToDoList" } }));
+        commandState.RenderTabular = () =>
+        {
+            var tabular = new TabularData("Container");
+            tabular.AddRow("pktest");
+            tabular.AddRow("ToDoList");
+            return tabular;
+        };
+
+        var output = commandState.GenerateOutputText();
+
+        Assert.Contains("Container", output);
+        Assert.Contains("pktest", output);
+        Assert.Contains("ToDoList", output);
+        Assert.DoesNotContain("value", output);
+    }
+
+    [Fact]
+    void TestCsvCustomHeaderProvider()
+    {
+        var commandState = new CommandState();
+        commandState.OutputFormat = OutputFormat.CSV;
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "container", values = new[] { "pktest", "ToDoList" } }));
+        commandState.RenderTabular = () =>
+        {
+            var tabular = new TabularData("Container");
+            tabular.AddRow("pktest");
+            tabular.AddRow("ToDoList");
+            return tabular;
+        };
+
+        var output = commandState.GenerateOutputText().TrimEnd();
+
+        var expected = "\"Container\"" + Environment.NewLine + "\"pktest\"" + Environment.NewLine + "\"ToDoList\"";
+        Assert.Equal(expected, output);
     }
 
     [Fact]

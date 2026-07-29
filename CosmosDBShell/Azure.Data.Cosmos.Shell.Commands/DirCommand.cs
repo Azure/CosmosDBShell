@@ -109,6 +109,24 @@ internal class DirCommand : CosmosCommand
 
         var returnState = new CommandState();
 
+        // Set JSON result
+        var jsonEntries = entries.Select(e => new
+        {
+            name = e.Name,
+            path = e.FullPath,
+            isDirectory = e.IsDirectory,
+            size = e.Size,
+            lastModified = e.LastModified,
+        });
+
+        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonEntries));
+        returnState.RenderUser = () => this.RenderEntries(entries);
+
+        return Task.FromResult(returnState);
+    }
+
+    private void RenderEntries(List<FileSystemEntry> entries)
+    {
         // Display results
         foreach (var entry in entries)
         {
@@ -148,21 +166,6 @@ internal class DirCommand : CosmosCommand
                 "dirCount",
                 entries.Count(e => e.IsDirectory)));
         }
-
-        // Set JSON result
-        var jsonEntries = entries.Select(e => new
-        {
-            name = e.Name,
-            path = e.FullPath,
-            isDirectory = e.IsDirectory,
-            size = e.Size,
-            lastModified = e.LastModified,
-        });
-
-        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonEntries));
-        returnState.IsPrinted = true;
-
-        return Task.FromResult(returnState);
     }
 
     private static string FormatFileSize(long bytes)
