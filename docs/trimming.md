@@ -42,3 +42,20 @@ dotnet publish ./CosmosDBShell/CosmosDBShell.csproj `
 Trimming uses partial mode and keeps reflection-based `System.Text.Json` serialization enabled. Disabling reflection-based serialization currently causes command execution to fail because command results and other dynamic shell types do not yet have complete source-generated JSON metadata.
 
 The smoke tests are intentionally small. Before relying on a trimmed package, exercise parity for authentication, Azure Resource Manager operations, Cosmos DB data-plane operations, import/export, MCP, LSP, OpenTelemetry, and emulator workflows.
+
+## Process tests against the trimmed executable
+
+The `ShellProcessTests` integration tests launch the shell as a child process. By default they run `dotnet CosmosDBShell.dll` (the framework-dependent build). Set `COSMOSDBSHELL_PROCESS_TEST_EXE` to a published executable to run the same tests directly against a self-contained (for example trimmed) build:
+
+```powershell
+dotnet publish ./CosmosDBShell/CosmosDBShell.csproj `
+  -c Release -r win-x64 --self-contained true `
+  -p:PublishSingleFile=true -p:PublishTrimmed=true -p:TrimMode=partial `
+  -o ./artifacts/trimmed-ci
+
+$env:COSMOSDBSHELL_PROCESS_TEST_EXE = (Resolve-Path ./artifacts/trimmed-ci/CosmosDBShell.exe).Path
+dotnet test ./CosmosDBShell.Tests/CosmosDBShell.Tests.csproj `
+  --filter "FullyQualifiedName~ShellProcessTests&Category!=Emulator"
+```
+
+The `Validate And Package` CI workflow does this automatically: after the normal test run it publishes a trimmed `win-x64` executable and re-runs the process tests against it, so partial-trimming regressions fail the build.

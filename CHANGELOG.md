@@ -11,6 +11,7 @@
 ### Improvements
 
 - **Structured (JSON) tool results for MCP.** MCP tool results now carry the machine-readable JSON payload (`result`/`outputText`/`error` plus `currentLocation`) as first-class `structuredContent` in addition to the existing JSON text block, so agents can consume structured results directly. The two representations are kept byte-for-byte equivalent, and text-only clients are unaffected. ([#154](https://github.com/Azure/CosmosDBShell/issues/154))
+- **CI validates the trimmed executable.** The process-level `ShellProcessTests` can now target a published self-contained build via the `COSMOSDBSHELL_PROCESS_TEST_EXE` environment variable. The `Validate And Package` workflow publishes a partial-trimmed `win-x64` executable and re-runs these tests against it, so partial-trimming regressions fail normal CI instead of only surfacing in the manual trimming measurement script.
 
 ## 1.1.115-preview — 2026-07-01
 

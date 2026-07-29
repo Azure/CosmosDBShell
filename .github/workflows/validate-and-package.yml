@@ -189,6 +189,39 @@ jobs:
           --collect "XPlat Code Coverage"
         shell: pwsh
 
+      # Publish a trimmed self-contained executable and re-run the process-level
+      # shell tests against it so partial-trimming regressions (for example a
+      # reflection path removed by the trimmer) are caught by normal CI rather
+      # than only by the manual trimming measurement script.
+      - name: Publish trimmed self-contained executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish CosmosDBShell/CosmosDBShell.csproj `
+            --configuration $env:BUILD_CONFIGURATION `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:PublishTrimmed=true `
+            -p:TrimMode=partial `
+            --output artifacts/trimmed-ci
+          if ($LASTEXITCODE -ne 0) {
+            throw "Trimmed publish failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Run process tests against trimmed executable
+        shell: pwsh
+        env:
+          COSMOSDBSHELL_PROCESS_TEST_EXE: ${{ github.workspace }}/artifacts/trimmed-ci/CosmosDBShell.exe
+        run: >-
+          dotnet test CosmosDBShell.Tests/CosmosDBShell.Tests.csproj
+          --configuration $env:BUILD_CONFIGURATION
+          --no-build
+          --no-restore
+          --filter "FullyQualifiedName~ShellProcessTests&Category!=Emulator"
+          --logger "trx;LogFileName=trimmed-process-tests.trx"
+          --results-directory TestResults
+
       - name: Generate code coverage report
         if: always()
         shell: pwsh

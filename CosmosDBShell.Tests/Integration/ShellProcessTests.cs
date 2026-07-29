@@ -178,17 +178,10 @@ public class ShellProcessTests
         IEnumerable<string>? extraArgs,
         CancellationToken cancellationToken)
     {
-        var shellDll = Path.Combine(AppContext.BaseDirectory, "CosmosDBShell.dll");
-        if (!File.Exists(shellDll))
-        {
-            throw SkipException.ForSkip($"CosmosDBShell.dll not found next to test assembly at '{shellDll}'.");
-        }
-
-        var dotnet = GetDotnetPath();
+        var selfContainedExe = ResolveSelfContainedExecutable();
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = dotnet,
             WorkingDirectory = AppContext.BaseDirectory,
             UseShellExecute = false,
             RedirectStandardInput = true,
@@ -199,7 +192,24 @@ public class ShellProcessTests
             CreateNoWindow = true,
         };
 
-        startInfo.ArgumentList.Add(shellDll);
+        if (selfContainedExe != null)
+        {
+            // Run a published self-contained executable directly (used to exercise
+            // trimmed builds). No dotnet host or managed DLL argument is required.
+            startInfo.FileName = selfContainedExe;
+        }
+        else
+        {
+            var shellDll = Path.Combine(AppContext.BaseDirectory, "CosmosDBShell.dll");
+            if (!File.Exists(shellDll))
+            {
+                throw SkipException.ForSkip($"CosmosDBShell.dll not found next to test assembly at '{shellDll}'.");
+            }
+
+            startInfo.FileName = GetDotnetPath();
+            startInfo.ArgumentList.Add(shellDll);
+        }
+
         if (extraArgs != null)
         {
             foreach (var a in extraArgs)
@@ -289,6 +299,26 @@ public class ShellProcessTests
         }
 
         return OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+    }
+
+    private static string? ResolveSelfContainedExecutable()
+    {
+        // Optionally target a published self-contained executable (for example a
+        // trimmed build) instead of 'dotnet CosmosDBShell.dll'. Set
+        // COSMOSDBSHELL_PROCESS_TEST_EXE to the executable path to opt in; when unset
+        // the tests run the framework-dependent DLL next to the test assembly.
+        var exe = Environment.GetEnvironmentVariable("COSMOSDBSHELL_PROCESS_TEST_EXE");
+        if (string.IsNullOrWhiteSpace(exe))
+        {
+            return null;
+        }
+
+        if (!File.Exists(exe))
+        {
+            throw SkipException.ForSkip($"COSMOSDBSHELL_PROCESS_TEST_EXE is set but no file exists at '{exe}'.");
+        }
+
+        return exe;
     }
 
     private static string Strip(string text)
