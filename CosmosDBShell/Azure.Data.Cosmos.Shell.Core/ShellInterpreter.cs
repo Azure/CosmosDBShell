@@ -1404,6 +1404,9 @@ public partial class ShellInterpreter : IDisposable
                 && state.RenderUser is { } renderUser)
             {
                 renderUser();
+                state.RenderUser = null;
+                state.RenderTabular = null;
+                state.Result = null;
                 return state;
             }
 
@@ -1486,12 +1489,7 @@ public partial class ShellInterpreter : IDisposable
 
                 if (inMachineMode)
                 {
-                    var errObj = new
-                    {
-                        status = "error",
-                        error = string.IsNullOrEmpty(canceled) ? e.Message : canceled,
-                    };
-                    Console.Error.WriteLine(JsonSerializer.Serialize(errObj));
+                    this.WriteMachineError(string.IsNullOrEmpty(canceled) ? e.Message : canceled);
                 }
                 else if (!string.IsNullOrEmpty(canceled))
                 {
@@ -1503,12 +1501,7 @@ public partial class ShellInterpreter : IDisposable
 
             if (inMachineMode)
             {
-                var errObj = new
-                {
-                    status = "error",
-                    error = e.Message,
-                };
-                Console.Error.WriteLine(JsonSerializer.Serialize(errObj));
+                this.WriteMachineError(e.Message);
             }
             else
             {
@@ -1945,6 +1938,37 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    // Emits a structured machine-mode error object. Honors the shell's stderr
+    // redirection (`ErrOutRedirect` / `2>` / `2>>`) so scripts that redirect
+    // stderr still capture errors in --quiet / --output json modes; otherwise
+    // the object is written to the process stderr.
+    private void WriteMachineError(string errorMessage)
+    {
+        var errObj = new
+        {
+            status = "error",
+            error = errorMessage,
+        };
+        var json = JsonSerializer.Serialize(errObj);
+
+        if (this.ErrOutRedirect != null)
+        {
+            var payload = json + Environment.NewLine;
+            if (this.AppendErrRedirection)
+            {
+                File.AppendAllText(this.ErrOutRedirect, payload);
+            }
+            else
+            {
+                File.WriteAllText(this.ErrOutRedirect, payload);
+            }
+        }
+        else
+        {
+            Console.Error.WriteLine(json);
+        }
+    }
+
     private void ReportExecutionError(Exception e, string? sourceText = null)
     {
         // The command already emitted a friendly diagnostic; do not print again.
@@ -1955,12 +1979,7 @@ public partial class ShellInterpreter : IDisposable
 
         if (this.IsMachineMode)
         {
-            var errObj = new
-            {
-                status = "error",
-                error = e.Message,
-            };
-            Console.Error.WriteLine(JsonSerializer.Serialize(errObj));
+            this.WriteMachineError(e.Message);
             return;
         }
 
@@ -2202,12 +2221,7 @@ public partial class ShellInterpreter : IDisposable
 
             if (errorStrings.Count > 0)
             {
-                var errObj = new
-                {
-                    status = "error",
-                    error = string.Join("; ", errorStrings),
-                };
-                Console.Error.WriteLine(JsonSerializer.Serialize(errObj));
+                this.WriteMachineError(string.Join("; ", errorStrings));
                 return;
             }
         }
