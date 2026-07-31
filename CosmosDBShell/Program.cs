@@ -230,7 +230,7 @@ internal class Program
                         return;
                     }
 
-                    ShellInterpreter.WriteLine(ex.Message);
+                    ShellInterpreter.WriteConnectionError(ex, o.Verbose);
                     return;
                 }
             }

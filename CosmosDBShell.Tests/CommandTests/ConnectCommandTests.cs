@@ -10,6 +10,7 @@ using Azure.Data.Cosmos.Shell.Lsp.Semantics;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
+using Spectre.Console;
 
 public class ConnectCommandTests
 {
@@ -141,5 +142,73 @@ public class ConnectCommandTests
         // factory through ShellInterpreter.App.Commands.
         var ex = Record.Exception(() => ConnectCommand.PrintConnectUsageHint(shell));
         Assert.Null(ex);
+    }
+
+    [Fact]
+    public void WriteConnectionError_NonVerbose_ShowsMessageInnerReasonAndVerboseHint()
+    {
+        // Issue: a failed connection printed only "Failed to connect to the Cosmos DB
+        // account." with no indication of the underlying cause. The inner exception
+        // chain must be surfaced so the user can see why the connection failed.
+        var failure = new ShellException(
+            MessageService.GetString("error-connection_failed"),
+            new InvalidOperationException("Response status code does not indicate success: 401 (Unauthorized)."));
+
+        var output = CaptureConsole(() => ShellInterpreter.WriteConnectionError(failure, verbose: false));
+
+        Assert.Contains("Failed to connect to the Cosmos DB account.", output, StringComparison.Ordinal);
+        Assert.Contains("Response status code does not indicate success: 401 (Unauthorized).", output, StringComparison.Ordinal);
+        Assert.Contains(MessageService.GetString("shell-connect-verbose-hint"), output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WriteConnectionError_NonVerbose_WalksFullInnerExceptionChain()
+    {
+        var failure = new ShellException(
+            "outer",
+            new InvalidOperationException("middle", new InvalidOperationException("root cause")));
+
+        var output = CaptureConsole(() => ShellInterpreter.WriteConnectionError(failure, verbose: false));
+
+        Assert.Contains("outer", output, StringComparison.Ordinal);
+        Assert.Contains("middle", output, StringComparison.Ordinal);
+        Assert.Contains("root cause", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WriteConnectionError_Verbose_RendersFullExceptionDetails()
+    {
+        var failure = new ShellException(
+            "outer failure",
+            new InvalidOperationException("verbose-only inner detail"));
+
+        var output = CaptureConsole(() => ShellInterpreter.WriteConnectionError(failure, verbose: true));
+
+        Assert.Contains("verbose-only inner detail", output, StringComparison.Ordinal);
+        Assert.Contains(nameof(ShellException), output, StringComparison.Ordinal);
+        Assert.DoesNotContain(MessageService.GetString("shell-connect-verbose-hint"), output, StringComparison.Ordinal);
+    }
+
+    private static string CaptureConsole(Action action)
+    {
+        var saved = AnsiConsole.Console;
+        var writer = new StringWriter();
+        try
+        {
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(writer),
+            });
+
+            action();
+        }
+        finally
+        {
+            AnsiConsole.Console = saved;
+        }
+
+        return writer.ToString();
     }
 }

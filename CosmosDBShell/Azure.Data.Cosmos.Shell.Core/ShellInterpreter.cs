@@ -766,6 +766,7 @@ public partial class ShellInterpreter : IDisposable
                 var envKey = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_ACCOUNT_KEY");
                 if (!string.IsNullOrEmpty(envKey))
                 {
+                    WriteLine(MessageService.GetString("shell-connect-key-env"));
                     accountKey = envKey;
                 }
             }
@@ -780,6 +781,7 @@ public partial class ShellInterpreter : IDisposable
             if (!string.IsNullOrEmpty(envKey))
             {
                 var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
+                WriteLine(MessageService.GetString("shell-connect-key-env"));
                 connectionString = $"AccountEndpoint={endpoint};AccountKey={envKey};";
                 hasKey = true;
                 this.RegisterDiagnosticSecret(envKey);
@@ -1825,6 +1827,40 @@ public partial class ShellInterpreter : IDisposable
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Writes a connection failure to the console. The primary message plus the
+    /// full inner-exception chain are shown so the underlying reason (bad key,
+    /// authentication failure, unreachable endpoint, etc.) is visible. When
+    /// <paramref name="verbose"/> is set, the complete exception including the
+    /// stack trace is rendered instead.
+    /// </summary>
+    /// <param name="exception">The exception describing the connection failure.</param>
+    /// <param name="verbose">Whether to render full exception details.</param>
+    internal static void WriteConnectionError(Exception exception, bool verbose)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        if (verbose)
+        {
+            AnsiConsole.WriteException(exception, new ExceptionSettings
+            {
+                Format = ExceptionFormats.ShortenPaths,
+            });
+            return;
+        }
+
+        AnsiConsole.MarkupLine(Theme.FormatError(exception.Message));
+
+        var inner = exception.InnerException;
+        while (inner != null)
+        {
+            AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
+            inner = inner.InnerException;
+        }
+
+        AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("shell-connect-verbose-hint")));
     }
 
     private void ReportExecutionError(Exception e, string? sourceText = null)

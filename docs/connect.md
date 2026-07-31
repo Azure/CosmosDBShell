@@ -173,8 +173,34 @@ Connection Information
  ...
 ```
 
-## Security Considerations
+## Troubleshooting Connection Failures
 
+When a connection fails, the shell prints the underlying reason in addition to the
+high-level message, so you can tell whether the failure was an invalid key, an
+authentication error, or an unreachable endpoint:
+
+```text
+Connecting with account key...
+Failed to connect to the Cosmos DB account.
+  → Response status code does not indicate success: 401 (Unauthorized).
+Run with --verbose for full exception details.
+```
+
+Add `--verbose` to print the full exception, including the stack trace and any
+inner exceptions, which is useful when diagnosing SDK, network, or credential
+issues:
+
+```bash
+cosmosdbshell --verbose --connect https://myaccount.documents.azure.com:443/
+```
+
+The shell also reports when credentials are sourced from the environment. When a
+key is picked up from `COSMOSDB_SHELL_ACCOUNT_KEY`, it prints
+`Using the account key from the COSMOSDB_SHELL_ACCOUNT_KEY environment variable.`
+before connecting, and `COSMOSDB_SHELL_TOKEN` is announced the same way. This
+makes it clear which credential source was actually used.
+
+## Security Considerations
 Cosmos Shell is a developer and CI/CD tool, and all supported authentication methods are valid for those use cases. The notes below help you choose the right method for your environment and understand the tradeoffs.
 
 ### Account Keys
