@@ -206,9 +206,7 @@ internal class Program
                 var connectToken = connectTokenSource.Token;
                 try
                 {
-                    var credentialMethod = o.ConnectVSCodeCredential ? CredentialMethod.VSCode
-                        : o.ConnectAzureCli ? CredentialMethod.AzureCli
-                        : CredentialMethod.Default;
+                    var credentialMethod = ShellInterpreter.ResolveCredentialMethod(o.ConnectVSCodeCredential, o.ConnectAzureCli);
                     await ShellInterpreter.Instance.ConnectAsync(
                         o.ConnectionString,
                         o.ConnectHint,

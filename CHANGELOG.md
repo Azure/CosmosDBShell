@@ -10,6 +10,7 @@
 
 - **Clearer connection failures.** When a connection fails, the shell now prints the underlying reason (the inner exception chain) in addition to the high-level "Failed to connect to the Cosmos DB account." message, and hints that `--verbose` shows full exception details including the stack trace. The startup `--connect` path previously printed only the top-level message. The shell also announces when a key is sourced from the `COSMOSDB_SHELL_ACCOUNT_KEY` environment variable, matching the existing `COSMOSDB_SHELL_TOKEN` behavior.
 - **Richer `--verbose` connection diagnostics.** In verbose mode, connection failures now surface the Cosmos DB request coordinates up front — HTTP status and sub-status codes plus the activity id — so an authorization denial (`403`) can be told apart from a token-acquisition failure or a network problem at a glance, followed by the full exception chain (including the `CosmosException` body/diagnostics and, for `DefaultAzureCredential`, the aggregated per-credential failure reasons).
+- **Conflicting credential selections are rejected.** Requesting two explicit credentials at once (for example `--connect-vscode-credential` together with `--azure-cli`, or a credential flag alongside an account key or `--managed-identity`) now fails with a clear message instead of silently ignoring one of them. `--azure-cli --tenant` reliably reaches the Azure CLI credential rather than falling into the interactive browser flow.
 
 ## 1.1.136-preview — 2026-07-20
 

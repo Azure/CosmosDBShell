@@ -914,8 +914,10 @@ public partial class ShellInterpreter : IDisposable
             return;
         }
 
-        // Step 5: Entra ID interactive (--tenant or --hint provided)
-        if (client == null && (!string.IsNullOrWhiteSpace(tenantId) || !string.IsNullOrWhiteSpace(loginHint)))
+        // Step 5: Entra ID interactive (--tenant or --hint provided). Skipped when a
+        // specific flag-selected credential is requested (for example --azure-cli),
+        // which has its own dedicated step below and honors --tenant there.
+        if (client == null && credentialMethod != CredentialMethod.AzureCli && (!string.IsNullOrWhiteSpace(tenantId) || !string.IsNullOrWhiteSpace(loginHint)))
         {
             var browserOptions = new InteractiveBrowserCredentialOptions
             {
@@ -1129,6 +1131,32 @@ public partial class ShellInterpreter : IDisposable
         {
             throw new ShellException("Interactive credential options ('--tenant'/'--hint') cannot be combined with an account key in the connection string; provide either a key or a credential method, not both.");
         }
+    }
+
+    /// <summary>
+    /// Resolves the flag-selected credential method from the two mutually exclusive
+    /// startup/command switches. Because both flags name a distinct explicit credential,
+    /// supplying both is a conflict rather than a silent precedence decision.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Grouped with the connection credential helpers.")]
+    internal static CredentialMethod ResolveCredentialMethod(bool useVSCodeCredential, bool useAzureCli)
+    {
+        if (useVSCodeCredential && useAzureCli)
+        {
+            throw new ShellException("'--connect-vscode-credential' cannot be combined with '--azure-cli'; choose a single credential method.");
+        }
+
+        if (useVSCodeCredential)
+        {
+            return CredentialMethod.VSCode;
+        }
+
+        if (useAzureCli)
+        {
+            return CredentialMethod.AzureCli;
+        }
+
+        return CredentialMethod.Default;
     }
 
     /// <summary>

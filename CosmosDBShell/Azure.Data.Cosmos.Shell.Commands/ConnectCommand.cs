@@ -96,9 +96,7 @@ internal partial class ConnectCommand : CosmosCommand
 
         try
         {
-            var credentialMethod = this.UseVSCodeCredential ? CredentialMethod.VSCode
-                : this.UseAzureCli ? CredentialMethod.AzureCli
-                : CredentialMethod.Default;
+            var credentialMethod = ShellInterpreter.ResolveCredentialMethod(this.UseVSCodeCredential, this.UseAzureCli);
             await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, credentialMethod: credentialMethod, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, token: token);
             var returnState = new CommandState
             {

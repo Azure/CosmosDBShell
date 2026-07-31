@@ -75,6 +75,31 @@ public class ConnectCommandTests
     }
 
     [Fact]
+    public void ResolveCredentialMethod_VSCodeAndAzureCli_ThrowsConflict()
+    {
+        // Both flags name a distinct explicit credential, so requesting both is a
+        // conflict rather than a silent precedence decision (VS Code winning).
+        var ex = Assert.Throws<ShellException>(() =>
+            ShellInterpreter.ResolveCredentialMethod(useVSCodeCredential: true, useAzureCli: true));
+
+        Assert.Contains("--connect-vscode-credential", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("--azure-cli", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void ResolveCredentialMethod_SingleOrNoFlag_ReturnsExpected(bool useVSCode, bool useAzureCli)
+    {
+        var expected = useVSCode ? CredentialMethod.VSCode
+            : useAzureCli ? CredentialMethod.AzureCli
+            : CredentialMethod.Default;
+
+        Assert.Equal(expected, ShellInterpreter.ResolveCredentialMethod(useVSCode, useAzureCli));
+    }
+
+    [Fact]
     public async Task ConnectCommand_VSCodeCredentialOption_BindsHiddenInteractiveFlag()
     {
         var command = await BindConnectCommandAsync("connect https://example.documents.azure.com:443/ -vscode-credential");
