@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 1.1.150-preview — 2026-07-31
 
 A short cycle on top of 1.1.136-preview. First interactive startup now shows a welcome screen (replayable via a new `welcome` command) with a more compact startup banner; `connect` gains a deterministic `--azure-cli` credential alongside clearer failure diagnostics and hardened credential selection; and the last direct `Newtonsoft.Json` usages are replaced with `System.Text.Json`.
