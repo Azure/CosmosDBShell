@@ -20,7 +20,7 @@ A short cycle on top of 1.1.136-preview. First interactive startup now shows a w
 
 ### Fixes
 
-- Query index-metrics display now renders the utilized/potential index tables correctly. The `is JsonElement` checks in the metrics display path were previously dead — under Newtonsoft the parsed values were `JObject`/`JValue` and never matched — and now match after the switch to `System.Text.Json`. ([#188](https://github.com/Azure/CosmosDBShell/pull/188))
+- Query index-metrics display now renders the utilized/potential index tables correctly. The `is JsonElement` checks in the metrics display path were previously dead — under `Newtonsoft.Json` the parsed values were `JObject`/`JValue` and never matched — and now match after the switch to `System.Text.Json`. ([#188](https://github.com/Azure/CosmosDBShell/pull/188))
 
 ### Build & pipeline
 
