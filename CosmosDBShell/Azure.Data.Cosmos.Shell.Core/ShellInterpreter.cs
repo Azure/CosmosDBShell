@@ -1179,7 +1179,7 @@ public partial class ShellInterpreter : IDisposable
             client.Dispose();
             throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
         }
-        catch
+        catch (Exception) when (allowCredentialFallback)
         {
             // Fallback is allowed, but this failure is not a credential-availability
             // problem, so surface it to the caller unchanged.

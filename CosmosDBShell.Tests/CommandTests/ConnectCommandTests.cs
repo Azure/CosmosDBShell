@@ -12,6 +12,7 @@ using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 using Spectre.Console;
 
+[Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class ConnectCommandTests
 {
     [Fact]
@@ -279,7 +280,7 @@ public class ConnectCommandTests
     private static string CaptureConsole(Action action)
     {
         var saved = AnsiConsole.Console;
-        var writer = new StringWriter();
+        using var writer = new StringWriter();
         try
         {
             AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
