@@ -20,11 +20,11 @@ A short cycle on top of 1.1.136-preview. First interactive startup now shows a w
 
 ### Fixes
 
-- Query index-metrics display now renders the utilized/potential index tables correctly. The `is JsonElement` checks in the metrics display path were previously dead — under `Newtonsoft.Json` the parsed values were `JObject`/`JValue` and never matched — and now match after the switch to `System.Text.Json`. ([#188](https://github.com/Azure/CosmosDBShell/pull/188))
+- Query index-metrics display now renders the utilized and potential index tables correctly. The `is JsonElement` checks in the metrics display path were previously dead — under `Newtonsoft.Json` the parsed values were `JObject`/`JValue` and never matched — and now match after the switch to `System.Text.Json`. ([#188](https://github.com/Azure/CosmosDBShell/pull/188))
 
 ### Build & pipeline
 
-- Replaced the remaining direct `Newtonsoft.Json` usages with `System.Text.Json` and dropped the direct package reference (the Cosmos client is already configured to use System.Text.Json). Index-policy serialization preserves the existing output contract (camelCase `indexingMode`, `Consistent` enum value). ([#188](https://github.com/Azure/CosmosDBShell/pull/188))
+- Replaced the remaining direct `Newtonsoft.Json` usages with `System.Text.Json` and dropped the direct package reference (the Cosmos client is already configured to use `System.Text.Json`). Indexing-policy serialization preserves the existing output contract (camelCase `indexingMode`, `Consistent` enum value). ([#188](https://github.com/Azure/CosmosDBShell/pull/188))
 
 ## 1.1.136-preview — 2026-07-20
 
