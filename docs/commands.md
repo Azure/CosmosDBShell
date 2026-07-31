@@ -1199,6 +1199,17 @@ Display version.
 Usage: version
 ```
 
+### welcome
+
+Display the welcome screen.
+
+```text
+Usage: welcome
+```
+
+The welcome screen is shown automatically on the first interactive startup. Later
+startups show a compact line containing the shell version and MCP server status.
+
 ### cls
 
 Clear the console screen.

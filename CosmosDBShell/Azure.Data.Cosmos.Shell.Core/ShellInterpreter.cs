@@ -43,6 +43,8 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly string cfgPath;
 
+    private readonly string welcomeMarkerFile;
+
     private readonly HashSet<string> diagnosticSecrets = new(StringComparer.Ordinal);
 
     private LineEditor? lineEditor;
@@ -59,21 +61,23 @@ public partial class ShellInterpreter : IDisposable
 
     private List<string> history;
 
-    internal ShellInterpreter()
+    internal ShellInterpreter(string? configPath = null)
     {
         this.State = new DisconnectedState();
 
         // editor.KeyBindings.Add<ClearInputCommand>(ConsoleKey.Escape);
         // TODO: Support selection commands?
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        this.cfgPath = Path.Combine(appData, "CosmosDBShell");
+        this.cfgPath = configPath ?? Path.Join(appData, "CosmosDBShell");
         this.history = [];
         if (!Directory.Exists(this.cfgPath))
         {
             Directory.CreateDirectory(this.cfgPath);
         }
 
-        this.HistoryFile = Path.Combine(this.cfgPath, "cmd_history");
+        this.HistoryFile = Path.Join(this.cfgPath, "cmd_history");
+        this.welcomeMarkerFile = Path.Join(this.cfgPath, "welcome_seen");
+
         if (File.Exists(this.HistoryFile))
         {
             foreach (var line in File.ReadAllLines(this.HistoryFile))
@@ -138,6 +142,11 @@ public partial class ShellInterpreter : IDisposable
     internal Dictionary<string, DefStatement> Functions { get; } = [];
 
     internal string HistoryFile { get; private set; }
+
+    internal string WelcomeMarkerFile => this.welcomeMarkerFile;
+
+    internal Func<bool> IsInteractiveSession { get; set; } =
+        static () => !Console.IsInputRedirected && !Console.IsOutputRedirected;
 
     internal IReadOnlyList<string> History => this.history;
 
@@ -602,18 +611,56 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    internal void ShowWelcome()
+    {
+        WelcomeScreen.WriteTo(Console.Out);
+    }
+
+    internal bool ShowWelcomeOnFirstRun()
+    {
+        if (!this.IsInteractiveSession())
+        {
+            return false;
+        }
+
+        if (File.Exists(this.welcomeMarkerFile))
+        {
+            return false;
+        }
+
+        this.ShowWelcome();
+        try
+        {
+            File.WriteAllText(this.welcomeMarkerFile, string.Empty);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
+
+        return true;
+    }
+
+    internal void PrintStartupStatus()
+    {
+        var version = GetDisplayVersion(typeof(VersionCommand).Assembly);
+        var mcpStatus = this.McpPort is int port
+            ? MessageService.GetArgsString("shell-startup-mcp-port", "port", port.ToString())
+            : MessageService.GetString("shell-startup-mcp-off");
+        WriteLine(MessageService.GetArgsString(
+            "shell-startup-status",
+            "version",
+            version,
+            "mcp_status",
+            mcpStatus));
+    }
+
     internal async Task<int> RunAsync()
     {
         var result = 0;
-        this.PrintVersion(null);
-        WriteLine(MessageService.GetString("shell-ready"));
-
-        // First-run hint: if the shell starts without a connection, point users at
-        // the `connect` command. Otherwise users can land at the prompt with no
-        // obvious next step (see issue #81).
-        if (this.State is DisconnectedState)
+        if (!this.ShowWelcomeOnFirstRun())
         {
-            AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("shell-not_connected_hint")));
+            this.PrintStartupStatus();
         }
 
         while (this.IsRunning)
