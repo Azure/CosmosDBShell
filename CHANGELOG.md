@@ -1,16 +1,28 @@
 # Changelog
 
-## Unreleased
+## 1.1.150-preview — 2026-07-31
+
+A short cycle on top of 1.1.136-preview. First interactive startup now shows a welcome screen (replayable via a new `welcome` command) with a more compact startup banner; `connect` gains a deterministic `--azure-cli` credential alongside clearer failure diagnostics and hardened credential selection; and the last direct `Newtonsoft.Json` usages are replaced with `System.Text.Json`.
 
 ### New features
 
-- **`--azure-cli` / `--connect-azure-cli` credential option.** Selects `AzureCliCredential` directly, using the identity from your current `az login` session. It is slotted just above `DefaultAzureCredential` in the credential decision tree so environments with a live managed-identity/IMDS endpoint (for example Azure Cloud Shell) no longer silently authenticate as the managed identity — which often lacks Cosmos DB data-plane RBAC — instead of the interactive user. ARM context is attached like the other Entra ID flows, and `--tenant` is honored when supplied.
+- First-run **welcome screen** and `welcome` command. The embedded welcome screen is shown on the first interactive startup and can be redisplayed at any time with the new `welcome` command. ([#181](https://github.com/Azure/CosmosDBShell/pull/181))
+- **`--azure-cli` / `--connect-azure-cli` credential option.** Selects `AzureCliCredential` directly, using the identity from your current `az login` session. It is slotted just above `DefaultAzureCredential` in the credential decision tree so environments with a live managed-identity/IMDS endpoint (for example Azure Cloud Shell) no longer silently authenticate as the managed identity — which often lacks Cosmos DB data-plane RBAC — instead of the interactive user. ARM context is attached like the other Entra ID flows, and `--tenant` is honored when supplied. ([#187](https://github.com/Azure/CosmosDBShell/pull/187))
 
 ### Improvements
 
-- **Clearer connection failures.** When a connection fails, the shell now prints the underlying reason (the inner exception chain) in addition to the high-level "Failed to connect to the Cosmos DB account." message, and hints that `--verbose` shows full exception details including the stack trace. The startup `--connect` path previously printed only the top-level message. The shell also announces when a key is sourced from the `COSMOSDB_SHELL_ACCOUNT_KEY` environment variable, matching the existing `COSMOSDB_SHELL_TOKEN` behavior.
-- **Richer `--verbose` connection diagnostics.** In verbose mode, connection failures now surface the Cosmos DB request coordinates up front — HTTP status and sub-status codes plus the activity id — so an authorization denial (`403`) can be told apart from a token-acquisition failure or a network problem at a glance, followed by the full exception chain (including the `CosmosException` body/diagnostics and, for `DefaultAzureCredential`, the aggregated per-credential failure reasons).
-- **Conflicting credential selections are rejected.** Requesting two explicit credentials at once (for example `--connect-vscode-credential` together with `--azure-cli`, or a credential flag alongside an account key or `--managed-identity`) now fails with a clear message instead of silently ignoring one of them. `--azure-cli --tenant` reliably reaches the Azure CLI credential rather than falling into the interactive browser flow.
+- **Clearer connection failures.** When a connection fails, the shell now prints the underlying reason (the inner exception chain) in addition to the high-level "Failed to connect to the Cosmos DB account." message, and hints that `--verbose` shows full exception details including the stack trace. The startup `--connect` path previously printed only the top-level message. The shell also announces when a key is sourced from the `COSMOSDB_SHELL_ACCOUNT_KEY` environment variable, matching the existing `COSMOSDB_SHELL_TOKEN` behavior. ([#187](https://github.com/Azure/CosmosDBShell/pull/187))
+- **Richer `--verbose` connection diagnostics.** In verbose mode, connection failures now surface the Cosmos DB request coordinates up front — HTTP status and sub-status codes plus the activity id — so an authorization denial (`403`) can be told apart from a token-acquisition failure or a network problem at a glance, followed by the full exception chain (including the `CosmosException` body/diagnostics and, for `DefaultAzureCredential`, the aggregated per-credential failure reasons). ([#187](https://github.com/Azure/CosmosDBShell/pull/187))
+- **Conflicting credential selections are rejected.** Requesting two explicit credentials at once (for example `--connect-vscode-credential` together with `--azure-cli`, or a credential flag alongside an account key or `--managed-identity`) now fails with a clear message instead of silently ignoring one of them. `--azure-cli --tenant` reliably reaches the Azure CLI credential rather than falling into the interactive browser flow. ([#187](https://github.com/Azure/CosmosDBShell/pull/187))
+- **Compact startup output.** Recurring startup text is replaced with a single compact version line and an MCP status line, and the report URL and disconnected warning no longer appear during normal startup. ([#181](https://github.com/Azure/CosmosDBShell/pull/181))
+
+### Fixes
+
+- Query index-metrics display now renders the utilized/potential index tables correctly. The `is JsonElement` checks in the metrics display path were previously dead — under Newtonsoft the parsed values were `JObject`/`JValue` and never matched — and now match after the switch to `System.Text.Json`. ([#188](https://github.com/Azure/CosmosDBShell/pull/188))
+
+### Build & pipeline
+
+- Replaced the remaining direct `Newtonsoft.Json` usages with `System.Text.Json` and dropped the direct package reference (the Cosmos client is already configured to use System.Text.Json). Index-policy serialization preserves the existing output contract (camelCase `indexingMode`, `Consistent` enum value). ([#188](https://github.com/Azure/CosmosDBShell/pull/188))
 
 ## 1.1.136-preview — 2026-07-20
 
