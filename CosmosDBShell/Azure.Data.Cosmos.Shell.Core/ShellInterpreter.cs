@@ -731,7 +731,7 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
-    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, bool useAzureCli = false, string? subscriptionId = null, string? resourceGroupName = null, CancellationToken token = default)
+    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, CredentialMethod credentialMethod = CredentialMethod.Default, string? subscriptionId = null, string? resourceGroupName = null, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
 
@@ -831,7 +831,7 @@ public partial class ShellInterpreter : IDisposable
         var options = CreateClientOptions(requestedMode);
 
         // Step 2: VisualStudioCodeCredential (when launched from VS Code extension)
-        if (client == null && useVSCodeCredential)
+        if (client == null && credentialMethod == CredentialMethod.VSCode)
         {
             WriteLine(MessageService.GetString("shell-connect-vscode-credential-auth"));
             var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
@@ -1038,7 +1038,7 @@ public partial class ShellInterpreter : IDisposable
         // with a live managed-identity/IMDS endpoint (for example Azure Cloud
         // Shell) do not silently authenticate as the MSI — which typically lacks
         // Cosmos data-plane RBAC — instead of the interactive user.
-        if (client == null && useAzureCli)
+        if (client == null && credentialMethod == CredentialMethod.AzureCli)
         {
             var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
             WriteLine(MessageService.GetString("shell-connect-azure-cli-auth"));

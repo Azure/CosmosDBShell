@@ -96,7 +96,10 @@ internal partial class ConnectCommand : CosmosCommand
 
         try
         {
-            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, useAzureCli: this.UseAzureCli, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, token: token);
+            var credentialMethod = this.UseVSCodeCredential ? CredentialMethod.VSCode
+                : this.UseAzureCli ? CredentialMethod.AzureCli
+                : CredentialMethod.Default;
+            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, credentialMethod: credentialMethod, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, token: token);
             var returnState = new CommandState
             {
                 IsPrinted = true,

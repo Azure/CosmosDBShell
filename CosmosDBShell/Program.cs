@@ -206,6 +206,9 @@ internal class Program
                 var connectToken = connectTokenSource.Token;
                 try
                 {
+                    var credentialMethod = o.ConnectVSCodeCredential ? CredentialMethod.VSCode
+                        : o.ConnectAzureCli ? CredentialMethod.AzureCli
+                        : CredentialMethod.Default;
                     await ShellInterpreter.Instance.ConnectAsync(
                         o.ConnectionString,
                         o.ConnectHint,
@@ -213,8 +216,7 @@ internal class Program
                         tenantId: o.ConnectTenant,
                         authorityHost: o.ConnectAuthorityHost,
                         managedIdentityClientId: o.ConnectManagedIdentity,
-                        useVSCodeCredential: o.ConnectVSCodeCredential,
-                        useAzureCli: o.ConnectAzureCli,
+                        credentialMethod: credentialMethod,
                         subscriptionId: o.ConnectSubscription,
                         resourceGroupName: o.ConnectResourceGroup,
                         token: connectToken);
