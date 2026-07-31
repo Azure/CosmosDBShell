@@ -377,13 +377,13 @@ internal class QueryCommand : CosmosCommand
                 if (this.Metrics == MetricTarget.File)
                 {
                     var metricProperty = GetMetrics(response);
-                    var parsedIndexMetrics = response.IndexMetrics != null
-                        ? Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(response.IndexMetrics)
+                    var parsedIndexMetrics = !string.IsNullOrWhiteSpace(response.IndexMetrics)
+                        ? JsonSerializer.Deserialize<Dictionary<string, object>>(response.IndexMetrics)
                         : null;
 
                     if (shell.StdOutRedirect == null || !string.Equals("csv", this.OutputFormat, StringComparison.OrdinalIgnoreCase))
                     {
-                        var element = System.Text.Json.JsonSerializer.SerializeToElement(
+                        var element = JsonSerializer.SerializeToElement(
                             new Dictionary<string, object>()
                             {
                                 { "documents", aggregatedDocuments },
@@ -478,13 +478,13 @@ internal class QueryCommand : CosmosCommand
                     table.AddRow(Theme.FormatTableValue(Fmt("Index hit ratio")), Theme.FormatTableValue(Fmt("Index lookup time")));
                     AnsiConsole.Write(table);
 
-                    if (response.IndexMetrics != null)
+                    if (!string.IsNullOrWhiteSpace(response.IndexMetrics))
                     {
                         var indexTable = new Table();
 
                         indexTable.AddColumns(MessageService.GetString("command-query-index_metrics"), MessageService.GetString("command-query-index_spec"), MessageService.GetString("command-query-index_score"));
 
-                        var parsedIndexMetrics = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(response.IndexMetrics);
+                        var parsedIndexMetrics = JsonSerializer.Deserialize<Dictionary<string, object>>(response.IndexMetrics);
 
                         if (parsedIndexMetrics?.TryGetValue("UtilizedIndexes", out var utilizedIndices) == true)
                         {
