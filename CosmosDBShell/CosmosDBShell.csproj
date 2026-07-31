@@ -99,7 +99,6 @@
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
     <PackageReference Include="RadLine" />
     <PackageReference Include="Azure.Core" />
-    <PackageReference Include="Newtonsoft.Json" />
     <PackageReference Include="System.ClientModel" />
     <PackageReference Include="Tomlyn" />
     <PackageReference Include="StyleCop.Analyzers">

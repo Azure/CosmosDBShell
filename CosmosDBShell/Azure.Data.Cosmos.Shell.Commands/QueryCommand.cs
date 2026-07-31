@@ -378,7 +378,7 @@ internal class QueryCommand : CosmosCommand
                 {
                     var metricProperty = GetMetrics(response);
                     var parsedIndexMetrics = response.IndexMetrics != null
-                        ? Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(response.IndexMetrics)
+                        ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(response.IndexMetrics)
                         : null;
 
                     if (shell.StdOutRedirect == null || !string.Equals("csv", this.OutputFormat, StringComparison.OrdinalIgnoreCase))
@@ -484,7 +484,7 @@ internal class QueryCommand : CosmosCommand
 
                         indexTable.AddColumns(MessageService.GetString("command-query-index_metrics"), MessageService.GetString("command-query-index_spec"), MessageService.GetString("command-query-index_score"));
 
-                        var parsedIndexMetrics = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(response.IndexMetrics);
+                        var parsedIndexMetrics = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(response.IndexMetrics);
 
                         if (parsedIndexMetrics?.TryGetValue("UtilizedIndexes", out var utilizedIndices) == true)
                         {
