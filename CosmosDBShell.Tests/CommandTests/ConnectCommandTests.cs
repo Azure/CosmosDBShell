@@ -28,6 +28,52 @@ public class ConnectCommandTests
     }
 
     [Fact]
+    public async Task ConnectAsync_AzureCliWithManagedIdentity_ThrowsConflict()
+    {
+        // #1: a credential the user explicitly requested must never be silently
+        // ignored. --azure-cli and --managed-identity select different credentials.
+        using var shell = ShellInterpreter.CreateInstance();
+
+        var ex = await Assert.ThrowsAsync<ShellException>(() => shell.ConnectAsync(
+            "https://example.documents.azure.com:443/",
+            credentialMethod: CredentialMethod.AzureCli,
+            managedIdentityClientId: "00000000-0000-0000-0000-000000000000",
+            token: TestContext.Current.CancellationToken));
+
+        Assert.Contains("--azure-cli", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("--managed-identity", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_AccountKeyWithAzureCli_ThrowsConflict()
+    {
+        // An account key in the connection string and an explicit credential method
+        // are mutually exclusive; the validation runs before any network call.
+        using var shell = ShellInterpreter.CreateInstance();
+
+        var ex = await Assert.ThrowsAsync<ShellException>(() => shell.ConnectAsync(
+            "AccountEndpoint=https://example.documents.azure.com:443/;AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;",
+            credentialMethod: CredentialMethod.AzureCli,
+            token: TestContext.Current.CancellationToken));
+
+        Assert.Contains("--azure-cli", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("account key", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_AccountKeyWithTenant_ThrowsConflict()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+
+        var ex = await Assert.ThrowsAsync<ShellException>(() => shell.ConnectAsync(
+            "AccountEndpoint=https://example.documents.azure.com:443/;AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;",
+            tenantId: "00000000-0000-0000-0000-000000000000",
+            token: TestContext.Current.CancellationToken));
+
+        Assert.Contains("account key", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ConnectCommand_VSCodeCredentialOption_BindsHiddenInteractiveFlag()
     {
         var command = await BindConnectCommandAsync("connect https://example.documents.azure.com:443/ -vscode-credential");
