@@ -377,7 +377,7 @@ internal class QueryCommand : CosmosCommand
                 if (this.Metrics == MetricTarget.File)
                 {
                     var metricProperty = GetMetrics(response);
-                    var parsedIndexMetrics = response.IndexMetrics != null
+                    var parsedIndexMetrics = !string.IsNullOrWhiteSpace(response.IndexMetrics)
                         ? JsonSerializer.Deserialize<Dictionary<string, object>>(response.IndexMetrics)
                         : null;
 
@@ -478,7 +478,7 @@ internal class QueryCommand : CosmosCommand
                     table.AddRow(Theme.FormatTableValue(Fmt("Index hit ratio")), Theme.FormatTableValue(Fmt("Index lookup time")));
                     AnsiConsole.Write(table);
 
-                    if (response.IndexMetrics != null)
+                    if (!string.IsNullOrWhiteSpace(response.IndexMetrics))
                     {
                         var indexTable = new Table();
 
