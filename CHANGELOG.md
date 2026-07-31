@@ -2,9 +2,14 @@
 
 ## Unreleased
 
+### New features
+
+- **`--azure-cli` / `--connect-azure-cli` credential option.** Selects `AzureCliCredential` directly, using the identity from your current `az login` session. It is slotted just above `DefaultAzureCredential` in the credential decision tree so environments with a live managed-identity/IMDS endpoint (for example Azure Cloud Shell) no longer silently authenticate as the managed identity — which often lacks Cosmos DB data-plane RBAC — instead of the interactive user. ARM context is attached like the other Entra ID flows, and `--tenant` is honored when supplied.
+
 ### Improvements
 
 - **Clearer connection failures.** When a connection fails, the shell now prints the underlying reason (the inner exception chain) in addition to the high-level "Failed to connect to the Cosmos DB account." message, and hints that `--verbose` shows full exception details including the stack trace. The startup `--connect` path previously printed only the top-level message. The shell also announces when a key is sourced from the `COSMOSDB_SHELL_ACCOUNT_KEY` environment variable, matching the existing `COSMOSDB_SHELL_TOKEN` behavior.
+- **Richer `--verbose` connection diagnostics.** In verbose mode, connection failures now surface the Cosmos DB request coordinates up front — HTTP status and sub-status codes plus the activity id — so an authorization denial (`403`) can be told apart from a token-acquisition failure or a network problem at a glance, followed by the full exception chain (including the `CosmosException` body/diagnostics and, for `DefaultAzureCredential`, the aggregated per-credential failure reasons).
 
 ## 1.1.136-preview — 2026-07-20
 

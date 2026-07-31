@@ -94,6 +94,7 @@ internal class Program
                 ConnectSubscription = parseResult.GetValueForOption(optionMap.ConnectSubscription),
                 ConnectResourceGroup = parseResult.GetValueForOption(optionMap.ConnectResourceGroup),
                 ConnectVSCodeCredential = parseResult.GetValueForOption(optionMap.ConnectVSCodeCredential),
+                ConnectAzureCli = parseResult.GetValueForOption(optionMap.ConnectAzureCli),
                 StartLspServer = parseResult.GetValueForOption(optionMap.StartLspServer),
                 LspStdio = parseResult.GetValueForOption(optionMap.LspStdio),
                 Verbose = parseResult.GetValueForOption(optionMap.Verbose),
@@ -213,6 +214,7 @@ internal class Program
                         authorityHost: o.ConnectAuthorityHost,
                         managedIdentityClientId: o.ConnectManagedIdentity,
                         useVSCodeCredential: o.ConnectVSCodeCredential,
+                        useAzureCli: o.ConnectAzureCli,
                         subscriptionId: o.ConnectSubscription,
                         resourceGroupName: o.ConnectResourceGroup,
                         token: connectToken);
@@ -488,6 +490,7 @@ internal class Program
         {
             IsHidden = true,
         };
+        var connectAzureCli = new Option<bool>("--connect-azure-cli", MessageService.GetString("help-ConnectAzureCli"));
 
         var mcpPort = new Option<int?>("--mcp", MessageService.GetString("help-McpPort"))
         {
@@ -526,6 +529,7 @@ internal class Program
             connectSubscription,
             connectResourceGroup,
             connectVSCodeCredential,
+            connectAzureCli,
             mcpPort,
             startLspServer,
             lspStdio,
@@ -549,6 +553,7 @@ internal class Program
             connectSubscription,
             connectResourceGroup,
             connectVSCodeCredential,
+            connectAzureCli,
             mcpPort,
             startLspServer,
             lspStdio,
@@ -682,6 +687,7 @@ internal class Program
         Option<string?> ConnectSubscription,
         Option<string?> ConnectResourceGroup,
         Option<bool> ConnectVSCodeCredential,
+        Option<bool> ConnectAzureCli,
         Option<int?> McpPort,
         Option<bool> StartLspServer,
         Option<bool> LspStdio,
@@ -756,6 +762,8 @@ internal class Program
         public string? ConnectResourceGroup { get; set; }
 
         public bool ConnectVSCodeCredential { get; set; }
+
+        public bool ConnectAzureCli { get; set; }
 
         public int? McpPort { get; set; }
 

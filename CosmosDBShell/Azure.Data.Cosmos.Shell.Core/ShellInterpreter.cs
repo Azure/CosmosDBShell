@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Core;
 
+using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -730,7 +731,7 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
-    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, string? subscriptionId = null, string? resourceGroupName = null, CancellationToken token = default)
+    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, bool useAzureCli = false, string? subscriptionId = null, string? resourceGroupName = null, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
 
@@ -1030,6 +1031,45 @@ public partial class ShellInterpreter : IDisposable
                 await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, deviceCodeCredential, dcProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
+        }
+
+        // Step 5.5: Azure CLI credential (deterministic: use the signed-in `az`
+        // identity directly). Placed above DefaultAzureCredential so environments
+        // with a live managed-identity/IMDS endpoint (for example Azure Cloud
+        // Shell) do not silently authenticate as the MSI — which typically lacks
+        // Cosmos data-plane RBAC — instead of the interactive user.
+        if (client == null && useAzureCli)
+        {
+            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
+            WriteLine(MessageService.GetString("shell-connect-azure-cli-auth"));
+
+            var cliOptions = new AzureCliCredentialOptions();
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                cliOptions.TenantId = tenantId;
+            }
+
+            var cliCredential = new AzureCliCredential(cliOptions);
+            client = new CosmosClient(endpoint, cliCredential, options);
+
+            AccountProperties cliProps;
+            try
+            {
+                cliProps = await ReadAccountAsync(client, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                client.Dispose();
+                throw;
+            }
+            catch (Exception ex)
+            {
+                client.Dispose();
+                throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
+            }
+
+            await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, cliCredential, cliProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
+            return;
         }
 
         // Step 6: DefaultAzureCredential (endpoint only, or only --authority-host)
@@ -1844,10 +1884,29 @@ public partial class ShellInterpreter : IDisposable
 
         if (verbose)
         {
-            AnsiConsole.WriteException(exception, new ExceptionSettings
+            // Surface the service-side coordinates (HTTP status/sub-status/activity
+            // id) up front so an auth denial (403) can be told apart from a
+            // token-acquisition failure or a network/port problem at a glance.
+            var cosmos = FindException<CosmosException>(exception);
+            if (cosmos != null)
             {
-                Format = ExceptionFormats.ShortenPaths,
-            });
+                AnsiConsole.MarkupLine(Theme.FormatError(MessageService.GetArgsString(
+                    "shell-connect-error-cosmos-detail",
+                    "status",
+                    ((int)cosmos.StatusCode).ToString(CultureInfo.InvariantCulture),
+                    "reason",
+                    cosmos.StatusCode.ToString(),
+                    "substatus",
+                    cosmos.SubStatusCode.ToString(CultureInfo.InvariantCulture),
+                    "activityId",
+                    string.IsNullOrEmpty(cosmos.ActivityId) ? "-" : cosmos.ActivityId)));
+            }
+
+            // Dump the full exception chain verbatim. This includes the aggregated
+            // per-credential failure reasons from DefaultAzureCredential's
+            // AuthenticationFailedException and the Cosmos error body/diagnostics
+            // from CosmosException.ToString().
+            AnsiConsole.WriteLine(exception.ToString());
             return;
         }
 
@@ -2306,6 +2365,22 @@ public partial class ShellInterpreter : IDisposable
         }
 
         return false;
+    }
+
+    private static TException? FindException<TException>(Exception? exception)
+        where TException : Exception
+    {
+        while (exception != null)
+        {
+            if (exception is TException match)
+            {
+                return match;
+            }
+
+            exception = exception.InnerException;
+        }
+
+        return null;
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Diagnostic helpers are grouped with diagnostic rendering code.")]

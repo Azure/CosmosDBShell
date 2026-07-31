@@ -14,17 +14,35 @@ The credential type is determined by the first matching rule (top-to-bottom):
 | 4 | `COSMOSDB_SHELL_TOKEN` env var is set | Static access token |
 | 5 | `--managed-identity` option provided | `ManagedIdentityCredential` |
 | 6 | `--tenant` or `--hint` option provided | `InteractiveBrowserCredential` (with `DeviceCodeCredential` fallback) |
-| 7 | Endpoint only (no additional arguments) | `DefaultAzureCredential` |
+| 7 | `--azure-cli` (startup: `--connect-azure-cli`) flag provided | `AzureCliCredential` |
+| 8 | Endpoint only (no additional arguments) | `DefaultAzureCredential` |
 
 > **Note:** Step 3 (`--connect-vscode-credential`) is only available as a CLI startup option, not as an argument to the interactive `connect` command.
 
-The `--authority-host` option is passed through to whichever credential is created (priorities 3-6). It does not affect which credential type is selected.
+The `--authority-host` option is passed through to whichever credential is created (priorities 3-6). It does not affect which credential type is selected. `AzureCliCredential` (priority 7) uses the cloud that the Azure CLI is already configured for, so it does not accept `--authority-host`.
+
+### When to use `--azure-cli`
+
+`--azure-cli` selects `AzureCliCredential` directly, using the identity from your current `az login` session. This is deterministic: it bypasses the credential chain in `DefaultAzureCredential`.
+
+Prefer it in environments where a managed identity is present but is *not* the identity you want. The clearest example is **Azure Cloud Shell**: `DefaultAzureCredential` tries `ManagedIdentityCredential` before `AzureCliCredential`, and Cloud Shell exposes a live managed-identity (IMDS) endpoint, so token acquisition succeeds and the chain stops there. If that managed identity has no Cosmos DB data-plane RBAC role, requests fail with `403 (Forbidden)` even though your signed-in `az` user has access. `--azure-cli` skips the managed identity entirely and uses your `az` identity instead.
+
+```bash
+# Interactive
+connect https://myaccount.documents.azure.com:443/ --azure-cli
+
+# Startup
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-azure-cli
+```
+
+`--tenant` is honored when supplied (passed to `AzureCliCredential` as the tenant to authenticate against). ARM context is attached for `AzureCliCredential` just like the other Entra ID credential flows.
+
 
 ## Azure Resource Manager Context
 
 Database and container resource operations (listing, navigating to, creating, deleting, and reading configuration for databases and containers) prefer Azure Resource Manager (ARM) when an ARM context is attached. Item operations always use the Cosmos DB data plane.
 
-ARM context is attached only for Entra ID credential flows: `VisualStudioCodeCredential`, `ManagedIdentityCredential`, `InteractiveBrowserCredential`, `DeviceCodeCredential`, and `DefaultAzureCredential`. Account-key connections, emulator connections, and `COSMOSDB_SHELL_TOKEN` connections do not attach ARM context, so resource operations fall back to the Cosmos DB data plane.
+ARM context is attached only for Entra ID credential flows: `VisualStudioCodeCredential`, `ManagedIdentityCredential`, `InteractiveBrowserCredential`, `DeviceCodeCredential`, `AzureCliCredential`, and `DefaultAzureCredential`. Account-key connections, emulator connections, and `COSMOSDB_SHELL_TOKEN` connections do not attach ARM context, so resource operations fall back to the Cosmos DB data plane.
 
 When ARM context is attached, the shell can discover the ARM account by matching the connected data-plane endpoint across accessible subscriptions. For deterministic startup, especially in CI/CD or multi-subscription environments, provide the coordinates explicitly:
 
@@ -41,7 +59,7 @@ When ARM is in use, the identity needs data-plane RBAC for item operations and A
 
 Account-key connections, `COSMOSDB_SHELL_TOKEN` connections, and emulator connections do not attach an ARM context, so resource commands (`mkdb`, `mkcon`, `rmdb`, `rmcon`, `index`, container `info`) fall back to the data plane. If you connect to a real Azure Cosmos DB account that has [native data-plane RBAC](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-setup-rbac) enforced (key-based and control-plane writes disabled), those commands will be rejected by the service even with a valid static credential, because the request never reaches Azure Resource Manager.
 
-To use resource commands against such an account, connect with an Entra ID credential — `--tenant`, `--managed-identity`, `--connect-vscode-credential`, or the endpoint-only `DefaultAzureCredential` form — and (optionally) supply `--subscription` and `--resource-group` to skip ARM discovery.
+To use resource commands against such an account, connect with an Entra ID credential — `--tenant`, `--managed-identity`, `--azure-cli`, `--connect-vscode-credential`, or the endpoint-only `DefaultAzureCredential` form — and (optionally) supply `--subscription` and `--resource-group` to skip ARM discovery.
 
 ## Examples
 
@@ -154,6 +172,7 @@ All connect options are also available as CLI startup arguments:
 ```bash
 cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-tenant=<tenant-id>
 cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-managed-identity=<client-id>
+cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-azure-cli
 cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-subscription=<subscription-id> --connect-resource-group=<resource-group>
 cosmosdbshell --connect https://localhost:8081
 ```
@@ -193,6 +212,20 @@ issues:
 ```bash
 cosmosdbshell --verbose --connect https://myaccount.documents.azure.com:443/
 ```
+
+In verbose mode the shell also surfaces the service-side coordinates for Cosmos DB
+request failures up front — the HTTP status and sub-status codes plus the activity
+id — so an authorization denial (`403`) can be told apart from a token-acquisition
+failure or a network/port problem at a glance:
+
+```text
+Cosmos DB request failed: HTTP 403 Forbidden, sub-status 5301, activity id 8b1f....
+```
+
+The full exception chain is then printed verbatim, which includes the Cosmos DB
+error body and diagnostics from `CosmosException`, and — for `DefaultAzureCredential`
+— the aggregated per-credential failure reasons that indicate which link in the
+chain was used and why each one failed.
 
 The shell also reports when credentials are sourced from the environment. When a
 key is picked up from `COSMOSDB_SHELL_ACCOUNT_KEY`, it prints

@@ -71,6 +71,24 @@ public class ConnectCommandTests
     }
 
     [Fact]
+    public async Task ConnectCommand_AzureCliOption_BindsInteractiveFlag()
+    {
+        var command = await BindConnectCommandAsync("connect https://example.documents.azure.com:443/ -azure-cli");
+
+        Assert.Equal("https://example.documents.azure.com:443/", command.ConnectionString);
+        Assert.True(command.UseAzureCli);
+    }
+
+    [Fact]
+    public void ConnectCommand_AzureCliOption_IsKnownToCommandMetadata()
+    {
+        Assert.True(CommandFactory.TryCreateFactory(typeof(ConnectCommand), out var factory));
+
+        Assert.Contains(factory.AllOptions, option => option.MatchesArgument("azure-cli"));
+        Assert.True(factory.HasOption("azure-cli"));
+    }
+
+    [Fact]
     public void LocalEmulatorConnectionFailureMessage_ExplainsCommonCauses()
     {
         var endpoint = new Uri("https://localhost:8081/");
@@ -187,6 +205,29 @@ public class ConnectCommandTests
         Assert.Contains("verbose-only inner detail", output, StringComparison.Ordinal);
         Assert.Contains(nameof(ShellException), output, StringComparison.Ordinal);
         Assert.DoesNotContain(MessageService.GetString("shell-connect-verbose-hint"), output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WriteConnectionError_Verbose_SurfacesCosmosRequestCoordinates()
+    {
+        // Issue: a 403 authorization denial was indistinguishable from a token or
+        // network failure. In verbose mode the Cosmos HTTP status, sub-status, and
+        // activity id must be surfaced up front so the failure category is obvious.
+        var cosmosException = new CosmosException(
+            "Request blocked by auth.",
+            System.Net.HttpStatusCode.Forbidden,
+            subStatusCode: 5301,
+            activityId: "8b1f0000-0000-0000-0000-000000000000",
+            requestCharge: 0);
+        var failure = new ShellException(
+            MessageService.GetString("error-connection_failed"),
+            cosmosException);
+
+        var output = CaptureConsole(() => ShellInterpreter.WriteConnectionError(failure, verbose: true));
+
+        Assert.Contains("403", output, StringComparison.Ordinal);
+        Assert.Contains("5301", output, StringComparison.Ordinal);
+        Assert.Contains("8b1f0000-0000-0000-0000-000000000000", output, StringComparison.Ordinal);
     }
 
     private static string CaptureConsole(Action action)
