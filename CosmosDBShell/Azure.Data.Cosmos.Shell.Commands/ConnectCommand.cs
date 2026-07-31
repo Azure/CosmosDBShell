@@ -19,6 +19,7 @@ using Spectre.Console;
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -hint=user@contoso.com", Description = "Connect using Entra ID authentication with login hint")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -mode=gateway", Description = "Connect using Entra ID with gateway connection mode")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -managed-identity=<client-id>", Description = "Connect using a user-assigned managed identity")]
+[CosmosExample("connect https://myaccount.documents.azure.com:443/ -azure-cli", Description = "Connect using the signed-in Azure CLI (az login) identity, bypassing managed identity")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -subscription=<subscription-id> -resource-group=<resource-group>", Description = "Connect using Entra ID with an explicit Azure Resource Manager subscription and resource group (skips ARM auto-discovery)")]
 internal partial class ConnectCommand : CosmosCommand
 {
@@ -52,6 +53,9 @@ internal partial class ConnectCommand : CosmosCommand
 
     [CosmosOption("vscode-credential", "connect-vscode-credential", Hidden = true)]
     public bool UseVSCodeCredential { get; init; }
+
+    [CosmosOption("azure-cli")]
+    public bool UseAzureCli { get; init; }
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
@@ -92,7 +96,8 @@ internal partial class ConnectCommand : CosmosCommand
 
         try
         {
-            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, useVSCodeCredential: this.UseVSCodeCredential, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, token: token);
+            var credentialMethod = ShellInterpreter.ResolveCredentialMethod(this.UseVSCodeCredential, this.UseAzureCli);
+            await shell.ConnectAsync(this.ConnectionString, this.LoginHint, connectionMode, tenantId: this.TenantId, authorityHost: this.AuthorityHost, managedIdentityClientId: this.ManagedIdentityClientId, credentialMethod: credentialMethod, subscriptionId: this.SubscriptionId, resourceGroupName: this.ResourceGroupName, token: token);
             var returnState = new CommandState
             {
                 IsPrinted = true,
