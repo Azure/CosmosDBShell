@@ -977,6 +977,13 @@ public partial class ShellInterpreter : IDisposable
         {
             WriteLine(MessageService.GetString("shell-connect-azure-cli-auth"));
 
+            // AzureCliCredentialOptions has no AuthorityHost: the Azure CLI derives
+            // its cloud from `az cloud set`, so --authority-host is ignored here.
+            if (authorityHostUri != null)
+            {
+                WriteLine(MessageService.GetString("shell-connect-azure-cli-authority-host-ignored"));
+            }
+
             var cliOptions = new AzureCliCredentialOptions();
             if (!string.IsNullOrWhiteSpace(tenantId))
             {

@@ -19,7 +19,7 @@ The credential type is determined by the first matching rule (top-to-bottom):
 
 > **Note:** Step 3 (`--connect-vscode-credential`) is only available as a CLI startup option, not as an argument to the interactive `connect` command.
 
-The `--authority-host` option is passed through to whichever credential is created (priorities 3-6). It does not affect which credential type is selected. `AzureCliCredential` (priority 7) uses the cloud that the Azure CLI is already configured for, so it does not accept `--authority-host`.
+The `--authority-host` option is passed through to whichever credential is created (priorities 3-6). It does not affect which credential type is selected. `AzureCliCredential` (priority 7) uses the cloud that the Azure CLI is already configured for, so it does not accept `--authority-host`; if you supply both, the value is ignored and a warning is printed. Use `az cloud set` to change the Azure CLI cloud instead.
 
 ### When to use `--azure-cli`
 
