@@ -10,18 +10,18 @@ The credential type is determined by the first matching rule (top-to-bottom):
 | -------- | --------- | --------------- |
 | 1 | Endpoint is `localhost` or `127.0.0.1` | Emulator (well-known key) |
 | 2 | Connection string has `AccountKey`, or `COSMOSDB_SHELL_ACCOUNT_KEY` env provides a key | Account key |
-| 3 | `--connect-vscode-credential` startup flag provided (startup only) | `VisualStudioCodeCredential` (falls back to next step) |
+| 3 | `--connect-vscode-credential` flag provided (startup; hidden on interactive `connect`) | `VisualStudioCodeCredential` (falls back to next step) |
 | 4 | `COSMOSDB_SHELL_TOKEN` env var is set | Static access token |
 | 5 | `--managed-identity` option provided | `ManagedIdentityCredential` |
 | 6 | `--tenant` or `--hint` option provided (and `--azure-cli` not set) | `InteractiveBrowserCredential` (with `DeviceCodeCredential` fallback) |
 | 7 | `--azure-cli` (startup: `--connect-azure-cli`) flag provided | `AzureCliCredential` |
 | 8 | Endpoint only (no additional arguments) | `DefaultAzureCredential` |
 
-> **Note:** Step 3 (`--connect-vscode-credential`) is only available as a CLI startup option, not as an argument to the interactive `connect` command.
+> **Note:** Step 3 is primarily a startup option (`--connect-vscode-credential`); it is also accepted as a hidden option on the interactive `connect` command.
 >
 > **Note:** `--azure-cli` takes precedence over the priority&nbsp;6 interactive selection, so combining `--azure-cli` with `--tenant` uses `AzureCliCredential` (honoring the tenant) rather than triggering the browser/device-code flow.
 
-The `--authority-host` option is passed through to whichever credential is created for priorities 3-6 and to `DefaultAzureCredential` (priority 8). It does not affect which credential type is selected. `AzureCliCredential` (priority 7) uses the cloud that the Azure CLI is already configured for, so it does not accept `--authority-host`; if you supply both, the value is ignored and a warning is printed. Use `az cloud set` to change the Azure CLI cloud instead.
+The `--authority-host` option is honored by the Entra ID credentials that accept it: `VisualStudioCodeCredential` (priority 3), `ManagedIdentityCredential` (priority 5), the interactive `InteractiveBrowserCredential`/`DeviceCodeCredential` (priority 6), and `DefaultAzureCredential` (priority 8). It does not affect which credential type is selected, and the static token (priority 4) and account key paths ignore it. `AzureCliCredential` (priority 7) uses the cloud that the Azure CLI is already configured for, so it does not accept `--authority-host`; if you supply both, the value is ignored and a warning is printed. Use `az cloud set` to change the Azure CLI cloud instead.
 
 ### When to use `--azure-cli`
 
