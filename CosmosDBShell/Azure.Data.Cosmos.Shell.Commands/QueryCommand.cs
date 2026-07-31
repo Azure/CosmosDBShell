@@ -383,7 +383,7 @@ internal class QueryCommand : CosmosCommand
 
                     if (shell.StdOutRedirect == null || !string.Equals("csv", this.OutputFormat, StringComparison.OrdinalIgnoreCase))
                     {
-                        var element = System.Text.Json.JsonSerializer.SerializeToElement(
+                        var element = JsonSerializer.SerializeToElement(
                             new Dictionary<string, object>()
                             {
                                 { "documents", aggregatedDocuments },
