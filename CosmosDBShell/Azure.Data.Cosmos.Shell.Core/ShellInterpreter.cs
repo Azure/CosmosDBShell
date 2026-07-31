@@ -1100,16 +1100,20 @@ public partial class ShellInterpreter : IDisposable
         bool hasManagedIdentity = !string.IsNullOrWhiteSpace(managedIdentityClientId);
         bool hasExplicitMethod = credentialMethod != CredentialMethod.Default;
 
+        // Messages can surface from both the interactive `connect` command and the
+        // startup `--connect` path, which spell the same switch differently, so name
+        // both forms to keep the guidance accurate in either context.
         string methodName = credentialMethod switch
         {
-            CredentialMethod.VSCode => "--connect-vscode-credential",
-            CredentialMethod.AzureCli => "--azure-cli",
+            CredentialMethod.VSCode => "the VS Code credential option (--connect-vscode-credential)",
+            CredentialMethod.AzureCli => "the Azure CLI credential option (--azure-cli / --connect-azure-cli)",
             _ => string.Empty,
         };
+        const string managedIdentityOption = "the managed identity option (--managed-identity / --connect-managed-identity)";
 
         if (hasExplicitMethod && hasManagedIdentity)
         {
-            throw new ShellException($"'{methodName}' cannot be combined with '--managed-identity'; choose a single credential method.");
+            throw new ShellException($"{methodName} cannot be combined with {managedIdentityOption}; choose a single credential method.");
         }
 
         if (!hasExplicitKey)
@@ -1119,17 +1123,17 @@ public partial class ShellInterpreter : IDisposable
 
         if (hasExplicitMethod)
         {
-            throw new ShellException($"'{methodName}' cannot be combined with an account key in the connection string; provide either a key or a credential method, not both.");
+            throw new ShellException($"{methodName} cannot be combined with an account key in the connection string; provide either a key or a credential method, not both.");
         }
 
         if (hasManagedIdentity)
         {
-            throw new ShellException("'--managed-identity' cannot be combined with an account key in the connection string; provide either a key or a credential method, not both.");
+            throw new ShellException($"{managedIdentityOption} cannot be combined with an account key in the connection string; provide either a key or a credential method, not both.");
         }
 
         if (!string.IsNullOrWhiteSpace(tenantId) || !string.IsNullOrWhiteSpace(loginHint))
         {
-            throw new ShellException("Interactive credential options ('--tenant'/'--hint') cannot be combined with an account key in the connection string; provide either a key or a credential method, not both.");
+            throw new ShellException("Interactive credential options (--tenant/--hint, startup --connect-tenant/--connect-hint) cannot be combined with an account key in the connection string; provide either a key or a credential method, not both.");
         }
     }
 
@@ -1143,7 +1147,7 @@ public partial class ShellInterpreter : IDisposable
     {
         if (useVSCodeCredential && useAzureCli)
         {
-            throw new ShellException("'--connect-vscode-credential' cannot be combined with '--azure-cli'; choose a single credential method.");
+            throw new ShellException("The VS Code credential option (--connect-vscode-credential) cannot be combined with the Azure CLI credential option (--azure-cli / --connect-azure-cli); choose a single credential method.");
         }
 
         if (useVSCodeCredential)

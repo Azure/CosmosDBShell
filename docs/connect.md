@@ -13,13 +13,15 @@ The credential type is determined by the first matching rule (top-to-bottom):
 | 3 | `--connect-vscode-credential` startup flag provided (startup only) | `VisualStudioCodeCredential` (falls back to next step) |
 | 4 | `COSMOSDB_SHELL_TOKEN` env var is set | Static access token |
 | 5 | `--managed-identity` option provided | `ManagedIdentityCredential` |
-| 6 | `--tenant` or `--hint` option provided | `InteractiveBrowserCredential` (with `DeviceCodeCredential` fallback) |
+| 6 | `--tenant` or `--hint` option provided (and `--azure-cli` not set) | `InteractiveBrowserCredential` (with `DeviceCodeCredential` fallback) |
 | 7 | `--azure-cli` (startup: `--connect-azure-cli`) flag provided | `AzureCliCredential` |
 | 8 | Endpoint only (no additional arguments) | `DefaultAzureCredential` |
 
 > **Note:** Step 3 (`--connect-vscode-credential`) is only available as a CLI startup option, not as an argument to the interactive `connect` command.
+>
+> **Note:** `--azure-cli` takes precedence over the priority&nbsp;6 interactive selection, so combining `--azure-cli` with `--tenant` uses `AzureCliCredential` (honoring the tenant) rather than triggering the browser/device-code flow.
 
-The `--authority-host` option is passed through to whichever credential is created (priorities 3-6). It does not affect which credential type is selected. `AzureCliCredential` (priority 7) uses the cloud that the Azure CLI is already configured for, so it does not accept `--authority-host`; if you supply both, the value is ignored and a warning is printed. Use `az cloud set` to change the Azure CLI cloud instead.
+The `--authority-host` option is passed through to whichever credential is created for priorities 3-6 and to `DefaultAzureCredential` (priority 8). It does not affect which credential type is selected. `AzureCliCredential` (priority 7) uses the cloud that the Azure CLI is already configured for, so it does not accept `--authority-host`; if you supply both, the value is ignored and a warning is printed. Use `az cloud set` to change the Azure CLI cloud instead.
 
 ### When to use `--azure-cli`
 
