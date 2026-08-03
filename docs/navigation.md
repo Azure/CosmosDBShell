@@ -258,6 +258,8 @@ Start the shell with options to customize behavior:
 
 | Option | Description |
 | ------ | ----------- |
+| `--output <format>` | Output format for command results: `user` (default interactive view), `json`, `table`, or `csv`. Alias: `-o`. Selecting `json` or `csv` enables machine mode. |
+| `--quiet` | Suppress standard informational output (banners, connection logs). Enables machine mode. Alias: `-q` |
 | `-c <cmd>` | Execute command and exit. Everything after `-c` is taken as the command, so app-level options must come before `-c`. Windows-style `/c` is also accepted. |
 | `-k <cmd>` | Execute command and stay in shell. Everything after `-k` is taken as the command, so app-level options must come before `-k`. Windows-style `/k` is also accepted. |
 | `--connect <str>` | Connect with this connection string or endpoint on startup |
@@ -275,6 +277,36 @@ Start the shell with options to customize behavior:
 | `--clear-history` | Clear command history on start |
 | `--help` | Show usage information |
 | `--version` | Show version |
+
+### Machine Mode And Exit Codes
+
+For automation and agentic wrappers, the shell can emit deterministic, machine-consumable
+output. **Machine mode** is entered when any of the following is true:
+
+- `--output json` or `--output csv` is specified (structured formats), or
+- `--quiet` is specified, or
+- `-c` is used without an explicit `--output` (defaults to `json`).
+
+In machine mode the shell disables ANSI colors, suppresses connection/informational
+banners, emits command results as the selected structured format (JSON or CSV) on `STDOUT`,
+and writes early parser/connection failures as a structured `{ "status": "error", "error": ... }`
+object on `STDERR`. The human-facing `user` and `table` formats are not machine mode; `user`
+falls back to JSON whenever output is redirected, piped, or run in machine mode.
+
+Bare piped stdin (for example `echo "..." | cosmosdbshell`) is **not** implicitly machine
+mode; pass `-c`, `--output json`, or `--quiet` to opt into structured output.
+
+Commands map failures to a stable set of exit codes (accessible via `$?`, `%ERRORLEVEL%`,
+or `$LASTEXITCODE`):
+
+| Exit code | Meaning |
+| --------- | ------- |
+| `0` | Success |
+| `1` | Generic error |
+| `2` | Bad arguments / parser errors |
+| `3` | Auth / connection failure |
+| `4` | Not found |
+| `5` | Throttled (RU budget exceeded) |
 
 ### Environment Variables
 

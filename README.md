@@ -161,7 +161,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 
 | Option | Description |
 | ------ | ----------- |
-| `--output <format>` | The output format to use (`json`, `table`, `csv`). Alias: `-o` |
+| `--output <format>` | The output format to use (`user`, `json`, `table`, `csv`). Alias: `-o` |
 | `--quiet` | Suppress standard informational output. Alias: `-q` |
 | `-c <cmd>` | Execute and exit |
 | `-k <cmd>` | Execute and stay |
@@ -204,7 +204,7 @@ When running scripts or automation, Cosmos DB Shell maps execution failures to a
 - **`3`**: Auth / connection failure
 - **`4`**: Not found
 - **`5`**: Throttled (RU budget exceeded)
-> **Machine Mode**: Using `--output json` or `--quiet` (or running `-c` without specifying `--output`) disables ANSI colors, suppresses connection/informational banners, and redirects early parser/connection exceptions to `STDERR` as structured JSON. Every command produces a structured result that is emitted as JSON on `STDOUT` in machine mode. Interactively, commands render a friendly, human-readable view instead; the default `user` output format selects that friendly view and automatically falls back to JSON whenever output is redirected, piped, or run in machine mode.
+> **Machine Mode**: Using `--output json` or `--output csv` or `--quiet` (or running `-c` without specifying `--output`, which defaults to `json`) disables ANSI colors, suppresses connection/informational banners, and redirects early parser/connection exceptions to `STDERR` as structured JSON. Data-operation commands emit their result in the selected structured format (JSON or CSV) on `STDOUT`; diagnostic and interactive commands may still write plain text. Interactively, commands render a friendly, human-readable view instead; the default `user` output format selects that friendly view and automatically falls back to JSON whenever output is redirected, piped, or run in machine mode. Bare piped stdin (`echo "..." | cosmosdbshell`) is not implicitly machine mode—pass `-c`, `--output json`, or `--quiet` to opt in.
 
 ## Theming
 

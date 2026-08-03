@@ -150,6 +150,41 @@ public class OutputFormatTests
         Assert.Equal(OutputFormat.Table, commandState.OutputFormat);
     }
 
+    [Fact]
+    async Task CommandStatement_ClearsRenderTabularFromPriorStatement()
+    {
+        // A prior command's RenderTabular delegate must not leak into the next
+        // statement that reuses the same shared CommandState; otherwise CSV/Table
+        // output for the later command would render the earlier command's table.
+        using var shell = ShellInterpreter.CreateInstance();
+        var lexer = new Lexer("echo \"b\"");
+        var parser = new StatementParser(lexer);
+        var statements = parser.ParseStatements();
+
+        var state = new CommandState();
+        state.RenderTabular = () => new TabularData("Leaked");
+
+        state = await statements[0].RunAsync(shell, state, TestContext.Current.CancellationToken);
+
+        Assert.Null(state.RenderTabular);
+    }
+
+    [Fact]
+    async Task AssignmentStatement_ClearsRenderTabularFromPriorStatement()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var lexer = new Lexer("$x = 1");
+        var parser = new StatementParser(lexer);
+        var statements = parser.ParseStatements();
+
+        var state = new CommandState();
+        state.RenderTabular = () => new TabularData("Leaked");
+
+        state = await statements[0].RunAsync(shell, state, TestContext.Current.CancellationToken);
+
+        Assert.Null(state.RenderTabular);
+    }
+
     private string StripWS(string input)
     {
         var sb = new StringBuilder();

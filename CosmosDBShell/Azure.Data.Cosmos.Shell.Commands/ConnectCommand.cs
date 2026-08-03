@@ -105,9 +105,10 @@ internal partial class ConnectCommand : CosmosCommand
                 RenderUser = () => { },
             };
             var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(this.ConnectionString);
-            var resultElement = JsonSerializer.SerializeToElement(new Dictionary<string, string?>
+            var resultElement = JsonSerializer.SerializeToElement(new Dictionary<string, object?>
             {
-                ["connected state"] = endpoint,
+                ["connected"] = true,
+                ["endpoint"] = endpoint,
             });
             returnState.Result = new ShellJson(resultElement);
             return returnState;

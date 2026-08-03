@@ -39,6 +39,7 @@ internal class AssignmentStatement : Statement
         shell.SetVariable(this.Variable.Name, value);
         commandState.Result = null;
         commandState.RenderUser = null;
+        commandState.RenderTabular = null;
         return commandState;
     }
 
