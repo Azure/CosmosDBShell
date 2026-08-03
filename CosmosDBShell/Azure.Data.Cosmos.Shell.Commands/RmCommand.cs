@@ -18,7 +18,7 @@ using Spectre.Console;
 [CosmosExample("rm old-item-* --key=id", Description = "Delete items where 'id' field matches pattern")]
 [CosmosExample("rm test-* --database=MyDB --container=Items", Description = "Delete items from specific database and container")]
 [CosmosExample("rm test-* --dry-run", Description = "Preview how many items would be deleted without deleting them")]
-[McpAnnotation(Title = "Remove Items", Restricted = true, Destructive = true)]
+[McpAnnotation(Title = "Remove Items", Restricted = true, Destructive = true, Confirmable = true)]
 internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 {
     private PatternMatcher? matcher;

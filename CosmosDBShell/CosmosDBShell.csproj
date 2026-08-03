@@ -73,6 +73,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="lang\en.ftl" />
+    <EmbeddedResource Include="cosmos_welcome.ans" />
     <EmbeddedResource Include="Azure.Data.Cosmos.Shell.Mcp\ServerInstructions.md" />
     <EmbeddedResource Include="..\docs\programming.md" Link="docs\programming.md" />
     <EmbeddedResource Include="..\docs\nosql-query-language.md" Link="docs\nosql-query-language.md" />
@@ -99,7 +100,6 @@
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
     <PackageReference Include="RadLine" />
     <PackageReference Include="Azure.Core" />
-    <PackageReference Include="Newtonsoft.Json" />
     <PackageReference Include="System.ClientModel" />
     <PackageReference Include="Tomlyn" />
     <PackageReference Include="StyleCop.Analyzers">

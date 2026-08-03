@@ -14,9 +14,9 @@ using Spectre.Console;
 
 [CosmosCommand("rmdb")]
 [CosmosExample("rmdb TestDatabase", Description = "Delete database with confirmation prompt")]
-[CosmosExample("rmdb OldDB true", Description = "Delete database without confirmation")]
+[CosmosExample("rmdb OldDB true", Description = "Delete database skipping the interactive confirmation prompt (over MCP, confirmation is still required)")]
 [CosmosExample("rmdb TestDatabase --dry-run", Description = "Preview the deletion without deleting the database")]
-[McpAnnotation(Title = "Remove DataBase", Restricted = true, Destructive = true)]
+[McpAnnotation(Title = "Remove Database", Restricted = true, Destructive = true, Confirmable = true)]
 internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpreter>
 {
     [CosmosParameter("name", ParameterType = ParameterType.Database)]

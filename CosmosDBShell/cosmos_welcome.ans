@@ -1,0 +1,27 @@
+﻿  _[4b   [1;37m____[6C_[5b..___  ___.   ____[6C_[5b.    _[4b  .____[0m
+ [1;37m/[5C| / __ \    /[6C||   \/   |  / __ \    /[6C|   |[5C\ |  _ \[0m
+|  ,---'| |  | |  |   (---`|  \  /  | | |  | |  |   (---`   | .--. || |_) |[0m
+|  |    | |  | |   \   \   |  |\/|  | | |  | |   \   \[6C| |  | ||  _ <[0m
+[1;30m|  `---.| `--' |.---)   |  |  |  |  | | `--' |.---)   |[5C| '--' || |_) |  [0m
+ [1;30m\_[4b| \____/ |_[5b/   |__|  |__|  \____/ |_[5b/[6C|_[4b/ |____/   [0m
+[19C[1;37m_[5b. __    __   _[5b  _[6C_[0m
+[18C[1;37m/[6C||  |  |  | |  ____|| |    | |[0m
+[17C|   (---`|  |__|  | | |__   | |    | |[0m
+[18C\   \   |   __   | |  __|  | |    | |[0m
+[15C[1;30m.---)   |  |  |  |  | | |____ | `---.| `---. [0m
+[15C[1;30m|_[5b/   |__|  |__| |_[5b||_[4b||_[4b| [0m
+[48;2;85;255;255m [30mSTART HERE [0m
+[0m
+[1;33m01  CONNECT[32C02  LEARN[0m
+    [1mconnect <endpoint>[25Chelp[0m
+    [1;30mEntra ID, account key, or emulator[9CExplore commands, syntax, and topics [0m
+[0m
+[1;33m03  NAVIGATE[31C04  QUERY[0m
+    [1mls  /  cd <name>  /  pwd[19Cquery "SELECT * FROM c"[0m
+    [1;30mAccount  >  DB  >  Container  >  Items[5CRun Cosmos DB SQL interactively[0m
+[0m
+[48;2;85;255;255m [30mRESOURCES [0m
+[0m
+[1;36mProject    [34mhttps://github.com/Azure/CosmosDBShell[0m
+[1;36mDocs[7C[34mhttps://github.com/Azure/CosmosDBShell/blob/main/README.md[0m
+[1;36mExamples   [34mhttps://github.com/Azure/CosmosDBShell/tree/main/examples
