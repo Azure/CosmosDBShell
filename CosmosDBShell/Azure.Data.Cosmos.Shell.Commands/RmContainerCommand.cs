@@ -12,10 +12,10 @@ using Spectre.Console;
 
 [CosmosCommand("rmcon")]
 [CosmosExample("rmcon OldContainer", Description = "Delete container with confirmation prompt")]
-[CosmosExample("rmcon TempData true", Description = "Delete container without confirmation")]
+[CosmosExample("rmcon TempData true", Description = "Delete container skipping the interactive confirmation prompt (over MCP, confirmation is still required)")]
 [CosmosExample("rmcon TestContainer --database=TestDB", Description = "Delete container from specific database")]
 [CosmosExample("rmcon OldContainer --dry-run", Description = "Preview the deletion without deleting the container")]
-[McpAnnotation(Title = "Remove Container", Restricted = true, Destructive = true)]
+[McpAnnotation(Title = "Remove Container", Restricted = true, Destructive = true, Confirmable = true)]
 internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpreter>
 {
     [CosmosParameter("name", ParameterType = ParameterType.Container)]
