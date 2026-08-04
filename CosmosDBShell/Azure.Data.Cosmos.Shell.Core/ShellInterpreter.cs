@@ -69,7 +69,7 @@ public partial class ShellInterpreter : IDisposable
         // editor.KeyBindings.Add<ClearInputCommand>(ConsoleKey.Escape);
         // TODO: Support selection commands?
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var envConfigDir = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_CONFIG_DIR");
+        var envConfigDir = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_CONFIG_DIR")?.Trim();
         this.cfgPath = configPath
             ?? (!string.IsNullOrWhiteSpace(envConfigDir) ? envConfigDir : Path.Join(appData, "CosmosDBShell"));
         this.history = [];

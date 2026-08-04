@@ -4,6 +4,7 @@
 
 namespace CosmosShell.Tests.Integration;
 
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -189,7 +190,7 @@ public class ShellProcessTests
         // Isolate the shell's config directory so process-level tests (for example
         // --clear-history) never touch the developer's real command history under
         // %LocalAppData%\CosmosDBShell.
-        var isolatedConfigDir = Path.Combine(Path.GetTempPath(), $"cosmosshell-test-{Guid.NewGuid():N}");
+        var isolatedConfigDir = Path.Join(Path.GetTempPath(), $"cosmosshell-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(isolatedConfigDir);
 
         try
@@ -266,6 +267,11 @@ public class ShellProcessTests
             try
             {
                 await process.WaitForExitAsync(timeoutCts.Token);
+
+                // WaitForExitAsync can return before the async output/error events
+                // have finished draining; the synchronous wait flushes them so the
+                // captured StdOut/StdErr are complete before we assert on them.
+                process.WaitForExit();
             }
             catch (OperationCanceledException)
             {
@@ -273,9 +279,9 @@ public class ShellProcessTests
                 {
                     process.Kill(entireProcessTree: true);
                 }
-                catch
+                catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException)
                 {
-                    // Process may already have exited.
+                    // Process may already have exited or cannot be killed on this platform.
                 }
 
                 throw new TimeoutException(
@@ -293,7 +299,7 @@ public class ShellProcessTests
             {
                 Directory.Delete(isolatedConfigDir, recursive: true);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // Best-effort cleanup; the OS temp directory is reclaimed eventually.
             }

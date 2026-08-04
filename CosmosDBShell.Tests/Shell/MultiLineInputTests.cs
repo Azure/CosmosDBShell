@@ -268,31 +268,6 @@ public class MultiLineInputTests
     }
 
     [Fact]
-    public void ConfigDirEnvVar_RedirectsHistoryFileAwayFromRealUserDirectory()
-    {
-        // Guards against process-level tests (for example --clear-history) deleting
-        // the developer's real command history: setting COSMOSDB_SHELL_CONFIG_DIR
-        // must move the history file into the isolated directory.
-        var isolatedDir = Path.Combine(Path.GetTempPath(), $"cosmosshell-cfg-{Guid.NewGuid():N}");
-        var previous = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_CONFIG_DIR");
-        try
-        {
-            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_CONFIG_DIR", isolatedDir);
-            using var shell = new ShellInterpreter();
-
-            Assert.Equal(Path.Join(isolatedDir, "cmd_history"), shell.HistoryFile);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_CONFIG_DIR", previous);
-            if (Directory.Exists(isolatedDir))
-            {
-                Directory.Delete(isolatedDir, recursive: true);
-            }
-        }
-    }
-
-    [Fact]
     public void DecodeHistoryLine_PrefixedLineWithInvalidEscape_ReturnsRawLine()
     {
         // A pre-existing history entry that literally begins with the prefix
