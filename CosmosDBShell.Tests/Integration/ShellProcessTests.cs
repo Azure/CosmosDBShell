@@ -186,97 +186,118 @@ public class ShellProcessTests
 
         var dotnet = GetDotnetPath();
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = dotnet,
-            WorkingDirectory = AppContext.BaseDirectory,
-            UseShellExecute = false,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-            CreateNoWindow = true,
-        };
-
-        startInfo.ArgumentList.Add(shellDll);
-        if (extraArgs != null)
-        {
-            foreach (var a in extraArgs)
-            {
-                startInfo.ArgumentList.Add(a);
-            }
-        }
-
-        // Keep the environment minimal and predictable.
-        startInfo.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
-        startInfo.Environment.Remove("COSMOSDB_SHELL_FORMAT");
-
-        using var process = new Process { StartInfo = startInfo };
-        var stdOut = new StringBuilder();
-        var stdErr = new StringBuilder();
-
-        process.OutputDataReceived += (_, e) =>
-        {
-            if (e.Data != null)
-            {
-                stdOut.AppendLine(e.Data);
-            }
-        };
-        process.ErrorDataReceived += (_, e) =>
-        {
-            if (e.Data != null)
-            {
-                stdErr.AppendLine(e.Data);
-            }
-        };
-
-        if (!process.Start())
-        {
-            throw new InvalidOperationException("Failed to start CosmosDBShell process.");
-        }
-
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        if (stdinScript != null)
-        {
-            await process.StandardInput.WriteAsync(stdinScript);
-            await process.StandardInput.WriteLineAsync();
-            process.StandardInput.Close();
-        }
-        else
-        {
-            process.StandardInput.Close();
-        }
-
-        // Enforce a reasonable timeout so a hang does not block the test run indefinitely.
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(45));
+        // Isolate the shell's config directory so process-level tests (for example
+        // --clear-history) never touch the developer's real command history under
+        // %LocalAppData%\CosmosDBShell.
+        var isolatedConfigDir = Path.Combine(Path.GetTempPath(), $"cosmosshell-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(isolatedConfigDir);
 
         try
         {
-            await process.WaitForExitAsync(timeoutCts.Token);
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = dotnet,
+                WorkingDirectory = AppContext.BaseDirectory,
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                CreateNoWindow = true,
+            };
+
+            startInfo.ArgumentList.Add(shellDll);
+            if (extraArgs != null)
+            {
+                foreach (var a in extraArgs)
+                {
+                    startInfo.ArgumentList.Add(a);
+                }
+            }
+
+            // Keep the environment minimal and predictable.
+            startInfo.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
+            startInfo.Environment.Remove("COSMOSDB_SHELL_FORMAT");
+            startInfo.Environment["COSMOSDB_SHELL_CONFIG_DIR"] = isolatedConfigDir;
+
+            using var process = new Process { StartInfo = startInfo };
+            var stdOut = new StringBuilder();
+            var stdErr = new StringBuilder();
+
+            process.OutputDataReceived += (_, e) =>
+            {
+                if (e.Data != null)
+                {
+                    stdOut.AppendLine(e.Data);
+                }
+            };
+            process.ErrorDataReceived += (_, e) =>
+            {
+                if (e.Data != null)
+                {
+                    stdErr.AppendLine(e.Data);
+                }
+            };
+
+            if (!process.Start())
+            {
+                throw new InvalidOperationException("Failed to start CosmosDBShell process.");
+            }
+
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            if (stdinScript != null)
+            {
+                await process.StandardInput.WriteAsync(stdinScript);
+                await process.StandardInput.WriteLineAsync();
+                process.StandardInput.Close();
+            }
+            else
+            {
+                process.StandardInput.Close();
+            }
+
+            // Enforce a reasonable timeout so a hang does not block the test run indefinitely.
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(45));
+
+            try
+            {
+                await process.WaitForExitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // Process may already have exited.
+                }
+
+                throw new TimeoutException(
+                    $"CosmosDBShell process did not exit in time. StdOut: {Strip(stdOut.ToString())} StdErr: {Strip(stdErr.ToString())}");
+            }
+
+            return new ShellProcessResult(
+                process.ExitCode,
+                Strip(stdOut.ToString()),
+                Strip(stdErr.ToString()));
         }
-        catch (OperationCanceledException)
+        finally
         {
             try
             {
-                process.Kill(entireProcessTree: true);
+                Directory.Delete(isolatedConfigDir, recursive: true);
             }
             catch
             {
-                // Process may already have exited.
+                // Best-effort cleanup; the OS temp directory is reclaimed eventually.
             }
-
-            throw new TimeoutException(
-                $"CosmosDBShell process did not exit in time. StdOut: {Strip(stdOut.ToString())} StdErr: {Strip(stdErr.ToString())}");
         }
-
-        return new ShellProcessResult(
-            process.ExitCode,
-            Strip(stdOut.ToString()),
-            Strip(stdErr.ToString()));
     }
 
     private static string GetDotnetPath()
