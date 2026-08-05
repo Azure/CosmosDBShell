@@ -1,0 +1,206 @@
+#################################################################################
+#            CosmosDBShell - Release: publish packages to nuget.org             #
+#                                                                               #
+# This pipeline does NOT build or sign anything. It consumes the already-built  #
+# and Microsoft-signed NuGet packages produced by the Official build pipeline   #
+# (.pipelines/CosmosDB-Shell-Official.yml) and pushes them to the public        #
+# nuget.org feed, gated behind a manual approval on the                         #
+# 'nuget-org-release' Azure DevOps Environment.                                 #
+#                                                                               #
+# One-time setup required before the first live run (see notes at bottom):      #
+#   1. nuget.org: create/own the 'CosmosDBShell' package ID and the             #
+#      'CosmosDBShell.FrameworkDependent' package ID under the 'cosmosdbshell'   #
+#      organization and generate a scoped API key covering both.                #
+#   2. Azure DevOps: create a NuGet service connection named                    #
+#      '$(NuGetServiceConnection)' pointing at $(NuGetOrgSource) with that key. #
+#   3. Azure DevOps: create an Environment named 'nuget-org-release' and add    #
+#      the required approvers as an approval check.                             #
+#   4. Register this YAML as a new pipeline named 'CosmosDB-Shell-Release-NuGet'#
+#      and confirm the 'source:' below matches the Official build's pipeline    #
+#      name in your ADO project.                                                #
+#################################################################################
+
+# Release is initiated manually only. It never runs on commits or PRs.
+trigger: none
+pr: none
+
+parameters:
+  - name: "dryRun"
+    displayName: "Dry run (validate the package set but skip the nuget.org push)"
+    type: boolean
+    default: true
+
+  - name: "debug"
+    displayName: "Enable debug output"
+    type: boolean
+    default: false
+
+variables:
+  system.debug: ${{ parameters.debug }}
+
+  # Name of the Azure DevOps NuGet service connection that stores the
+  # nuget.org API key. Create this under Project settings > Service connections.
+  NuGetServiceConnection: "nuget-org-cosmosdbshell"
+
+  # Public nuget.org v3 push source.
+  NuGetOrgSource: "https://api.nuget.org/v3/index.json"
+
+  # Folder (inside the downloaded Official-build artifact) that holds the signed
+  # *.nupkg files. The Official pipeline publishes out\ as 'cosmos_shell_all',
+  # and packs the packages into out\nupkg.
+  PackagesArtifactName: "cosmos_shell_all"
+  PackagesSubfolder: "nupkg"
+
+resources:
+  pipelines:
+    # Pull the signed packages from the most recent successful Official build.
+    # 'source' must match the *name* of the Official pipeline in Azure DevOps.
+    - pipeline: officialBuild
+      source: CosmosDB-Shell-Official
+      trigger: none # never auto-trigger a release when a build completes
+
+  repositories:
+    - repository: templates
+      type: git
+      name: OneBranch.Pipelines/GovernedTemplates
+      ref: refs/heads/main
+
+extends:
+  template: v2/OneBranch.Official.CrossPlat.yml@templates # https://aka.ms/obpipelines/templates
+  parameters:
+    featureFlags:
+      WindowsHostVersion:
+        Version: 2022
+        Network: R1
+    cloudvault:
+      enabled: false
+    globalSdl: # https://aka.ms/obpipelines/sdl
+      tsa:
+        enabled: true
+      policheck:
+        break: true
+
+    stages:
+      - stage: release
+        displayName: "Publish to nuget.org"
+        jobs:
+          # A deployment job is used so the 'nuget-org-release' Environment's
+          # approval check fires before any push happens.
+          - deployment: push_nuget_org
+            displayName: "Push signed packages to nuget.org"
+            environment: nuget-org-release
+            pool:
+              type: windows # 1ES Official requires pool.type.
+            variables:
+              # 1ES requires an output directory even though this job only
+              # downloads and pushes; nothing new is produced here.
+              ob_outputDirectory: '$(Build.SourcesDirectory)\out'
+              ob_artifactBaseName: cosmos_shell_release
+            strategy:
+              runOnce:
+                deploy:
+                  steps:
+                    - task: UseDotNet@2
+                      displayName: "Install .NET SDK"
+                      inputs:
+                        packageType: "sdk"
+                        useGlobalJson: true
+                        performMultiLevelLookup: true
+
+                    # Satisfy the OneBranch/1ES template contract: ob_outputDirectory
+                    # must exist even though this release job produces nothing new
+                    # (it only downloads and pushes). The template uploads this
+                    # directory as an artifact after the last user step, which can
+                    # fail if the folder was never created.
+                    - task: PowerShell@2
+                      displayName: "Ensure output directory exists"
+                      inputs:
+                        targetType: inline
+                        pwsh: true
+                        script: |
+                          New-Item -ItemType Directory -Path '$(Build.SourcesDirectory)\out' -Force | Out-Null
+
+                    # Download the signed packages from the Official build.
+                    # Lands at: $(Pipeline.Workspace)\officialBuild\<PackagesArtifactName>\<PackagesSubfolder>\*.nupkg
+                    - download: officialBuild
+                      artifact: $(PackagesArtifactName)
+                      displayName: "Download signed packages from Official build"
+
+                    - task: PowerShell@2
+                      displayName: "Validate package set before publishing"
+                      inputs:
+                        targetType: inline
+                        pwsh: true
+                        script: |
+                          $ErrorActionPreference = 'Stop'
+
+                          $pkgDir = Join-Path '$(Pipeline.Workspace)' 'officialBuild\$(PackagesArtifactName)\$(PackagesSubfolder)'
+                          if (-not (Test-Path $pkgDir)) {
+                            throw "Package directory not found: $pkgDir. Confirm the Official build published the '$(PackagesArtifactName)' artifact with a '$(PackagesSubfolder)' folder."
+                          }
+
+                          $packages = Get-ChildItem -Path $pkgDir -Filter *.nupkg -File
+                          if (-not $packages -or $packages.Count -eq 0) {
+                            throw "No .nupkg files found in $pkgDir."
+                          }
+
+                          # Every RID-specific tool package must be present, plus exactly
+                          # one non-RID 'pointer' package that ties them together.
+                          $ridPatterns = @(
+                            '^CosmosDBShell\.win-x64\..+\.nupkg$',
+                            '^CosmosDBShell\.win-arm64\..+\.nupkg$',
+                            '^CosmosDBShell\.linux-x64\..+\.nupkg$',
+                            '^CosmosDBShell\.linux-arm64\..+\.nupkg$',
+                            '^CosmosDBShell\.osx-x64\..+\.nupkg$',
+                            '^CosmosDBShell\.osx-arm64\..+\.nupkg$'
+                          )
+
+                          foreach ($pattern in $ridPatterns) {
+                            if (-not ($packages | Where-Object { $_.Name -match $pattern })) {
+                              throw "Missing expected RID package matching: $pattern"
+                            }
+                          }
+
+                          # The framework-dependent tool package (requires .NET 10
+                          # on the target machine) ships alongside the RID set.
+                          $fdd = $packages | Where-Object { $_.Name -match '^CosmosDBShell\.FrameworkDependent\..+\.nupkg$' }
+                          if (-not $fdd -or $fdd.Count -ne 1) {
+                            $names = @($fdd | ForEach-Object { $_.Name })
+                            throw "Expected exactly one framework-dependent package (CosmosDBShell.FrameworkDependent.*). Found: $($names -join ', ')"
+                          }
+
+                          $pointer = $packages | Where-Object {
+                            $_.Name -notmatch '^CosmosDBShell\.(win-x64|win-arm64|linux-x64|linux-arm64|osx-x64|osx-arm64|FrameworkDependent)\..+\.nupkg$'
+                          }
+                          if (-not $pointer -or $pointer.Count -ne 1) {
+                            $names = @($pointer | ForEach-Object { $_.Name })
+                            throw "Expected exactly one pointer (non-RID) package. Found: $($names -join ', ')"
+                          }
+
+                          Write-Host "Packages to publish:"
+                          $packages | Sort-Object Name | ForEach-Object {
+                            Write-Host " - $($_.Name) [$($_.Length) bytes]"
+                          }
+
+                          Write-Host "Target feed: $(NuGetOrgSource)"
+
+                          Write-Host "##vso[task.setvariable variable=ResolvedPackageDir]$pkgDir"
+
+                    - ${{ if eq(parameters.dryRun, true) }}:
+                        - task: PowerShell@2
+                          displayName: "Dry run - skipping nuget.org push"
+                          inputs:
+                            targetType: inline
+                            pwsh: true
+                            script: |
+                              Write-Host "dryRun=true: validated the package set but did not push to $(NuGetOrgSource)."
+                              Write-Host "Re-run with dryRun=false to publish."
+
+                    - ${{ if eq(parameters.dryRun, false) }}:
+                        - task: NuGetCommand@2
+                          displayName: "Push packages to nuget.org"
+                          inputs:
+                            command: "push"
+                            packagesToPush: '$(ResolvedPackageDir)\*.nupkg'
+                            nuGetFeedType: "external"
+                            publishFeedCredentials: "$(NuGetServiceConnection)"
