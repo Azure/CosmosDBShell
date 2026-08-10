@@ -69,12 +69,18 @@ public partial class CommandState
                         list.Add(null);
                     }
 
+                    var keysToShift = new List<string>();
                     foreach (var kv in headers)
                     {
                         if (kv.Value >= curColumn)
                         {
-                            headers[kv.Key] = kv.Value + 1;
+                            keysToShift.Add(kv.Key);
                         }
+                    }
+
+                    foreach (var key in keysToShift)
+                    {
+                        headers[key] += 1;
                     }
 
                     headers[field.Key] = curColumn;

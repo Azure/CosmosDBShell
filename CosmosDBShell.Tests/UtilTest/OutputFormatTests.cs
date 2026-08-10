@@ -95,6 +95,35 @@ public class OutputFormatTests
     }
 
     [Fact]
+    void TestTableLaterRowIntroducesLeadingColumn()
+    {
+        // A later row that introduces a field before existing fields forces the
+        // header index-shift path; it must not throw a "collection was modified".
+        var input = """
+        {
+            "items": [
+                { "b": "1", "c": "2" },
+                { "a": "3", "b": "4", "c": "5" }
+            ]
+        }
+        """;
+        var element = JsonSerializer.Deserialize<JsonElement>(input);
+
+        var commandState = new CommandState();
+        commandState.Result = new ShellJson(element);
+        commandState.OutputFormat = OutputFormat.CSV;
+
+        var output = commandState.GenerateOutputText();
+
+        Assert.Contains("\"a\"", output);
+        Assert.Contains("\"b\"", output);
+        Assert.Contains("\"c\"", output);
+        Assert.Contains("\"3\"", output);
+        Assert.Contains("\"4\"", output);
+        Assert.Contains("\"5\"", output);
+    }
+
+    [Fact]
     void TestTableCustomHeaderProvider()
     {
         var commandState = new CommandState();
