@@ -303,10 +303,11 @@ or `$LASTEXITCODE`):
 | --------- | ------- |
 | `0` | Success |
 | `1` | Generic error |
-| `2` | Bad arguments / parser errors |
-| `3` | Auth / connection failure |
-| `4` | Not found |
-| `5` | Throttled (RU budget exceeded) |
+| `2` | Usage / bad arguments / parser or script syntax errors |
+| `3` | Authentication or authorization failure (`401`/`403`, failed Entra credential) |
+| `4` | Connection / network error (socket failure, timeout, `503`) |
+| `5` | Not found (`404`) |
+| `6` | Throttled (`429` / RU budget exceeded) |
 
 ### Environment Variables
 

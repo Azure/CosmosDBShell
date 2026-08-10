@@ -94,7 +94,7 @@ internal class Program
                     ShellInterpreter.WriteLine(BuildHelpText());
                 }
 
-                Environment.ExitCode = 2;
+                Environment.ExitCode = ShellExitCode.UsageError;
                 return;
             }
 
@@ -159,7 +159,7 @@ internal class Program
                 if (!string.IsNullOrWhiteSpace(o.OtlpEndpoint)
                     && !Uri.TryCreate(o.OtlpEndpoint, UriKind.Absolute, out _))
                 {
-                    Environment.ExitCode = 2;
+                    Environment.ExitCode = ShellExitCode.UsageError;
                     var msg = MessageService.GetArgsString(
                         "otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint);
                     var inMachineMode = OutputPolicy.IsMachineMode(
@@ -188,7 +188,7 @@ internal class Program
 
             if (!string.IsNullOrWhiteSpace(o.ExecuteAndQuit) && !string.IsNullOrWhiteSpace(o.ExecuteAndContinue))
             {
-                Environment.ExitCode = 2;
+                Environment.ExitCode = ShellExitCode.UsageError;
                 var inMachineMode = OutputPolicy.IsMachineMode(
                     o.Output, o.Quiet, args.Contains("-c", StringComparer.Ordinal));
 
@@ -321,8 +321,7 @@ internal class Program
                 }
                 catch (Exception ex)
                 {
-                    var errorState = new ErrorCommandState(ex);
-                    Environment.ExitCode = errorState.ExitCode;
+                    Environment.ExitCode = ShellExitCode.FromException(ex);
 
                     var inMachineMode = OutputPolicy.IsMachineMode(
                         o.Output, o.Quiet, args.Contains("-c", StringComparer.Ordinal));
@@ -360,7 +359,7 @@ internal class Program
                 if (mcpPort <= 0)
                 {
                     WriteStartupError(MessageService.GetString("mcp-error-invalid-port"));
-                    Environment.ExitCode = 2;
+                    Environment.ExitCode = ShellExitCode.UsageError;
                     return;
                 }
 
@@ -371,7 +370,7 @@ internal class Program
                 catch (Exception ex)
                 {
                     WriteStartupError(MessageService.GetArgsString("mcp-error-creating-server", "message", ex.Message));
-                    Environment.ExitCode = 1;
+                    Environment.ExitCode = ShellExitCode.GeneralFailure;
                     return;
                 }
 
@@ -389,7 +388,7 @@ internal class Program
                         catch (Exception ex)
                         {
                             WriteStartupError(MessageService.GetArgsString("mcp-error-server-failed-start", "message", ex.Message));
-                            Environment.ExitCode = 1;
+                            Environment.ExitCode = ShellExitCode.GeneralFailure;
                         }
                     });
                 }
@@ -404,7 +403,7 @@ internal class Program
                     var state = await ShellInterpreter.Instance.ExecuteCommandAsync(script, default);
                     if (state.IsError)
                     {
-                        Environment.ExitCode = state.ExitCode;
+                        Environment.ExitCode = ShellExitCode.FromCommandState(state);
                         if (executeAndContinueCommand is null)
                         {
                             await StopHostAsync(host, hostTask);
@@ -428,7 +427,7 @@ internal class Program
                 var state = await ShellInterpreter.Instance.ExecuteCommandAsync(explicitCommand, default);
                 if (state.IsError)
                 {
-                    Environment.ExitCode = state.ExitCode;
+                    Environment.ExitCode = ShellExitCode.FromCommandState(state);
                     if (executeAndContinueCommand is null)
                     {
                         await StopHostAsync(host, hostTask);

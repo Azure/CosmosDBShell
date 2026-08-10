@@ -17,5 +17,5 @@ internal class ParserErrorCommandState : CommandState
 
     public override bool IsError => true;
 
-    public override int ExitCode => 2;
+    public override int ExitCode => ShellExitCode.UsageError;
 }

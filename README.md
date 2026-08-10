@@ -199,12 +199,16 @@ echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;
 
 When running scripts or automation, Cosmos DB Shell maps execution failures to a set of stable exit codes (accessible via `$?`, `%ERRORLEVEL%`, or `$LASTEXITCODE`):
 
-- **`0`**: Success
-- **`1`**: Generic error
-- **`2`**: Bad arguments / parser errors
-- **`3`**: Auth / connection failure
-- **`4`**: Not found
-- **`5`**: Throttled (RU budget exceeded)
+| Code | Meaning |
+| ---- | ------- |
+| `0` | Success |
+| `1` | Generic error |
+| `2` | Usage / bad arguments / parser or script syntax errors |
+| `3` | Authentication or authorization failure (`401`/`403`, failed Entra credential) |
+| `4` | Connection / network error (socket failure, timeout, `503`) |
+| `5` | Not found (`404`) |
+| `6` | Throttled (`429` / RU budget exceeded) |
+
 > **Machine Mode**: Using `--output json` or `--output csv` or `--quiet` (or running `-c` without specifying `--output`, which defaults to `json`) disables ANSI colors, suppresses connection/informational banners, and redirects early parser/connection exceptions to `STDERR` as structured JSON. Data-operation commands emit their result in the selected structured format (JSON or CSV) on `STDOUT`; diagnostic and interactive commands may still write plain text. Interactively, commands render a friendly, human-readable view instead; the default `user` output format selects that friendly view and automatically falls back to JSON whenever output is redirected, piped, or run in machine mode. Bare piped stdin (`echo "..." | cosmosdbshell`) is not implicitly machine mode—pass `-c`, `--output json`, or `--quiet` to opt in.
 
 ## Theming

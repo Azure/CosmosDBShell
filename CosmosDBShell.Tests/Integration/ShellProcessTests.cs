@@ -126,16 +126,16 @@ public class ShellProcessTests
     }
 
     [Fact]
-    public async Task UnknownRootArgument_ReturnsUnknownArgumentError()
+    public async Task UnknownRootArgument_ReturnsUsageExitCode()
     {
         var result = await RunShellAsync(
             stdinScript: null,
             extraArgs: ["not-a-root-option"],
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("Unrecognized argument 'not-a-root-option'", result.StdOut);
-        Assert.DoesNotContain("Option '--connect-mode' is defined with a bad format", result.StdOut);
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("Unrecognized argument 'not-a-root-option'", result.StdOut + result.StdErr);
+        Assert.DoesNotContain("Option '--connect-mode' is defined with a bad format", result.StdOut + result.StdErr);
     }
 
     [Fact]
@@ -146,8 +146,8 @@ public class ShellProcessTests
             extraArgs: ["--connect"],
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("Required option '--connect' is missing", result.StdOut);
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("Required option '--connect' is missing", result.StdOut + result.StdErr);
     }
 
     [Fact]
@@ -183,16 +183,36 @@ public class ShellProcessTests
     }
 
     [Fact]
-    public async Task ConnectionFailure_WithOutputJson_ReturnsExitCode3_AndJsonOnStdErr()
+    public async Task ConnectionFailure_WithOutputJson_ReturnsExitCode4_AndJsonOnStdErr()
     {
         var result = await RunShellAsync(
             stdinScript: null,
             extraArgs: ["--connect", "https://127.0.0.1:1", "--output", "json", "-c", "version"],
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(3, result.ExitCode);
+        // Connection/network failures map to ShellExitCode.ConnectionError (4).
+        Assert.Equal(4, result.ExitCode);
         Assert.Empty(result.StdOut.Trim());
         Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task StdinPipedScript_SyntaxError_ReturnsUsageExitCode()
+    {
+        var result = await RunShellAsync("echo \"unterminated", TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.ExitCode);
+    }
+
+    [Fact]
+    public async Task MalformedOtelEndpoint_ReturnsUsageExitCode()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--otel", "not-a-valid-endpoint", "-c", "version"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.ExitCode);
     }
 
     [Fact]
