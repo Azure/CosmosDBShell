@@ -146,10 +146,21 @@ dotnet tool uninstall --global CosmosDBShell
 - [Programming](docs/programming.md) - Variables, control flow, functions
 - [Filter expression language (v1)](docs/filter-v1-spec.md) - Grammar and semantics of the built-in `filter` command
 - [MCP](docs/mcp.md) - Model Context Protocol integration
+- [CI/CD](docs/ci.md) - Install in pipelines, exit-code contract, auth patterns
 
 ## CI And Packaging
 
-This repo currently uses one GitHub Actions workflow for validation and package artifacts:
+Install the shell in GitHub Actions with the composite setup action (no .NET SDK required on the runner):
+
+```yaml
+- uses: Azure/CosmosDBShell/.github/actions/setup-cosmosdb-shell@main
+  with:
+    version: latest # pin a release tag for reproducible builds
+```
+
+See the [CI/CD guide](docs/ci.md) and the [setup action README](.github/actions/setup-cosmosdb-shell/README.md) for version pinning, auth patterns, and failure handling.
+
+This repo also uses one GitHub Actions workflow for validation and package artifacts:
 
 - [.github/workflows/validate-and-package.yml](.github/workflows/validate-and-package.yml): runs validation on pull requests, and on branch pushes or manual runs it also builds installable RID-specific NuGet tool packages and uploads them as workflow artifacts
 
@@ -208,6 +219,8 @@ When running scripts or automation, Cosmos DB Shell maps execution failures to a
 | `4` | Connection / network error (socket failure, timeout, `503`) |
 | `5` | Not found (`404`) |
 | `6` | Throttled (`429` / RU budget exceeded) |
+
+These values are a public contract: existing codes are never repurposed, and new failure categories get new codes. See the [CI/CD guide](docs/ci.md#exit-code-contract) for full details.
 
 > **Machine Mode**: Using `--output json` or `--output csv` or `--quiet` (or running `-c` without specifying `--output`, which defaults to `json`) disables ANSI colors, suppresses connection/informational banners, and redirects early parser/connection exceptions to `STDERR` as structured JSON. Data-operation commands emit their result in the selected structured format (JSON or CSV) on `STDOUT`; diagnostic and interactive commands may still write plain text. Interactively, commands render a friendly, human-readable view instead; the default `user` output format selects that friendly view and automatically falls back to JSON whenever output is redirected, piped, or run in machine mode. Bare piped stdin (`echo "..." | cosmosdbshell`) is not implicitly machine mode—pass `-c`, `--output json`, or `--quiet` to opt in.
 

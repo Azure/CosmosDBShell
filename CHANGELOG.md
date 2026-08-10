@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### New features
+
+- **Deterministic machine output and exit codes.** Global `--output`/`--quiet`, structured JSON/CSV machine mode, and stable process exit codes (`0`–`6`) for automation and CI. ([#173](https://github.com/Azure/CosmosDBShell/pull/173), [#155](https://github.com/Azure/CosmosDBShell/issues/155), [#176](https://github.com/Azure/CosmosDBShell/issues/176), [#177](https://github.com/Azure/CosmosDBShell/issues/177))
+- **`setup-cosmosdb-shell` GitHub Action** and [CI/CD guide](docs/ci.md) for installing the self-contained shell in pipelines without a .NET SDK on the runner. ([#173](https://github.com/Azure/CosmosDBShell/pull/173), [#182](https://github.com/Azure/CosmosDBShell/pull/182))
+
 ## 1.1.150-preview — 2026-07-31
 
 A short cycle on top of 1.1.136-preview. First interactive startup now shows a welcome screen (replayable via a new `welcome` command) with a more compact startup banner; `connect` gains a deterministic `--azure-cli` credential alongside clearer failure diagnostics and hardened credential selection; and the last direct `Newtonsoft.Json` usages are replaced with `System.Text.Json`.

@@ -309,6 +309,8 @@ or `$LASTEXITCODE`):
 | `5` | Not found (`404`) |
 | `6` | Throttled (`429` / RU budget exceeded) |
 
+These values are a public contract. See the [CI/CD guide](ci.md#exit-code-contract) for install steps, auth patterns, and scripted failure handling.
+
 ### Environment Variables
 
 | Variable | Description |
