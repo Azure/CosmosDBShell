@@ -125,6 +125,20 @@ internal class DirCommand : CosmosCommand
         return Task.FromResult(returnState);
     }
 
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+
+        return $"{len:0.##} {sizes[order]}";
+    }
+
     private void RenderEntries(List<FileSystemEntry> entries)
     {
         // Display results
@@ -166,20 +180,6 @@ internal class DirCommand : CosmosCommand
                 "dirCount",
                 entries.Count(e => e.IsDirectory)));
         }
-    }
-
-    private static string FormatFileSize(long bytes)
-    {
-        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
-        double len = bytes;
-        int order = 0;
-        while (len >= 1024 && order < sizes.Length - 1)
-        {
-            order++;
-            len = len / 1024;
-        }
-
-        return $"{len:0.##} {sizes[order]}";
     }
 
     private class FileSystemEntry

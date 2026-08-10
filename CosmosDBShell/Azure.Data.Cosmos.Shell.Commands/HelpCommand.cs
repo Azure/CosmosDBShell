@@ -479,81 +479,6 @@ internal class HelpCommand : CosmosCommand
         return Task.FromResult(commandState);
     }
 
-    private void RenderCommandList(CommandRunner app)
-    {
-        if (this.Plain)
-        {
-            ShellInterpreter.WriteLine(MessageService.GetString("help-available-commands"));
-            ShellInterpreter.WriteLine();
-        }
-        else
-        {
-            // Create a nice header for the commands list
-            var headerPanel = new Panel(Theme.FormatHelpHeader(MessageService.GetString("help-available-commands")))
-            {
-                Border = BoxBorder.Rounded,
-                BorderStyle = Theme.GetHelpBorderStyle(),
-                Padding = new Padding(1, 0, 1, 0),
-            };
-            AnsiConsole.Write(headerPanel);
-            ShellInterpreter.WriteLine();
-        }
-
-        // Group commands by category (basic heuristic based on name patterns)
-        var connectionCmds = new List<CommandFactory>();
-        var dataCmds = new List<CommandFactory>();
-        var managementCmds = new List<CommandFactory>();
-        var utilityCmds = new List<CommandFactory>();
-
-        foreach (var cmd in EnumeratePrimaryCommands(app))
-        {
-            if (this.Details)
-            {
-                HelpCommand.PrintCommandHelp(cmd.CommandName, app, this.Plain);
-                continue;
-            }
-
-            // Categorize commands
-            if (cmd.CommandName.Contains("connect") || cmd.CommandName == "disconnect")
-            {
-                connectionCmds.Add(cmd);
-            }
-            else if (cmd.CommandName == "query" || cmd.CommandName == "print" || cmd.CommandName.Contains("item") || cmd.CommandName == "rm")
-            {
-                dataCmds.Add(cmd);
-            }
-            else if (cmd.CommandName.StartsWith("mk") || cmd.CommandName.StartsWith("rm") || cmd.CommandName == "create" || cmd.CommandName == "delete")
-            {
-                managementCmds.Add(cmd);
-            }
-            else
-            {
-                utilityCmds.Add(cmd);
-            }
-        }
-
-        if (!this.Details)
-        {
-            if (this.Plain)
-            {
-                // Plain category listing
-                PrintPlainCategory(MessageService.GetString("help-category-connection"), connectionCmds);
-                PrintPlainCategory(MessageService.GetString("help-category-data-operations"), dataCmds);
-                PrintPlainCategory(MessageService.GetString("help-category-management"), managementCmds);
-                PrintPlainCategory(MessageService.GetString("help-category-utilities"), utilityCmds);
-            }
-            else
-            {
-                PrintCommandCategory(MessageService.GetString("help-category-connection-styled"), connectionCmds);
-                PrintCommandCategory(MessageService.GetString("help-category-data-operations-styled"), dataCmds);
-                PrintCommandCategory(MessageService.GetString("help-category-management-styled"), managementCmds);
-                PrintCommandCategory(MessageService.GetString("help-category-utilities-styled"), utilityCmds);
-            }
-        }
-
-        PrintStatementHelps(this.Plain);
-    }
-
     private static IEnumerable<CommandFactory> EnumeratePrimaryCommands(CommandRunner app)
     {
         return app.Commands.Values
@@ -906,5 +831,80 @@ internal class HelpCommand : CosmosCommand
         }
 
         ShellInterpreter.WriteLine();
+    }
+
+    private void RenderCommandList(CommandRunner app)
+    {
+        if (this.Plain)
+        {
+            ShellInterpreter.WriteLine(MessageService.GetString("help-available-commands"));
+            ShellInterpreter.WriteLine();
+        }
+        else
+        {
+            // Create a nice header for the commands list
+            var headerPanel = new Panel(Theme.FormatHelpHeader(MessageService.GetString("help-available-commands")))
+            {
+                Border = BoxBorder.Rounded,
+                BorderStyle = Theme.GetHelpBorderStyle(),
+                Padding = new Padding(1, 0, 1, 0),
+            };
+            AnsiConsole.Write(headerPanel);
+            ShellInterpreter.WriteLine();
+        }
+
+        // Group commands by category (basic heuristic based on name patterns)
+        var connectionCmds = new List<CommandFactory>();
+        var dataCmds = new List<CommandFactory>();
+        var managementCmds = new List<CommandFactory>();
+        var utilityCmds = new List<CommandFactory>();
+
+        foreach (var cmd in EnumeratePrimaryCommands(app))
+        {
+            if (this.Details)
+            {
+                HelpCommand.PrintCommandHelp(cmd.CommandName, app, this.Plain);
+                continue;
+            }
+
+            // Categorize commands
+            if (cmd.CommandName.Contains("connect") || cmd.CommandName == "disconnect")
+            {
+                connectionCmds.Add(cmd);
+            }
+            else if (cmd.CommandName == "query" || cmd.CommandName == "print" || cmd.CommandName.Contains("item") || cmd.CommandName == "rm")
+            {
+                dataCmds.Add(cmd);
+            }
+            else if (cmd.CommandName.StartsWith("mk") || cmd.CommandName.StartsWith("rm") || cmd.CommandName == "create" || cmd.CommandName == "delete")
+            {
+                managementCmds.Add(cmd);
+            }
+            else
+            {
+                utilityCmds.Add(cmd);
+            }
+        }
+
+        if (!this.Details)
+        {
+            if (this.Plain)
+            {
+                // Plain category listing
+                PrintPlainCategory(MessageService.GetString("help-category-connection"), connectionCmds);
+                PrintPlainCategory(MessageService.GetString("help-category-data-operations"), dataCmds);
+                PrintPlainCategory(MessageService.GetString("help-category-management"), managementCmds);
+                PrintPlainCategory(MessageService.GetString("help-category-utilities"), utilityCmds);
+            }
+            else
+            {
+                PrintCommandCategory(MessageService.GetString("help-category-connection-styled"), connectionCmds);
+                PrintCommandCategory(MessageService.GetString("help-category-data-operations-styled"), dataCmds);
+                PrintCommandCategory(MessageService.GetString("help-category-management-styled"), managementCmds);
+                PrintCommandCategory(MessageService.GetString("help-category-utilities-styled"), utilityCmds);
+            }
+        }
+
+        PrintStatementHelps(this.Plain);
     }
 }
