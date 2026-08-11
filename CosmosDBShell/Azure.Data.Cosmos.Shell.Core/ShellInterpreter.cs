@@ -1552,9 +1552,6 @@ public partial class ShellInterpreter : IDisposable
                 && state.RenderUser is { } renderUser)
             {
                 renderUser();
-                state.RenderUser = null;
-                state.RenderTabular = null;
-                state.Result = null;
                 return state;
             }
 
@@ -1574,8 +1571,6 @@ public partial class ShellInterpreter : IDisposable
                     if (element.HasValue)
                     {
                         AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
-                        state.RenderUser = null;
-                        state.Result = null;
                         return state;
                     }
                 }
@@ -1595,8 +1590,6 @@ public partial class ShellInterpreter : IDisposable
                     && state.Result is ShellText { Highlighter: { } highlighter })
                 {
                     AnsiConsole.MarkupLine(highlighter(output));
-                    state.RenderUser = null;
-                    state.Result = null;
                     return state;
                 }
             }
@@ -1612,10 +1605,6 @@ public partial class ShellInterpreter : IDisposable
                     this.Redirect(output);
                 }
             }
-
-            // Clear the result after printing
-            state.RenderUser = null;
-            state.Result = null;
         }
         catch (Exception e)
         {
