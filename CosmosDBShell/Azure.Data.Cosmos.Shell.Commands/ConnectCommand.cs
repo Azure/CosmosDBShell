@@ -112,6 +112,7 @@ internal partial class ConnectCommand : CosmosCommand
             var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(this.ConnectionString);
             var resultElement = JsonSerializer.SerializeToElement(new Dictionary<string, object?>
             {
+                ["type"] = "connection",
                 ["connected"] = true,
                 ["endpoint"] = endpoint,
             });
@@ -202,6 +203,7 @@ internal partial class ConnectCommand : CosmosCommand
         {
             var notConnectedJson = new Dictionary<string, object?>
             {
+                ["type"] = "connection",
                 ["connected"] = false,
             };
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(notConnectedJson));
@@ -222,6 +224,7 @@ internal partial class ConnectCommand : CosmosCommand
 
         var jsonResult = new Dictionary<string, object?>
         {
+            ["type"] = "connection",
             ["connected"] = true,
             ["accountId"] = acc.Id,
             ["endpoint"] = client.Endpoint.ToString(),
