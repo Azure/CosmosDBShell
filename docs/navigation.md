@@ -111,7 +111,7 @@ The `|` operator pipes the JSON result of the left command into the right comman
 
 ### How It Works
 
-1. **Most commands return JSON** – even `ls` returns a structured result like `{ "items": [...] }`
+1. **Most commands return JSON** – listings return a structured result like `{ "type": "item", "values": [...] }`
 2. **The next command receives that JSON** as its input
 3. **Use JSON paths** (starting with `$`) to extract values from piped JSON
 
@@ -123,7 +123,7 @@ When a command receives piped JSON, you can use path expressions to access speci
 | ---- | ----------- |
 | `$` | The entire piped JSON object |
 | `$.property` | Access a property |
-| `$.items[0]` | Access array element |
+| `$.values[0]` | Access array element |
 | `.[0]` | Shorthand for first element (when result is array-like) |
 
 ### Practical Examples
@@ -137,7 +137,7 @@ ls | cd .[0]
 **Show the ID of the first item in current container:**
 
 ```bash
-ls -m 1 | echo $.items[0].id
+ls -m 1 | echo $.values[0].id
 ```
 
 **Create multiple items from a JSON array:**
@@ -163,7 +163,7 @@ ls | cd .[0]; ls
 **Query and process results:**
 
 ```bash
-ls -q "SELECT c.id, c.status FROM c WHERE c.priority = 1" | echo $.items
+ls -q "SELECT c.id, c.status FROM c WHERE c.priority = 1" | echo $.values
 ```
 
 ### Pipe-Aware Commands

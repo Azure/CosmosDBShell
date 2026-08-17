@@ -25,6 +25,7 @@ internal class DisconnectCommand : CosmosCommand
 
             var jsonResult = new Dictionary<string, object?>
             {
+                ["type"] = "connection",
                 ["disconnected"] = true,
                 ["endpoint"] = endpoint,
             };
@@ -35,6 +36,7 @@ internal class DisconnectCommand : CosmosCommand
         {
             var jsonResult = new Dictionary<string, object?>
             {
+                ["type"] = "connection",
                 ["disconnected"] = false,
             };
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonResult));

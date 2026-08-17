@@ -17,9 +17,11 @@ public partial class CommandState
         return '"' + str.Replace("\"", "\"\"") + '"';
     }
 
+    // "values" is the shell's own list envelope; "items"/"documents" are tolerated so
+    // user-supplied JSON (filter, jq, raw query payloads) still tabulates sensibly.
     private static bool TryGetListProperty(JsonElement json, out JsonElement array)
     {
-        foreach (var name in new[] { "values", "items", "databases", "containers" })
+        foreach (var name in new[] { "values", "items", "documents" })
         {
             if (json.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array)
             {

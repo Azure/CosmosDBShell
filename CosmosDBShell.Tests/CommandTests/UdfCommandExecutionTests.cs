@@ -40,8 +40,9 @@ public class UdfCommandExecutionTests
         var state = await command.ListAsync(container, ShellInterpreter.CreateInstance(), new CommandState(), CancellationToken.None);
 
         var json = Assert.IsType<JsonElement>(state.Result!.ConvertShellObject(DataType.Json));
-        Assert.Equal(JsonValueKind.Array, json.ValueKind);
-        Assert.Equal(0, json.GetArrayLength());
+        var values = json.GetProperty("values");
+        Assert.Equal(JsonValueKind.Array, values.ValueKind);
+        Assert.Equal(0, values.GetArrayLength());
         Assert.NotNull(state.RenderUser);
     }
 
@@ -62,9 +63,10 @@ public class UdfCommandExecutionTests
         var state = await command.ListAsync(container, ShellInterpreter.CreateInstance(), new CommandState(), CancellationToken.None);
 
         var json = Assert.IsType<JsonElement>(state.Result!.ConvertShellObject(DataType.Json));
-        Assert.Equal(1, json.GetArrayLength());
-        Assert.Equal("tax", json[0].GetProperty("id").GetString());
-        Assert.Equal("function tax() {}".Length, json[0].GetProperty("bodyLength").GetInt32());
+        var values = json.GetProperty("values");
+        Assert.Equal(1, values.GetArrayLength());
+        Assert.Equal("tax", values[0].GetProperty("id").GetString());
+        Assert.Equal("function tax() {}".Length, values[0].GetProperty("bodyLength").GetInt32());
     }
 
     [Fact]
@@ -84,7 +86,7 @@ public class UdfCommandExecutionTests
 
         Assert.NotNull(state.RenderUser);
         var json = Assert.IsType<JsonElement>(state.Result!.ConvertShellObject(DataType.Json));
-        Assert.Equal(1, json.GetArrayLength());
+        Assert.Equal(1, json.GetProperty("values").GetArrayLength());
     }
 
     [Fact]

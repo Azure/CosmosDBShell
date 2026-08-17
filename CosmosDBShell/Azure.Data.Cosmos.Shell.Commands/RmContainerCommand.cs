@@ -93,7 +93,7 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
                 if (this.DryRun == true)
                 {
                     this.SetOutcome(
-                        JsonSerializer.SerializeToElement(new { container = containerName, dryRun = true, deleted = false }),
+                        JsonSerializer.SerializeToElement(new { type = "container", id = containerName, deleted = false, dryRun = true }),
                         () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-dry-run-plan", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } })));
                     return 0;
                 }
@@ -103,13 +103,13 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
                     await CosmosResourceFacade.DeleteContainerAsync(state, databaseName, containerName, token);
                     CosmosCompleteCommand.ClearContainers();
                     this.SetOutcome(
-                        JsonSerializer.SerializeToElement(new { container = containerName, deleted = true }),
+                        JsonSerializer.SerializeToElement(new { type = "container", id = containerName, deleted = true, dryRun = false }),
                         () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-deleted_container", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } })));
                 }
                 else
                 {
                     this.SetOutcome(
-                        JsonSerializer.SerializeToElement(new { container = containerName, deleted = false }),
+                        JsonSerializer.SerializeToElement(new { type = "container", id = containerName, deleted = false, dryRun = false }),
                         () => { });
                 }
 

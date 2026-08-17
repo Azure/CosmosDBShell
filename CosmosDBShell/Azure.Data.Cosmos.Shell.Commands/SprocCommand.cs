@@ -228,7 +228,7 @@ internal class SprocCommand : CosmosCommand
             }
         }
 
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(items));
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", values = items }));
         commandState.RenderTabular = () =>
         {
             var tabular = new TabularData(
@@ -365,7 +365,7 @@ internal class SprocCommand : CosmosCommand
 
         if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-sproc-create-confirm"))
         {
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, created = false }));
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, created = false }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-create-discarded", "name", name));
             return commandState;
         }
@@ -408,7 +408,7 @@ internal class SprocCommand : CosmosCommand
             }
         }
 
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name }));
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, created = true }));
         commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
             replaced ? "command-sproc-replaced" : "command-sproc-created",
             "name",
@@ -461,7 +461,7 @@ internal class SprocCommand : CosmosCommand
         try
         {
             var response = await container.Scripts.DeleteStoredProcedureAsync(name, cancellationToken: token);
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, deleted = true }));
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, deleted = true }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
                 "command-sproc-deleted",
                 "name",
@@ -500,7 +500,7 @@ internal class SprocCommand : CosmosCommand
 
         if (string.Equals(newBody, existingBody, StringComparison.Ordinal))
         {
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = false }));
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, changed = false }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-edit-unchanged", "name", name));
             return commandState;
         }
@@ -508,7 +508,7 @@ internal class SprocCommand : CosmosCommand
         var properties = new StoredProcedureProperties { Id = name, Body = newBody };
         var response = await container.Scripts.ReplaceStoredProcedureAsync(properties, cancellationToken: token);
 
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = true }));
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, changed = true }));
         commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
             "command-sproc-replaced",
             "name",

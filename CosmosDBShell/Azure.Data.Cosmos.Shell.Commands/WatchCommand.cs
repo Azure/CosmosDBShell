@@ -226,7 +226,7 @@ internal class WatchCommand : CosmosCommand
         result.SetFormat(this.OutputFormat);
         if (collected != null)
         {
-            result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = collected }));
+            result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "item", values = collected }));
         }
 
         if (!redirected)

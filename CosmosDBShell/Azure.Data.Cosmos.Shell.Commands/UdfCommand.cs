@@ -153,7 +153,7 @@ internal class UdfCommand : CosmosCommand
             }
         }
 
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(items));
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "udf", values = items }));
         commandState.RenderTabular = () =>
         {
             var tabular = new TabularData(
@@ -287,7 +287,7 @@ internal class UdfCommand : CosmosCommand
 
         if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-udf-create-confirm"))
         {
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, created = false }));
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "udf", id = name, created = false }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-udf-create-discarded", "name", name));
             return commandState;
         }
@@ -330,7 +330,7 @@ internal class UdfCommand : CosmosCommand
             }
         }
 
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name }));
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "udf", id = name, created = true }));
         commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
             replaced ? "command-udf-replaced" : "command-udf-created",
             "name",
@@ -347,7 +347,7 @@ internal class UdfCommand : CosmosCommand
         try
         {
             var response = await container.Scripts.DeleteUserDefinedFunctionAsync(name, cancellationToken: token);
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, deleted = true }));
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "udf", id = name, deleted = true }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
                 "command-udf-deleted",
                 "name",
@@ -386,7 +386,7 @@ internal class UdfCommand : CosmosCommand
 
         if (string.Equals(newBody, existingBody, StringComparison.Ordinal))
         {
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = false }));
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "udf", id = name, changed = false }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-udf-edit-unchanged", "name", name));
             return commandState;
         }
@@ -394,7 +394,7 @@ internal class UdfCommand : CosmosCommand
         var properties = new UserDefinedFunctionProperties { Id = name, Body = newBody };
         var response = await container.Scripts.ReplaceUserDefinedFunctionAsync(properties, cancellationToken: token);
 
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = true }));
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "udf", id = name, changed = true }));
         commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
             "command-udf-replaced",
             "name",

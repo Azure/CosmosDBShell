@@ -50,7 +50,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
         var output = await ExecuteWithOutputAsync($"query \"SELECT * FROM c WHERE STARTSWITH(c.id, '{this.seedPrefix}-')\"");
 
         var doc = JsonDocument.Parse(output);
-        var items = doc.RootElement.GetProperty("items");
+        var items = doc.RootElement.GetProperty("values");
         Assert.True(items.GetArrayLength() >= 5);
     }
 
@@ -60,7 +60,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
         var output = await ExecuteWithOutputAsync($"query \"SELECT * FROM c WHERE c.category = 'alpha' AND STARTSWITH(c.id, '{this.seedPrefix}-')\"");
 
         var doc = JsonDocument.Parse(output);
-        var items = doc.RootElement.GetProperty("items");
+        var items = doc.RootElement.GetProperty("values");
         Assert.Equal(3, items.GetArrayLength());
     }
 
@@ -70,7 +70,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
         var output = await ExecuteWithOutputAsync($"query \"SELECT c.id, c.name FROM c WHERE c.id = '{this.GetSeedItemId(1)}'\"");
 
         var doc = JsonDocument.Parse(output);
-        var items = doc.RootElement.GetProperty("items");
+        var items = doc.RootElement.GetProperty("values");
         Assert.Equal(1, items.GetArrayLength());
 
         var item = items[0];
@@ -84,7 +84,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
         var output = await ExecuteWithOutputAsync($"query \"SELECT * FROM c WHERE STARTSWITH(c.id, '{this.seedPrefix}-')\" -max 2");
 
         var doc = JsonDocument.Parse(output);
-        var items = doc.RootElement.GetProperty("items");
+        var items = doc.RootElement.GetProperty("values");
         Assert.True(items.GetArrayLength() <= 2);
     }
 
@@ -95,7 +95,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
 
         // Metrics=Display puts plain items in the result (metrics tables go to AnsiConsole)
         var doc = JsonDocument.Parse(output);
-        var items = doc.RootElement.GetProperty("items");
+        var items = doc.RootElement.GetProperty("values");
         Assert.Equal(1, items.GetArrayLength());
         Assert.Equal(this.GetSeedItemId(1), items[0].GetProperty("id").GetString());
     }
@@ -182,7 +182,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
             $"query \"SELECT * FROM c WHERE c.id = '{this.GetSeedItemId(1)}'\" --database:{Fixture.DatabaseName} --container:{Fixture.ContainerName}");
 
         var doc = JsonDocument.Parse(output);
-        var items = doc.RootElement.GetProperty("items");
+        var items = doc.RootElement.GetProperty("values");
         Assert.Equal(1, items.GetArrayLength());
 
         // Navigate back for other tests
@@ -211,7 +211,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
         var output = await ExecuteWithOutputAsync("query \"SELECT * FROM c WHERE c.id = 'nonexistent-id-12345'\"");
 
         var doc = JsonDocument.Parse(output);
-        var items = doc.RootElement.GetProperty("items");
+        var items = doc.RootElement.GetProperty("values");
         Assert.Equal(0, items.GetArrayLength());
     }
 
@@ -221,7 +221,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
         var output = await ExecuteWithOutputAsync($"query \"SELECT VALUE COUNT(1) FROM c WHERE STARTSWITH(c.id, '{this.seedPrefix}-')\"");
 
         var doc = JsonDocument.Parse(output);
-        var items = doc.RootElement.GetProperty("items");
+        var items = doc.RootElement.GetProperty("values");
         Assert.True(items.GetArrayLength() > 0);
 
         // COUNT results may be returned as a raw number or wrapped in an object
@@ -237,7 +237,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
         var output = await ExecuteWithOutputAsync($"query \"SELECT c.id FROM c WHERE STARTSWITH(c.id, '{this.seedPrefix}-') ORDER BY c.score DESC\"");
 
         var doc = JsonDocument.Parse(output);
-        var items = doc.RootElement.GetProperty("items");
+        var items = doc.RootElement.GetProperty("values");
         Assert.True(items.GetArrayLength() >= 5);
 
         // First item should be the one with highest score (qtest-5)

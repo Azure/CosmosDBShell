@@ -1027,49 +1027,49 @@ Notes:
 Project a single field from a query result:
 
 ```text
-query "SELECT * FROM c" | filter '.items[0]'
+query "SELECT * FROM c" | filter '.values[0]'
 ```
 
 Count items returned by a command:
 
 ```text
-ls | filter '.items | length'
+ls | filter '.values | length'
 ```
 
 Shape each item into a smaller object:
 
 ```text
-query "SELECT * FROM c" | filter '.items | map({id, status})'
+query "SELECT * FROM c" | filter '.values | map({id, status})'
 ```
 
 Project items with quoted property names:
 
 ```text
-ls | filter '.items | map({"Volcano Name": .["Volcano Name"], Country})'
+ls | filter '.values | map({"Volcano Name": .["Volcano Name"], Country})'
 ```
 
 Filter items by a predicate:
 
 ```text
-query "SELECT * FROM c" | filter '.items | select(.status == "active")'
+query "SELECT * FROM c" | filter '.values | select(.status == "active")'
 ```
 
 Sort and project:
 
 ```text
-query "SELECT * FROM c" | filter '.items | sort_by(.id) | map(.id)'
+query "SELECT * FROM c" | filter '.values | sort_by(.id) | map(.id)'
 ```
 
 Collect iterated values into a flat array:
 
 ```text
-query "SELECT * FROM c" | filter '[.items[] | .id]'
+query "SELECT * FROM c" | filter '[.values[] | .id]'
 ```
 
 Combine with `ftab` to render the projected JSON as a table:
 
 ```text
-query "SELECT * FROM c" | filter '.items | map({id, status})' | ftab
+query "SELECT * FROM c" | filter '.values | map({id, status})' | ftab
 ```
 
 #### Quoting
@@ -1079,7 +1079,7 @@ tokenizes the argument first. Wrap the expression in single quotes so the
 shell does not interpret characters such as `|`, `$`, or `"` inside it:
 
 ```text
-filter '.items | select(.status == "active")'
+filter '.values | select(.status == "active")'
 ```
 
 If you need a literal single quote inside the expression, prefer double quotes

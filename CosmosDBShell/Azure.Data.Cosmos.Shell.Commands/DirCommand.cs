@@ -119,7 +119,7 @@ internal class DirCommand : CosmosCommand
             lastModified = e.LastModified,
         });
 
-        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonEntries));
+        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "file", values = jsonEntries }));
         returnState.RenderUser = () => this.RenderEntries(entries);
 
         return Task.FromResult(returnState);

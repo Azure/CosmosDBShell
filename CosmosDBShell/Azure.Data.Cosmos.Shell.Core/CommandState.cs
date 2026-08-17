@@ -48,12 +48,6 @@ public partial class CommandState
     /// </summary>
     internal bool OutputFormatExplicitlySet { get; private set; }
 
-    internal void ResetOutputFormat()
-    {
-        this.outputFormat = default;
-        this.OutputFormatExplicitlySet = false;
-    }
-
     internal ShellObject? Result { get; set; }
 
     internal bool OutputRendered { get; set; }
@@ -82,6 +76,12 @@ public partial class CommandState
     internal bool ReturnFunc { get; set; } = false;
 
     internal ShellObject? ReturnValue { get; set; } = null;
+
+    internal void ResetOutputFormat()
+    {
+        this.outputFormat = default;
+        this.OutputFormatExplicitlySet = false;
+    }
 
     internal void SetFormat(string? outputFormat)
     {
@@ -139,12 +139,6 @@ public partial class CommandState
 
                 if (json.ValueKind == JsonValueKind.Object)
                 {
-                    if (json.TryGetProperty("documents", out var documents) && json.TryGetProperty("queryMetrics", out _))
-                    {
-                        var table2 = ResultToTable([.. documents.EnumerateArray()]);
-                        return table2.ToString();
-                    }
-
                     if (TryGetListProperty(json, out var csvList))
                     {
                         return ResultToTable([.. csvList.EnumerateArray()]).ToString();
@@ -163,11 +157,6 @@ public partial class CommandState
 
                 if (json.ValueKind == JsonValueKind.Object)
                 {
-                    if (json.TryGetProperty("documents", out var tDocuments) && json.TryGetProperty("queryMetrics", out _))
-                    {
-                        return ResultToTable([.. tDocuments.EnumerateArray()]).ToGridString();
-                    }
-
                     if (TryGetListProperty(json, out var tableList))
                     {
                         return ResultToTable([.. tableList.EnumerateArray()]).ToGridString();

@@ -200,7 +200,7 @@ internal class TriggerCommand : CosmosCommand
             }
         }
 
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(items));
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "trigger", values = items }));
         commandState.RenderTabular = () =>
         {
             var tabular = new TabularData(
@@ -348,7 +348,7 @@ internal class TriggerCommand : CosmosCommand
 
         if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-trigger-create-confirm"))
         {
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, created = false }));
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "trigger", id = name, created = false }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-trigger-create-discarded", "name", name));
             return commandState;
         }
@@ -399,7 +399,9 @@ internal class TriggerCommand : CosmosCommand
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
+            type = "trigger",
             id = name,
+            created = true,
             triggerType = triggerType.ToString(),
             triggerOperation = triggerOperation.ToString(),
         }));
@@ -419,7 +421,7 @@ internal class TriggerCommand : CosmosCommand
         try
         {
             var response = await container.Scripts.DeleteTriggerAsync(name, cancellationToken: token);
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, deleted = true }));
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "trigger", id = name, deleted = true }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
                 "command-trigger-deleted",
                 "name",
@@ -459,7 +461,7 @@ internal class TriggerCommand : CosmosCommand
 
         if (string.Equals(newBody, existingBody, StringComparison.Ordinal))
         {
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = false }));
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "trigger", id = name, changed = false }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-trigger-edit-unchanged", "name", name));
             return commandState;
         }
@@ -473,7 +475,7 @@ internal class TriggerCommand : CosmosCommand
         };
         var response = await container.Scripts.ReplaceTriggerAsync(properties, cancellationToken: token);
 
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = true }));
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "trigger", id = name, changed = true }));
         commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
             "command-trigger-replaced",
             "name",

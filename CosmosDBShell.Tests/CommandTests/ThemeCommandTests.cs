@@ -42,7 +42,7 @@ public class ThemeCommandTests
 
             Assert.NotNull(state.RenderUser);
             Assert.True(json.Value.GetProperty("valid").GetBoolean());
-            Assert.Equal(name, json.Value.GetProperty("name").GetString());
+            Assert.Equal(name, json.Value.GetProperty("id").GetString());
             Assert.False(ThemeProfiles.TryGet(name, out _));
             Assert.Same(saved, Theme.Current);
         }
