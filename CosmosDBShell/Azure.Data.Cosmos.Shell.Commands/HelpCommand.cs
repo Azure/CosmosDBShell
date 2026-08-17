@@ -75,137 +75,180 @@ internal class HelpCommand : CosmosCommand
             return new CommandState();
         }
 
-        if (plain)
+        Action renderUser = () =>
         {
-            // Plain output (no colors, no panels)
-            if (!string.IsNullOrEmpty(cmd.Description))
+            if (plain)
             {
-                ShellInterpreter.WriteLine(cmd.Description);
-            }
-
-            ShellInterpreter.WriteLine();
-            ShellInterpreter.WriteLine(MessageService.GetString("help-usage", new System.Collections.Generic.Dictionary<string, object> { ["command"] = cmd.CommandName }) + " " + BuildPlainUsage(cmd));
-            ShellInterpreter.WriteLine();
-
-            if (cmd.Aliases.Count > 0)
-            {
-                ShellInterpreter.WriteLine($"{MessageService.GetString("help-aliases")} {string.Join(", ", cmd.Aliases)}");
-                ShellInterpreter.WriteLine();
-            }
-
-            if (cmd.Parameters.Count > 0)
-            {
-                ShellInterpreter.WriteLine(MessageService.GetString("help-arguments"));
-                foreach (var p in cmd.Parameters)
+                // Plain output (no colors, no panels)
+                if (!string.IsNullOrEmpty(cmd.Description))
                 {
-                    var name = p.Name.FirstOrDefault() ?? string.Empty;
-                    ShellInterpreter.Write("  ");
-                    ShellInterpreter.Write(p.IsRequired ? name : $"[{name}]");
-                    ShellInterpreter.Write(" ");
-                    var desc = p.GetDescription(cmd.CommandName) ?? string.Empty;
-                    if (!p.IsRequired)
+                    ShellInterpreter.WriteLine(cmd.Description);
+                }
+
+                ShellInterpreter.WriteLine();
+                ShellInterpreter.WriteLine(MessageService.GetString("help-usage", new System.Collections.Generic.Dictionary<string, object> { ["command"] = cmd.CommandName }) + " " + BuildPlainUsage(cmd));
+                ShellInterpreter.WriteLine();
+
+                if (cmd.Aliases.Count > 0)
+                {
+                    ShellInterpreter.WriteLine($"{MessageService.GetString("help-aliases")} {string.Join(", ", cmd.Aliases)}");
+                    ShellInterpreter.WriteLine();
+                }
+
+                if (cmd.Parameters.Count > 0)
+                {
+                    ShellInterpreter.WriteLine(MessageService.GetString("help-arguments"));
+                    foreach (var p in cmd.Parameters)
                     {
-                        ShellInterpreter.Write($"{MessageService.GetString("help-optional")} ");
+                        var name = p.Name.FirstOrDefault() ?? string.Empty;
+                        ShellInterpreter.Write("  ");
+                        ShellInterpreter.Write(p.IsRequired ? name : $"[{name}]");
+                        ShellInterpreter.Write(" ");
+                        var desc = p.GetDescription(cmd.CommandName) ?? string.Empty;
+                        if (!p.IsRequired)
+                        {
+                            ShellInterpreter.Write($"{MessageService.GetString("help-optional")} ");
+                        }
+
+                        ShellInterpreter.WriteLine(desc);
                     }
 
-                    ShellInterpreter.WriteLine(desc);
+                    ShellInterpreter.WriteLine();
                 }
 
-                ShellInterpreter.WriteLine();
-            }
-
-            if (cmd.Options.Count > 0)
-            {
-                ShellInterpreter.WriteLine(MessageService.GetString("help-options"));
-                foreach (var opt in cmd.Options)
+                if (cmd.Options.Count > 0)
                 {
-                    var names = string.Join(", ", opt.Name.Select(n => "-" + n));
-                    var desc = opt.GetDescription(cmd.CommandName) ?? string.Empty;
-                    ShellInterpreter.WriteLine($"  {names} {desc}");
-                }
-
-                ShellInterpreter.WriteLine();
-            }
-
-            // Use shared examples collection to avoid shadowing
-            var plainExamples = cmd.ExamplesWithDescriptions;
-            if (plainExamples.Count > 0)
-            {
-                ShellInterpreter.WriteLine(MessageService.GetString("help-examples"));
-                for (int i = 0; i < plainExamples.Count; i++)
-                {
-                    var (ex, desc) = plainExamples[i];
-                    if (!string.IsNullOrEmpty(desc))
+                    ShellInterpreter.WriteLine(MessageService.GetString("help-options"));
+                    foreach (var opt in cmd.Options)
                     {
-                        ShellInterpreter.WriteLine($"  {i + 1}. {desc}");
-                        ShellInterpreter.WriteLine($"     {ex}");
+                        var names = string.Join(", ", opt.Name.Select(n => "-" + n));
+                        var desc = opt.GetDescription(cmd.CommandName) ?? string.Empty;
+                        ShellInterpreter.WriteLine($"  {names} {desc}");
+                    }
+
+                    ShellInterpreter.WriteLine();
+                }
+
+                // Use shared examples collection to avoid shadowing
+                var plainExamples = cmd.ExamplesWithDescriptions;
+                if (plainExamples.Count > 0)
+                {
+                    ShellInterpreter.WriteLine(MessageService.GetString("help-examples"));
+                    for (int i = 0; i < plainExamples.Count; i++)
+                    {
+                        var (ex, desc) = plainExamples[i];
+                        if (!string.IsNullOrEmpty(desc))
+                        {
+                            ShellInterpreter.WriteLine($"  {i + 1}. {desc}");
+                            ShellInterpreter.WriteLine($"     {ex}");
+                        }
+                        else
+                        {
+                            ShellInterpreter.WriteLine($"  {i + 1}. {ex}");
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Styled output
+                if (!string.IsNullOrEmpty(cmd.Description))
+                {
+                    AnsiConsole.MarkupLine($"{INDENT}{Theme.FormatHelpHeader(cmd.Description)}");
+                }
+
+                if (cmd.Aliases.Count > 0)
+                {
+                    AnsiConsole.MarkupLine($"{INDENT}[dim]{Markup.Escape(MessageService.GetString("help-aliases"))} {Markup.Escape(string.Join(", ", cmd.Aliases))}[/]");
+                }
+
+                ShellInterpreter.WriteLine();
+                WriteSectionHeader(MessageService.GetString("help-usage-heading"));
+                AnsiConsole.Markup(INDENT + Theme.FormatCommand(cmd.CommandName) + " ");
+            }
+
+            if (!plain && cmd?.Options != null)
+            {
+                foreach (var p in cmd.Options)
+                {
+                    AnsiConsole.Markup(INDENT + "[[" + Theme.FormatHelpName("-" + (p.Name.FirstOrDefault() ?? string.Empty)));
+
+                    if (!p.PropertyInfo.PropertyType.IsAssignableFrom(typeof(bool)))
+                    {
+                        AnsiConsole.Markup($" [dim]{MessageService.GetString("help-arg")}[/]");
+                    }
+
+                    AnsiConsole.Markup("]] ");
+                }
+            }
+
+            if (!plain && cmd?.Parameters != null)
+            {
+                foreach (var p in cmd.Parameters)
+                {
+                    var name = p.Name.FirstOrDefault();
+                    if (name == null)
+                    {
+                        continue;
+                    }
+
+                    if (p.IsRequired)
+                    {
+                        AnsiConsole.Markup(INDENT + Theme.FormatHelpName(name) + " ");
                     }
                     else
                     {
-                        ShellInterpreter.WriteLine($"  {i + 1}. {ex}");
+                        AnsiConsole.Markup(INDENT + "[[" + Theme.FormatHelpName(name) + "]] ");
                     }
                 }
-            }
-        }
-        else
-        {
-            // Styled output
-            if (!string.IsNullOrEmpty(cmd.Description))
-            {
-                AnsiConsole.MarkupLine($"{INDENT}{Theme.FormatHelpHeader(cmd.Description)}");
-            }
 
-            if (cmd.Aliases.Count > 0)
-            {
-                AnsiConsole.MarkupLine($"{INDENT}[dim]{Markup.Escape(MessageService.GetString("help-aliases"))} {Markup.Escape(string.Join(", ", cmd.Aliases))}[/]");
-            }
+                ShellInterpreter.WriteLine();
+                ShellInterpreter.WriteLine();
 
-            ShellInterpreter.WriteLine();
-            WriteSectionHeader(MessageService.GetString("help-usage-heading"));
-            AnsiConsole.Markup(INDENT + Theme.FormatCommand(cmd.CommandName) + " ");
-        }
-
-        if (!plain && cmd?.Options != null)
-        {
-            foreach (var p in cmd.Options)
-            {
-                AnsiConsole.Markup(INDENT + "[[" + Theme.FormatHelpName("-" + (p.Name.FirstOrDefault() ?? string.Empty)));
-
-                if (!p.PropertyInfo.PropertyType.IsAssignableFrom(typeof(bool)))
+                if (cmd.Parameters.Count > 0)
                 {
-                    AnsiConsole.Markup($" [dim]{MessageService.GetString("help-arg")}[/]");
-                }
+                    WriteSectionHeader(MessageService.GetString("help-arguments-heading"));
 
-                AnsiConsole.Markup("]] ");
-            }
-        }
+                    var table = new Table()
+                        .Border(TableBorder.None)
+                        .HideHeaders()
+                        .AddColumn(new TableColumn("Name").Width(ARGPADDING))
+                        .AddColumn(new TableColumn("Description"));
 
-        if (!plain && cmd?.Parameters != null)
-        {
-            foreach (var p in cmd.Parameters)
-            {
-                var name = p.Name.FirstOrDefault();
-                if (name == null)
-                {
-                    continue;
-                }
+                    foreach (var p in cmd.Parameters)
+                    {
+                        var paramName = p.Name.FirstOrDefault() ?? string.Empty;
+                        var nameDisplay = !p.IsRequired
+                            ? "[[" + Theme.FormatHelpName(paramName) + "]]"
+                            : Theme.FormatHelpName(paramName);
 
-                if (p.IsRequired)
-                {
-                    AnsiConsole.Markup(INDENT + Theme.FormatHelpName(name) + " ");
-                }
-                else
-                {
-                    AnsiConsole.Markup(INDENT + "[[" + Theme.FormatHelpName(name) + "]] ");
+                        var descDisplay = string.Empty;
+                        if (!p.IsRequired)
+                        {
+                            descDisplay += $"[italic dim]{MessageService.GetString("help-optional")}[/] ";
+                        }
+
+                        var argHelp = p.GetDescription(cmd.CommandName);
+                        if (!string.IsNullOrEmpty(argHelp))
+                        {
+                            descDisplay += Theme.FormatHelpDescription(argHelp);
+                        }
+                        else
+                        {
+                            descDisplay += Theme.FormatError(MessageService.GetString("error")) + " " + Theme.FormatHelpDescription(MessageService.GetString("help-description-not-found"));
+                        }
+
+                        table.AddRow(INDENT + nameDisplay, descDisplay);
+                    }
+
+                    AnsiConsole.Write(table);
+                    ShellInterpreter.WriteLine();
                 }
             }
 
-            ShellInterpreter.WriteLine();
-            ShellInterpreter.WriteLine();
-
-            if (cmd.Parameters.Count > 0)
+            if (!plain && cmd?.Options.Count > 0)
             {
-                WriteSectionHeader(MessageService.GetString("help-arguments-heading"));
+                WriteSectionHeader(MessageService.GetString("help-options-heading"));
 
                 var table = new Table()
                     .Border(TableBorder.None)
@@ -213,127 +256,87 @@ internal class HelpCommand : CosmosCommand
                     .AddColumn(new TableColumn("Name").Width(ARGPADDING))
                     .AddColumn(new TableColumn("Description"));
 
-                foreach (var p in cmd.Parameters)
+                foreach (var p in cmd.Options)
                 {
-                    var paramName = p.Name.FirstOrDefault() ?? string.Empty;
-                    var nameDisplay = !p.IsRequired
-                        ? "[[" + Theme.FormatHelpName(paramName) + "]]"
-                        : Theme.FormatHelpName(paramName);
-
-                    var descDisplay = string.Empty;
-                    if (!p.IsRequired)
+                    StringBuilder sb = new();
+                    foreach (var n in p.Name)
                     {
-                        descDisplay += $"[italic dim]{MessageService.GetString("help-optional")}[/] ";
+                        if (sb.Length > 0)
+                        {
+                            sb.Append(", ");
+                        }
+
+                        sb.Append('-');
+                        sb.Append(n);
                     }
 
                     var argHelp = p.GetDescription(cmd.CommandName);
-                    if (!string.IsNullOrEmpty(argHelp))
-                    {
-                        descDisplay += Theme.FormatHelpDescription(argHelp);
-                    }
-                    else
-                    {
-                        descDisplay += Theme.FormatError(MessageService.GetString("error")) + " " + Theme.FormatHelpDescription(MessageService.GetString("help-description-not-found"));
-                    }
+                    var descDisplay = !string.IsNullOrEmpty(argHelp)
+                        ? Theme.FormatHelpDescription(argHelp)
+                        : Theme.FormatError(MessageService.GetString("error")) + " " + Theme.FormatHelpDescription(MessageService.GetString("help-description-not-found"));
 
-                    table.AddRow(INDENT + nameDisplay, descDisplay);
+                    table.AddRow(INDENT + Theme.FormatHelpName(sb.ToString()), descDisplay);
                 }
 
                 AnsiConsole.Write(table);
-                ShellInterpreter.WriteLine();
             }
-        }
 
-        if (!plain && cmd?.Options.Count > 0)
-        {
-            WriteSectionHeader(MessageService.GetString("help-options-heading"));
-
-            var table = new Table()
-                .Border(TableBorder.None)
-                .HideHeaders()
-                .AddColumn(new TableColumn("Name").Width(ARGPADDING))
-                .AddColumn(new TableColumn("Description"));
-
-            foreach (var p in cmd.Options)
+            var examples = cmd?.ExamplesWithDescriptions;
+            if (!plain && examples != null && examples.Count > 0)
             {
-                StringBuilder sb = new();
-                foreach (var n in p.Name)
+                ShellInterpreter.WriteLine();
+                WriteSectionHeader(MessageService.GetString("help-examples-heading"));
+                for (int i = 0; i < examples.Count; i++)
                 {
-                    if (sb.Length > 0)
+                    var (example, description) = examples[i];
+                    if (!string.IsNullOrWhiteSpace(description))
                     {
-                        sb.Append(", ");
+                        AnsiConsole.MarkupLine(INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}. {Theme.FormatHelpDescription(description)}");
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLine(INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}.");
                     }
 
-                    sb.Append('-');
-                    sb.Append(n);
-                }
-
-                var argHelp = p.GetDescription(cmd.CommandName);
-                var descDisplay = !string.IsNullOrEmpty(argHelp)
-                    ? Theme.FormatHelpDescription(argHelp)
-                    : Theme.FormatError(MessageService.GetString("error")) + " " + Theme.FormatHelpDescription(MessageService.GetString("help-description-not-found"));
-
-                table.AddRow(INDENT + Theme.FormatHelpName(sb.ToString()), descDisplay);
-            }
-
-            AnsiConsole.Write(table);
-        }
-
-        var examples = cmd?.ExamplesWithDescriptions;
-        if (!plain && examples != null && examples.Count > 0)
-        {
-            ShellInterpreter.WriteLine();
-            WriteSectionHeader(MessageService.GetString("help-examples-heading"));
-            for (int i = 0; i < examples.Count; i++)
-            {
-                var (example, description) = examples[i];
-                if (!string.IsNullOrWhiteSpace(description))
-                {
-                    AnsiConsole.MarkupLine(INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}. {Theme.FormatHelpDescription(description)}");
-                }
-                else
-                {
-                    AnsiConsole.MarkupLine(INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}.");
-                }
-
-                var parser = new StatementParser(example);
-                Statement? statement = null;
-                try
-                {
-                    statement = parser.ParseStatement();
+                    var parser = new StatementParser(example);
+                    Statement? statement = null;
+                    try
+                    {
+                        statement = parser.ParseStatement();
 #pragma warning disable CZ0001 // Empty Catch Clause
-                }
-                catch
-                {
-                    // Ignore parse errors for highlighting purposes
-                }
+                    }
+                    catch
+                    {
+                        // Ignore parse errors for highlighting purposes
+                    }
 #pragma warning restore CZ0001 // Empty Catch Clause
 
-                string highlighted;
-                if (statement != null)
-                {
-                    var highlighter = new HighlightingVisitor(example, ShellInterpreter.Instance);
-                    statement.Accept(highlighter);
-                    highlighted = highlighter.GetResult();
-                }
-                else
-                {
-                    highlighted = Markup.Escape(example);
-                }
+                    string highlighted;
+                    if (statement != null)
+                    {
+                        var highlighter = new HighlightingVisitor(example, ShellInterpreter.Instance);
+                        statement.Accept(highlighter);
+                        highlighted = highlighter.GetResult();
+                    }
+                    else
+                    {
+                        highlighted = Markup.Escape(example);
+                    }
 
-                var panel = new Panel(highlighted)
-                {
-                    Border = BoxBorder.None,
-                    Padding = new Padding(4, 0, 0, 0),
-                };
-                AnsiConsole.Write(panel);
+                    var panel = new Panel(highlighted)
+                    {
+                        Border = BoxBorder.None,
+                        Padding = new Padding(4, 0, 0, 0),
+                    };
+                    AnsiConsole.Write(panel);
 
-                if (i < examples.Count - 1)
-                {
-                    ShellInterpreter.WriteLine();
+                    if (i < examples.Count - 1)
+                    {
+                        ShellInterpreter.WriteLine();
+                    }
                 }
             }
-        }
+        };
 
         var commandState = new CommandState();
 
@@ -402,7 +405,7 @@ internal class HelpCommand : CosmosCommand
 
         var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(helpJson);
         commandState.Result = new ShellJson(jsonElement);
-        commandState.RenderUser = () => { };
+        commandState.RenderUser = renderUser;
         return commandState;
     }
 

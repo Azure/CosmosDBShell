@@ -1528,8 +1528,14 @@ public partial class ShellInterpreter : IDisposable
         this.Editor?.History.Add(cmdString);
     }
 
-    internal CommandState PrintState(CommandState state)
+    internal CommandState PrintState(CommandState state, bool markAsRendered = false)
     {
+        if (state.OutputRendered)
+        {
+            state.OutputRendered = markAsRendered;
+            return state;
+        }
+
         try
         {
             // Apply the session default format when the command did not choose one itself.
@@ -1658,6 +1664,13 @@ public partial class ShellInterpreter : IDisposable
             }
 
             return new ErrorCommandState(e);
+        }
+        finally
+        {
+            if (markAsRendered)
+            {
+                state.OutputRendered = true;
+            }
         }
 
         return state;

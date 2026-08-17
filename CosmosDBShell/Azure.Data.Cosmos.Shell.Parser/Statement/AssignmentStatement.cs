@@ -40,6 +40,8 @@ internal class AssignmentStatement : Statement
         commandState.Result = null;
         commandState.RenderUser = null;
         commandState.RenderTabular = null;
+        commandState.ResetOutputFormat();
+        commandState.OutputRendered = false;
         return commandState;
     }
 

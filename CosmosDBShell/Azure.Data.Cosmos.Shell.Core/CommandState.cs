@@ -48,7 +48,15 @@ public partial class CommandState
     /// </summary>
     internal bool OutputFormatExplicitlySet { get; private set; }
 
+    internal void ResetOutputFormat()
+    {
+        this.outputFormat = default;
+        this.OutputFormatExplicitlySet = false;
+    }
+
     internal ShellObject? Result { get; set; }
+
+    internal bool OutputRendered { get; set; }
 
     /// <summary>
     /// Gets or sets an optional delegate that renders the result for a human on an

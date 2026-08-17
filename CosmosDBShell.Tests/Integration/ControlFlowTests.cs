@@ -110,4 +110,31 @@ public class ControlFlowTests : IntegrationTestBase
         var output = await ReadRedirectAsync(outputFile);
         Assert.Contains("AFTER", output, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task Block_PrintsEachCommandResultOnce()
+    {
+        var outputFile = CaptureOutputFile();
+        Shell.AppendOutRedirection = true;
+        var state = await RunScriptAsync("{ echo \"FIRST\"\necho \"SECOND\" }");
+
+        Assert.False(state.IsError, FormatError(state));
+        Assert.NotNull(state.Result);
+        var output = await ReadRedirectAsync(outputFile);
+        Assert.Equal(1, output.Split("FIRST", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, output.Split("SECOND", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    public async Task NestedBlock_PrintsFinalResultOnce()
+    {
+        var outputFile = CaptureOutputFile();
+        Shell.AppendOutRedirection = true;
+        var state = await RunScriptAsync("{ { echo \"NESTED\" } }");
+
+        Assert.False(state.IsError, FormatError(state));
+        Assert.NotNull(state.Result);
+        var output = await ReadRedirectAsync(outputFile);
+        Assert.Equal(1, output.Split("NESTED", StringSplitOptions.None).Length - 1);
+    }
 }

@@ -199,6 +199,24 @@ public class OutputFormatTests
     }
 
     [Fact]
+    async Task CommandStatement_ClearsExplicitFormatFromPriorStatement()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var lexer = new Lexer("echo \"b\"");
+        var parser = new StatementParser(lexer);
+        var statements = parser.ParseStatements();
+
+        var state = new CommandState
+        {
+            OutputFormat = OutputFormat.CSV,
+        };
+
+        state = await statements[0].RunAsync(shell, state, TestContext.Current.CancellationToken);
+
+        Assert.False(state.OutputFormatExplicitlySet);
+    }
+
+    [Fact]
     async Task AssignmentStatement_ClearsRenderTabularFromPriorStatement()
     {
         using var shell = ShellInterpreter.CreateInstance();
@@ -212,6 +230,7 @@ public class OutputFormatTests
         state = await statements[0].RunAsync(shell, state, TestContext.Current.CancellationToken);
 
         Assert.Null(state.RenderTabular);
+        Assert.False(state.OutputFormatExplicitlySet);
     }
 
     private string StripWS(string input)
