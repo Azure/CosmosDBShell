@@ -172,7 +172,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 
 | Option | Description |
 | ------ | ----------- |
-| `--output <format>` | The output format to use (`user`, `json`, `table`, `csv`). Alias: `-o` |
+| `--output <format>` | The output format to use (`user`, `json`, `table`, `csv`). Alias: `-o`. Falls back to `COSMOSDB_SHELL_FORMAT`. |
 | `--quiet` | Suppress standard informational output. Alias: `-q` |
 | `-c <cmd>` | Execute and exit |
 | `-k <cmd>` | Execute and stay |

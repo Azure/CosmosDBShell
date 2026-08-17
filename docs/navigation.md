@@ -258,7 +258,7 @@ Start the shell with options to customize behavior:
 
 | Option | Description |
 | ------ | ----------- |
-| `--output <format>` | Output format for command results: `user` (default interactive view), `json`, `table`, or `csv`. Alias: `-o`. Selecting `json` or `csv` enables machine mode. |
+| `--output <format>` | Output format for command results: `user` (default interactive view), `json`, `table`, or `csv`. Alias: `-o`. Selecting `json` or `csv` enables machine mode. Falls back to `COSMOSDB_SHELL_FORMAT`. |
 | `--quiet` | Suppress standard informational output (banners, connection logs). Enables machine mode. Alias: `-q` |
 | `-c <cmd>` | Execute command and exit. Everything after `-c` is taken as the command, so app-level options must come before `-c`. Windows-style `/c` is also accepted. |
 | `-k <cmd>` | Execute command and stay in shell. Everything after `-k` is taken as the command, so app-level options must come before `-k`. Windows-style `/k` is also accepted. |
@@ -318,6 +318,7 @@ These values are a public contract. See the [CI/CD guide](ci.md#exit-code-contra
 | `COSMOSDB_SHELL_TOKEN` | Pre-obtained Entra ID access token (JWT) for single-shot auth |
 | `COSMOSDB_SHELL_ACCOUNT_KEY` | Account key for authentication |
 | `COSMOSDB_SHELL_CSVSEP` | CSV column separator |
+| `COSMOSDB_SHELL_FORMAT` | Default output format (`user`, `json`, `table`, `csv`) used when `--output` is not supplied. Supplies a format only — it does not enable machine mode |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Default OTLP endpoint used by `--otel` when no endpoint is supplied |
 
 **Examples:**

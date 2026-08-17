@@ -195,12 +195,17 @@ public partial class ShellInterpreter : IDisposable
         !string.IsNullOrWhiteSpace(this.Options?.ExecuteAndQuit));
 
     /// <summary>
-    /// Gets the session default <see cref="OutputFormat"/> derived from the global
-    /// <c>--output</c> option. When no format is specified it falls back to
-    /// <see cref="OutputFormat.JSon"/> in machine mode and <see cref="OutputFormat.User"/>
-    /// interactively. <see cref="PrintState"/> applies this to any command result that did
-    /// not explicitly choose a format.
+    /// Gets the session default <see cref="OutputFormat"/>, resolved from the global
+    /// <c>--output</c> option and then the <c>COSMOSDB_SHELL_FORMAT</c> environment variable.
+    /// When neither supplies a format it falls back to <see cref="OutputFormat.JSon"/> in
+    /// machine mode and <see cref="OutputFormat.User"/> interactively. <see cref="PrintState"/>
+    /// applies this to any command result that did not explicitly choose a format.
     /// </summary>
+    /// <remarks>
+    /// The environment variable supplies a format only; unlike <c>--output</c> it never enters
+    /// machine mode, so exporting it in a shell profile cannot silently strip banners and colors
+    /// from interactive sessions. An unrecognized value is ignored instead of failing commands.
+    /// </remarks>
     internal OutputFormat DefaultOutputFormat
     {
         get
@@ -208,6 +213,11 @@ public partial class ShellInterpreter : IDisposable
             if (OutputFormats.TryParse(this.Options?.Output, out var format))
             {
                 return format;
+            }
+
+            if (OutputFormats.TryParse(Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"), out var envFormat))
+            {
+                return envFormat;
             }
 
             return this.IsMachineMode ? OutputFormat.JSon : OutputFormat.User;
