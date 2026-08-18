@@ -20,9 +20,13 @@ internal sealed class WelcomeCommand : CosmosCommand
         string commandText,
         CancellationToken token)
     {
-        shell.ShowWelcome();
         commandState.Result = new ShellText(MessageService.GetString("command-welcome-result"));
-        commandState.RenderUser = () => { };
+
+        // Defer the banner to RenderUser so PrintState's redirection/machine-mode
+        // policy decides whether to show it, instead of writing to Console.Out
+        // unconditionally and corrupting deterministic stdout (e.g. -c welcome
+        // --output json, or redirected output).
+        commandState.RenderUser = shell.ShowWelcome;
         return Task.FromResult(commandState);
     }
 }

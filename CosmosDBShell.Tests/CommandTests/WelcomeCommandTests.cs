@@ -64,6 +64,12 @@ public sealed class WelcomeCommandTests
 
             Assert.False(state.IsError);
             Assert.NotNull(state.RenderUser);
+            Assert.DoesNotContain("START HERE", output.ToString(), StringComparison.Ordinal);
+
+            // The banner is deferred to RenderUser (invoked by PrintState based on
+            // format/redirection/machine-mode), not printed unconditionally during
+            // ExecuteAsync.
+            state.RenderUser();
             Assert.Contains("START HERE", output.ToString(), StringComparison.Ordinal);
         }
         finally
