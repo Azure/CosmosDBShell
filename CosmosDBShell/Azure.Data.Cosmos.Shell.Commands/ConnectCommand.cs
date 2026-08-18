@@ -235,6 +235,27 @@ internal partial class ConnectCommand : CosmosCommand
             ["currentLocation"] = currentLocation,
         };
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonResult));
+        commandState.RenderTabular = () =>
+        {
+            // Curated 2-column key/value view so --output table/csv render a compact
+            // grid instead of a 9-column table (one per JSON field, including the
+            // region arrays) that wraps long values like the endpoint mid-word.
+            var tabular = new TabularData(
+                MessageService.GetString("command-connect-info-property"),
+                MessageService.GetString("command-connect-info-value"));
+            tabular.AddRow(MessageService.GetString("command-connect-info-account"), acc.Id);
+            tabular.AddRow(MessageService.GetString("command-connect-info-endpoint"), client.Endpoint.ToString());
+            if (connectedState.ArmContext != null)
+            {
+                tabular.AddRow(MessageService.GetString("command-connect-info-arm-account"), connectedState.ArmContext.AccountResourceId.ToString());
+            }
+
+            tabular.AddRow(MessageService.GetString("command-connect-info-mode"), connectionMode.ToString());
+            tabular.AddRow(MessageService.GetString("command-connect-info-read-regions"), string.Join(", ", acc.ReadableRegions.Select(r => r.Name)));
+            tabular.AddRow(MessageService.GetString("command-connect-info-write-regions"), string.Join(", ", acc.WritableRegions.Select(r => r.Name)));
+            tabular.AddRow(MessageService.GetString("command-connect-info-location"), currentLocation);
+            return tabular;
+        };
         commandState.RenderUser = () =>
         {
             AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-connect-info-title")));

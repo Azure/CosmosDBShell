@@ -123,9 +123,11 @@ public class QueryCommandTests : EmulatorFixtureTestBase
 
         Assert.True(json.TryGetProperty("indexMetrics", out _), "Expected indexMetrics in result");
 
-        // Verify documents are included alongside metrics
-        Assert.True(json.TryGetProperty("documents", out var docs), "Expected documents in result");
-        Assert.True(docs.GetArrayLength() > 0, "documents should contain the queried item");
+        // Verify documents are included alongside metrics. Query no longer switches
+        // between "items"/"documents" envelopes based on whether metrics were requested;
+        // metrics results carry the documents under "values" like every other list result.
+        Assert.True(json.TryGetProperty("values", out var docs), "Expected values in result");
+        Assert.True(docs.GetArrayLength() > 0, "values should contain the queried item");
     }
 
     [Fact]
