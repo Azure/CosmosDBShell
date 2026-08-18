@@ -111,7 +111,7 @@ The `|` operator pipes the JSON result of the left command into the right comman
 
 ### How It Works
 
-1. **Most commands return JSON** – listings return a structured result like `{ "type": "item", "values": [...] }`
+1. **Most commands return JSON** – listings return a structured result like `{ "type": "<kind>", "values": [...] }` (e.g. `database`, `container`, or `item` depending on context)
 2. **The next command receives that JSON** as its input
 3. **Use JSON paths** (starting with `$`) to extract values from piped JSON
 

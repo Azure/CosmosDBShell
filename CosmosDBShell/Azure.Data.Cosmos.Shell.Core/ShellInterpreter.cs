@@ -1542,7 +1542,10 @@ public partial class ShellInterpreter : IDisposable
     {
         if (state.OutputRendered)
         {
-            state.OutputRendered = markAsRendered;
+            // Once rendered, stay rendered: a later PrintState call with the default
+            // markAsRendered:false (e.g. ExecuteCommandAsync's final call) must not
+            // unmark it, or a subsequent PrintState call on the same state would
+            // re-render output that was already shown.
             return state;
         }
 

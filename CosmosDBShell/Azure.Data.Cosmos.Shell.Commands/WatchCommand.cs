@@ -229,10 +229,13 @@ internal class WatchCommand : CosmosCommand
             result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "item", values = collected }));
         }
 
-        if (!redirected)
+        if (!redirected && collected == null)
         {
-            // Rows were streamed live to the terminal during the tail, so suppress the
-            // trailing structured dump for the interactive, user-facing view.
+            // Rows were streamed live to the terminal during the tail with nothing
+            // retained (no --max was given, so there's no Result to show), so suppress
+            // the trailing structured dump for the interactive, user-facing view. When
+            // --max bounds the run, collected is populated and an explicit --format/
+            // --output must still be honored instead of being silently overridden.
             result.OutputFormat = Azure.Data.Cosmos.Shell.Core.OutputFormat.User;
             result.RenderUser = () => { };
         }
