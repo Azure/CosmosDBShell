@@ -82,7 +82,11 @@ extends:
               OneES_SbomNugetSDLPath: out\nupkg
               # https://aka.ms/obpipelines/sdl
               ob_sdl_binskim_enabled: true
-              ob_sdl_binskim_scanOutputDirectoryOnly: true
+              # Scan the whole checkout, not just ob_outputDirectory: the Windows exes
+              # BinSkim needs are staged outside out\ (see "Stage Windows executables
+              # for BinSkim" below) so the published cosmos_shell_all artifact only
+              # ever contains zip/nupkg, never loose exes.
+              ob_sdl_binskim_scanOutputDirectoryOnly: false
               ob_sdl_binskim_break: true # always break the build on binskim issues, even if TSA enabled. You can disable it by setting to 'false'
               ob_sdl_roslyn_break: true
               ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}: # conditionally enable symbolsPublishing for main branch only
@@ -524,6 +528,29 @@ extends:
               # (SBOM + signed build.manifest) on its own afterwards.
               # This MUST run before the NuGet push, because the 1ES Pipeline Template
               # injects a full-tree CodeSign scan after the last user step group.
+              #
+              # The Windows win-x64/win-arm64 exes are staged to a location outside
+              # out\ first (below) so BinSkim (scanning the whole checkout, see
+              # ob_sdl_binskim_scanOutputDirectoryOnly above) still has loose PE files
+              # to scan, without those exes ending up duplicated in the artifact
+              # alongside the already-zipped copies in out\zip.
+              - task: PowerShell@2
+                displayName: "Stage Windows executables for BinSkim (outside published artifact)"
+                condition: always()
+                inputs:
+                  targetType: inline
+                  script: |
+                    $outDir = "$(Build.SourcesDirectory)\out"
+                    $scanDir = "$(Build.SourcesDirectory)\_binskim-scan"
+                    foreach ($rid in @('win-x64', 'win-arm64')) {
+                      $source = Join-Path $outDir $rid
+                      if (Test-Path $source) {
+                        $target = Join-Path $scanDir $rid
+                        New-Item -ItemType Directory -Path $target -Force | Out-Null
+                        Copy-Item -Path (Join-Path $source '*') -Destination $target -Recurse -Force
+                      }
+                    }
+
               - task: PowerShell@2
                 displayName: "Clean non-shipping build outputs before SDL"
                 condition: always()
@@ -554,10 +581,11 @@ extends:
                       # Whitelist approach: keep only the dirs we explicitly want shipped
                       # in the cosmos_shell_all artifact. Anything else (per-RID publish
                       # folders, nupkg-payload sign-staging, future intermediates) is noise.
-                      # win-x64 and win-arm64 are kept so SDL/BinSkim has loose PE files
-                      # to scan (it does not descend into the zip/nupkg archives, and
-                      # ob_sdl_binskim_scanOutputDirectoryOnly limits it to out\).
-                      $keep = @('zip', 'nupkg', '_manifest', 'win-x64', 'win-arm64')
+                      # win-x64/win-arm64 are intentionally NOT kept — those exes are
+                      # already zipped into out\zip and were staged to _binskim-scan\
+                      # above for scanning, so keeping a third loose copy here would
+                      # just duplicate them in the published artifact.
+                      $keep = @('zip', 'nupkg', '_manifest')
                       Get-ChildItem -Path $outDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $keep -notcontains $_.Name } | ForEach-Object {
                         Write-Host "Trimming $($_.FullName) from out\"
                         Remove-Item -Recurse -Force $_.FullName

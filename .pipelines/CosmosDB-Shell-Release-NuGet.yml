@@ -156,8 +156,14 @@ extends:
                           )
 
                           foreach ($pattern in $ridPatterns) {
-                            if (-not ($packages | Where-Object { $_.Name -match $pattern })) {
+                            $matched = @($packages | Where-Object { $_.Name -match $pattern })
+                            if ($matched.Count -eq 0) {
                               throw "Missing expected RID package matching: $pattern"
+                            }
+
+                            if ($matched.Count -gt 1) {
+                              $names = @($matched | ForEach-Object { $_.Name })
+                              throw "Expected exactly one package matching $pattern (publishing a duplicate would push it twice). Found: $($names -join ', ')"
                             }
                           }
 
