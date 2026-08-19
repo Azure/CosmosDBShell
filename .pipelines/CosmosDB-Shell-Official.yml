@@ -82,7 +82,11 @@ extends:
               OneES_SbomNugetSDLPath: out\nupkg
               # https://aka.ms/obpipelines/sdl
               ob_sdl_binskim_enabled: true
-              ob_sdl_binskim_scanOutputDirectoryOnly: true
+              # Scan the whole checkout, not just ob_outputDirectory: the Windows exes
+              # BinSkim needs are staged outside out\ (see "Stage Windows executables
+              # for BinSkim" below) so the published cosmos_shell_all artifact only
+              # ever contains zip/nupkg, never loose exes.
+              ob_sdl_binskim_scanOutputDirectoryOnly: false
               ob_sdl_binskim_break: true # always break the build on binskim issues, even if TSA enabled. You can disable it by setting to 'false'
               ob_sdl_roslyn_break: true
               ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}: # conditionally enable symbolsPublishing for main branch only
@@ -165,7 +169,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r win-x64 --output $(Build.SourcesDirectory)\out\win-x64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
+                  arguments: '--configuration $(BuildConfiguration) -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true --output $(Build.SourcesDirectory)\out\win-x64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -174,7 +178,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r win-arm64 --output $(Build.SourcesDirectory)\out\win-arm64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
+                  arguments: '--configuration $(BuildConfiguration) -r win-arm64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true --output $(Build.SourcesDirectory)\out\win-arm64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -183,7 +187,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r osx-x64 --output $(Build.SourcesDirectory)\out\osx-x64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
+                  arguments: '--configuration $(BuildConfiguration) -r osx-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true --output $(Build.SourcesDirectory)\out\osx-x64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -192,7 +196,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r linux-x64 --output $(Build.SourcesDirectory)\out\linux-x64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
+                  arguments: '--configuration $(BuildConfiguration) -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true --output $(Build.SourcesDirectory)\out\linux-x64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -201,7 +205,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r linux-arm64 --output $(Build.SourcesDirectory)\out\linux-arm64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
+                  arguments: '--configuration $(BuildConfiguration) -r linux-arm64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true --output $(Build.SourcesDirectory)\out\linux-arm64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               - task: DotNetCoreCLI@2
@@ -210,7 +214,7 @@ extends:
                   command: "publish"
                   publishWebProjects: false
                   projects: $(ReleaseProject)
-                  arguments: '--configuration $(BuildConfiguration) -r osx-arm64 --output $(Build.SourcesDirectory)\out\osx-arm64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
+                  arguments: '--configuration $(BuildConfiguration) -r osx-arm64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true --output $(Build.SourcesDirectory)\out\osx-arm64 --configfile $(Build.SourcesDirectory)\.pipelines\nuget.config'
                   zipAfterPublish: false
 
               # Kept for reference, intentionally disabled:
@@ -223,6 +227,42 @@ extends:
               #     arguments: '--configuration $(BuildConfiguration) -r any --output $(Build.SourcesDirectory)\out\any'
               #     zipAfterPublish: false
 
+              # Framework-dependent (FDD) single-file publishes, one per RID. These
+              # omit the runtime (require .NET 10 on the target) and are ~3-4x smaller
+              # than the self-contained zips above. EnableCompressionInSingleFile is
+              # explicitly false here because it requires a self-contained publish;
+              # the csproj default (true) only applies to the self-contained builds.
+              # IncludeAllContentForSelfExtract bundles native deps (msalruntime,
+              # Cosmos ServiceInterop, CRT DLLs) into the single file instead of
+              # leaving them as loose files alongside it. Land in out\fdd\<rid> so
+              # the signing step below (which scans all of out\) covers these too.
+              - task: PowerShell@2
+                displayName: "DotNetCore publish framework-dependent (all RIDs)"
+                condition: succeeded()
+                inputs:
+                  targetType: inline
+                  pwsh: true
+                  script: |
+                    $ErrorActionPreference = 'Stop'
+                    $rids = @('win-x64', 'win-arm64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
+                    foreach ($rid in $rids) {
+                      $out = "$(Build.SourcesDirectory)\out\fdd\$rid"
+                      Write-Host "Publishing framework-dependent build for $rid -> $out"
+                      dotnet publish "$(ReleaseProject)" `
+                        --configuration "$(BuildConfiguration)" `
+                        -r $rid `
+                        --self-contained false `
+                        -p:PublishSingleFile=true `
+                        -p:EnableCompressionInSingleFile=false `
+                        -p:IncludeAllContentForSelfExtract=true `
+                        -p:PackAsTool=false `
+                        --output $out `
+                        --configfile "$(Build.SourcesDirectory)\.pipelines\nuget.config"
+                      if ($LASTEXITCODE -ne 0) {
+                        throw "Framework-dependent publish failed for $rid (exit $LASTEXITCODE)."
+                      }
+                    }
+
               - task: onebranch.pipeline.signing@1
                 displayName: "Sign publish output"
                 inputs:
@@ -232,7 +272,7 @@ extends:
                   search_root: '$(Build.SourcesDirectory)\out'
 
               - task: PowerShell@2
-                displayName: "Zip and validate signed RID publish folders"
+                displayName: "Zip and validate signed publish folders (self-contained + FDD)"
                 condition: succeeded()
                 inputs:
                   targetType: inline
@@ -248,45 +288,72 @@ extends:
                     New-Item -ItemType Directory -Path $zipDir -Force | Out-Null
 
                     $rids = @('win-x64', 'win-arm64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
-                    foreach ($rid in $rids) {
-                      $ridDir = Join-Path $outDir $rid
-                      if (-not (Test-Path $ridDir)) {
-                        Write-Error "Publish folder for RID '$rid' not found at $ridDir."
+
+                    # Zips a publish folder that must contain exactly one file (a
+                    # single-file executable, self-contained or framework-dependent)
+                    # and validates its leaf name before returning its path.
+                    function New-ValidatedSingleFileZip {
+                      param(
+                        [string]$Label,
+                        [string]$PublishDir,
+                        [string]$ZipPath,
+                        [string]$ExpectedExe
+                      )
+
+                      if (-not (Test-Path $PublishDir)) {
+                        Write-Error "$Label publish folder not found at $PublishDir."
                         exit 1
                       }
 
-                      $zipPath = Join-Path $zipDir ("cosmosdbshell_{0}_{1}.zip" -f $rid, $version)
-                      if (Test-Path $zipPath) {
-                        Remove-Item -Path $zipPath -Force
+                      if (Test-Path $ZipPath) {
+                        Remove-Item -Path $ZipPath -Force
                       }
 
-                      Write-Host "Creating $zipPath"
+                      Write-Host "Creating $ZipPath"
                       [System.IO.Compression.ZipFile]::CreateFromDirectory(
-                        $ridDir,
-                        $zipPath,
+                        $PublishDir,
+                        $ZipPath,
                         [System.IO.Compression.CompressionLevel]::Optimal,
                         $false)
 
-                      $expectedExe = if ($rid -like 'win-*') { 'CosmosDBShell.exe' } else { 'CosmosDBShell' }
-                      $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+                      $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
                       try {
-                        if ($archive.Entries.Count -eq 0) {
-                          Write-Error "Generated archive is empty: $zipPath"
+                        $files = @($archive.Entries | Where-Object { -not [string]::IsNullOrEmpty([System.IO.Path]::GetFileName($_.FullName)) })
+                        if ($files.Count -ne 1) {
+                          $entries = ($files | ForEach-Object { $_.FullName }) -join ', '
+                          Write-Error "$Label archive $ZipPath must contain exactly one executable. Found $($files.Count) files: $entries"
                           exit 1
                         }
 
-                        # Match by leaf file name only — the publish folder may nest binaries
-                        # under a project-named subdirectory (e.g. CosmosDBShell/CosmosDBShell.exe).
-                        $hasExe = $archive.Entries | Where-Object { [System.IO.Path]::GetFileName($_.FullName) -ieq $expectedExe }
-                        if (-not $hasExe) {
-                          $sample = ($archive.Entries | Select-Object -First 10 -ExpandProperty FullName) -join ', '
-                          Write-Error "Archive $zipPath is missing expected executable '$expectedExe'. First entries: $sample"
+                        # The task may nest the publish under a project-named folder,
+                        # so validate the leaf name while allowing that directory.
+                        $actualExe = [System.IO.Path]::GetFileName($files[0].FullName)
+                        if ($actualExe -ine $ExpectedExe) {
+                          Write-Error "$Label archive $ZipPath must contain only '$ExpectedExe'; found '$($files[0].FullName)'."
                           exit 1
                         }
+
+                        Write-Host "Validated $Label archive: $($files[0].FullName) [$($files[0].Length) bytes]"
                       }
                       finally {
                         $archive.Dispose()
                       }
+                    }
+
+                    foreach ($rid in $rids) {
+                      $expectedExe = if ($rid -like 'win-*') { 'CosmosDBShell.exe' } else { 'CosmosDBShell' }
+
+                      New-ValidatedSingleFileZip `
+                        -Label 'self-contained' `
+                        -PublishDir (Join-Path $outDir $rid) `
+                        -ZipPath (Join-Path $zipDir ("cosmosdbshell_{0}_{1}.zip" -f $rid, $version)) `
+                        -ExpectedExe $expectedExe
+
+                      New-ValidatedSingleFileZip `
+                        -Label 'framework-dependent' `
+                        -PublishDir (Join-Path $outDir "fdd\$rid") `
+                        -ZipPath (Join-Path $zipDir ("cosmosdbshell_fdd_{0}_{1}.zip" -f $rid, $version)) `
+                        -ExpectedExe $expectedExe
                     }
 
                     Write-Host "Generated archives:"
@@ -373,38 +440,126 @@ extends:
                     New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
                     Get-ChildItem -Path $pkgDir -Filter *.nupkg -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
-              # Note: signing bin/ IL assemblies before pack is ineffective here.
-              # PublishSingleFile=true causes dotnet pack to produce a new single-file
-              # EXE that bundles all assemblies — the input signatures are lost.
-              # The actual payload signing happens post-pack via extract/sign/repack below.
-
+              # The published NuGet packages are framework-dependent .NET global
+              # tool packages, split per RID (tools/net10.0/<rid>) so each download
+              # only carries that platform's native deps (~12-24 MB) instead of one
+              # RID-agnostic package bundling every platform's natives (~35 MB).
+              # dotnet pack emits a tiny RID-agnostic pointer package (CosmosDBShell)
+              # plus one package per RID (CosmosDBShell.<rid>); `dotnet tool install`
+              # resolves the right RID package by convention when both are present in
+              # the same feed/local source, matching README's install instructions.
+              # Self-contained builds ship only as per-RID zip archives above — never
+              # as NuGet packages.
+              #
+              # Payload signing note: signing bin/ IL assemblies before pack is
+              # ineffective — pack rebuilds the tool payload and the input signatures
+              # are lost. The loose tools/net10.0/<rid>/*.dll assemblies are instead
+              # Authenticode-signed post-pack via the extract/sign/repack steps below.
               - task: PowerShell@2
-                displayName: "Pack CosmosDBShell NuGet"
-                condition: succeeded()
-                inputs:
-                  targetType: inline
-                  script: |
-                    $pkgDir = "$(Build.SourcesDirectory)\out\nupkg"
-                    New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
-
-                    dotnet pack "$(ReleaseProject)" `
-                      --configuration "$(BuildConfiguration)" `
-                      --no-build `
-                      --no-restore `
-                      --output $pkgDir `
-                      /p:ContinuousIntegrationBuild=true
-
-                    if ($LASTEXITCODE -ne 0) {
-                      throw "dotnet pack failed with exit code $LASTEXITCODE."
-                    }
-
-              - task: PowerShell@2
-                displayName: "Expand RID packages for payload signing"
+                displayName: "Pack CosmosDBShell (framework-dependent, per-RID) NuGet"
                 condition: succeeded()
                 inputs:
                   targetType: inline
                   pwsh: true
                   script: |
+                    $ErrorActionPreference = 'Stop'
+                    $pkgDir = "$(Build.SourcesDirectory)\out\nupkg"
+                    New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
+                    Get-ChildItem -Path $pkgDir -Filter *.nupkg -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+
+                    $rids = @('win-x64', 'win-arm64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
+
+                    # RuntimeIdentifiers/ToolPackageRuntimeIdentifiers are intentionally
+                    # NOT cleared here: the csproj's default RID list is what drives
+                    # dotnet pack's per-RID tool split. Only override the properties
+                    # that make this pack framework-dependent (not self-contained).
+                    # A .rsp keeps these explicit and stable across shells.
+                    $rspPath = Join-Path "$(Agent.TempDirectory)" 'pack-fdd.rsp'
+                    @(
+                      "-p:SelfContained=false"
+                      "-p:PublishSingleFile=false"
+                      "-p:EnableCompressionInSingleFile=false"
+                      "-p:PackAsTool=true"
+                      "-p:ContinuousIntegrationBuild=true"
+                    ) | Set-Content -Path $rspPath -Encoding ascii
+
+                    Write-Host "Pack response file:"
+                    Get-Content -Path $rspPath | ForEach-Object { Write-Host "  $_" }
+
+                    # Prove MSBuild is packing framework-dependent with the full RID
+                    # set still in play (not accidentally cleared or self-contained).
+                    $evalJson = & dotnet msbuild "$(ReleaseProject)" `
+                      -getProperty:SelfContained `
+                      -getProperty:ToolPackageRuntimeIdentifiers `
+                      -getProperty:RuntimeIdentifiers `
+                      -getProperty:PackageId `
+                      "@$rspPath"
+                    if ($LASTEXITCODE -ne 0) {
+                      throw "Failed to evaluate pack properties (exit $LASTEXITCODE)."
+                    }
+                    Write-Host "Evaluated pack properties: $evalJson"
+                    $eval = $evalJson | ConvertFrom-Json
+                    $props = $eval.Properties
+                    if ($props.SelfContained -ne 'false') {
+                      throw "SelfContained must be false for FDD pack; got '$($props.SelfContained)'."
+                    }
+                    if ($props.PackageId -ne 'CosmosDBShell') {
+                      throw "PackageId must be CosmosDBShell; got '$($props.PackageId)'."
+                    }
+                    foreach ($rid in $rids) {
+                      if ([string]$props.ToolPackageRuntimeIdentifiers -notmatch [regex]::Escape($rid)) {
+                        throw "ToolPackageRuntimeIdentifiers must include '$rid' for the per-RID FDD split; got '$($props.ToolPackageRuntimeIdentifiers)'."
+                      }
+                      if ([string]$props.RuntimeIdentifiers -notmatch [regex]::Escape($rid)) {
+                        throw "RuntimeIdentifiers must include '$rid' for the per-RID FDD split; got '$($props.RuntimeIdentifiers)'."
+                      }
+                    }
+
+                    # Fresh restore/build (no --no-build/--no-restore): different
+                    # configuration than the self-contained RID zip publishes.
+                    & dotnet pack "$(ReleaseProject)" `
+                      --configuration "$(BuildConfiguration)" `
+                      --output $pkgDir `
+                      --configfile "$(Build.SourcesDirectory)\.pipelines\nuget.config" `
+                      "@$rspPath"
+                    if ($LASTEXITCODE -ne 0) {
+                      throw "dotnet pack (framework-dependent) failed with exit code $LASTEXITCODE."
+                    }
+
+                    # Expect exactly one pointer package (CosmosDBShell.<version>.nupkg,
+                    # no RID suffix) plus exactly one package per RID. Anything else
+                    # (missing RID, duplicate, or a stray any/FrameworkDependent name)
+                    # fails the build immediately instead of silently shipping wrong.
+                    $allPackages = @(Get-ChildItem -Path $pkgDir -Filter '*.nupkg' -File -ErrorAction SilentlyContinue)
+                    $pointer = @($allPackages | Where-Object { $_.Name -match '^CosmosDBShell\.\d' })
+                    $ridPattern = '^CosmosDBShell\.(' + ($rids -join '|') + ')\.'
+                    $ridPackages = @($allPackages | Where-Object { $_.Name -match $ridPattern })
+                    $unexpected = @($allPackages | Where-Object { $_.Name -notmatch '^CosmosDBShell\.\d' -and $_.Name -notmatch $ridPattern })
+                    Write-Host "Packages after pack:"
+                    $allPackages | Sort-Object Name | ForEach-Object { Write-Host (" - {0} [{1} bytes]" -f $_.Name, $_.Length) }
+                    if ($unexpected.Count -gt 0) {
+                      $names = ($unexpected | ForEach-Object { $_.Name }) -join ', '
+                      throw "Pack emitted unexpected package(s). Only the pointer and per-RID packages are allowed. Found: $names"
+                    }
+                    if ($pointer.Count -ne 1) {
+                      $names = ($pointer | ForEach-Object { $_.Name }) -join ', '
+                      throw "Expected exactly one pointer CosmosDBShell.<version>.nupkg after pack. Found: $names"
+                    }
+                    foreach ($rid in $rids) {
+                      $matches = @($ridPackages | Where-Object { $_.Name -match ('^CosmosDBShell\.' + [regex]::Escape($rid) + '\.') })
+                      if ($matches.Count -ne 1) {
+                        throw "Expected exactly one CosmosDBShell.$rid.<version>.nupkg after pack. Found $($matches.Count)."
+                      }
+                    }
+
+              - task: PowerShell@2
+                displayName: "Expand NuGet package for payload signing"
+                condition: succeeded()
+                inputs:
+                  targetType: inline
+                  pwsh: true
+                  script: |
+                    $ErrorActionPreference = 'Stop'
                     $pkgDir = "$(Build.SourcesDirectory)\out\nupkg"
                     $signStage = "$(Build.SourcesDirectory)\out\nupkg-payload"
 
@@ -414,16 +569,18 @@ extends:
 
                     New-Item -ItemType Directory -Path $signStage -Force | Out-Null
 
-                    $ridPackages = Get-ChildItem -Path $pkgDir -Filter "CosmosDBShell.*.nupkg" -File -ErrorAction SilentlyContinue | Where-Object {
-                      $_.Name -match '^CosmosDBShell\.(win-x64|win-arm64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
-                    }
+                    # Expand every framework-dependent package (the pointer plus all
+                    # per-RID packages) so each RID package's loose tools/*.dll are
+                    # Authenticode-signed. The pointer has no binaries but is expanded
+                    # too for a uniform extract/sign/repack pass.
+                    $packages = @(Get-ChildItem -Path $pkgDir -Filter "CosmosDBShell.*.nupkg" -File -ErrorAction SilentlyContinue)
 
-                    if (-not $ridPackages -or $ridPackages.Count -eq 0) {
-                      Write-Error "No RID-specific packages found to expand for payload signing."
+                    if ($packages.Count -eq 0) {
+                      Write-Error "No CosmosDBShell packages found to expand for payload signing."
                       exit 1
                     }
 
-                    foreach ($pkg in $ridPackages) {
+                    foreach ($pkg in $packages) {
                       $targetDir = Join-Path $signStage $pkg.BaseName
                       [System.IO.Compression.ZipFile]::ExtractToDirectory($pkg.FullName, $targetDir)
                     }
@@ -438,7 +595,7 @@ extends:
                   search_root: '$(Build.SourcesDirectory)\out\nupkg-payload'
 
               - task: PowerShell@2
-                displayName: "Repack RID packages with signed payload"
+                displayName: "Repack NuGet package with signed payload"
                 condition: succeeded()
                 inputs:
                   targetType: inline
@@ -470,41 +627,84 @@ extends:
                 condition: succeeded()
                 inputs:
                   targetType: inline
+                  pwsh: true
                   script: |
+                    $ErrorActionPreference = 'Stop'
                     $pkgDir = "$(Build.SourcesDirectory)\out\nupkg"
-                    $ridPatterns = @(
-                      "CosmosDBShell.win-x64.*.nupkg",
-                      "CosmosDBShell.win-arm64.*.nupkg",
-                      "CosmosDBShell.linux-x64.*.nupkg",
-                      "CosmosDBShell.linux-arm64.*.nupkg",
-                      "CosmosDBShell.osx-x64.*.nupkg",
-                      "CosmosDBShell.osx-arm64.*.nupkg"
-                    )
+                    $rids = @('win-x64', 'win-arm64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')
 
-                    foreach ($pattern in $ridPatterns) {
-                      $matches = Get-ChildItem -Path (Join-Path $pkgDir $pattern) -ErrorAction SilentlyContinue
-                      if (-not $matches -or $matches.Count -eq 0) {
-                        Write-Error "Expected package was not generated: $pattern"
+                    $allPackages = @(Get-ChildItem -Path $pkgDir -Filter '*.nupkg' -File -ErrorAction SilentlyContinue)
+                    $pointer = @($allPackages | Where-Object { $_.Name -match '^CosmosDBShell\.\d' })
+                    $ridPattern = '^CosmosDBShell\.(' + ($rids -join '|') + ')\.'
+                    $ridPackages = @($allPackages | Where-Object { $_.Name -match $ridPattern })
+                    $unexpected = @($allPackages | Where-Object { $_.Name -notmatch '^CosmosDBShell\.\d' -and $_.Name -notmatch $ridPattern })
+
+                    Write-Host "NuGet packages for validation:"
+                    $allPackages | Sort-Object Name | ForEach-Object {
+                      Write-Host (" - {0} [{1} bytes]" -f $_.Name, $_.Length)
+                    }
+
+                    # Expect one RID-agnostic pointer (CosmosDBShell.<version>.nupkg)
+                    # plus one framework-dependent package per RID. Self-contained
+                    # builds ship only as zips and must never appear here.
+                    if ($unexpected.Count -gt 0) {
+                      $names = ($unexpected | ForEach-Object { $_.Name }) -join ', '
+                      Write-Error "Unexpected package(s) in out\nupkg. Only the pointer and per-RID FDD packages are allowed. Found: $names"
+                      exit 1
+                    }
+                    if ($pointer.Count -ne 1) {
+                      $names = ($pointer | ForEach-Object { $_.Name }) -join ', '
+                      Write-Error "Expected exactly one pointer CosmosDBShell.<version>.nupkg. Found: $names"
+                      exit 1
+                    }
+                    foreach ($rid in $rids) {
+                      $matches = @($ridPackages | Where-Object { $_.Name -match ('^CosmosDBShell\.' + [regex]::Escape($rid) + '\.') })
+                      if ($matches.Count -ne 1) {
+                        Write-Error "Expected exactly one CosmosDBShell.$rid.<version>.nupkg. Found $($matches.Count)."
                         exit 1
                       }
                     }
 
-                    $allPackages = Get-ChildItem -Path (Join-Path $pkgDir "CosmosDBShell.*.nupkg") -ErrorAction SilentlyContinue
-                    $pointerPackages = $allPackages | Where-Object {
-                      $_.Name -notmatch '^CosmosDBShell\.(win-x64|win-arm64|linux-x64|linux-arm64|osx-x64|osx-arm64)\..+\.nupkg$'
+                    # Spot-check payload shape: the pointer carries only the tiny
+                    # tools/net10.0/any manifest (no natives); each RID package carries
+                    # its own tools/net10.0/<rid> content and no other RID's natives.
+                    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+                    $pointerArchive = [System.IO.Compression.ZipFile]::OpenRead($pointer[0].FullName)
+                    try {
+                      $pointerNames = @($pointerArchive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
+                      $pointerRidTools = $pointerNames | Where-Object { $_ -match ('^tools/net10\.0/(' + ($rids -join '|') + ')/') }
+                      if ($pointerRidTools) {
+                        Write-Error "Pointer package $($pointer[0].Name) must not contain RID-specific tools/ paths."
+                        exit 1
+                      }
+                    }
+                    finally {
+                      $pointerArchive.Dispose()
                     }
 
-                    if (-not $pointerPackages -or $pointerPackages.Count -ne 1) {
-                      $names = @($pointerPackages | ForEach-Object { $_.Name })
-                      Write-Error "Expected exactly one pointer package (non-RID). Found: $($names -join ', ')"
-                      exit 1
-                    }
-
-                    $anyMatches = Get-ChildItem -Path (Join-Path $pkgDir "CosmosDBShell.any.*.nupkg") -ErrorAction SilentlyContinue
-                    if ($anyMatches -and $anyMatches.Count -gt 0) {
-                      $names = $anyMatches | ForEach-Object { $_.Name } | Sort-Object
-                      Write-Error "Unexpected any-RID package(s) found: $($names -join ', ')"
-                      exit 1
+                    foreach ($rid in $rids) {
+                      $pkg = $ridPackages | Where-Object { $_.Name -match ('^CosmosDBShell\.' + [regex]::Escape($rid) + '\.') } | Select-Object -First 1
+                      $archive = [System.IO.Compression.ZipFile]::OpenRead($pkg.FullName)
+                      try {
+                        $names = @($archive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
+                        $hasOwnTools = $names | Where-Object { $_ -like "tools/net10.0/$rid/*" }
+                        if (-not $hasOwnTools) {
+                          Write-Error "Package $($pkg.Name) is missing tools/net10.0/$rid/* (not a framework-dependent tool package for $rid)."
+                          exit 1
+                        }
+                        $otherRids = $rids | Where-Object { $_ -ne $rid }
+                        $crossRidTools = $names | Where-Object {
+                          $_ -match ('^tools/net10\.0/(' + ($otherRids -join '|') + ')/')
+                        }
+                        if ($crossRidTools) {
+                          Write-Error "Package $($pkg.Name) contains other RIDs' tools/ paths; each per-RID package must only carry its own platform."
+                          exit 1
+                        }
+                      }
+                      finally {
+                        $archive.Dispose()
+                      }
                     }
 
               - task: onebranch.pipeline.signing@1
@@ -524,6 +724,34 @@ extends:
               # (SBOM + signed build.manifest) on its own afterwards.
               # This MUST run before the NuGet push, because the 1ES Pipeline Template
               # injects a full-tree CodeSign scan after the last user step group.
+              #
+              # The Windows exes (self-contained and framework-dependent) are staged to
+              # a location outside out\ first (below) so BinSkim (scanning the whole
+              # checkout, see ob_sdl_binskim_scanOutputDirectoryOnly above) still has
+              # loose PE files to scan, without those exes ending up duplicated in the
+              # artifact alongside the already-zipped copies in out\zip.
+              - task: PowerShell@2
+                displayName: "Stage Windows executables for BinSkim (outside published artifact)"
+                condition: always()
+                inputs:
+                  targetType: inline
+                  script: |
+                    $outDir = "$(Build.SourcesDirectory)\out"
+                    $scanDir = "$(Build.SourcesDirectory)\_binskim-scan"
+                    $sources = @{
+                      'sc-win-x64'    = Join-Path $outDir 'win-x64'
+                      'sc-win-arm64'  = Join-Path $outDir 'win-arm64'
+                      'fdd-win-x64'   = Join-Path $outDir 'fdd\win-x64'
+                      'fdd-win-arm64' = Join-Path $outDir 'fdd\win-arm64'
+                    }
+                    foreach ($entry in $sources.GetEnumerator()) {
+                      if (Test-Path $entry.Value) {
+                        $target = Join-Path $scanDir $entry.Key
+                        New-Item -ItemType Directory -Path $target -Force | Out-Null
+                        Copy-Item -Path (Join-Path $entry.Value '*') -Destination $target -Recurse -Force
+                      }
+                    }
+
               - task: PowerShell@2
                 displayName: "Clean non-shipping build outputs before SDL"
                 condition: always()
@@ -554,10 +782,11 @@ extends:
                       # Whitelist approach: keep only the dirs we explicitly want shipped
                       # in the cosmos_shell_all artifact. Anything else (per-RID publish
                       # folders, nupkg-payload sign-staging, future intermediates) is noise.
-                      # win-x64 and win-arm64 are kept so SDL/BinSkim has loose PE files
-                      # to scan (it does not descend into the zip/nupkg archives, and
-                      # ob_sdl_binskim_scanOutputDirectoryOnly limits it to out\).
-                      $keep = @('zip', 'nupkg', '_manifest', 'win-x64', 'win-arm64')
+                      # win-x64/win-arm64 are intentionally NOT kept — those exes are
+                      # already zipped into out\zip and were staged to _binskim-scan\
+                      # above for scanning, so keeping a third loose copy here would
+                      # just duplicate them in the published artifact.
+                      $keep = @('zip', 'nupkg', '_manifest')
                       Get-ChildItem -Path $outDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $keep -notcontains $_.Name } | ForEach-Object {
                         Write-Host "Trimming $($_.FullName) from out\"
                         Remove-Item -Recurse -Force $_.FullName
@@ -568,8 +797,8 @@ extends:
                       }
                     }
 
-              # Keep the pointer package in out\nupkg so it is preserved in pipeline artifacts
-              # and available for publishing to the internal feed alongside the RID packages.
+              # List the packed NuGet package(s) in out\nupkg so the published
+              # artifact set is visible in the build log before the push.
               - task: PowerShell@2
                 displayName: "List NuGet packages before publish"
                 condition: succeeded()
@@ -584,64 +813,13 @@ extends:
 
               - ${{ if and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(parameters.publishNuget, true)) }}:
                   - task: NuGetCommand@2
-                    displayName: "Push win-x64 NuGet package"
+                    displayName: "Push CosmosDBShell NuGet packages"
                     inputs:
                       command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg'
-                      nuGetFeedType: "internal"
-                      publishVstsFeed: "CosmosDB/CosmosDBShell"
-                      allowPackageConflicts: true
-
-                  - task: NuGetCommand@2
-                    displayName: "Push win-arm64 NuGet package"
-                    inputs:
-                      command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-arm64.*.nupkg'
-                      nuGetFeedType: "internal"
-                      publishVstsFeed: "CosmosDB/CosmosDBShell"
-                      allowPackageConflicts: true
-
-                  - task: NuGetCommand@2
-                    displayName: "Push linux-x64 NuGet package"
-                    inputs:
-                      command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg'
-                      nuGetFeedType: "internal"
-                      publishVstsFeed: "CosmosDB/CosmosDBShell"
-                      allowPackageConflicts: true
-
-                  - task: NuGetCommand@2
-                    displayName: "Push linux-arm64 NuGet package"
-                    inputs:
-                      command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg'
-                      nuGetFeedType: "internal"
-                      publishVstsFeed: "CosmosDB/CosmosDBShell"
-                      allowPackageConflicts: true
-
-                  - task: NuGetCommand@2
-                    displayName: "Push osx-x64 NuGet package"
-                    inputs:
-                      command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg'
-                      nuGetFeedType: "internal"
-                      publishVstsFeed: "CosmosDB/CosmosDBShell"
-                      allowPackageConflicts: true
-
-                  - task: NuGetCommand@2
-                    displayName: "Push osx-arm64 NuGet package"
-                    inputs:
-                      command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg'
-                      nuGetFeedType: "internal"
-                      publishVstsFeed: "CosmosDB/CosmosDBShell"
-                      allowPackageConflicts: true
-
-                  - task: NuGetCommand@2
-                    displayName: "Push base NuGet package"
-                    inputs:
-                      command: "push"
-                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.win-arm64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.linux-arm64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-x64.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.osx-arm64.*.nupkg'
+                      # Pointer package plus all per-RID framework-dependent packages.
+                      # Excludes any stray any-RID/FrameworkDependent variant name that
+                      # should never be produced by the pack step above.
+                      packagesToPush: '$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.any.*.nupkg;!$(Build.SourcesDirectory)\out\nupkg\CosmosDBShell.FrameworkDependent.*.nupkg'
                       nuGetFeedType: "internal"
                       publishVstsFeed: "CosmosDB/CosmosDBShell"
                       allowPackageConflicts: true
