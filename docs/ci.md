@@ -35,7 +35,7 @@ jobs:
         env:
           COSMOS_CONNECTION: ${{ secrets.COSMOS_CONNECTION }}
         run: |
-          cosmosdbshell -c "seed.csh \"$COSMOS_CONNECTION\" mydb mycontainer"
+          cosmosdbshell --connect "$COSMOS_CONNECTION" -c "seed.csh mydb mycontainer"
 ```
 
 ### Version pinning
