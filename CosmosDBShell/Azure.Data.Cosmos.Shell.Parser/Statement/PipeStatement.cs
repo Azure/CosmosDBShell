@@ -92,7 +92,7 @@ internal class PipeStatement : Statement
             commandState = await statement.RunAsync(shell, commandState, token);
         }
 
-        shell.PrintState(commandState, markAsRendered: true);
+        commandState = shell.PrintState(commandState, markAsRendered: true);
         return commandState;
     }
 

@@ -105,7 +105,7 @@ internal class BlockStatement : Statement
                 throw;
             }
 
-            shell.PrintState(commandState, markAsRendered: true);
+            commandState = shell.PrintState(commandState, markAsRendered: true);
             if (commandState.IsError)
             {
                 return commandState;

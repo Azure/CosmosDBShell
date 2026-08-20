@@ -436,7 +436,7 @@ internal class CommandStatement : Statement
 
                     try
                     {
-                        shell.PrintState(currentState, markAsRendered: true);
+                        currentState = shell.PrintState(currentState, markAsRendered: true);
                     }
                     finally
                     {
