@@ -13,6 +13,10 @@ public sealed class WelcomeCommandTests
     [Fact]
     public void WelcomeScreen_LoadsEmbeddedAnsiContent()
     {
+        var expectedVersion = ShellInterpreter.GetDisplayVersion(typeof(WelcomeScreen).Assembly);
+
+        Assert.Contains($"PREVIEW VERSION {expectedVersion}", WelcomeScreen.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("{{VERSION}}", WelcomeScreen.Text, StringComparison.Ordinal);
         Assert.Contains("START HERE", WelcomeScreen.Text, StringComparison.Ordinal);
         Assert.Contains("RESOURCES", WelcomeScreen.Text, StringComparison.Ordinal);
         Assert.Contains("\u001b[", WelcomeScreen.Text, StringComparison.Ordinal);

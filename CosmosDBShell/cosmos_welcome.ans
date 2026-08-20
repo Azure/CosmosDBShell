@@ -10,6 +10,8 @@
 [18C\   \   |   __   | |  __|  | |    | |[0m
 [15C[1;30m.---)   |  |  |  |  | | |____ | `---.| `---. [0m
 [15C[1;30m|_[5b/   |__|  |__| |_[5b||_[4b||_[4b| [0m
+[1;33mPREVIEW VERSION {{VERSION}}[0m  [1;37mCommands, output, and behavior may change before general availability.[0m
+[0m
 [48;2;85;255;255m [30mSTART HERE [0m
 [0m
 [1;33m01  CONNECT[32C02  LEARN[0m
