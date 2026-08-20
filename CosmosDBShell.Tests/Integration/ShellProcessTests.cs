@@ -216,6 +216,19 @@ public class ShellProcessTests
     }
 
     [Fact]
+    public async Task SlashC_WithMalformedOtelEndpoint_ReturnsJsonError()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--otel", "not-a-valid-endpoint", "/c", "version"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
+        Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ExecuteAndQuit_WithoutOutput_EmitsParseableJsonOnStdOut()
     {
         var result = await RunShellAsync(

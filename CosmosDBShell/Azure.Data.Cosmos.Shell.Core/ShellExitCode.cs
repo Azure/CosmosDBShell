@@ -6,6 +6,7 @@ namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 
 using global::Azure;
 using global::Azure.Data.Cosmos.Shell.Parser;
@@ -107,6 +108,7 @@ public static class ShellExitCode
     {
         return ex is CommandNotFoundException
             or PositionalException
+            or JsonException
             or ArgumentException;
     }
 

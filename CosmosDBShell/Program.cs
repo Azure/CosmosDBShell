@@ -71,7 +71,8 @@ internal class Program
             {
                 var outputMode = parseResult.GetValueForOption(optionMap.Output);
                 var quiet = parseResult.GetValueForOption(optionMap.Quiet);
-                var isNonInteractive = args.Contains("-c", StringComparer.Ordinal);
+                var isNonInteractive = !string.IsNullOrWhiteSpace(
+                    parseResult.GetValueForOption(optionMap.ExecuteAndQuit));
 
                 var isMachineMode = OutputPolicy.IsMachineMode(outputMode, quiet, isNonInteractive);
                 if (isMachineMode)
@@ -163,7 +164,7 @@ internal class Program
                     var msg = MessageService.GetArgsString(
                         "otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint);
                     var inMachineMode = OutputPolicy.IsMachineMode(
-                        o.Output, o.Quiet, args.Contains("-c", StringComparer.Ordinal));
+                        o.Output, o.Quiet, !string.IsNullOrWhiteSpace(o.ExecuteAndQuit));
 
                     if (inMachineMode)
                     {
@@ -190,7 +191,7 @@ internal class Program
             {
                 Environment.ExitCode = ShellExitCode.UsageError;
                 var inMachineMode = OutputPolicy.IsMachineMode(
-                    o.Output, o.Quiet, args.Contains("-c", StringComparer.Ordinal));
+                    o.Output, o.Quiet, !string.IsNullOrWhiteSpace(o.ExecuteAndQuit));
 
                 if (inMachineMode)
                 {
@@ -324,7 +325,7 @@ internal class Program
                     Environment.ExitCode = ShellExitCode.FromException(ex);
 
                     var inMachineMode = OutputPolicy.IsMachineMode(
-                        o.Output, o.Quiet, args.Contains("-c", StringComparer.Ordinal));
+                        o.Output, o.Quiet, !string.IsNullOrWhiteSpace(o.ExecuteAndQuit));
 
                     if (!inMachineMode
                         && ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id, out var permission))

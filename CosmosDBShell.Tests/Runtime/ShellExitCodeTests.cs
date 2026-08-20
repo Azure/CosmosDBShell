@@ -6,6 +6,7 @@ namespace CosmosShell.Tests.Runtime;
 
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 
 using Azure;
 using Azure.Data.Cosmos.Shell.Core;
@@ -161,6 +162,14 @@ public class ShellExitCodeTests
         Assert.Equal(
             ShellExitCode.UsageError,
             ShellExitCode.FromException(new ArgumentException("bad arg")));
+    }
+
+    [Fact]
+    public void FromException_WrappedJsonException_ReturnsUsageError()
+    {
+        var wrapped = new CommandException("create", new JsonException("invalid JSON"));
+
+        Assert.Equal(ShellExitCode.UsageError, ShellExitCode.FromException(wrapped));
     }
 
     [Fact]
