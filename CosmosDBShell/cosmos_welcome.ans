@@ -26,4 +26,6 @@
 [1;36mProject    [34mhttps://github.com/Azure/CosmosDBShell[0m
 [1;36mDocs[7C[34mhttps://github.com/Azure/CosmosDBShell/blob/main/README.md[0m
 [1;36mExamples   [34mhttps://github.com/Azure/CosmosDBShell/tree/main/examples
+
 [1;33mPREVIEW VERSION {{VERSION}}[0m  [1;37mCommands, output, and behavior may change before general availability.[0m
+
