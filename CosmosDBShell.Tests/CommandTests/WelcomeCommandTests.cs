@@ -78,7 +78,7 @@ public sealed class WelcomeCommandTests
     }
 
     [Fact]
-    public void PrintStartupStatus_UsesOneCompactLine()
+    public void PrintStartupStatus_PrintsPreviewWarningBelowVersion()
     {
         var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-welcome-{Guid.NewGuid():N}");
         var originalOut = Console.Out;
@@ -94,9 +94,13 @@ public sealed class WelcomeCommandTests
             var status = output.ToString();
             Assert.StartsWith("Cosmos DB Shell ", status, StringComparison.Ordinal);
             Assert.Contains(" | MCP off", status, StringComparison.Ordinal);
+            Assert.Contains(
+                $"{Environment.NewLine}PREVIEW VERSION Commands, output, and behavior may change before general availability.{Environment.NewLine}",
+                status,
+                StringComparison.Ordinal);
             Assert.DoesNotContain("Report issues", status, StringComparison.Ordinal);
             Assert.DoesNotContain("Not connected", status, StringComparison.Ordinal);
-            Assert.Equal(1, status.Count(character => character == '\n'));
+            Assert.Equal(2, status.Count(character => character == '\n'));
         }
         finally
         {
