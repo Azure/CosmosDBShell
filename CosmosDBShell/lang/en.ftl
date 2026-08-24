@@ -1,6 +1,7 @@
 shell-ready = Cosmos DB shell ready.
 shell-not_connected_hint = Not connected. Run 'connect <endpoint>' to authenticate, or 'help connect' for more options.
 shell-startup-status = Cosmos DB Shell { $version } | MCP { $mcp_status }
+shell-startup-preview-warning = PREVIEW VERSION Commands, output, and behavior may change before general availability.
 shell-startup-mcp-off = off
 shell-startup-mcp-port = port { $port }
 shell-hisory_file_deleted = History deleted.
