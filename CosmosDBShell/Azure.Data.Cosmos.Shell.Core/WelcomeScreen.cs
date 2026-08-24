@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Core;
 internal static class WelcomeScreen
 {
     private const string ResourceSuffix = "cosmos_welcome.ans";
+    private const string VersionPlaceholder = "{{VERSION}}";
     private static readonly Lazy<string> Content = new(Load);
 
     internal static string Text => Content.Value;
@@ -31,6 +32,8 @@ internal static class WelcomeScreen
         using var stream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException($"Stream for embedded resource '{resourceName}' not found.");
         using var reader = new StreamReader(stream);
-        return reader.ReadToEnd().TrimStart('\uFEFF');
+        return reader.ReadToEnd()
+            .TrimStart('\uFEFF')
+            .Replace(VersionPlaceholder, ShellInterpreter.GetDisplayVersion(assembly), StringComparison.Ordinal);
     }
 }

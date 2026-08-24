@@ -736,6 +736,7 @@ public partial class ShellInterpreter : IDisposable
             version,
             "mcp_status",
             mcpStatus));
+        WriteLine(MessageService.GetString("shell-startup-preview-warning"));
     }
 
     internal async Task<int> RunAsync()
