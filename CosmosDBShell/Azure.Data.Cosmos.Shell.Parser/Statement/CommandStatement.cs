@@ -531,20 +531,6 @@ internal class CommandStatement : Statement
         // Add arguments
         foreach (var arg in this.Arguments)
         {
-            if (arg is CommandOption option)
-            {
-                sb.Append(' ');
-                sb.Append(option.Name);
-
-                if (option.Value != null)
-                {
-                    sb.Append(' ');
-                    sb.Append(CommandArgumentFormatter.Format(option.Value));
-                }
-
-                continue;
-            }
-
             sb.Append(' ');
             sb.Append(CommandArgumentFormatter.Format(arg));
         }

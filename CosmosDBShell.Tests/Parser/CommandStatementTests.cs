@@ -195,6 +195,33 @@ public class CommandStatementTests
     }
 
     [Fact]
+    public void CommandStatement_ToString_RoundTripsValuelessOption()
+    {
+        var cmd = (CommandStatement)ParseStatement("help --full");
+
+        var reparsed = (CommandStatement)ParseStatement(cmd.ToString());
+
+        var option = Assert.IsType<CommandOption>(Assert.Single(reparsed.Arguments));
+        Assert.Equal("full", option.Name);
+        Assert.Null(option.Value);
+    }
+
+    [Theory]
+    [InlineData("help -full:true", "full", "true")]
+    [InlineData("query --database=Samples", "database", "Samples")]
+    [InlineData("query --database=\"has space\"", "database", "has space")]
+    public void CommandStatement_ToString_RoundTripsOptionValue(string script, string expectedName, string expectedValue)
+    {
+        var cmd = (CommandStatement)ParseStatement(script);
+
+        var reparsed = (CommandStatement)ParseStatement(cmd.ToString());
+
+        var option = Assert.IsType<CommandOption>(Assert.Single(reparsed.Arguments));
+        Assert.Equal(expectedName, option.Name);
+        Assert.Equal(expectedValue, option.Value?.ToString());
+    }
+
+    [Fact]
     public async Task CommandStatement_FunctionCall_ExecutesFunction()
     {
         var shell = ShellInterpreter.Instance;
