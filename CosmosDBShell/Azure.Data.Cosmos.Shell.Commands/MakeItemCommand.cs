@@ -17,8 +17,6 @@ using global::Azure.Data.Cosmos.Shell.States;
 [CosmosExample("mkitem '{\"id\":\"3\",\"status\":\"active\"}' --database=MyDB --container=Items", Description = "Create item in specific database and container")]
 internal class MakeItemCommand : CosmosCommand
 {
-    private static readonly JsonDocument SuccessDocument = JsonDocument.Parse($"{{\"result\": \"success\"}}");
-
     [CosmosParameter("data", IsRequired = false)]
     public string? Data { get; init; }
 
@@ -61,11 +59,18 @@ internal class MakeItemCommand : CosmosCommand
             "mkitem",
             token);
 
-        await WriteItemAsync(container, commandState, jsonOpt, this.Force == true, token);
+        var summary = await WriteItemAsync(container, jsonOpt, this.Force == true, token);
 
         var returnState = new CommandState();
-        returnState.Result = new ShellJson(SuccessDocument.RootElement.Clone());
-        returnState.RequestCharge = commandState.RequestCharge;
+        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
+        {
+            type = "item",
+            created = summary.Created,
+            replaced = summary.Replaced,
+            failed = summary.Failed,
+            requestCharge = summary.RequestCharge,
+        }));
+        returnState.RequestCharge = summary.RequestCharge;
         return returnState;
     }
 
@@ -127,11 +132,10 @@ internal class MakeItemCommand : CosmosCommand
         }
     }
 
-    private static async Task WriteItemAsync(Container container, CommandState commandState, string? jsonOpt, bool force, CancellationToken token)
+    private static async Task<WriteSummary> WriteItemAsync(Container container, string? jsonOpt, bool force, CancellationToken token)
     {
         if (!string.IsNullOrEmpty(jsonOpt))
         {
-            double totalCharge = 0;
             try
             {
                 using var doc = JsonDocument.Parse(jsonOpt);
@@ -151,8 +155,6 @@ internal class MakeItemCommand : CosmosCommand
                                 ? await container.UpsertItemAsync(element, cancellationToken: token)
                                 : await container.CreateItemAsync(element, cancellationToken: token);
                             charge += result.RequestCharge;
-                            totalCharge += result.RequestCharge;
-
                             if (result.StatusCode == System.Net.HttpStatusCode.Created)
                             {
                                 createdCount++;
@@ -267,6 +269,8 @@ internal class MakeItemCommand : CosmosCommand
                                 "total",
                                 totalCount));
                     }
+
+                    return new WriteSummary(createdCount, replacedCount, failCount, charge);
                 }
                 else
                 {
@@ -276,8 +280,6 @@ internal class MakeItemCommand : CosmosCommand
                             ? await container.UpsertItemAsync(root, cancellationToken: token)
                             : await container.CreateItemAsync(root, cancellationToken: token);
 
-                        totalCharge += result.RequestCharge;
-
                         if (result.StatusCode == System.Net.HttpStatusCode.Created)
                         {
                             var key = force ? "command-mkitem-upserted-created" : "command-mkitem-created-success";
@@ -285,6 +287,7 @@ internal class MakeItemCommand : CosmosCommand
                                 key,
                                 "charge",
                                 result.RequestCharge.ToString("F2")));
+                            return new WriteSummary(1, 0, 0, result.RequestCharge);
                         }
                         else if (force && result.StatusCode == System.Net.HttpStatusCode.OK)
                         {
@@ -292,6 +295,7 @@ internal class MakeItemCommand : CosmosCommand
                                 "command-mkitem-upserted-replaced",
                                 "charge",
                                 result.RequestCharge.ToString("F2")));
+                            return new WriteSummary(0, 1, 0, result.RequestCharge);
                         }
                         else
                         {
@@ -299,6 +303,7 @@ internal class MakeItemCommand : CosmosCommand
                                 "command-mkitem-error-status-returned",
                                 "status",
                                 result.StatusCode.ToString()));
+                            return new WriteSummary(0, 0, 1, result.RequestCharge);
                         }
                     }
                     catch (CosmosException ce)
@@ -319,8 +324,10 @@ internal class MakeItemCommand : CosmosCommand
             {
                 throw new CommandException("mkitem", MessageService.GetArgsString("json_error_parsing_arg", "message", ex.Message), ex);
             }
-
-            commandState.RequestCharge = totalCharge;
         }
+
+        return default;
     }
+
+    private readonly record struct WriteSummary(int Created, int Replaced, int Failed, double RequestCharge);
 }

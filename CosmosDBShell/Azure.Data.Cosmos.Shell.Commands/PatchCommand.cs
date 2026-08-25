@@ -20,8 +20,6 @@ using global::Azure.Data.Cosmos.Shell.States;
 [CosmosExample("patch set order-42 customer-7 /name \"Ada Lovelace\" --etag=\"etag-value\"", Description = "Patch with optimistic concurrency")]
 internal class PatchCommand : CosmosCommand
 {
-    private static readonly JsonDocument SuccessDocument = JsonDocument.Parse("{\"result\":\"success\"}");
-
     [CosmosParameter("op", RequiredErrorKey = "command-patch-error-missing_op")]
     public string? Op { get; init; }
 
@@ -129,7 +127,13 @@ internal class PatchCommand : CosmosCommand
             ShellInterpreter.WriteLine(MessageService.GetArgsString("command-patch-success", "charge", response.RequestCharge.ToString("F2")));
             return new CommandState
             {
-                Result = new ShellJson(SuccessDocument.RootElement.Clone()),
+                Result = new ShellJson(JsonSerializer.SerializeToElement(new
+                {
+                    type = "item",
+                    id = this.Id,
+                    patched = true,
+                    requestCharge = response.RequestCharge,
+                })),
                 RequestCharge = response.RequestCharge,
             };
         }

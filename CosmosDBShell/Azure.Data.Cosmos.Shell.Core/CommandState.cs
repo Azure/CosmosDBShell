@@ -14,19 +14,60 @@ using Azure.Data.Cosmos.Shell.Util;
 /// </summary>
 public partial class CommandState
 {
+    private OutputFormat outputFormat;
+
     /// <summary>
     /// Gets a value indicating whether this <see cref="CommandState"/> represents an error state.
     /// </summary>
     public virtual bool IsError => false;
 
     /// <summary>
-    /// Gets or sets the output format for the command result.
+    /// Gets the exit code for the command state. Default is 0.
     /// </summary>
-    public OutputFormat OutputFormat { get; set; }
+    public virtual int ExitCode => 0;
+
+    /// <summary>
+    /// Gets or sets the output format for the command result. Assigning a value marks the
+    /// format as explicitly chosen so <see cref="ShellInterpreter.PrintState"/> does not
+    /// overwrite it with the session default.
+    /// </summary>
+    public OutputFormat OutputFormat
+    {
+        get => this.outputFormat;
+        set
+        {
+            this.outputFormat = value;
+            this.OutputFormatExplicitlySet = true;
+        }
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether <see cref="OutputFormat"/> was explicitly set by a
+    /// command (via a per-command <c>--format</c> option or direct assignment). When false,
+    /// <see cref="ShellInterpreter.PrintState"/> applies the session default format.
+    /// </summary>
+    internal bool OutputFormatExplicitlySet { get; private set; }
 
     internal ShellObject? Result { get; set; }
 
-    internal bool IsPrinted { get; set; }
+    internal bool OutputRendered { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional delegate that renders the result for a human on an
+    /// interactive terminal. When set and the effective format is <see cref="OutputFormat.User"/>,
+    /// <see cref="ShellInterpreter.PrintState"/> invokes it instead of printing raw JSON.
+    /// It is never invoked for redirected, piped, or machine-mode output.
+    /// </summary>
+    internal Action? RenderUser { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional delegate that supplies a <see cref="TabularData"/> for the
+    /// CSV and Table output formats. When set, <see cref="GenerateOutputText"/> renders that
+    /// table (as CSV or a bordered grid depending on <see cref="OutputFormat"/>) instead of
+    /// deriving columns from the JSON result. This lets a command control headers and row
+    /// shape while sharing one source for both machine formats.
+    /// </summary>
+    internal Func<TabularData>? RenderTabular { get; set; }
 
     /// <summary>
     /// Gets or sets the Cosmos DB request charge (in RUs) consumed by the command, when applicable.
@@ -42,6 +83,12 @@ public partial class CommandState
 
     internal ShellObject? ReturnValue { get; set; } = null;
 
+    internal void ResetOutputFormat()
+    {
+        this.outputFormat = default;
+        this.OutputFormatExplicitlySet = false;
+    }
+
     internal void SetFormat(string? outputFormat)
     {
         if (outputFormat == null)
@@ -49,22 +96,13 @@ public partial class CommandState
             return;
         }
 
-        if (string.Equals(outputFormat, "csv", StringComparison.OrdinalIgnoreCase))
+        if (OutputFormats.TryParse(outputFormat, out var parsed))
         {
-            this.OutputFormat = OutputFormat.CSV;
+            this.OutputFormat = parsed;
+            return;
         }
-        else if (string.Equals(outputFormat, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(outputFormat, "js", StringComparison.OrdinalIgnoreCase))
-        {
-            this.OutputFormat = OutputFormat.JSon;
-        }
-        else if (string.Equals(outputFormat, "table", StringComparison.OrdinalIgnoreCase) || string.Equals(outputFormat, "tbl", StringComparison.OrdinalIgnoreCase))
-        {
-            this.OutputFormat = OutputFormat.Table;
-        }
-        else
-        {
-            throw new ShellException(MessageService.GetString("error-invalid_output_format", new Dictionary<string, object> { { "format", outputFormat } }));
-        }
+
+        throw new ArgumentException(MessageService.GetString("error-invalid_output_format", new Dictionary<string, object> { { "format", outputFormat } }));
     }
 
     internal string GenerateOutputText()
@@ -83,6 +121,7 @@ public partial class CommandState
         var json = (JsonElement)evaluatedResult;
         switch (this.OutputFormat)
         {
+            case OutputFormat.User:
             case OutputFormat.JSon:
                 {
                     var options = new JsonWriterOptions
@@ -99,12 +138,16 @@ public partial class CommandState
                 }
 
             case OutputFormat.CSV:
+                if (this.RenderTabular is { } csvProvider)
+                {
+                    return FromTabular(csvProvider()).ToString();
+                }
+
                 if (json.ValueKind == JsonValueKind.Object)
                 {
-                    if (json.TryGetProperty("documents", out var documents) && json.TryGetProperty("queryMetrics", out _))
+                    if (TryGetListProperty(json, out var csvList))
                     {
-                        var table2 = ResultToTable([.. documents.EnumerateArray()]);
-                        return table2.ToString();
+                        return ResultToTable([.. csvList.EnumerateArray()]).ToString();
                     }
 
                     return ResultToTable([json]).ToString();
@@ -113,16 +156,16 @@ public partial class CommandState
                 var table = ResultToTable(json.EnumerateArray().ToArray());
                 return table.ToString();
             case OutputFormat.Table:
+                if (this.RenderTabular is { } tableProvider)
+                {
+                    return FromTabular(tableProvider()).ToGridString();
+                }
+
                 if (json.ValueKind == JsonValueKind.Object)
                 {
-                    if (json.TryGetProperty("documents", out var tDocuments) && json.TryGetProperty("queryMetrics", out _))
+                    if (TryGetListProperty(json, out var tableList))
                     {
-                        return ResultToTable([.. tDocuments.EnumerateArray()]).ToGridString();
-                    }
-
-                    if (json.TryGetProperty("items", out var tItems) && tItems.ValueKind == JsonValueKind.Array)
-                    {
-                        return ResultToTable([.. tItems.EnumerateArray()]).ToGridString();
+                        return ResultToTable([.. tableList.EnumerateArray()]).ToGridString();
                     }
 
                     return ResultToTable([json]).ToGridString();

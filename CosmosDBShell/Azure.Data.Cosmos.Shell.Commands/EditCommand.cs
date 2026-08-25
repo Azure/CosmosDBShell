@@ -113,9 +113,8 @@ internal class EditCommand : CosmosCommand
             return Task.FromResult<CommandState>(new ErrorCommandState(new CommandException("edit", message)));
         }
 
-        AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString("command-edit-saved", "path", path)));
-        commandState.IsPrinted = true;
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { edited = path }));
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "file", path, edited = true }));
+        commandState.RenderUser = () => AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString("command-edit-saved", "path", path)));
         return Task.FromResult(commandState);
     }
 }

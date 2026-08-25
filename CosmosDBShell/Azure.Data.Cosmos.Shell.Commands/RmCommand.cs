@@ -18,7 +18,7 @@ using Spectre.Console;
 [CosmosExample("rm old-item-* --key=id", Description = "Delete items where 'id' field matches pattern")]
 [CosmosExample("rm test-* --database=MyDB --container=Items", Description = "Delete items from specific database and container")]
 [CosmosExample("rm test-* --dry-run", Description = "Preview how many items would be deleted without deleting them")]
-[McpAnnotation(Title = "Remove Items", Restricted = true, Destructive = true)]
+[McpAnnotation(Title = "Remove Items", Restricted = true, Destructive = true, Confirmable = true)]
 internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 {
     private PatternMatcher? matcher;
@@ -294,24 +294,20 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             }
         }
 
-        if (totalCount > 0)
-        {
-            AnsiConsole.MarkupLine(
-                MessageService.GetString(
-                    dryRun ? "command-rm-dry-run-plan" : "command-rm-deleted_items",
-                    new Dictionary<string, object> { { "count", totalCount } }));
-        }
-        else
-        {
-            AnsiConsole.MarkupLine(
-                MessageService.GetString(
-                    "command-rm-no-matches",
-                    new Dictionary<string, object>
-                    {
-                        { "pattern", this.Pattern ?? "pipe input" },
-                        { "key", string.Join(',', matchKeyPropertyNames) },
-                    }));
-        }
+        string renderMessage = totalCount > 0
+            ? MessageService.GetString(
+                dryRun ? "command-rm-dry-run-plan" : "command-rm-deleted_items",
+                new Dictionary<string, object> { { "count", totalCount } })
+            : MessageService.GetString(
+                "command-rm-no-matches",
+                new Dictionary<string, object>
+                {
+                    { "pattern", this.Pattern ?? "pipe input" },
+                    { "key", string.Join(',', matchKeyPropertyNames) },
+                });
+
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "item", count = totalCount, dryRun }));
+        commandState.RenderUser = () => AnsiConsole.MarkupLine(renderMessage);
 
         commandState.RequestCharge = totalCharge;
         return new ExitCode(0);

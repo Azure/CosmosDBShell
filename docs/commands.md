@@ -1027,49 +1027,49 @@ Notes:
 Project a single field from a query result:
 
 ```text
-query "SELECT * FROM c" | filter '.items[0]'
+query "SELECT * FROM c" | filter '.values[0]'
 ```
 
 Count items returned by a command:
 
 ```text
-ls | filter '.items | length'
+ls | filter '.values | length'
 ```
 
 Shape each item into a smaller object:
 
 ```text
-query "SELECT * FROM c" | filter '.items | map({id, status})'
+query "SELECT * FROM c" | filter '.values | map({id, status})'
 ```
 
 Project items with quoted property names:
 
 ```text
-ls | filter '.items | map({"Volcano Name": .["Volcano Name"], Country})'
+ls | filter '.values | map({"Volcano Name": .["Volcano Name"], Country})'
 ```
 
 Filter items by a predicate:
 
 ```text
-query "SELECT * FROM c" | filter '.items | select(.status == "active")'
+query "SELECT * FROM c" | filter '.values | select(.status == "active")'
 ```
 
 Sort and project:
 
 ```text
-query "SELECT * FROM c" | filter '.items | sort_by(.id) | map(.id)'
+query "SELECT * FROM c" | filter '.values | sort_by(.id) | map(.id)'
 ```
 
 Collect iterated values into a flat array:
 
 ```text
-query "SELECT * FROM c" | filter '[.items[] | .id]'
+query "SELECT * FROM c" | filter '[.values[] | .id]'
 ```
 
 Combine with `ftab` to render the projected JSON as a table:
 
 ```text
-query "SELECT * FROM c" | filter '.items | map({id, status})' | ftab
+query "SELECT * FROM c" | filter '.values | map({id, status})' | ftab
 ```
 
 #### Quoting
@@ -1079,7 +1079,7 @@ tokenizes the argument first. Wrap the expression in single quotes so the
 shell does not interpret characters such as `|`, `$`, or `"` inside it:
 
 ```text
-filter '.items | select(.status == "active")'
+filter '.values | select(.status == "active")'
 ```
 
 If you need a literal single quote inside the expression, prefer double quotes
@@ -1102,14 +1102,40 @@ Options:
 
 ### bucket
 
-Get or set SDK throughput bucket.
+Manage throughput buckets: client-side bucket selection plus container bucket limits.
 
 ```text
-Usage: bucket [bucket]
+Usage: bucket [action] [id] [percent] [-database <db>] [-container <con>] [-yes]
 
 Arguments:
-    [bucket]    Bucket number: 0=clear, 1-5=valid buckets (Optional)
+    [action]    A bucket id (0-5) to select client-side, or show, set, or clear for
+                container limits (Optional)
+    [id]        The throughput bucket id (1-5) to set or clear a limit for (Optional)
+    [percent]   The maximum percentage (1-100) of container throughput the bucket
+                may use (Optional)
+
+Options:
+    -database, -db    The database to target, or that contains the target container (Optional)
+    -container, -con  The container whose throughput bucket limits to read or change (Optional)
+    -yes, -y, -force  Skip the confirmation prompt before changing a bucket limit (Optional)
 ```
+
+The `bucket` command has two surfaces:
+
+- **Client-side selection** (works on any connected database or container scope):
+  - `bucket` shows this client's current throughput bucket selection.
+  - `bucket <1-5>` tags this client's requests with the given throughput bucket.
+  - `bucket 0` clears the client-side selection.
+- **Container limits** (read with `show`, change with `set`/`clear`):
+  - `bucket show` lists the throughput bucket limits configured on the current container.
+  - `bucket set <1-5> <1-100>` limits a bucket to a maximum percentage of the container's throughput.
+  - `bucket clear <1-5>` removes a bucket's configured limit.
+
+The container-limit subcommands operate on the current container (or the one named by
+`-container`) and require provisioned throughput. They are control-plane operations that
+are only available on an Azure AD (Entra) connection; on key-based or emulator connections
+they return an error directing you to the portal, Azure CLI, or PowerShell. The client-side
+`bucket <0-5>` selection still works on any connection.
 
 ### info
 
@@ -1131,12 +1157,12 @@ scale section reports that throughput settings are not available for serverless
 accounts instead of failing.
 
 ```text
-Usage: info [--partitions] [--detailed] [--format=<json|table>] [--database=<name>] [--container=<name>]
+Usage: info [--partitions] [--detailed] [--format=<user|json|table|csv>] [--database=<name>] [--container=<name>]
 
 Options:
     --partitions, -p    Add the per-physical-partition document distribution (consumes request units)
     --detailed, -d      Add storage breakdown and top partition keys (performs a full scan and consumes request units)
-    --format, -f        Output format: table or json
+    --format, -f        Output format: user, json, table, or csv
     --database, -db     Target database name
     --container, -con   Target container name
 ```
@@ -1172,6 +1198,17 @@ Display version.
 ```text
 Usage: version
 ```
+
+### welcome
+
+Display the welcome screen.
+
+```text
+Usage: welcome
+```
+
+The welcome screen is shown automatically on the first interactive startup. Later
+startups show a compact line containing the shell version and MCP server status.
 
 ### cls
 

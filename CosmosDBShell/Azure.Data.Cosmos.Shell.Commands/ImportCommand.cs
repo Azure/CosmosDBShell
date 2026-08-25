@@ -47,8 +47,6 @@ internal enum ImportMode
     Description = "Bulk-loads items into a Cosmos container from a local JSON Lines, JSON array, or CSV file.")]
 internal class ImportCommand : CosmosCommand
 {
-    private static readonly JsonDocument SuccessDocument = JsonDocument.Parse("{\"result\":\"success\"}");
-
     [CosmosParameter("file", RequiredErrorKey = "command-import-error-missing_file")]
     public string? File { get; init; }
 
@@ -541,7 +539,15 @@ internal class ImportCommand : CosmosCommand
 
         return new CommandState
         {
-            Result = new ShellJson(SuccessDocument.RootElement.Clone()),
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                type = "import",
+                file = filePath,
+                imported = successCount,
+                failed = failCount,
+                requestCharge = charge,
+                dryRun,
+            })),
             RequestCharge = charge,
         };
     }

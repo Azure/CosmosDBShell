@@ -111,7 +111,7 @@ The `|` operator pipes the JSON result of the left command into the right comman
 
 ### How It Works
 
-1. **Most commands return JSON** – even `ls` returns a structured result like `{ "items": [...] }`
+1. **Most commands return JSON** – listings return a structured result like `{ "type": "<kind>", "values": [...] }` (e.g. `database`, `container`, or `item` depending on context)
 2. **The next command receives that JSON** as its input
 3. **Use JSON paths** (starting with `$`) to extract values from piped JSON
 
@@ -123,7 +123,7 @@ When a command receives piped JSON, you can use path expressions to access speci
 | ---- | ----------- |
 | `$` | The entire piped JSON object |
 | `$.property` | Access a property |
-| `$.items[0]` | Access array element |
+| `$.values[0]` | Access array element |
 | `.[0]` | Shorthand for first element (when result is array-like) |
 
 ### Practical Examples
@@ -137,7 +137,7 @@ ls | cd .[0]
 **Show the ID of the first item in current container:**
 
 ```bash
-ls -m 1 | echo $.items[0].id
+ls -m 1 | echo $.values[0].id
 ```
 
 **Create multiple items from a JSON array:**
@@ -163,7 +163,7 @@ ls | cd .[0]; ls
 **Query and process results:**
 
 ```bash
-ls -q "SELECT c.id, c.status FROM c WHERE c.priority = 1" | echo $.items
+ls -q "SELECT c.id, c.status FROM c WHERE c.priority = 1" | echo $.values
 ```
 
 ### Pipe-Aware Commands
@@ -258,6 +258,8 @@ Start the shell with options to customize behavior:
 
 | Option | Description |
 | ------ | ----------- |
+| `--output <format>` | Output format for command results: `user` (default interactive view), `json`, `table`, or `csv`. Alias: `-o`. Selecting `json` or `csv` enables machine mode. Falls back to `COSMOSDB_SHELL_FORMAT`. |
+| `--quiet` | Suppress standard informational output (banners, connection logs). Enables machine mode. Alias: `-q` |
 | `-c <cmd>` | Execute command and exit. Everything after `-c` is taken as the command, so app-level options must come before `-c`. Windows-style `/c` is also accepted. |
 | `-k <cmd>` | Execute command and stay in shell. Everything after `-k` is taken as the command, so app-level options must come before `-k`. Windows-style `/k` is also accepted. |
 | `--connect <str>` | Connect with this connection string or endpoint on startup |
@@ -276,14 +278,47 @@ Start the shell with options to customize behavior:
 | `--help` | Show usage information |
 | `--version` | Show version |
 
+### Machine Mode And Exit Codes
+
+For automation and agentic wrappers, the shell can emit deterministic, machine-consumable
+output. **Machine mode** is entered when any of the following is true:
+
+- `--output json` or `--output csv` is specified (structured formats), or
+- `--quiet` is specified, or
+- `-c` is used without an explicit `--output` (defaults to `json`).
+
+In machine mode the shell disables ANSI colors, suppresses connection/informational
+banners, emits command results as the selected structured format (JSON or CSV) on `STDOUT`,
+and writes early parser/connection failures as a structured `{ "status": "error", "error": ... }`
+object on `STDERR`. The human-facing `user` and `table` formats are not machine mode; `user`
+falls back to JSON whenever output is redirected, piped, or run in machine mode.
+
+Bare piped stdin (for example `echo "..." | cosmosdbshell`) is **not** implicitly machine
+mode; pass `-c`, `--output json`, or `--quiet` to opt into structured output.
+
+Commands map failures to a stable set of exit codes (accessible via `$?`, `%ERRORLEVEL%`,
+or `$LASTEXITCODE`):
+
+| Exit code | Meaning |
+| --------- | ------- |
+| `0` | Success |
+| `1` | Generic error |
+| `2` | Usage / bad arguments / parser or script syntax errors |
+| `3` | Authentication or authorization failure (`401`/`403`, failed Entra credential) |
+| `4` | Connection / network error (socket failure, timeout, `503`) |
+| `5` | Not found (`404`) |
+| `6` | Throttled (`429` / RU budget exceeded) |
+
+These values are a public contract. See the [CI/CD guide](ci.md#exit-code-contract) for install steps, auth patterns, and scripted failure handling.
+
 ### Environment Variables
 
 | Variable | Description |
 | -------- | ----------- |
 | `COSMOSDB_SHELL_TOKEN` | Pre-obtained Entra ID access token (JWT) for single-shot auth |
 | `COSMOSDB_SHELL_ACCOUNT_KEY` | Account key for authentication |
-| `COSMOSDB_SHELL_FORMAT` | Default output format |
 | `COSMOSDB_SHELL_CSVSEP` | CSV column separator |
+| `COSMOSDB_SHELL_FORMAT` | Default output format (`user`, `json`, `table`, `csv`) used when `--output` is not supplied. Supplies a format only — it does not enable machine mode |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Default OTLP endpoint used by `--otel` when no endpoint is supplied |
 
 **Examples:**

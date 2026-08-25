@@ -38,7 +38,10 @@ internal class AssignmentStatement : Statement
         var value = await this.Value.EvaluateAsync(shell, commandState, token);
         shell.SetVariable(this.Variable.Name, value);
         commandState.Result = null;
-        commandState.IsPrinted = false;
+        commandState.RenderUser = null;
+        commandState.RenderTabular = null;
+        commandState.ResetOutputFormat();
+        commandState.OutputRendered = false;
         return commandState;
     }
 

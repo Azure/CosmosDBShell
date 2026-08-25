@@ -169,15 +169,14 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         }
 
         CosmosCompleteCommand.ClearContainers();
-        ShellInterpreter.WriteLine(MessageService.GetString("command-mkcon-CreatedContainer", new Dictionary<string, object> { { "container", containerName } }));
-        var commandState = new CommandState
+        var commandState = new CommandState();
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
-            IsPrinted = true,
-        };
-        var jsonObject = new { created_container = containerName };
-        var jsonString = JsonSerializer.Serialize(jsonObject);
-        using var jsonDoc = JsonDocument.Parse(jsonString);
-        commandState.Result = new ShellJson(jsonDoc.RootElement.Clone());
+            type = "container",
+            id = containerName,
+            created = true,
+        }));
+        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-mkcon-CreatedContainer", new Dictionary<string, object> { { "container", containerName } }));
         return commandState;
     }
 

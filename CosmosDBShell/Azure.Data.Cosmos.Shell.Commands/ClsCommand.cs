@@ -4,6 +4,8 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Text.Json;
+using Azure.Data.Cosmos.Shell.Parser;
 using global::Azure.Data.Cosmos.Shell.Core;
 using Spectre.Console;
 
@@ -23,6 +25,8 @@ internal class ClsCommand : CosmosCommand
             // No real console attached (e.g. running under a test host). Nothing to clear.
         }
 
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { status = "ok" }));
+        commandState.RenderUser = () => { };
         return Task.FromResult(commandState);
     }
 }

@@ -40,9 +40,10 @@ public class SprocCommandExecutionTests
         var state = await command.ListAsync(container, ShellInterpreter.CreateInstance(), new CommandState(), CancellationToken.None);
 
         var json = Assert.IsType<JsonElement>(state.Result!.ConvertShellObject(DataType.Json));
-        Assert.Equal(JsonValueKind.Array, json.ValueKind);
-        Assert.Equal(0, json.GetArrayLength());
-        Assert.True(state.IsPrinted);
+        var values = json.GetProperty("values");
+        Assert.Equal(JsonValueKind.Array, values.ValueKind);
+        Assert.Equal(0, values.GetArrayLength());
+        Assert.NotNull(state.RenderUser);
     }
 
     [Fact]
@@ -63,10 +64,11 @@ public class SprocCommandExecutionTests
         var state = await command.ListAsync(container, ShellInterpreter.CreateInstance(), new CommandState(), CancellationToken.None);
 
         var json = Assert.IsType<JsonElement>(state.Result!.ConvertShellObject(DataType.Json));
-        Assert.Equal(2, json.GetArrayLength());
-        Assert.Equal("alpha", json[0].GetProperty("id").GetString());
-        Assert.Equal("function alpha() {}".Length, json[0].GetProperty("bodyLength").GetInt32());
-        Assert.True(state.IsPrinted);
+        var values = json.GetProperty("values");
+        Assert.Equal(2, values.GetArrayLength());
+        Assert.Equal("alpha", values[0].GetProperty("id").GetString());
+        Assert.Equal("function alpha() {}".Length, values[0].GetProperty("bodyLength").GetInt32());
+        Assert.NotNull(state.RenderUser);
     }
 
     [Fact]
@@ -84,9 +86,9 @@ public class SprocCommandExecutionTests
         var command = new SprocCommand { Subcommand = "list" };
         var state = await command.ListAsync(container, shell, new CommandState(), CancellationToken.None);
 
-        Assert.False(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
         var json = Assert.IsType<JsonElement>(state.Result!.ConvertShellObject(DataType.Json));
-        Assert.Equal(1, json.GetArrayLength());
+        Assert.Equal(1, json.GetProperty("values").GetArrayLength());
     }
 
     [Fact]
@@ -127,7 +129,7 @@ public class SprocCommandExecutionTests
         var state = await command.ExistsAsync(container, new CommandState(), CancellationToken.None);
 
         Assert.Equal(true, state.Result!.ConvertShellObject(DataType.Boolean));
-        Assert.True(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
     }
 
     [Fact]

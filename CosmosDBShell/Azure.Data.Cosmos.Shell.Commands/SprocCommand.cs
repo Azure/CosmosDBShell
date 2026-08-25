@@ -228,40 +228,45 @@ internal class SprocCommand : CosmosCommand
             }
         }
 
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(items));
-
-        // When output is redirected, let the interpreter emit the JSON result so
-        // `sproc list > out.json` honors the documented JSON contract instead of
-        // writing a console table. Interactive sessions still get the table.
-        if (!string.IsNullOrEmpty(shell.StdOutRedirect))
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", values = items }));
+        commandState.RenderTabular = () =>
         {
-            return commandState;
-        }
-
-        if (rows.Count == 0)
-        {
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-sproc-list-empty")));
-        }
-        else
-        {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-title")));
-            var table = new Table();
-            table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-column-id"))));
-            table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-column-modified"))));
-            table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-column-size"))).RightAligned());
-
+            var tabular = new TabularData(
+                MessageService.GetString("command-sproc-list-column-id"),
+                MessageService.GetString("command-sproc-list-column-modified"),
+                MessageService.GetString("command-sproc-list-column-size"));
             foreach (var row in rows)
             {
-                table.AddRow(
-                    Theme.FormatTableValue(row.Id),
-                    Theme.FormatTableValue(row.Modified),
-                    Theme.FormatTableValue(row.BodyLength.ToString()));
+                tabular.AddRow(row.Id, row.Modified, row.BodyLength.ToString());
             }
 
-            AnsiConsole.Write(table);
-        }
+            return tabular;
+        };
+        commandState.RenderUser = () =>
+        {
+            if (rows.Count == 0)
+            {
+                AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-sproc-list-empty")));
+            }
+            else
+            {
+                AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-title")));
+                var table = new Table();
+                table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-column-id"))));
+                table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-column-modified"))));
+                table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-column-size"))).RightAligned());
 
-        commandState.IsPrinted = true;
+                foreach (var row in rows)
+                {
+                    table.AddRow(
+                        Theme.FormatTableValue(row.Id),
+                        Theme.FormatTableValue(row.Modified),
+                        Theme.FormatTableValue(row.BodyLength.ToString()));
+                }
+
+                AnsiConsole.Write(table);
+            }
+        };
         return commandState;
     }
 
@@ -296,13 +301,11 @@ internal class SprocCommand : CosmosCommand
             exists = false;
         }
 
-        ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        commandState.Result = new ShellBool(exists);
+        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
             exists ? "command-sproc-exists-yes" : "command-sproc-exists-no",
             "name",
             name));
-
-        commandState.Result = new ShellBool(exists);
-        commandState.IsPrinted = true;
         return commandState;
     }
 
@@ -362,9 +365,8 @@ internal class SprocCommand : CosmosCommand
 
         if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-sproc-create-confirm"))
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-create-discarded", "name", name));
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, created = false }));
-            commandState.IsPrinted = true;
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, created = false }));
+            commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-create-discarded", "name", name));
             return commandState;
         }
 
@@ -406,15 +408,13 @@ internal class SprocCommand : CosmosCommand
             }
         }
 
-        ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, created = true }));
+        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
             replaced ? "command-sproc-replaced" : "command-sproc-created",
             "name",
             name,
             "charge",
             response.RequestCharge.ToString("F2")));
-
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name }));
-        commandState.IsPrinted = true;
         return commandState;
     }
 
@@ -462,15 +462,13 @@ internal class SprocCommand : CosmosCommand
         try
         {
             var response = await container.Scripts.DeleteStoredProcedureAsync(name, cancellationToken: token);
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, deleted = true }));
+            commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
                 "command-sproc-deleted",
                 "name",
                 name,
                 "charge",
                 response.RequestCharge.ToString("F2")));
-
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, deleted = true }));
-            commandState.IsPrinted = true;
             return commandState;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -503,24 +501,21 @@ internal class SprocCommand : CosmosCommand
 
         if (string.Equals(newBody, existingBody, StringComparison.Ordinal))
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-edit-unchanged", "name", name));
-            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = false }));
-            commandState.IsPrinted = true;
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, changed = false }));
+            commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-edit-unchanged", "name", name));
             return commandState;
         }
 
         var properties = new StoredProcedureProperties { Id = name, Body = newBody };
         var response = await container.Scripts.ReplaceStoredProcedureAsync(properties, cancellationToken: token);
 
-        ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, changed = true }));
+        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
             "command-sproc-replaced",
             "name",
             name,
             "charge",
             response.RequestCharge.ToString("F2")));
-
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = name, changed = true }));
-        commandState.IsPrinted = true;
         return commandState;
     }
 

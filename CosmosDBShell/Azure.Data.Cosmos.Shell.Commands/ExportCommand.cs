@@ -38,8 +38,6 @@ internal class ExportCommand : CosmosCommand
 {
     private const string DefaultQuery = "SELECT * FROM c";
 
-    private static readonly JsonDocument SuccessDocument = JsonDocument.Parse("{\"result\":\"success\"}");
-
     [CosmosParameter("file", RequiredErrorKey = "command-export-error-missing_file")]
     public string? File { get; init; }
 
@@ -106,7 +104,13 @@ internal class ExportCommand : CosmosCommand
 
         return new CommandState
         {
-            Result = new ShellJson(SuccessDocument.RootElement.Clone()),
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                type = "export",
+                file = filePath,
+                exported = count,
+                requestCharge = charge,
+            })),
             RequestCharge = charge,
         };
     }

@@ -38,7 +38,7 @@ This document covers scripts and custom commands in Cosmos Shell.
 Access piped JSON with dot notation:
 
 ```bash
-$.items[0].id      # property and array access
+$.values[0].id      # property and array access
 ```
 
 ## Types
@@ -302,8 +302,8 @@ seed 5
 
 ```bash
 .prop              # property access
-.items[0]          # array index
-$.items[0].id      # from piped JSON
+.values[0]          # array index
+$.values[0].id      # from piped JSON
 ```
 
 Chain with pipes:
@@ -327,7 +327,7 @@ Group statements with `{ ... }`. Separate by newline or `;`.
 `|` passes result from left to right command:
 
 ```bash
-query "SELECT * FROM c" | echo $.items[0]
+query "SELECT * FROM c" | echo $.values[0]
 echo '[{"id":"a"}]' | mkitem
 ```
 

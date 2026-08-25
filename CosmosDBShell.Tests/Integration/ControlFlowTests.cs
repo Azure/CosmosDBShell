@@ -99,9 +99,9 @@ public class ControlFlowTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task CommandStatement_DoesNotInheritIsPrintedFromPriorCommand()
+    public async Task CommandStatement_DoesNotInheritRendererFromPriorCommand()
     {
-        // A prior command that already printed its own output sets IsPrinted on the shared
+        // A prior command that supplied its own renderer sets RenderUser on the shared
         // state. The following command's output must still be printed and not suppressed.
         var outputFile = CaptureOutputFile();
         var state = await RunScriptAsync("{ version\necho \"AFTER\" }");
@@ -109,5 +109,32 @@ public class ControlFlowTests : IntegrationTestBase
         Assert.False(state.IsError, FormatError(state));
         var output = await ReadRedirectAsync(outputFile);
         Assert.Contains("AFTER", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Block_PrintsEachCommandResultOnce()
+    {
+        var outputFile = CaptureOutputFile();
+        Shell.AppendOutRedirection = true;
+        var state = await RunScriptAsync("{ echo \"FIRST\"\necho \"SECOND\" }");
+
+        Assert.False(state.IsError, FormatError(state));
+        Assert.NotNull(state.Result);
+        var output = await ReadRedirectAsync(outputFile);
+        Assert.Equal(1, output.Split("FIRST", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, output.Split("SECOND", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    public async Task NestedBlock_PrintsFinalResultOnce()
+    {
+        var outputFile = CaptureOutputFile();
+        Shell.AppendOutRedirection = true;
+        var state = await RunScriptAsync("{ { echo \"NESTED\" } }");
+
+        Assert.False(state.IsError, FormatError(state));
+        Assert.NotNull(state.Result);
+        var output = await ReadRedirectAsync(outputFile);
+        Assert.Equal(1, output.Split("NESTED", StringSplitOptions.None).Length - 1);
     }
 }

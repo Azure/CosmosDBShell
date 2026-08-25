@@ -97,12 +97,24 @@ public class ToolOperationsTests
     [Fact]
     public void GetTool_AppendsUserOnlyWarningForRestrictedCommands()
     {
-        var factory = new CommandRunner().Commands["delete"];
+        var factory = new CommandRunner().Commands["edit"];
         Assert.True(factory.McpRestricted);
 
         var tool = ToolOperations.GetTool(factory);
 
         Assert.Contains("cannot be invoked through MCP", tool.Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GetTool_AppendsConfirmationWarningForDestructiveCommands()
+    {
+        var factory = new CommandRunner().Commands["delete"];
+        Assert.True(factory.McpRestricted);
+
+        var tool = ToolOperations.GetTool(factory);
+
+        Assert.Contains("requires explicit user confirmation", tool.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("cannot be invoked through MCP", tool.Description, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

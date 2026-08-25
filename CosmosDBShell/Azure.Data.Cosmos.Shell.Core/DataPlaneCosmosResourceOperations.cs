@@ -6,12 +6,21 @@ namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Net;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
-using Newtonsoft.Json;
 
 internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : ICosmosResourceOperations
 {
+    private static readonly JsonSerializerOptions IndexingPolicyJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
     public async IAsyncEnumerable<string> GetDatabaseNamesAsync([EnumeratorCancellation] CancellationToken token)
     {
         using var iterator = client.GetDatabaseQueryIterator<DatabaseProperties>();
@@ -211,7 +220,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         var properties = GetContainerPropertiesOrThrow(response);
         var policy = properties.IndexingPolicy
             ?? throw new IndexPolicyMissingException();
-        return JsonConvert.SerializeObject(policy, Formatting.Indented);
+        return JsonSerializer.Serialize(policy, IndexingPolicyJsonOptions);
     }
 
     public async Task<string> ReplaceIndexingPolicyAsync(string databaseName, string containerName, string indexPolicyJson, CancellationToken token)
@@ -222,7 +231,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         var policy = ParseIndexingPolicy(indexPolicyJson);
         props.IndexingPolicy = policy;
         var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
-        return JsonConvert.SerializeObject(replaced.Resource?.IndexingPolicy ?? policy, Formatting.Indented);
+        return JsonSerializer.Serialize(replaced.Resource?.IndexingPolicy ?? policy, IndexingPolicyJsonOptions);
     }
 
     public async Task<ContainerTtlView> GetTimeToLiveAsync(string databaseName, string containerName, CancellationToken token)
@@ -340,6 +349,15 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         }
     }
 
+    public Task<ThroughputBucketsView> GetThroughputBucketsAsync(string databaseName, string containerName, CancellationToken token) =>
+        throw new ThroughputBucketsNotSupportedException();
+
+    public Task<ThroughputBucketsView> SetThroughputBucketAsync(string databaseName, string containerName, int bucketId, int maxThroughputPercentage, CancellationToken token) =>
+        throw new ThroughputBucketsNotSupportedException();
+
+    public Task<ThroughputBucketsView> ClearThroughputBucketAsync(string databaseName, string containerName, int bucketId, CancellationToken token) =>
+        throw new ThroughputBucketsNotSupportedException();
+
     private static ThroughputView BuildThroughputView(string scope, string resourceName, ThroughputResponse response)
     {
         var resource = response.Resource;
@@ -365,7 +383,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     {
         try
         {
-            return JsonConvert.DeserializeObject<IndexingPolicy>(indexPolicyJson)
+            return JsonSerializer.Deserialize<IndexingPolicy>(indexPolicyJson, IndexingPolicyJsonOptions)
                 ?? throw new InvalidIndexingPolicyJsonException();
         }
         catch (JsonException ex)

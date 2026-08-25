@@ -55,4 +55,29 @@ public class OutputRedirectionTests : IntegrationTestBase
             }
         }
     }
+
+    [Fact]
+    public async Task Redirect_StderrToFile_InMachineMode_WritesStructuredJsonError()
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), $"redir-err-machine-{Guid.NewGuid():N}.txt");
+        Shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        Shell.ErrOutRedirect = tempFile;
+
+        try
+        {
+            var state = await Shell.ExecuteCommandAsync("nonexistent_cmd_for_error", CancellationToken.None);
+            Assert.True(state.IsError);
+
+            Assert.True(File.Exists(tempFile));
+            var text = await File.ReadAllTextAsync(tempFile, TestContext.Current.CancellationToken);
+            Assert.Contains("\"status\":\"error\"", text);
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+            {
+                File.Delete(tempFile);
+            }
+        }
+    }
 }
