@@ -122,7 +122,33 @@ public class ShellProcessTests
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("--connect", result.StdOut, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("--database <id>", result.StdOut, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("--container <id>", result.StdOut, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("--version", result.StdOut, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task StartupContainer_WithoutDatabase_ReturnsUsageExitCode()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--container", "items"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("requires '--database'", result.StdOut + result.StdErr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task StartupDatabase_WithoutConnect_ReturnsUsageExitCode()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--database", "samples"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("require '--connect'", result.StdOut + result.StdErr, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
