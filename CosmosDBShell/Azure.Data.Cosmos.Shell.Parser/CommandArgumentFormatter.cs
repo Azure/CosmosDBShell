@@ -16,7 +16,8 @@ internal static class CommandArgumentFormatter
     /// </summary>
     public static string Format(Expression argument)
     {
-        // An option value only binds to its option through '=' or ':', never through a space.
+        // Only '=' and ':' values are stored on CommandOption; space-separated values
+        // remain separate AST arguments and are bound later using command metadata.
         if (argument is CommandOption option)
         {
             var text = option.MinusToken.Value + option.Name;
