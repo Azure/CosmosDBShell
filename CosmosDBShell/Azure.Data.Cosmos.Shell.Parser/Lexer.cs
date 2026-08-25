@@ -6,6 +6,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -656,6 +657,15 @@ internal class Lexer
                     case 't': sb.Append('\t'); break;
                     case '\\': sb.Append('\\'); break;
                     case '"': sb.Append('"'); break;
+                    case 'u' when this.position + 4 < this.input.Length &&
+                        int.TryParse(
+                            this.input.AsSpan(this.position + 1, 4),
+                            NumberStyles.HexNumber,
+                            CultureInfo.InvariantCulture,
+                            out int character):
+                        sb.Append((char)character);
+                        this.position += 4;
+                        break;
                     default: sb.Append(ch); break;
                 }
 

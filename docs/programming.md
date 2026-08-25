@@ -30,7 +30,7 @@ This document covers scripts and custom commands in Cosmos Shell.
 | Type | Syntax | Notes |
 | ------ | ------ | ----- |
 | Single-quoted | `'text'` | Literal, no escapes. Double `'` for quote: `'it''s'` |
-| Double-quoted | `"text $name"` | Literal `$`; escapes: `\n`, `\r`, `\t`, `\\`, `\"` |
+| Double-quoted | `"text $name"` | Literal `$`; escapes: `\n`, `\r`, `\t`, `\\`, `\"`, `\uXXXX` |
 | Interpolated | `$"Hello $name"` | Variable and expression substitution with `$var` and `$(...)` |
 
 Interpolation is enabled only by the explicit `$"..."` prefix. Within an interpolated string, escape a literal dollar sign as `\$`. In ordinary double-quoted strings, `$name` and `$(command)` remain literal text and are never evaluated.

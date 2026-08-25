@@ -89,6 +89,7 @@ public class LexerTests
     [InlineData("\"hello\\rworld\"", "hello\rworld")]
     [InlineData("\"hello\\\\world\"", "hello\\world")]
     [InlineData("\"hello\\\"world\"", "hello\"world")]
+    [InlineData("\"hello\\u001Bworld\"", "hello\u001Bworld")]
     [InlineData("\"\"", "")]
     public void NextToken_DoubleQuotedString_ReturnsStringTokenWithEscapes(string input, string expected)
     {
