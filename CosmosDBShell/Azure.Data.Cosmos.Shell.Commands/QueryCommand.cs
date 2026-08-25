@@ -591,20 +591,8 @@ internal class QueryCommand : CosmosCommand
                 cumulative?.OutputDocumentCount);
             var messages = BuildPlanMessages(evaluation);
 
-            // Emit JSON only for machine consumers (MCP, output redirection) or when
-            // the user explicitly asked for JSON. Interactive sessions get the
-            // human-readable table even though JSON is the default enum value.
-            var explicitJson = string.Equals(this.OutputFormat, "json", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(this.OutputFormat, "js", StringComparison.OrdinalIgnoreCase);
-
-            if (shell.McpPort.HasValue || shell.StdOutRedirect != null || explicitJson)
-            {
-                returnState.Result = BuildExplainJson(this.Query, evaluation, requestCharge, messages);
-                return returnState;
-            }
-
-            RenderExplain(evaluation, requestCharge, messages);
-            returnState.IsPrinted = true;
+            returnState.Result = BuildExplainJson(this.Query, evaluation, requestCharge, messages);
+            returnState.RenderUser = () => RenderExplain(evaluation, requestCharge, messages);
             return returnState;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
