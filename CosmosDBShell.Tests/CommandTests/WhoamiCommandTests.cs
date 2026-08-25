@@ -59,7 +59,7 @@ public class WhoamiCommandTests
         var state = await command.ExecuteAsync(shell, new CommandState(), "whoami --format=json", CancellationToken.None);
 
         Assert.Equal(OutputFormat.JSon, state.OutputFormat);
-        Assert.False(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
         Assert.Contains("\"credentialType\"", state.GenerateOutputText(), StringComparison.Ordinal);
     }
 
@@ -73,7 +73,7 @@ public class WhoamiCommandTests
         var state = await command.ExecuteAsync(shell, new CommandState(), "whoami --format=csv", CancellationToken.None);
 
         Assert.Equal(OutputFormat.CSV, state.OutputFormat);
-        Assert.False(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
 
         var csv = state.GenerateOutputText();
         Assert.Contains("credentialType", csv, StringComparison.Ordinal);
@@ -87,7 +87,7 @@ public class WhoamiCommandTests
         shell.Connect(CreateTestClient(), credentialTypeOverride: "AccountKey");
         var command = new WhoamiCommand { OutputFormat = "xml" };
 
-        await Assert.ThrowsAsync<ShellException>(
+        await Assert.ThrowsAsync<ArgumentException>(
             () => command.ExecuteAsync(shell, new CommandState(), "whoami --format=xml", CancellationToken.None));
     }
 

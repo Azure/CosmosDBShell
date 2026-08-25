@@ -47,7 +47,6 @@ internal class WhoamiCommand : CosmosCommand
 
         var credentialType = shell.ActiveCredentialType ?? "Unknown";
         var credential = shell.ActiveCredential;
-        bool render = IsTableFormat(format) && string.IsNullOrEmpty(shell.StdOutRedirect);
 
         var result = new Dictionary<string, object?>
         {
@@ -60,10 +59,7 @@ internal class WhoamiCommand : CosmosCommand
             var note = MessageService.GetString("command-whoami-key-auth-note");
             result["identityAvailable"] = false;
             result["note"] = note;
-            if (render)
-            {
-                RenderTable(credentialType, null, note);
-            }
+            commandState.RenderUser = () => RenderTable(credentialType, null, note);
         }
         else
         {
@@ -90,22 +86,11 @@ internal class WhoamiCommand : CosmosCommand
                 result[pair.Key] = pair.Value;
             }
 
-            if (render)
-            {
-                RenderTable(credentialType, identity, null);
-            }
+            commandState.RenderUser = () => RenderTable(credentialType, identity, null);
         }
 
-        commandState.IsPrinted = render;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(result));
         return commandState;
-    }
-
-    private static bool IsTableFormat(string? format)
-    {
-        return string.IsNullOrEmpty(format)
-            || string.Equals(format, "table", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(format, "tbl", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Dictionary<string, object?> BuildIdentity(JsonElement? claims, DateTimeOffset expiresOn)

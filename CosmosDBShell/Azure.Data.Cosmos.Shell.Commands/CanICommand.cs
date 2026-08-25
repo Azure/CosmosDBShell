@@ -58,7 +58,6 @@ internal class CanICommand : CosmosCommand
 
         var format = this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
         commandState.SetFormat(format);
-        bool render = IsTableFormat(format) && string.IsNullOrEmpty(shell.StdOutRedirect);
 
         string? databaseName = this.Database;
         string? containerName = this.Container;
@@ -77,7 +76,7 @@ internal class CanICommand : CosmosCommand
         // mutating or control-plane operation, so it is always reported as indeterminate.
         if (action == "manage")
         {
-            return this.Build(shell, commandState, action, databaseName, containerName, "indeterminate", "none", null, MessageService.GetString("command-can-i-manage-note"), render);
+            return this.Build(commandState, action, databaseName, containerName, "indeterminate", "none", null, MessageService.GetString("command-can-i-manage-note"));
         }
 
         if (string.IsNullOrEmpty(databaseName) || string.IsNullOrEmpty(containerName))
@@ -88,7 +87,7 @@ internal class CanICommand : CosmosCommand
         // Account-key and emulator connections use a master key, which grants full access.
         if (shell.ActiveCredential is null)
         {
-            return this.Build(shell, commandState, action, databaseName, containerName, "allow", "key", null, MessageService.GetString("command-can-i-key-note"), render);
+            return this.Build(commandState, action, databaseName, containerName, "allow", "key", null, MessageService.GetString("command-can-i-key-note"));
         }
 
         var container = connectedState.Client.GetContainer(databaseName, containerName);
@@ -122,7 +121,7 @@ internal class CanICommand : CosmosCommand
             note = MessageService.GetString("command-can-i-write-heuristic-note");
         }
 
-        return this.Build(shell, commandState, action, databaseName, containerName, decision, "probe", (int)statusCode, note, render);
+        return this.Build(commandState, action, databaseName, containerName, decision, "probe", (int)statusCode, note);
     }
 
     private static async Task<HttpStatusCode> ProbeReadAsync(Container container, CancellationToken token)
@@ -187,15 +186,7 @@ internal class CanICommand : CosmosCommand
         return string.IsNullOrEmpty(containerName) ? $"/{databaseName}" : $"/{databaseName}/{containerName}";
     }
 
-    private static bool IsTableFormat(string? format)
-    {
-        return string.IsNullOrEmpty(format)
-            || string.Equals(format, "table", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(format, "tbl", StringComparison.OrdinalIgnoreCase);
-    }
-
     private CommandState Build(
-        ShellInterpreter shell,
         CommandState commandState,
         string action,
         string? databaseName,
@@ -203,8 +194,7 @@ internal class CanICommand : CosmosCommand
         string decision,
         string method,
         int? statusCode,
-        string? note,
-        bool render)
+        string? note)
     {
         var result = new Dictionary<string, object?>
         {
@@ -217,12 +207,7 @@ internal class CanICommand : CosmosCommand
             ["note"] = note,
         };
 
-        if (render)
-        {
-            this.RenderTable(action, databaseName, containerName, decision, method, statusCode, note);
-        }
-
-        commandState.IsPrinted = render;
+        commandState.RenderUser = () => this.RenderTable(action, databaseName, containerName, decision, method, statusCode, note);
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(result));
         return commandState;
     }

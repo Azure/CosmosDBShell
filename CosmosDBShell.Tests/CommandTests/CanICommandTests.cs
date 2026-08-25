@@ -104,7 +104,7 @@ public class CanICommandTests
         var state = await command.ExecuteAsync(shell, new CommandState(), "can-i read --database=MyDB --container=Products --format=csv", CancellationToken.None);
 
         Assert.Equal(OutputFormat.CSV, state.OutputFormat);
-        Assert.False(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
 
         var csv = state.GenerateOutputText();
         Assert.Contains("decision", csv, StringComparison.Ordinal);
@@ -121,7 +121,7 @@ public class CanICommandTests
         var state = await command.ExecuteAsync(shell, new CommandState(), "can-i manage --format=json", CancellationToken.None);
 
         Assert.Equal(OutputFormat.JSon, state.OutputFormat);
-        Assert.False(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
         Assert.Contains("\"decision\"", state.GenerateOutputText(), StringComparison.Ordinal);
     }
 
@@ -132,7 +132,7 @@ public class CanICommandTests
         shell.Connect(CreateTestClient(), credentialTypeOverride: "AccountKey");
         var command = new CanICommand { Action = "manage", OutputFormat = "xml" };
 
-        await Assert.ThrowsAsync<ShellException>(
+        await Assert.ThrowsAsync<ArgumentException>(
             () => command.ExecuteAsync(shell, new CommandState(), "can-i manage --format=xml", CancellationToken.None));
     }
 
