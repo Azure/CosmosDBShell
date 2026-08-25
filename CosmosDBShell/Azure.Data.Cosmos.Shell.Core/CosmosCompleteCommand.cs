@@ -8,6 +8,7 @@ using System.Collections.Concurrent;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
+using Azure.Data.Cosmos.Shell.Util;
 
 using RadLine;
 
@@ -126,7 +127,7 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
                         return null;
                     }
 
-                    return string.Concat(word.AsSpan(0, curArg.Start), cc);
+                    return string.Concat(word.AsSpan(0, curArg.Start), FormatArgument(cc));
                 }
             }
 
@@ -137,6 +138,24 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
             // Exceptions during completion are ignored
             return null;
         }
+    }
+
+    private static string FormatArgument(string value)
+    {
+        try
+        {
+            var statement = new StatementParser($"echo {value}").ParseStatement() as CommandStatement;
+            if (statement?.Arguments is [ConstantExpression argument] && argument.ToString() == value)
+            {
+                return value;
+            }
+        }
+        catch
+        {
+            return ShellLiteral.Quote(value);
+        }
+
+        return ShellLiteral.Quote(value);
     }
 
     public override void Execute(LineEditorContext context)
@@ -161,7 +180,8 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
         var matchingItems = items.Where(w => w.StartsWith(word)).ToList();
         for (var i = 0; i < matchingItems.Count; i++)
         {
-            if (lastBuffer.EndsWith(matchingItems[i]))
+            // The previous completion may have been quoted before it was written to the buffer.
+            if (lastBuffer.EndsWith(matchingItems[i]) || lastBuffer.EndsWith(FormatArgument(matchingItems[i])))
             {
                 if (kind == AutoComplete.Next)
                 {
