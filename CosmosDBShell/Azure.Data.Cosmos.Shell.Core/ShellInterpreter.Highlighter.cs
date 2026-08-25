@@ -4,6 +4,7 @@
 namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using Azure.Data.Cosmos.Shell.Parser;
 using Microsoft.AspNetCore.Http.Metadata;
@@ -23,7 +24,7 @@ using Spectre.Console.Rendering;
 public partial class ShellInterpreter : IHighlighter
 {
     private string? oldHighlightedText = null;
-    private Statement? oldHighlightStatement = null;
+    private List<Statement>? oldHighlightStatements = null;
 
     /// <inheritdoc/>
     IRenderable IHighlighter.BuildHighlightedText(string text)
@@ -44,24 +45,36 @@ public partial class ShellInterpreter : IHighlighter
             // inner statements while the user is still entering the construct.
             TolerateIncompleteConstructs = true,
         };
-        Statement? statement = null;
+        List<Statement>? statements = null;
 
 #pragma warning disable CZ0001 // Empty Catch Clause
         try
         {
-            statement = parser.ParseStatement();
+            // Parse the full input, not just the first statement, so that every
+            // statement in a ';'-separated sequence gets highlighted instead of
+            // only the one before the first separator.
+            statements = parser.ParseStatements();
         }
         catch
         {
             // Ignore parse errors for highlighting purposes
         }
 
-        if (statement != null)
+        // Collect the positions of the real ';' separator tokens so they can be
+        // colored distinctly. Lexing (rather than scanning the raw text) ensures
+        // semicolons inside string literals are left untouched.
+        var separatorPositions = CollectSeparatorPositions(text);
+
+        if (statements is { Count: > 0 })
         {
             try
             {
-                var highlighter = new HighlightingVisitor(text, this);
-                statement.Accept(highlighter);
+                var highlighter = new HighlightingVisitor(text, this, separatorPositions);
+                foreach (var statement in statements)
+                {
+                    statement.Accept(highlighter);
+                }
+
                 var result = highlighter.GetResult();
 
                 // Only cache the AST for reuse when the parse was clean. Partial trees
@@ -69,7 +82,7 @@ public partial class ShellInterpreter : IHighlighter
                 // later prefix-match fallback to use them as if they were authoritative.
                 if (!parser.Errors.HasErrors)
                 {
-                    this.oldHighlightStatement = statement;
+                    this.oldHighlightStatements = statements;
                     this.oldHighlightedText = text;
                 }
 
@@ -84,11 +97,15 @@ public partial class ShellInterpreter : IHighlighter
         {
             try
             {
-                if (this.oldHighlightStatement != null && this.oldHighlightedText != null && text.StartsWith(this.oldHighlightedText))
+                if (this.oldHighlightStatements != null && this.oldHighlightedText != null && text.StartsWith(this.oldHighlightedText, StringComparison.Ordinal))
                 {
-                    var highlighter = new HighlightingVisitor(text, this);
+                    var highlighter = new HighlightingVisitor(text, this, separatorPositions);
                     this.oldHighlightedText = text;
-                    this.oldHighlightStatement.Accept(highlighter);
+                    foreach (var statement in this.oldHighlightStatements)
+                    {
+                        statement.Accept(highlighter);
+                    }
+
                     var result = highlighter.GetResult();
                     return result;
                 }
@@ -104,9 +121,37 @@ public partial class ShellInterpreter : IHighlighter
         return Markup.Escape(text);
     }
 
-    private void ClearHighlightStatement()
+    private static HashSet<int> CollectSeparatorPositions(string text)
     {
-        this.oldHighlightStatement = null;
+        var positions = new HashSet<int>();
+
+        // Skip the lexer entirely when the input obviously has no separators; this is
+        // the common case and lexing the whole buffer on every keystroke is wasteful.
+        if (!text.Contains(';', StringComparison.Ordinal))
+        {
+            return positions;
+        }
+
+#pragma warning disable CZ0001 // Empty Catch Clause
+        try
+        {
+            foreach (var token in new Lexer(text).Tokenize().Where(token => token.Type == TokenType.Semicolon))
+            {
+                positions.Add(token.Start);
+            }
+        }
+        catch
+        {
+            // If lexing fails the separators simply stay uncolored.
+        }
+#pragma warning restore CZ0001 // Empty Catch Clause
+
+        return positions;
+    }
+
+    private void ClearHighlightStatements()
+    {
+        this.oldHighlightStatements = null;
         this.oldHighlightedText = null;
     }
 
@@ -115,6 +160,7 @@ public partial class ShellInterpreter : IHighlighter
         private readonly string text;
         private readonly ShellInterpreter interpreter;
         private readonly StringBuilder result;
+        private readonly HashSet<int> separatorPositions;
         private int currentPosition;
         private string? currentCommand;
 
@@ -125,9 +171,15 @@ public partial class ShellInterpreter : IHighlighter
         private int bracketDepth;
 
         public HighlightingVisitor(string text, ShellInterpreter interpreter)
+            : this(text, interpreter, new HashSet<int>())
+        {
+        }
+
+        public HighlightingVisitor(string text, ShellInterpreter interpreter, HashSet<int> separatorPositions)
         {
             this.text = text;
             this.interpreter = interpreter;
+            this.separatorPositions = separatorPositions;
             this.result = new StringBuilder();
             this.currentPosition = 0;
         }
@@ -137,7 +189,8 @@ public partial class ShellInterpreter : IHighlighter
             // Append any remaining text
             if (this.currentPosition < this.text.Length)
             {
-                this.result.Append(Markup.Escape(this.text.Substring(this.currentPosition)));
+                this.AppendPlain(this.currentPosition, this.text.Length);
+                this.currentPosition = this.text.Length;
             }
 
             return this.result.ToString();
@@ -677,8 +730,33 @@ public partial class ShellInterpreter : IHighlighter
         {
             if (position > this.currentPosition && position <= this.text.Length)
             {
-                this.result.Append(Markup.Escape(this.text.Substring(this.currentPosition, position - this.currentPosition)));
+                this.AppendPlain(this.currentPosition, position);
                 this.currentPosition = position;
+            }
+        }
+
+        // Appends the text in [start, end) as escaped plain markup, but renders any
+        // ';' command separators that fall in this range using the operator
+        // color so they stand out from strings, variables, and plain text.
+        private void AppendPlain(int start, int end)
+        {
+            var i = start;
+            while (i < end)
+            {
+                if (this.text[i] == ';' && this.separatorPositions.Contains(i))
+                {
+                    this.result.Append(Theme.FormatOperator(";"));
+                    i++;
+                    continue;
+                }
+
+                var runStart = i;
+                while (i < end && !(this.text[i] == ';' && this.separatorPositions.Contains(i)))
+                {
+                    i++;
+                }
+
+                this.result.Append(Markup.Escape(this.text.Substring(runStart, i - runStart)));
             }
         }
 

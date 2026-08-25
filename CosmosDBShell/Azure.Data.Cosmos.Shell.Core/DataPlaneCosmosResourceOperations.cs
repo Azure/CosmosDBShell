@@ -6,12 +6,21 @@ namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Net;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
-using Newtonsoft.Json;
 
 internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : ICosmosResourceOperations
 {
+    private static readonly JsonSerializerOptions IndexingPolicyJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
     public async IAsyncEnumerable<string> GetDatabaseNamesAsync([EnumeratorCancellation] CancellationToken token)
     {
         using var iterator = client.GetDatabaseQueryIterator<DatabaseProperties>();
@@ -153,6 +162,10 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         {
             dpAvailability = ThroughputAvailability.NotConfigured;
         }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.BadRequest && ThroughputErrors.IsServerlessThroughputError(ex.Message))
+        {
+            dpAvailability = ThroughputAvailability.Serverless;
+        }
         catch (Exception ex)
         {
             dpAvailability = ThroughputAvailability.Unavailable;
@@ -175,6 +188,19 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
             fullTextView = new ContainerFullTextPolicyView(fullTextPolicy.DefaultLanguage, paths);
         }
 
+        ContainerIndexingPolicyView? indexingView = null;
+        if (properties.IndexingPolicy is { } indexingPolicy)
+        {
+            indexingView = new ContainerIndexingPolicyView(
+                indexingPolicy.IndexingMode.ToString(),
+                indexingPolicy.Automatic,
+                indexingPolicy.IncludedPaths?.Count ?? 0,
+                indexingPolicy.ExcludedPaths?.Count ?? 0,
+                indexingPolicy.CompositeIndexes?.Count ?? 0,
+                indexingPolicy.SpatialIndexes?.Count ?? 0,
+                indexingPolicy.VectorIndexes?.Count ?? 0);
+        }
+
         return new ContainerSettingsView(
             properties.Id,
             properties.PartitionKeyPaths?.ToArray() ?? (properties.PartitionKeyPath != null ? [properties.PartitionKeyPath] : []),
@@ -184,7 +210,8 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
             dpAvailability,
             dpError,
             geospatialType,
-            fullTextView);
+            fullTextView,
+            indexingView);
     }
 
     public async Task<string> GetIndexingPolicyJsonAsync(string databaseName, string containerName, CancellationToken token)
@@ -193,7 +220,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         var properties = GetContainerPropertiesOrThrow(response);
         var policy = properties.IndexingPolicy
             ?? throw new IndexPolicyMissingException();
-        return JsonConvert.SerializeObject(policy, Formatting.Indented);
+        return JsonSerializer.Serialize(policy, IndexingPolicyJsonOptions);
     }
 
     public async Task<string> ReplaceIndexingPolicyAsync(string databaseName, string containerName, string indexPolicyJson, CancellationToken token)
@@ -204,7 +231,147 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         var policy = ParseIndexingPolicy(indexPolicyJson);
         props.IndexingPolicy = policy;
         var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
-        return JsonConvert.SerializeObject(replaced.Resource?.IndexingPolicy ?? policy, Formatting.Indented);
+        return JsonSerializer.Serialize(replaced.Resource?.IndexingPolicy ?? policy, IndexingPolicyJsonOptions);
+    }
+
+    public async Task<ContainerTtlView> GetTimeToLiveAsync(string databaseName, string containerName, CancellationToken token)
+    {
+        var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(response);
+        return new ContainerTtlView(props.DefaultTimeToLive);
+    }
+
+    public async Task<ContainerTtlView> ReplaceTimeToLiveAsync(string databaseName, string containerName, int? defaultTimeToLive, CancellationToken token)
+    {
+        var container = client.GetDatabase(databaseName).GetContainer(containerName);
+        var current = await container.ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(current);
+        props.DefaultTimeToLive = defaultTimeToLive;
+        var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
+        var updated = GetContainerPropertiesOrThrow(replaced);
+        return new ContainerTtlView(updated.DefaultTimeToLive);
+    }
+
+    public async Task<ContainerAnalyticalTtlView> GetAnalyticalTimeToLiveAsync(string databaseName, string containerName, CancellationToken token)
+    {
+        var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(response);
+        return new ContainerAnalyticalTtlView(props.AnalyticalStoreTimeToLiveInSeconds);
+    }
+
+    public async Task<ContainerAnalyticalTtlView> ReplaceAnalyticalTimeToLiveAsync(string databaseName, string containerName, int? analyticalTimeToLive, CancellationToken token)
+    {
+        var container = client.GetDatabase(databaseName).GetContainer(containerName);
+        var current = await container.ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(current);
+        props.AnalyticalStoreTimeToLiveInSeconds = analyticalTimeToLive;
+        var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
+        var updated = GetContainerPropertiesOrThrow(replaced);
+        return new ContainerAnalyticalTtlView(updated.AnalyticalStoreTimeToLiveInSeconds);
+    }
+
+    public async Task<ConflictResolutionView> GetConflictResolutionPolicyAsync(string databaseName, string containerName, CancellationToken token)
+    {
+        var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(response);
+        return ToConflictResolutionView(props.ConflictResolutionPolicy);
+    }
+
+    public async Task<ConflictResolutionView> ReplaceConflictResolutionPolicyAsync(string databaseName, string containerName, ConflictResolutionUpdate update, CancellationToken token)
+    {
+        var container = client.GetDatabase(databaseName).GetContainer(containerName);
+        var current = await container.ReadContainerAsync(cancellationToken: token);
+        var props = GetContainerPropertiesOrThrow(current);
+        props.ConflictResolutionPolicy = BuildConflictResolutionPolicy(update);
+        var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
+        var updated = GetContainerPropertiesOrThrow(replaced);
+        return ToConflictResolutionView(updated.ConflictResolutionPolicy);
+    }
+
+    public async Task<ThroughputView> GetThroughputAsync(string databaseName, string? containerName, CancellationToken token)
+    {
+        bool isContainer = !string.IsNullOrEmpty(containerName);
+        string scope = isContainer ? "container" : "database";
+        string resourceName = isContainer ? containerName! : databaseName;
+        try
+        {
+            var throughputResponse = !isContainer
+                ? await client.GetDatabase(databaseName).ReadThroughputAsync(new RequestOptions(), token)
+                : await client.GetDatabase(databaseName).GetContainer(containerName).ReadThroughputAsync(new RequestOptions(), token);
+            return BuildThroughputView(scope, resourceName, throughputResponse);
+        }
+        catch (CosmosException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+        {
+            return new ThroughputView(scope, resourceName, false, null, null, null, ThroughputAvailability.NotConfigured, null);
+        }
+    }
+
+    public async Task<ThroughputView> ReplaceThroughputAsync(string databaseName, string? containerName, ThroughputUpdate update, CancellationToken token)
+    {
+        bool isContainer = !string.IsNullOrEmpty(containerName);
+        string scope = isContainer ? "container" : "database";
+        string resourceName = isContainer ? containerName! : databaseName;
+
+        ThroughputResponse currentResponse;
+        try
+        {
+            currentResponse = !isContainer
+                ? await client.GetDatabase(databaseName).ReadThroughputAsync(new RequestOptions(), token)
+                : await client.GetDatabase(databaseName).GetContainer(containerName).ReadThroughputAsync(new RequestOptions(), token);
+        }
+        catch (CosmosException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+        {
+            throw new ThroughputNotConfiguredException(resourceName, ex);
+        }
+
+        // The data-plane SDK can only change the value within the current mode; it
+        // cannot migrate between manual and autoscale. Detect that up front and fail
+        // with a clear error instead of silently leaving the mode unchanged.
+        bool currentIsAutoscale = currentResponse.Resource?.AutoscaleMaxThroughput is not null;
+        if (currentIsAutoscale != update.IsAutoscale)
+        {
+            throw new ThroughputModeSwitchNotSupportedException(resourceName, update.IsAutoscale);
+        }
+
+        var properties = update.IsAutoscale
+            ? ThroughputProperties.CreateAutoscaleThroughput(update.Throughput)
+            : ThroughputProperties.CreateManualThroughput(update.Throughput);
+        try
+        {
+            var throughputResponse = !isContainer
+                ? await client.GetDatabase(databaseName).ReplaceThroughputAsync(properties, cancellationToken: token)
+                : await client.GetDatabase(databaseName).GetContainer(containerName).ReplaceThroughputAsync(properties, cancellationToken: token);
+            return BuildThroughputView(scope, resourceName, throughputResponse);
+        }
+        catch (CosmosException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+        {
+            throw new ThroughputNotConfiguredException(resourceName, ex);
+        }
+    }
+
+    public Task<ThroughputBucketsView> GetThroughputBucketsAsync(string databaseName, string containerName, CancellationToken token) =>
+        throw new ThroughputBucketsNotSupportedException();
+
+    public Task<ThroughputBucketsView> SetThroughputBucketAsync(string databaseName, string containerName, int bucketId, int maxThroughputPercentage, CancellationToken token) =>
+        throw new ThroughputBucketsNotSupportedException();
+
+    public Task<ThroughputBucketsView> ClearThroughputBucketAsync(string databaseName, string containerName, int bucketId, CancellationToken token) =>
+        throw new ThroughputBucketsNotSupportedException();
+
+    private static ThroughputView BuildThroughputView(string scope, string resourceName, ThroughputResponse response)
+    {
+        var resource = response.Resource;
+        int? autoscaleMax = resource?.AutoscaleMaxThroughput;
+        bool isAutoscale = autoscaleMax.HasValue;
+        return new ThroughputView(
+            scope,
+            resourceName,
+            isAutoscale,
+            resource?.Throughput,
+            autoscaleMax,
+            response.MinThroughput,
+            ThroughputAvailability.Available,
+            null);
     }
 
     private static ContainerProperties GetContainerPropertiesOrThrow(ContainerResponse response)
@@ -216,7 +383,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     {
         try
         {
-            return JsonConvert.DeserializeObject<IndexingPolicy>(indexPolicyJson)
+            return JsonSerializer.Deserialize<IndexingPolicy>(indexPolicyJson, IndexingPolicyJsonOptions)
                 ?? throw new InvalidIndexingPolicyJsonException();
         }
         catch (JsonException ex)
@@ -224,6 +391,40 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
             throw new InvalidIndexingPolicyJsonException(ex);
         }
     }
+
+    private static ConflictResolutionView ToConflictResolutionView(ConflictResolutionPolicy? policy)
+    {
+        if (policy is null)
+        {
+            return new ConflictResolutionView(ConflictResolutionMode.LastWriterWins.ToString(), "/_ts", null);
+        }
+
+        bool isCustom = policy.Mode == ConflictResolutionMode.Custom;
+        return new ConflictResolutionView(
+            policy.Mode.ToString(),
+            isCustom ? null : (NullIfEmpty(policy.ResolutionPath) ?? "/_ts"),
+            isCustom ? NullIfEmpty(policy.ResolutionProcedure) : null);
+    }
+
+    private static ConflictResolutionPolicy BuildConflictResolutionPolicy(ConflictResolutionUpdate update)
+    {
+        if (string.Equals(update.Mode, "custom", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ConflictResolutionPolicy
+            {
+                Mode = ConflictResolutionMode.Custom,
+                ResolutionProcedure = update.ResolutionProcedure ?? string.Empty,
+            };
+        }
+
+        return new ConflictResolutionPolicy
+        {
+            Mode = ConflictResolutionMode.LastWriterWins,
+            ResolutionPath = update.ResolutionPath ?? string.Empty,
+        };
+    }
+
+    private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     private static ThroughputProperties CreateThroughputProperties(string? scale, int? maxRu)
     {

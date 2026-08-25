@@ -13,9 +13,18 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Inspect a query's execution plan and index usage with `query "<sql>" --explain`
 - Bulk roundtrip with `import` / `export` for JSON Lines and JSON array files, plus CSV import/export (CSV import coerces values to strings; `--partition-key` nests a CSV column under a nested partition key path)
 - Manage container indexing policies with `index` (`show`, `add`, `remove`, `set`)
+- Inspect container/database/account configuration and usage statistics with `info` (partition key, throughput, policies, indexing policy summary, document count, storage size, regions; `--partitions` and `--detailed` for distribution analysis)
+- View and scale provisioned RU/s with `throughput` (`show`, `set`/`manual`, `autoscale`)
+- View and set the container default time-to-live with `ttl` (`show`, `set`, `on`, `off`)
+- View and set the container conflict resolution policy with `conflict` (`show`, `set`; last-writer-wins or custom stored procedure)
+- Manage stored procedures with `sproc` (`list`, `show`, `exists`, `create`, `exec`, `edit`, `delete`)
+- Manage user-defined functions with `udf` (`list`, `show`, `exists`, `create`, `edit`, `delete`)
+- Manage triggers with `trigger` (`list`, `show`, `exists`, `create`, `edit`, `delete`)
 - Tail the change feed of a container with `watch` (alias `tail`)
 - Database and container management commands prefer Azure Resource Manager when connected with Entra ID, with data-plane fallback for key, emulator, and static-token connections
 - Pipelines and scripting with variables, loops, functions
+- Transform piped JSON output with `filter` using jq-inspired expressions (field access, indexing, `map`, `length`, pipelines)
+- Edit local files in your external editor with `edit`, and customize REPL colors with `theme` (`list`, `show`, `use`, `load`, `validate`, `save`, `edit`; built-in default/light/dark/monochrome)
 - Multi-line input at the prompt — automatic continuation for unclosed blocks/strings, plus explicit `\` line continuation ([docs](docs/navigation.md#multi-line-input))
 - MCP server for AI/tool integration
 - Distributed tracing via OpenTelemetry (`--otel`): emits a sampled W3C `traceparent` on Cosmos requests, with optional OTLP export
@@ -138,10 +147,21 @@ dotnet tool uninstall --global CosmosDBShell
 - [Programming](docs/programming.md) - Variables, control flow, functions
 - [Filter expression language (v1)](docs/filter-v1-spec.md) - Grammar and semantics of the built-in `filter` command
 - [MCP](docs/mcp.md) - Model Context Protocol integration
+- [CI/CD](docs/ci.md) - Install in pipelines, exit-code contract, auth patterns
 
 ## CI And Packaging
 
-This repo currently uses one GitHub Actions workflow for validation and package artifacts:
+Install the shell in GitHub Actions with the composite setup action (no .NET SDK required on the runner):
+
+```yaml
+- uses: Azure/CosmosDBShell/.github/actions/setup-cosmosdb-shell@main
+  with:
+    version: latest # pin a release tag for reproducible builds
+```
+
+See the [CI/CD guide](docs/ci.md) and the [setup action README](.github/actions/setup-cosmosdb-shell/README.md) for version pinning, auth patterns, and failure handling.
+
+This repo also uses one GitHub Actions workflow for validation and package artifacts:
 
 - [.github/workflows/validate-and-package.yml](.github/workflows/validate-and-package.yml): runs validation on pull requests, and on branch pushes or manual runs it also builds installable RID-specific NuGet tool packages and uploads them as workflow artifacts
 
@@ -153,6 +173,8 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 
 | Option | Description |
 | ------ | ----------- |
+| `--output <format>` | The output format to use (`user`, `json`, `table`, `csv`). Alias: `-o`. Falls back to `COSMOSDB_SHELL_FORMAT`. |
+| `--quiet` | Suppress standard informational output. Alias: `-q` |
 | `-c <cmd>` | Execute and exit |
 | `-k <cmd>` | Execute and stay |
 | `--connect <str>` | Connection string or endpoint URL |
@@ -160,9 +182,11 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--connect-hint <email>` | Login hint for interactive login |
 | `--connect-authority-host <uri>` | Authority host (e.g. sovereign clouds) |
 | `--connect-managed-identity <id>` | Use a user-assigned managed identity |
+| `--connect-azure-cli` | Use the signed-in Azure CLI (`az login`) identity |
 | `--connect-subscription <id>` | Azure subscription ID for ARM database and container operations |
 | `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
+| `--diagnostics [path]` | Write timestamped diagnostic logs to a file, or to a timestamped file in the config directory by default |
 | `--otel [endpoint]` | Enable distributed tracing (sampled W3C `traceparent`); optional OTLP `endpoint`, else `OTEL_EXPORTER_OTLP_ENDPOINT` |
 | `--verbose` | Print full exception details |
 | `--color-system <n>` | Colors: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
@@ -182,6 +206,24 @@ cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c seed.csh mydb my
 # Run a script from piped command text.
 echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
 ```
+
+## Deterministic Exit Codes
+
+When running scripts or automation, Cosmos DB Shell maps execution failures to a set of stable exit codes (accessible via `$?`, `%ERRORLEVEL%`, or `$LASTEXITCODE`):
+
+| Code | Meaning |
+| ---- | ------- |
+| `0` | Success |
+| `1` | Generic error |
+| `2` | Usage / bad arguments / parser or script syntax errors |
+| `3` | Authentication or authorization failure (`401`/`403`, failed Entra credential) |
+| `4` | Connection / network error (socket failure, timeout, `503`) |
+| `5` | Not found (`404`) |
+| `6` | Throttled (`429` / RU budget exceeded) |
+
+These values are a public contract: existing codes are never repurposed, and new failure categories get new codes. See the [CI/CD guide](docs/ci.md#exit-code-contract) for full details.
+
+> **Machine Mode**: Using `--output json` or `--output csv` or `--quiet` (or running `-c` without specifying `--output`, which defaults to `json`) disables ANSI colors, suppresses connection/informational banners, and redirects early parser/connection exceptions to `STDERR` as structured JSON. Data-operation commands emit their result in the selected structured format (JSON or CSV) on `STDOUT`; diagnostic and interactive commands may still write plain text. Interactively, commands render a friendly, human-readable view instead; the default `user` output format selects that friendly view and automatically falls back to JSON whenever output is redirected, piped, or run in machine mode. Bare piped stdin (`echo "..." | cosmosdbshell`) is not implicitly machine mode—pass `-c`, `--output json`, or `--quiet` to opt in.
 
 ## Theming
 
@@ -205,9 +247,9 @@ export COSMOSDB_SHELL_THEME=monochrome
 cosmosdbshell
 
 # Inspect or switch at runtime.
-CS > theme list
-CS > theme show light       # preview a profile without switching
-CS > theme use light        # switch for the rest of the session
+❯ theme list
+❯ theme show light       # preview a profile without switching
+❯ theme use light        # switch for the rest of the session
 ```
 
 ### Custom themes
@@ -238,17 +280,19 @@ unknown_command = "bold red"
 
 Color values must be empty or one standard ANSI 16 color name (`black`, `maroon`, `green`, `olive`, `navy`, `purple`, `teal`, `silver`, `grey`, `red`, `lime`, `yellow`, `blue`, `fuchsia`, `aqua`, `white`). Style values may combine modifiers (`bold`, `dim`, `italic`, `underline`, `strikethrough`, `invert`, `conceal`, `slowblink`, `rapidblink`) with at most one ANSI 16 color. Empty string means "use the terminal's default foreground".
 
+The `literal` key colors every JSON/JavaScript literal at once. To match an editor more closely you can override individual literal types with `string`, `number`, `boolean`, and `null`; any you leave unset fall back to `literal`. The `string_escape` key colors backslash escape sequences (`\n`, `\"`, `\uXXXX`) inside strings; leave it unset to color escapes the same as the surrounding string.
+
 Runtime commands for working with files:
 
 ```bash
-CS > theme load ./my-theme.toml         # load and switch to a file ad-hoc
-CS > theme validate ./my-theme.toml     # validate a file without loading or switching
-CS > theme validate ~/.cosmosdbshell/themes  # validate every TOML file in a directory
-CS > theme validate my-theme --strict   # treat warnings as errors
-CS > theme save my-theme                # write the active theme to ~/.cosmosdbshell/themes/my-theme.toml
-CS > theme save my-theme ./out.toml     # save to a custom path
-CS > theme save my-theme --force        # overwrite an existing file
-CS > theme reload                       # rescan the user themes directory
+❯ theme load ./my-theme.toml         # load and switch to a file ad-hoc
+❯ theme validate ./my-theme.toml     # validate a file without loading or switching
+❯ theme validate ~/.cosmosdbshell/themes  # validate every TOML file in a directory
+❯ theme validate my-theme --strict   # treat warnings as errors
+❯ theme save my-theme                # write the active theme to ~/.cosmosdbshell/themes/my-theme.toml
+❯ theme save my-theme ./out.toml     # save to a custom path
+❯ theme save my-theme --force        # overwrite an existing file
+❯ theme reload                       # rescan the user themes directory
 ```
 
 `theme save` writes a self-contained theme file with every color and style slot populated, so the saved file can be moved or edited without depending on another custom profile.

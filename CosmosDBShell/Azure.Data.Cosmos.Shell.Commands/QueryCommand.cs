@@ -286,7 +286,7 @@ internal class QueryCommand : CosmosCommand
 
     private static void GeneratePlainResultDocument(CommandState returnState, IEnumerable<JsonElement> documents)
     {
-        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = documents.ToList() }));
+        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "item", values = documents.ToList() }));
     }
 
     // Parses the raw IndexMetrics JSON returned by Cosmos (PopulateIndexMetrics = true)
@@ -628,7 +628,7 @@ internal class QueryCommand : CosmosCommand
     private async Task<CommandState> ExecuteQueryAsync(Container container, ShellInterpreter shell, CancellationToken token)
     {
         var returnState = new CommandState();
-        returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+        returnState.SetFormat(this.OutputFormat);
         var aggregatedDocuments = new List<JsonElement>();
 
         try
@@ -695,16 +695,17 @@ internal class QueryCommand : CosmosCommand
                 if (this.Metrics == MetricTarget.File)
                 {
                     var metricProperty = GetMetrics(response);
-                    var parsedIndexMetrics = response.IndexMetrics != null
-                        ? Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(response.IndexMetrics)
+                    var parsedIndexMetrics = !string.IsNullOrWhiteSpace(response.IndexMetrics)
+                        ? JsonSerializer.Deserialize<Dictionary<string, object>>(response.IndexMetrics)
                         : null;
 
                     if (shell.StdOutRedirect == null || !string.Equals("csv", this.OutputFormat, StringComparison.OrdinalIgnoreCase))
                     {
-                        var element = System.Text.Json.JsonSerializer.SerializeToElement(
+                        var element = JsonSerializer.SerializeToElement(
                             new Dictionary<string, object>()
                             {
-                                { "documents", aggregatedDocuments },
+                                { "type", "item" },
+                                { "values", aggregatedDocuments },
                                 { "requestCharge", queryMetrics?.TotalRequestCharge ?? 0 },
                                 { "queryMetrics", metricProperty },
                                 { "indexMetrics", parsedIndexMetrics ?? new Dictionary<string, object>() },
@@ -796,13 +797,13 @@ internal class QueryCommand : CosmosCommand
                     table.AddRow(Theme.FormatTableValue(Fmt("Index hit ratio")), Theme.FormatTableValue(Fmt("Index lookup time")));
                     AnsiConsole.Write(table);
 
-                    if (response.IndexMetrics != null)
+                    if (!string.IsNullOrWhiteSpace(response.IndexMetrics))
                     {
                         var indexTable = new Table();
 
                         indexTable.AddColumns(MessageService.GetString("command-query-index_metrics"), MessageService.GetString("command-query-index_spec"), MessageService.GetString("command-query-index_score"));
 
-                        var parsedIndexMetrics = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(response.IndexMetrics);
+                        var parsedIndexMetrics = JsonSerializer.Deserialize<Dictionary<string, object>>(response.IndexMetrics);
 
                         if (parsedIndexMetrics?.TryGetValue("UtilizedIndexes", out var utilizedIndices) == true)
                         {

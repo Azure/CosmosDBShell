@@ -770,7 +770,7 @@ public class HighlighterTests
 
         var variableSeg = segs.FirstOrDefault(s => s.Text == "$myVariable");
         Assert.NotNull(variableSeg);
-        Assert.Equal(Color.Aqua, variableSeg.Style.Foreground);
+        Assert.Equal(SingleColor(Theme.FormatVariable("$myVariable")), variableSeg.Style.Foreground);
     }
 
     [Fact]

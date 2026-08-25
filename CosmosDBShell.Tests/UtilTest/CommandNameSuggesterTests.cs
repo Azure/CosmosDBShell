@@ -10,7 +10,7 @@ public class CommandNameSuggesterTests
 {
     private static readonly string[] KnownCommands = new[]
     {
-        "ls", "cd", "pwd", "query", "connect", "disconnect", "settings",
+        "ls", "cd", "pwd", "query", "connect", "disconnect", "info",
         "create", "mkitem", "mkdb", "mkcon", "rm", "rmdb", "rmcon",
         "help", "exit", "cls", "echo", "jq", "ftab", "print", "cat",
     };
@@ -20,8 +20,8 @@ public class CommandNameSuggesterTests
     [InlineData("queryy", "query")]
     [InlineData("connet", "connect")]
     [InlineData("conect", "connect")]
-    [InlineData("setings", "settings")]
-    [InlineData("setttings", "settings")]
+    [InlineData("ifno", "info")]
+    [InlineData("inof", "info")]
     [InlineData("mkitm", "mkitem")]
     [InlineData("LS", "ls")]
     public void Suggest_ReturnsClosestCandidateForCommonTypos(string typed, string expected)

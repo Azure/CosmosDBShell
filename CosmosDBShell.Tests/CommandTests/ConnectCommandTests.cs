@@ -10,7 +10,9 @@ using Azure.Data.Cosmos.Shell.Lsp.Semantics;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
+using Spectre.Console;
 
+[Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class ConnectCommandTests
 {
     [Fact]
@@ -24,6 +26,77 @@ public class ConnectCommandTests
             "AccountEndpoint=https://127.0.0.1:1/;AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;",
             mode: ConnectionMode.Gateway,
             token: cancellationTokenSource.Token));
+    }
+
+    [Fact]
+    public async Task ConnectAsync_AzureCliWithManagedIdentity_ThrowsConflict()
+    {
+        // #1: a credential the user explicitly requested must never be silently
+        // ignored. --azure-cli and --managed-identity select different credentials.
+        using var shell = ShellInterpreter.CreateInstance();
+
+        var ex = await Assert.ThrowsAsync<ShellException>(() => shell.ConnectAsync(
+            "https://example.documents.azure.com:443/",
+            credentialMethod: CredentialMethod.AzureCli,
+            managedIdentityClientId: "00000000-0000-0000-0000-000000000000",
+            token: TestContext.Current.CancellationToken));
+
+        Assert.Contains("--azure-cli", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("--managed-identity", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_AccountKeyWithAzureCli_ThrowsConflict()
+    {
+        // An account key in the connection string and an explicit credential method
+        // are mutually exclusive; the validation runs before any network call.
+        using var shell = ShellInterpreter.CreateInstance();
+
+        var ex = await Assert.ThrowsAsync<ShellException>(() => shell.ConnectAsync(
+            "AccountEndpoint=https://example.documents.azure.com:443/;AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;",
+            credentialMethod: CredentialMethod.AzureCli,
+            token: TestContext.Current.CancellationToken));
+
+        Assert.Contains("--azure-cli", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("account key", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_AccountKeyWithTenant_ThrowsConflict()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+
+        var ex = await Assert.ThrowsAsync<ShellException>(() => shell.ConnectAsync(
+            "AccountEndpoint=https://example.documents.azure.com:443/;AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;",
+            tenantId: "00000000-0000-0000-0000-000000000000",
+            token: TestContext.Current.CancellationToken));
+
+        Assert.Contains("account key", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveCredentialMethod_VSCodeAndAzureCli_ThrowsConflict()
+    {
+        // Both flags name a distinct explicit credential, so requesting both is a
+        // conflict rather than a silent precedence decision (VS Code winning).
+        var ex = Assert.Throws<ShellException>(() =>
+            ShellInterpreter.ResolveCredentialMethod(useVSCodeCredential: true, useAzureCli: true));
+
+        Assert.Contains("--connect-vscode-credential", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("--azure-cli", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void ResolveCredentialMethod_SingleOrNoFlag_ReturnsExpected(bool useVSCode, bool useAzureCli)
+    {
+        var expected = useVSCode ? CredentialMethod.VSCode
+            : useAzureCli ? CredentialMethod.AzureCli
+            : CredentialMethod.Default;
+
+        Assert.Equal(expected, ShellInterpreter.ResolveCredentialMethod(useVSCode, useAzureCli));
     }
 
     [Fact]
@@ -67,6 +140,24 @@ public class ConnectCommandTests
         var model = new SemanticAnalyzer().Analyze(statements, CommandText);
 
         Assert.DoesNotContain(model.Diagnostics, diagnostic => diagnostic.Code == "SEM002");
+    }
+
+    [Fact]
+    public async Task ConnectCommand_AzureCliOption_BindsInteractiveFlag()
+    {
+        var command = await BindConnectCommandAsync("connect https://example.documents.azure.com:443/ -azure-cli");
+
+        Assert.Equal("https://example.documents.azure.com:443/", command.ConnectionString);
+        Assert.True(command.UseAzureCli);
+    }
+
+    [Fact]
+    public void ConnectCommand_AzureCliOption_IsKnownToCommandMetadata()
+    {
+        Assert.True(CommandFactory.TryCreateFactory(typeof(ConnectCommand), out var factory));
+
+        Assert.Contains(factory.AllOptions, option => option.MatchesArgument("azure-cli"));
+        Assert.True(factory.HasOption("azure-cli"));
     }
 
     [Fact]
@@ -141,5 +232,96 @@ public class ConnectCommandTests
         // factory through ShellInterpreter.App.Commands.
         var ex = Record.Exception(() => ConnectCommand.PrintConnectUsageHint(shell));
         Assert.Null(ex);
+    }
+
+    [Fact]
+    public void WriteConnectionError_NonVerbose_ShowsMessageInnerReasonAndVerboseHint()
+    {
+        // Issue: a failed connection printed only "Failed to connect to the Cosmos DB
+        // account." with no indication of the underlying cause. The inner exception
+        // chain must be surfaced so the user can see why the connection failed.
+        var failure = new ShellException(
+            MessageService.GetString("error-connection_failed"),
+            new InvalidOperationException("Response status code does not indicate success: 401 (Unauthorized)."));
+
+        var output = CaptureConsole(() => ShellInterpreter.WriteConnectionError(failure, verbose: false));
+
+        Assert.Contains("Failed to connect to the Cosmos DB account.", output, StringComparison.Ordinal);
+        Assert.Contains("Response status code does not indicate success: 401 (Unauthorized).", output, StringComparison.Ordinal);
+        Assert.Contains(MessageService.GetString("shell-connect-verbose-hint"), output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WriteConnectionError_NonVerbose_WalksFullInnerExceptionChain()
+    {
+        var failure = new ShellException(
+            "outer",
+            new InvalidOperationException("middle", new InvalidOperationException("root cause")));
+
+        var output = CaptureConsole(() => ShellInterpreter.WriteConnectionError(failure, verbose: false));
+
+        Assert.Contains("outer", output, StringComparison.Ordinal);
+        Assert.Contains("middle", output, StringComparison.Ordinal);
+        Assert.Contains("root cause", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WriteConnectionError_Verbose_RendersFullExceptionDetails()
+    {
+        var failure = new ShellException(
+            "outer failure",
+            new InvalidOperationException("verbose-only inner detail"));
+
+        var output = CaptureConsole(() => ShellInterpreter.WriteConnectionError(failure, verbose: true));
+
+        Assert.Contains("verbose-only inner detail", output, StringComparison.Ordinal);
+        Assert.Contains(nameof(ShellException), output, StringComparison.Ordinal);
+        Assert.DoesNotContain(MessageService.GetString("shell-connect-verbose-hint"), output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WriteConnectionError_Verbose_SurfacesCosmosRequestCoordinates()
+    {
+        // Issue: a 403 authorization denial was indistinguishable from a token or
+        // network failure. In verbose mode the Cosmos HTTP status, sub-status, and
+        // activity id must be surfaced up front so the failure category is obvious.
+        var cosmosException = new CosmosException(
+            "Request blocked by auth.",
+            System.Net.HttpStatusCode.Forbidden,
+            subStatusCode: 5301,
+            activityId: "8b1f0000-0000-0000-0000-000000000000",
+            requestCharge: 0);
+        var failure = new ShellException(
+            MessageService.GetString("error-connection_failed"),
+            cosmosException);
+
+        var output = CaptureConsole(() => ShellInterpreter.WriteConnectionError(failure, verbose: true));
+
+        Assert.Contains("403", output, StringComparison.Ordinal);
+        Assert.Contains("5301", output, StringComparison.Ordinal);
+        Assert.Contains("8b1f0000-0000-0000-0000-000000000000", output, StringComparison.Ordinal);
+    }
+
+    private static string CaptureConsole(Action action)
+    {
+        var saved = AnsiConsole.Console;
+        using var writer = new StringWriter();
+        try
+        {
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(writer),
+            });
+
+            action();
+        }
+        finally
+        {
+            AnsiConsole.Console = saved;
+        }
+
+        return writer.ToString();
     }
 }

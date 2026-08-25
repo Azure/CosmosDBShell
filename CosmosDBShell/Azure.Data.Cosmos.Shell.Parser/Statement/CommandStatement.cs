@@ -139,6 +139,16 @@ internal class CommandStatement : Statement
     /// </summary>
     public override async Task<CommandState> RunAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
+        // Each command statement re-establishes its own render state. Without this reset a
+        // prior command that supplied a RenderUser or RenderTabular delegate (for example a
+        // condition command in an if/while) would leak it into this statement and cause
+        // PrintState to render stale output. The Result itself is intentionally preserved so
+        // that piped commands (command1 | command2) can consume the previous command's output.
+        commandState.RenderUser = null;
+        commandState.RenderTabular = null;
+        commandState.ResetOutputFormat();
+        commandState.OutputRendered = false;
+
         // Wire redirections onto the shell so both the command itself (if it inspects
         // StdOutRedirect/ErrOutRedirect) and the post-execution PrintState honor them.
         // Only assign when this statement declares its own redirect so values pre-set by
@@ -426,7 +436,7 @@ internal class CommandStatement : Statement
 
                     try
                     {
-                        shell.PrintState(commandState);
+                        currentState = shell.PrintState(currentState, markAsRendered: true);
                     }
                     finally
                     {

@@ -58,6 +58,10 @@ Options:
 
 When `ls` is listing items from a container, it defaults to `100` items if `--max` is not specified. If the limit is hit at runtime, the shell prints a message telling you the results were limited. Use `--max <n>` to choose another limit or `--max 0` or a negative value to disable the limit.
 
+`ls` always prints a summary line for how many results it found, and the line names the scope it listed: when listing databases it reports the database count (or `no databases found.`), when listing containers it reports the container count for the database (or `no containers found in database ...`), and when listing items it reports the item count for the container (or `no items found in container ...`). The summary makes it clear when a scope is genuinely empty versus when the listing simply returned nothing.
+
+When listing databases or containers over an Azure Resource Manager (ARM) connection returns nothing at all, `ls` also prints a warning hint pointing at the most common non-empty causes (the connected identity may lack control-plane read access, or you may be connected to the wrong account). This avoids a silent empty result being mistaken for an empty account or database. Data-plane connections do not show this hint, since an empty result there is genuinely empty.
+
 ### cd
 
 Change scope to database or container.
@@ -107,7 +111,7 @@ pwd                    # /MyDb/MyContainer
 Inspect, switch, load, validate, save, edit, open, and reload shell color themes.
 
 ```text
-Usage: theme [action] [name] [path] [-force] [-strict] [-editor <ARG>]
+Usage: theme [action] [name] [path] [-force] [-strict]
 
 Arguments:
     [action]    What to do: current (default), list, show, use (alias: set),
@@ -120,8 +124,6 @@ Options:
     -force, -f  Overwrite an existing file when saving, or seed the
                 built-in profile to a user file when editing
     -strict     Treat warnings as errors during validate
-    -editor     External editor to launch for `theme edit`
-                (defaults to $VISUAL, $EDITOR, then a platform default)
 ```
 
 Examples:
@@ -136,7 +138,6 @@ theme validate ~/.cosmosdbshell/themes
 theme validate my-theme --strict
 theme save my-theme --force
 theme edit my-theme
-theme edit dark --force --editor "code --wait"
 theme open
 theme reload
 ```
@@ -311,11 +312,24 @@ patch set order-42 customer-7 /name "Ada Lovelace" --etag="<etag-from-read>"
 Remove items from container.
 
 ```text
-Usage: rm pattern
+Usage: rm pattern [options]
 
 Arguments:
     pattern     Pattern for items to remove
+
+Options:
+    --database, --db
+                Database containing the items to remove
+    --container, --con
+                Container containing the items to remove
+    --key, -k   Property name to match the pattern against (defaults to partition key)
+    --dry-run   Preview how many items would be deleted without deleting them
 ```
+
+Examples:
+
+- `rm test-*` deletes every item whose partition key starts with `test-`.
+- `rm test-* --dry-run` reports how many items match without deleting anything.
 
 ### export
 
@@ -495,10 +509,14 @@ Examples:
 Remove database.
 
 ```text
-Usage: rmdb name
+Usage: rmdb name [force] [options]
 
 Arguments:
     name        The database to remove
+    [force]     Skip the confirmation prompt when `true` (Optional)
+
+Options:
+    --dry-run   Preview the deletion without deleting the database
 ```
 
 ### rmcon
@@ -506,10 +524,16 @@ Arguments:
 Remove container.
 
 ```text
-Usage: rmcon name
+Usage: rmcon name [force] [options]
 
 Arguments:
     name        The container to remove
+    [force]     Skip the confirmation prompt when `true` (Optional)
+
+Options:
+    --database, --db
+                Database containing the container to remove
+    --dry-run   Preview the deletion without deleting the container
 ```
 
 ### create
@@ -534,16 +558,25 @@ Options:
 Delete item, container, or database.
 
 ```text
-Usage: delete item pattern
+Usage: delete item pattern [options]
 
 Arguments:
     item        Object type: item, container, or database
     pattern     Items/container/database to delete
+
+Options:
+    --database, --db
+                Database to target for item/container deletes (forwarded to rm/rmcon)
+    --container, --con
+                Container to target for item deletes (forwarded to rm)
+    --dry-run   Preview the deletion without applying it
 ```
+
+The `--dry-run` flag is forwarded to the underlying `rm`, `rmcon`, or `rmdb` operation, so `delete item test-* --dry-run` previews the affected items without deleting them.
 
 ### index
 
-Manage the indexing policy of a container through subcommands.
+Manage the indexing policy of a container through subcommands. Aliased as `indexpolicy`.
 
 ```text
 Usage: index subcommand [paths ...] [-mode <ARG>] [-automatic <ARG>] [-database <ARG>] [-container <ARG>]
@@ -583,6 +616,309 @@ index remove /address/*
 index set --mode=consistent --automatic=true
 index set '{"indexingMode":"consistent","automatic":true,"includedPaths":[{"path":"/*"}],"excludedPaths":[]}'
 ```
+
+### throughput
+
+View or change the provisioned throughput (RU/s) of a database or container through subcommands.
+
+```text
+Usage: throughput subcommand [ru] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  show, set, manual, or autoscale
+    [ru]        Throughput in RU/s (manual RU/s for set/manual, maximum RU/s for autoscale)
+
+Options:
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+    -yes, -y, -force
+                Skip the confirmation prompt before applying a change (Optional)
+    -dry-run    Preview the change without applying it (Optional)
+```
+
+By default the command targets the current scope: the container when in a container, otherwise the database. Use `--database` and `--container` to target a specific resource.
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`show`|Reads and returns the current throughput as JSON, including the mode (`manual`, `autoscale`, or `none`), provisioned RU/s, autoscale maximum, and minimum.|
+|`set <RUs>`|Sets manual throughput to the given RU/s. Alias of `manual`.|
+|`manual <RUs>`|Switches to manual provisioning at the given RU/s.|
+|`autoscale <maxRUs>`|Switches to autoscale with the given maximum RU/s.|
+
+Throughput changes apply to the resource's own provisioned throughput. Containers inside a shared-throughput database, and serverless accounts, have no dedicated throughput to change.
+
+Throughput values are validated before the request is sent: manual RU/s must be at least 400 and a multiple of 100, and autoscale maximum RU/s must be at least 1000 and a multiple of 1000.
+
+Switching between `manual` and `autoscale` is a mode migration. Over an Azure AD (token) connection this is performed automatically. Over a key-based (data-plane) connection the SDK cannot migrate modes, so a mode switch is rejected with guidance to use a token connection, the Azure portal, Azure CLI, or PowerShell; changing the RU/s value within the current mode still works.
+
+Write operations (`set`, `manual`, `autoscale`) ask for confirmation before applying, because throughput changes can affect your bill. Pass `--yes` (`-y`/`--force`) to skip the prompt. The prompt is also skipped automatically in non-interactive contexts (MCP, script execution, or piped input).
+
+Pass `--dry-run` with a write subcommand to preview the change without applying it. The command reads the current throughput and reports the current vs. planned mode and RU/s as JSON (and a table interactively); no write is performed and no confirmation is required.
+
+#### Examples
+
+```bash
+throughput show
+throughput set 4000
+throughput manual 4000
+throughput autoscale 10000
+throughput set 4000 --yes
+throughput autoscale 10000 --dry-run
+throughput show --database MyDatabase --container MyContainer
+```
+
+### ttl
+
+View or change the time-to-live (TTL) of a container through subcommands.
+
+```text
+Usage: ttl subcommand [seconds] [-analytical] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  show, set, on, or off
+    [seconds]   Time-to-live in seconds for the set subcommand (must be positive)
+
+Options:
+    -analytical, -a
+                Target the analytical store TTL instead of the default item TTL (Optional)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+The command operates on a container. By default it targets the current container. Use `--database` and `--container` to target a specific container.
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`show`|Reads and returns the current TTL configuration as JSON. `status` is `disabled` (items never expire), `no-default` (TTL is on but items expire only when they carry their own `ttl` property), or `enabled` (items expire after `defaultTimeToLiveSeconds`).|
+|`set <seconds>`|Enables TTL with a positive default expiration in seconds.|
+|`on`|Enables TTL with no container default (equivalent to a default TTL of `-1`); only items with their own `ttl` property expire.|
+|`off`|Disables TTL so items never expire.|
+
+The seconds value is validated before the request is sent: `set` requires a positive number, and `show`, `on`, and `off` reject a seconds argument.
+
+#### Analytical store TTL
+
+Pass `--analytical` (or `-a`) to operate on the container's analytical store TTL instead of the default item TTL. The analytical store must be supported by the account.
+
+|Subcommand|Behavior with `--analytical`|
+|-|-|
+|`show`|Returns the analytical status (`disabled` or `enabled`) and `analyticalTimeToLiveSeconds`.|
+|`set <seconds>`|Retains analytical data for a positive number of seconds.|
+|`on`|Enables the analytical store with indefinite retention (a TTL of `-1`).|
+|`off`|Disables the analytical store.|
+
+#### Examples
+
+```bash
+ttl show
+ttl set 86400
+ttl on
+ttl off
+ttl show --database MyDatabase --container MyContainer
+ttl show --analytical
+ttl set 2592000 --analytical
+ttl on --analytical
+ttl off --analytical
+```
+
+### conflict
+
+View or change the conflict resolution policy of a container through subcommands.
+
+```text
+Usage: conflict subcommand [-mode <ARG>] [-path <ARG>] [-procedure <ARG>] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  show or set
+
+Options:
+    -mode, -m   Conflict resolution mode: lastWriterWins or custom (Optional)
+    -path, -p   Resolution path for lastWriterWins mode, for example /_ts (Optional)
+    -procedure, -proc, -sproc
+                Stored procedure id that resolves conflicts for custom mode (Optional)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+The command operates on a container. By default it targets the current container. Use `--database` and `--container` to target a specific container.
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`show`|Reads and returns the current policy as JSON, including the mode (`LastWriterWins` or `Custom`), the resolution path (last-writer-wins), and the resolution stored procedure (custom).|
+|`set`|Updates the policy. Pass `--mode` to choose `lastWriterWins` or `custom`. For last-writer-wins pass `--path` to name the property that decides the winner (defaults to `/_ts`). For custom pass `--procedure` to name the stored procedure that resolves conflicts. Options that are not supplied keep their current value.|
+
+`--path` applies only to last-writer-wins mode and `--procedure` applies only to custom mode; combining them with the wrong mode is rejected before the request is sent.
+
+Conflict resolution policies only take effect on accounts configured for multi-region writes.
+
+#### Examples
+
+```bash
+conflict show
+conflict set --mode lastWriterWins --path /_ts
+conflict set --mode custom --procedure resolveConflicts
+conflict show --database MyDatabase --container MyContainer
+```
+
+### sproc
+
+Manage JavaScript stored procedures on a container through subcommands.
+
+```text
+Usage: sproc subcommand [name] [value] [-partition-key <ARG>] [-force] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  list, show, exists, create, exec, edit, or delete
+    [name]      The stored procedure id
+    [value]     A JavaScript file (for create) or a JSON array of arguments (for exec)
+
+Options:
+    -partition-key, -pk
+                Partition key used to target a partition when executing (required for exec)
+    -force, -f  Replace the stored procedure if it already exists (create)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`list`|Lists the stored procedures in the current container. The interactive table shows id, last modified, and body size; the structured JSON result contains `id`, `lastModified`, `etag`, and `bodyLength` for each.|
+|`show <name>`|Returns the body of a stored procedure.|
+|`exists <name>`|Returns a boolean indicating whether a stored procedure exists. The boolean result can be used directly in `if` and `while` conditions.|
+|`create <name> <file>`|Creates a stored procedure from a JavaScript file. The body can also be piped in. Pass `--force` to replace an existing one.|
+|`create <name>`|With no file or piped body, seeds a sample stored procedure, opens it in an external editor, and prompts to create or discard on exit. Interactive sessions only; scripts must pass a file. The `sproc` command is not available over MCP.|
+|`exec <name> [params]`|Executes a stored procedure. `params` is a JSON array of arguments, and `--partition-key` selects the target partition.|
+|`edit <name>`|Opens an existing stored procedure body in an external editor and saves it on exit. Fails if the stored procedure does not exist; use `create` to add a new one. Interactive sessions only; not available over MCP or from scripts.|
+|`delete <name>`|Deletes a stored procedure.|
+
+#### Examples
+
+```bash
+sproc list
+sproc show myProc
+sproc exists myProc
+sproc create myProc ./myProc.js
+sproc create myProc ./myProc.js --force
+sproc create myProc
+sproc edit myProc
+sproc exec myProc '["param1", "param2"]' --partition-key pk1
+sproc delete myProc
+```
+
+Stored procedures are a Cosmos DB for NoSQL feature. The `sproc` command operates on the current container, the same scope as `index`.
+
+### udf
+
+Manage JavaScript user-defined functions (UDFs) on a container through subcommands.
+
+```text
+Usage: udf subcommand [name] [value] [-force] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  list, show, exists, create, edit, or delete
+    [name]      The user-defined function id
+    [value]     A JavaScript file (for create)
+
+Options:
+    -force, -f  Replace the user-defined function if it already exists (create)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`list`|Lists the user-defined functions in the current container. The interactive table shows id and body size; the structured JSON result contains `id`, `etag`, and `bodyLength` for each.|
+|`show <name>`|Returns the body of a user-defined function.|
+|`exists <name>`|Returns a boolean indicating whether a user-defined function exists. The boolean result can be used directly in `if` and `while` conditions.|
+|`create <name> <file>`|Creates a user-defined function from a JavaScript file. The body can also be piped in. Pass `--force` to replace an existing one.|
+|`create <name>`|With no file or piped body, seeds a sample user-defined function, opens it in an external editor, and prompts to create or discard on exit. Interactive sessions only; scripts must pass a file. The `udf` command is not available over MCP.|
+|`edit <name>`|Opens an existing user-defined function body in an external editor and saves it on exit. Fails if the user-defined function does not exist; use `create` to add a new one. Interactive sessions only; not available over MCP or from scripts.|
+|`delete <name>`|Deletes a user-defined function.|
+
+#### Examples
+
+```bash
+udf list
+udf show myFunc
+udf exists myFunc
+udf create myFunc ./myFunc.js
+udf create myFunc ./myFunc.js --force
+udf create myFunc
+udf edit myFunc
+udf delete myFunc
+```
+
+User-defined functions are a Cosmos DB for NoSQL feature invoked from within queries. The `udf` command operates on the current container, the same scope as `index`. Like `sproc` and `trigger`, it is restricted from MCP and must be run manually in the shell.
+
+### trigger
+
+Manage JavaScript triggers on a container through subcommands.
+
+```text
+Usage: trigger subcommand [name] [value] [-type <ARG>] [-operation <ARG>] [-force] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  list, show, exists, create, edit, or delete
+    [name]      The trigger id
+    [value]     A JavaScript file (for create)
+
+Options:
+    -type, -t   Trigger type for create: pre or post (required for create)
+    -operation, -op
+                Operation the trigger fires on: all, create, replace, delete, or update (default: all)
+    -force, -f  Replace the trigger if it already exists (create)
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Behavior|
+|-|-|
+|`list`|Lists the triggers in the current container. The interactive table shows id, type, operation, and body size; the structured JSON result contains `id`, `triggerType`, `triggerOperation`, `etag`, and `bodyLength` for each.|
+|`show <name>`|Returns the body of a trigger.|
+|`exists <name>`|Returns a boolean indicating whether a trigger exists. The boolean result can be used directly in `if` and `while` conditions.|
+|`create <name> <file>`|Creates a trigger from a JavaScript file. The body can also be piped in. `--type` selects `pre` or `post`, `--operation` selects the operation (defaults to `all`), and `--force` replaces an existing one.|
+|`create <name> --type <pre\|post>`|With no file or piped body, seeds a sample trigger, opens it in an external editor, and prompts to create or discard on exit. `--type` is still required. Interactive sessions only; scripts must pass a file. The `trigger` command is not available over MCP.|
+|`edit <name>`|Opens an existing trigger body in an external editor and saves it on exit, preserving the trigger type and operation. Fails if the trigger does not exist; use `create` to add a new one. Interactive sessions only; not available over MCP or from scripts.|
+|`delete <name>`|Deletes a trigger.|
+
+#### Examples
+
+```bash
+trigger list
+trigger show myTrigger
+trigger exists myTrigger
+trigger create myTrigger ./myTrigger.js --type pre --operation create
+trigger create myTrigger ./myTrigger.js --type post --operation all --force
+trigger create myTrigger --type pre
+trigger edit myTrigger
+trigger delete myTrigger
+```
+
+Triggers are a Cosmos DB for NoSQL feature. Pre-triggers and post-triggers are invoked when item operations opt in to them. The `trigger` command operates on the current container, the same scope as `index`. Like `sproc` and `udf`, it is restricted from MCP and must be run manually in the shell.
 
 ## Utilities
 
@@ -704,49 +1040,49 @@ Notes:
 Project a single field from a query result:
 
 ```text
-query "SELECT * FROM c" | filter '.items[0]'
+query "SELECT * FROM c" | filter '.values[0]'
 ```
 
 Count items returned by a command:
 
 ```text
-ls | filter '.items | length'
+ls | filter '.values | length'
 ```
 
 Shape each item into a smaller object:
 
 ```text
-query "SELECT * FROM c" | filter '.items | map({id, status})'
+query "SELECT * FROM c" | filter '.values | map({id, status})'
 ```
 
 Project items with quoted property names:
 
 ```text
-ls | filter '.items | map({"Volcano Name": .["Volcano Name"], Country})'
+ls | filter '.values | map({"Volcano Name": .["Volcano Name"], Country})'
 ```
 
 Filter items by a predicate:
 
 ```text
-query "SELECT * FROM c" | filter '.items | select(.status == "active")'
+query "SELECT * FROM c" | filter '.values | select(.status == "active")'
 ```
 
 Sort and project:
 
 ```text
-query "SELECT * FROM c" | filter '.items | sort_by(.id) | map(.id)'
+query "SELECT * FROM c" | filter '.values | sort_by(.id) | map(.id)'
 ```
 
 Collect iterated values into a flat array:
 
 ```text
-query "SELECT * FROM c" | filter '[.items[] | .id]'
+query "SELECT * FROM c" | filter '[.values[] | .id]'
 ```
 
 Combine with `ftab` to render the projected JSON as a table:
 
 ```text
-query "SELECT * FROM c" | filter '.items | map({id, status})' | ftab
+query "SELECT * FROM c" | filter '.values | map({id, status})' | ftab
 ```
 
 #### Quoting
@@ -756,7 +1092,7 @@ tokenizes the argument first. Wrap the expression in single quotes so the
 shell does not interpret characters such as `|`, `$`, or `"` inside it:
 
 ```text
-filter '.items | select(.status == "active")'
+filter '.values | select(.status == "active")'
 ```
 
 If you need a literal single quote inside the expression, prefer double quotes
@@ -779,22 +1115,79 @@ Options:
 
 ### bucket
 
-Get or set SDK throughput bucket.
+Manage throughput buckets: client-side bucket selection plus container bucket limits.
 
 ```text
-Usage: bucket [bucket]
+Usage: bucket [action] [id] [percent] [-database <db>] [-container <con>] [-yes]
 
 Arguments:
-    [bucket]    Bucket number: 0=clear, 1-5=valid buckets (Optional)
+    [action]    A bucket id (0-5) to select client-side, or show, set, or clear for
+                container limits (Optional)
+    [id]        The throughput bucket id (1-5) to set or clear a limit for (Optional)
+    [percent]   The maximum percentage (1-100) of container throughput the bucket
+                may use (Optional)
+
+Options:
+    -database, -db    The database to target, or that contains the target container (Optional)
+    -container, -con  The container whose throughput bucket limits to read or change (Optional)
+    -yes, -y, -force  Skip the confirmation prompt before changing a bucket limit (Optional)
 ```
 
-### settings
+The `bucket` command has two surfaces:
 
-Show account overview or container settings.
+- **Client-side selection** (works on any connected database or container scope):
+  - `bucket` shows this client's current throughput bucket selection.
+  - `bucket <1-5>` tags this client's requests with the given throughput bucket.
+  - `bucket 0` clears the client-side selection.
+- **Container limits** (read with `show`, change with `set`/`clear`):
+  - `bucket show` lists the throughput bucket limits configured on the current container.
+  - `bucket set <1-5> <1-100>` limits a bucket to a maximum percentage of the container's throughput.
+  - `bucket clear <1-5>` removes a bucket's configured limit.
+
+The container-limit subcommands operate on the current container (or the one named by
+`-container`) and require provisioned throughput. They are control-plane operations that
+are only available on an Azure AD (Entra) connection; on key-based or emulator connections
+they return an error directing you to the portal, Azure CLI, or PowerShell. The client-side
+`bucket <0-5>` selection still works on any connection.
+
+### info
+
+Show configuration and usage statistics for the current container, database, or
+account, depending on what is in scope.
+
+When a container is in scope it reports the partition key, throughput (min/max
+RU/s), analytical TTL, geospatial and full-text policies, a compact indexing
+policy summary (indexing mode, automatic flag, and included/excluded path counts
+plus any composite, spatial, or vector index counts), plus the document count and
+data/total storage size. Use `index show` for the full indexing policy JSON. When
+only a database is in scope it reports the container count, aggregate document
+count, total storage, and shared throughput. When neither is in scope (the
+account root) it reports account metadata: read/write regions and the database
+count.
+
+On serverless accounts, throughput/offer settings are not available, so the
+scale section reports that throughput settings are not available for serverless
+accounts instead of failing.
 
 ```text
-Usage: settings
+Usage: info [--partitions] [--detailed] [--format=<user|json|table|csv>] [--database=<name>] [--container=<name>]
+
+Options:
+    --partitions, -p    Add the per-physical-partition document distribution (consumes request units)
+    --detailed, -d      Add storage breakdown and top partition keys (performs a full scan and consumes request units)
+    --format, -f        Output format: user, json, table, or csv
+    --database, -db     Target database name
+    --container, -con   Target container name
 ```
+
+The default interactive report is rendered as tables. Use `--format json` for a
+machine-readable JSON object; redirecting `info` output to a file also writes JSON
+so CI and scripts can parse the result directly. When `--format table` is combined
+with redirection, the report is written to the file as a plain-text grid instead of
+the rich console layout. The `--partitions` and
+`--detailed` options issue queries against the data and therefore consume
+request units; at the account root, `--detailed` aggregates every container's
+storage and document count across all databases. This command is read-only.
 
 ### help
 
@@ -818,6 +1211,17 @@ Display version.
 ```text
 Usage: version
 ```
+
+### welcome
+
+Display the welcome screen.
+
+```text
+Usage: welcome
+```
+
+The welcome screen is shown automatically on the first interactive startup. Later
+startups show a compact line containing the shell version and MCP server status.
 
 ### cls
 

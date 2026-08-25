@@ -87,7 +87,7 @@ internal class CdCommand : CosmosCommand
             }
 
             CosmosCompleteCommand.ClearContainers();
-            return CreateResultState("connected state", "true");
+            return CreateResultState(shell);
         }
 
         // Validate and navigate to database
@@ -104,7 +104,7 @@ internal class CdCommand : CosmosCommand
                 }
 
                 CosmosCompleteCommand.ClearContainers();
-                return CreateResultState("database state", targetDatabase);
+                return CreateResultState(shell);
             }
 
             // Continue to navigate to container
@@ -116,7 +116,7 @@ internal class CdCommand : CosmosCommand
             }
 
             CosmosCompleteCommand.ClearContainers();
-            return CreateResultState("container state", targetContainer);
+            return CreateResultState(shell);
         }
 
         // Navigate to container (relative path from DatabaseState)
@@ -136,7 +136,7 @@ internal class CdCommand : CosmosCommand
             }
 
             CosmosCompleteCommand.ClearContainers();
-            return CreateResultState("container state", targetContainer);
+            return CreateResultState(shell);
         }
 
         return commandState;
@@ -254,15 +254,23 @@ internal class CdCommand : CosmosCommand
         };
     }
 
-    private static CommandState CreateResultState(string key, string value)
+    private static CommandState CreateResultState(ShellInterpreter shell)
     {
+        var state = shell.State;
         var commandState = new CommandState
         {
-            IsPrinted = true,
+            // Navigation is silent for interactive users; the JSON result is still
+            // available for redirection, machine mode, and MCP clients.
+            RenderUser = () => { },
         };
-        var jsonString = $"{{\"{key}\": \"{value}\"}}";
-        using var jsonDoc = JsonDocument.Parse(jsonString);
-        commandState.Result = new ShellJson(jsonDoc.RootElement.Clone());
+
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
+        {
+            type = "location",
+            database = GetCurrentDatabase(state),
+            container = state is ContainerState containerState ? containerState.ContainerName : null,
+            currentLocation = ShellLocation.GetCurrentLocation(state),
+        }));
         return commandState;
     }
 }

@@ -57,13 +57,22 @@ internal static class McpResponseFactory
     {
         payload["currentLocation"] = GetCurrentLocation(shellState);
 
+        // Serialize the payload exactly once. The text content block reuses the structured
+        // element's raw JSON so the two representations are inherently byte-for-byte identical
+        // and no second serializer can drift out of sync.
+        var structuredContent = JsonSerializer.SerializeToElement(payload, JsonOptions);
+
         return new CallToolResult
         {
+            // Emit the machine-readable payload as first-class structured content while
+            // retaining an equivalent text rendering so that clients that only read text
+            // content blocks continue to work.
+            StructuredContent = structuredContent,
             Content =
             [
                 new TextContentBlock
                 {
-                    Text = payload.ToJsonString(JsonOptions),
+                    Text = structuredContent.GetRawText(),
                 }
             ],
             IsError = isError,

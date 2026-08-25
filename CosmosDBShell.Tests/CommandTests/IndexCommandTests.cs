@@ -20,6 +20,17 @@ public class IndexCommandTests
         "\"excludedPaths\":[{\"path\":\"/\\\"_etag\\\"/?\"}]}";
 
     [Fact]
+    public void IndexPolicyAlias_ResolvesToIndexCommand()
+    {
+        var runner = new CommandRunner();
+
+        Assert.True(runner.Commands.TryGetValue("indexpolicy", out var aliasFactory));
+        Assert.True(runner.Commands.TryGetValue("index", out var indexFactory));
+        Assert.Same(indexFactory, aliasFactory);
+        Assert.Equal("index", aliasFactory!.CommandName);
+    }
+
+    [Fact]
     public void AddIncludedPaths_AddsNewPath()
     {
         var result = IndexCommand.AddIncludedPaths(SamplePolicy, ["/address/*"]);

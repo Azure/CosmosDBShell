@@ -12,7 +12,7 @@ using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
-[CosmosCommand("index")]
+[CosmosCommand("index", Aliases = ["indexpolicy"])]
 [CosmosExample("index show", Description = "Display the current container's indexing policy")]
 [CosmosExample("index add /address/*", Description = "Add a path to the included paths of the indexing policy")]
 [CosmosExample("index remove /address/*", Description = "Remove a path from the indexing policy")]

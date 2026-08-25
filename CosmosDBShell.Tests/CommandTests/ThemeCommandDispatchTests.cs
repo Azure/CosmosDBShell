@@ -33,7 +33,7 @@ public class ThemeCommandDispatchTests
     {
         var state = await RunAsync(new ThemeCommand());
 
-        Assert.True(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
         var json = Assert.IsType<ShellJson>(state.Result);
         Assert.True(json.Value.TryGetProperty("active", out _));
     }
@@ -44,7 +44,8 @@ public class ThemeCommandDispatchTests
         var state = await RunAsync(new ThemeCommand { Action = "current" });
 
         var json = Assert.IsType<ShellJson>(state.Result);
-        Assert.False(string.IsNullOrEmpty(json.Value.GetProperty("active").GetString()));
+        Assert.False(string.IsNullOrEmpty(json.Value.GetProperty("id").GetString()));
+        Assert.True(json.Value.GetProperty("active").GetBoolean());
     }
 
     [Fact]
@@ -53,7 +54,7 @@ public class ThemeCommandDispatchTests
         var state = await RunAsync(new ThemeCommand { Action = "list" });
 
         var json = Assert.IsType<ShellJson>(state.Result);
-        var names = json.Value.GetProperty("themes").EnumerateArray()
+        var names = json.Value.GetProperty("values").EnumerateArray()
             .Select(t => t.GetProperty("name").GetString())
             .ToList();
         Assert.Contains("default", names);
@@ -72,7 +73,8 @@ public class ThemeCommandDispatchTests
             var state = await RunAsync(new ThemeCommand { Action = "show", Name = name });
 
             var json = Assert.IsType<ShellJson>(state.Result);
-            Assert.Equal(name, json.Value.GetProperty("previewed").GetString());
+            Assert.Equal(name, json.Value.GetProperty("id").GetString());
+            Assert.True(json.Value.GetProperty("previewed").GetBoolean());
             Assert.Same(saved, Theme.Current);
         }
         finally
@@ -98,7 +100,8 @@ public class ThemeCommandDispatchTests
             var state = await RunAsync(new ThemeCommand { Action = "use", Name = "light" });
 
             var json = Assert.IsType<ShellJson>(state.Result);
-            Assert.Equal("light", json.Value.GetProperty("applied").GetString());
+            Assert.Equal("light", json.Value.GetProperty("id").GetString());
+            Assert.True(json.Value.GetProperty("applied").GetBoolean());
         }
         finally
         {
@@ -115,7 +118,8 @@ public class ThemeCommandDispatchTests
             var state = await RunAsync(new ThemeCommand { Action = "set", Name = "dark" });
 
             var json = Assert.IsType<ShellJson>(state.Result);
-            Assert.Equal("dark", json.Value.GetProperty("applied").GetString());
+            Assert.Equal("dark", json.Value.GetProperty("id").GetString());
+            Assert.True(json.Value.GetProperty("applied").GetBoolean());
         }
         finally
         {
@@ -158,7 +162,8 @@ public class ThemeCommandDispatchTests
             var state = await RunAsync(new ThemeCommand { Action = "load", Name = path });
 
             var json = Assert.IsType<ShellJson>(state.Result);
-            Assert.Equal("placeholder", json.Value.GetProperty("loaded").GetString());
+            Assert.Equal("placeholder", json.Value.GetProperty("id").GetString());
+            Assert.True(json.Value.GetProperty("loaded").GetBoolean());
         }
         finally
         {
@@ -218,7 +223,8 @@ public class ThemeCommandDispatchTests
             var state = await RunAsync(new ThemeCommand { Action = "save", Name = "exported", Path = path });
 
             var json = Assert.IsType<ShellJson>(state.Result);
-            Assert.Equal("exported", json.Value.GetProperty("saved").GetString());
+            Assert.Equal("exported", json.Value.GetProperty("id").GetString());
+            Assert.True(json.Value.GetProperty("saved").GetBoolean());
             Assert.True(File.Exists(path));
         }
         finally
@@ -257,7 +263,8 @@ public class ThemeCommandDispatchTests
             var state = await RunAsync(new ThemeCommand { Action = "save", Name = "exported", Path = path, Force = true });
 
             var json = Assert.IsType<ShellJson>(state.Result);
-            Assert.Equal("exported", json.Value.GetProperty("saved").GetString());
+            Assert.Equal("exported", json.Value.GetProperty("id").GetString());
+            Assert.True(json.Value.GetProperty("saved").GetBoolean());
         }
         finally
         {

@@ -1,9 +1,16 @@
 shell-ready = Cosmos DB shell ready.
 shell-not_connected_hint = Not connected. Run 'connect <endpoint>' to authenticate, or 'help connect' for more options.
+shell-startup-status = Cosmos DB Shell { $version } | MCP { $mcp_status }
+shell-startup-preview-warning = PREVIEW VERSION Commands, output, and behavior may change before general availability.
+shell-startup-mcp-off = off
+shell-startup-mcp-port = port { $port }
 shell-hisory_file_deleted = History deleted.
 shell-connect-browser-auth = Authenticating via browser. Please complete the login in the browser window that opens.
 shell-connect-devicecode-auth = Browser authentication failed. Falling back to device code authentication.
 shell-connect-key-auth = Connecting with account key...
+shell-connect-key-env = Using the account key from the COSMOSDB_SHELL_ACCOUNT_KEY environment variable.
+shell-connect-azure-cli-auth = Connecting with Azure CLI credential (az login)...
+shell-connect-azure-cli-authority-host-ignored = Ignoring --authority-host: the Azure CLI credential uses the cloud configured with 'az cloud set'.
 shell-connect-managed-identity-auth = Connecting with managed identity (client ID: { $clientId })...
 shell-connect-default-auth = Connecting with DefaultAzureCredential...
 shell-connect-static-token-auth = Connecting with externally provided access token (COSMOSDB_SHELL_TOKEN)...
@@ -13,6 +20,8 @@ shell-connect-vscode-credential-fallback = Visual Studio Code credential unavail
 shell-connect-devicecode-fallback = Browser authentication failed, falling back to device code authentication...
 shell-connect-arm-discovery-failed = Using Cosmos DB data plane.
 shell-connect-arm-discovery-ambiguous = Multiple ARM Cosmos DB accounts match the connected endpoint. Reconnect with --subscription and --resource-group, or use --connect-subscription and --connect-resource-group at startup, to specify which account to use. Using Cosmos DB data plane for now.
+shell-connect-verbose-hint = Run with --verbose for full exception details.
+shell-connect-error-cosmos-detail = Cosmos DB request failed: HTTP { $status } { $reason }, sub-status { $substatus }, activity id { $activityId }.
 history-search-reverse = reverse-i-search
 history-search-forward = forward-i-search
 history-search-failed-reverse = failed reverse-i-search
@@ -85,8 +94,12 @@ help-commands = Commands:
 help-examples = Examples:
 help-examples-heading = Examples
 help-aliases = Aliases:
+help-OutputFormat = The output format to use (user, json, table, csv).
+help-Quiet = Suppresses standard informational output.
 
 command-help-description = Shows help information for commands
+command-welcome-description = Displays the welcome screen
+command-welcome-result = Welcome screen displayed.
 command-help-description-command = The specific command to get help for
 command-help-description-details = Show detailed help information for each command
 command-help-description-plain = Disable styling and colors for script or limited terminals
@@ -94,16 +107,20 @@ command-help-description-plain = Disable styling and colors for script or limite
 command-rmdb-description = Removes database
 command-rmdb-description-name = The database to remove.
 command-rmdb-description-force = Force to remove the database without confirmation.
+command-rmdb-description-dry-run = Preview the deletion without deleting the database.
 command-rmdb-error-not_allowed_in_container = { error-not_allowed_in_container }
 command-rmdb-error-database_not_found = Database { $db } not found.
 command-rmdb-deleted_db = Deleted database { $db }.
+command-rmdb-dry-run-plan = Dry run: Would delete database { $db }. No changes were made.
 command-rmdb-confirm_db_deletion = Are you sure you want to delete this database
 
 command-rmcon-description = Removes container
 command-rmcon-description-name = The database or container to remove.
 command-rmcon-description-force = Force to remove the container without confirmation.
 command-rmcon-description-database = The database containing the container to remove
+command-rmcon-description-dry-run = Preview the deletion without deleting the container.
 command-rmcon-deleted_container = Deleted container { $container }
+command-rmcon-dry-run-plan = Dry run: Would delete container { $container }. No changes were made.
 command-rmcon-error-container_not_found = Container { $container } not found.
 command-rmcon-confirm_container_deletion = Are you sure you want to delete this container
 
@@ -113,10 +130,15 @@ command-rm-description-force = Force to remove items without confirmation.
 command-rm-description-database = The database containing the items to remove
 command-rm-description-container = The container containing the items to remove
 command-rm-description-key = The property name to match the pattern against (defaults to partition key)
+command-rm-description-dry-run = Preview how many items would be deleted without deleting them.
 command-rm-deleted_items = Deleted { $count } { $count ->
     [one] item
     *[other] items
 }.
+command-rm-dry-run-plan = Dry run: Would delete { $count } { $count ->
+    [one] item
+    *[other] items
+}. No changes were made.
 command-rm-error-no_filter = Filter is missing.
 command-rm-warning-missing-partition-key = Warning: Cannot delete item with id '{ $id }' - missing partition key '{ $partitionKey }'
 command-rm-no-matches = No items matched the pattern '{ $pattern }' for key '{ $key }'
@@ -320,14 +342,6 @@ command-mkcon-error_partition_key_slash = Partition key path must start with a f
 command-mkcon-error_invalid_index_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-mkcon-description-index_policy = The indexing policy as a JSON string. Follows the Cosmos DB indexing policy schema.
 
-command-indexpolicy-description = Reads or updates the indexing policy of a container.
-command-indexpolicy-description-policy = The indexing policy as a JSON string. If omitted, the current policy is displayed.
-command-indexpolicy-description-database = The database containing the container
-command-indexpolicy-description-container = The container to read/update the indexing policy for
-command-indexpolicy-updated = Indexing policy updated successfully.
-command-indexpolicy-error_invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
-command-indexpolicy-error_no_policy = The container has no indexing policy configured.
-
 command-index-description = Manages the indexing policy of a container via show, add, remove, and set subcommands.
 command-index-description-subcommand = The action to perform: show, add, remove, or set.
 command-index-description-paths = The indexing paths to add or remove, or a full indexing policy JSON document for set.
@@ -346,6 +360,198 @@ command-index-error-show_no_args = 'index show' does not take any arguments. Use
 command-index-error-invalid_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-index-error-no_policy = The container has no indexing policy configured.
 
+command-ttl-description = Views or changes the time-to-live (TTL) of a container via show, set, on, and off subcommands. Use --analytical to target the analytical store TTL.
+command-ttl-description-subcommand = The action to perform: show, set, on, or off.
+command-ttl-description-seconds = The time-to-live in seconds for the set subcommand (must be positive).
+command-ttl-description-analytical = Target the container's analytical store TTL instead of the default item TTL.
+command-ttl-description-database = The database containing the container.
+command-ttl-description-container = The container to read/update the TTL for.
+command-ttl-updated = Time-to-live updated successfully.
+command-ttl-analytical-updated = Analytical store time-to-live updated successfully.
+command-ttl-error-missing_subcommand = Missing subcommand. Use one of: show, set, on, off.
+command-ttl-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set, on, off.
+command-ttl-error-missing_seconds = No seconds value provided. Specify a positive number of seconds, for example: ttl set 86400.
+command-ttl-error-invalid_seconds = Invalid seconds value '{ $seconds }'. Provide a positive number of seconds, or use 'ttl on' to enable and 'ttl off' to disable.
+command-ttl-error-show_no_args = 'ttl show' does not take any arguments. Use 'ttl show' to display the current configuration.
+command-ttl-error-toggle_no_args = This subcommand does not take a seconds value. Use 'ttl set <seconds>' to specify a TTL in seconds.
+
+command-conflict-description = Views or changes the conflict resolution policy of a container via show and set subcommands.
+command-conflict-description-subcommand = The action to perform: show or set.
+command-conflict-description-mode = The conflict resolution mode to set (lastWriterWins or custom).
+command-conflict-description-path = The conflict resolution path for last-writer-wins mode, for example /_ts.
+command-conflict-description-procedure = The stored procedure id that resolves conflicts for custom mode.
+command-conflict-description-database = The database containing the container.
+command-conflict-description-container = The container to read/update the conflict resolution policy for.
+command-conflict-updated = Conflict resolution policy updated successfully.
+command-conflict-error-missing_subcommand = Missing subcommand. Use one of: show, set.
+command-conflict-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set.
+command-conflict-error-missing_set_args = Nothing to set. Provide --mode, --path, or --procedure.
+command-conflict-error-invalid_mode = Invalid value for --mode. Use lastWriterWins or custom.
+command-conflict-error-missing_procedure = Custom conflict resolution requires a stored procedure. Provide --procedure <name>.
+command-conflict-error-path_with_custom = --path cannot be used with custom mode. Use --procedure to name the resolving stored procedure.
+command-conflict-error-procedure_with_lww = --procedure cannot be used with lastWriterWins mode. Use --path to name the resolution path.
+command-conflict-error-path_and_procedure = --path and --procedure cannot be combined. Use --path for lastWriterWins or --procedure for custom.
+
+command-throughput-description = Views or changes the provisioned throughput (RU/s) of a database or container via show, set, manual, and autoscale subcommands.
+command-throughput-description-subcommand = The action to perform: show, set, manual, or autoscale.
+command-throughput-description-ru = The throughput in RU/s to provision (manual RU/s for set/manual, maximum RU/s for autoscale).
+command-throughput-description-database = The database to target, or that contains the target container.
+command-throughput-description-container = The container to read/update the throughput for.
+command-throughput-description-yes = Skip the confirmation prompt before applying a throughput change.
+command-throughput-description-dry-run = Preview the change (current vs. planned throughput) without applying it.
+command-throughput-updated = Throughput updated successfully.
+command-throughput-confirm_summary = About to set { $mode } throughput to { $ru } RU/s on '{ $resource }'. This may affect your bill.
+command-throughput-confirm = Apply this throughput change
+command-throughput-cancelled = Throughput change cancelled.
+command-throughput-label-scope = Scope
+command-throughput-label-resource = Resource
+command-throughput-label-mode = Mode
+command-throughput-label-throughput = Throughput (RU/s)
+command-throughput-label-max = Max throughput (RU/s)
+command-throughput-label-min = Min throughput (RU/s)
+command-throughput-scope-database = Database
+command-throughput-scope-container = Container
+command-throughput-mode-autoscale = Autoscale
+command-throughput-mode-manual = Manual
+command-throughput-mode-none = Not configured
+command-throughput-dry-run-label-current = Current
+command-throughput-dry-run-label-planned = Planned
+command-throughput-dry-run-mode_value = { $mode }, { $ru } RU/s
+command-throughput-dry-run-note = Dry run: no change was applied.
+command-throughput-error-missing_subcommand = Missing subcommand. Use one of: show, set, manual, autoscale.
+command-throughput-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set, manual, autoscale.
+command-throughput-error-missing_ru = No throughput value provided. Specify the RU/s, for example: throughput set 4000.
+command-throughput-error-invalid_ru = Invalid throughput value '{ $ru }'. Provide a positive number of RU/s.
+command-throughput-error-manual_min = Manual throughput must be at least { $min } RU/s. '{ $ru }' is too low.
+command-throughput-error-manual_increment = Manual throughput must be a multiple of { $increment } RU/s. '{ $ru }' is not.
+command-throughput-error-autoscale_min = Autoscale maximum throughput must be at least { $min } RU/s. '{ $ru }' is too low.
+command-throughput-error-autoscale_increment = Autoscale maximum throughput must be a multiple of { $increment } RU/s. '{ $ru }' is not.
+command-throughput-error-show_no_args = 'throughput show' does not take any arguments. Use 'throughput show' to display the current throughput.
+command-throughput-error-not_configured = Resource '{ $resource }' has no provisioned throughput to change. It may be serverless or use shared database throughput.
+command-throughput-error-rbac =
+  You do not have permission to change throughput on the selected account.
+
+  Required action: '{ $permission }'
+  Principal id: '{ $id }'
+
+  Learn more: https://aka.ms/cosmos-native-rbac
+
+command-throughput-error-mode_switch_unsupported =
+  Switching '{ $resource }' to { $mode } throughput is not supported on this connection.
+
+  The Cosmos data-plane SDK can only change the value within the current mode. To switch between manual and autoscale, connect with an Azure AD (token) credential, or use the Azure portal, Azure CLI, or PowerShell.
+command-sproc-description = Manages stored procedures on a container via list, show, exists, create, exec, edit, and delete subcommands.
+command-sproc-description-subcommand = The action to perform: list, show, exists, create, exec, edit, or delete.
+command-sproc-description-name = The stored procedure id.
+command-sproc-description-value = The JavaScript file to read for create, or the JSON array of arguments for exec.
+command-sproc-description-partition-key = The partition key used to target a partition when executing a stored procedure.
+command-sproc-description-force = Replace the stored procedure if it already exists.
+command-sproc-description-database = The database containing the container.
+command-sproc-description-container = The container that owns the stored procedures.
+command-sproc-created = Created stored procedure '{ $name }' (RU charge: { $charge }).
+command-sproc-replaced = Replaced stored procedure '{ $name }' (RU charge: { $charge }).
+command-sproc-deleted = Deleted stored procedure '{ $name }' (RU charge: { $charge }).
+command-sproc-executed = Executed stored procedure '{ $name }' (RU charge: { $charge }).
+command-sproc-edit-launching = Editing stored procedure '{ $name }' with { $editor }.
+command-sproc-edit-unchanged = Stored procedure '{ $name }' was not changed.
+command-sproc-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }.
+command-sproc-edit-wait = The editor returned immediately. Finish editing, save the file, then press Enter to continue...
+command-sproc-create-preview = Stored procedure '{ $name }':
+command-sproc-create-confirm = Create this stored procedure
+command-sproc-create-discarded = Discarded stored procedure '{ $name }'.
+command-sproc-list-empty = No stored procedures found.
+command-sproc-list-title = Stored procedures
+command-sproc-list-column-id = Id
+command-sproc-list-column-modified = Last Modified
+command-sproc-list-column-size = Size (chars)
+command-sproc-exists-yes = Stored procedure '{ $name }' exists.
+command-sproc-exists-no = Stored procedure '{ $name }' does not exist.
+command-sproc-error-missing_subcommand = Missing subcommand. Use one of: list, show, exists, create, exec, edit, delete.
+command-sproc-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: list, show, exists, create, exec, edit, delete.
+command-sproc-error-missing_name = Missing stored procedure name. Specify the id, for example: sproc show myProc.
+command-sproc-error-missing_file = No source provided. Specify a JavaScript file or pipe the body in, for example: sproc create myProc ./myProc.js.
+command-sproc-error-file_not_found = File not found: '{ $file }'.
+command-sproc-error-already_exists = Stored procedure '{ $name }' already exists. Use --force to replace it.
+command-sproc-error-not_found = Stored procedure '{ $name }' was not found.
+command-sproc-error-invalid_params = Invalid parameters. Provide a JSON array of arguments, for example: '["a", 1, true]'.
+command-sproc-error-invalid_pk = Invalid partition key. Provide a JSON scalar, or a JSON array for a hierarchical partition key.
+command-sproc-error-missing_partition_key = A partition key is required to execute a stored procedure. Use --partition-key.
+command-sproc-error-not_interactive = 'sproc edit' needs an interactive terminal and cannot run from a script or piped input.
+command-sproc-error-no_editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
+
+command-udf-description = Manages user-defined functions on a container via list, show, exists, create, edit, and delete subcommands.
+command-udf-description-subcommand = The action to perform: list, show, exists, create, edit, or delete.
+command-udf-description-name = The user-defined function id.
+command-udf-description-value = The JavaScript file to read for create.
+command-udf-description-force = Replace the user-defined function if it already exists.
+command-udf-description-database = The database containing the container.
+command-udf-description-container = The container that owns the user-defined functions.
+command-udf-created = Created user-defined function '{ $name }' (RU charge: { $charge }).
+command-udf-replaced = Replaced user-defined function '{ $name }' (RU charge: { $charge }).
+command-udf-deleted = Deleted user-defined function '{ $name }' (RU charge: { $charge }).
+command-udf-edit-launching = Editing user-defined function '{ $name }' with { $editor }.
+command-udf-edit-unchanged = User-defined function '{ $name }' was not changed.
+command-udf-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }.
+command-udf-edit-wait = The editor returned immediately. Finish editing, save the file, then press Enter to continue...
+command-udf-create-preview = User-defined function '{ $name }':
+command-udf-create-confirm = Create this user-defined function
+command-udf-create-discarded = Discarded user-defined function '{ $name }'.
+command-udf-list-empty = No user-defined functions found.
+command-udf-list-title = User-defined functions
+command-udf-list-column-id = Id
+command-udf-list-column-size = Size (chars)
+command-udf-exists-yes = User-defined function '{ $name }' exists.
+command-udf-exists-no = User-defined function '{ $name }' does not exist.
+command-udf-error-missing_subcommand = Missing subcommand. Use one of: list, show, exists, create, edit, delete.
+command-udf-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: list, show, exists, create, edit, delete.
+command-udf-error-missing_name = Missing user-defined function name. Specify the id, for example: udf show myFunc.
+command-udf-error-missing_file = No source provided. Specify a JavaScript file or pipe the body in, for example: udf create myFunc ./myFunc.js.
+command-udf-error-file_not_found = File not found: '{ $file }'.
+command-udf-error-already_exists = User-defined function '{ $name }' already exists. Use --force to replace it.
+command-udf-error-not_found = User-defined function '{ $name }' was not found.
+command-udf-error-not_interactive = 'udf edit' needs an interactive terminal and cannot run from a script or piped input.
+command-udf-error-no_editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
+
+command-trigger-description = Manages triggers on a container via list, show, exists, create, edit, and delete subcommands.
+command-trigger-description-subcommand = The action to perform: list, show, exists, create, edit, or delete.
+command-trigger-description-name = The trigger id.
+command-trigger-description-value = The JavaScript file to read for create.
+command-trigger-description-type = The trigger type for create: pre or post.
+command-trigger-description-operation = The operation the trigger fires on: all, create, replace, delete, or update. Defaults to all.
+command-trigger-description-force = Replace the trigger if it already exists.
+command-trigger-description-database = The database containing the container.
+command-trigger-description-container = The container that owns the triggers.
+command-trigger-created = Created trigger '{ $name }' (RU charge: { $charge }).
+command-trigger-replaced = Replaced trigger '{ $name }' (RU charge: { $charge }).
+command-trigger-deleted = Deleted trigger '{ $name }' (RU charge: { $charge }).
+command-trigger-edit-launching = Editing trigger '{ $name }' with { $editor }.
+command-trigger-edit-unchanged = Trigger '{ $name }' was not changed.
+command-trigger-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }.
+command-trigger-edit-wait = The editor returned immediately. Finish editing, save the file, then press Enter to continue...
+command-trigger-create-preview = Trigger '{ $name }':
+command-trigger-create-confirm = Create this trigger
+command-trigger-create-discarded = Discarded trigger '{ $name }'.
+command-trigger-list-empty = No triggers found.
+command-trigger-list-title = Triggers
+command-trigger-list-column-id = Id
+command-trigger-list-column-type = Type
+command-trigger-list-column-operation = Operation
+command-trigger-list-column-size = Size (chars)
+command-trigger-exists-yes = Trigger '{ $name }' exists.
+command-trigger-exists-no = Trigger '{ $name }' does not exist.
+command-trigger-error-missing_subcommand = Missing subcommand. Use one of: list, show, exists, create, edit, delete.
+command-trigger-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: list, show, exists, create, edit, delete.
+command-trigger-error-missing_name = Missing trigger name. Specify the id, for example: trigger show myTrigger.
+command-trigger-error-missing_file = No source provided. Specify a JavaScript file or pipe the body in, for example: trigger create myTrigger ./myTrigger.js --type pre.
+command-trigger-error-file_not_found = File not found: '{ $file }'.
+command-trigger-error-already_exists = Trigger '{ $name }' already exists. Use --force to replace it.
+command-trigger-error-not_found = Trigger '{ $name }' was not found.
+command-trigger-error-missing_type = A trigger type is required. Use --type pre or --type post.
+command-trigger-error-invalid_type = Invalid trigger type '{ $type }'. Use pre or post.
+command-trigger-error-invalid_operation = Invalid trigger operation '{ $operation }'. Use all, create, replace, delete, or update.
+command-trigger-error-not_interactive = 'trigger edit' needs an interactive terminal and cannot run from a script or piped input.
+command-trigger-error-no_editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
+
 command-ls-description = List resources in the current context.
 command-ls-description-filter = The filter pattern.
 command-ls-description-max = Maximum number of items returned when listing container items. Defaults to 100 if omitted. Use 0 or a negative value for no limit.
@@ -354,8 +560,28 @@ command-ls-description-recursive = List items recursively
 command-ls-description-database = The database to list from
 command-ls-description-container = The container to list items from
 command-ls-description-key = The property to match against (default: container partition key property)
-command-ls-container = Container { $container }
-command-ls-found_items = found { $count } items.
+command-ls-found_items =
+    { $count ->
+        [0] no items found in container { $container }.
+        [one] found { $display } item in container { $container }.
+       *[other] found { $display } items in container { $container }.
+    }
+command-ls-found_databases =
+    { $count ->
+        [0] no databases found.
+        [one] found { $display } database.
+       *[other] found { $display } databases.
+    }
+command-ls-found_containers =
+    { $count ->
+        [0] no containers found in database { $database }.
+        [one] found { $display } container in database { $database }.
+       *[other] found { $display } containers in database { $database }.
+    }
+command-ls-empty_databases_hint = No databases were returned. If you expected some, the connected identity may lack account-level read access, or you may be connected to a different account. Run 'connect' to verify the target account.
+command-ls-empty_containers_hint = No containers were returned for database { $database }. If you expected some, the connected identity may lack read access to this database, or you may be targeting the wrong account.
+command-ls-table-header-database = Database
+command-ls-table-header-container = Container
 command-ls-error-request_failed = List request failed with status code { $statusCode } ({ $status }).
 command-ls-error-no_content_stream = The list request completed, but Cosmos DB returned no response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
 command-ls-error-empty_content = The list request completed, but Cosmos DB returned an empty response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
@@ -418,6 +644,7 @@ command-delete-description-pattern = The items/container/database to delete.
 command-delete-description-force = Force to delete without confirmation.
 command-delete-description-database = The database for the delete operation
 command-delete-description-container = The container for deleting items
+command-delete-description-dry-run = Preview the deletion without applying it.
 command-delete-error-invalid_item_type = You need to specify an item type: 'item', 'database' or 'container' as first parameter.
 
 command-create-description = Creates items/container or databases.
@@ -447,6 +674,7 @@ command-connect-description-mode = Connection mode: 'direct' (default) or 'gatew
 command-connect-description-tenant = The Entra ID tenant ID to authenticate against.
 command-connect-description-authority-host = The authority host URL (The default is https://login.microsoftonline.com/).
 command-connect-description-managed-identity = The client ID of a user-assigned managed identity to authenticate with.
+command-connect-description-azure-cli = Use the signed-in Azure CLI (az login) identity for authentication. Bypasses managed identity, which is useful in environments such as Azure Cloud Shell where the managed identity may lack Cosmos DB data-plane access.
 command-connect-description-subscription = Azure subscription ID for ARM database and container operations. Must be paired with --resource-group.
 command-connect-description-resource-group = Azure resource group name for ARM database and container operations. Must be paired with --subscription.
 command-connect-error-no_endpoint = An account endpoint or connection string must be specified.
@@ -457,6 +685,8 @@ command-connect-not_connected = Not connected to any Cosmos DB account.
 command-connect-not_connected-usage-header = Use 'connect <endpoint>' to authenticate. Common forms:
 command-connect-not_connected-usage-footer = Run 'help connect' for the full list of options.
 command-connect-info-title = Connection Information
+command-connect-info-property = Property
+command-connect-info-value = Value
 command-connect-info-account = Account
 command-connect-info-arm-account = ARM Account
 command-connect-info-endpoint = Endpoint
@@ -529,19 +759,49 @@ command-echo-description = Displays messages.
 command-echo-description-messages = The messages to display.
 command-echo-description-no_newline = Do not append a newline
 
-command-bucket-description = Gets or sets the current throughput bucket.
-command-bucket-description-bucket = If specified the number of the bucket to switch to.
-command-bucket-currrent = Current throughput bucket: { $bucket }
+command-bucket-description = Manages throughput buckets: client-side bucket selection plus container bucket limits via show, set, and clear.
+command-bucket-description-action = The action: a bucket id (0-5) to select client-side, or show, set, or clear for container limits.
+command-bucket-description-id = The throughput bucket id (1-5) to set or clear a limit for.
+command-bucket-description-percent = The maximum percentage (1-100) of container throughput the bucket may use.
+command-bucket-description-database = The database to target, or that contains the target container.
+command-bucket-description-container = The container whose throughput bucket limits to read or change.
+command-bucket-description-yes = Skip the confirmation prompt before changing a bucket limit.
+command-bucket-current = Current throughput bucket: { $bucket }
 command-bucket-no_bucket = No throughput bucket is currently set.
 command-bucket-reset_bucket = Reset throughput bucket to default.
 command-bucket-switched_bucket = Switched to throughput bucket { $bucket }
+command-bucket-label-id = Bucket
+command-bucket-label-percent = Max throughput %
+command-bucket-no_limits = No throughput bucket limits are configured on '{ $resource }'.
+command-bucket-set_done = Throughput bucket limit updated successfully.
+command-bucket-clear_done = Throughput bucket limit removed successfully.
+command-bucket-cancelled = Throughput bucket change cancelled.
+command-bucket-confirm = Apply this throughput bucket change
+command-bucket-confirm_set_summary = About to limit bucket { $id } to { $percent }% of throughput on '{ $container }'.
+command-bucket-confirm_clear_summary = About to remove the limit for bucket { $id } on '{ $container }'.
+command-bucket-error-invalid_subcommand = Unknown bucket action '{ $subcommand }'. Use a bucket id (0-5), or one of: show, set, clear.
+command-bucket-error-unexpected_args = Unexpected arguments. Use 'bucket' or 'bucket <0-5>' for client selection, or 'bucket show|set|clear' for container limits.
+command-bucket-error-container_required = A container is required. Move into a container or pass --container.
+command-bucket-error-missing_id = Missing bucket id. Specify a bucket id (1-5), for example: bucket set 3 50.
+command-bucket-error-invalid_id = Invalid bucket id '{ $id }'. Valid range is 1-5.
+command-bucket-error-missing_percent = Missing percentage. Specify a value (1-100), for example: bucket set 3 50.
+command-bucket-error-invalid_percent = Invalid percentage '{ $percent }'. Valid range is 1-100.
+command-bucket-error-not_configured = Resource '{ $resource }' has no provisioned throughput, so bucket limits cannot be configured. It may be serverless or use shared database throughput.
+command-bucket-error-arm_required =
+  Throughput bucket limits can only be configured on an Azure AD (Entra) connection.
+
+  Connect with an Entra credential, or use the Azure portal, Azure CLI, or PowerShell. The client-side 'bucket <0-5>' selection still works on any connection.
 
 
-command-settings-description = Shows various settings for databases and containers.
-command-settings-description-format = Output format (json, table)
+command-info-description = Shows configuration and usage statistics for the current container, database, or account.
+command-info-description-format = Output format (user, json, table, csv)
+command-info-error-container-without-database = A container was specified without a database. Provide --database, or run info from within a database or container scope.
+command-info-error-partitions-requires-container = --partitions only applies to a container. Specify a container with --database and --container, or run info from within a container scope.
+command-info-error-invalid-format = Unknown info output format '{ $format }'. Use 'user', 'json', 'table', or 'csv'.
 command-settings-scale-heading = Scale
 command-settings-scale-usage = Based on usage, your container throughput will scale from { $min } RU/s (10% of max RU/s) - { $max } RU/s
-command-settings-title = Settings
+command-settings-scale-serverless = Throughput settings are not available for serverless accounts.
+command-settings-title = Configuration
 command-settings-na = N/A
 command-settings-ttl-label = Time to Live
 command-settings-Off = Off
@@ -555,6 +815,14 @@ command-settings-fulltext-title = Full Text Policy
 command-settings-fulltext-default-language-label = Default language
 command-settings-fulltext-path-label = Full Text Path
 command-settings-fulltext-language-label = Language
+command-settings-indexing-title = Indexing Policy
+command-settings-indexing-mode-label = Indexing mode
+command-settings-indexing-automatic-label = Automatic
+command-settings-indexing-paths-label = Paths
+command-settings-indexing-paths-value = { $included } included, { $excluded } excluded
+command-settings-indexing-composite-label = Composite indexes
+command-settings-indexing-spatial-label = Spatial indexes
+command-settings-indexing-vector-label = Vector indexes
 command-settings-rbac-error =
   You need the '{ $permission }' RBAC role permission for '{ $request }' for the selected account.
 
@@ -568,8 +836,50 @@ command-settings-subscription_id = Subscription ID
 command-settings-account_id = Account ID
 command-settings-uri = URI
 command-settings-not-available = N/A
-command-settings-description-database = Target database name
-command-settings-description-container = Target container name
+command-info-description-database = Target database name
+command-info-description-container = Target container name
+command-info-description-partitions = Add the per-physical-partition document distribution (consumes request units)
+command-info-description-detailed = Add storage breakdown and top partition keys (performs a full scan and consumes request units)
+command-settings-usage-heading = Usage
+
+command-stats-na = N/A
+command-stats-database-heading = Database Statistics
+command-stats-label-document-count = Document count
+command-stats-label-data-size = Data size
+command-stats-label-index-size = Index size
+command-stats-label-total-size = Total size
+command-stats-throughput-heading = Throughput
+command-stats-throughput-max = Max RU/s
+command-stats-throughput-min = Min RU/s
+command-stats-partitions-heading = Physical Partition Distribution
+command-stats-partitions-col-partition = Partition
+command-stats-partitions-col-count = Document count
+command-stats-partitions-col-share = Share
+command-stats-partitions-skew = Largest partition holds { $percent }% of documents.
+command-stats-partitions-cost-note = Scanning partitions consumes request units.
+command-stats-detailed-heading = Top Partition Keys
+command-stats-detailed-col-key = Partition key value
+command-stats-detailed-col-count = Document count
+command-stats-detailed-cost-note = Computing top partition keys performs a full scan and consumes request units.
+command-stats-database-label-id = Database
+command-stats-database-label-container-count = Containers
+command-stats-database-label-total-documents = Total documents
+command-stats-database-label-total-size = Total size
+command-stats-database-shared-throughput-none = No shared throughput configured.
+command-stats-containers-heading = Containers
+command-stats-containers-col-name = Container
+command-stats-containers-col-count = Documents
+command-stats-containers-col-size = Size
+command-stats-account-label-database-count = Databases
+command-stats-account-label-total-containers = Total containers
+command-stats-account-label-total-documents = Total documents
+command-stats-account-label-total-size = Total size
+command-stats-account-databases-heading = Databases
+command-stats-account-databases-col-name = Database
+command-stats-account-databases-col-containers = Containers
+command-stats-account-databases-col-count = Documents
+command-stats-account-databases-col-size = Size
+command-stats-account-detailed-cost-note = Aggregating account totals reads every container's quota and consumes request units.
 
 command-version-description = Displays the version of Cosmos DB Shell.
 command-version = Cosmos Shell version: { $version }
@@ -627,13 +937,17 @@ help-ConnectManagedIdentity = The client ID of a user-assigned managed identity 
 help-ConnectSubscription = Azure subscription ID for ARM database and container operations at startup.
 help-ConnectResourceGroup = Azure resource group name for ARM database and container operations at startup.
 help-ConnectVSCodeCredential = Use Visual Studio Code credential for authentication at startup.
+help-ConnectAzureCli = Use the signed-in Azure CLI (az login) identity for authentication at startup.
 help-EnableMcpServer = Enable MCP server for programmatic control of the shell
 help-EnableLspServer = Enable Language Server Protocol (LSP) server for editor integration
 help-McpPort = Enable MCP HTTP server. Optionally specify a port with --mcp <port>; default is 6128.
 help-Verbose = Print full exception details instead of only the message.
 help-Theme = Color theme profile to apply at startup. Falls back to the COSMOSDB_SHELL_THEME environment variable.
+help-Diagnostics = Write timestamped diagnostic logs to a file. Optionally specify a path with --diagnostics <path>; defaults to a timestamped file in the shell configuration directory.
 help-Otel = Enable distributed tracing so requests carry a sampled W3C traceparent. Optionally specify an OTLP endpoint with --otel <endpoint>; falls back to the OTEL_EXPORTER_OTLP_ENDPOINT environment variable.
 mcp-error-invalid-port = Error: --mcp port must be greater than 0.
+diagnostics-enabled = Writing diagnostic log to { $path }.
+diagnostics-error-create = Error: could not create diagnostic log at '{ $path }': { $message }
 otel-error-invalid-endpoint = Error: --otel endpoint '{ $endpoint }' is not a valid absolute URI.
 
 warning-unknown-theme = Unknown theme '{ $name }'. Available themes: { $themes }. Falling back to default.
@@ -644,7 +958,6 @@ command-theme-description-name = Theme name (for show/use/save/edit) or path to 
 command-theme-description-path = Optional path. For 'save' the file path to write (default: ~/.cosmosdbshell/themes/<name>.toml). For 'load' and 'validate' the TOML file to read.
 command-theme-description-force = Overwrite an existing file when saving, or seed the built-in profile when editing.
 command-theme-description-strict = Treat warnings as errors when validating.
-command-theme-description-editor = External editor to launch (defaults to $VISUAL, $EDITOR, then a platform default).
 command-theme-active = Active theme: { $name }
 command-theme-applied = Switched to theme: { $name }
 command-theme-sample-heading = Sample of theme '{ $name }':
@@ -672,7 +985,7 @@ command-theme-edit-missing-name = 'theme edit' requires a theme name or path. Ru
 command-theme-edit-builtin-needs-force = '{ $name }' is a built-in theme and has no editable file. Pass --force to copy it to { $path } and edit the copy.
 command-theme-edit-seeded = Seeded built-in theme '{ $name }' to { $path }
 command-theme-edit-launching = Editing { $path } with { $editor }
-command-theme-edit-no-editor = No editor found. Set $VISUAL or $EDITOR, or pass --editor=<command>.
+command-theme-edit-no-editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
 command-theme-edit-launch-failed = Failed to launch editor '{ $editor }' for { $path }: { $message }
 command-theme-edit-exit-nonzero = Editor '{ $editor }' exited with status { $code }; theme was not reloaded.
 command-theme-edit-reload-failed = Theme file '{ $path }' could not be reloaded: { $message }

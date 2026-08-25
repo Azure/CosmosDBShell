@@ -4,7 +4,9 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
+using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
@@ -12,8 +14,9 @@ using Spectre.Console;
 
 [CosmosCommand("rmdb")]
 [CosmosExample("rmdb TestDatabase", Description = "Delete database with confirmation prompt")]
-[CosmosExample("rmdb OldDB true", Description = "Delete database without confirmation")]
-[McpAnnotation(Title = "Remove DataBase", Restricted = true, Destructive = true)]
+[CosmosExample("rmdb OldDB true", Description = "Delete database skipping the interactive confirmation prompt (over MCP, confirmation is still required)")]
+[CosmosExample("rmdb TestDatabase --dry-run", Description = "Preview the deletion without deleting the database")]
+[McpAnnotation(Title = "Remove Database", Restricted = true, Destructive = true, Confirmable = true)]
 internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpreter>
 {
     [CosmosParameter("name", ParameterType = ParameterType.Database)]
@@ -22,8 +25,14 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
     [CosmosParameter("force", IsRequired = false, ParameterType = ParameterType.Database)]
     public bool? Force { get; init; }
 
+    [CosmosOption("dry-run")]
+    public bool? DryRun { get; init; }
+
+    internal CommandState? Outcome { get; set; }
+
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
+        this.Outcome = commandState;
         await shell.State.AcceptAsync(this, shell, token);
         return commandState;
     }
@@ -75,13 +84,28 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
 
             if (databaseName == this.Name)
             {
+                if (this.DryRun == true)
+                {
+                    this.SetOutcome(
+                        JsonSerializer.SerializeToElement(new { type = "database", id = databaseName, deleted = false, dryRun = true }),
+                        () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-dry-run-plan", new Dictionary<string, object> { { "db", Markup.Escape(databaseName) } })));
+                    return 0;
+                }
+
                 if (this.Force is true || ShellInterpreter.Confirm("command-rmdb-confirm_db_deletion"))
                 {
                     await CosmosResourceFacade.DeleteDatabaseAsync(state, databaseName, token);
                     UpdateStateAfterDelete(shell, state.Client, state.ArmContext, databaseName);
                     CosmosCompleteCommand.ClearDatabases();
-                    var messageArguments = new Dictionary<string, object> { { "db", databaseName } };
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", messageArguments));
+                    this.SetOutcome(
+                        JsonSerializer.SerializeToElement(new { type = "database", id = databaseName, deleted = true, dryRun = false }),
+                        () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", new Dictionary<string, object> { { "db", Markup.Escape(databaseName) } })));
+                }
+                else
+                {
+                    this.SetOutcome(
+                        JsonSerializer.SerializeToElement(new { type = "database", id = databaseName, deleted = false, dryRun = false }),
+                        () => { });
                 }
 
                 return 0;
@@ -89,5 +113,17 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
         }
 
         throw new CommandException("rmdb", MessageService.GetString("command-rmdb-error-database_not_found", new Dictionary<string, object> { { "db", this.Name ?? string.Empty } }));
+    }
+
+    private void SetOutcome(JsonElement payload, Action render)
+    {
+        var outcome = this.Outcome;
+        if (outcome is null)
+        {
+            return;
+        }
+
+        outcome.Result = new ShellJson(payload);
+        outcome.RenderUser = render;
     }
 }

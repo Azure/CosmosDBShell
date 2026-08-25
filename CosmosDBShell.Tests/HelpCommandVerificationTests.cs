@@ -4,6 +4,7 @@
 
 namespace CosmosShell.Tests;
 
+using System.Text;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Xunit;
@@ -97,6 +98,32 @@ public class HelpCommandVerificationTests
             });
 
             Assert.Null(exception);
+        }
+    }
+
+    [Fact]
+    public void HelpCommand_CommandHelp_DefersUserOutputUntilRendered()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var app = new CommandRunner();
+        var output = new StringBuilder();
+        using var writer = new StringWriter(output);
+        var originalOut = Console.Out;
+
+        try
+        {
+            Console.SetOut(writer);
+            var result = HelpCommand.PrintCommandHelp("query", app, plain: true);
+
+            Assert.Empty(output.ToString());
+            Assert.NotNull(result.RenderUser);
+
+            result.RenderUser();
+            Assert.NotEmpty(output.ToString());
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
         }
     }
 }

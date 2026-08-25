@@ -16,8 +16,6 @@ using global::Azure.Data.Cosmos.Shell.States;
 [CosmosExample("replace '{\"id\":\"3\",\"status\":\"active\"}' --database=MyDB --container=Items", Description = "Replace item in specific database and container")]
 internal class ReplaceCommand : CosmosCommand
 {
-    private static readonly JsonDocument SuccessDocument = JsonDocument.Parse("{\"result\":\"success\"}");
-
     [CosmosParameter("data", IsRequired = false)]
     public string? Data { get; init; }
 
@@ -54,15 +52,21 @@ internal class ReplaceCommand : CosmosCommand
 
         var partitionKeyPaths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(connectedState, databaseName!, containerName!, token);
 
-        await ReplaceItemsAsync(container, partitionKeyPaths, jsonOpt, this.ETag, token);
+        var summary = await ReplaceItemsAsync(container, partitionKeyPaths, jsonOpt, this.ETag, token);
 
         return new CommandState
         {
-            Result = new ShellJson(SuccessDocument.RootElement.Clone()),
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                type = "item",
+                replaced = summary.Replaced,
+                failed = summary.Failed,
+                requestCharge = summary.RequestCharge,
+            })),
         };
     }
 
-    private static async Task ReplaceItemsAsync(Container container, IReadOnlyList<string> partitionKeyPaths, string jsonInput, string? etag, CancellationToken token)
+    private static async Task<ReplaceSummary> ReplaceItemsAsync(Container container, IReadOnlyList<string> partitionKeyPaths, string jsonInput, string? etag, CancellationToken token)
     {
         try
         {
@@ -76,11 +80,11 @@ internal class ReplaceCommand : CosmosCommand
                     throw new CommandException("replace", MessageService.GetString("command-replace-error-etag_array_not_supported"));
                 }
 
-                await ReplaceArrayAsync(container, partitionKeyPaths, root, token);
-                return;
+                return await ReplaceArrayAsync(container, partitionKeyPaths, root, token);
             }
 
-            await ReplaceOneAsync(container, partitionKeyPaths, root, etag, token, printSuccess: true);
+            var singleCharge = await ReplaceOneAsync(container, partitionKeyPaths, root, etag, token, printSuccess: true);
+            return new ReplaceSummary(1, 0, singleCharge);
         }
         catch (JsonException ex)
         {
@@ -88,7 +92,7 @@ internal class ReplaceCommand : CosmosCommand
         }
     }
 
-    private static async Task ReplaceArrayAsync(Container container, IReadOnlyList<string> partitionKeyPaths, JsonElement arrayRoot, CancellationToken token)
+    private static async Task<ReplaceSummary> ReplaceArrayAsync(Container container, IReadOnlyList<string> partitionKeyPaths, JsonElement arrayRoot, CancellationToken token)
     {
         int successCount = 0;
         int failCount = 0;
@@ -133,6 +137,8 @@ internal class ReplaceCommand : CosmosCommand
                     "total",
                     successCount + failCount));
         }
+
+        return new ReplaceSummary(successCount, failCount, charge);
     }
 
     private static async Task<double> ReplaceOneAsync(Container container, IReadOnlyList<string> partitionKeyPaths, JsonElement item, string? etag, CancellationToken token, bool printSuccess)
@@ -203,4 +209,6 @@ internal class ReplaceCommand : CosmosCommand
                 ce);
         }
     }
+
+    private readonly record struct ReplaceSummary(int Replaced, int Failed, double RequestCharge);
 }
