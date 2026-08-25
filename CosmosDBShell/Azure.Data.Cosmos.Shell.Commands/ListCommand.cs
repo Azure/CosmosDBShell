@@ -53,7 +53,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         string databaseName = this.Database ?? state.DatabaseName;
         string containerName = this.Container ?? state.ContainerName;
 
-        return await this.ListContainerItemsAsync(state, databaseName, containerName, token);
+        return await this.ListContainerItemsAsync(state, shell, databaseName, containerName, token);
     }
 
     Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitDisconnectedStateAsync(DisconnectedState state, ShellInterpreter interpreter, CancellationToken token)
@@ -67,7 +67,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         {
             if (!string.IsNullOrEmpty(this.Container))
             {
-                return await this.ListContainerItemsAsync(state, this.Database, this.Container, token);
+                return await this.ListContainerItemsAsync(state, interpreter, this.Database, this.Container, token);
             }
 
             return await this.ListDatabaseContainersAsync(state, this.Database, token);
@@ -87,16 +87,42 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             }
 
             list.Add(trimmed);
-            AnsiConsole.MarkupLine(Theme.DatabaseNamePromt(trimmed));
         }
 
         CosmosCompleteCommand.SetDatabases(state.Client, completionList);
 
-        var result = new CommandState
+        var hasArmContext = state.ArmContext is not null;
+        var result = new CommandState();
+        result.SetFormat(this.OutputFormat);
+        result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "database", values = list }));
+        result.RenderTabular = () =>
         {
-            IsPrinted = true,
+            var tabular = new TabularData(MessageService.GetString("command-ls-table-header-database"));
+            foreach (var name in list)
+            {
+                tabular.AddRow(name);
+            }
+
+            return tabular;
         };
-        result.Result = new ShellJson(JsonSerializer.SerializeToElement(list));
+        result.RenderUser = () =>
+        {
+            foreach (var name in list)
+            {
+                AnsiConsole.MarkupLine(Theme.DatabaseNamePromt(name));
+            }
+
+            AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_databases", new Dictionary<string, object>
+            {
+                { "count", list.Count },
+                { "display", Theme.FormatTableValue(list.Count.ToString()) },
+            }));
+
+            if (completionList.Count == 0 && hasArmContext)
+            {
+                AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_databases_hint")));
+            }
+        };
         return result;
     }
 
@@ -107,7 +133,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         // If container is specified, list items in that container
         if (!string.IsNullOrEmpty(this.Container))
         {
-            return await this.ListContainerItemsAsync(state, databaseName, this.Container, token);
+            return await this.ListContainerItemsAsync(state, interpreter, databaseName, this.Container, token);
         }
 
         // Default behavior: list containers in the database
@@ -131,27 +157,56 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             }
 
             list.Add(trimmed);
-            AnsiConsole.MarkupLine(Theme.ContainerNamePromt(trimmed));
         }
 
         CosmosCompleteCommand.SetContainers(state.Client, databaseName, completionList);
 
-        var result = new CommandState
+        var hasArmContext = state.ArmContext is not null;
+        var result = new CommandState();
+        result.SetFormat(this.OutputFormat);
+        result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "container", values = list }));
+        result.RenderTabular = () =>
         {
-            IsPrinted = true,
+            var tabular = new TabularData(MessageService.GetString("command-ls-table-header-container"));
+            foreach (var name in list)
+            {
+                tabular.AddRow(name);
+            }
+
+            return tabular;
         };
-        result.Result = new ShellJson(JsonSerializer.SerializeToElement(list));
+        result.RenderUser = () =>
+        {
+            foreach (var name in list)
+            {
+                AnsiConsole.MarkupLine(Theme.ContainerNamePromt(name));
+            }
+
+            AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_containers", new Dictionary<string, object>
+            {
+                { "count", list.Count },
+                { "display", Theme.FormatTableValue(list.Count.ToString()) },
+                { "database", Theme.DatabaseNamePromt(databaseName) },
+            }));
+
+            if (completionList.Count == 0 && hasArmContext)
+            {
+                AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_containers_hint", new Dictionary<string, object>
+                {
+                    { "database", databaseName },
+                })));
+            }
+        };
         return result;
     }
 
-    private async Task<CommandState> ListContainerItemsAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    private async Task<CommandState> ListContainerItemsAsync(ConnectedState state, ShellInterpreter interpreter, string databaseName, string containerName, CancellationToken token)
     {
         // Validate database and container exist
         await ValidateContainerExistsAsync(state, databaseName, containerName, "ls", token);
 
         var client = state.Client;
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
-        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-container", new Dictionary<string, object> { { "container", Theme.ContainerNamePromt(container.Id) } }));
         var opt = new QueryRequestOptions();
         var effectiveMaxItemCount = ResultLimit.ResolveMaxItemCount(this.Max);
         if (effectiveMaxItemCount.HasValue)
@@ -167,7 +222,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var usesServerSideTop = effectiveMaxItemCount.HasValue && !HasClientSideFilter(this.Filter);
         using var feedIterator = container.GetItemQueryStreamIterator(queryText, requestOptions: opt);
         var returnState = new CommandState();
-        returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+        returnState.SetFormat(this.OutputFormat);
         var list = new List<JsonElement>();
         var limitReached = false;
         while (feedIterator.HasMoreResults)
@@ -200,12 +255,27 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             }
         }
 
-        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = list }));
-        AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object> { { "count", Theme.FormatTableValue(list.Count.ToString()) } }));
-        if (limitReached && effectiveMaxItemCount.HasValue)
+        var reachedLimit = limitReached && effectiveMaxItemCount.HasValue;
+        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "item", values = list, limitReached = reachedLimit }));
+
+        var itemsElement = JsonSerializer.SerializeToElement(new { type = "item", values = list });
+        var containerId = container.Id;
+        var itemCount = list.Count;
+        var limitCount = effectiveMaxItemCount ?? 0;
+        returnState.RenderUser = () =>
         {
-            AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
-        }
+            AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(itemsElement));
+            AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object>
+            {
+                { "count", itemCount },
+                { "display", Theme.FormatTableValue(itemCount.ToString()) },
+                { "container", Theme.ContainerNamePromt(containerId) },
+            }));
+            if (reachedLimit)
+            {
+                AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", limitCount } }));
+            }
+        };
 
         return returnState;
     }

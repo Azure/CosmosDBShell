@@ -26,7 +26,7 @@ Each path must start with a forward slash (/).
 
 Supports custom indexing policy via the --index_policy option as a JSON string.
 The JSON format follows the Cosmos DB indexing policy schema.
-Use the 'indexpolicy' command to read or update the indexing policy of an existing container.
+Use the 'index' command to read or update the indexing policy of an existing container.
 ")]
 #pragma warning restore SA1118 // Parameter should not span multiple lines
 internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState, ShellInterpreter>
@@ -169,15 +169,14 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         }
 
         CosmosCompleteCommand.ClearContainers();
-        ShellInterpreter.WriteLine(MessageService.GetString("command-mkcon-CreatedContainer", new Dictionary<string, object> { { "container", containerName } }));
-        var commandState = new CommandState
+        var commandState = new CommandState();
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
-            IsPrinted = true,
-        };
-        var jsonObject = new { created_container = containerName };
-        var jsonString = JsonSerializer.Serialize(jsonObject);
-        using var jsonDoc = JsonDocument.Parse(jsonString);
-        commandState.Result = new ShellJson(jsonDoc.RootElement.Clone());
+            type = "container",
+            id = containerName,
+            created = true,
+        }));
+        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-mkcon-CreatedContainer", new Dictionary<string, object> { { "container", containerName } }));
         return commandState;
     }
 

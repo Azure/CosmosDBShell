@@ -21,6 +21,7 @@ using Spectre.Console;
 [CosmosExample("throughput manual 4000", Description = "Switch to manual provisioning at 4000 RU/s")]
 [CosmosExample("throughput autoscale 10000", Description = "Switch to autoscale with a maximum of 10000 RU/s")]
 [CosmosExample("throughput set 4000 --yes", Description = "Set throughput without the confirmation prompt")]
+[CosmosExample("throughput autoscale 10000 --dry-run", Description = "Preview the change without applying it")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "Throughput",
@@ -31,7 +32,9 @@ Views or changes the provisioned throughput (RU/s) of a Cosmos DB database or co
 - 'manual <RUs>' switches to manual provisioning at the given RU/s.
 - 'autoscale <maxRUs>' switches to autoscale with the given maximum RU/s.
 
-By default the command targets the current scope: the container when in a container, otherwise the database. Use --database and --container to target a specific resource.",
+By default the command targets the current scope: the container when in a container, otherwise the database. Use --database and --container to target a specific resource.
+
+Pass --dry-run with a write subcommand to preview the change (current vs. planned mode and RU/s) without applying it.",
     ReadOnly = false)]
 #pragma warning restore SA1118 // Parameter should not span multiple lines
 internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, ShellInterpreter>
@@ -57,6 +60,9 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
 
     [CosmosOption("yes", "y", "force")]
     public bool? Yes { get; init; }
+
+    [CosmosOption("dry-run")]
+    public bool? DryRun { get; init; }
 
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token) =>
         shell.State.AcceptAsync(this, shell, token);
@@ -96,7 +102,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
     private static string? NormalizeOption(string? value) =>
         string.IsNullOrEmpty(value) ? null : value;
 
-    private static CommandState BuildResult(ShellInterpreter shell, ThroughputView view)
+    private static CommandState BuildResult(ThroughputView view)
     {
         string mode = view.Availability == ThroughputAvailability.NotConfigured
             ? "none"
@@ -115,48 +121,114 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         using var jsonDoc = JsonDocument.Parse(root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         var result = new ShellJson(jsonDoc.RootElement.Clone());
 
-        // When output is redirected to a file, let the interpreter emit the JSON result
-        // so 'throughput show > out.json' honors the documented JSON contract instead of
-        // writing a console table. Interactive sessions still get the friendly table, and
-        // MCP/piping consume the structured Result regardless.
-        if (!string.IsNullOrEmpty(shell.StdOutRedirect))
-        {
-            return new CommandState { Result = result };
-        }
-
-        var table = new Table().HideHeaders();
-        table.AddColumn(string.Empty);
-        table.AddColumn(string.Empty);
-        void Row(string labelKey, string value) =>
-            table.AddRow(
-                Theme.FormatHelpName(Markup.Escape(MessageService.GetString(labelKey))),
-                Theme.FormatTableValue(Markup.Escape(value)));
-
-        Row("command-throughput-label-scope", MessageService.GetString($"command-throughput-scope-{view.Scope}"));
-        Row("command-throughput-label-resource", view.ResourceName);
-        Row("command-throughput-label-mode", MessageService.GetString($"command-throughput-mode-{mode}"));
-        if (view.Throughput.HasValue)
-        {
-            Row("command-throughput-label-throughput", view.Throughput.Value.ToString(CultureInfo.InvariantCulture));
-        }
-
-        if (view.AutoscaleMaxThroughput.HasValue)
-        {
-            Row("command-throughput-label-max", view.AutoscaleMaxThroughput.Value.ToString(CultureInfo.InvariantCulture));
-        }
-
-        if (view.MinThroughput.HasValue)
-        {
-            Row("command-throughput-label-min", view.MinThroughput.Value.ToString(CultureInfo.InvariantCulture));
-        }
-
-        AnsiConsole.Write(table);
-
+        // Interactive sessions get the friendly table; redirection, machine mode, MCP,
+        // and piping consume the structured Result via PrintState.
         return new CommandState
         {
             Result = result,
-            IsPrinted = true,
+            RenderUser = () =>
+            {
+                var table = new Table().HideHeaders();
+                table.AddColumn(string.Empty);
+                table.AddColumn(string.Empty);
+                void Row(string labelKey, string value) =>
+                    table.AddRow(
+                        Theme.FormatHelpName(Markup.Escape(MessageService.GetString(labelKey))),
+                        Theme.FormatTableValue(Markup.Escape(value)));
+
+                Row("command-throughput-label-scope", MessageService.GetString($"command-throughput-scope-{view.Scope}"));
+                Row("command-throughput-label-resource", view.ResourceName);
+                Row("command-throughput-label-mode", MessageService.GetString($"command-throughput-mode-{mode}"));
+                if (view.Throughput.HasValue)
+                {
+                    Row("command-throughput-label-throughput", view.Throughput.Value.ToString(CultureInfo.InvariantCulture));
+                }
+
+                if (view.AutoscaleMaxThroughput.HasValue)
+                {
+                    Row("command-throughput-label-max", view.AutoscaleMaxThroughput.Value.ToString(CultureInfo.InvariantCulture));
+                }
+
+                if (view.MinThroughput.HasValue)
+                {
+                    Row("command-throughput-label-min", view.MinThroughput.Value.ToString(CultureInfo.InvariantCulture));
+                }
+
+                AnsiConsole.Write(table);
+            },
         };
+    }
+
+    private static string ModeLabel(ThroughputView view) =>
+        view.Availability == ThroughputAvailability.NotConfigured
+            ? "none"
+            : view.IsAutoscale ? "autoscale" : "manual";
+
+    // Builds the --dry-run plan: the current throughput read from the account plus the
+    // change that would be applied, without performing any write.
+    private static CommandState BuildDryRunResult(ThroughputView current, bool plannedAutoscale, int plannedRu)
+    {
+        string currentMode = ModeLabel(current);
+        string plannedMode = plannedAutoscale ? "autoscale" : "manual";
+
+        var root = new JsonObject
+        {
+            ["scope"] = current.Scope,
+            ["resource"] = current.ResourceName,
+            ["dryRun"] = true,
+            ["current"] = new JsonObject
+            {
+                ["mode"] = currentMode,
+                ["throughput"] = current.Throughput,
+                ["autoscaleMaxThroughput"] = current.AutoscaleMaxThroughput,
+                ["minThroughput"] = current.MinThroughput,
+            },
+            ["planned"] = new JsonObject
+            {
+                ["mode"] = plannedMode,
+                ["throughput"] = plannedAutoscale ? null : plannedRu,
+                ["autoscaleMaxThroughput"] = plannedAutoscale ? plannedRu : null,
+                ["minThroughput"] = plannedAutoscale ? plannedRu / 10 : (int?)null,
+            },
+        };
+
+        using var jsonDoc = JsonDocument.Parse(root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        var result = new ShellJson(jsonDoc.RootElement.Clone());
+
+        // Interactive sessions get the friendly table; redirection, machine mode, MCP,
+        // and piping consume the structured JSON plan via PrintState.
+        return new CommandState
+        {
+            Result = result,
+            RenderUser = () =>
+            {
+                var table = new Table().HideHeaders();
+                table.AddColumn(string.Empty);
+                table.AddColumn(string.Empty);
+                void Row(string labelKey, string value) =>
+                    table.AddRow(
+                        Theme.FormatHelpName(Markup.Escape(MessageService.GetString(labelKey))),
+                        Theme.FormatTableValue(Markup.Escape(value)));
+
+                Row("command-throughput-label-scope", MessageService.GetString($"command-throughput-scope-{current.Scope}"));
+                Row("command-throughput-label-resource", current.ResourceName);
+                Row("command-throughput-dry-run-label-current", DescribeMode(currentMode, current.Throughput, current.AutoscaleMaxThroughput));
+                Row("command-throughput-dry-run-label-planned", DescribeMode(plannedMode, plannedAutoscale ? null : plannedRu, plannedAutoscale ? plannedRu : null));
+
+                AnsiConsole.Write(table);
+                ShellInterpreter.WriteLine(MessageService.GetString("command-throughput-dry-run-note"));
+            },
+        };
+    }
+
+    // Renders a mode plus its RU/s value into a single human-readable cell, e.g. "Autoscale, 10000 RU/s".
+    private static string DescribeMode(string mode, int? throughput, int? autoscaleMax)
+    {
+        string modeLabel = MessageService.GetString($"command-throughput-mode-{mode}");
+        int? ru = autoscaleMax ?? throughput;
+        return ru.HasValue
+            ? MessageService.GetArgsString("command-throughput-dry-run-mode_value", "mode", modeLabel, "ru", ru.Value.ToString(CultureInfo.InvariantCulture))
+            : modeLabel;
     }
 
     private static bool TryGetRbacError(Exception e, out string principalId, out string action)
@@ -231,13 +303,23 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         if (!isWrite)
         {
             var current = await CosmosResourceFacade.GetThroughputAsync(state, databaseName, containerName, token);
-            return BuildResult(shell, current);
+            return BuildResult(current);
+        }
+
+        if (this.DryRun == true)
+        {
+            var current = await CosmosResourceFacade.GetThroughputAsync(state, databaseName, containerName, token);
+            return BuildDryRunResult(current, isAutoscale, ru);
         }
 
         if (!ConfirmWrite(shell, this.Yes == true, databaseName, containerName, isAutoscale, ru))
         {
-            ShellInterpreter.WriteLine(MessageService.GetString("command-throughput-cancelled"));
-            return new CommandState { IsPrinted = true };
+            using var cancelledDoc = JsonDocument.Parse("{\"cancelled\": true}");
+            return new CommandState
+            {
+                Result = new ShellJson(cancelledDoc.RootElement.Clone()),
+                RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-throughput-cancelled")),
+            };
         }
 
         ThroughputView view;
@@ -268,8 +350,14 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
                 ex);
         }
 
-        ShellInterpreter.WriteLine(MessageService.GetString("command-throughput-updated"));
-        return BuildResult(shell, view);
+        var built = BuildResult(view);
+        var renderTable = built.RenderUser;
+        built.RenderUser = () =>
+        {
+            ShellInterpreter.WriteLine(MessageService.GetString("command-throughput-updated"));
+            renderTable?.Invoke();
+        };
+        return built;
     }
 
     private int RequireRu(bool isAutoscale)

@@ -4,7 +4,9 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
+using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
@@ -12,9 +14,10 @@ using Spectre.Console;
 
 [CosmosCommand("rmcon")]
 [CosmosExample("rmcon OldContainer", Description = "Delete container with confirmation prompt")]
-[CosmosExample("rmcon TempData true", Description = "Delete container without confirmation")]
+[CosmosExample("rmcon TempData true", Description = "Delete container skipping the interactive confirmation prompt (over MCP, confirmation is still required)")]
 [CosmosExample("rmcon TestContainer --database=TestDB", Description = "Delete container from specific database")]
-[McpAnnotation(Title = "Remove Container", Restricted = true, Destructive = true)]
+[CosmosExample("rmcon OldContainer --dry-run", Description = "Preview the deletion without deleting the container")]
+[McpAnnotation(Title = "Remove Container", Restricted = true, Destructive = true, Confirmable = true)]
 internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpreter>
 {
     [CosmosParameter("name", ParameterType = ParameterType.Container)]
@@ -26,8 +29,14 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
     [CosmosOption("database", "db")]
     public string? Database { get; init; }
 
+    [CosmosOption("dry-run")]
+    public bool? DryRun { get; init; }
+
+    internal CommandState? Outcome { get; set; }
+
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
+        this.Outcome = commandState;
         await shell.State.AcceptAsync(this, shell, token);
         return commandState;
     }
@@ -81,11 +90,27 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
 
             if (containerName == this.Name)
             {
+                if (this.DryRun == true)
+                {
+                    this.SetOutcome(
+                        JsonSerializer.SerializeToElement(new { type = "container", id = containerName, deleted = false, dryRun = true }),
+                        () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-dry-run-plan", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } })));
+                    return 0;
+                }
+
                 if (this.Force == true || ShellInterpreter.Confirm("command-rmcon-confirm_container_deletion"))
                 {
                     await CosmosResourceFacade.DeleteContainerAsync(state, databaseName, containerName, token);
                     CosmosCompleteCommand.ClearContainers();
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-deleted_container", new Dictionary<string, object> { { "container", containerName } }));
+                    this.SetOutcome(
+                        JsonSerializer.SerializeToElement(new { type = "container", id = containerName, deleted = true, dryRun = false }),
+                        () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-deleted_container", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } })));
+                }
+                else
+                {
+                    this.SetOutcome(
+                        JsonSerializer.SerializeToElement(new { type = "container", id = containerName, deleted = false, dryRun = false }),
+                        () => { });
                 }
 
                 return 0;
@@ -93,5 +118,17 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
         }
 
         throw new CommandException("rmcon", MessageService.GetString("command-rmcon-error-container_not_found", new Dictionary<string, object> { { "container", this.Name ?? string.Empty } }));
+    }
+
+    private void SetOutcome(JsonElement payload, Action render)
+    {
+        var outcome = this.Outcome;
+        if (outcome is null)
+        {
+            return;
+        }
+
+        outcome.Result = new ShellJson(payload);
+        outcome.RenderUser = render;
     }
 }

@@ -83,10 +83,9 @@ public class AdditionalCommandsTests : EmulatorFixtureTestBase
     public async Task IndexPolicy_Read_ReturnsPolicyJson()
     {
         await ExecuteAsync($"cd {Fixture.ContainerName}");
-        var state = await ExecuteAsync("indexpolicy");
-        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
+        var output = await ExecuteWithOutputAsync("indexpolicy show");
 
-        var json = IntegrationTestBase.GetJson(state);
+        var json = JsonDocument.Parse(output).RootElement;
         Assert.True(json.TryGetProperty("indexingMode", out _));
     }
 
@@ -96,10 +95,9 @@ public class AdditionalCommandsTests : EmulatorFixtureTestBase
         await ExecuteAsync($"cd {Fixture.ContainerName}");
 
         var policy = "{\"indexingMode\":\"consistent\",\"automatic\":true,\"includedPaths\":[{\"path\":\"/*\"}],\"excludedPaths\":[{\"path\":\"/\\\"_etag\\\"/?\"}]}";
-        var state = await ExecuteAsync($"indexpolicy '{policy}'");
-        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
+        var output = await ExecuteWithOutputAsync($"indexpolicy set '{policy}'");
 
-        var json = IntegrationTestBase.GetJson(state);
+        var json = JsonDocument.Parse(output).RootElement;
         Assert.Equal("Consistent", json.GetProperty("indexingMode").GetString());
     }
 
@@ -108,27 +106,43 @@ public class AdditionalCommandsTests : EmulatorFixtureTestBase
     {
         await ExecuteAsync($"cd {Fixture.ContainerName}");
 
-        var state = await ExecuteAsync("indexpolicy 'not json'");
+        var state = await ExecuteAsync("indexpolicy set '{not json}'");
         Assert.True(state.IsError);
     }
 
     [Fact]
-    public async Task Settings_AtDatabaseLevel_ReturnsAccountOverview()
+    public async Task Info_AtDatabaseLevel_ReturnsDatabaseInfo()
     {
-        var state = await ExecuteAsync("settings");
+        var state = await ExecuteAsync("info");
         Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
     }
 
     [Fact]
-    public async Task Settings_AtContainerLevel_ReturnsContainerSettings()
+    public async Task Info_AtContainerLevel_ReturnsContainerSettings()
     {
         await ExecuteAsync($"cd {Fixture.ContainerName}");
 
-        var state = await ExecuteAsync("settings");
+        var state = await ExecuteAsync("info");
         Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
 
         var json = IntegrationTestBase.GetJson(state);
         Assert.Equal(Fixture.ContainerName, json.GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public async Task Info_AtContainerLevel_IncludesIndexingPolicySummary()
+    {
+        await ExecuteAsync($"cd {Fixture.ContainerName}");
+
+        var state = await ExecuteAsync("info");
+        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
+
+        var json = IntegrationTestBase.GetJson(state);
+        Assert.True(json.TryGetProperty("indexingPolicy", out var indexing));
+        Assert.False(string.IsNullOrEmpty(indexing.GetProperty("indexingMode").GetString()));
+        Assert.True(indexing.TryGetProperty("automatic", out _));
+        Assert.True(indexing.TryGetProperty("includedPaths", out _));
+        Assert.True(indexing.TryGetProperty("excludedPaths", out _));
     }
 
     [Fact]

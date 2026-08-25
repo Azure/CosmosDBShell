@@ -18,6 +18,15 @@ internal class ShellText : ShellObject
 
     public string Text { get; }
 
+    /// <summary>
+    /// Gets an optional function that maps the raw <see cref="Text"/> to a
+    /// Spectre.Console markup string for syntax highlighting. When set, the
+    /// interactive printer uses it to colorize terminal output; redirection and
+    /// piping still receive the plain <see cref="Text"/> so downstream tooling and
+    /// tests are unaffected.
+    /// </summary>
+    public Func<string, string>? Highlighter { get; init; }
+
     public override object ConvertShellObject(DataType type)
     {
         return EvaluateString(type, this.Text);

@@ -35,7 +35,7 @@ public class FilterCommandTests
         var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
 
         Assert.Same(state, result);
-        Assert.False(result.IsPrinted);
+        Assert.Null(result.RenderUser);
         var json = Assert.IsType<ShellJson>(result.Result);
         Assert.Equal("1", json.Value.GetString());
     }

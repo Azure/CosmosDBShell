@@ -16,22 +16,36 @@ internal static class ThemeProfiles
     /// Default palette tuned for dark terminal backgrounds. Uses ANSI 16 colors only,
     /// so it follows the terminal's configured palette (Solarized, Dracula, Campbell,
     /// etc.). Headers and table values are bold/unstyled rather than colored so they
-    /// stay readable on light backgrounds too.
+    /// stay readable on light backgrounds too. Literal colors are split per type
+    /// (string/number/boolean/null) to approximate VS Code's default dark theme.
     /// </summary>
-    public static ThemeOptions Default { get; } = new();
+    public static ThemeOptions Default { get; } = new()
+    {
+        StringColor = "aqua",
+        NumberColor = "lime",
+        BooleanColor = "blue",
+        NullColor = "blue",
+        StringEscapeColor = "olive",
+        VariableColor = "teal",
+    };
 
     /// <summary>
-    /// Palette tuned for light terminal backgrounds. Bracket cycle uses darker hues
-    /// (purple/maroon/navy) so they remain visible on white, and the JSON literal
-    /// color shifts from <c>fuchsia</c> (very pale on white) to <c>purple</c>.
+    /// Palette tuned for light terminal backgrounds, matching VS Code's light theme JSON
+    /// coloring: green keys, blue strings, green numbers, blue <c>true</c>/<c>false</c>/<c>null</c>,
+    /// and red string escapes. Bracket cycle uses blue/green/purple so pairs stay visible on white.
     /// </summary>
     public static ThemeOptions Light { get; } = Default with
     {
-        BracketCycle = ["purple", "maroon", "navy"],
+        BracketCycle = ["blue", "green", "purple"],
         LiteralColor = "purple",
+        StringColor = "blue",
+        NumberColor = "green",
+        BooleanColor = "blue",
+        NullColor = "blue",
+        StringEscapeColor = "red",
         ContainerNameColor = "purple",
         ConnectedPromptColor = "navy",
-        JsonPropertyColor = "navy",
+        JsonPropertyColor = "green",
         JsonPathColor = "navy",
         VariableColor = "navy",
         HelpAccentColor = "navy",
@@ -64,6 +78,11 @@ internal static class ThemeProfiles
         JsonPropertyColor = string.Empty,
         JsonPunctuationColor = string.Empty,
         LiteralColor = string.Empty,
+        StringColor = string.Empty,
+        NumberColor = string.Empty,
+        BooleanColor = string.Empty,
+        NullColor = string.Empty,
+        StringEscapeColor = string.Empty,
         VariableColor = string.Empty,
         JsonPathColor = string.Empty,
         KeywordColor = string.Empty,

@@ -73,24 +73,24 @@ public class CommandExpressionTests : TestBase
     public async Task UnknownOption_Throws_UnknownOptionException()
     {
         await Assert.ThrowsAsync<UnknownOptionException>(
-            () => EvalCommandAsync("(settings --bogus=1)"));
+            () => EvalCommandAsync("(info --bogus=1)"));
     }
 
     [Fact]
     public async Task ValuedOption_IsBound_ThenCommandExecutes()
     {
-        // settings binds --db / --con (exercising the valued-option branch) and then
+        // info binds --db / --con (exercising the valued-option branch) and then
         // fails because the shell is not connected. Reaching NotConnectedException
         // proves option binding completed successfully.
         await Assert.ThrowsAsync<NotConnectedException>(
-            () => EvalCommandAsync("(settings --db=mydb --con=mycon)"));
+            () => EvalCommandAsync("(info --db=mydb --con=mycon)"));
     }
 
     [Fact]
     public async Task NonBooleanOption_WithoutValue_Throws_CommandException()
     {
         await Assert.ThrowsAsync<CommandException>(
-            () => EvalCommandAsync("(settings --db)"));
+            () => EvalCommandAsync("(info --db)"));
     }
 
     [Fact]

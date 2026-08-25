@@ -3,6 +3,7 @@
 // ------------------------------------------------------------
 namespace Azure.Data.Cosmos.Shell.Core;
 
+using System.Text;
 using Spectre.Console;
 
 /// <summary>
@@ -51,6 +52,16 @@ internal static class Theme
     public static string JsonPunctuationColorName => Current.JsonPunctuationColor;
 
     public static string LiteralColorName => Current.LiteralColor;
+
+    public static string StringColorName => ResolveLiteral(Current.StringColor);
+
+    public static string NumberColorName => ResolveLiteral(Current.NumberColor);
+
+    public static string BooleanColorName => ResolveLiteral(Current.BooleanColor);
+
+    public static string NullColorName => ResolveLiteral(Current.NullColor);
+
+    public static string StringEscapeColorName => ResolveStringEscape();
 
     public static string VariableColorName => Current.VariableColor;
 
@@ -206,27 +217,112 @@ internal static class Theme
 
     public static string FormatJsonString(string text)
     {
-        return Wrap(Current.LiteralColor, Markup.Escape(text));
+        return FormatStringWithEscapes(text);
     }
 
     public static string FormatJsonNumber(string text)
     {
-        return Wrap(Current.LiteralColor, Markup.Escape(text));
+        return Wrap(ResolveLiteral(Current.NumberColor), Markup.Escape(text));
     }
 
     public static string FormatJsonBoolean(string text)
     {
-        return Wrap(Current.LiteralColor, Markup.Escape(text));
+        return Wrap(ResolveLiteral(Current.BooleanColor), Markup.Escape(text));
     }
 
     public static string FormatJsonNull(string text)
     {
-        return Wrap(Current.LiteralColor, Markup.Escape(text));
+        return Wrap(ResolveLiteral(Current.NullColor), Markup.Escape(text));
     }
 
     internal static string FormatStringLiteral(string text)
     {
-        return Wrap(Current.LiteralColor, Markup.Escape(text));
+        return FormatStringWithEscapes(text);
+    }
+
+    /// <summary>
+    /// Formats a string literal (including its surrounding quotes and any embedded escape
+    /// sequences), coloring the body with the string color and recognized backslash escapes
+    /// (e.g. <c>\n</c>, <c>\"</c>, <c>\uXXXX</c>, <c>\u{...}</c>, <c>\xXX</c>) with
+    /// <see cref="ThemeOptions.StringEscapeColor"/>. When the escape color resolves to the same
+    /// color as the string body (the default when a profile sets no escape color), the whole
+    /// literal is emitted as a single run.
+    /// </summary>
+    internal static string FormatStringWithEscapes(string text)
+    {
+        var stringColor = ResolveLiteral(Current.StringColor);
+        var escapeColor = ResolveStringEscape();
+
+        if (escapeColor == stringColor || text.IndexOf('\\') < 0)
+        {
+            return Wrap(stringColor, Markup.Escape(text));
+        }
+
+        var sb = new StringBuilder(text.Length + 16);
+        int i = 0;
+        int n = text.Length;
+        int runStart = 0;
+
+        while (i < n)
+        {
+            if (text[i] != '\\' || i + 1 >= n)
+            {
+                i++;
+                continue;
+            }
+
+            if (i > runStart)
+            {
+                sb.Append(Wrap(stringColor, Markup.Escape(text[runStart..i])));
+            }
+
+            int escStart = i;
+            i++; // consume the backslash
+            char e = text[i];
+            if (e == 'u' && i + 1 < n && text[i + 1] == '{')
+            {
+                i += 2;
+                while (i < n && text[i] != '}')
+                {
+                    i++;
+                }
+
+                if (i < n)
+                {
+                    i++; // consume the closing brace
+                }
+            }
+            else if (e == 'u')
+            {
+                i++;
+                for (int h = 0; h < 4 && i < n && char.IsAsciiHexDigit(text[i]); h++)
+                {
+                    i++;
+                }
+            }
+            else if (e == 'x')
+            {
+                i++;
+                for (int h = 0; h < 2 && i < n && char.IsAsciiHexDigit(text[i]); h++)
+                {
+                    i++;
+                }
+            }
+            else
+            {
+                i++; // consume the single escaped character
+            }
+
+            sb.Append(Wrap(escapeColor, Markup.Escape(text[escStart..i])));
+            runStart = i;
+        }
+
+        if (runStart < n)
+        {
+            sb.Append(Wrap(stringColor, Markup.Escape(text[runStart..n])));
+        }
+
+        return sb.ToString();
     }
 
     /// <summary>Wraps a variable reference token (e.g. <c>$foo</c>) in the
@@ -245,12 +341,32 @@ internal static class Theme
 
     internal static string FormatNumberLiteral(string v)
     {
-        return FormatStringLiteral(v);
+        return Wrap(ResolveLiteral(Current.NumberColor), Markup.Escape(v));
     }
 
     internal static string FormatBooleanLiteral(string v)
     {
-        return FormatStringLiteral(v);
+        return Wrap(ResolveLiteral(Current.BooleanColor), Markup.Escape(v));
+    }
+
+    /// <summary>
+    /// Resolves a per-type literal color, falling back to the shared
+    /// <see cref="ThemeOptions.LiteralColor"/> when the specific slot is empty.
+    /// </summary>
+    private static string ResolveLiteral(string specific)
+    {
+        return string.IsNullOrEmpty(specific) ? Current.LiteralColor : specific;
+    }
+
+    /// <summary>
+    /// Resolves the string-escape color, falling back to the resolved string color when the
+    /// theme sets no dedicated escape color (so escapes are not visually distinguished).
+    /// </summary>
+    private static string ResolveStringEscape()
+    {
+        return string.IsNullOrEmpty(Current.StringEscapeColor)
+            ? ResolveLiteral(Current.StringColor)
+            : Current.StringEscapeColor;
     }
 
     internal static string FormatKeyword(string value)

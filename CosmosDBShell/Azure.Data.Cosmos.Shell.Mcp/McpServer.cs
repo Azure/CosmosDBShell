@@ -75,8 +75,6 @@ internal class McpServer
                     ListToolsHandler = toolOperations.ListToolsHandler,
                 };
 
-                mcpServerOptions.ProtocolVersion = "2025-07-05";
-
                 mcpServerOptions.ServerInstructions = LoadServerInstructions();
             });
 

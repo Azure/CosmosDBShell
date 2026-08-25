@@ -109,6 +109,38 @@ internal class DirCommand : CosmosCommand
 
         var returnState = new CommandState();
 
+        // Set JSON result
+        var jsonEntries = entries.Select(e => new
+        {
+            name = e.Name,
+            path = e.FullPath,
+            isDirectory = e.IsDirectory,
+            size = e.Size,
+            lastModified = e.LastModified,
+        });
+
+        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "file", values = jsonEntries }));
+        returnState.RenderUser = () => this.RenderEntries(entries);
+
+        return Task.FromResult(returnState);
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private void RenderEntries(List<FileSystemEntry> entries)
+    {
         // Display results
         foreach (var entry in entries)
         {
@@ -148,35 +180,6 @@ internal class DirCommand : CosmosCommand
                 "dirCount",
                 entries.Count(e => e.IsDirectory)));
         }
-
-        // Set JSON result
-        var jsonEntries = entries.Select(e => new
-        {
-            name = e.Name,
-            path = e.FullPath,
-            isDirectory = e.IsDirectory,
-            size = e.Size,
-            lastModified = e.LastModified,
-        });
-
-        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonEntries));
-        returnState.IsPrinted = true;
-
-        return Task.FromResult(returnState);
-    }
-
-    private static string FormatFileSize(long bytes)
-    {
-        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
-        double len = bytes;
-        int order = 0;
-        while (len >= 1024 && order < sizes.Length - 1)
-        {
-            order++;
-            len = len / 1024;
-        }
-
-        return $"{len:0.##} {sizes[order]}";
     }
 
     private class FileSystemEntry

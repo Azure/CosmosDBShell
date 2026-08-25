@@ -60,7 +60,7 @@ public class ShellTests
         var state = await ShellInterpreter.Instance.ExecuteCommandAsync("version", TestContext.Current.CancellationToken);
 
         Assert.False(state.IsError);
-        Assert.True(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
 
         var result = Assert.IsType<ShellJson>(state.Result);
         Assert.True(result.Value.TryGetProperty("version", out var versionProperty));

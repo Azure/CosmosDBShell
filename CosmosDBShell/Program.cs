@@ -69,18 +69,40 @@ internal class Program
 
             if (parseResult.Errors.Count > 0)
             {
-                foreach (var error in parseResult.Errors)
+                var outputMode = parseResult.GetValueForOption(optionMap.Output);
+                var quiet = parseResult.GetValueForOption(optionMap.Quiet);
+                var isNonInteractive = !string.IsNullOrWhiteSpace(
+                    parseResult.GetValueForOption(optionMap.ExecuteAndQuit));
+
+                var isMachineMode = OutputPolicy.IsMachineMode(outputMode, quiet, isNonInteractive);
+                if (isMachineMode)
                 {
-                    ShellInterpreter.WriteLine(error.Message);
+                    var errorStrings = parseResult.Errors.Select(e => e.Message).ToList();
+                    var errObj = new
+                    {
+                        status = "error",
+                        error = string.Join("; ", errorStrings),
+                    };
+                    WriteErrorLine(System.Text.Json.JsonSerializer.Serialize(errObj));
+                }
+                else
+                {
+                    foreach (var error in parseResult.Errors)
+                    {
+                        ShellInterpreter.WriteLine(error.Message);
+                    }
+
+                    ShellInterpreter.WriteLine(BuildHelpText());
                 }
 
-                ShellInterpreter.WriteLine(BuildHelpText());
-                Environment.ExitCode = 1;
+                Environment.ExitCode = ShellExitCode.UsageError;
                 return;
             }
 
             var o = new CosmosShellOptions
             {
+                Output = parseResult.GetValueForOption(optionMap.Output),
+                Quiet = parseResult.GetValueForOption(optionMap.Quiet),
                 ColorSystem = parseResult.GetValueForOption(optionMap.ColorSystem),
                 ExecuteAndQuit = parseResult.GetValueForOption(optionMap.ExecuteAndQuit),
                 ExecuteAndContinue = parseResult.GetValueForOption(optionMap.ExecuteAndContinue),
@@ -94,6 +116,7 @@ internal class Program
                 ConnectSubscription = parseResult.GetValueForOption(optionMap.ConnectSubscription),
                 ConnectResourceGroup = parseResult.GetValueForOption(optionMap.ConnectResourceGroup),
                 ConnectVSCodeCredential = parseResult.GetValueForOption(optionMap.ConnectVSCodeCredential),
+                ConnectAzureCli = parseResult.GetValueForOption(optionMap.ConnectAzureCli),
                 StartLspServer = parseResult.GetValueForOption(optionMap.StartLspServer),
                 LspStdio = parseResult.GetValueForOption(optionMap.LspStdio),
                 Verbose = parseResult.GetValueForOption(optionMap.Verbose),
@@ -107,6 +130,16 @@ internal class Program
             {
                 var mcpValue = parseResult.GetValueForOption(optionMap.McpPort);
                 o.McpPort = mcpValue ?? DefaultMcpPort;
+            }
+
+            // --diagnostics supports an optional value: when present without a path,
+            // logging is written to a timestamped file in the config directory.
+            var diagnosticsResult = parseResult.FindResultFor(optionMap.Diagnostics);
+            if (diagnosticsResult is not null)
+            {
+                o.EnableDiagnostics = true;
+                var diagnosticsValue = parseResult.GetValueForOption(optionMap.Diagnostics);
+                o.DiagnosticsPath = string.IsNullOrWhiteSpace(diagnosticsValue) ? null : diagnosticsValue;
             }
 
             // --otel supports an optional value: when present without an endpoint,
@@ -127,9 +160,21 @@ internal class Program
                 if (!string.IsNullOrWhiteSpace(o.OtlpEndpoint)
                     && !Uri.TryCreate(o.OtlpEndpoint, UriKind.Absolute, out _))
                 {
-                    Environment.ExitCode = 1;
-                    ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                        "otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint));
+                    Environment.ExitCode = ShellExitCode.UsageError;
+                    var msg = MessageService.GetArgsString(
+                        "otel-error-invalid-endpoint", "endpoint", o.OtlpEndpoint);
+                    var inMachineMode = OutputPolicy.IsMachineMode(
+                        o.Output, o.Quiet, !string.IsNullOrWhiteSpace(o.ExecuteAndQuit));
+
+                    if (inMachineMode)
+                    {
+                        WriteErrorLine(System.Text.Json.JsonSerializer.Serialize(new { status = "error", error = msg }));
+                    }
+                    else
+                    {
+                        ShellInterpreter.WriteLine(msg);
+                    }
+
                     return;
                 }
             }
@@ -144,14 +189,54 @@ internal class Program
 
             if (!string.IsNullOrWhiteSpace(o.ExecuteAndQuit) && !string.IsNullOrWhiteSpace(o.ExecuteAndContinue))
             {
-                Environment.ExitCode = 1;
-                ShellInterpreter.WriteLine(MessageService.GetString("error-mutually-exclusive-options"));
+                Environment.ExitCode = ShellExitCode.UsageError;
+                var inMachineMode = OutputPolicy.IsMachineMode(
+                    o.Output, o.Quiet, !string.IsNullOrWhiteSpace(o.ExecuteAndQuit));
+
+                if (inMachineMode)
+                {
+                    var errObj = new
+                    {
+                        status = "error",
+                        error = MessageService.GetString("error-mutually-exclusive-options"),
+                    };
+                    WriteErrorLine(System.Text.Json.JsonSerializer.Serialize(errObj));
+                }
+                else
+                {
+                    ShellInterpreter.WriteLine(MessageService.GetString("error-mutually-exclusive-options"));
+                }
+
                 return;
             }
 
             var executeAndQuitCommand = string.IsNullOrWhiteSpace(o.ExecuteAndQuit) ? null : o.ExecuteAndQuit;
             var executeAndContinueCommand = string.IsNullOrWhiteSpace(o.ExecuteAndContinue) ? null : o.ExecuteAndContinue;
             var explicitCommand = executeAndContinueCommand ?? executeAndQuitCommand;
+
+            if (string.IsNullOrWhiteSpace(o.Output) && !string.IsNullOrWhiteSpace(executeAndQuitCommand))
+            {
+                o.Output = "json";
+            }
+
+            var startupMachineMode = OutputPolicy.IsMachineMode(
+                o.Output, o.Quiet, !string.IsNullOrWhiteSpace(executeAndQuitCommand));
+
+            void WriteStartupError(string message)
+            {
+                if (startupMachineMode)
+                {
+                    var errObj = new
+                    {
+                        status = "error",
+                        error = message,
+                    };
+                    WriteErrorLine(System.Text.Json.JsonSerializer.Serialize(errObj));
+                    return;
+                }
+
+                AnsiConsole.WriteLine(message);
+            }
 
             if (o.ClearHistory)
             {
@@ -160,20 +245,50 @@ internal class Program
                     File.Delete(ShellInterpreter.Instance.HistoryFile);
                 }
 
-                ShellInterpreter.WriteLine(MessageService.GetString("shell-hisory_file_deleted"));
+                if (!startupMachineMode)
+                {
+                    ShellInterpreter.WriteLine(MessageService.GetString("shell-hisory_file_deleted"));
+                }
+
                 return;
             }
 
-            AnsiConsole.Profile.Capabilities.ColorSystem = o.ColorSystem switch
+            var colorSystemVal = o.ColorSystem;
+            if (startupMachineMode)
+            {
+                colorSystemVal = 0; // Force NoColors in machine mode
+                o.Quiet = true; // Suppress informational messages to keep output clean
+            }
+
+            AnsiConsole.Profile.Capabilities.ColorSystem = colorSystemVal switch
             {
                 1 => ColorSystem.Standard,
                 2 => ColorSystem.TrueColor,
                 _ => ColorSystem.NoColors,
             };
 
-            ApplyTheme(o.Theme);
+            ApplyTheme(o.Theme, startupMachineMode);
+
+            if (startupMachineMode)
+            {
+                // Keep machine-mode stdout deterministic even if a command
+                // accidentally writes via AnsiConsole instead of command state output.
+                AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+                {
+                    Ansi = AnsiSupport.No,
+                    ColorSystem = ColorSystemSupport.NoColors,
+                    Out = new AnsiConsoleOutput(TextWriter.Null),
+                });
+            }
 
             ShellInterpreter.Instance.Options = o;
+
+            // Enable diagnostic logging before connecting so the startup --connect
+            // event is captured in the log.
+            if (o.EnableDiagnostics)
+            {
+                ShellInterpreter.Instance.EnableDiagnostics(o.DiagnosticsPath);
+            }
 
             // Enable distributed tracing before any CosmosClient is created so the
             // Azure SDK pipeline emits a sampled W3C traceparent on its requests.
@@ -188,6 +303,7 @@ internal class Program
                 var connectToken = connectTokenSource.Token;
                 try
                 {
+                    var credentialMethod = ShellInterpreter.ResolveCredentialMethod(o.ConnectVSCodeCredential, o.ConnectAzureCli);
                     await ShellInterpreter.Instance.ConnectAsync(
                         o.ConnectionString,
                         o.ConnectHint,
@@ -195,7 +311,7 @@ internal class Program
                         tenantId: o.ConnectTenant,
                         authorityHost: o.ConnectAuthorityHost,
                         managedIdentityClientId: o.ConnectManagedIdentity,
-                        useVSCodeCredential: o.ConnectVSCodeCredential,
+                        credentialMethod: credentialMethod,
                         subscriptionId: o.ConnectSubscription,
                         resourceGroupName: o.ConnectResourceGroup,
                         token: connectToken);
@@ -206,14 +322,32 @@ internal class Program
                 }
                 catch (Exception ex)
                 {
-                    Environment.ExitCode = 1;
-                    if (ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id, out var permission))
+                    Environment.ExitCode = ShellExitCode.FromException(ex);
+
+                    var inMachineMode = OutputPolicy.IsMachineMode(
+                        o.Output, o.Quiet, !string.IsNullOrWhiteSpace(o.ExecuteAndQuit));
+
+                    if (!inMachineMode
+                        && ConnectCommand.TryGetPrincipalIdFromRbacException(ex, out var id, out var permission))
                     {
                         ConnectCommand.AskForRBacPermissions(id ?? string.Empty, permission ?? string.Empty);
                         return;
                     }
 
-                    ShellInterpreter.WriteLine(ex.Message);
+                    if (inMachineMode)
+                    {
+                        var errObj = new
+                        {
+                            status = "error",
+                            error = ex.Message,
+                        };
+                        WriteErrorLine(System.Text.Json.JsonSerializer.Serialize(errObj));
+                    }
+                    else
+                    {
+                        ShellInterpreter.WriteConnectionError(ex, o.Verbose);
+                    }
+
                     return;
                 }
             }
@@ -225,8 +359,8 @@ internal class Program
             {
                 if (mcpPort <= 0)
                 {
-                    AnsiConsole.WriteLine(MessageService.GetString("mcp-error-invalid-port"));
-                    Environment.ExitCode = 1;
+                    WriteStartupError(MessageService.GetString("mcp-error-invalid-port"));
+                    Environment.ExitCode = ShellExitCode.UsageError;
                     return;
                 }
 
@@ -236,8 +370,8 @@ internal class Program
                 }
                 catch (Exception ex)
                 {
-                    AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-creating-server", "message", ex.Message));
-                    Environment.ExitCode = 1;
+                    WriteStartupError(MessageService.GetArgsString("mcp-error-creating-server", "message", ex.Message));
+                    Environment.ExitCode = ShellExitCode.GeneralFailure;
                     return;
                 }
 
@@ -254,8 +388,8 @@ internal class Program
                         }
                         catch (Exception ex)
                         {
-                            AnsiConsole.WriteLine(MessageService.GetArgsString("mcp-error-server-failed-start", "message", ex.Message));
-                            Environment.ExitCode = 1;
+                            WriteStartupError(MessageService.GetArgsString("mcp-error-server-failed-start", "message", ex.Message));
+                            Environment.ExitCode = ShellExitCode.GeneralFailure;
                         }
                     });
                 }
@@ -270,7 +404,7 @@ internal class Program
                     var state = await ShellInterpreter.Instance.ExecuteCommandAsync(script, default);
                     if (state.IsError)
                     {
-                        Environment.ExitCode = 1;
+                        Environment.ExitCode = ShellExitCode.FromCommandState(state);
                         if (executeAndContinueCommand is null)
                         {
                             await StopHostAsync(host, hostTask);
@@ -294,7 +428,7 @@ internal class Program
                 var state = await ShellInterpreter.Instance.ExecuteCommandAsync(explicitCommand, default);
                 if (state.IsError)
                 {
-                    Environment.ExitCode = 1;
+                    Environment.ExitCode = ShellExitCode.FromCommandState(state);
                     if (executeAndContinueCommand is null)
                     {
                         await StopHostAsync(host, hostTask);
@@ -430,6 +564,37 @@ internal class Program
             getDefaultValue: () => 2,
             description: MessageService.GetString("help-ColorSystem"));
 
+        var output = new Option<string?>(
+            aliases: ["--output", "-o"],
+            parseArgument: argResult =>
+            {
+                if (argResult.Tokens.Count == 0)
+                {
+                    return null;
+                }
+
+                var token = argResult.Tokens[0].Value;
+                if (OutputFormats.TryParse(token, out var format))
+                {
+                    return format switch
+                    {
+                        OutputFormat.JSon => "json",
+                        OutputFormat.CSV => "csv",
+                        OutputFormat.Table => "table",
+                        _ => "user",
+                    };
+                }
+
+                argResult.ErrorMessage = MessageService.GetString(
+                    "error-invalid_output_format",
+                    new Dictionary<string, object> { { "format", token } });
+                return null;
+            },
+            description: MessageService.GetString("help-OutputFormat"));
+        var quiet = new Option<bool>(
+            aliases: ["--quiet", "-q"],
+            description: MessageService.GetString("help-Quiet"));
+
         var executeAndQuit = new Option<string?>("-c", MessageService.GetString("help-ExecuteAndQuit"));
         var executeAndContinue = new Option<string?>("-k", MessageService.GetString("help-ExecuteAndContinue"));
 
@@ -471,6 +636,7 @@ internal class Program
         {
             IsHidden = true,
         };
+        var connectAzureCli = new Option<bool>("--connect-azure-cli", MessageService.GetString("help-ConnectAzureCli"));
 
         var mcpPort = new Option<int?>("--mcp", MessageService.GetString("help-McpPort"))
         {
@@ -484,6 +650,10 @@ internal class Program
         };
         var verbose = new Option<bool>("--verbose", MessageService.GetString("help-Verbose"));
         var theme = new Option<string?>("--theme", MessageService.GetString("help-Theme"));
+        var diagnostics = new Option<string?>("--diagnostics", MessageService.GetString("help-Diagnostics"))
+        {
+            Arity = ArgumentArity.ZeroOrOne,
+        };
 
         var otel = new Option<string?>("--otel", MessageService.GetString("help-Otel"))
         {
@@ -492,6 +662,8 @@ internal class Program
 
         var root = new RootCommand("Cosmos DB Shell")
         {
+            output,
+            quiet,
             colorSystem,
             executeAndQuit,
             executeAndContinue,
@@ -505,15 +677,19 @@ internal class Program
             connectSubscription,
             connectResourceGroup,
             connectVSCodeCredential,
+            connectAzureCli,
             mcpPort,
             startLspServer,
             lspStdio,
             verbose,
             theme,
+            diagnostics,
             otel,
         };
 
         var map = new OptionMap(
+            output,
+            quiet,
             colorSystem,
             executeAndQuit,
             executeAndContinue,
@@ -527,14 +703,21 @@ internal class Program
             connectSubscription,
             connectResourceGroup,
             connectVSCodeCredential,
+            connectAzureCli,
             mcpPort,
             startLspServer,
             lspStdio,
             verbose,
             theme,
+            diagnostics,
             otel);
 
         return (root, map);
+    }
+
+    private static void WriteErrorLine(string message)
+    {
+        Console.Error.WriteLine(message);
     }
 
     private static string BuildHelpText()
@@ -558,6 +741,7 @@ internal class Program
             [map.ConnectResourceGroup] = "<name>",
             [map.McpPort] = "[<port>]",
             [map.Theme] = "<name>",
+            [map.Diagnostics] = "[<path>]",
             [map.Otel] = "[<endpoint>]",
         };
 
@@ -609,7 +793,7 @@ internal class Program
     /// environment variable, then the built-in default. Unknown names emit a warning
     /// to standard output and fall back to the default profile.
     /// </summary>
-    private static void ApplyTheme(string? themeFromCli)
+    private static void ApplyTheme(string? themeFromCli, bool suppressStartupWarnings)
     {
         // Always scan the user themes directory so file-loaded themes are visible
         // to --theme, the COSMOSDB_SHELL_THEME env var, and the in-shell `theme`
@@ -619,7 +803,10 @@ internal class Program
         registry.LoadFromDirectory(ThemeFile.DefaultUserThemesDirectory());
         foreach (var warning in registry.Warnings)
         {
-            ShellInterpreter.WriteLine(warning);
+            if (!suppressStartupWarnings)
+            {
+                ShellInterpreter.WriteLine(warning);
+            }
         }
 
         var requested = !string.IsNullOrWhiteSpace(themeFromCli)
@@ -633,18 +820,23 @@ internal class Program
 
         if (!ThemeProfiles.TryGet(requested, out var profile))
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                "warning-unknown-theme",
-                "name",
-                requested,
-                "themes",
-                string.Join(", ", registry.All.Keys)));
+            if (!suppressStartupWarnings)
+            {
+                ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                    "warning-unknown-theme",
+                    "name",
+                    requested,
+                    "themes",
+                    string.Join(", ", registry.All.Keys)));
+            }
         }
 
         Theme.Apply(profile);
     }
 
     private sealed record OptionMap(
+        Option<string?> Output,
+        Option<bool> Quiet,
         Option<int> ColorSystem,
         Option<string?> ExecuteAndQuit,
         Option<string?> ExecuteAndContinue,
@@ -658,11 +850,13 @@ internal class Program
         Option<string?> ConnectSubscription,
         Option<string?> ConnectResourceGroup,
         Option<bool> ConnectVSCodeCredential,
+        Option<bool> ConnectAzureCli,
         Option<int?> McpPort,
         Option<bool> StartLspServer,
         Option<bool> LspStdio,
         Option<bool> Verbose,
         Option<string?> Theme,
+        Option<string?> Diagnostics,
         Option<string?> Otel);
 
     /// <summary>
@@ -706,6 +900,10 @@ internal class Program
 
     public class CosmosShellOptions
     {
+        public string? Output { get; set; }
+
+        public bool Quiet { get; set; }
+
         public int ColorSystem { get; set; } = 2;
 
         public string? ExecuteAndQuit { get; set; }
@@ -732,6 +930,8 @@ internal class Program
 
         public bool ConnectVSCodeCredential { get; set; }
 
+        public bool ConnectAzureCli { get; set; }
+
         public int? McpPort { get; set; }
 
         public bool StartLspServer { get; set; }
@@ -741,6 +941,10 @@ internal class Program
         public bool Verbose { get; set; }
 
         public string? Theme { get; set; }
+
+        public bool EnableDiagnostics { get; set; }
+
+        public string? DiagnosticsPath { get; set; }
 
         public bool EnableTracing { get; set; }
 
