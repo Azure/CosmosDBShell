@@ -896,7 +896,7 @@ internal class ExpressionParser
                             var rawSlice = this.lexer.RawInput.Substring(rawStart, rawEnd - rawStart);
                             var rawLexer = new Lexer(rawSlice, rawStartOuter);
                             var rawParser = new ExpressionParser(rawLexer);
-                            var expr = rawParser.ParseExpression();
+                            var expr = this.ValidateInterpolatedExpression(rawParser, rawParser.ParseExpression());
 
                             if (rawLexer.Errors.Count > 0)
                             {
@@ -915,7 +915,7 @@ internal class ExpressionParser
                     var innerOffset = OuterPos(startExprPos);
                     var exprLexer = new Lexer(exprContent, innerOffset);
                     var exprParser = new ExpressionParser(exprLexer);
-                    var expr2 = exprParser.ParseExpression();
+                    var expr2 = this.ValidateInterpolatedExpression(exprParser, exprParser.ParseExpression());
 
                     if (exprLexer.Errors.Count > 0)
                     {
@@ -987,6 +987,28 @@ internal class ExpressionParser
         }
 
         return new InterpolatedStringExpression(token, expressions);
+    }
+
+    private Expression ValidateInterpolatedExpression(ExpressionParser parser, Expression expression)
+    {
+        if (!parser.IsAtEnd)
+        {
+            var unexpected = parser.Current!;
+            parser.ReportError(
+                MessageService.GetArgsString("expression_error_unexpected_token", "type", unexpected.Type.ToString(), "value", unexpected.Value),
+                unexpected);
+            return new ErrorExpression(unexpected.Start, unexpected.Length);
+        }
+
+        var finder = new CommandExpressionFinder();
+        expression.Accept(finder);
+        if (finder.Command != null)
+        {
+            parser.ReportError(MessageService.GetString("expression_error_command_in_interpolation"), finder.Command.CommandToken);
+            return new ErrorExpression(finder.Command.Start, finder.Command.Length);
+        }
+
+        return expression;
     }
 
     private JsonExpression ParseJsonExpression()
@@ -1623,5 +1645,23 @@ internal class ExpressionParser
         }
 
         return null;
+    }
+
+    private sealed class CommandExpressionFinder : AstVisitor
+    {
+        public CommandExpression? Command { get; private set; }
+
+        public override void Visit(CommandExpression commandExpression)
+        {
+            this.Command ??= commandExpression;
+        }
+
+        public override void Visit(JsonExpression jsonExpression)
+        {
+            foreach (var value in jsonExpression.Properties.Values)
+            {
+                value.Accept(this);
+            }
+        }
     }
 }

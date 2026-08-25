@@ -1032,6 +1032,7 @@ expression_error_invalid_json = Invalid JSON: {$message}
 expression_error_expected_comma_or_bracket = Expected ',' or ']' in JSON array (got '{$token}')
 expression_error_expected_property_name = Expected property name in JSON object, but got '{ $token }'
 expression_error_expected_comma_or_brace = Expected ',' or '{"}"}' in JSON object, but got '{ $token }'
+expression_error_command_in_interpolation = Commands are not allowed inside interpolated string expressions.
 
 statement_error_expected_after_pipe = Expected statement after pipe '|'
 statement_error_expected_if = Expected 'if'

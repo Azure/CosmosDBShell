@@ -8,7 +8,7 @@
 
 ### Breaking changes
 
-- **String interpolation now requires the explicit `$"..."` prefix.** In ordinary double-quoted strings, `$name` and `$(command)` are literal text and are no longer evaluated — previously any `"..."` string containing `$` was interpolated, which meant a `$(...)` sequence embedded in an otherwise ordinary string was executed as a command. Scripts that relied on `"Hello $name"` must be changed to `$"Hello $name"`; this change is silent, so review scripts that build strings from `$` values. Inside an interpolated string, `\$` now escapes a literal dollar sign. Ordinary double-quoted strings additionally accept `\uXXXX` escapes. See [programming](docs/programming.md).
+- **String interpolation now requires the explicit `$"..."` prefix.** In ordinary double-quoted strings, `$name` and `$(...)` are literal text and are no longer evaluated — previously any `"..."` string containing `$` was interpolated. Scripts that relied on `"Hello $name"` must be changed to `$"Hello $name"`; this change is silent, so review scripts that build strings from `$` values. Inside an interpolated string, `$(...)` evaluates a complete expression, but command expressions are rejected; `\$` escapes a literal dollar sign. Ordinary double-quoted strings additionally accept `\uXXXX` escapes. See [programming](docs/programming.md).
 
 ### Fixes
 

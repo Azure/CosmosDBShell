@@ -220,6 +220,46 @@ namespace CosmosShell.Tests.Parser
         }
 
         [Fact]
+        public void ParseInterpolatedString_CommandExpression_ReportsError()
+        {
+            var result = TryParse("$\"Result: $((echo hello))\"");
+
+            Assert.True(result.ErrorCount > 0);
+            var interpolated = Assert.IsType<InterpolatedStringExpression>(result.Expr);
+            Assert.IsType<ErrorExpression>(interpolated.Expressions[1]);
+        }
+
+        [Fact]
+        public void ParseInterpolatedString_CommandNestedInExpression_ReportsError()
+        {
+            var result = TryParse("$\"Result: $(1 + (echo hello))\"");
+
+            Assert.True(result.ErrorCount > 0);
+            var interpolated = Assert.IsType<InterpolatedStringExpression>(result.Expr);
+            Assert.IsType<ErrorExpression>(interpolated.Expressions[1]);
+        }
+
+        [Fact]
+        public void ParseInterpolatedString_CommandNestedInJson_ReportsError()
+        {
+            var result = TryParse("$\"Result: $({ value: (echo hello) })\"");
+
+            Assert.True(result.ErrorCount > 0);
+            var interpolated = Assert.IsType<InterpolatedStringExpression>(result.Expr);
+            Assert.IsType<ErrorExpression>(interpolated.Expressions[1]);
+        }
+
+        [Fact]
+        public void ParseInterpolatedString_TrailingExpressionTokens_ReportsError()
+        {
+            var result = TryParse("$\"Result: $(echo hello)\"");
+
+            Assert.True(result.ErrorCount > 0);
+            var interpolated = Assert.IsType<InterpolatedStringExpression>(result.Expr);
+            Assert.IsType<ErrorExpression>(interpolated.Expressions[1]);
+        }
+
+        [Fact]
         public async Task EvaluateInterpolatedString_ComplexExpression_EvaluatesCorrectly()
         {
             var interpreter = new ShellInterpreter();

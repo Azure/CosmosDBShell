@@ -33,7 +33,7 @@ This document covers scripts and custom commands in Cosmos Shell.
 | Double-quoted | `"text $name"` | Literal `$`; escapes: `\n`, `\r`, `\t`, `\\`, `\"`, `\uXXXX` |
 | Interpolated | `$"Hello $name"` | Variable and expression substitution with `$var` and `$(...)` |
 
-Interpolation is enabled only by the explicit `$"..."` prefix. Within an interpolated string, escape a literal dollar sign as `\$`. In ordinary double-quoted strings, `$name` and `$(command)` remain literal text and are never evaluated.
+Interpolation is enabled only by the explicit `$"..."` prefix. Use `$(...)` for expressions, for example `$"Total: $($foo + $bar)"`. The complete contents must form an expression, and command expressions are not allowed inside an interpolated string. Within an interpolated string, escape a literal dollar sign as `\$`. In ordinary double-quoted strings, `$name` and `$(...)` remain literal text and are never evaluated.
 
 ### JSON Paths
 
