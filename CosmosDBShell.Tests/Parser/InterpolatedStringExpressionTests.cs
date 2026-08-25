@@ -50,6 +50,28 @@ namespace CosmosShell.Tests.Parser
             Assert.Equal("Hello World", text.Text);
         }
 
+        [Theory]
+        [InlineData("\"$name\"", "$name")]
+        [InlineData("\"$(echo injected)\"", "$(echo injected)")]
+        public async Task EvaluateDoubleQuotedString_DollarSyntax_RemainsLiteral(string input, string expected)
+        {
+            var result = await EvaluateExpressionAsync(input);
+
+            var text = Assert.IsType<ShellText>(result);
+            Assert.Equal(expected, text.Text);
+        }
+
+        [Theory]
+        [InlineData("$\"literal \\$name\"", "literal $name")]
+        [InlineData("$\"literal \\$(echo injected)\"", "literal $(echo injected)")]
+        public async Task EvaluateInterpolatedString_EscapedDollar_RemainsLiteral(string input, string expected)
+        {
+            var result = await EvaluateExpressionAsync(input);
+
+            var text = Assert.IsType<ShellText>(result);
+            Assert.Equal(expected, text.Text);
+        }
+
         [Fact]
         public void ParseInterpolatedString_SingleVariable_CreatesVariableExpression()
         {

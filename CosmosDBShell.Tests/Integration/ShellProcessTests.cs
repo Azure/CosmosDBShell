@@ -100,6 +100,36 @@ public class ShellProcessTests
         Assert.Contains("quit-after-this", result.StdOut);
     }
 
+    [Theory]
+    [InlineData("$name")]
+    [InlineData("$(echo injected)")]
+    public async Task ExecuteAndQuit_DoubleQuotedDollarSyntax_RemainsLiteral(string value)
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["-c", $"echo \"{value}\""],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(value, result.StdOut, StringComparison.Ordinal);
+        Assert.Empty(result.StdErr.Trim());
+    }
+
+    [Theory]
+    [InlineData("$name")]
+    [InlineData("$(echo injected)")]
+    public async Task ExecuteAndQuit_InterpolatedStringEscapedDollar_RemainsLiteral(string value)
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["-c", $"echo $\"literal \\{value}\""],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains($"literal {value}", result.StdOut, StringComparison.Ordinal);
+        Assert.Empty(result.StdErr.Trim());
+    }
+
     [Fact]
     public async Task VersionOption_PrintsVersionAndExitsZero()
     {

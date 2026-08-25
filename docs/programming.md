@@ -30,8 +30,10 @@ This document covers scripts and custom commands in Cosmos Shell.
 | Type | Syntax | Notes |
 | ------ | ------ | ----- |
 | Single-quoted | `'text'` | Literal, no escapes. Double `'` for quote: `'it''s'` |
-| Double-quoted | `"text"` | Escapes: `\n`, `\r`, `\t`, `\\`, `\"` |
-| Interpolated | `$"Hello $name"` | Variable substitution with `$var` |
+| Double-quoted | `"text $name"` | Literal `$`; escapes: `\n`, `\r`, `\t`, `\\`, `\"` |
+| Interpolated | `$"Hello $name"` | Variable and expression substitution with `$var` and `$(...)` |
+
+Interpolation is enabled only by the explicit `$"..."` prefix. Within an interpolated string, escape a literal dollar sign as `\$`. In ordinary double-quoted strings, `$name` and `$(command)` remain literal text and are never evaluated.
 
 ### JSON Paths
 
@@ -45,7 +47,7 @@ $.values[0].id      # property and array access
 
 | Type | Example |
 | ------ | ------- |
-| String | `'text'` or `"with $var"` |
+| String | `'text'` or `"literal $var"` |
 | Number | `42`, `3.14` |
 | Boolean | `true`, `false` |
 | Variable | `$name` |
@@ -67,6 +69,7 @@ $.values[0].id      # property and array access
 $name = "value"           # assign
 echo $name                # use
 echo $"Hello $name"       # interpolate
+echo "Hello $name"        # print $name literally
 ```
 
 For script positional parameters, see [Writing and Running Scripts](#writing-and-running-scripts).
