@@ -8,6 +8,7 @@ using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Spectre.Console;
 
@@ -25,13 +26,20 @@ internal class PwdCommand : CosmosCommand
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
         var currentLocation = ShellLocation.GetCurrentLocation(shell.State);
-        AnsiConsole.MarkupLine(ShellLocation.GetCurrentLocationMarkup(shell.State));
 
-        commandState.IsPrinted = true;
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
+            type = "location",
+            database = shell.State switch
+            {
+                ContainerState containerState => containerState.DatabaseName,
+                DatabaseState databaseState => databaseState.DatabaseName,
+                _ => null,
+            },
+            container = shell.State is ContainerState current ? current.ContainerName : null,
             currentLocation,
         }));
+        commandState.RenderUser = () => AnsiConsole.MarkupLine(ShellLocation.GetCurrentLocationMarkup(shell.State));
         return Task.FromResult(commandState);
     }
 }

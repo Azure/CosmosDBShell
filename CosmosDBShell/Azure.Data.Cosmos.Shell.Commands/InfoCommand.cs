@@ -102,7 +102,7 @@ internal class InfoCommand : CosmosCommand
                 {
                     AskForRBacPermissions(id ?? string.Empty, request ?? string.Empty, permission ?? string.Empty);
                     commandState.Result = null;
-                    commandState.IsPrinted = true;
+                    commandState.RenderUser = () => { };
                     return commandState;
                 }
 
@@ -117,32 +117,48 @@ internal class InfoCommand : CosmosCommand
 
     internal static bool ShouldRenderTables(string? format, ShellInterpreter shell, CommandState commandState)
     {
+        var redirected = !string.IsNullOrEmpty(shell.StdOutRedirect);
+
+        OutputFormat effective;
         if (string.IsNullOrWhiteSpace(format))
         {
-            commandState.OutputFormat = OutputFormat.JSon;
-            return string.IsNullOrEmpty(shell.StdOutRedirect);
+            // No local -f: inherit the session default. Leave the state's format unset so
+            // ShellInterpreter.PrintState applies DefaultOutputFormat centrally (honoring a
+            // global -o). This is the single vocabulary/parser shared with the shell.
+            effective = shell.DefaultOutputFormat;
         }
-
-        if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "js", StringComparison.OrdinalIgnoreCase))
+        else if (OutputFormats.TryParse(format, out var parsed))
         {
-            commandState.OutputFormat = OutputFormat.JSon;
-            return false;
+            effective = parsed;
         }
-
-        if (string.Equals(format, "table", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "tbl", StringComparison.OrdinalIgnoreCase))
+        else
         {
-            commandState.OutputFormat = OutputFormat.Table;
-
-            // When stdout is redirected (e.g. `info --format table > out.txt`) the rich
-            // Spectre tables would be written to the console rather than the redirect
-            // target, leaving the file empty. Yield to PrintState so the redirected
-            // output is produced via CommandState.GenerateOutputText() with OutputFormat.Table.
-            return string.IsNullOrEmpty(shell.StdOutRedirect);
+            throw new CommandException(
+                "info",
+                MessageService.GetArgsString("command-info-error-invalid-format", "format", format));
         }
 
-        throw new CommandException(
-            "info",
-            MessageService.GetArgsString("command-info-error-invalid-format", "format", format));
+        // The rich Spectre tables are drawn only for an interactive, human-facing view: the
+        // default/user view or an explicit table request. Redirection, --quiet, and the
+        // structured formats (json, csv) fall through to CommandState.GenerateOutputText().
+        var interactive = !redirected
+            && !shell.IsMachineMode
+            && (effective == OutputFormat.User || effective == OutputFormat.Table);
+
+        if (interactive)
+        {
+            commandState.OutputFormat = OutputFormat.User;
+            return true;
+        }
+
+        // Non-interactive: honor an explicit local format; otherwise defer to the session
+        // default already applied by PrintState.
+        if (!string.IsNullOrWhiteSpace(format))
+        {
+            commandState.OutputFormat = effective;
+        }
+
+        return false;
     }
 
     private static bool TryGetPrincipalIdFromRbacException(Exception e, out string? principalId, out string? request, out string? permission)
@@ -924,7 +940,7 @@ internal class InfoCommand : CosmosCommand
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-        commandState.IsPrinted = renderOutput;
+        commandState.RenderUser = renderOutput ? () => { } : null;
         return commandState;
     }
 
@@ -1012,7 +1028,7 @@ internal class InfoCommand : CosmosCommand
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-        commandState.IsPrinted = renderOutput;
+        commandState.RenderUser = renderOutput ? () => { } : null;
         return commandState;
     }
 
@@ -1055,7 +1071,7 @@ internal class InfoCommand : CosmosCommand
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
-        commandState.IsPrinted = renderOutput;
+        commandState.RenderUser = renderOutput ? () => { } : null;
         return commandState;
     }
 

@@ -30,11 +30,11 @@ public class DataOperationTests : EmulatorFixtureTestBase
         var json = JsonSerializer.Serialize(new { id, name = "test-item" });
         var mkOutput = await ExecuteWithOutputAsync($"mkitem '{json}'");
         var mkJson = JsonDocument.Parse(mkOutput).RootElement;
-        Assert.Equal("success", mkJson.GetProperty("result").GetString());
+        Assert.Equal(1, mkJson.GetProperty("created").GetInt32());
 
         var lsOutput = await ExecuteWithOutputAsync("ls");
         var lsJson = JsonDocument.Parse(lsOutput).RootElement;
-        var items = lsJson.GetProperty("items");
+        var items = lsJson.GetProperty("values");
         Assert.Contains(items.EnumerateArray(), item =>
             item.GetProperty("id").GetString() == id &&
             item.GetProperty("name").GetString() == "test-item");
@@ -51,7 +51,7 @@ public class DataOperationTests : EmulatorFixtureTestBase
 
         var forceOutput = await ExecuteWithOutputAsync($"mkitem --force '{updated}'");
         var forceJson = JsonDocument.Parse(forceOutput).RootElement;
-        Assert.Equal("success", forceJson.GetProperty("result").GetString());
+        Assert.Equal(1, forceJson.GetProperty("replaced").GetInt32());
 
         var output = await ExecuteWithOutputAsync($"print {id} {id}");
         var item = JsonDocument.Parse(output).RootElement;
@@ -70,11 +70,11 @@ public class DataOperationTests : EmulatorFixtureTestBase
 
         var forceOutput = await ExecuteWithOutputAsync($"create item '{forceUpdated}' --force");
         var forceJson = JsonDocument.Parse(forceOutput).RootElement;
-        Assert.Equal("success", forceJson.GetProperty("result").GetString());
+        Assert.Equal(1, forceJson.GetProperty("replaced").GetInt32());
 
         var upsertOutput = await ExecuteWithOutputAsync($"create item '{upsertUpdated}' --upsert");
         var upsertJson = JsonDocument.Parse(upsertOutput).RootElement;
-        Assert.Equal("success", upsertJson.GetProperty("result").GetString());
+        Assert.Equal(1, upsertJson.GetProperty("replaced").GetInt32());
 
         var output = await ExecuteWithOutputAsync($"print {id} {id}");
         var item = JsonDocument.Parse(output).RootElement;
@@ -92,7 +92,7 @@ public class DataOperationTests : EmulatorFixtureTestBase
 
         var replaceOutput = await ExecuteWithOutputAsync($"replace '{updated}'");
         var replaceJson = JsonDocument.Parse(replaceOutput).RootElement;
-        Assert.Equal("success", replaceJson.GetProperty("result").GetString());
+        Assert.Equal(1, replaceJson.GetProperty("replaced").GetInt32());
 
         var output = await ExecuteWithOutputAsync($"print {id} {id}");
         var item = JsonDocument.Parse(output).RootElement;
@@ -144,11 +144,11 @@ public class DataOperationTests : EmulatorFixtureTestBase
 
         var setOutput = await ExecuteWithOutputAsync($"patch set {id} {id} /name after");
         var setJson = JsonDocument.Parse(setOutput).RootElement;
-        Assert.Equal("success", setJson.GetProperty("result").GetString());
+        Assert.True(setJson.GetProperty("patched").GetBoolean());
 
         var incrOutput = await ExecuteWithOutputAsync($"patch incr {id} {id} /count 2");
         var incrJson = JsonDocument.Parse(incrOutput).RootElement;
-        Assert.Equal("success", incrJson.GetProperty("result").GetString());
+        Assert.True(incrJson.GetProperty("patched").GetBoolean());
 
         var output = await ExecuteWithOutputAsync($"print {id} {id}");
         var item = JsonDocument.Parse(output).RootElement;
@@ -259,7 +259,7 @@ public class DataOperationTests : EmulatorFixtureTestBase
 
             var output = await ExecuteWithOutputAsync($"query \"SELECT * FROM c WHERE c.id = '{id}'\"");
             var queryJson = JsonDocument.Parse(output).RootElement;
-            var items = queryJson.GetProperty("items");
+            var items = queryJson.GetProperty("values");
             Assert.Equal(1, items.GetArrayLength());
             Assert.Equal("replaced", items[0].GetProperty("name").GetString());
         }
@@ -298,7 +298,7 @@ public class DataOperationTests : EmulatorFixtureTestBase
 
         var output = await ExecuteWithOutputAsync($"query \"SELECT * FROM c WHERE c.id = '{id}'\"");
         var queryJson = JsonDocument.Parse(output).RootElement;
-        var items = queryJson.GetProperty("items");
+        var items = queryJson.GetProperty("values");
         Assert.Equal(1, items.GetArrayLength());
         Assert.Equal(id, items[0].GetProperty("id").GetString());
         Assert.Equal("for-query", items[0].GetProperty("name").GetString());
@@ -329,7 +329,7 @@ public class DataOperationTests : EmulatorFixtureTestBase
 
         var lsOutput = await ExecuteWithOutputAsync("ls");
         var lsJson = JsonDocument.Parse(lsOutput).RootElement;
-        var items = lsJson.GetProperty("items");
+        var items = lsJson.GetProperty("values");
         Assert.DoesNotContain(items.EnumerateArray(), item => item.GetProperty("id").GetString() == id);
     }
 }

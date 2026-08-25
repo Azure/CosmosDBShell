@@ -4,6 +4,8 @@
 
 namespace CosmosShell.Tests.Parser;
 
+using System;
+using System.IO;
 using System.Threading.Tasks;
 
 using Azure.Data.Cosmos.Shell.Parser;
@@ -128,6 +130,26 @@ public class StatementExecutionTests : TestBase
         Assert.Equal(1, GetInt("a"));
         Assert.Equal(2, GetInt("b"));
         Assert.Equal(3, GetInt("c"));
+    }
+
+    [Fact]
+    public async Task Block_PrintFailure_ReturnsError()
+    {
+        Shell.StdOutRedirect = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "out.txt");
+
+        var state = await RunScriptAsync("{ echo value }");
+
+        Assert.True(state.IsError);
+    }
+
+    [Fact]
+    public async Task Pipe_PrintFailure_ReturnsError()
+    {
+        Shell.StdOutRedirect = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "out.txt");
+
+        var state = await RunScriptAsync("echo value | echo");
+
+        Assert.True(state.IsError);
     }
 
     [Fact]

@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Core;
 
+using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -43,6 +44,8 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly string cfgPath;
 
+    private readonly string welcomeMarkerFile;
+
     private readonly HashSet<string> diagnosticSecrets = new(StringComparer.Ordinal);
 
     private TokenCredential? activeCredential;
@@ -61,21 +64,25 @@ public partial class ShellInterpreter : IDisposable
 
     private List<string> history;
 
-    internal ShellInterpreter()
+    internal ShellInterpreter(string? configPath = null)
     {
         this.State = new DisconnectedState();
 
         // editor.KeyBindings.Add<ClearInputCommand>(ConsoleKey.Escape);
         // TODO: Support selection commands?
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        this.cfgPath = Path.Combine(appData, "CosmosDBShell");
+        var envConfigDir = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_CONFIG_DIR")?.Trim();
+        this.cfgPath = configPath
+            ?? (!string.IsNullOrWhiteSpace(envConfigDir) ? envConfigDir : Path.Join(appData, "CosmosDBShell"));
         this.history = [];
         if (!Directory.Exists(this.cfgPath))
         {
             Directory.CreateDirectory(this.cfgPath);
         }
 
-        this.HistoryFile = Path.Combine(this.cfgPath, "cmd_history");
+        this.HistoryFile = Path.Join(this.cfgPath, "cmd_history");
+        this.welcomeMarkerFile = Path.Join(this.cfgPath, "welcome_seen");
+
         if (File.Exists(this.HistoryFile))
         {
             foreach (var line in File.ReadAllLines(this.HistoryFile))
@@ -154,6 +161,11 @@ public partial class ShellInterpreter : IDisposable
 
     internal string HistoryFile { get; private set; }
 
+    internal string WelcomeMarkerFile => this.welcomeMarkerFile;
+
+    internal Func<bool> IsInteractiveSession { get; set; } =
+        static () => !Console.IsInputRedirected && !Console.IsOutputRedirected;
+
     internal IReadOnlyList<string> History => this.history;
 
     internal string? LastBuffer { get; set; }
@@ -185,6 +197,49 @@ public partial class ShellInterpreter : IDisposable
     internal Queue<VariableContainer> VariableContainers { get; } = new();
 
     /// <summary>
+    /// Gets a value indicating whether the shell is running in machine mode, where
+    /// interactive rendering (friendly views, ANSI colors, banners) is suppressed in
+    /// favor of deterministic structured output. Machine mode is entered via
+    /// <c>--quiet</c>, a structured output format (<c>--output json</c> or <c>--output csv</c>),
+    /// or an execute-and-quit (<c>-c</c>) invocation. The human-facing <c>table</c> and
+    /// <c>user</c> formats are not machine mode. See <see cref="OutputPolicy"/>.
+    /// </summary>
+    internal bool IsMachineMode => OutputPolicy.IsMachineMode(
+        this.Options?.Output,
+        this.Options?.Quiet == true,
+        !string.IsNullOrWhiteSpace(this.Options?.ExecuteAndQuit));
+
+    /// <summary>
+    /// Gets the session default <see cref="OutputFormat"/>, resolved from the global
+    /// <c>--output</c> option and then the <c>COSMOSDB_SHELL_FORMAT</c> environment variable.
+    /// When neither supplies a format it falls back to <see cref="OutputFormat.JSon"/> in
+    /// machine mode and <see cref="OutputFormat.User"/> interactively. <see cref="PrintState"/>
+    /// applies this to any command result that did not explicitly choose a format.
+    /// </summary>
+    /// <remarks>
+    /// The environment variable supplies a format only; unlike <c>--output</c> it never enters
+    /// machine mode, so exporting it in a shell profile cannot silently strip banners and colors
+    /// from interactive sessions. An unrecognized value is ignored instead of failing commands.
+    /// </remarks>
+    internal OutputFormat DefaultOutputFormat
+    {
+        get
+        {
+            if (OutputFormats.TryParse(this.Options?.Output, out var format))
+            {
+                return format;
+            }
+
+            if (OutputFormats.TryParse(Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"), out var envFormat))
+            {
+                return envFormat;
+            }
+
+            return this.IsMachineMode ? OutputFormat.JSon : OutputFormat.User;
+        }
+    }
+
+    /// <summary>
     /// Create a new instance of the <see cref="ShellInterpreter"/> class.
     /// </summary>
     /// <returns>A new instance of the <see cref="ShellInterpreter"/> class.</returns>
@@ -200,6 +255,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="par">An array of objects to format.</param>
     public static void WriteLine(string message, params object[] par)
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.WriteLine(message, par);
     }
 
@@ -209,6 +269,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="message">The message to write.</param>
     public static void WriteLine(string message)
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.WriteLine(message);
     }
 
@@ -217,6 +282,11 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     public static void WriteLine()
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.WriteLine();
     }
 
@@ -227,6 +297,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="par">An array of objects to format.</param>
     public static void Write(string message, params object[] par)
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.Write(message, par);
     }
 
@@ -236,6 +311,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="message">The message to write.</param>
     public static void Write(string message)
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.Write(message);
     }
 
@@ -361,7 +441,6 @@ public partial class ShellInterpreter : IDisposable
     {
         using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
         var state = new CommandState();
-        state.SetFormat(Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
 
         // Snapshot redirect state so a '>' / '2>' on this command does not leak into
         // the next command executed against this interpreter instance.
@@ -578,11 +657,41 @@ public partial class ShellInterpreter : IDisposable
 
     internal void PrintVersion(CommandState? commandState)
     {
+        var isQuiet = this.Options?.Quiet == true;
         var version = GetDisplayVersion(typeof(VersionCommand).Assembly);
+        var port = this.McpPort;
+        var repoUrl = GetRepositoryUrl(typeof(VersionCommand).Assembly);
+
+        if (commandState == null)
+        {
+            // Startup banner: render immediately for interactive users.
+            if (!isQuiet)
+            {
+                RenderVersionBanner(version, port, repoUrl);
+            }
+
+            return;
+        }
+
+        var json = new Dictionary<string, object?>
+        {
+            ["version"] = version,
+            ["mcpEnabled"] = port != null,
+            ["mcpPort"] = port, // will be null if not enabled
+            ["mcpStatus"] = port != null ? "on" : "off",
+            ["repository"] = repoUrl,
+        };
+
+        var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
+        commandState.Result = new ShellJson(jsonElement);
+        commandState.RenderUser = () => RenderVersionBanner(version, port, repoUrl);
+    }
+
+    private static void RenderVersionBanner(string version, int? port, string repoUrl)
+    {
         var versionString = MessageService.GetArgsString("command-version", "version", version);
         AnsiConsole.MarkupLine(versionString);
 
-        var port = this.McpPort;
         if (port != null)
         {
             var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
@@ -593,42 +702,64 @@ public partial class ShellInterpreter : IDisposable
             AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
         }
 
-        var repoUrl = GetRepositoryUrl(typeof(VersionCommand).Assembly);
         if (!string.IsNullOrEmpty(repoUrl))
         {
             var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
             AnsiConsole.MarkupLine(repoString);
         }
+    }
 
-        if (commandState != null)
+    internal void ShowWelcome()
+    {
+        WelcomeScreen.WriteTo(Console.Out);
+    }
+
+    internal bool ShowWelcomeOnFirstRun()
+    {
+        if (!this.IsInteractiveSession())
         {
-            var json = new Dictionary<string, object?>
-            {
-                ["version"] = version,
-                ["mcpEnabled"] = port != null,
-                ["mcpPort"] = port, // will be null if not enabled
-                ["mcpStatus"] = port != null ? "on" : "off",
-                ["repository"] = repoUrl,
-            };
-
-            var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
-            commandState.Result = new ShellJson(jsonElement);
-            commandState.IsPrinted = true;
+            return false;
         }
+
+        if (File.Exists(this.welcomeMarkerFile))
+        {
+            return false;
+        }
+
+        this.ShowWelcome();
+        try
+        {
+            File.WriteAllText(this.welcomeMarkerFile, string.Empty);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
+
+        return true;
+    }
+
+    internal void PrintStartupStatus()
+    {
+        var version = GetDisplayVersion(typeof(VersionCommand).Assembly);
+        var mcpStatus = this.McpPort is int port
+            ? MessageService.GetArgsString("shell-startup-mcp-port", "port", port.ToString())
+            : MessageService.GetString("shell-startup-mcp-off");
+        WriteLine(MessageService.GetArgsString(
+            "shell-startup-status",
+            "version",
+            version,
+            "mcp_status",
+            mcpStatus));
+        WriteLine(MessageService.GetString("shell-startup-preview-warning"));
     }
 
     internal async Task<int> RunAsync()
     {
         var result = 0;
-        this.PrintVersion(null);
-        WriteLine(MessageService.GetString("shell-ready"));
-
-        // First-run hint: if the shell starts without a connection, point users at
-        // the `connect` command. Otherwise users can land at the prompt with no
-        // obvious next step (see issue #81).
-        if (this.State is DisconnectedState)
+        if (!this.ShowWelcomeOnFirstRun())
         {
-            AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("shell-not_connected_hint")));
+            this.PrintStartupStatus();
         }
 
         while (this.IsRunning)
@@ -745,7 +876,7 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
-    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, bool useVSCodeCredential = false, string? subscriptionId = null, string? resourceGroupName = null, CancellationToken token = default)
+    internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, CredentialMethod credentialMethod = CredentialMethod.Default, string? subscriptionId = null, string? resourceGroupName = null, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
 
@@ -769,6 +900,12 @@ public partial class ShellInterpreter : IDisposable
 
         bool hasKey = ParsedDocDBConnectionString.TryParseDocDBConnectionString(connectionString, out var parsedCs) && parsedCs!.HasMasterKey;
 
+        // The connection string can only carry an explicit key here (env-variable and
+        // emulator well-known keys are resolved below and are not user-selected
+        // credentials). Reject contradictory credential selections up front so a
+        // credential the user explicitly asked for is never silently ignored.
+        ValidateCredentialSelection(hasKey, credentialMethod, managedIdentityClientId, tenantId, loginHint);
+
         if (isEmulator)
         {
             // Always route emulator through BuildEmulatorConnectionString to ensure
@@ -781,6 +918,7 @@ public partial class ShellInterpreter : IDisposable
                 var envKey = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_ACCOUNT_KEY");
                 if (!string.IsNullOrEmpty(envKey))
                 {
+                    WriteLine(MessageService.GetString("shell-connect-key-env"));
                     accountKey = envKey;
                 }
             }
@@ -795,6 +933,7 @@ public partial class ShellInterpreter : IDisposable
             if (!string.IsNullOrEmpty(envKey))
             {
                 var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
+                WriteLine(MessageService.GetString("shell-connect-key-env"));
                 connectionString = $"AccountEndpoint={endpoint};AccountKey={envKey};";
                 hasKey = true;
                 this.RegisterDiagnosticSecret(envKey);
@@ -841,12 +980,12 @@ public partial class ShellInterpreter : IDisposable
         // Token-based auth paths
         var requestedMode = mode ?? ConnectionMode.Direct;
         var options = CreateClientOptions(requestedMode);
+        var tokenEndpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
 
         // Step 2: VisualStudioCodeCredential (when launched from VS Code extension)
-        if (client == null && useVSCodeCredential)
+        if (client == null && credentialMethod == CredentialMethod.VSCode)
         {
             WriteLine(MessageService.GetString("shell-connect-vscode-credential-auth"));
-            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
 
             var vscOptions = new VisualStudioCodeCredentialOptions();
             if (!string.IsNullOrWhiteSpace(tenantId))
@@ -860,31 +999,13 @@ public partial class ShellInterpreter : IDisposable
             }
 
             var vscCredential = new VisualStudioCodeCredential(vscOptions);
-            client = new CosmosClient(endpoint, vscCredential, options);
-
-            try
+            if (await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, vscCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: true, token))
             {
-                var vscProps = await ReadAccountAsync(client, token);
-                await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, vscCredential, vscProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
-            {
-                client.Dispose();
-                throw;
-            }
-            catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
-            {
-                client.Dispose();
-                client = null;
-                WriteLine(MessageService.GetString("shell-connect-vscode-credential-fallback"));
-            }
-            catch (Exception)
-            {
-                client?.Dispose();
-                client = null;
-                throw;
-            }
+
+            // VS Code credential unavailable or expired; continue the credential chain.
+            WriteLine(MessageService.GetString("shell-connect-vscode-credential-fallback"));
         }
 
         // Step 3: Static token from COSMOSDB_SHELL_TOKEN environment variable
@@ -892,7 +1013,6 @@ public partial class ShellInterpreter : IDisposable
         if (client == null && !string.IsNullOrEmpty(envToken))
         {
             WriteLine(MessageService.GetString("shell-connect-static-token-auth"));
-            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
             var credential = new StaticTokenCredential(envToken);
             if (credential.HasJwtExpiry)
             {
@@ -901,7 +1021,7 @@ public partial class ShellInterpreter : IDisposable
                 WriteLine(MessageService.GetArgsString("shell-connect-static-token-expiry", "timespan", $"{timeSpan:hh\\:mm\\:ss}", "expiration", credential.ExpiresOn.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")));
             }
 
-            client = new CosmosClient(endpoint, credential, options);
+            client = new CosmosClient(tokenEndpoint, credential, options);
 
             AccountProperties tokenProps;
             try
@@ -928,7 +1048,6 @@ public partial class ShellInterpreter : IDisposable
         if (client == null && !string.IsNullOrWhiteSpace(managedIdentityClientId))
         {
             WriteLine(MessageService.GetArgsString("shell-connect-managed-identity-auth", "clientId", managedIdentityClientId));
-            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
             var miOptions = new ManagedIdentityCredentialOptions(ManagedIdentityId.FromUserAssignedClientId(managedIdentityClientId));
             if (authorityHostUri != null)
             {
@@ -936,33 +1055,15 @@ public partial class ShellInterpreter : IDisposable
             }
 
             var credential = new ManagedIdentityCredential(miOptions);
-            client = new CosmosClient(endpoint, credential, options);
-
-            AccountProperties miProps;
-            try
-            {
-                miProps = await ReadAccountAsync(client, token);
-            }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
-            {
-                client.Dispose();
-                throw;
-            }
-            catch (Exception ex)
-            {
-                client.Dispose();
-                throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
-            }
-
-            await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, credential, miProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
+            await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, credential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: false, token);
             return;
         }
 
-        // Step 5: Entra ID interactive (--tenant or --hint provided)
-        if (client == null && (!string.IsNullOrWhiteSpace(tenantId) || !string.IsNullOrWhiteSpace(loginHint)))
+        // Step 5: Entra ID interactive (--tenant or --hint provided). Skipped when a
+        // specific flag-selected credential is requested (for example --azure-cli),
+        // which has its own dedicated step below and honors --tenant there.
+        if (client == null && credentialMethod != CredentialMethod.AzureCli && (!string.IsNullOrWhiteSpace(tenantId) || !string.IsNullOrWhiteSpace(loginHint)))
         {
-            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
-
             var browserOptions = new InteractiveBrowserCredentialOptions
             {
                 RedirectUri = new Uri(ConnectCommand.EntraRedirectUrl),
@@ -984,71 +1085,66 @@ public partial class ShellInterpreter : IDisposable
 
             WriteLine(MessageService.GetString("shell-connect-browser-auth"));
             var browserCredential = new InteractiveBrowserCredential(browserOptions);
-            client = new CosmosClient(endpoint, browserCredential, options);
-
-            try
+            if (await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, browserCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: true, token))
             {
-                var entraProps = await ReadAccountAsync(client, token);
-                await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, browserCredential, entraProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
                 return;
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
+
+            // Browser auth failed; fall back to device code.
+            WriteLine(MessageService.GetString("shell-connect-devicecode-fallback"));
+            var deviceCodeOptions = new DeviceCodeCredentialOptions
             {
-                client.Dispose();
-                throw;
-            }
-            catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
+                DeviceCodeCallback = (code, cancellationToken) =>
+                {
+                    ShellInterpreter.WriteLine(code.Message);
+                    return Task.CompletedTask;
+                },
+            };
+            if (!string.IsNullOrWhiteSpace(tenantId))
             {
-                // Browser auth failed, fall back to device code
-                WriteLine(MessageService.GetString("shell-connect-devicecode-fallback"));
-                client.Dispose();
-
-                var deviceCodeOptions = new DeviceCodeCredentialOptions
-                {
-                    DeviceCodeCallback = (code, cancellationToken) =>
-                    {
-                        ShellInterpreter.WriteLine(code.Message);
-                        return Task.CompletedTask;
-                    },
-                };
-                if (!string.IsNullOrWhiteSpace(tenantId))
-                {
-                    deviceCodeOptions.TenantId = tenantId;
-                }
-
-                if (authorityHostUri != null)
-                {
-                    deviceCodeOptions.AuthorityHost = authorityHostUri;
-                }
-
-                var deviceCodeCredential = new DeviceCodeCredential(deviceCodeOptions);
-                client = new CosmosClient(endpoint, deviceCodeCredential, options);
-
-                AccountProperties dcProps;
-                try
-                {
-                    dcProps = await ReadAccountAsync(client, token);
-                }
-                catch (OperationCanceledException) when (token.IsCancellationRequested)
-                {
-                    client.Dispose();
-                    throw;
-                }
-                catch (Exception dcEx)
-                {
-                    client.Dispose();
-                    throw new ShellException(MessageService.GetString("error-connection_failed"), dcEx);
-                }
-
-                await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, deviceCodeCredential, dcProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
-                return;
+                deviceCodeOptions.TenantId = tenantId;
             }
+
+            if (authorityHostUri != null)
+            {
+                deviceCodeOptions.AuthorityHost = authorityHostUri;
+            }
+
+            var deviceCodeCredential = new DeviceCodeCredential(deviceCodeOptions);
+            await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, deviceCodeCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: false, token);
+            return;
+        }
+
+        // Step 5.5: Azure CLI credential (deterministic: use the signed-in `az`
+        // identity directly). Placed above DefaultAzureCredential so environments
+        // with a live managed-identity/IMDS endpoint (for example Azure Cloud
+        // Shell) do not silently authenticate as the MSI — which typically lacks
+        // Cosmos data-plane RBAC — instead of the interactive user.
+        if (client == null && credentialMethod == CredentialMethod.AzureCli)
+        {
+            WriteLine(MessageService.GetString("shell-connect-azure-cli-auth"));
+
+            // AzureCliCredentialOptions has no AuthorityHost: the Azure CLI derives
+            // its cloud from `az cloud set`, so --authority-host is ignored here.
+            if (authorityHostUri != null)
+            {
+                WriteLine(MessageService.GetString("shell-connect-azure-cli-authority-host-ignored"));
+            }
+
+            var cliOptions = new AzureCliCredentialOptions();
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                cliOptions.TenantId = tenantId;
+            }
+
+            var cliCredential = new AzureCliCredential(cliOptions);
+            await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, cliCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: false, token);
+            return;
         }
 
         // Step 6: DefaultAzureCredential (endpoint only, or only --authority-host)
         if (client == null)
         {
-            var endpoint = ParsedDocDBConnectionString.ExtractEndpoint(connectionString);
             WriteLine(MessageService.GetString("shell-connect-default-auth"));
             var dacOptions = new DefaultAzureCredentialOptions
             {
@@ -1060,24 +1156,7 @@ public partial class ShellInterpreter : IDisposable
             }
 
             var dacCredential = new DefaultAzureCredential(dacOptions); // CodeQL [SM05137] Interactive developer CLI, not a hosted service: this is the last-resort fallback that adopts the developer's local identity (Azure CLI/azd, Visual Studio, env vars, or VM managed identity). No fixed service identity exists to pin to.
-            client = new CosmosClient(endpoint, dacCredential, options);
-
-            try
-            {
-                var dacProps = await ReadAccountAsync(client, token);
-                await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, dacCredential, dacProps.Id, subscriptionId, resourceGroupName, authorityHostUri, token);
-                return;
-            }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
-            {
-                client.Dispose();
-                throw;
-            }
-            catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
-            {
-                client.Dispose();
-                throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
-            }
+            await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, dacCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: false, token);
         }
     }
 
@@ -1151,6 +1230,156 @@ public partial class ShellInterpreter : IDisposable
         var armContext = await this.TryDiscoverArmContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, authorityHostUri, token);
         this.Connect(client, armContext, credential);
         WriteLine(MessageService.GetArgsString("command-connect-connected", "account", accountId));
+    }
+
+    /// <summary>
+    /// Rejects contradictory credential selections so a credential the user explicitly
+    /// requested is never silently ignored by the precedence chain. Only user-selected
+    /// credentials are considered; the environment static token, the environment account
+    /// key, and the emulator well-known key are ambient fallbacks and are not validated
+    /// here.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Grouped with the connection credential helpers.")]
+    private static void ValidateCredentialSelection(bool hasExplicitKey, CredentialMethod credentialMethod, string? managedIdentityClientId, string? tenantId, string? loginHint)
+    {
+        bool hasManagedIdentity = !string.IsNullOrWhiteSpace(managedIdentityClientId);
+        bool hasExplicitMethod = credentialMethod != CredentialMethod.Default;
+
+        // Messages can surface from both the interactive `connect` command and the
+        // startup `--connect` path, which spell the same switch differently, so name
+        // both forms to keep the guidance accurate in either context.
+        string methodName = credentialMethod switch
+        {
+            CredentialMethod.VSCode => "the VS Code credential option (--connect-vscode-credential)",
+            CredentialMethod.AzureCli => "the Azure CLI credential option (--azure-cli / --connect-azure-cli)",
+            _ => string.Empty,
+        };
+        const string managedIdentityOption = "the managed identity option (--managed-identity / --connect-managed-identity)";
+
+        if (hasExplicitMethod && hasManagedIdentity)
+        {
+            throw new ShellException($"{methodName} cannot be combined with {managedIdentityOption}; choose a single credential method.");
+        }
+
+        if (!hasExplicitKey)
+        {
+            return;
+        }
+
+        if (hasExplicitMethod)
+        {
+            throw new ShellException($"{methodName} cannot be combined with an account key in the connection string; provide either a key or a credential method, not both.");
+        }
+
+        if (hasManagedIdentity)
+        {
+            throw new ShellException($"{managedIdentityOption} cannot be combined with an account key in the connection string; provide either a key or a credential method, not both.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(tenantId) || !string.IsNullOrWhiteSpace(loginHint))
+        {
+            throw new ShellException("Interactive credential options (--tenant/--hint, startup --connect-tenant/--connect-hint) cannot be combined with an account key in the connection string; provide either a key or a credential method, not both.");
+        }
+    }
+
+    /// <summary>
+    /// Resolves the flag-selected credential method from the two mutually exclusive
+    /// startup/command switches. Because both flags name a distinct explicit credential,
+    /// supplying both is a conflict rather than a silent precedence decision.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Grouped with the connection credential helpers.")]
+    internal static CredentialMethod ResolveCredentialMethod(bool useVSCodeCredential, bool useAzureCli)
+    {
+        if (useVSCodeCredential && useAzureCli)
+        {
+            throw new ShellException("The VS Code credential option (--connect-vscode-credential) cannot be combined with the Azure CLI credential option (--azure-cli / --connect-azure-cli); choose a single credential method.");
+        }
+
+        if (useVSCodeCredential)
+        {
+            return CredentialMethod.VSCode;
+        }
+
+        if (useAzureCli)
+        {
+            return CredentialMethod.AzureCli;
+        }
+
+        return CredentialMethod.Default;
+    }
+
+    /// <summary>
+    /// Creates a Cosmos client for <paramref name="credential"/>, verifies it can read
+    /// the account, and finalizes the connection (including optional ARM discovery).
+    /// Centralizes the create/read/complete/dispose boilerplate shared by every
+    /// token-based credential path.
+    /// </summary>
+    /// <param name="allowCredentialFallback">
+    /// When <c>true</c>, an <see cref="AuthenticationFailedException"/> or
+    /// <see cref="CredentialUnavailableException"/> is treated as "this credential is
+    /// not usable" and the method returns <c>false</c> so the caller can try the next
+    /// credential in the chain. When <c>false</c>, such failures surface as a
+    /// connection error.
+    /// </param>
+    /// <returns><c>true</c> when the connection succeeded; <c>false</c> when the
+    /// credential was unavailable and fallback is allowed.</returns>
+    private async Task<bool> TryConnectWithTokenCredentialAsync(
+        string endpoint,
+        TokenCredential credential,
+        CosmosClientOptions options,
+        string? subscriptionId,
+        string? resourceGroupName,
+        Uri? authorityHostUri,
+        bool allowCredentialFallback,
+        CancellationToken token)
+    {
+        var client = new CosmosClient(endpoint, credential, options);
+
+        string accountId;
+        try
+        {
+            var props = await ReadAccountAsync(client, token);
+            accountId = props.Id;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            client.Dispose();
+            throw;
+        }
+        catch (Exception ex) when (allowCredentialFallback && ex is AuthenticationFailedException or CredentialUnavailableException)
+        {
+            client.Dispose();
+            return false;
+        }
+        catch (Exception ex) when (!allowCredentialFallback)
+        {
+            client.Dispose();
+            throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
+        }
+        catch (Exception) when (allowCredentialFallback)
+        {
+            // Fallback is allowed, but this failure is not a credential-availability
+            // problem, so surface it to the caller unchanged.
+            client.Dispose();
+            throw;
+        }
+
+        if (allowCredentialFallback)
+        {
+            try
+            {
+                await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, credential, accountId, subscriptionId, resourceGroupName, authorityHostUri, token);
+                return true;
+            }
+            catch (Exception ex) when (ex is AuthenticationFailedException or CredentialUnavailableException)
+            {
+                // CompleteTokenConnectionAndDisposeOnFailureAsync already disposed the client.
+                return false;
+            }
+        }
+
+        await this.CompleteTokenConnectionAndDisposeOnFailureAsync(client, credential, accountId, subscriptionId, resourceGroupName, authorityHostUri, token);
+        return true;
     }
 
     private async Task CompleteTokenConnectionAndDisposeOnFailureAsync(
@@ -1329,16 +1558,42 @@ public partial class ShellInterpreter : IDisposable
         this.Editor?.History.Add(cmdString);
     }
 
-    internal CommandState PrintState(CommandState state)
+    internal CommandState PrintState(CommandState state, bool markAsRendered = false)
     {
-        if (state.IsPrinted)
+        if (state.OutputRendered)
         {
-            // command already printed the state.
+            // Once rendered, stay rendered: a later PrintState call with the default
+            // markAsRendered:false (e.g. ExecuteCommandAsync's final call) must not
+            // unmark it, or a subsequent PrintState call on the same state would
+            // re-render output that was already shown.
             return state;
         }
 
         try
         {
+            // Apply the session default format when the command did not choose one itself.
+            // This is the single place the global format (from --output) is applied, so
+            // commands never need to read it and new commands inherit it automatically.
+            if (!state.OutputFormatExplicitlySet)
+            {
+                state.OutputFormat = this.DefaultOutputFormat;
+            }
+
+            var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
+            var inMachineMode = this.IsMachineMode;
+
+            // Interactive, user-facing view: when the command supplied a custom renderer and
+            // the effective format is User, let it draw. Redirection, piping, and machine
+            // mode always fall through to the structured (JSON/CSV/Table) path below.
+            if (!redirected
+                && !inMachineMode
+                && state.OutputFormat == OutputFormat.User
+                && state.RenderUser is { } renderUser)
+            {
+                renderUser();
+                return state;
+            }
+
             string? output;
 
             if (state.Result?.DataType == Parser.DataType.Json)
@@ -1346,14 +1601,15 @@ public partial class ShellInterpreter : IDisposable
                 // When writing JSON to the terminal (not redirected to a file), apply
                 // syntax highlighting using the configured Spectre.Console theme. File
                 // redirection still receives plain text so downstream tooling and tests
-                // are unaffected.
-                if (state.OutputFormat == OutputFormat.JSon && string.IsNullOrEmpty(this.StdOutRedirect))
+                // are unaffected. User format with no renderer falls back to JSON here.
+                if (!inMachineMode
+                    && !redirected
+                    && (state.OutputFormat == OutputFormat.JSon || state.OutputFormat == OutputFormat.User))
                 {
                     var element = (JsonElement?)state.Result.ConvertShellObject(Parser.DataType.Json);
                     if (element.HasValue)
                     {
                         AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
-                        state.Result = null;
                         return state;
                     }
                 }
@@ -1367,29 +1623,27 @@ public partial class ShellInterpreter : IDisposable
                 // When a text result carries a highlighter (e.g. script bodies), apply it
                 // when writing to the terminal. Redirection and piping still receive plain
                 // text so downstream tooling and tests are unaffected.
-                if (output != null && string.IsNullOrEmpty(this.StdOutRedirect)
+                if (!inMachineMode
+                    && !redirected
+                    && output != null
                     && state.Result is ShellText { Highlighter: { } highlighter })
                 {
                     AnsiConsole.MarkupLine(highlighter(output));
-                    state.Result = null;
                     return state;
                 }
             }
 
             if (output != null)
             {
-                if (string.IsNullOrEmpty(this.StdOutRedirect))
+                if (!redirected)
                 {
-                    WriteLine(output);
+                    Console.Out.WriteLine(output);
                 }
                 else
                 {
                     this.Redirect(output);
                 }
             }
-
-            // Clear the result after printing
-            state.Result = null;
         }
         catch (Exception e)
         {
@@ -1403,10 +1657,17 @@ public partial class ShellInterpreter : IDisposable
             // exceptions) carry an actionable message; the stack trace is noise
             // for end users. Show only Message chains and let --verbose surface
             // the full exception.
+            var inMachineMode = this.IsMachineMode;
+
             if (e is OperationCanceledException)
             {
                 var canceled = MessageService.GetString("runtime-error-canceled");
-                if (!string.IsNullOrEmpty(canceled))
+
+                if (inMachineMode)
+                {
+                    this.WriteMachineError(string.IsNullOrEmpty(canceled) ? e.Message : canceled);
+                }
+                else if (!string.IsNullOrEmpty(canceled))
                 {
                     AnsiConsole.MarkupLine(Theme.FormatWarning(canceled));
                 }
@@ -1414,21 +1675,35 @@ public partial class ShellInterpreter : IDisposable
                 return new ErrorCommandState(e);
             }
 
-            var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
-            AnsiConsole.MarkupLine($"{Theme.FormatError(prefix + ":")} {Markup.Escape(e.Message)}");
-            if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
+            if (inMachineMode)
             {
-                AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
+                this.WriteMachineError(e.Message);
             }
-
-            var inner = e.InnerException;
-            while (inner != null)
+            else
             {
-                AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
-                inner = inner.InnerException;
+                var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
+                AnsiConsole.MarkupLine($"{Theme.FormatError(prefix + ":")} {Markup.Escape(e.Message)}");
+                if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
+                {
+                    AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
+                }
+
+                var inner = e.InnerException;
+                while (inner != null)
+                {
+                    AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
+                    inner = inner.InnerException;
+                }
             }
 
             return new ErrorCommandState(e);
+        }
+        finally
+        {
+            if (markAsRendered)
+            {
+                state.OutputRendered = true;
+            }
         }
 
         return state;
@@ -1846,11 +2121,101 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    // Emits a structured machine-mode error object. Honors the shell's stderr
+    // redirection (`ErrOutRedirect` / `2>` / `2>>`) so scripts that redirect
+    // stderr still capture errors in --quiet / --output json modes; otherwise
+    // the object is written to the process stderr.
+    private void WriteMachineError(string errorMessage)
+    {
+        var errObj = new
+        {
+            status = "error",
+            error = errorMessage,
+        };
+        var json = JsonSerializer.Serialize(errObj);
+
+        if (this.ErrOutRedirect != null)
+        {
+            var payload = json + Environment.NewLine;
+            if (this.AppendErrRedirection)
+            {
+                File.AppendAllText(this.ErrOutRedirect, payload);
+            }
+            else
+            {
+                File.WriteAllText(this.ErrOutRedirect, payload);
+            }
+        }
+        else
+        {
+            Console.Error.WriteLine(json);
+        }
+    }
+
+    /// <summary>
+    /// Writes a connection failure to the console. The primary message plus the
+    /// full inner-exception chain are shown so the underlying reason (bad key,
+    /// authentication failure, unreachable endpoint, etc.) is visible. When
+    /// <paramref name="verbose"/> is set, the complete exception including the
+    /// stack trace is rendered instead.
+    /// </summary>
+    /// <param name="exception">The exception describing the connection failure.</param>
+    /// <param name="verbose">Whether to render full exception details.</param>
+    internal static void WriteConnectionError(Exception exception, bool verbose)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        if (verbose)
+        {
+            // Surface the service-side coordinates (HTTP status/sub-status/activity
+            // id) up front so an auth denial (403) can be told apart from a
+            // token-acquisition failure or a network/port problem at a glance.
+            var cosmos = FindException<CosmosException>(exception);
+            if (cosmos != null)
+            {
+                AnsiConsole.MarkupLine(Theme.FormatError(MessageService.GetArgsString(
+                    "shell-connect-error-cosmos-detail",
+                    "status",
+                    ((int)cosmos.StatusCode).ToString(CultureInfo.InvariantCulture),
+                    "reason",
+                    cosmos.StatusCode.ToString(),
+                    "substatus",
+                    cosmos.SubStatusCode.ToString(CultureInfo.InvariantCulture),
+                    "activityId",
+                    string.IsNullOrEmpty(cosmos.ActivityId) ? "-" : cosmos.ActivityId)));
+            }
+
+            // Dump the full exception chain verbatim. This includes the aggregated
+            // per-credential failure reasons from DefaultAzureCredential's
+            // AuthenticationFailedException and the Cosmos error body/diagnostics
+            // from CosmosException.ToString().
+            AnsiConsole.WriteLine(exception.ToString());
+            return;
+        }
+
+        AnsiConsole.MarkupLine(Theme.FormatError(exception.Message));
+
+        var inner = exception.InnerException;
+        while (inner != null)
+        {
+            AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
+            inner = inner.InnerException;
+        }
+
+        AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("shell-connect-verbose-hint")));
+    }
+
     private void ReportExecutionError(Exception e, string? sourceText = null)
     {
         // The command already emitted a friendly diagnostic; do not print again.
         if (ContainsException<CommandReportedException>(e))
         {
+            return;
+        }
+
+        if (this.IsMachineMode)
+        {
+            this.WriteMachineError(e.Message);
             return;
         }
 
@@ -2078,6 +2443,25 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportParserErrors(ErrorList errors, string commandText)
     {
+        if (this.IsMachineMode
+            && errors != null && errors.Count > 0)
+        {
+            var errorStrings = new System.Collections.Generic.List<string>();
+            foreach (var err in errors)
+            {
+                if (err != null && err.ErrorLevel == ErrorLevel.Error)
+                {
+                    errorStrings.Add(err.Message ?? "Parser error");
+                }
+            }
+
+            if (errorStrings.Count > 0)
+            {
+                this.WriteMachineError(string.Join("; ", errorStrings));
+                return;
+            }
+        }
+
         if (errors == null || errors.Count == 0)
         {
             return;
@@ -2289,6 +2673,22 @@ public partial class ShellInterpreter : IDisposable
         }
 
         return false;
+    }
+
+    private static TException? FindException<TException>(Exception? exception)
+        where TException : Exception
+    {
+        while (exception != null)
+        {
+            if (exception is TException match)
+            {
+                return match;
+            }
+
+            exception = exception.InnerException;
+        }
+
+        return null;
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "Diagnostic helpers are grouped with diagnostic rendering code.")]

@@ -12,11 +12,9 @@ using Azure.Data.Cosmos.Shell.Parser;
 public class FtabCommandTests
 {
     [Fact]
-    public async Task ExecuteAsync_RendersItemsWrapperToRedirect_AndPreservesResult()
+    public async Task ExecuteAsync_RendersItemsWrapperToResult_AndSetsRenderer()
     {
         var shell = ShellInterpreter.CreateInstance();
-        var outputFile = Path.Combine(Path.GetTempPath(), $"ftab-{Guid.NewGuid():N}.txt");
-        shell.StdOutRedirect = outputFile;
 
         var state = new CommandState();
         state.Result = new ShellJson(JsonSerializer.SerializeToElement(new
@@ -33,10 +31,10 @@ public class FtabCommandTests
         var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
 
         Assert.Same(state, result);
-        Assert.True(result.IsPrinted);
+        Assert.NotNull(result.RenderUser);
         Assert.NotNull(result.Result);
 
-        var text = await File.ReadAllTextAsync(outputFile, CancellationToken.None);
+        var text = (string)result.Result!.ConvertShellObject(DataType.Text)!;
         Assert.Contains("id", text);
         Assert.Contains("name", text);
         Assert.Contains("alpha", text);
@@ -47,9 +45,6 @@ public class FtabCommandTests
     public async Task ExecuteAsync_AppliesFieldsAndTake_ToDocumentsWrapper()
     {
         var shell = ShellInterpreter.CreateInstance();
-        var outputFile = Path.Combine(Path.GetTempPath(), $"ftab-{Guid.NewGuid():N}.txt");
-        shell.StdOutRedirect = outputFile;
-
         var state = new CommandState();
         state.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
@@ -69,7 +64,7 @@ public class FtabCommandTests
         var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
 
         Assert.Same(state, result);
-        var text = await File.ReadAllTextAsync(outputFile, CancellationToken.None);
+        var text = (string)result.Result!.ConvertShellObject(DataType.Text)!;
 
         Assert.Contains("name", text);
         Assert.Contains("id", text);
@@ -82,8 +77,6 @@ public class FtabCommandTests
     public async Task ExecuteAsync_SortsObjectRows_BeforeTake()
     {
         var shell = ShellInterpreter.CreateInstance();
-        var outputFile = Path.Combine(Path.GetTempPath(), $"ftab-{Guid.NewGuid():N}.txt");
-        shell.StdOutRedirect = outputFile;
 
         var state = new CommandState();
         state.Result = new ShellJson(JsonSerializer.SerializeToElement(new[]
@@ -99,9 +92,9 @@ public class FtabCommandTests
             Take = 2,
         };
 
-        await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
 
-        var text = await File.ReadAllTextAsync(outputFile, CancellationToken.None);
+        var text = (string)result.Result!.ConvertShellObject(DataType.Text)!;
         var alphaIndex = text.IndexOf("alpha", StringComparison.Ordinal);
         var betaIndex = text.IndexOf("beta", StringComparison.Ordinal);
         var charlieIndex = text.IndexOf("charlie", StringComparison.Ordinal);
@@ -115,8 +108,6 @@ public class FtabCommandTests
     public async Task ExecuteAsync_SortsObjectRows_Descending()
     {
         var shell = ShellInterpreter.CreateInstance();
-        var outputFile = Path.Combine(Path.GetTempPath(), $"ftab-{Guid.NewGuid():N}.txt");
-        shell.StdOutRedirect = outputFile;
 
         var state = new CommandState();
         state.Result = new ShellJson(JsonSerializer.SerializeToElement(new[]
@@ -131,9 +122,9 @@ public class FtabCommandTests
             Sort = "name:desc",
         };
 
-        await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
 
-        var text = await File.ReadAllTextAsync(outputFile, CancellationToken.None);
+        var text = (string)result.Result!.ConvertShellObject(DataType.Text)!;
         var alphaIndex = text.IndexOf("alpha", StringComparison.Ordinal);
         var betaIndex = text.IndexOf("beta", StringComparison.Ordinal);
         var charlieIndex = text.IndexOf("charlie", StringComparison.Ordinal);
@@ -147,8 +138,6 @@ public class FtabCommandTests
     public async Task ExecuteAsync_SortsScalarRows_WithValue()
     {
         var shell = ShellInterpreter.CreateInstance();
-        var outputFile = Path.Combine(Path.GetTempPath(), $"ftab-{Guid.NewGuid():N}.txt");
-        shell.StdOutRedirect = outputFile;
 
         var state = new CommandState();
         state.Result = new ShellJson(JsonSerializer.SerializeToElement(new[] { 30, 10, 20 }));
@@ -158,9 +147,9 @@ public class FtabCommandTests
             Sort = "value",
         };
 
-        await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
+        var result = await command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None);
 
-        var text = await File.ReadAllTextAsync(outputFile, CancellationToken.None);
+        var text = (string)result.Result!.ConvertShellObject(DataType.Text)!;
         var tenIndex = text.IndexOf("10", StringComparison.Ordinal);
         var twentyIndex = text.IndexOf("20", StringComparison.Ordinal);
         var thirtyIndex = text.IndexOf("30", StringComparison.Ordinal);

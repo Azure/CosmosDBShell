@@ -56,4 +56,28 @@ public class ScriptExecutionScopeTests
         var n = Assert.IsType<ShellNumber>(x);
         Assert.Equal(1, n.Value);
     }
+
+    [Fact]
+    public async Task RunScriptAsync_PrintFailure_ReturnsError()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        var tempDir = Path.Combine(Path.GetTempPath(), "CosmosShellTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var scriptPath = Path.Combine(tempDir, "print.csh");
+        await File.WriteAllTextAsync(scriptPath, "echo value\n", CancellationToken.None);
+
+        var command = new CommandStatement(new Token(TokenType.Identifier, scriptPath, 0, scriptPath.Length))
+        {
+            OutRedirectToken = new Token(TokenType.RedirectOutput, ">", scriptPath.Length + 1, 1),
+            OutRedirectDestToken = new Token(
+                TokenType.String,
+                Path.Combine(tempDir, "missing", "out.txt"),
+                scriptPath.Length + 3,
+                7),
+        };
+
+        var state = await command.RunAsync(shell, new CommandState(), CancellationToken.None);
+
+        Assert.True(state.IsError);
+    }
 }

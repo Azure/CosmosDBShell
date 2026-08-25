@@ -13,7 +13,7 @@ using global::Azure.Data.Cosmos.Shell.Core;
 [CosmosExample("delete container OldContainer", Description = "Delete a container")]
 [CosmosExample("delete database TestDB", Description = "Delete a database")]
 [CosmosExample("delete item test-* --dry-run", Description = "Preview a deletion without applying it")]
-[McpAnnotation(Restricted = true, Destructive = true)]
+[McpAnnotation(Restricted = true, Destructive = true, Confirmable = true)]
 internal class DeleteCommand : CosmosCommand
 {
     [CosmosParameter("item", IsRequired = true)]
@@ -54,6 +54,7 @@ internal class DeleteCommand : CosmosCommand
                     Name = this.Pattern,
                     Database = this.Database,
                     DryRun = this.DryRun,
+                    Outcome = commandState,
                 },
                 shell,
                 token);
@@ -65,6 +66,7 @@ internal class DeleteCommand : CosmosCommand
                 {
                     Name = this.Pattern,
                     DryRun = this.DryRun,
+                    Outcome = commandState,
                 },
                 shell,
                 token);

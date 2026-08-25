@@ -1096,49 +1096,49 @@ Notes:
 Project a single field from a query result:
 
 ```text
-query "SELECT * FROM c" | filter '.items[0]'
+query "SELECT * FROM c" | filter '.values[0]'
 ```
 
 Count items returned by a command:
 
 ```text
-ls | filter '.items | length'
+ls | filter '.values | length'
 ```
 
 Shape each item into a smaller object:
 
 ```text
-query "SELECT * FROM c" | filter '.items | map({id, status})'
+query "SELECT * FROM c" | filter '.values | map({id, status})'
 ```
 
 Project items with quoted property names:
 
 ```text
-ls | filter '.items | map({"Volcano Name": .["Volcano Name"], Country})'
+ls | filter '.values | map({"Volcano Name": .["Volcano Name"], Country})'
 ```
 
 Filter items by a predicate:
 
 ```text
-query "SELECT * FROM c" | filter '.items | select(.status == "active")'
+query "SELECT * FROM c" | filter '.values | select(.status == "active")'
 ```
 
 Sort and project:
 
 ```text
-query "SELECT * FROM c" | filter '.items | sort_by(.id) | map(.id)'
+query "SELECT * FROM c" | filter '.values | sort_by(.id) | map(.id)'
 ```
 
 Collect iterated values into a flat array:
 
 ```text
-query "SELECT * FROM c" | filter '[.items[] | .id]'
+query "SELECT * FROM c" | filter '[.values[] | .id]'
 ```
 
 Combine with `ftab` to render the projected JSON as a table:
 
 ```text
-query "SELECT * FROM c" | filter '.items | map({id, status})' | ftab
+query "SELECT * FROM c" | filter '.values | map({id, status})' | ftab
 ```
 
 #### Quoting
@@ -1148,7 +1148,7 @@ tokenizes the argument first. Wrap the expression in single quotes so the
 shell does not interpret characters such as `|`, `$`, or `"` inside it:
 
 ```text
-filter '.items | select(.status == "active")'
+filter '.values | select(.status == "active")'
 ```
 
 If you need a literal single quote inside the expression, prefer double quotes
@@ -1226,12 +1226,12 @@ scale section reports that throughput settings are not available for serverless
 accounts instead of failing.
 
 ```text
-Usage: info [--partitions] [--detailed] [--format=<json|table>] [--database=<name>] [--container=<name>]
+Usage: info [--partitions] [--detailed] [--format=<user|json|table|csv>] [--database=<name>] [--container=<name>]
 
 Options:
     --partitions, -p    Add the per-physical-partition document distribution (consumes request units)
     --detailed, -d      Add storage breakdown and top partition keys (performs a full scan and consumes request units)
-    --format, -f        Output format: table or json
+    --format, -f        Output format: user, json, table, or csv
     --database, -db     Target database name
     --container, -con   Target container name
 ```
@@ -1267,6 +1267,17 @@ Display version.
 ```text
 Usage: version
 ```
+
+### welcome
+
+Display the welcome screen.
+
+```text
+Usage: welcome
+```
+
+The welcome screen is shown automatically on the first interactive startup. Later
+startups show a compact line containing the shell version and MCP server status.
 
 ### cls
 

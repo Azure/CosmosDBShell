@@ -49,7 +49,14 @@ internal class ToolOperations
                 description += "\n";
             }
 
-            description += "Warning: This command is restricted to interactive use and cannot be invoked through MCP. Run it manually in the shell, or call 'help' for this command.";
+            if (RequiresConfirmation(command))
+            {
+                description += "Warning: This command is destructive. When invoked through MCP it always requires explicit user confirmation before it runs — even when a force or no-prompt argument is supplied. If the client cannot confirm, the command is refused.";
+            }
+            else
+            {
+                description += "Warning: This command is restricted to interactive use and cannot be invoked through MCP. Run it manually in the shell, or call 'help' for this command.";
+            }
         }
 
         var tool = new Tool
@@ -319,6 +326,15 @@ internal class ToolOperations
         return "string";
     }
 
+    private static bool RequiresConfirmation(CommandFactory command)
+    {
+        var annotation = command.McpAnnotation;
+        return command.McpRestricted
+            && annotation is not null
+            && annotation.Confirmable
+            && annotation.Destructive;
+    }
+
     private CallToolResult? BindMember(
         object cmd,
         PropertyInfo property,
@@ -413,7 +429,7 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
         }
 
-        if (command.McpRestricted)
+        if (command.McpRestricted && !RequiresConfirmation(command))
         {
             this.logger?.LogWarning($"Command '{command.CommandName}' is restricted for MCP.");
             return McpResponseFactory.CreateError(
@@ -496,6 +512,19 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(missingMessage, ShellInterpreter.Instance.State);
         }
 
+        if (RequiresConfirmation(command))
+        {
+            var server = parameters.Server;
+            Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit =
+                server?.ClientCapabilities?.Elicitation != null ? server.ElicitAsync : null;
+
+            var confirmation = await this.ConfirmDestructiveAsync(elicit, command.CommandName, sb.ToString(), cancellationToken);
+            if (confirmation != null)
+            {
+                return confirmation;
+            }
+        }
+
         this.logger?.LogTrace($"Invoking '{command.CommandName}'.");
 
         try
@@ -515,5 +544,67 @@ internal class ToolOperations
         {
             this.logger?.LogTrace($"Finished executing '{command.CommandName}'.");
         }
+    }
+
+    // Gates a destructive command behind an MCP elicitation confirmation. Returns
+    // null when the operation is approved and should proceed; otherwise returns the
+    // CallToolResult to send back (refusal, denial, or a failed confirmation).
+    // Fails closed: when the client cannot elicit, the command is refused rather
+    // than executed.
+    internal async ValueTask<CallToolResult?> ConfirmDestructiveAsync(
+        Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit,
+        string commandName,
+        string commandLine,
+        CancellationToken cancellationToken)
+    {
+        if (elicit == null)
+        {
+            this.logger?.LogWarning(
+                "Destructive command '{Command}' requires confirmation, but the MCP client does not support elicitation.",
+                commandName);
+            return McpResponseFactory.CreateError(
+                $"Command '{commandName}' is destructive and needs your confirmation, but this MCP client does not support confirmation prompts (elicitation). Run '{commandLine}' manually in the shell.",
+                ShellInterpreter.Instance.State);
+        }
+
+        var request = new ElicitRequestParams
+        {
+            Message =
+                $"Confirm destructive operation. The agent wants to run: {commandLine}\n" +
+                "This can permanently change or delete data in the connected Azure Cosmos DB account and cannot be undone. Approve this operation?",
+            RequestedSchema = new ElicitRequestParams.RequestSchema(),
+        };
+
+        ElicitResult result;
+        try
+        {
+            result = await elicit(request, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            this.logger?.LogWarning(ex, "Confirmation prompt for destructive command '{Command}' failed.", commandName);
+            return McpResponseFactory.CreateError(
+                $"Confirmation for '{commandName}' could not be completed ({ex.GetType().Name}). Nothing was executed.",
+                ShellInterpreter.Instance.State);
+        }
+
+        if (!result.IsAccepted)
+        {
+            var action = string.IsNullOrEmpty(result.Action) ? "cancel" : result.Action;
+            this.logger?.LogInformation(
+                "User did not approve destructive command '{Command}' (action={Action}).",
+                commandName,
+                action);
+            return McpResponseFactory.CreateError(
+                $"Operation '{commandName}' was not approved by the user (action: {action}). Nothing was executed.",
+                ShellInterpreter.Instance.State);
+        }
+
+        this.logger?.LogInformation("User approved destructive command '{Command}'.", commandName);
+        return null;
     }
 }

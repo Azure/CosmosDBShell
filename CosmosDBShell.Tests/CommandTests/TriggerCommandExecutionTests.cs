@@ -46,9 +46,10 @@ public class TriggerCommandExecutionTests
         var state = await command.ListAsync(container, ShellInterpreter.CreateInstance(), new CommandState(), CancellationToken.None);
 
         var json = Assert.IsType<JsonElement>(state.Result!.ConvertShellObject(DataType.Json));
-        Assert.Equal(JsonValueKind.Array, json.ValueKind);
-        Assert.Equal(0, json.GetArrayLength());
-        Assert.True(state.IsPrinted);
+        var values = json.GetProperty("values");
+        Assert.Equal(JsonValueKind.Array, values.ValueKind);
+        Assert.Equal(0, values.GetArrayLength());
+        Assert.NotNull(state.RenderUser);
     }
 
     [Fact]
@@ -74,10 +75,11 @@ public class TriggerCommandExecutionTests
         var state = await command.ListAsync(container, ShellInterpreter.CreateInstance(), new CommandState(), CancellationToken.None);
 
         var json = Assert.IsType<JsonElement>(state.Result!.ConvertShellObject(DataType.Json));
-        Assert.Equal(1, json.GetArrayLength());
-        Assert.Equal("audit", json[0].GetProperty("id").GetString());
-        Assert.Equal("Pre", json[0].GetProperty("triggerType").GetString());
-        Assert.Equal("Create", json[0].GetProperty("triggerOperation").GetString());
+        var values = json.GetProperty("values");
+        Assert.Equal(1, values.GetArrayLength());
+        Assert.Equal("audit", values[0].GetProperty("id").GetString());
+        Assert.Equal("Pre", values[0].GetProperty("triggerType").GetString());
+        Assert.Equal("Create", values[0].GetProperty("triggerOperation").GetString());
     }
 
     [Fact]
@@ -104,9 +106,9 @@ public class TriggerCommandExecutionTests
         var command = new TriggerCommand { Subcommand = "list" };
         var state = await command.ListAsync(container, shell, new CommandState(), CancellationToken.None);
 
-        Assert.False(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
         var json = Assert.IsType<JsonElement>(state.Result!.ConvertShellObject(DataType.Json));
-        Assert.Equal(1, json.GetArrayLength());
+        Assert.Equal(1, json.GetProperty("values").GetArrayLength());
     }
 
     [Fact]
@@ -147,7 +149,7 @@ public class TriggerCommandExecutionTests
         var state = await command.ExistsAsync(container, new CommandState(), CancellationToken.None);
 
         Assert.Equal(true, state.Result!.ConvertShellObject(DataType.Boolean));
-        Assert.True(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
     }
 
     [Fact]

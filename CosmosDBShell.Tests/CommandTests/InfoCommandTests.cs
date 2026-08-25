@@ -162,7 +162,7 @@ public class InfoCommandTests
         var render = InfoCommand.ShouldRenderTables(format, shell, commandState);
 
         Assert.True(render);
-        Assert.Equal(OutputFormat.Table, commandState.OutputFormat);
+        Assert.Equal(OutputFormat.User, commandState.OutputFormat);
     }
 
     private static CosmosClient CreateTestClient()

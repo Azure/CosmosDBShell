@@ -40,9 +40,9 @@ public class ThemeCommandTests
             var state = await command.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), "", CancellationToken.None);
             var json = Assert.IsType<ShellJson>(state.Result);
 
-            Assert.True(state.IsPrinted);
+            Assert.NotNull(state.RenderUser);
             Assert.True(json.Value.GetProperty("valid").GetBoolean());
-            Assert.Equal(name, json.Value.GetProperty("name").GetString());
+            Assert.Equal(name, json.Value.GetProperty("id").GetString());
             Assert.False(ThemeProfiles.TryGet(name, out _));
             Assert.Same(saved, Theme.Current);
         }
