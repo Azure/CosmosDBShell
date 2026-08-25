@@ -384,7 +384,7 @@ internal class Program
                 {
                     return;
                 }
-                catch (Exception ex)
+                catch (CommandException ex)
                 {
                     Environment.ExitCode = ShellExitCode.FromException(ex);
                     WriteStartupError(CommandException.GetDisplayMessage(ex));

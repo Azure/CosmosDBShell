@@ -74,10 +74,11 @@ public class ShellLiteralTests
         const string alphabet = "\\\"'$(){}[]; \t\n\r\u0000\u001Bu0041ab";
         var random = new Random(20260825);
         var failures = new List<string>();
+        var builder = new StringBuilder();
 
         for (int i = 0; i < 5000; i++)
         {
-            var builder = new StringBuilder();
+            builder.Clear();
             var length = random.Next(0, 12);
             for (int j = 0; j < length; j++)
             {
