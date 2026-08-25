@@ -72,6 +72,18 @@ namespace CosmosShell.Tests.Parser
             Assert.Equal(expected, text.Text);
         }
 
+        [Theory]
+        [InlineData("\"a\\u001Bb\"", "a\u001Bb")]
+        [InlineData("$\"a\\u001Bb\"", "a\u001Bb")]
+        [InlineData("$\"$(1 + 1)a\\u001Bb\"", "2a\u001Bb")]
+        public async Task EvaluateString_UnicodeEscape_DecodesInBothStringForms(string input, string expected)
+        {
+            var result = await EvaluateExpressionAsync(input);
+
+            var text = Assert.IsType<ShellText>(result);
+            Assert.Equal(expected, text.Text);
+        }
+
         [Fact]
         public void ParseInterpolatedString_SingleVariable_CreatesVariableExpression()
         {

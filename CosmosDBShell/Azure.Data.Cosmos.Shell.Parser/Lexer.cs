@@ -923,6 +923,15 @@ internal class Lexer
                     case '"': sb.Append('"'); break;
                     case '{': sb.Append('{'); break;  // Allow escaping braces
                     case '}': sb.Append('}'); break;
+                    case 'u' when this.position + 4 < this.input.Length &&
+                        int.TryParse(
+                            this.input.AsSpan(this.position + 1, 4),
+                            NumberStyles.HexNumber,
+                            CultureInfo.InvariantCulture,
+                            out int character):
+                        sb.Append((char)character);
+                        this.position += 4;
+                        break;
                     default: sb.Append(ch); break;
                 }
 
