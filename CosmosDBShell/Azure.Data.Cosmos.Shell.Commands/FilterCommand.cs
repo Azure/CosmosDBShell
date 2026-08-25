@@ -90,7 +90,6 @@ internal class FilterCommand : CosmosCommand
             commandState.Result = new ShellJson(FilterExpressionUtilities.ToJsonElement(result));
         }
 
-        commandState.IsPrinted = false;
         return commandState;
     }
 }

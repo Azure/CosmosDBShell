@@ -5,13 +5,73 @@
 ### New features
 
 - **`schema` discovery command and MCP tool.** A new read-only `schema` command infers a container's structure from a small, bounded sample: it returns the partition key path(s), an indexing policy summary, an estimated document count, and inferred field types (with dot notation for nested objects and per-field presence counts). `--sample <n>` selects how many documents to sample (clamped to 1-100, default 20), and `--database`/`--container` override the target. Exposed as a read-only MCP tool so agents can discover container structure cheaply instead of re-sampling or guessing field names. ([#160](https://github.com/Azure/CosmosDBShell/issues/160))
+- **Deterministic machine output and exit codes.** Global `--output`/`--quiet`, structured JSON/CSV machine mode, and stable process exit codes (`0`–`6`) for automation and CI. ([#173](https://github.com/Azure/CosmosDBShell/pull/173), [#155](https://github.com/Azure/CosmosDBShell/issues/155), [#176](https://github.com/Azure/CosmosDBShell/issues/176), [#177](https://github.com/Azure/CosmosDBShell/issues/177))
+- **`setup-cosmosdb-shell` GitHub Action** and [CI/CD guide](docs/ci.md) for installing the self-contained shell in pipelines without a .NET SDK on the runner. ([#173](https://github.com/Azure/CosmosDBShell/pull/173), [#182](https://github.com/Azure/CosmosDBShell/pull/182))
+
+### Breaking changes
+
+- Failures no longer always exit with `1`. Exit codes are now classified into a stable set — `2` usage/parse errors, `3` authentication, `4` connection, `5` not found, `6` throttled — with `1` reserved for uncategorized failures. Scripts that branch on the exact value `1` must be updated; checks for a non-zero exit code are unaffected. See the [exit-code contract](docs/ci.md). ([#173](https://github.com/Azure/CosmosDBShell/pull/173), [#176](https://github.com/Azure/CosmosDBShell/issues/176))
+- Execute-and-quit (`-c`) now defaults to machine mode with JSON output instead of the interactive human-facing view. ANSI colors, banners, and informational messages are suppressed, and errors are written to STDERR as `{"status":"error","error":"..."}`. Pass `--output user` or `--output table` to restore the previous presentation. ([#173](https://github.com/Azure/CosmosDBShell/pull/173), [#155](https://github.com/Azure/CosmosDBShell/issues/155))
+- The structured JSON emitted by commands now follows a consistent contract. Listings return `{ "type": "<kind>", "values": [ ... ] }` — this replaces the bare arrays previously returned by `dir`, `sproc list`, `udf list`, and `trigger list`, the `{ "items": [...] }` envelope used by `ls`, `query`, and `watch`, and the `{ "themes": [...] }` envelope used by `theme list`. `query` no longer switches between `items` and `documents` depending on whether metrics were requested. Single-resource results return `{ "type": "<kind>", "id": "<name>", "<verb>": true }`, so `mkdb`/`mkcon` no longer return `created_database`/`created_container`, `rmdb` reports `id` instead of `db`, `rmcon` reports `id` instead of `container`, both always include `dryRun`, and `sproc`/`udf`/`trigger create` now report `created` on success instead of omitting it. `theme` subcommands report the theme in `id` with a boolean verb (`active`, `applied`, `previewed`, `loaded`, `saved`, `edited`, `opened`) rather than encoding the name in the key. `cd` and `pwd` return `{ "type": "location", "database": ..., "container": ..., "currentLocation": ... }` — `cd` no longer returns the `"connected state"` / `"database state"` / `"container state"` keys. `connect` and `disconnect` return a `"type": "connection"` payload, and a successful `connect <endpoint>` returns `{ "connected": true, "endpoint": "..." }` instead of `{ "connected state": "..." }`. Item listings additionally carry a `limitReached` flag. Tooling that parses this output must be updated. ([#173](https://github.com/Azure/CosmosDBShell/pull/173))
+- Write commands report what they actually did instead of `{ "result": "success" }`. `mkitem`/`create item` return `{ "type": "item", "created": <n>, "replaced": <n>, "failed": <n>, "requestCharge": <ru> }`, `replace` returns `replaced`/`failed`/`requestCharge`, `patch` returns `{ "id": ..., "patched": true, "requestCharge": <ru> }`, `import` returns `{ "file": ..., "imported": <n>, "failed": <n>, "requestCharge": <ru>, "dryRun": <bool> }`, and `export` returns `{ "file": ..., "exported": <n>, "requestCharge": <ru> }`. ([#173](https://github.com/Azure/CosmosDBShell/pull/173))
+
+### Fixes
+
+- `cd` and `mkdb` built their JSON result by string concatenation, so a database or container name containing a double quote produced malformed JSON and failed the command instead of navigating or reporting the created database. Both now serialize the payload properly. ([#173](https://github.com/Azure/CosmosDBShell/pull/173))
+- `theme list` rendered a single `themes` column containing the whole JSON array when `--output csv` or `--output table` was used, because the shared table renderer only recognized the `values`/`items` list envelopes. It now emits one row per theme. ([#173](https://github.com/Azure/CosmosDBShell/pull/173))
+- `theme list` and `theme show` wrote their human-facing output while the command executed, so `--output table` printed the interactive listing *and* the rendered table. Both now defer that output to the interactive renderer. ([#173](https://github.com/Azure/CosmosDBShell/pull/173))
+
+## 1.1.150-preview — 2026-07-31
+
+A short cycle on top of 1.1.136-preview. First interactive startup now shows a welcome screen (replayable via a new `welcome` command) with a more compact startup banner; `connect` gains a deterministic `--azure-cli` credential alongside clearer failure diagnostics and hardened credential selection; and the last direct `Newtonsoft.Json` usages are replaced with `System.Text.Json`.
+
+### New features
+
+- First-run **welcome screen** and `welcome` command. The embedded welcome screen is shown on the first interactive startup and can be redisplayed at any time with the new `welcome` command. ([#181](https://github.com/Azure/CosmosDBShell/pull/181))
+- **`--azure-cli` / `--connect-azure-cli` credential option.** Selects `AzureCliCredential` directly, using the identity from your current `az login` session. It is slotted just above `DefaultAzureCredential` in the credential decision tree so environments with a live managed-identity/IMDS endpoint (for example Azure Cloud Shell) no longer silently authenticate as the managed identity — which often lacks Cosmos DB data-plane RBAC — instead of the interactive user. ARM context is attached like the other Entra ID flows, and `--tenant` is honored when supplied. ([#187](https://github.com/Azure/CosmosDBShell/pull/187))
+
+### Improvements
+
+- **Clearer connection failures.** When a connection fails, the shell now prints the underlying reason (the inner exception chain) in addition to the high-level "Failed to connect to the Cosmos DB account." message, and hints that `--verbose` shows full exception details including the stack trace. The startup `--connect` path previously printed only the top-level message. The shell also announces when a key is sourced from the `COSMOSDB_SHELL_ACCOUNT_KEY` environment variable, matching the existing `COSMOSDB_SHELL_TOKEN` behavior. ([#187](https://github.com/Azure/CosmosDBShell/pull/187))
+- **Richer `--verbose` connection diagnostics.** In verbose mode, connection failures now surface the Cosmos DB request coordinates up front — HTTP status and sub-status codes plus the activity id — so an authorization denial (`403`) can be told apart from a token-acquisition failure or a network problem at a glance, followed by the full exception chain (including the `CosmosException` body/diagnostics and, for `DefaultAzureCredential`, the aggregated per-credential failure reasons). ([#187](https://github.com/Azure/CosmosDBShell/pull/187))
+- **Conflicting credential selections are rejected.** Requesting two explicit credentials at once (for example `--connect-vscode-credential` together with `--azure-cli`, or a credential flag alongside an account key or `--managed-identity`) now fails with a clear message instead of silently ignoring one of them. `--azure-cli --tenant` reliably reaches the Azure CLI credential rather than falling into the interactive browser flow. ([#187](https://github.com/Azure/CosmosDBShell/pull/187))
+- **Compact startup output.** Recurring startup text is replaced with a single compact version line and an MCP status line, and the report URL and disconnected warning no longer appear during normal startup. ([#181](https://github.com/Azure/CosmosDBShell/pull/181))
+
+### Fixes
+
+- Query index-metrics display now renders the utilized and potential index tables correctly. The `is JsonElement` checks in the metrics display path were previously dead — under `Newtonsoft.Json` the parsed values were `JObject`/`JValue` and never matched — and now match after the switch to `System.Text.Json`. ([#188](https://github.com/Azure/CosmosDBShell/pull/188))
+
+### Build & pipeline
+
+- Replaced the remaining direct `Newtonsoft.Json` usages with `System.Text.Json` and dropped the direct package reference (the Cosmos client is already configured to use `System.Text.Json`). Indexing-policy serialization preserves the existing output contract (camelCase `indexingMode`, `Consistent` enum value). ([#188](https://github.com/Azure/CosmosDBShell/pull/188))
+
+## 1.1.136-preview — 2026-07-20
+
+A focused cycle on top of 1.1.115-preview. New `ttl` and `conflict` commands manage container time-to-live and conflict-resolution policy; the `bucket` command gains control-plane throughput bucket limits; `--dry-run` previews land for `throughput` write subcommands and the destructive delete commands; and MCP tool results now emit structured JSON content. Rounding out the cycle are MCP connectivity fixes for agent clients and CI/pipeline hardening.
+
+### New features
+
+- `ttl` command to view and change a container's time-to-live policy: `ttl show` displays the current configuration as JSON (`disabled`, `no-default`, or `enabled`), `ttl set <seconds>` enables TTL with a positive default expiration, `ttl on` enables TTL with no container default (only items with their own `ttl` expire), and `ttl off` disables it. Targets the current container by default, with `--database`/`--container` overrides. ([#151](https://github.com/Azure/CosmosDBShell/pull/151), [#111](https://github.com/Azure/CosmosDBShell/issues/111))
+- `conflict` command to view and change a container's conflict resolution policy: `conflict show` displays the policy as JSON, and `conflict set --mode <lastWriterWins|custom>` sets the mode with `--path` for last-writer-wins (defaults to `/_ts`) or `--procedure` for custom mode; unsupplied options keep their current value. Targets the current container by default, with `--database`/`--container` overrides. ([#151](https://github.com/Azure/CosmosDBShell/pull/151), [#111](https://github.com/Azure/CosmosDBShell/issues/111))
 - `bucket` command now manages container throughput bucket limits in addition to client-side bucket selection. `bucket show` lists the throughput bucket limits configured on the current container, `bucket set <1-5> <1-100>` limits a bucket to a maximum percentage of the container's throughput, and `bucket clear <1-5>` removes a bucket's limit. These control-plane subcommands target the current container (or `--container`) and require an Azure AD (Entra) connection; the existing client-side `bucket`, `bucket <1-5>`, and `bucket 0` selection continues to work on any connection. ([#144](https://github.com/Azure/CosmosDBShell/issues/144))
 - `throughput` write subcommands (`set`/`manual`/`autoscale`) now accept `--dry-run` to preview the change — reporting current vs. planned mode and RU/s as JSON (and a table interactively) — without applying it or prompting for confirmation. A first slice of dry-run mode (item G1). ([#164](https://github.com/Azure/CosmosDBShell/issues/164))
 - **`--dry-run` for destructive delete commands.** `rm`, `rmcon`, `rmdb`, and `delete` accept `--dry-run` to preview the effect without deleting anything: `rm` reports how many items match the pattern, and `rmcon`/`rmdb` report the container or database that would be removed. No confirmation prompt is shown and no changes are made. ([#156](https://github.com/Azure/CosmosDBShell/issues/156))
 
 ### Improvements
 
+- **Destructive MCP commands now prompt for confirmation instead of being blocked.** When an MCP client invokes `delete`, `rm`, `rmcon`, or `rmdb`, the server sends an elicitation prompt describing the exact command line and only runs it if the user approves; declining, cancelling, or a client that cannot confirm results in nothing being executed. This removes the need for any write opt-in flag. ([#158](https://github.com/Azure/CosmosDBShell/issues/158))
 - **Structured (JSON) tool results for MCP.** MCP tool results now carry the machine-readable JSON payload (`result`/`outputText`/`error` plus `currentLocation`) as first-class `structuredContent` in addition to the existing JSON text block, so agents can consume structured results directly. The two representations are kept byte-for-byte equivalent, and text-only clients are unaffected. ([#154](https://github.com/Azure/CosmosDBShell/issues/154))
+
+### Fixes
+
+- MCP clients that reject unknown protocol versions (for example, Claude Code) can now connect: the server no longer advertises an unsupported protocol version. ([#150](https://github.com/Azure/CosmosDBShell/pull/150))
+- MCP tool calls no longer fail with `ObjectDisposedException: The CancellationTokenSource has been disposed` when the shell cancels a prompt, so agents can invoke tools such as `ls` and `connect` reliably. ([#150](https://github.com/Azure/CosmosDBShell/pull/150))
+
+### Build & pipeline
+
+- Added a CodeQL analysis workflow for C# that builds the solution with `build-mode: manual`, complementing the repository's existing CodeQL default setup. ([#165](https://github.com/Azure/CosmosDBShell/pull/165))
+- Updated GitHub Actions (`actions/checkout`, `actions/setup-dotnet`, `actions/upload-artifact`) to versions that run on Node 24, resolving the Node 20 deprecation warnings. ([#152](https://github.com/Azure/CosmosDBShell/pull/152))
+- Added a `union` merge driver for `CHANGELOG.md` via `.gitattributes` so concurrent PRs that each append an Unreleased entry merge automatically instead of conflicting. ([#172](https://github.com/Azure/CosmosDBShell/pull/172))
 
 ## 1.1.115-preview — 2026-07-01
 

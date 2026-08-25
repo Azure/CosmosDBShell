@@ -222,14 +222,22 @@ internal class WatchCommand : CosmosCommand
 
         AnsiConsole.MarkupLine(MessageService.GetArgsString("command-watch-stopped", "count", count.ToString()));
 
-        var result = new CommandState
-        {
-            IsPrinted = !redirected,
-        };
-        result.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+        var result = new CommandState();
+        result.SetFormat(this.OutputFormat);
         if (collected != null)
         {
-            result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = collected }));
+            result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "item", values = collected }));
+        }
+
+        if (!redirected && collected == null)
+        {
+            // Rows were streamed live to the terminal during the tail with nothing
+            // retained (no --max was given, so there's no Result to show), so suppress
+            // the trailing structured dump for the interactive, user-facing view. When
+            // --max bounds the run, collected is populated and an explicit --format/
+            // --output must still be honored instead of being silently overridden.
+            result.OutputFormat = Azure.Data.Cosmos.Shell.Core.OutputFormat.User;
+            result.RenderUser = () => { };
         }
 
         return result;
