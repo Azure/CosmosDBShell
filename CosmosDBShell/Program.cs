@@ -370,7 +370,7 @@ internal class Program
 
             if (o.Database != null)
             {
-                using var navigationTokenSource = ShellInterpreter.UserCancellationTokenSource;
+                var navigationTokenSource = ShellInterpreter.UserCancellationTokenSource;
                 var navigationToken = navigationTokenSource.Token;
                 try
                 {

@@ -207,15 +207,17 @@ public class CommandStatementTests
     }
 
     [Theory]
-    [InlineData("help -full:true", "full", "true")]
-    [InlineData("query --database=Samples", "database", "Samples")]
-    [InlineData("query --database=\"has space\"", "database", "has space")]
-    public void CommandStatement_ToString_RoundTripsOptionValue(string script, string expectedName, string expectedValue)
+    [InlineData("help -full:true", "full", "true", "help -full:true")]
+    [InlineData("query --database=Samples", "database", "Samples", "query --database=Samples")]
+    [InlineData("query --database=\"has space\"", "database", "has space", "query --database=\"has space\"")]
+    public void CommandStatement_ToString_RoundTripsOptionValue(string script, string expectedName, string expectedValue, string expectedText)
     {
         var cmd = (CommandStatement)ParseStatement(script);
 
-        var reparsed = (CommandStatement)ParseStatement(cmd.ToString());
+        var text = cmd.ToString();
+        var reparsed = (CommandStatement)ParseStatement(text);
 
+        Assert.Equal(expectedText, text);
         var option = Assert.IsType<CommandOption>(Assert.Single(reparsed.Arguments));
         Assert.Equal(expectedName, option.Name);
         Assert.Equal(expectedValue, option.Value?.ToString());

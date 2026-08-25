@@ -107,6 +107,14 @@ public class ExpressionTests
     }
 
     [Fact]
+    public void ParseExpression_CommandExpressionOption_PreservesSeparator()
+    {
+        var expr = ParseExpression("(help -full:true)");
+
+        Assert.Equal("(help -full:true)", expr.ToString());
+    }
+
+    [Fact]
     public void ParseExpression_CommandExpressionCommaSeparatedValue_ParsesAsSingleShellWord()
     {
         var expr = ParseExpression("(echo red,green,blue)");

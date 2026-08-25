@@ -24,7 +24,7 @@ internal static class CommandArgumentFormatter
         {
             var dashCount = Math.Max(1, option.NameToken.Start - option.MinusToken.Start);
             var text = new string('-', dashCount) + option.Name;
-            return option.Value == null ? text : $"{text}={Format(option.Value)}";
+            return option.Value == null ? text : $"{text}{option.SeparatorToken?.Value ?? "="}{Format(option.Value)}";
         }
 
         // A string constant carries a cooked value, so it has to be re-quoted to stay a

@@ -1463,15 +1463,17 @@ internal class ExpressionParser
             var optionNameToken = this.currentToken;
             this.Advance();
 
+            Token? separatorToken = null;
             Expression? optionValue = null;
             if (!this.IsAtEnd && this.currentToken != null &&
                 (this.currentToken.Type == TokenType.Colon || this.currentToken.Type == TokenType.Assignment))
             {
+                separatorToken = this.currentToken;
                 this.Advance(); // consume ':' or '='
                 optionValue = commandWordParser.ParseShellWord();
             }
 
-            return new CommandOption(optionStartToken, optionNameToken, optionValue);
+            return new CommandOption(optionStartToken, optionNameToken, separatorToken, optionValue);
         }
 
         return commandWordParser.ParseShellWord();
