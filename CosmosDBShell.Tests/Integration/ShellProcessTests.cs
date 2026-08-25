@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Azure.Data.Cosmos.Shell.Util;
+using Microsoft.Azure.Cosmos;
 
 using Xunit.Sdk;
 
@@ -222,6 +223,51 @@ public class ShellProcessTests
         Assert.Contains("Connected to account", result.StdOut, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("localhost", result.StdOut, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Current Location", result.StdOut, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "Emulator")]
+    public async Task StartupNavigation_WithDatabaseAndContainer_StartsAtRequestedContainer()
+    {
+        await EmulatorProbe.EnsureAvailableAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(EmulatorTestBase.EmulatorEndpoint);
+        var databaseName = $"StartupNav_{Guid.NewGuid():N}";
+        const string containerName = "RequestedContainer";
+        var options = new CosmosClientOptions
+        {
+            ConnectionMode = ConnectionMode.Gateway,
+            ServerCertificateCustomValidationCallback = (_, _, _) => true,
+        };
+
+        using var client = new CosmosClient(connectionString, options);
+        var database = (await client.CreateDatabaseAsync(databaseName, cancellationToken: cancellationToken)).Database;
+        try
+        {
+            await database.CreateContainerAsync(containerName, "/id", cancellationToken: cancellationToken);
+
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: [
+                    "--connect", connectionString,
+                    "--database", databaseName,
+                    "--container", containerName,
+                    "--output", "json",
+                    "-c", "pwd",
+                ],
+                cancellationToken: cancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Empty(result.StdErr.Trim());
+            using var document = JsonDocument.Parse(result.StdOut);
+            Assert.Equal(databaseName, document.RootElement.GetProperty("database").GetString());
+            Assert.Equal(containerName, document.RootElement.GetProperty("container").GetString());
+            Assert.Equal($"/{databaseName}/{containerName}", document.RootElement.GetProperty("currentLocation").GetString());
+        }
+        finally
+        {
+            await database.DeleteAsync(cancellationToken: cancellationToken);
+        }
     }
 
     [Fact]

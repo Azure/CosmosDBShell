@@ -174,7 +174,7 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
         for (var i = 0; i < matchingItems.Count; i++)
         {
             // The previous completion may have been quoted before it was written to the buffer.
-            if (lastBuffer.EndsWith(matchingItems[i]) || lastBuffer.EndsWith(FormatArgument(matchingItems[i])))
+            if (lastBuffer.EndsWith(matchingItems[i]) || lastBuffer.EndsWith(ShellLiteral.Quote(matchingItems[i])))
             {
                 if (kind == AutoComplete.Next)
                 {
