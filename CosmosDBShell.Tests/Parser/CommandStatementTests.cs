@@ -222,6 +222,14 @@ public class CommandStatementTests
     }
 
     [Fact]
+    public void CommandStatement_ToString_PreservesDoubleDashOptionPrefix()
+    {
+        var cmd = (CommandStatement)ParseStatement("query --database=Samples");
+
+        Assert.Equal("query --database=Samples", cmd.ToString());
+    }
+
+    [Fact]
     public async Task CommandStatement_FunctionCall_ExecutesFunction()
     {
         var shell = ShellInterpreter.Instance;

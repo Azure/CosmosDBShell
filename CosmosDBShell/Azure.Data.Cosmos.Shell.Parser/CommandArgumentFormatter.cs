@@ -4,6 +4,8 @@
 
 namespace Azure.Data.Cosmos.Shell.Parser;
 
+using System;
+
 using Azure.Data.Cosmos.Shell.Util;
 
 /// <summary>
@@ -20,7 +22,8 @@ internal static class CommandArgumentFormatter
         // remain separate AST arguments and are bound later using command metadata.
         if (argument is CommandOption option)
         {
-            var text = option.MinusToken.Value + option.Name;
+            var dashCount = Math.Max(1, option.NameToken.Start - option.MinusToken.Start);
+            var text = new string('-', dashCount) + option.Name;
             return option.Value == null ? text : $"{text}={Format(option.Value)}";
         }
 

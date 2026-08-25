@@ -370,6 +370,8 @@ internal class Program
 
             if (o.Database != null)
             {
+                using var navigationTokenSource = ShellInterpreter.UserCancellationTokenSource;
+                var navigationToken = navigationTokenSource.Token;
                 try
                 {
                     var navigation = new CdCommand
@@ -378,9 +380,9 @@ internal class Program
                         Container = o.Container,
                         Quiet = true,
                     };
-                    await navigation.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), string.Empty, default);
+                    await navigation.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), string.Empty, navigationToken);
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (navigationToken.IsCancellationRequested)
                 {
                     return;
                 }
