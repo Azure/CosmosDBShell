@@ -34,6 +34,11 @@ internal static class CommandArgumentFormatter
             return ShellLiteral.Quote(constant.Token.Value);
         }
 
+        if (argument is InterpolatedStringExpression interpolatedString)
+        {
+            return interpolatedString.SourceText;
+        }
+
         return argument.ToString() ?? string.Empty;
     }
 }

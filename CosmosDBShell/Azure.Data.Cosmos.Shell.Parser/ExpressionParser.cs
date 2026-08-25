@@ -986,7 +986,11 @@ internal class ExpressionParser
             }
         }
 
-        return new InterpolatedStringExpression(token, expressions);
+        var tokenRawStart = token.Start - this.lexer.PositionOffset;
+        var sourceText = tokenRawStart >= 0 && tokenRawStart + token.Length <= this.lexer.RawInput.Length
+            ? this.lexer.RawInput.Substring(tokenRawStart, token.Length)
+            : "$\"" + token.Value + "\"";
+        return new InterpolatedStringExpression(token, expressions, sourceText);
     }
 
     private Expression ValidateInterpolatedExpression(ExpressionParser parser, Expression expression)

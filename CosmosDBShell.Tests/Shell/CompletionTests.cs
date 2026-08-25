@@ -61,6 +61,25 @@ public class CompletionTests
         Assert.Equal("cd \"foo\\\"bar\"", completion);
     }
 
+    [Theory]
+    [InlineData("TRUE", "T")]
+    [InlineData("False", "F")]
+    [InlineData("NULL", "N")]
+    public void CompleteDatabase_QuotesReservedLiterals(string databaseName, string prefix)
+    {
+        CosmosCompleteCommand.ClearDatabases();
+        CosmosCompleteCommand.ClearContainers();
+
+        using var shell = ShellInterpreter.CreateInstance();
+        var client = CreateTestClient();
+        shell.State = new ConnectedState(client);
+        CosmosCompleteCommand.SetDatabases(client, [databaseName]);
+
+        var completion = CosmosCompleteCommand.GetCompletion(shell, $"cd {prefix}", AutoComplete.Next);
+
+        Assert.Equal($"cd \"{databaseName}\"", completion);
+    }
+
     [Fact]
     public void CompleteDatabase_CyclesThroughQuotedCandidates()
     {

@@ -184,6 +184,22 @@ public class CommandStatementTests
         Assert.Equal(value, Assert.IsType<ShellText>(constant.Value).Text);
     }
 
+    [Theory]
+    [InlineData("echo $\"Hello $name\"")]
+    [InlineData("echo $\"literal \\$name\"")]
+    [InlineData("echo $\"backslash \\\\$name\"")]
+    [InlineData("echo $\"value $(1 + 1)\"")]
+    public void CommandStatement_ToString_PreservesInterpolatedStringSource(string script)
+    {
+        var original = (CommandStatement)ParseStatement(script);
+
+        var reconstructed = original.ToString();
+        var reparsed = (CommandStatement)ParseStatement(reconstructed);
+
+        Assert.Equal(script, reconstructed);
+        Assert.IsType<InterpolatedStringExpression>(Assert.Single(reparsed.Arguments));
+    }
+
     [Fact]
     public void CommandStatement_ToString_KeepsNumericArgumentUnquoted()
     {

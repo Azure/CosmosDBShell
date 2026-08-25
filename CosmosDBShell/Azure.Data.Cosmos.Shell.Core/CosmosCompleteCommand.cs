@@ -142,17 +142,10 @@ internal sealed class CosmosCompleteCommand(ShellInterpreter shellInterpreter, A
 
     private static string FormatArgument(string value)
     {
-        try
+        var statement = new StatementParser($"echo {value}").ParseStatement() as CommandStatement;
+        if (statement?.Arguments is [ConstantExpression { Value: ShellIdentifier } argument] && argument.ToString() == value)
         {
-            var statement = new StatementParser($"echo {value}").ParseStatement() as CommandStatement;
-            if (statement?.Arguments is [ConstantExpression argument] && argument.ToString() == value)
-            {
-                return value;
-            }
-        }
-        catch
-        {
-            return ShellLiteral.Quote(value);
+            return value;
         }
 
         return ShellLiteral.Quote(value);
