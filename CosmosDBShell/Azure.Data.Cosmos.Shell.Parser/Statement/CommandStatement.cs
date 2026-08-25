@@ -539,38 +539,14 @@ internal class CommandStatement : Statement
                 if (option.Value != null)
                 {
                     sb.Append(' ');
-
-                    // For string expressions, we might want to quote them if they contain spaces
-                    var valueStr = option.Value.ToString();
-                    if (valueStr != null && valueStr.Contains(' ') && !valueStr.StartsWith('"'))
-                    {
-                        sb.Append('"');
-                        sb.Append(valueStr);
-                        sb.Append('"');
-                    }
-                    else
-                    {
-                        sb.Append(valueStr);
-                    }
+                    sb.Append(CommandArgumentFormatter.Format(option.Value));
                 }
 
                 continue;
             }
 
             sb.Append(' ');
-            var argStr = arg.ToString();
-
-            // Quote arguments that contain spaces
-            if (argStr != null && argStr.Contains(' ') && !argStr.StartsWith('"'))
-            {
-                sb.Append('"');
-                sb.Append(argStr);
-                sb.Append('"');
-            }
-            else
-            {
-                sb.Append(argStr);
-            }
+            sb.Append(CommandArgumentFormatter.Format(arg));
         }
 
         return sb.ToString();
