@@ -94,6 +94,8 @@ help-commands = Commands:
 help-examples = Examples:
 help-examples-heading = Examples
 help-aliases = Aliases:
+help-OutputFormat = The output format to use (user, json, table, csv).
+help-Quiet = Suppresses standard informational output.
 
 command-help-description = Shows help information for commands
 command-welcome-description = Displays the welcome screen
@@ -568,6 +570,8 @@ command-ls-found_containers =
     }
 command-ls-empty_databases_hint = No databases were returned. If you expected some, the connected identity may lack account-level read access, or you may be connected to a different account. Run 'connect' to verify the target account.
 command-ls-empty_containers_hint = No containers were returned for database { $database }. If you expected some, the connected identity may lack read access to this database, or you may be targeting the wrong account.
+command-ls-table-header-database = Database
+command-ls-table-header-container = Container
 command-ls-error-request_failed = List request failed with status code { $statusCode } ({ $status }).
 command-ls-error-no_content_stream = The list request completed, but Cosmos DB returned no response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
 command-ls-error-empty_content = The list request completed, but Cosmos DB returned an empty response body. This is not an empty-container result; retry the command and use --verbose if it keeps happening.
@@ -671,6 +675,8 @@ command-connect-not_connected = Not connected to any Cosmos DB account.
 command-connect-not_connected-usage-header = Use 'connect <endpoint>' to authenticate. Common forms:
 command-connect-not_connected-usage-footer = Run 'help connect' for the full list of options.
 command-connect-info-title = Connection Information
+command-connect-info-property = Property
+command-connect-info-value = Value
 command-connect-info-account = Account
 command-connect-info-arm-account = ARM Account
 command-connect-info-endpoint = Endpoint
@@ -778,10 +784,10 @@ command-bucket-error-arm_required =
 
 
 command-info-description = Shows configuration and usage statistics for the current container, database, or account.
-command-info-description-format = Output format (json, table)
+command-info-description-format = Output format (user, json, table, csv)
 command-info-error-container-without-database = A container was specified without a database. Provide --database, or run info from within a database or container scope.
 command-info-error-partitions-requires-container = --partitions only applies to a container. Specify a container with --database and --container, or run info from within a container scope.
-command-info-error-invalid-format = Unknown info output format '{ $format }'. Use 'json' or 'table'.
+command-info-error-invalid-format = Unknown info output format '{ $format }'. Use 'user', 'json', 'table', or 'csv'.
 command-settings-scale-heading = Scale
 command-settings-scale-usage = Based on usage, your container throughput will scale from { $min } RU/s (10% of max RU/s) - { $max } RU/s
 command-settings-scale-serverless = Throughput settings are not available for serverless accounts.

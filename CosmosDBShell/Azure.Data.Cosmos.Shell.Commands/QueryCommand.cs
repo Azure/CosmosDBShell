@@ -276,13 +276,13 @@ internal class QueryCommand : CosmosCommand
 
     private static void GeneratePlainResultDocument(CommandState returnState, IEnumerable<JsonElement> documents)
     {
-        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = documents.ToList() }));
+        returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "item", values = documents.ToList() }));
     }
 
     private async Task<CommandState> ExecuteQueryAsync(Container container, ShellInterpreter shell, CancellationToken token)
     {
         var returnState = new CommandState();
-        returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+        returnState.SetFormat(this.OutputFormat);
         var aggregatedDocuments = new List<JsonElement>();
 
         try
@@ -386,7 +386,8 @@ internal class QueryCommand : CosmosCommand
                         var element = JsonSerializer.SerializeToElement(
                             new Dictionary<string, object>()
                             {
-                                { "documents", aggregatedDocuments },
+                                { "type", "item" },
+                                { "values", aggregatedDocuments },
                                 { "requestCharge", queryMetrics?.TotalRequestCharge ?? 0 },
                                 { "queryMetrics", metricProperty },
                                 { "indexMetrics", parsedIndexMetrics ?? new Dictionary<string, object>() },

@@ -21,7 +21,7 @@ public class PwdCommandTests
         var state = await shell.ExecuteCommandAsync("pwd", CancellationToken.None);
 
         Assert.False(state.IsError);
-        Assert.True(state.IsPrinted);
+        Assert.NotNull(state.RenderUser);
         var result = Assert.IsType<ShellJson>(state.Result);
         Assert.Equal(JsonValueKind.Null, result.Value.GetProperty("currentLocation").ValueKind);
     }

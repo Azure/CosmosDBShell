@@ -182,6 +182,49 @@ public partial class ShellInterpreter : IDisposable
     internal Queue<VariableContainer> VariableContainers { get; } = new();
 
     /// <summary>
+    /// Gets a value indicating whether the shell is running in machine mode, where
+    /// interactive rendering (friendly views, ANSI colors, banners) is suppressed in
+    /// favor of deterministic structured output. Machine mode is entered via
+    /// <c>--quiet</c>, a structured output format (<c>--output json</c> or <c>--output csv</c>),
+    /// or an execute-and-quit (<c>-c</c>) invocation. The human-facing <c>table</c> and
+    /// <c>user</c> formats are not machine mode. See <see cref="OutputPolicy"/>.
+    /// </summary>
+    internal bool IsMachineMode => OutputPolicy.IsMachineMode(
+        this.Options?.Output,
+        this.Options?.Quiet == true,
+        !string.IsNullOrWhiteSpace(this.Options?.ExecuteAndQuit));
+
+    /// <summary>
+    /// Gets the session default <see cref="OutputFormat"/>, resolved from the global
+    /// <c>--output</c> option and then the <c>COSMOSDB_SHELL_FORMAT</c> environment variable.
+    /// When neither supplies a format it falls back to <see cref="OutputFormat.JSon"/> in
+    /// machine mode and <see cref="OutputFormat.User"/> interactively. <see cref="PrintState"/>
+    /// applies this to any command result that did not explicitly choose a format.
+    /// </summary>
+    /// <remarks>
+    /// The environment variable supplies a format only; unlike <c>--output</c> it never enters
+    /// machine mode, so exporting it in a shell profile cannot silently strip banners and colors
+    /// from interactive sessions. An unrecognized value is ignored instead of failing commands.
+    /// </remarks>
+    internal OutputFormat DefaultOutputFormat
+    {
+        get
+        {
+            if (OutputFormats.TryParse(this.Options?.Output, out var format))
+            {
+                return format;
+            }
+
+            if (OutputFormats.TryParse(Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"), out var envFormat))
+            {
+                return envFormat;
+            }
+
+            return this.IsMachineMode ? OutputFormat.JSon : OutputFormat.User;
+        }
+    }
+
+    /// <summary>
     /// Create a new instance of the <see cref="ShellInterpreter"/> class.
     /// </summary>
     /// <returns>A new instance of the <see cref="ShellInterpreter"/> class.</returns>
@@ -197,6 +240,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="par">An array of objects to format.</param>
     public static void WriteLine(string message, params object[] par)
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.WriteLine(message, par);
     }
 
@@ -206,6 +254,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="message">The message to write.</param>
     public static void WriteLine(string message)
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.WriteLine(message);
     }
 
@@ -214,6 +267,11 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     public static void WriteLine()
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.WriteLine();
     }
 
@@ -224,6 +282,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="par">An array of objects to format.</param>
     public static void Write(string message, params object[] par)
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.Write(message, par);
     }
 
@@ -233,6 +296,11 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="message">The message to write.</param>
     public static void Write(string message)
     {
+        if (Instance?.Options?.Quiet == true)
+        {
+            return;
+        }
+
         Console.Write(message);
     }
 
@@ -358,7 +426,6 @@ public partial class ShellInterpreter : IDisposable
     {
         using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
         var state = new CommandState();
-        state.SetFormat(Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
 
         // Snapshot redirect state so a '>' / '2>' on this command does not leak into
         // the next command executed against this interpreter instance.
@@ -575,11 +642,41 @@ public partial class ShellInterpreter : IDisposable
 
     internal void PrintVersion(CommandState? commandState)
     {
+        var isQuiet = this.Options?.Quiet == true;
         var version = GetDisplayVersion(typeof(VersionCommand).Assembly);
+        var port = this.McpPort;
+        var repoUrl = GetRepositoryUrl(typeof(VersionCommand).Assembly);
+
+        if (commandState == null)
+        {
+            // Startup banner: render immediately for interactive users.
+            if (!isQuiet)
+            {
+                RenderVersionBanner(version, port, repoUrl);
+            }
+
+            return;
+        }
+
+        var json = new Dictionary<string, object?>
+        {
+            ["version"] = version,
+            ["mcpEnabled"] = port != null,
+            ["mcpPort"] = port, // will be null if not enabled
+            ["mcpStatus"] = port != null ? "on" : "off",
+            ["repository"] = repoUrl,
+        };
+
+        var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
+        commandState.Result = new ShellJson(jsonElement);
+        commandState.RenderUser = () => RenderVersionBanner(version, port, repoUrl);
+    }
+
+    private static void RenderVersionBanner(string version, int? port, string repoUrl)
+    {
         var versionString = MessageService.GetArgsString("command-version", "version", version);
         AnsiConsole.MarkupLine(versionString);
 
-        var port = this.McpPort;
         if (port != null)
         {
             var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
@@ -590,27 +687,10 @@ public partial class ShellInterpreter : IDisposable
             AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
         }
 
-        var repoUrl = GetRepositoryUrl(typeof(VersionCommand).Assembly);
         if (!string.IsNullOrEmpty(repoUrl))
         {
             var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
             AnsiConsole.MarkupLine(repoString);
-        }
-
-        if (commandState != null)
-        {
-            var json = new Dictionary<string, object?>
-            {
-                ["version"] = version,
-                ["mcpEnabled"] = port != null,
-                ["mcpPort"] = port, // will be null if not enabled
-                ["mcpStatus"] = port != null ? "on" : "off",
-                ["repository"] = repoUrl,
-            };
-
-            var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
-            commandState.Result = new ShellJson(jsonElement);
-            commandState.IsPrinted = true;
         }
     }
 
@@ -1459,16 +1539,42 @@ public partial class ShellInterpreter : IDisposable
         this.Editor?.History.Add(cmdString);
     }
 
-    internal CommandState PrintState(CommandState state)
+    internal CommandState PrintState(CommandState state, bool markAsRendered = false)
     {
-        if (state.IsPrinted)
+        if (state.OutputRendered)
         {
-            // command already printed the state.
+            // Once rendered, stay rendered: a later PrintState call with the default
+            // markAsRendered:false (e.g. ExecuteCommandAsync's final call) must not
+            // unmark it, or a subsequent PrintState call on the same state would
+            // re-render output that was already shown.
             return state;
         }
 
         try
         {
+            // Apply the session default format when the command did not choose one itself.
+            // This is the single place the global format (from --output) is applied, so
+            // commands never need to read it and new commands inherit it automatically.
+            if (!state.OutputFormatExplicitlySet)
+            {
+                state.OutputFormat = this.DefaultOutputFormat;
+            }
+
+            var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
+            var inMachineMode = this.IsMachineMode;
+
+            // Interactive, user-facing view: when the command supplied a custom renderer and
+            // the effective format is User, let it draw. Redirection, piping, and machine
+            // mode always fall through to the structured (JSON/CSV/Table) path below.
+            if (!redirected
+                && !inMachineMode
+                && state.OutputFormat == OutputFormat.User
+                && state.RenderUser is { } renderUser)
+            {
+                renderUser();
+                return state;
+            }
+
             string? output;
 
             if (state.Result?.DataType == Parser.DataType.Json)
@@ -1476,14 +1582,15 @@ public partial class ShellInterpreter : IDisposable
                 // When writing JSON to the terminal (not redirected to a file), apply
                 // syntax highlighting using the configured Spectre.Console theme. File
                 // redirection still receives plain text so downstream tooling and tests
-                // are unaffected.
-                if (state.OutputFormat == OutputFormat.JSon && string.IsNullOrEmpty(this.StdOutRedirect))
+                // are unaffected. User format with no renderer falls back to JSON here.
+                if (!inMachineMode
+                    && !redirected
+                    && (state.OutputFormat == OutputFormat.JSon || state.OutputFormat == OutputFormat.User))
                 {
                     var element = (JsonElement?)state.Result.ConvertShellObject(Parser.DataType.Json);
                     if (element.HasValue)
                     {
                         AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
-                        state.Result = null;
                         return state;
                     }
                 }
@@ -1497,29 +1604,27 @@ public partial class ShellInterpreter : IDisposable
                 // When a text result carries a highlighter (e.g. script bodies), apply it
                 // when writing to the terminal. Redirection and piping still receive plain
                 // text so downstream tooling and tests are unaffected.
-                if (output != null && string.IsNullOrEmpty(this.StdOutRedirect)
+                if (!inMachineMode
+                    && !redirected
+                    && output != null
                     && state.Result is ShellText { Highlighter: { } highlighter })
                 {
                     AnsiConsole.MarkupLine(highlighter(output));
-                    state.Result = null;
                     return state;
                 }
             }
 
             if (output != null)
             {
-                if (string.IsNullOrEmpty(this.StdOutRedirect))
+                if (!redirected)
                 {
-                    WriteLine(output);
+                    Console.Out.WriteLine(output);
                 }
                 else
                 {
                     this.Redirect(output);
                 }
             }
-
-            // Clear the result after printing
-            state.Result = null;
         }
         catch (Exception e)
         {
@@ -1533,10 +1638,17 @@ public partial class ShellInterpreter : IDisposable
             // exceptions) carry an actionable message; the stack trace is noise
             // for end users. Show only Message chains and let --verbose surface
             // the full exception.
+            var inMachineMode = this.IsMachineMode;
+
             if (e is OperationCanceledException)
             {
                 var canceled = MessageService.GetString("runtime-error-canceled");
-                if (!string.IsNullOrEmpty(canceled))
+
+                if (inMachineMode)
+                {
+                    this.WriteMachineError(string.IsNullOrEmpty(canceled) ? e.Message : canceled);
+                }
+                else if (!string.IsNullOrEmpty(canceled))
                 {
                     AnsiConsole.MarkupLine(Theme.FormatWarning(canceled));
                 }
@@ -1544,21 +1656,35 @@ public partial class ShellInterpreter : IDisposable
                 return new ErrorCommandState(e);
             }
 
-            var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
-            AnsiConsole.MarkupLine($"{Theme.FormatError(prefix + ":")} {Markup.Escape(e.Message)}");
-            if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
+            if (inMachineMode)
             {
-                AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
+                this.WriteMachineError(e.Message);
             }
-
-            var inner = e.InnerException;
-            while (inner != null)
+            else
             {
-                AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
-                inner = inner.InnerException;
+                var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
+                AnsiConsole.MarkupLine($"{Theme.FormatError(prefix + ":")} {Markup.Escape(e.Message)}");
+                if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
+                {
+                    AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
+                }
+
+                var inner = e.InnerException;
+                while (inner != null)
+                {
+                    AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
+                    inner = inner.InnerException;
+                }
             }
 
             return new ErrorCommandState(e);
+        }
+        finally
+        {
+            if (markAsRendered)
+            {
+                state.OutputRendered = true;
+            }
         }
 
         return state;
@@ -1976,6 +2102,37 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    // Emits a structured machine-mode error object. Honors the shell's stderr
+    // redirection (`ErrOutRedirect` / `2>` / `2>>`) so scripts that redirect
+    // stderr still capture errors in --quiet / --output json modes; otherwise
+    // the object is written to the process stderr.
+    private void WriteMachineError(string errorMessage)
+    {
+        var errObj = new
+        {
+            status = "error",
+            error = errorMessage,
+        };
+        var json = JsonSerializer.Serialize(errObj);
+
+        if (this.ErrOutRedirect != null)
+        {
+            var payload = json + Environment.NewLine;
+            if (this.AppendErrRedirection)
+            {
+                File.AppendAllText(this.ErrOutRedirect, payload);
+            }
+            else
+            {
+                File.WriteAllText(this.ErrOutRedirect, payload);
+            }
+        }
+        else
+        {
+            Console.Error.WriteLine(json);
+        }
+    }
+
     /// <summary>
     /// Writes a connection failure to the console. The primary message plus the
     /// full inner-exception chain are shown so the underlying reason (bad key,
@@ -2034,6 +2191,12 @@ public partial class ShellInterpreter : IDisposable
         // The command already emitted a friendly diagnostic; do not print again.
         if (ContainsException<CommandReportedException>(e))
         {
+            return;
+        }
+
+        if (this.IsMachineMode)
+        {
+            this.WriteMachineError(e.Message);
             return;
         }
 
@@ -2261,6 +2424,25 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportParserErrors(ErrorList errors, string commandText)
     {
+        if (this.IsMachineMode
+            && errors != null && errors.Count > 0)
+        {
+            var errorStrings = new System.Collections.Generic.List<string>();
+            foreach (var err in errors)
+            {
+                if (err != null && err.ErrorLevel == ErrorLevel.Error)
+                {
+                    errorStrings.Add(err.Message ?? "Parser error");
+                }
+            }
+
+            if (errorStrings.Count > 0)
+            {
+                this.WriteMachineError(string.Join("; ", errorStrings));
+                return;
+            }
+        }
+
         if (errors == null || errors.Count == 0)
         {
             return;

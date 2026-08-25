@@ -4,7 +4,9 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
+using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
@@ -26,8 +28,11 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
     [CosmosOption("dry-run")]
     public bool? DryRun { get; init; }
 
+    internal CommandState? Outcome { get; set; }
+
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
+        this.Outcome = commandState;
         await shell.State.AcceptAsync(this, shell, token);
         return commandState;
     }
@@ -81,7 +86,9 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
             {
                 if (this.DryRun == true)
                 {
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-dry-run-plan", new Dictionary<string, object> { { "db", Markup.Escape(databaseName) } }));
+                    this.SetOutcome(
+                        JsonSerializer.SerializeToElement(new { type = "database", id = databaseName, deleted = false, dryRun = true }),
+                        () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-dry-run-plan", new Dictionary<string, object> { { "db", Markup.Escape(databaseName) } })));
                     return 0;
                 }
 
@@ -90,8 +97,15 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
                     await CosmosResourceFacade.DeleteDatabaseAsync(state, databaseName, token);
                     UpdateStateAfterDelete(shell, state.Client, state.ArmContext, databaseName);
                     CosmosCompleteCommand.ClearDatabases();
-                    var messageArguments = new Dictionary<string, object> { { "db", Markup.Escape(databaseName) } };
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", messageArguments));
+                    this.SetOutcome(
+                        JsonSerializer.SerializeToElement(new { type = "database", id = databaseName, deleted = true, dryRun = false }),
+                        () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", new Dictionary<string, object> { { "db", Markup.Escape(databaseName) } })));
+                }
+                else
+                {
+                    this.SetOutcome(
+                        JsonSerializer.SerializeToElement(new { type = "database", id = databaseName, deleted = false, dryRun = false }),
+                        () => { });
                 }
 
                 return 0;
@@ -99,5 +113,17 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
         }
 
         throw new CommandException("rmdb", MessageService.GetString("command-rmdb-error-database_not_found", new Dictionary<string, object> { { "db", this.Name ?? string.Empty } }));
+    }
+
+    private void SetOutcome(JsonElement payload, Action render)
+    {
+        var outcome = this.Outcome;
+        if (outcome is null)
+        {
+            return;
+        }
+
+        outcome.Result = new ShellJson(payload);
+        outcome.RenderUser = render;
     }
 }

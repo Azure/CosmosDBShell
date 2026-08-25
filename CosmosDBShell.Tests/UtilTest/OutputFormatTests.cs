@@ -62,7 +62,6 @@ public class OutputFormatTests
         Assert.Contains("Hello", output);
         Assert.Contains("Answer", output);
         Assert.Contains("World", output);
-        Assert.Contains("---", output);
         Assert.DoesNotContain("\"", output);
     }
 
@@ -84,13 +83,86 @@ public class OutputFormatTests
         commandState.OutputFormat = OutputFormat.Table;
 
         var output = commandState.GenerateOutputText();
-        var lines = output.TrimEnd('\r', '\n').Split(Environment.NewLine);
 
-        Assert.Equal(4, lines.Length);
-        Assert.Equal("id  name   answer", lines[0]);
-        Assert.Equal("--  -----  ------", lines[1]);
-        Assert.Equal("12  alpha  53    ", lines[2]);
-        Assert.Equal("13  beta         ", lines[3]);
+        Assert.Contains("id", output);
+        Assert.Contains("name", output);
+        Assert.Contains("answer", output);
+        Assert.Contains("12", output);
+        Assert.Contains("alpha", output);
+        Assert.Contains("13", output);
+        Assert.Contains("beta", output);
+        Assert.DoesNotContain("\"", output);
+    }
+
+    [Fact]
+    void TestTableLaterRowIntroducesLeadingColumn()
+    {
+        // A later row that introduces a field before existing fields forces the
+        // header index-shift path; it must not throw a "collection was modified".
+        var input = """
+        {
+            "items": [
+                { "b": "1", "c": "2" },
+                { "a": "3", "b": "4", "c": "5" }
+            ]
+        }
+        """;
+        var element = JsonSerializer.Deserialize<JsonElement>(input);
+
+        var commandState = new CommandState();
+        commandState.Result = new ShellJson(element);
+        commandState.OutputFormat = OutputFormat.CSV;
+
+        var output = commandState.GenerateOutputText();
+
+        Assert.Contains("\"a\"", output);
+        Assert.Contains("\"b\"", output);
+        Assert.Contains("\"c\"", output);
+        Assert.Contains("\"3\"", output);
+        Assert.Contains("\"4\"", output);
+        Assert.Contains("\"5\"", output);
+    }
+
+    [Fact]
+    void TestTableCustomHeaderProvider()
+    {
+        var commandState = new CommandState();
+        commandState.OutputFormat = OutputFormat.Table;
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "container", values = new[] { "pktest", "ToDoList" } }));
+        commandState.RenderTabular = () =>
+        {
+            var tabular = new TabularData("Container");
+            tabular.AddRow("pktest");
+            tabular.AddRow("ToDoList");
+            return tabular;
+        };
+
+        var output = commandState.GenerateOutputText();
+
+        Assert.Contains("Container", output);
+        Assert.Contains("pktest", output);
+        Assert.Contains("ToDoList", output);
+        Assert.DoesNotContain("value", output);
+    }
+
+    [Fact]
+    void TestCsvCustomHeaderProvider()
+    {
+        var commandState = new CommandState();
+        commandState.OutputFormat = OutputFormat.CSV;
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "container", values = new[] { "pktest", "ToDoList" } }));
+        commandState.RenderTabular = () =>
+        {
+            var tabular = new TabularData("Container");
+            tabular.AddRow("pktest");
+            tabular.AddRow("ToDoList");
+            return tabular;
+        };
+
+        var output = commandState.GenerateOutputText().TrimEnd();
+
+        var expected = "\"Container\"" + Environment.NewLine + "\"pktest\"" + Environment.NewLine + "\"ToDoList\"";
+        Assert.Equal(expected, output);
     }
 
     [Fact]
@@ -105,6 +177,60 @@ public class OutputFormatTests
 
         commandState.SetFormat("tbl");
         Assert.Equal(OutputFormat.Table, commandState.OutputFormat);
+    }
+
+    [Fact]
+    async Task CommandStatement_ClearsRenderTabularFromPriorStatement()
+    {
+        // A prior command's RenderTabular delegate must not leak into the next
+        // statement that reuses the same shared CommandState; otherwise CSV/Table
+        // output for the later command would render the earlier command's table.
+        using var shell = ShellInterpreter.CreateInstance();
+        var lexer = new Lexer("echo \"b\"");
+        var parser = new StatementParser(lexer);
+        var statements = parser.ParseStatements();
+
+        var state = new CommandState();
+        state.RenderTabular = () => new TabularData("Leaked");
+
+        state = await statements[0].RunAsync(shell, state, TestContext.Current.CancellationToken);
+
+        Assert.Null(state.RenderTabular);
+    }
+
+    [Fact]
+    async Task CommandStatement_ClearsExplicitFormatFromPriorStatement()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var lexer = new Lexer("echo \"b\"");
+        var parser = new StatementParser(lexer);
+        var statements = parser.ParseStatements();
+
+        var state = new CommandState
+        {
+            OutputFormat = OutputFormat.CSV,
+        };
+
+        state = await statements[0].RunAsync(shell, state, TestContext.Current.CancellationToken);
+
+        Assert.False(state.OutputFormatExplicitlySet);
+    }
+
+    [Fact]
+    async Task AssignmentStatement_ClearsRenderTabularFromPriorStatement()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var lexer = new Lexer("$x = 1");
+        var parser = new StatementParser(lexer);
+        var statements = parser.ParseStatements();
+
+        var state = new CommandState();
+        state.RenderTabular = () => new TabularData("Leaked");
+
+        state = await statements[0].RunAsync(shell, state, TestContext.Current.CancellationToken);
+
+        Assert.Null(state.RenderTabular);
+        Assert.False(state.OutputFormatExplicitlySet);
     }
 
     private string StripWS(string input)

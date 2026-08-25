@@ -7,6 +7,7 @@ namespace CosmosShell.Tests.Integration;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Azure.Data.Cosmos.Shell.Util;
 
@@ -125,16 +126,16 @@ public class ShellProcessTests
     }
 
     [Fact]
-    public async Task UnknownRootArgument_ReturnsUnknownArgumentError()
+    public async Task UnknownRootArgument_ReturnsUsageExitCode()
     {
         var result = await RunShellAsync(
             stdinScript: null,
             extraArgs: ["not-a-root-option"],
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("Unrecognized argument 'not-a-root-option'", result.StdOut);
-        Assert.DoesNotContain("Option '--connect-mode' is defined with a bad format", result.StdOut);
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("Unrecognized argument 'not-a-root-option'", result.StdOut + result.StdErr);
+        Assert.DoesNotContain("Option '--connect-mode' is defined with a bad format", result.StdOut + result.StdErr);
     }
 
     [Fact]
@@ -145,8 +146,8 @@ public class ShellProcessTests
             extraArgs: ["--connect"],
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("Required option '--connect' is missing", result.StdOut);
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("Required option '--connect' is missing", result.StdOut + result.StdErr);
     }
 
     [Fact]
@@ -158,13 +159,114 @@ public class ShellProcessTests
 
         var result = await RunShellAsync(
             stdinScript: null,
-            extraArgs: ["--connect", connectionString, "-c", "connect"],
+            extraArgs: ["--connect", connectionString, "--output", "table", "-c", "connect"],
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("Connected to account", result.StdOut, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("localhost", result.StdOut, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Current Location", result.StdOut, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task BadArguments_WithOutputJson_ReturnsExitCode2_AndJsonOnStdErr()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--output", "json", "-c", "not a real command"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
+        Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not recognized as an internal or external command", result.StdErr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ConnectionFailure_WithOutputJson_ReturnsExitCode4_AndJsonOnStdErr()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--connect", "https://127.0.0.1:1", "--output", "json", "-c", "version"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Connection/network failures map to ShellExitCode.ConnectionError (4).
+        Assert.Equal(4, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
+        Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task StdinPipedScript_SyntaxError_ReturnsUsageExitCode()
+    {
+        var result = await RunShellAsync("echo \"unterminated", TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.ExitCode);
+    }
+
+    [Fact]
+    public async Task MalformedOtelEndpoint_ReturnsUsageExitCode()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--otel", "not-a-valid-endpoint", "-c", "version"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.ExitCode);
+    }
+
+    [Fact]
+    public async Task SlashC_WithMalformedOtelEndpoint_ReturnsJsonError()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--otel", "not-a-valid-endpoint", "/c", "version"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
+        Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExecuteAndQuit_WithoutOutput_EmitsParseableJsonOnStdOut()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["-c", "version"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Empty(result.StdErr.Trim());
+
+        using var doc = JsonDocument.Parse(result.StdOut);
+        Assert.True(doc.RootElement.ValueKind == JsonValueKind.Object || doc.RootElement.ValueKind == JsonValueKind.Array);
+    }
+
+    [Fact]
+    public async Task InvalidMcpPort_WithOutputJson_ReturnsExitCode2_AndJsonOnStdErr()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--output", "json", "--mcp", "0"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
+        Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("port", result.StdErr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ClearHistory_WithOutputJson_DoesNotWriteInformationalStdOut()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--output", "json", "--clear-history"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
     }
 
     private static async Task<ShellProcessResult> RunShellAsync(
@@ -179,6 +281,11 @@ public class ShellProcessTests
         IEnumerable<string>? extraArgs,
         CancellationToken cancellationToken)
     {
+        var argsList = extraArgs?.ToList();
+        var requiresOwnedStdin = stdinScript != null
+            || (argsList?.Contains("-c") == true)
+            || (argsList?.Contains("-k") == true);
+
         var shellDll = Path.Combine(AppContext.BaseDirectory, "CosmosDBShell.dll");
         if (!File.Exists(shellDll))
         {
@@ -200,7 +307,7 @@ public class ShellProcessTests
                 FileName = dotnet,
                 WorkingDirectory = AppContext.BaseDirectory,
                 UseShellExecute = false,
-                RedirectStandardInput = true,
+                RedirectStandardInput = requiresOwnedStdin,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 StandardOutputEncoding = Encoding.UTF8,
@@ -249,14 +356,14 @@ public class ShellProcessTests
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            if (stdinScript != null)
+            if (requiresOwnedStdin)
             {
-                await process.StandardInput.WriteAsync(stdinScript);
-                await process.StandardInput.WriteLineAsync();
-                process.StandardInput.Close();
-            }
-            else
-            {
+                if (stdinScript != null)
+                {
+                    await process.StandardInput.WriteAsync(stdinScript);
+                    await process.StandardInput.WriteLineAsync();
+                }
+
                 process.StandardInput.Close();
             }
 
