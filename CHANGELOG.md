@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes
+
+- Local emulator outages are now detected across Cosmos DB commands. Requests fail promptly with an error and return the shell to its disconnected state instead of leaving an unresponsive session labeled as connected.
+
 ## 1.1.209-preview — 2026-08-26
 
 ### New features
