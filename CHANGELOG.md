@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.1.209-preview — 2026-08-26
+
 ### New features
 
 - **`--database` and `--container` startup options.** Navigate to a database or container at startup without composing a `-k "cd ..."` command. Both require `--connect`, and `--container` requires `--database`. Tools that previously built a startup script string to select a location should pass these options instead. See [navigation](docs/navigation.md).
