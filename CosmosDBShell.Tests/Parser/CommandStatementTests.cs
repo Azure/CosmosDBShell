@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
 
 using Xunit;
 
@@ -161,6 +162,89 @@ public class CommandStatementTests
         Assert.Contains("query", result);
         Assert.Contains("SELECT * FROM c", result);
         Assert.Contains("collection1", result);
+    }
+
+    [Theory]
+    [InlineData("SELECT * FROM c")]
+    [InlineData("plain")]
+    [InlineData("with\"quote")]
+    [InlineData("back\\slash")]
+    [InlineData("$name")]
+    [InlineData("$(echo injected)")]
+    [InlineData("foo; echo injected")]
+    [InlineData("line\nbreak")]
+    public void CommandStatement_ToString_RoundTripsStringArguments(string value)
+    {
+        var original = (CommandStatement)ParseStatement($"echo {ShellLiteral.Quote(value)}");
+
+        var reparsed = (CommandStatement)ParseStatement(original.ToString());
+
+        var argument = Assert.Single(reparsed.Arguments);
+        var constant = Assert.IsType<ConstantExpression>(argument);
+        Assert.Equal(value, Assert.IsType<ShellText>(constant.Value).Text);
+    }
+
+    [Theory]
+    [InlineData("echo $\"Hello $name\"")]
+    [InlineData("echo $\"literal \\$name\"")]
+    [InlineData("echo $\"backslash \\\\$name\"")]
+    [InlineData("echo $\"value $(1 + 1)\"")]
+    public void CommandStatement_ToString_PreservesInterpolatedStringSource(string script)
+    {
+        var original = (CommandStatement)ParseStatement(script);
+
+        var reconstructed = original.ToString();
+        var reparsed = (CommandStatement)ParseStatement(reconstructed);
+
+        Assert.Equal(script, reconstructed);
+        Assert.IsType<InterpolatedStringExpression>(Assert.Single(reparsed.Arguments));
+    }
+
+    [Fact]
+    public void CommandStatement_ToString_KeepsNumericArgumentUnquoted()
+    {
+        var cmd = (CommandStatement)ParseStatement("echo 10");
+
+        var result = cmd.ToString();
+
+        Assert.DoesNotContain("\"10\"", result);
+    }
+
+    [Fact]
+    public void CommandStatement_ToString_RoundTripsValuelessOption()
+    {
+        var cmd = (CommandStatement)ParseStatement("help --full");
+
+        var reparsed = (CommandStatement)ParseStatement(cmd.ToString());
+
+        var option = Assert.IsType<CommandOption>(Assert.Single(reparsed.Arguments));
+        Assert.Equal("full", option.Name);
+        Assert.Null(option.Value);
+    }
+
+    [Theory]
+    [InlineData("help -full:true", "full", "true", "help -full:true")]
+    [InlineData("query --database=Samples", "database", "Samples", "query --database=Samples")]
+    [InlineData("query --database=\"has space\"", "database", "has space", "query --database=\"has space\"")]
+    public void CommandStatement_ToString_RoundTripsOptionValue(string script, string expectedName, string expectedValue, string expectedText)
+    {
+        var cmd = (CommandStatement)ParseStatement(script);
+
+        var text = cmd.ToString();
+        var reparsed = (CommandStatement)ParseStatement(text);
+
+        Assert.Equal(expectedText, text);
+        var option = Assert.IsType<CommandOption>(Assert.Single(reparsed.Arguments));
+        Assert.Equal(expectedName, option.Name);
+        Assert.Equal(expectedValue, option.Value?.ToString());
+    }
+
+    [Fact]
+    public void CommandStatement_ToString_PreservesDoubleDashOptionPrefix()
+    {
+        var cmd = (CommandStatement)ParseStatement("query --database=Samples");
+
+        Assert.Equal("query --database=Samples", cmd.ToString());
     }
 
     [Fact]

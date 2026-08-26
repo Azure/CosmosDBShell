@@ -180,63 +180,9 @@ internal class ToolOperations
         return names.Any(name => name.Equals(argumentName, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string FormatParameter(string? p)
-    {
-        if (p == null)
-        {
-            return "\"\"";
-        }
-
-        // Check if parameter needs quoting (contains spaces or special characters)
-        bool needsQuoting = string.IsNullOrEmpty(p) ||
-            p.Contains(' ') ||
-            p.Contains('\t') ||
-            p.Contains('\n') ||
-            p.Contains('\r') ||
-            p.Contains('"') ||
-            p.Contains('\\');
-
-        if (needsQuoting)
-        {
-            var sb = new StringBuilder(p.Length + 10); // Add some extra capacity for quotes and escaping
-            sb.Append('"');
-
-            // Escape double quotes and other special characters using backslash sequences
-            foreach (char c in p)
-            {
-                switch (c)
-                {
-                    case '"':
-                        sb.Append("\\\"");
-                        break;
-                    case '\\':
-                        sb.Append("\\\\");
-                        break;
-                    case '\n':
-                        sb.Append("\\n");
-                        break;
-                    case '\r':
-                        sb.Append("\\r");
-                        break;
-                    case '\t':
-                        sb.Append("\\t");
-                        break;
-                    default:
-                        sb.Append(c);
-                        break;
-                }
-            }
-
-            sb.Append('"');
-            return sb.ToString();
-        }
-
-        return p;
-    }
-
     internal static string FormatOptionForHistory(Option option, object? value)
     {
-        return $" --{option.Name[0]} {FormatParameter(value?.ToString())}";
+        return $" --{option.Name[0]} {ShellLiteral.Quote(value?.ToString())}";
     }
 
     private static JsonObject CreatePropertySchema(Type propertyType, string? description, string[] names, object? defaultValue = null)
@@ -479,7 +425,7 @@ internal class ToolOperations
                         memberKind: "parameter",
                         memberDisplay: parameter.Name[0],
                         commandName: command.CommandName,
-                        appendToHistory: value => sb.Append(' ').Append(FormatParameter(value?.ToString())));
+                        appendToHistory: value => sb.Append(' ').Append(ShellLiteral.Quote(value?.ToString())));
                     if (bindError != null)
                     {
                         return bindError;

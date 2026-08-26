@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### New features
+
+- **`--database` and `--container` startup options.** Navigate to a database or container at startup without composing a `-k "cd ..."` command. Both require `--connect`, and `--container` requires `--database`. Tools that previously built a startup script string to select a location should pass these options instead. See [navigation](docs/navigation.md).
+
+### Breaking changes
+
+- **String interpolation now requires the explicit `$"..."` prefix.** In ordinary double-quoted strings, `$name` and `$(...)` are literal text and are no longer evaluated — previously any `"..."` string containing `$` was interpolated. Scripts that relied on `"Hello $name"` must be changed to `$"Hello $name"`; this change is silent, so review scripts that build strings from `$` values. Inside an interpolated string, `$(...)` evaluates a complete expression, but command expressions are rejected; `\$` escapes a literal dollar sign. Ordinary double-quoted strings additionally accept `\uXXXX` escapes. See [programming](docs/programming.md).
+
+### Fixes
+
+- Command text reconstructed from a parsed command (MCP tool-call history, the echoed command line, and AST `ToString()`) is now serialized through a single literal writer. Values were previously quoted only when they contained a space, and were never escaped, so a value containing a quote, a backslash, a semicolon, or a control character produced command text that no longer parsed back to the original value. Options also lost their `-` prefix and their value separator. Reconstructed command text now round-trips.
+
 ## 1.1.190-preview — 2026-08-25
 
 ### New features

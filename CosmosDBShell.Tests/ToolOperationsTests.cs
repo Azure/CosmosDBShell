@@ -7,6 +7,8 @@ namespace CosmosShell.Tests;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Mcp;
+using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
 
 public class ToolOperationsTests
 {
@@ -65,7 +67,7 @@ public class ToolOperationsTests
 
         var formattedOption = ToolOperations.FormatOptionForHistory(databaseOption, "Samples");
 
-        Assert.Equal(" --database Samples", formattedOption);
+        Assert.Equal(" --database \"Samples\"", formattedOption);
     }
 
     [Theory]
@@ -73,6 +75,11 @@ public class ToolOperationsTests
     [InlineData("with\"quote", " --database \"with\\\"quote\"")]
     [InlineData("back\\slash", " --database \"back\\\\slash\"")]
     [InlineData("line\nbreak", " --database \"line\\nbreak\"")]
+    [InlineData("$name", " --database \"\\$name\"")]
+    [InlineData("$(echo injected)", " --database \"\\$(echo injected)\"")]
+    [InlineData("foo; echo injected", " --database \"foo; echo injected\"")]
+    [InlineData("left|right", " --database \"left|right\"")]
+    [InlineData("escape\u001Bsequence", " --database \"escape\\u001Bsequence\"")]
     public void FormatOptionForHistory_QuotesAndEscapesSpecialValues(string value, string expected)
     {
         var factory = new CommandRunner().Commands["query"];
@@ -92,6 +99,26 @@ public class ToolOperationsTests
         var formattedOption = ToolOperations.FormatOptionForHistory(databaseOption, null);
 
         Assert.Equal(" --database \"\"", formattedOption);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("plain")]
+    [InlineData("$name")]
+    [InlineData("$(echo injected)")]
+    [InlineData("foo; echo injected")]
+    [InlineData("left|right")]
+    [InlineData("with\"quote")]
+    [InlineData("back\\slash")]
+    [InlineData("line\nbreak\tend")]
+    [InlineData("escape\u001Bsequence")]
+    public void ShellLiteral_Quote_RoundTripsAsConstantExpression(string value)
+    {
+        var expression = new ExpressionParser(new Lexer(ShellLiteral.Quote(value))).ParseExpression();
+
+        var constant = Assert.IsType<ConstantExpression>(expression);
+        var text = Assert.IsType<ShellText>(constant.Value);
+        Assert.Equal(value, text.Text);
     }
 
     [Fact]

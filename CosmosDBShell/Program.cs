@@ -117,6 +117,8 @@ internal class Program
                 ConnectResourceGroup = parseResult.GetValueForOption(optionMap.ConnectResourceGroup),
                 ConnectVSCodeCredential = parseResult.GetValueForOption(optionMap.ConnectVSCodeCredential),
                 ConnectAzureCli = parseResult.GetValueForOption(optionMap.ConnectAzureCli),
+                Database = parseResult.GetValueForOption(optionMap.Database),
+                Container = parseResult.GetValueForOption(optionMap.Container),
                 StartLspServer = parseResult.GetValueForOption(optionMap.StartLspServer),
                 LspStdio = parseResult.GetValueForOption(optionMap.LspStdio),
                 Verbose = parseResult.GetValueForOption(optionMap.Verbose),
@@ -238,6 +240,20 @@ internal class Program
                 AnsiConsole.WriteLine(message);
             }
 
+            if (o.Container != null && o.Database == null)
+            {
+                WriteStartupError(MessageService.GetString("error-startup-container-requires-database"));
+                Environment.ExitCode = ShellExitCode.UsageError;
+                return;
+            }
+
+            if (o.Database != null && o.ConnectionString == null)
+            {
+                WriteStartupError(MessageService.GetString("error-startup-navigation-requires-connect"));
+                Environment.ExitCode = ShellExitCode.UsageError;
+                return;
+            }
+
             if (o.ClearHistory)
             {
                 if (File.Exists(ShellInterpreter.Instance.HistoryFile))
@@ -348,6 +364,32 @@ internal class Program
                         ShellInterpreter.WriteConnectionError(ex, o.Verbose);
                     }
 
+                    return;
+                }
+            }
+
+            if (o.Database != null)
+            {
+                var navigationTokenSource = ShellInterpreter.UserCancellationTokenSource;
+                var navigationToken = navigationTokenSource.Token;
+                try
+                {
+                    var navigation = new CdCommand
+                    {
+                        Database = o.Database,
+                        Container = o.Container,
+                        Quiet = true,
+                    };
+                    await navigation.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), string.Empty, navigationToken);
+                }
+                catch (OperationCanceledException) when (navigationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (CommandException ex)
+                {
+                    Environment.ExitCode = ShellExitCode.FromException(ex);
+                    WriteStartupError(CommandException.GetDisplayMessage(ex));
                     return;
                 }
             }
@@ -637,6 +679,8 @@ internal class Program
             IsHidden = true,
         };
         var connectAzureCli = new Option<bool>("--connect-azure-cli", MessageService.GetString("help-ConnectAzureCli"));
+        var database = new Option<string?>("--database", MessageService.GetString("help-StartupDatabase"));
+        var container = new Option<string?>("--container", MessageService.GetString("help-StartupContainer"));
 
         var mcpPort = new Option<int?>("--mcp", MessageService.GetString("help-McpPort"))
         {
@@ -678,6 +722,8 @@ internal class Program
             connectResourceGroup,
             connectVSCodeCredential,
             connectAzureCli,
+            database,
+            container,
             mcpPort,
             startLspServer,
             lspStdio,
@@ -704,6 +750,8 @@ internal class Program
             connectResourceGroup,
             connectVSCodeCredential,
             connectAzureCli,
+            database,
+            container,
             mcpPort,
             startLspServer,
             lspStdio,
@@ -739,6 +787,8 @@ internal class Program
             [map.ConnectManagedIdentity] = "<id>",
             [map.ConnectSubscription] = "<id>",
             [map.ConnectResourceGroup] = "<name>",
+            [map.Database] = "<id>",
+            [map.Container] = "<id>",
             [map.McpPort] = "[<port>]",
             [map.Theme] = "<name>",
             [map.Diagnostics] = "[<path>]",
@@ -851,6 +901,8 @@ internal class Program
         Option<string?> ConnectResourceGroup,
         Option<bool> ConnectVSCodeCredential,
         Option<bool> ConnectAzureCli,
+        Option<string?> Database,
+        Option<string?> Container,
         Option<int?> McpPort,
         Option<bool> StartLspServer,
         Option<bool> LspStdio,
@@ -931,6 +983,10 @@ internal class Program
         public bool ConnectVSCodeCredential { get; set; }
 
         public bool ConnectAzureCli { get; set; }
+
+        public string? Database { get; set; }
+
+        public string? Container { get; set; }
 
         public int? McpPort { get; set; }
 

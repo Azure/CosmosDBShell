@@ -12,4 +12,4 @@ for $script in (dir "examples/list_dir/*.csh") {
     $count = $count + 1
 }
 
-echo "Completed: $count scripts executed"
+echo $"Completed: $count scripts executed"
