@@ -6,8 +6,9 @@ namespace CosmosShell.Tests.CommandTests;
 
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using CosmosShell.Tests;
 
-[Collection(WelcomeConsoleTestCollection.Name)]
+[Collection(ConsoleOutputTestCollection.Name)]
 public sealed class WelcomeCommandTests
 {
     [Fact]
@@ -151,10 +152,4 @@ public sealed class WelcomeCommandTests
     {
         return (value.Length - value.Replace(text, string.Empty, StringComparison.Ordinal).Length) / text.Length;
     }
-}
-
-[CollectionDefinition(Name, DisableParallelization = true)]
-public sealed class WelcomeConsoleTestCollection
-{
-    public const string Name = "Welcome console tests";
 }
