@@ -31,7 +31,10 @@ variables:
   BuildConfiguration: Release
 
   WindowsContainerImage: "onebranch.azurecr.io/windows/ltsc2022/vse2022:latest" # Docker image which is used to build the project https://aka.ms/obpipelines/containers
-  LinuxContainerImage: "onebranch.azurecr.io/linux/ubuntu-2204:latest"
+  # Azure Linux is RPM-native and resolves packages from packages.microsoft.com.
+  # The build containers cannot reach the public Ubuntu archives, so an
+  # Ubuntu image cannot install the RPM tooling the rpm job needs.
+  LinuxContainerImage: "mcr.microsoft.com/onebranch/azurelinux/build:3.0"
 
 resources:
   repositories:
@@ -859,8 +862,7 @@ extends:
               - script: |
                   set -euo pipefail
                   if ! command -v rpmbuild >/dev/null 2>&1; then
-                    sudo apt-get update
-                    sudo apt-get install -y rpm
+                    tdnf install -y rpm-build
                   fi
 
                   rpm_root="$(Build.SourcesDirectory)/.rpmbuild"

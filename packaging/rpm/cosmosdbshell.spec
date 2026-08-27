@@ -8,7 +8,14 @@ Source0:        CosmosDBShell
 Source1:        LICENSE.md
 Source2:        NOTICE.html
 Requires:       dotnet-runtime-10.0 >= 10.0
-%define _binary_payload w19.zstdio
+
+%global _binary_payload w19.zstdio
+%{!?_licensedir: %global _licensedir %{_datadir}/licenses}
+
+# The payload is a prebuilt .NET single-file binary whose bundle is appended to
+# the ELF image; stripping or extracting debuginfo from it corrupts the bundle.
+%global debug_package %{nil}
+%global __os_install_post %{nil}
 
 %description
 Azure Cosmos DB Shell is a command-line tool for interactive navigation,
