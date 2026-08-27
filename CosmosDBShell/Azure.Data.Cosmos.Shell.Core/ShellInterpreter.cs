@@ -417,7 +417,7 @@ public partial class ShellInterpreter : IDisposable
     {
         using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
         var isLocalEmulatorOperation = this.State is ConnectedState connectedState
-            && ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectedState.Client.Endpoint.ToString());
+            && ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectedState.Client?.Endpoint.ToString());
         var state = new CommandState();
 
         // Snapshot redirect state so a '>' / '2>' on this command does not leak into
