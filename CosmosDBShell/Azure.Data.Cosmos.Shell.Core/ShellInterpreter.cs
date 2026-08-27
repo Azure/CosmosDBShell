@@ -1579,6 +1579,12 @@ public partial class ShellInterpreter : IDisposable
                 return state;
             }
 
+            if (inMachineMode && state is StructuredErrorCommandState structuredError)
+            {
+                this.WriteMachineError(structuredError.Exception.Message, structuredError.Result);
+                return state;
+            }
+
             string? output;
 
             if (state.Result?.DataType == Parser.DataType.Json)
@@ -2110,14 +2116,20 @@ public partial class ShellInterpreter : IDisposable
     // redirection (`ErrOutRedirect` / `2>` / `2>>`) so scripts that redirect
     // stderr still capture errors in --quiet / --output json modes; otherwise
     // the object is written to the process stderr.
-    private void WriteMachineError(string errorMessage)
+    private void WriteMachineError(string errorMessage, ShellObject? result = null)
     {
-        var errObj = new
+        var error = new Dictionary<string, object?>
         {
-            status = "error",
-            error = errorMessage,
+            ["status"] = "error",
+            ["error"] = errorMessage,
         };
-        var json = JsonSerializer.Serialize(errObj);
+
+        if (result?.ConvertShellObject(Parser.DataType.Json) is JsonElement resultElement)
+        {
+            error["result"] = resultElement;
+        }
+
+        var json = JsonSerializer.Serialize(error);
 
         if (this.ErrOutRedirect != null)
         {

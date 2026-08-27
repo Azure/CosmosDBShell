@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
+using global::Azure;
 using global::Azure.Data.Cosmos.Shell.Core;
 
 internal static class BatchExecutor
@@ -67,28 +68,36 @@ internal static class BatchExecutor
 
         if (response.IsSuccessStatusCode)
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            var successMessage = MessageService.GetArgsString(
                 "command-batch-success",
                 "count",
                 operations.Count,
                 "charge",
-                response.RequestCharge.ToString("F2", CultureInfo.InvariantCulture)));
-        }
-        else
-        {
-            var errorMessage = MessageService.GetArgsString(
-                "command-batch-error-failed",
-                "status",
-                ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture),
-                "charge",
                 response.RequestCharge.ToString("F2", CultureInfo.InvariantCulture));
-            ShellInterpreter.WriteLine(errorMessage);
-            return new StructuredErrorCommandState(
-                new CommandException(commandName, errorMessage),
-                new ShellJson(summary));
+            return CreateResultState(summary, successMessage);
         }
 
-        return new CommandState { Result = new ShellJson(summary) };
+        var errorMessage = MessageService.GetArgsString(
+            "command-batch-error-failed",
+            "status",
+            ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture),
+            "charge",
+            response.RequestCharge.ToString("F2", CultureInfo.InvariantCulture));
+        var errorState = new StructuredErrorCommandState(
+            new CommandException(
+                commandName,
+                errorMessage,
+                new RequestFailedException((int)response.StatusCode, errorMessage)),
+            new ShellJson(summary));
+        errorState.RenderUser = () => ShellInterpreter.WriteLine(errorMessage);
+        return errorState;
+    }
+
+    private static CommandState CreateResultState(JsonElement summary, string message)
+    {
+        var state = new CommandState { Result = new ShellJson(summary) };
+        state.RenderUser = () => ShellInterpreter.WriteLine(message);
+        return state;
     }
 
     private static JsonElement BuildSummary(IReadOnlyList<BatchOperationSpec> operations, TransactionalBatchResponse response)

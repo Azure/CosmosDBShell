@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Azure.Data.Cosmos.Shell.Mcp;
@@ -11,6 +12,7 @@ using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
+using Spectre.Console;
 
 [CosmosCommand("batch")]
 [CosmosExample("batch run '[{\"op\":\"create\",\"item\":{\"id\":\"1\",\"pk\":\"a\"}},{\"op\":\"delete\",\"id\":\"2\"}]' --partition-key a", Description = "Atomically apply multiple operations in a single transaction")]
@@ -98,20 +100,22 @@ internal class BatchCommand : CosmosCommand
 
         var count = batch.Operations.Count;
         shell.CurrentBatch = null;
-        ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        var message = MessageService.GetArgsString(
             "command-batch-cancelled",
             "count",
-            count));
-        return new CommandState();
+            count);
+        return new CommandState { RenderUser = () => ShellInterpreter.WriteLine(message) };
     }
 
     private static CommandState Status(ShellInterpreter shell)
     {
         var batch = shell.CurrentBatch;
         JsonObject root;
+        Action renderUser;
         if (batch is null)
         {
             root = new JsonObject { ["active"] = false };
+            renderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-batch-status-inactive"));
         }
         else
         {
@@ -136,10 +140,51 @@ internal class BatchCommand : CosmosCommand
                 ["operationCount"] = batch.Operations.Count,
                 ["operations"] = operations,
             };
+            renderUser = () => RenderStatus(batch);
         }
 
         using var document = JsonDocument.Parse(root.ToJsonString());
-        return new CommandState { Result = new ShellJson(document.RootElement.Clone()) };
+        return new CommandState
+        {
+            Result = new ShellJson(document.RootElement.Clone()),
+            RenderUser = renderUser,
+        };
+    }
+
+    private static void RenderStatus(PendingBatchState batch)
+    {
+        var details = new Table().HideHeaders();
+        details.AddColumn(string.Empty);
+        details.AddColumn(string.Empty);
+        void AddDetail(string labelKey, string value) =>
+            details.AddRow(
+                Theme.FormatHelpName(Markup.Escape(MessageService.GetString(labelKey))),
+                Theme.FormatTableValue(Markup.Escape(value)));
+
+        AddDetail("command-batch-status-target", $"{batch.DatabaseName}/{batch.ContainerName}");
+        AddDetail("command-batch-status-partition-key", batch.PartitionKeyArgument);
+        AddDetail("command-batch-status-operation-count", batch.Operations.Count.ToString(CultureInfo.InvariantCulture));
+        AnsiConsole.Write(details);
+
+        if (batch.Operations.Count == 0)
+        {
+            return;
+        }
+
+        var operations = new Table();
+        operations.AddColumn(Theme.FormatSectionHeader(MessageService.GetString("command-batch-status-column-index")));
+        operations.AddColumn(Theme.FormatSectionHeader(MessageService.GetString("command-batch-status-column-operation")));
+        operations.AddColumn(Theme.FormatSectionHeader(MessageService.GetString("command-batch-status-column-id")));
+        for (var index = 0; index < batch.Operations.Count; index++)
+        {
+            var operation = batch.Operations[index];
+            operations.AddRow(
+                Theme.FormatTableValue((index + 1).ToString(CultureInfo.InvariantCulture)),
+                Theme.FormatTableValue(Markup.Escape(operation.Kind.ToString().ToLowerInvariant())),
+                Theme.FormatTableValue(Markup.Escape(operation.Id ?? string.Empty)));
+        }
+
+        AnsiConsole.Write(operations);
     }
 
     private static CommandState Show(ShellInterpreter shell)
@@ -227,13 +272,13 @@ internal class BatchCommand : CosmosCommand
         var partitionKey = ParsePartitionKey(this.PartitionKeyArgument);
         shell.CurrentBatch = new PendingBatchState(databaseName!, containerName!, this.PartitionKeyArgument, partitionKey);
 
-        ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        var message = MessageService.GetArgsString(
             "command-batch-begun",
             "database",
             databaseName!,
             "container",
-            containerName!));
-        return new CommandState();
+            containerName!);
+        return new CommandState { RenderUser = () => ShellInterpreter.WriteLine(message) };
     }
 
     private CommandState Add(ShellInterpreter shell, CommandState commandState)
@@ -255,13 +300,13 @@ internal class BatchCommand : CosmosCommand
         }
 
         batch.Operations.AddRange(specs);
-        ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        var message = MessageService.GetArgsString(
             "command-batch-added",
             "count",
             specs.Count,
             "total",
-            batch.Operations.Count));
-        return new CommandState();
+            batch.Operations.Count);
+        return new CommandState { RenderUser = () => ShellInterpreter.WriteLine(message) };
     }
 
     private async Task<CommandState> ExecuteBatchAsync(ShellInterpreter shell, CancellationToken token)

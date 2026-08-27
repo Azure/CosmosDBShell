@@ -323,10 +323,12 @@ Options:
 |`add <json>`|Queue one operation (JSON object) or several (JSON array) onto the active batch.|
 |`execute` (`exec`, `commit`)|Commit the queued operations atomically and clear the active batch.|
 |`cancel` (`abort`)|Discard the active batch without executing it.|
-|`status`|Report the active batch and its queued operations as JSON.|
+|`status`|Report the active batch target, partition key, and a compact list of queued operations.|
 |`show`|Print the queued operations as a JSON array (the same shape accepted by `run`/`add`).|
 
 When a stateful batch is active the prompt shows a `[batch:N]` indicator, where `N` is the number of queued operations.
+
+In interactive user output, `status` uses a compact table while `show` always prints the full queued-operation JSON. Use `--output json`, redirection, or a pipeline to obtain the structured JSON result from `status`.
 
 #### Operation schema
 
@@ -344,7 +346,7 @@ Patch sub-operations use the same `op`/`path`/`value` shape and semantics as the
 
 #### Result
 
-`batch run` and `batch execute` print a JSON summary:
+In interactive user output, `batch run` and `batch execute` print a concise outcome with the operation count and request charge. Their full result is emitted as a JSON summary when using `--output json`, redirection, a pipeline, or MCP:
 
 ```json
 {

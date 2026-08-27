@@ -417,7 +417,6 @@ internal class ToolOperations
                 var parameter = command.Parameters.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (parameter != null)
                 {
-                    suppliedParameters.Add(parameter.Name[0]);
                     var bindError = this.BindMember(
                         cmd,
                         parameter.PropertyInfo,
@@ -429,6 +428,12 @@ internal class ToolOperations
                     if (bindError != null)
                     {
                         return bindError;
+                    }
+
+                    var boundValue = parameter.PropertyInfo.GetValue(cmd);
+                    if (boundValue is not string stringValue || !string.IsNullOrWhiteSpace(stringValue))
+                    {
+                        suppliedParameters.Add(parameter.Name[0]);
                     }
 
                     continue;
@@ -458,8 +463,9 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(missingMessage, ShellInterpreter.Instance.State);
         }
 
-        if (cmd is BatchCommand batchCommand
-            && !string.Equals(batchCommand.Subcommand.Trim(), "run", StringComparison.OrdinalIgnoreCase))
+        var batchSubcommand = (cmd as BatchCommand)?.Subcommand.Trim();
+        if (!string.IsNullOrEmpty(batchSubcommand)
+            && !string.Equals(batchSubcommand, "run", StringComparison.OrdinalIgnoreCase))
         {
             const string errorMessage = "MCP supports only the stateless 'batch run' subcommand. Run stateful batch commands manually in the shell.";
             this.logger?.LogWarning(errorMessage);

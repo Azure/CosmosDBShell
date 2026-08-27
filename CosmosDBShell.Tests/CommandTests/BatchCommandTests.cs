@@ -28,6 +28,7 @@ public class BatchCommandTests
 
         var json = Assert.IsType<JsonElement>(state.Result!.ConvertShellObject(Azure.Data.Cosmos.Shell.Parser.DataType.Json));
         Assert.False(json.GetProperty("active").GetBoolean());
+        Assert.NotNull(state.RenderUser);
     }
 
     [Fact]
@@ -63,6 +64,7 @@ public class BatchCommandTests
         Assert.Equal(2, json.GetProperty("operationCount").GetInt32());
         Assert.Equal("1", json.GetProperty("operations")[0].GetProperty("id").GetString());
         Assert.Equal("delete", json.GetProperty("operations")[1].GetProperty("op").GetString());
+        Assert.NotNull(state.RenderUser);
     }
 
     [Fact]
@@ -81,6 +83,7 @@ public class BatchCommandTests
         Assert.Equal(2, json.GetArrayLength());
         Assert.Equal("Ada", json[0].GetProperty("item").GetProperty("name").GetString());
         Assert.Equal("2", json[1].GetProperty("id").GetString());
+        Assert.Null(state.RenderUser);
     }
 
     [Fact]
@@ -94,9 +97,10 @@ public class BatchCommandTests
             Data = "[{\"op\":\"create\",\"item\":{\"id\":\"1\"}},{\"op\":\"delete\",\"id\":\"2\"}]",
         };
 
-        await command.ExecuteAsync(shell, new CommandState(), "batch add", CancellationToken.None);
+        var state = await command.ExecuteAsync(shell, new CommandState(), "batch add", CancellationToken.None);
 
         Assert.Equal(2, shell.CurrentBatch.Operations.Count);
+        Assert.NotNull(state.RenderUser);
     }
 
     [Fact]
@@ -129,9 +133,10 @@ public class BatchCommandTests
         shell.CurrentBatch = CreatePendingBatch();
         var command = new BatchCommand { Subcommand = subcommand };
 
-        await command.ExecuteAsync(shell, new CommandState(), $"batch {subcommand}", CancellationToken.None);
+        var state = await command.ExecuteAsync(shell, new CommandState(), $"batch {subcommand}", CancellationToken.None);
 
         Assert.Null(shell.CurrentBatch);
+        Assert.NotNull(state.RenderUser);
     }
 
     [Theory]

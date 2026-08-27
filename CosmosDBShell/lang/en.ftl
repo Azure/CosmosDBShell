@@ -284,6 +284,13 @@ command-batch-cancelled = Discarded the pending batch ({ $count } { $count ->
     [one] operation
     *[other] operations
 }).
+command-batch-status-inactive = No batch is currently active.
+command-batch-status-target = Target
+command-batch-status-partition-key = Partition key
+command-batch-status-operation-count = Operations
+command-batch-status-column-index = #
+command-batch-status-column-operation = Operation
+command-batch-status-column-id = Item ID
 command-batch-error-missing_subcommand = Missing subcommand. Use one of: run, begin, add, execute, cancel, status, show.
 command-batch-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: run, begin, add, execute, cancel, status, show.
 command-batch-error-missing_pk = A partition key is required. Specify it with --partition-key.

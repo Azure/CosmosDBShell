@@ -261,6 +261,27 @@ public class ToolOperationsCallToolTests
     }
 
     [Fact]
+    public async Task CallTool_WhitespaceBatchSubcommand_ReturnsMissingSubcommandError()
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["subcommand"] = Json("\"   \""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("batch", arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            var error = root.GetProperty("error").GetString();
+            Assert.Contains("subcommand", error, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("only the stateless 'batch run'", error);
+        }
+    }
+
+    [Fact]
     public async Task CallTool_InvalidValueType_ReturnsSanitizedError()
     {
         var tool = CreateToolOperations();
