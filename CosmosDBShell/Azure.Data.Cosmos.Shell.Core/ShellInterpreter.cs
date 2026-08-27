@@ -432,15 +432,17 @@ public partial class ShellInterpreter : IDisposable
         diagnostics?.LogCommand(command);
         CommandState? result = null;
         var wasCancelled = false;
+        using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+        if (isLocalEmulatorOperation)
+        {
+            operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+        }
 
         try
         {
             try
             {
-                var commandTask = this.RunCommandAsync(state, command, token);
-                state = isLocalEmulatorOperation
-                    ? await commandTask.WaitAsync(LocalEmulatorOperationTimeout, token)
-                    : await commandTask;
+                state = await this.RunCommandAsync(state, command, operationTokenSource.Token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -448,7 +450,7 @@ public partial class ShellInterpreter : IDisposable
                 result = new CommandState();
                 return result;
             }
-            catch (TimeoutException e) when (isLocalEmulatorOperation)
+            catch (OperationCanceledException e) when (isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested)
             {
                 var shellException = new ShellException(
                     CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, e.Message),
@@ -945,12 +947,15 @@ public partial class ShellInterpreter : IDisposable
             client = new CosmosClient(connectionString, keyOptions);
 
             AccountProperties keyProps;
+            using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+            if (isEmulator)
+            {
+                operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+            }
+
             try
             {
-                var readAccountTask = ReadAccountAsync(client, token);
-                keyProps = isEmulator
-                    ? await readAccountTask.WaitAsync(LocalEmulatorOperationTimeout, token)
-                    : await readAccountTask;
+                keyProps = await ReadAccountAsync(client, operationTokenSource.Token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
