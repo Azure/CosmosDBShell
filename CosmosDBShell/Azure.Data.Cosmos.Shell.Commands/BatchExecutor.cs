@@ -31,7 +31,7 @@ internal static class BatchExecutor
         {
             throw new CommandException(
                 commandName,
-                MessageService.GetArgsString("command-batch-error-too_many", "count", operations.Count.ToString(CultureInfo.InvariantCulture)));
+                MessageService.GetArgsString("command-batch-error-too_many", "count", operations.Count));
         }
 
         var batch = container.CreateTransactionalBatch(partitionKey);
@@ -70,7 +70,7 @@ internal static class BatchExecutor
             ShellInterpreter.WriteLine(MessageService.GetArgsString(
                 "command-batch-success",
                 "count",
-                operations.Count.ToString(CultureInfo.InvariantCulture),
+                operations.Count,
                 "charge",
                 response.RequestCharge.ToString("F2", CultureInfo.InvariantCulture)));
         }

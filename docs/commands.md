@@ -321,8 +321,8 @@ Options:
 |`run <json> --partition-key <pk>`|Parse a JSON array of operations and execute them atomically in a single call. Also reads piped input.|
 |`begin --partition-key <pk>`|Start a stateful batch bound to a partition key, database, and container.|
 |`add <json>`|Queue one operation (JSON object) or several (JSON array) onto the active batch.|
-|`execute`|Commit the queued operations atomically and clear the active batch.|
-|`cancel`|Discard the active batch without executing it.|
+|`execute` (`exec`, `commit`)|Commit the queued operations atomically and clear the active batch.|
+|`cancel` (`abort`)|Discard the active batch without executing it.|
 |`status`|Report the active batch and its queued operations as JSON.|
 |`show`|Print the queued operations as a JSON array (the same shape accepted by `run`/`add`).|
 

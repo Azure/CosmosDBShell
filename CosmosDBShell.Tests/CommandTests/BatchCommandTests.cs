@@ -7,6 +7,7 @@ namespace CosmosShell.Tests.CommandTests;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 /// <summary>
 /// Unit tests for <see cref="BatchOperationParser"/>. These cover the pure parsing and
@@ -14,6 +15,16 @@ using Azure.Data.Cosmos.Shell.Core;
 /// </summary>
 public class BatchCommandTests
 {
+    [Theory]
+    [InlineData(1, "1 operation")]
+    [InlineData(2, "2 operations")]
+    public void BatchMessages_PluralizeNumericOperationCounts(int count, string expected)
+    {
+        var message = MessageService.GetArgsString("command-batch-cancelled", "count", count);
+
+        Assert.Contains(expected, message);
+    }
+
     [Fact]
     public void Parse_Array_ReturnsAllOperationsInOrder()
     {

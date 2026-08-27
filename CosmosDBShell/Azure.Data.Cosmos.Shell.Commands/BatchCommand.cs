@@ -4,7 +4,6 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Azure.Data.Cosmos.Shell.Mcp;
@@ -102,7 +101,7 @@ internal class BatchCommand : CosmosCommand
         ShellInterpreter.WriteLine(MessageService.GetArgsString(
             "command-batch-cancelled",
             "count",
-            count.ToString(CultureInfo.InvariantCulture)));
+            count));
         return new CommandState();
     }
 
@@ -252,16 +251,16 @@ internal class BatchCommand : CosmosCommand
                 MessageService.GetArgsString(
                     "command-batch-error-too_many",
                     "count",
-                    (batch.Operations.Count + specs.Count).ToString(CultureInfo.InvariantCulture)));
+                    batch.Operations.Count + specs.Count));
         }
 
         batch.Operations.AddRange(specs);
         ShellInterpreter.WriteLine(MessageService.GetArgsString(
             "command-batch-added",
             "count",
-            specs.Count.ToString(CultureInfo.InvariantCulture),
+            specs.Count,
             "total",
-            batch.Operations.Count.ToString(CultureInfo.InvariantCulture)));
+            batch.Operations.Count));
         return new CommandState();
     }
 
