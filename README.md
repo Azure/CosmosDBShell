@@ -64,6 +64,22 @@ Run the tests:
 dotnet test CosmosDBShell.sln
 ```
 
+## Install from RPM Artifacts
+
+The official pipeline produces framework-dependent RPMs for Azure Linux and
+other RPM-based distributions:
+
+- `cosmosdbshell-<version>-<release>.x86_64.rpm`
+- `cosmosdbshell-<version>-<release>.aarch64.rpm`
+
+The RPM requires the .NET 10 runtime package (`dotnet-runtime-10.0`), but does
+not require the .NET SDK. Install the package that matches the host architecture:
+
+```bash
+sudo dnf install ./cosmosdbshell-<version>-<release>.<architecture>.rpm
+cosmosdbshell
+```
+
 ## Architecture
 
 | Folder | Purpose |
