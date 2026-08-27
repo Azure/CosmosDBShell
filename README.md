@@ -73,7 +73,15 @@ other RPM-based distributions:
 - `cosmosdbshell-<version>-<release>.aarch64.rpm`
 
 The RPM requires the .NET 10 runtime package (`dotnet-runtime-10.0`), but does
-not require the .NET SDK. Install the package that matches the host architecture:
+not require the .NET SDK. On Azure Linux, install the package that matches the
+host architecture with `tdnf`:
+
+```bash
+sudo tdnf install ./cosmosdbshell-<version>-<release>.<architecture>.rpm
+cosmosdbshell
+```
+
+On other RPM-based distributions, use `dnf`:
 
 ```bash
 sudo dnf install ./cosmosdbshell-<version>-<release>.<architecture>.rpm

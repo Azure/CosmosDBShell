@@ -845,6 +845,7 @@ extends:
                   set -euo pipefail
                   dotnet tool restore --configfile "$(Build.SourcesDirectory)/.pipelines/nuget.config"
                   package_version="$(dotnet tool run nbgv get-version -v NuGetPackageVersion)"
+                  package_version="${package_version%%+*}"
                   if [[ ! "$package_version" =~ ^([0-9]+\.[0-9]+\.[0-9]+)(-(.+))?$ ]]; then
                     echo "Unsupported RPM package version: $package_version" >&2
                     exit 1
