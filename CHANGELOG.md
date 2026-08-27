@@ -2,10 +2,31 @@
 
 ## Unreleased
 
+## 1.1.209-preview — 2026-08-26
+
+### New features
+
+- **`--database` and `--container` startup options.** Navigate to a database or container at startup without composing a `-k "cd ..."` command. Both require `--connect`, and `--container` requires `--database`. Tools that previously built a startup script string to select a location should pass these options instead. See [navigation](docs/navigation.md).
+
+### Breaking changes
+
+- **String interpolation now requires the explicit `$"..."` prefix.** In ordinary double-quoted strings, `$name` and `$(...)` are literal text and are no longer evaluated — previously any `"..."` string containing `$` was interpolated. Scripts that relied on `"Hello $name"` must be changed to `$"Hello $name"`; this change is silent, so review scripts that build strings from `$` values. Inside an interpolated string, `$(...)` evaluates a complete expression, but command expressions are rejected; `\$` escapes a literal dollar sign. Ordinary double-quoted strings additionally accept `\uXXXX` escapes. See [programming](docs/programming.md).
+
+### Fixes
+
+- Command text reconstructed from a parsed command (MCP tool-call history, the echoed command line, and AST `ToString()`) is now serialized through a single literal writer. Values were previously quoted only when they contained a space, and were never escaped, so a value containing a quote, a backslash, a semicolon, or a control character produced command text that no longer parsed back to the original value. Options also lost their `-` prefix and their value separator. Reconstructed command text now round-trips.
+
+## 1.1.190-preview — 2026-08-25
+
 ### New features
 
 - **Deterministic machine output and exit codes.** Global `--output`/`--quiet`, structured JSON/CSV machine mode, and stable process exit codes (`0`–`6`) for automation and CI. ([#173](https://github.com/Azure/CosmosDBShell/pull/173), [#155](https://github.com/Azure/CosmosDBShell/issues/155), [#176](https://github.com/Azure/CosmosDBShell/issues/176), [#177](https://github.com/Azure/CosmosDBShell/issues/177))
-- **`setup-cosmosdb-shell` GitHub Action** and [CI/CD guide](docs/ci.md) for installing the self-contained shell in pipelines without a .NET SDK on the runner. ([#173](https://github.com/Azure/CosmosDBShell/pull/173), [#182](https://github.com/Azure/CosmosDBShell/pull/182))
+- **`setup-cosmosdb-shell` GitHub Action** and [CI/CD guide](docs/ci.md) for installing the self-contained shell in pipelines without a .NET SDK on the runner. ([#173](https://github.com/Azure/CosmosDBShell/pull/173))
+
+### Improvements
+
+- **Destructive MCP commands now prompt for confirmation instead of being blocked.** When an MCP client invokes `delete`, `rm`, `rmcon`, or `rmdb`, the server sends an elicitation prompt describing the exact command line and only runs it if the user approves; a declined prompt, a cancelled prompt, or a client without confirmation support results in nothing being executed. ([#183](https://github.com/Azure/CosmosDBShell/pull/183), [#158](https://github.com/Azure/CosmosDBShell/issues/158))
+- **Preview releases are clearly identified at startup.** The welcome screen and compact startup output now show the current preview version and warn that commands, output, and behavior may change before general availability. ([#193](https://github.com/Azure/CosmosDBShell/pull/193))
 
 ### Breaking changes
 
@@ -19,6 +40,11 @@
 - `cd` and `mkdb` built their JSON result by string concatenation, so a database or container name containing a double quote produced malformed JSON and failed the command instead of navigating or reporting the created database. Both now serialize the payload properly. ([#173](https://github.com/Azure/CosmosDBShell/pull/173))
 - `theme list` rendered a single `themes` column containing the whole JSON array when `--output csv` or `--output table` was used, because the shared table renderer only recognized the `values`/`items` list envelopes. It now emits one row per theme. ([#173](https://github.com/Azure/CosmosDBShell/pull/173))
 - `theme list` and `theme show` wrote their human-facing output while the command executed, so `--output table` printed the interactive listing *and* the rendered table. Both now defer that output to the interactive renderer. ([#173](https://github.com/Azure/CosmosDBShell/pull/173))
+
+### Build & pipeline
+
+- **NuGet packages are now framework-dependent.** The primary `CosmosDBShell` .NET tool package uses the installed .NET 10 runtime for a smaller download, while standalone self-contained builds continue to ship as per-RID ZIP archives. ([#191](https://github.com/Azure/CosmosDBShell/pull/191), [#174](https://github.com/Azure/CosmosDBShell/issues/174))
+- Removed the redundant advanced CodeQL workflow and made the repository's GitHub-managed CodeQL default setup the single source of code-scanning results. ([#194](https://github.com/Azure/CosmosDBShell/pull/194))
 
 ## 1.1.150-preview — 2026-07-31
 
@@ -58,7 +84,6 @@ A focused cycle on top of 1.1.115-preview. New `ttl` and `conflict` commands man
 
 ### Improvements
 
-- **Destructive MCP commands now prompt for confirmation instead of being blocked.** When an MCP client invokes `delete`, `rm`, `rmcon`, or `rmdb`, the server sends an elicitation prompt describing the exact command line and only runs it if the user approves; declining, cancelling, or a client that cannot confirm results in nothing being executed. This removes the need for any write opt-in flag. ([#158](https://github.com/Azure/CosmosDBShell/issues/158))
 - **Structured (JSON) tool results for MCP.** MCP tool results now carry the machine-readable JSON payload (`result`/`outputText`/`error` plus `currentLocation`) as first-class `structuredContent` in addition to the existing JSON text block, so agents can consume structured results directly. The two representations are kept byte-for-byte equivalent, and text-only clients are unaffected. ([#154](https://github.com/Azure/CosmosDBShell/issues/154))
 
 ### Fixes

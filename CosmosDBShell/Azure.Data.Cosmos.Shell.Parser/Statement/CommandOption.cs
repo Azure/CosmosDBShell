@@ -9,16 +9,19 @@ using Azure.Data.Cosmos.Shell.Core;
 
 internal class CommandOption : Expression
 {
-    public CommandOption(Token minusToken, Token nameToken, Expression? value = null)
+    public CommandOption(Token minusToken, Token nameToken, Token? separatorToken = null, Expression? value = null)
     {
         this.MinusToken = minusToken ?? throw new ArgumentNullException(nameof(minusToken));
         this.NameToken = nameToken ?? throw new ArgumentNullException(nameof(nameToken));
+        this.SeparatorToken = separatorToken;
         this.Value = value;
     }
 
     public Token MinusToken { get; }
 
     public Token NameToken { get; }
+
+    public Token? SeparatorToken { get; }
 
     public string Name { get => this.NameToken.Value; }
 

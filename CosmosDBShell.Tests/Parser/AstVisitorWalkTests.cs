@@ -265,7 +265,7 @@ public class AstVisitorWalkTests
         ParseFilterExpr("(1)").Accept(visitor);
         ParseFilterExpr("[1, 2, 3]").Accept(visitor);
         ParseFilterExpr("{ id, status }").Accept(visitor);
-        ParseFilterExpr("\"hello $x world\"").Accept(visitor);
+        ParseFilterExpr("$\"hello $x world\"").Accept(visitor);
         ParseFilterExpr("$items[0]").Accept(visitor);
         ParseFilterExpr(".items[0].id").Accept(visitor);
         ParseFilterExpr("map(.id)").Accept(visitor);
