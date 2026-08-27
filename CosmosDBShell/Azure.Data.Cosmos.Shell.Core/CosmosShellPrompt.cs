@@ -62,7 +62,7 @@ internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IS
         var batch = this.shell.CurrentBatch;
         if (batch is not null)
         {
-            basePrompt += " " + Theme.FormatMuted(Markup.Escape($"[batch:{batch.Operations.Count}]"));
+            basePrompt += " " + Theme.FormatMuted($"[batch:{batch.Operations.Count}]");
         }
 
         return basePrompt;
