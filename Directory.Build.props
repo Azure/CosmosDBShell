@@ -15,4 +15,7 @@
   <ItemGroup Condition="'$(ManagePackageVersionsCentrally)' == 'false'">
     <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" Version="3.9.50" />
   </ItemGroup>
+  <PropertyGroup Condition="'$(CosmosDBShellExcludeMsalRuntime)' == 'true'">
+    <DefineConstants>$(DefineConstants);COSMOSDBSHELL_NO_MSAL_RUNTIME</DefineConstants>
+  </PropertyGroup>
 </Project>

@@ -88,6 +88,11 @@ sudo dnf install ./cosmosdbshell-<version>-<release>.<architecture>.rpm
 cosmosdbshell
 ```
 
+The RPM excludes the native MSAL runtime to remain within the Azure Cloud Shell
+package-size limit. Visual Studio Code credential authentication is unavailable
+in this build; selecting it prints a warning and falls back to other credentials.
+Use `--azure-cli` to select the signed-in Azure CLI identity explicitly.
+
 ## Architecture
 
 | Folder | Purpose |

@@ -888,6 +888,7 @@ extends:
                       --self-contained false \
                       -p:PublishSingleFile=false \
                       -p:PackAsTool=false \
+                      -p:CosmosDBShellExcludeMsalRuntime=true \
                       --output "$publish_dir" \
                       --configfile "$(Build.SourcesDirectory)/.pipelines/nuget.config"
 

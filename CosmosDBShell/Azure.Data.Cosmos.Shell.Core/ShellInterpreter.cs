@@ -110,6 +110,18 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     public bool Echo { get; set; } = true;
 
+    internal static bool IsVSCodeCredentialSupported
+    {
+        get
+        {
+#if COSMOSDBSHELL_NO_MSAL_RUNTIME
+            return false;
+#else
+            return true;
+#endif
+        }
+    }
+
     internal static CancellationTokenSource TokenSource
     {
         get
@@ -970,27 +982,34 @@ public partial class ShellInterpreter : IDisposable
         // Step 2: VisualStudioCodeCredential (when launched from VS Code extension)
         if (client == null && credentialMethod == CredentialMethod.VSCode)
         {
-            WriteLine(MessageService.GetString("shell-connect-vscode-credential-auth"));
-
-            var vscOptions = new VisualStudioCodeCredentialOptions();
-            if (!string.IsNullOrWhiteSpace(tenantId))
+            if (!IsVSCodeCredentialSupported)
             {
-                vscOptions.TenantId = tenantId;
+                WriteLine(MessageService.GetString("shell-connect-vscode-credential-msal-runtime-missing"));
             }
-
-            if (authorityHostUri != null)
+            else
             {
-                vscOptions.AuthorityHost = authorityHostUri;
-            }
+                WriteLine(MessageService.GetString("shell-connect-vscode-credential-auth"));
 
-            var vscCredential = new VisualStudioCodeCredential(vscOptions);
-            if (await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, vscCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: true, token))
-            {
-                return;
-            }
+                var vscOptions = new VisualStudioCodeCredentialOptions();
+                if (!string.IsNullOrWhiteSpace(tenantId))
+                {
+                    vscOptions.TenantId = tenantId;
+                }
 
-            // VS Code credential unavailable or expired; continue the credential chain.
-            WriteLine(MessageService.GetString("shell-connect-vscode-credential-fallback"));
+                if (authorityHostUri != null)
+                {
+                    vscOptions.AuthorityHost = authorityHostUri;
+                }
+
+                var vscCredential = new VisualStudioCodeCredential(vscOptions);
+                if (await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, vscCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: true, token))
+                {
+                    return;
+                }
+
+                // VS Code credential unavailable or expired; continue the credential chain.
+                WriteLine(MessageService.GetString("shell-connect-vscode-credential-fallback"));
+            }
         }
 
         // Step 3: Static token from COSMOSDB_SHELL_TOKEN environment variable
