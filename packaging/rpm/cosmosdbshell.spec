@@ -4,16 +4,18 @@ Release:        %{package_release}%{?dist}
 Summary:        Interactive shell for Azure Cosmos DB
 License:        MIT
 URL:            https://github.com/Azure/CosmosDBShell
-Source0:        CosmosDBShell
+Source0:        cosmosdbshell-payload.tar.gz
 Source1:        LICENSE.md
 Source2:        NOTICE.html
 Requires:       dotnet-runtime-10.0 >= 10.0
+# The payload is prebuilt and only needs the .NET runtime, so skip the ELF scan
+# that would otherwise derive dependencies from the build host.
+AutoReqProv:    no
 
 %global _binary_payload w19.zstdio
 %{!?_licensedir: %global _licensedir %{_datadir}/licenses}
 
-# The payload is a prebuilt .NET single-file binary whose bundle is appended to
-# the ELF image; stripping or extracting debuginfo from it corrupts the bundle.
+# Prebuilt binaries are shipped as published; stripping them breaks the .NET host.
 %global debug_package %{nil}
 %global __os_install_post %{nil}
 
@@ -26,7 +28,9 @@ queries, scripting, and MCP server workflows with Azure Cosmos DB.
 %build
 
 %install
-install -D -m 0755 %{SOURCE0} %{buildroot}%{_libexecdir}/cosmosdbshell/CosmosDBShell
+mkdir -p %{buildroot}%{_libexecdir}/cosmosdbshell
+tar -xzf %{SOURCE0} -C %{buildroot}%{_libexecdir}/cosmosdbshell
+chmod 0755 %{buildroot}%{_libexecdir}/cosmosdbshell/CosmosDBShell
 install -D -m 0644 %{SOURCE1} %{buildroot}%{_licensedir}/%{name}/LICENSE.md
 install -D -m 0644 %{SOURCE2} %{buildroot}%{_licensedir}/%{name}/NOTICE.html
 mkdir -p %{buildroot}%{_bindir}
@@ -34,8 +38,7 @@ ln -s %{_libexecdir}/cosmosdbshell/CosmosDBShell %{buildroot}%{_bindir}/cosmosdb
 
 %files
 %{_bindir}/cosmosdbshell
-%dir %{_libexecdir}/cosmosdbshell
-%{_libexecdir}/cosmosdbshell/CosmosDBShell
+%{_libexecdir}/cosmosdbshell
 %license %{_licensedir}/%{name}/LICENSE.md
 %license %{_licensedir}/%{name}/NOTICE.html
 

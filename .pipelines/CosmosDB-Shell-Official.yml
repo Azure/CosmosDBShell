@@ -876,24 +876,29 @@ extends:
                     rpm_arch="${entry##*:}"
                     publish_dir="$(Build.SourcesDirectory)/.rpm-publish/$rid"
 
+                    rm -rf "$publish_dir"
                     dotnet publish "$(Build.SourcesDirectory)/CosmosDBShell/CosmosDBShell.csproj" \
                       --configuration "$(BuildConfiguration)" \
                       --runtime "$rid" \
                       --self-contained false \
-                      -p:PublishSingleFile=true \
-                      -p:EnableCompressionInSingleFile=false \
-                      -p:IncludeAllContentForSelfExtract=true \
+                      -p:PublishSingleFile=false \
                       -p:PackAsTool=false \
                       --output "$publish_dir" \
                       --configfile "$(Build.SourcesDirectory)/.pipelines/nuget.config"
 
-                    mapfile -t payload < <(find "$publish_dir" -maxdepth 1 -type f -printf '%f\n')
-                    if [[ ${#payload[@]} -ne 1 || "${payload[0]}" != "CosmosDBShell" ]]; then
-                      echo "Expected exactly one CosmosDBShell file in $publish_dir; found: ${payload[*]:-none}" >&2
-                      exit 1
-                    fi
+                    # Ships for linux-x64 only and doubles the package size. The VS Code
+                    # broker credential falls back when it is absent, as it already does
+                    # on linux-arm64, where this library does not exist at all.
+                    rm -f "$publish_dir/libmsalruntime.so"
 
-                    cp "$publish_dir/CosmosDBShell" "$rpm_root/SOURCES/CosmosDBShell"
+                    for required in CosmosDBShell CosmosDBShell.dll; do
+                      if [[ ! -f "$publish_dir/$required" ]]; then
+                        echo "Expected $required in $publish_dir." >&2
+                        exit 1
+                      fi
+                    done
+
+                    tar -czf "$rpm_root/SOURCES/cosmosdbshell-payload.tar.gz" -C "$publish_dir" .
                     rpmbuild -bb "$rpm_root/SPECS/cosmosdbshell.spec" \
                       --target "$rpm_arch" \
                       --define "_topdir $rpm_root" \
@@ -922,6 +927,11 @@ extends:
                     rpm -qpR "$package" | grep -Fx 'dotnet-runtime-10.0 >= 10.0'
                     rpm -qlp "$package" | grep -Fx '/usr/bin/cosmosdbshell'
                     rpm -qlp "$package" | grep -Fx '/usr/libexec/cosmosdbshell/CosmosDBShell'
+                    rpm -qlp "$package" | grep -Fx '/usr/libexec/cosmosdbshell/CosmosDBShell.dll'
+                    if rpm -qlp "$package" | grep -q 'libmsalruntime\.so'; then
+                      echo "$(basename "$package") still carries libmsalruntime.so." >&2
+                      exit 1
+                    fi
                     echo "Validated $(basename "$package") [$size bytes]"
                   done
                 displayName: Validate RPM packages
