@@ -863,6 +863,10 @@ extends:
               - script: |
                   set -euo pipefail
                   if ! command -v rpmbuild >/dev/null 2>&1; then
+                    if ! command -v tdnf >/dev/null 2>&1; then
+                      echo "rpmbuild is unavailable and tdnf is not installed; run this job in the configured Azure Linux container." >&2
+                      exit 1
+                    fi
                     tdnf install -y rpm-build
                   fi
 
