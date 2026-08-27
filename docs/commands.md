@@ -296,7 +296,7 @@ patch set order-42 customer-7 /name "Ada Lovelace" --etag="<etag-from-read>"
 
 ### batch
 
-Execute multiple write operations against a single partition key as one atomic Cosmos DB transactional batch. Either run a batch in a single call, or build one up statefully across several commands. Every operation in a batch must share the same partition key, a batch holds between 1 and 100 operations, and if any operation fails the entire batch is rolled back.
+Execute multiple write operations against a single partition key as one atomic Cosmos DB transactional batch. Either run a batch in a single call, or build one up statefully across several commands. Every operation in a batch must share the same partition key, execution requires between 1 and 100 operations, and if any operation fails the entire batch is rolled back. A pending stateful batch may be empty until operations are added.
 
 ```text
 Usage: batch subcommand [data] [--partition-key <ARG>] [-database <ARG>] [-container <ARG>]
@@ -381,7 +381,7 @@ batch execute
 - `add`, `execute`, or `cancel` with no active batch: `No batch is in progress. Start one with 'batch begin'.`
 - `begin` while a batch is already active: `A batch is already in progress. Run 'batch execute' or 'batch cancel' first.`
 - More than 100 operations is rejected before any call to Cosmos DB.
-- A transactional failure prints the batch status and rolls back every operation.
+- A transactional failure prints a one-line message, returns a result summary with `success` set to `false` and per-operation status codes, and rolls back every operation.
 
 ### rm
 
