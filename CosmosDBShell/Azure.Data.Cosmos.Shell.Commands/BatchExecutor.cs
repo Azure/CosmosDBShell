@@ -76,12 +76,16 @@ internal static class BatchExecutor
         }
         else
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            var errorMessage = MessageService.GetArgsString(
                 "command-batch-error-failed",
                 "status",
                 ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture),
                 "charge",
-                response.RequestCharge.ToString("F2", CultureInfo.InvariantCulture)));
+                response.RequestCharge.ToString("F2", CultureInfo.InvariantCulture));
+            ShellInterpreter.WriteLine(errorMessage);
+            return new StructuredErrorCommandState(
+                new CommandException(commandName, errorMessage),
+                new ShellJson(summary));
         }
 
         return new CommandState { Result = new ShellJson(summary) };

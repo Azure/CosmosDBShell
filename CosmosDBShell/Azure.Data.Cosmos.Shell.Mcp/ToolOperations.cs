@@ -458,6 +458,14 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(missingMessage, ShellInterpreter.Instance.State);
         }
 
+        if (cmd is BatchCommand batchCommand
+            && !string.Equals(batchCommand.Subcommand.Trim(), "run", StringComparison.OrdinalIgnoreCase))
+        {
+            const string errorMessage = "MCP supports only the stateless 'batch run' subcommand. Run stateful batch commands manually in the shell.";
+            this.logger?.LogWarning(errorMessage);
+            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
+        }
+
         if (RequiresConfirmation(command))
         {
             var server = parameters.Server;

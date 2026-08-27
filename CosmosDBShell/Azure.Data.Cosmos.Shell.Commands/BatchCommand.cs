@@ -29,7 +29,7 @@ Executes multiple write operations against a single partition key as one atomic 
 
 Subcommands:
 - 'run <json> --partition-key <pk>' parses a JSON array of operations and executes them atomically in one call.
-- 'begin --partition-key <pk>' starts a stateful batch; 'add <json>' queues operations; 'execute' commits them; 'cancel' discards them; 'status' reports the pending batch; 'show' prints the queued operations as a JSON array.
+- MCP supports only the one-shot 'run' subcommand. Stateful subcommands ('begin', 'add', 'execute', 'cancel', 'status', and 'show') are available only in the interactive shell.
 
 Each operation is a JSON object:
 - {""op"":""create"",""item"":{...}}

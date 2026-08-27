@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests.Integration;
 
 using System.Text.Json;
+using Azure.Data.Cosmos.Shell.Core;
 
 using Xunit;
 
@@ -73,9 +74,22 @@ public class BatchOperationTests : EmulatorFixtureTestBase
             "{\"op\":\"create\",\"item\":{\"id\":\"fresh\",\"pk\":\"" + pk + "\"}}," +
             "{\"op\":\"create\",\"item\":{\"id\":\"existing\",\"pk\":\"" + pk + "\"}}]";
 
-        var output = await ExecuteWithOutputAsync($"batch run '{json}' --partition-key {pk}");
-        var root = JsonDocument.Parse(output).RootElement;
-        Assert.False(root.GetProperty("success").GetBoolean());
+        var outputFile = CreateTempFile();
+        Shell.StdOutRedirect = outputFile;
+        try
+        {
+            var batchState = await ExecuteAsync($"batch run '{json}' --partition-key {pk}");
+            Assert.True(batchState.IsError);
+            Assert.Equal(ShellExitCode.GeneralFailure, batchState.ExitCode);
+
+            var output = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
+            var root = JsonDocument.Parse(output).RootElement;
+            Assert.False(root.GetProperty("success").GetBoolean());
+        }
+        finally
+        {
+            Shell.StdOutRedirect = null;
+        }
 
         // The first operation must have been rolled back: 'fresh' should not exist.
         var printState = await ExecuteAsync($"print fresh {pk}");

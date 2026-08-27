@@ -82,6 +82,27 @@ public class McpResponseFactoryTests
     }
 
     [Fact]
+    public void CreateSuccess_StructuredError_IncludesErrorAndResult()
+    {
+        var state = new StructuredErrorCommandState(
+            new CommandException("batch", "Batch failed."),
+            new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                success = false,
+                statusCode = 409,
+            })));
+
+        var result = McpResponseFactory.CreateSuccess(state, new ConnectedState(null!));
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+
+        using var document = JsonDocument.Parse(text);
+        Assert.True(result.IsError);
+        Assert.Equal("Batch failed.", document.RootElement.GetProperty("error").GetString());
+        Assert.False(document.RootElement.GetProperty("result").GetProperty("success").GetBoolean());
+        Assert.Equal(409, document.RootElement.GetProperty("result").GetProperty("statusCode").GetInt32());
+    }
+
+    [Fact]
     public void CreateError_WrapsMessageWithCurrentLocation()
     {
         var result = McpResponseFactory.CreateError("boom", new DatabaseState("TestDatabase", null!));

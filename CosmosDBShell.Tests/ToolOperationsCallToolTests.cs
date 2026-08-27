@@ -230,6 +230,36 @@ public class ToolOperationsCallToolTests
         }
     }
 
+    [Theory]
+    [InlineData("begin")]
+    [InlineData("add")]
+    [InlineData("execute")]
+    [InlineData("exec")]
+    [InlineData("commit")]
+    [InlineData("cancel")]
+    [InlineData("abort")]
+    [InlineData("status")]
+    [InlineData("show")]
+    public async Task CallTool_StatefulBatchSubcommand_ReturnsError(string subcommand)
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["subcommand"] = Json($"\"{subcommand}\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("batch", arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            var error = root.GetProperty("error").GetString();
+            Assert.Contains("only the stateless 'batch run'", error);
+            Assert.Contains("manually in the shell", error);
+        }
+    }
+
     [Fact]
     public async Task CallTool_InvalidValueType_ReturnsSanitizedError()
     {
