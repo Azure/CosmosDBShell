@@ -4,13 +4,48 @@
 
 namespace CosmosShell.Tests.Shell;
 
+using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
 
 public class ExecuteCommandExceptionTests
 {
     private ShellInterpreter CreateInterpreter()
     {
         return new ShellInterpreter();
+    }
+
+    [Fact]
+    public void PrintState_StructuredErrorInMachineMode_WritesSingleEnvelopeToStderr()
+    {
+        using var interpreter = CreateInterpreter();
+        var stdoutFile = Path.GetTempFileName();
+        var stderrFile = Path.GetTempFileName();
+        interpreter.Options = new Program.CosmosShellOptions { Output = "json" };
+        interpreter.StdOutRedirect = stdoutFile;
+        interpreter.ErrOutRedirect = stderrFile;
+        try
+        {
+            var state = new StructuredErrorCommandState(
+                new CommandException("batch", "Batch failed."),
+                new ShellJson(JsonSerializer.SerializeToElement(new { success = false, statusCode = 409 })));
+
+            interpreter.PrintState(state);
+
+            Assert.Empty(File.ReadAllText(stdoutFile));
+            using var document = JsonDocument.Parse(File.ReadAllText(stderrFile));
+            Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+            Assert.Equal("Batch failed.", document.RootElement.GetProperty("error").GetString());
+            Assert.False(document.RootElement.GetProperty("result").GetProperty("success").GetBoolean());
+            Assert.Equal(409, document.RootElement.GetProperty("result").GetProperty("statusCode").GetInt32());
+        }
+        finally
+        {
+            interpreter.StdOutRedirect = null;
+            interpreter.ErrOutRedirect = null;
+            File.Delete(stdoutFile);
+            File.Delete(stderrFile);
+        }
     }
 
     [Fact]
@@ -477,6 +512,26 @@ public class ExecuteCommandExceptionTests
         Assert.NotNull(exception.InnerException);
         Assert.Equal("raw timeout body with CosmosDiagnostics", exception.InnerException.Message);
         Assert.Contains("CosmosDiagnostics", exception.ToString());
+    }
+
+    [Theory]
+    [InlineData(System.Net.HttpStatusCode.RequestTimeout)]
+    [InlineData(System.Net.HttpStatusCode.BadGateway)]
+    [InlineData(System.Net.HttpStatusCode.ServiceUnavailable)]
+    [InlineData(System.Net.HttpStatusCode.GatewayTimeout)]
+    public void CommandException_CosmosConnectivityStatus_IsConnectivityFailure(System.Net.HttpStatusCode statusCode)
+    {
+        var exception = new Microsoft.Azure.Cosmos.CosmosException("unavailable", statusCode, 0, "activity", 0);
+
+        Assert.True(CommandException.IsConnectivityFailure(exception));
+    }
+
+    [Fact]
+    public void CommandException_NestedHttpRequestException_IsConnectivityFailure()
+    {
+        var exception = new InvalidOperationException("outer", new HttpRequestException("connection refused"));
+
+        Assert.True(CommandException.IsConnectivityFailure(exception));
     }
 
     [Fact]

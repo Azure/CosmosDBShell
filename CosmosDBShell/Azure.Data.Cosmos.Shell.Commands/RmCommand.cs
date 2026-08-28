@@ -137,7 +137,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 // Item was already deleted, skip
-                return (false, 0);
+                return (false, ex.RequestCharge);
             }
         }
 
@@ -185,9 +185,9 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         if (id != null && shouldDelete)
                         {
                             var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
+                            totalCharge += deleteResult.RequestCharge;
                             if (deleteResult.Deleted)
                             {
-                                totalCharge += deleteResult.RequestCharge;
                                 totalCount++;
                             }
                         }
@@ -218,9 +218,9 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         if (id != null)
                         {
                             var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
+                            totalCharge += deleteResult.RequestCharge;
                             if (deleteResult.Deleted)
                             {
-                                totalCharge += deleteResult.RequestCharge;
                                 totalCount++;
                             }
                         }
@@ -284,9 +284,9 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                     if (shouldDelete)
                     {
                         var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
+                        totalCharge += deleteResult.RequestCharge;
                         if (deleteResult.Deleted)
                         {
-                            totalCharge += deleteResult.RequestCharge;
                             totalCount++;
                         }
                     }

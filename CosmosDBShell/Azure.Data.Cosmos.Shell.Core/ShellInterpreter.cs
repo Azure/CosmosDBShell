@@ -29,8 +29,6 @@ public partial class ShellInterpreter : IDisposable
 
     private const int MAXHISTORYITEMS = 60;
 
-    private const double TimeoutInSeconds = 10.0;
-
     private const int OptionalArmDiscoveryTimeoutSeconds = 3;
 
     private const string EncodedHistoryLinePrefix = "CosmosDBShellHistoryV1:";
@@ -40,6 +38,8 @@ public partial class ShellInterpreter : IDisposable
     // user command that just happens to start with the prefix string.
     private const string EncodedHistoryLineMarker = "E:";
 
+    private static readonly TimeSpan LocalEmulatorOperationTimeout = TimeSpan.FromSeconds(10);
+
     private static CancellationTokenSource? currentTokenSource;
 
     private readonly string cfgPath;
@@ -47,6 +47,8 @@ public partial class ShellInterpreter : IDisposable
     private readonly string welcomeMarkerFile;
 
     private readonly HashSet<string> diagnosticSecrets = new(StringComparer.Ordinal);
+
+    private TokenCredential? activeCredential;
 
     private LineEditor? lineEditor;
 
@@ -110,15 +112,6 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     public bool Echo { get; set; } = true;
 
-    internal static CancellationTokenSource TokenSource
-    {
-        get
-        {
-            currentTokenSource?.Dispose();
-            return currentTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(TimeoutInSeconds));
-        }
-    }
-
     internal static CancellationTokenSource UserCancellationTokenSource
     {
         get
@@ -143,6 +136,19 @@ public partial class ShellInterpreter : IDisposable
     }
 
     internal Dictionary<string, DefStatement> Functions { get; } = [];
+
+    /// <summary>
+    /// Gets the token credential backing the current connection, or <c>null</c> when the
+    /// connection uses an account key or emulator credentials (no Entra identity available).
+    /// </summary>
+    internal TokenCredential? ActiveCredential => this.activeCredential;
+
+    /// <summary>
+    /// Gets a label describing how the current connection authenticated (for example
+    /// <c>DefaultAzureCredential</c>, <c>ManagedIdentityCredential</c>, <c>AccountKey</c>,
+    /// or <c>Emulator</c>), or <c>null</c> when not connected.
+    /// </summary>
+    internal string? ActiveCredentialType { get; private set; }
 
     internal string HistoryFile { get; private set; }
 
@@ -178,6 +184,8 @@ public partial class ShellInterpreter : IDisposable
     internal DiagnosticLog? Diagnostics { get; private set; }
 
     internal int? McpPort { get; set; }
+
+    internal PendingBatchState? CurrentBatch { get; set; }
 
     internal Queue<VariableContainer> VariableContainers { get; } = new();
 
@@ -425,6 +433,8 @@ public partial class ShellInterpreter : IDisposable
     public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token)
     {
         using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
+        var isLocalEmulatorOperation = this.State is ConnectedState connectedState
+            && ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectedState.Client?.Endpoint.ToString());
         var state = new CommandState();
 
         // Snapshot redirect state so a '>' / '2>' on this command does not leak into
@@ -439,12 +449,17 @@ public partial class ShellInterpreter : IDisposable
         diagnostics?.LogCommand(command);
         CommandState? result = null;
         var wasCancelled = false;
+        using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+        if (isLocalEmulatorOperation)
+        {
+            operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+        }
 
         try
         {
             try
             {
-                state = await this.RunCommandAsync(state, command, token);
+                state = await this.RunCommandAsync(state, command, operationTokenSource.Token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -452,16 +467,28 @@ public partial class ShellInterpreter : IDisposable
                 result = new CommandState();
                 return result;
             }
+            catch (OperationCanceledException e) when (isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested)
+            {
+                var shellException = new ShellException(
+                    CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, e.Message),
+                    e);
+                this.ReportExecutionError(shellException, command);
+                this.Disconnect();
+                result = new ErrorCommandState(shellException);
+                return result;
+            }
             catch (TaskCanceledException e)
             {
                 var shellException = new ShellException(CommandException.GetDisplayMessage(e), e);
                 this.ReportExecutionError(shellException, command);
+                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 result = new ErrorCommandState(shellException);
                 return result;
             }
             catch (Exception e)
             {
                 this.ReportExecutionError(e, command);
+                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
                 result = new ErrorCommandState(inner);
                 return result;
@@ -769,7 +796,7 @@ public partial class ShellInterpreter : IDisposable
                     this.history.Remove(command);
                     this.history.Add(command);
                     this.SaveHistory();
-                    CancellationToken token = TokenSource.Token;
+                    CancellationToken token = UserCancellationTokenSource.Token;
                     await this.ExecuteCommandAsync(command, token);
                 }
             }
@@ -933,13 +960,19 @@ public partial class ShellInterpreter : IDisposable
         {
             WriteLine(MessageService.GetString("shell-connect-key-auth"));
             var keyMode = mode ?? (isEmulator ? ConnectionMode.Gateway : ConnectionMode.Direct);
-            var keyOptions = CreateClientOptions(keyMode);
+            var keyOptions = CreateClientOptions(keyMode, isEmulator);
             client = new CosmosClient(connectionString, keyOptions);
 
             AccountProperties keyProps;
+            using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+            if (isEmulator)
+            {
+                operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+            }
+
             try
             {
-                keyProps = await ReadAccountAsync(client, token);
+                keyProps = await ReadAccountAsync(client, operationTokenSource.Token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -958,7 +991,7 @@ public partial class ShellInterpreter : IDisposable
             }
 
             WriteLine(MessageService.GetArgsString("command-connect-connected", "account", keyProps.Id));
-            this.Connect(client);
+            this.Connect(client, credentialTypeOverride: isEmulator ? "Emulator" : "AccountKey");
             return;
         }
 
@@ -1025,7 +1058,7 @@ public partial class ShellInterpreter : IDisposable
             }
 
             WriteLine(MessageService.GetArgsString("command-connect-connected", "account", tokenProps.Id));
-            this.Connect(client);
+            this.Connect(client, credential: credential);
             return;
         }
 
@@ -1191,7 +1224,7 @@ public partial class ShellInterpreter : IDisposable
         var explicitlyRequested = IsArmContextExplicitlyRequested(subscriptionId, resourceGroupName);
         if (!explicitlyRequested)
         {
-            this.Connect(client);
+            this.Connect(client, credential: credential);
             WriteLine(MessageService.GetArgsString("command-connect-connected", "account", accountId));
 
             ArmCosmosContext? discoveredArmContext;
@@ -1213,7 +1246,7 @@ public partial class ShellInterpreter : IDisposable
         }
 
         var armContext = await this.TryDiscoverArmContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, authorityHostUri, token);
-        this.Connect(client, armContext);
+        this.Connect(client, armContext, credential);
         WriteLine(MessageService.GetArgsString("command-connect-connected", "account", accountId));
     }
 
@@ -1455,10 +1488,13 @@ public partial class ShellInterpreter : IDisposable
     /// <summary>
     /// Connects to a client &amp; disposes old state.
     /// </summary>
-    internal void Connect(CosmosClient client, ArmCosmosContext? armContext = null)
+    internal void Connect(CosmosClient client, ArmCosmosContext? armContext = null, TokenCredential? credential = null, string? credentialTypeOverride = null)
     {
         this.State?.Dispose();
         this.State = new ConnectedState(client, armContext);
+        this.activeCredential = credential;
+        this.ActiveCredentialType = credentialTypeOverride ?? credential?.GetType().Name;
+        this.CurrentBatch = null;
         CosmosCompleteCommand.ClearDatabases();
         CosmosCompleteCommand.ClearContainers();
         this.Diagnostics?.LogConnect(client.Endpoint, client.ClientOptions.ConnectionMode);
@@ -1523,6 +1559,19 @@ public partial class ShellInterpreter : IDisposable
     {
         this.State?.Dispose();
         this.State = new DisconnectedState();
+        this.activeCredential = null;
+        this.ActiveCredentialType = null;
+        this.CurrentBatch = null;
+    }
+
+    internal void DisconnectLocalEmulatorAfterConnectivityFailure(Exception exception)
+    {
+        if (this.State is ConnectedState connectedState
+            && ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectedState.Client.Endpoint.ToString())
+            && CommandException.IsConnectivityFailure(exception))
+        {
+            this.Disconnect();
+        }
     }
 
     internal void PrintCommand(string cmdString)
@@ -1572,6 +1621,12 @@ public partial class ShellInterpreter : IDisposable
                 && state.RenderUser is { } renderUser)
             {
                 renderUser();
+                return state;
+            }
+
+            if (inMachineMode && state is StructuredErrorCommandState structuredError)
+            {
+                this.WriteMachineError(structuredError.Exception.Message, structuredError.Result);
                 return state;
             }
 
@@ -1768,7 +1823,7 @@ public partial class ShellInterpreter : IDisposable
         return Console.ReadLine();
     }
 
-    private static CosmosClientOptions CreateClientOptions(ConnectionMode requestedMode)
+    internal static CosmosClientOptions CreateClientOptions(ConnectionMode requestedMode, bool isEmulator = false)
     {
         var options = new CosmosClientOptions
         {
@@ -1783,6 +1838,11 @@ public partial class ShellInterpreter : IDisposable
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             },
         };
+
+        if (isEmulator)
+        {
+            options.RequestTimeout = TimeSpan.FromSeconds(5);
+        }
 
         return options;
     }
@@ -2106,14 +2166,20 @@ public partial class ShellInterpreter : IDisposable
     // redirection (`ErrOutRedirect` / `2>` / `2>>`) so scripts that redirect
     // stderr still capture errors in --quiet / --output json modes; otherwise
     // the object is written to the process stderr.
-    private void WriteMachineError(string errorMessage)
+    private void WriteMachineError(string errorMessage, ShellObject? result = null)
     {
-        var errObj = new
+        var error = new Dictionary<string, object?>
         {
-            status = "error",
-            error = errorMessage,
+            ["status"] = "error",
+            ["error"] = errorMessage,
         };
-        var json = JsonSerializer.Serialize(errObj);
+
+        if (result?.ConvertShellObject(Parser.DataType.Json) is JsonElement resultElement)
+        {
+            error["result"] = resultElement;
+        }
+
+        var json = JsonSerializer.Serialize(error);
 
         if (this.ErrOutRedirect != null)
         {

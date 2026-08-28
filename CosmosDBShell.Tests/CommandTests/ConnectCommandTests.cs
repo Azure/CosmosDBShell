@@ -8,6 +8,7 @@ using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Lsp.Semantics;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 using Spectre.Console;
@@ -15,6 +16,40 @@ using Spectre.Console;
 [Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class ConnectCommandTests
 {
+    [Fact]
+    public void CreateClientOptions_Emulator_UsesShortRequestTimeout()
+    {
+        var options = ShellInterpreter.CreateClientOptions(ConnectionMode.Gateway, isEmulator: true);
+
+        Assert.Equal(TimeSpan.FromSeconds(5), options.RequestTimeout);
+    }
+
+    [Fact]
+    public void ConnectivityFailure_LocalEmulator_DisconnectsShell()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var client = new CosmosClient(
+            "AccountEndpoint=https://localhost:8081/;AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;");
+        shell.State = new ConnectedState(client);
+
+        shell.DisconnectLocalEmulatorAfterConnectivityFailure(new HttpRequestException("Connection refused"));
+
+        Assert.IsType<DisconnectedState>(shell.State);
+    }
+
+    [Fact]
+    public void CommandFailure_LocalEmulator_RemainsConnected()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var client = new CosmosClient(
+            "AccountEndpoint=https://localhost:8081/;AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;");
+        shell.State = new ConnectedState(client);
+
+        shell.DisconnectLocalEmulatorAfterConnectivityFailure(new CommandException("ls", "invalid option"));
+
+        Assert.IsType<ConnectedState>(shell.State);
+    }
+
     [Fact]
     public async Task ConnectAsync_CanceledToken_CancelsConnectionAttempt()
     {

@@ -9,7 +9,10 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Connect via Entra ID, connection string, or Azure CLI/Developer tools
 - Navigate with `ls` and `cd` (Account -> Databases -> Containers -> Items)
 - Inspect the current location with `pwd`
+- Inspect the connected identity with `whoami`, and probe data-plane access with `can-i` (both support `--format` table/json/csv)
 - Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
+- Inspect a query's execution plan and index usage with `query "<sql>" --explain`
+- Atomic multi-operation transactions on a single partition key: `batch`
 - Bulk roundtrip with `import` / `export` for JSON Lines and JSON array files, plus CSV import/export (CSV import coerces values to strings; `--partition-key` nests a CSV column under a nested partition key path)
 - Manage container indexing policies with `index` (`show`, `add`, `remove`, `set`)
 - Inspect container/database/account configuration and usage statistics with `info` (partition key, throughput, policies, indexing policy summary, document count, storage size, regions; `--partitions` and `--detailed` for distribution analysis)
@@ -184,6 +187,8 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--connect-azure-cli` | Use the signed-in Azure CLI (`az login`) identity |
 | `--connect-subscription <id>` | Azure subscription ID for ARM database and container operations |
 | `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations |
+| `--database <id>` | Navigate to this database after connecting at startup |
+| `--container <id>` | Navigate to this container after connecting at startup. Requires `--database` |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
 | `--diagnostics [path]` | Write timestamped diagnostic logs to a file, or to a timestamped file in the config directory by default |
 | `--otel [endpoint]` | Enable distributed tracing (sampled W3C `traceparent`); optional OTLP `endpoint`, else `OTEL_EXPORTER_OTLP_ENDPOINT` |
@@ -195,6 +200,9 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 Examples:
 
 ```bash
+# Start directly in a container without constructing a `-k` command.
+cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." --database mydb --container mycontainer
+
 # Run a script and exit. Script arguments become $1, $2, ... inside the script.
 cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c "seed.csh mydb mycontainer"
 

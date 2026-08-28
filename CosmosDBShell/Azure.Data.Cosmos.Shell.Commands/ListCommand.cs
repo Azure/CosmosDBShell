@@ -229,6 +229,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         {
             using var response = await feedIterator.ReadNextAsync(token);
             using var queryDocument = await ReadQueryResponseAsync(response, token);
+            AccumulateRequestCharge(returnState, response.Headers.RequestCharge);
 
             foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
             {
@@ -278,6 +279,11 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         };
 
         return returnState;
+    }
+
+    internal static void AccumulateRequestCharge(CommandState commandState, double requestCharge)
+    {
+        commandState.RequestCharge = (commandState.RequestCharge ?? 0) + requestCharge;
     }
 
     internal static async Task<JsonDocument> ReadQueryResponseAsync(ResponseMessage response, CancellationToken token)

@@ -42,6 +42,8 @@ The MCP server runs locally with your user permissions. Connected clients can ex
 
 Server-side programming commands — stored procedures (`sproc`), user-defined functions (`udf`), and triggers (`trigger`) — are restricted from MCP. Run those commands manually in the shell.
 
+Transactional batches invoked through MCP must use the one-shot `batch run` subcommand. Stateful batch subcommands (`begin`, `add`, `execute`, `cancel`, `status`, and `show`, including their aliases) are restricted to the interactive shell because MCP tool calls share no client-specific batch state.
+
 ### Destructive Command Confirmation
 
 Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an explicit user confirmation. When a client invokes one, the server sends an MCP elicitation prompt describing the exact command line before anything runs:
@@ -96,11 +98,11 @@ Both representations are always byte-for-byte equivalent.
 
 | Field | When present | Description |
 | ----- | ------------ | ----------- |
-| `result` | Successful commands that produce output | The command result as JSON (objects, arrays, or a scalar). Text-only results are represented as a JSON string. |
+| `result` | Commands that produce output | The command result as JSON (objects, arrays, or a scalar). Text-only results are represented as a JSON string. Failed transactional batches include their per-operation summary here alongside `error`. |
 | `outputText` | CSV output commands with non-empty text | The CSV rendering of the result. Omitted when the CSV output is empty or whitespace. |
-| `requestCharge` | Data-plane commands that consume request units | The Cosmos DB request charge (in RUs) consumed by the command, as a number. |
+| `requestCharge` | Successful instrumented data-plane commands | The Cosmos DB request charge (in RUs) consumed by the command, as a number. |
 | `error` | Failed commands | The error message. |
 | `currentLocation` | Always | The shell's current navigation path (for example `/MyDatabase/MyContainer`), or `null` when disconnected. |
 
-Successful results set `result` (and optionally `outputText`); failed results set `error` and mark the tool result as an error. `currentLocation` is always included so a client can track navigation state across calls. Data-plane commands (`query`, `print`, `mkitem`, `replace`, `patch`, `rm`, `import`, `export`, and `sproc exec`) additionally set `requestCharge` so a client can track RU cost across calls.
+Successful results set `result` (and optionally `outputText`); failed results set `error`, may also include a structured `result`, and mark the tool result as an error. `currentLocation` is always included so a client can track navigation state across calls. Successful data-plane commands (`query`, `print`, `ls` for container items, `mkitem`, `replace`, `patch`, `rm`, `import`, and `export`) additionally set `requestCharge` so a client can track RU cost across calls.
 

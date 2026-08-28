@@ -201,7 +201,7 @@ public class HighlighterTests
         // sub-Lexer, so recursing into them while indexing this.text used to smear
         // characters from the start of the line into the rendered output. The full
         // visible text must round-trip exactly through the highlighter.
-        var input = "echo \"$(3+5)\"\"$(3+5)\"";
+        var input = "echo $\"$(3+5)\"$\"$(3+5)\"";
         var highlighter = (IHighlighter)ShellInterpreter.Instance;
 
         var res = highlighter.BuildHighlightedText(input) as Markup;
@@ -221,7 +221,7 @@ public class HighlighterTests
         // segment — that is exactly what we want to verify.
         var highlighter = (IHighlighter)ShellInterpreter.Instance;
 
-        var res = highlighter.BuildHighlightedText("echo \"$(3+5)\"") as Markup;
+        var res = highlighter.BuildHighlightedText("echo $\"$(3+5)\"") as Markup;
         Assert.NotNull(res);
         var segs = res.GetSegments(AnsiConsole.Console).ToList();
 
@@ -240,7 +240,7 @@ public class HighlighterTests
         // reference, not lumped together with the quoted text.
         var highlighter = (IHighlighter)ShellInterpreter.Instance;
 
-        var input = "echo \"Hello $name!\"";
+        var input = "echo $\"Hello $name!\"";
         var res = highlighter.BuildHighlightedText(input) as Markup;
         Assert.NotNull(res);
 
@@ -261,7 +261,7 @@ public class HighlighterTests
         // still renders the visible characters in their original positions.
         var highlighter = (IHighlighter)ShellInterpreter.Instance;
 
-        var input = "echo \"$( \\\"a\\nb\\\" )\"";
+        var input = "echo $\"$( \\\"a\\nb\\\" )\"";
         var res = highlighter.BuildHighlightedText(input) as Markup;
         Assert.NotNull(res);
 

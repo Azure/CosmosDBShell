@@ -12,13 +12,16 @@ internal class InterpolatedStringExpression : Expression
 {
     private readonly Token stringToken;
 
-    public InterpolatedStringExpression(Token stringToken, List<Expression> expressions)
+    public InterpolatedStringExpression(Token stringToken, List<Expression> expressions, string sourceText)
     {
         this.Expressions = expressions ?? throw new ArgumentNullException(nameof(expressions));
         this.stringToken = stringToken ?? throw new ArgumentNullException(nameof(stringToken));
+        this.SourceText = sourceText ?? throw new ArgumentNullException(nameof(sourceText));
     }
 
     public List<Expression> Expressions { get; }
+
+    public string SourceText { get; }
 
     public Token StringToken { get => this.stringToken; }
 

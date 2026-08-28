@@ -54,4 +54,17 @@ public class CosmosShellPromptTests
         Assert.Contains(Markup.Escape("Db[Name]"), prompt);
         Assert.DoesNotContain(Markup.Escape(Markup.Escape("Db[Name]")), prompt);
     }
+
+    [Fact]
+    public void GetPromptString_WithActiveBatch_EscapesIndicatorOnce()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        shell.CurrentBatch = new PendingBatchState("TestDatabase", "TestContainer", "tenant-1", new PartitionKey("tenant-1"));
+
+        var prompt = new CosmosShellPrompt(shell).GetPromptString();
+
+        Assert.Contains(Markup.Escape("[batch:0]"), prompt);
+        Assert.DoesNotContain(Markup.Escape(Markup.Escape("[batch:0]")), prompt);
+    }
 }

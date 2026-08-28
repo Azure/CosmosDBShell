@@ -87,6 +87,12 @@ internal static class McpResponseFactory
         {
             payload["error"] = GetErrorPayloadMessage(commandState);
 
+            var errorResultNode = CreateResultNode(commandState);
+            if (errorResultNode != null)
+            {
+                payload["result"] = errorResultNode;
+            }
+
             return payload;
         }
 
