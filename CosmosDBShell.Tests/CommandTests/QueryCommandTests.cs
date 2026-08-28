@@ -4,6 +4,7 @@
 
 namespace CosmosShell.Tests.CommandTests;
 
+using System.Globalization;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
@@ -398,6 +399,32 @@ public class QueryCommandTests
         Assert.Collection(evaluation.PotentialIndexes, spec => Assert.Equal("/age/?", spec));
         Assert.Equal(200, evaluation.RetrievedDocumentCount);
         Assert.Equal(100, evaluation.OutputDocumentCount);
+    }
+
+    [Fact]
+    public void BuildPlanMessages_FormatsIndexHitRatioInvariantly()
+    {
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+            var evaluation = QueryCommand.EvaluatePlan(
+                planAvailable: true,
+                utilizedIndexes: ["/city/?"],
+                potentialIndexes: [],
+                indexHitRatio: 0.5,
+                retrievedDocumentCount: 1,
+                outputDocumentCount: 1);
+
+            var messages = QueryCommand.BuildPlanMessages(evaluation);
+
+            Assert.Contains(messages, message => message.Contains("0.5", StringComparison.Ordinal));
+            Assert.DoesNotContain(messages, message => message.Contains("0,5", StringComparison.Ordinal));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+        }
     }
 
     [Fact]

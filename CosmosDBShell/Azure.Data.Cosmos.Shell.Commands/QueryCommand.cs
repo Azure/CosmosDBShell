@@ -444,7 +444,7 @@ internal class QueryCommand : CosmosCommand
         return null;
     }
 
-    private static List<string> BuildPlanMessages(PlanEvaluation evaluation)
+    internal static List<string> BuildPlanMessages(PlanEvaluation evaluation)
     {
         var messages = new List<string>();
 
@@ -477,7 +477,7 @@ internal class QueryCommand : CosmosCommand
             messages.Add(MessageService.GetArgsString(
                 "command-query-explain-hit_ratio",
                 "ratio",
-                evaluation.IndexHitRatio.Value));
+                evaluation.IndexHitRatio.Value.ToString(CultureInfo.InvariantCulture)));
         }
 
         return messages;
