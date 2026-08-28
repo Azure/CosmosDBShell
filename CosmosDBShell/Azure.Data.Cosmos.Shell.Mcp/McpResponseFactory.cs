@@ -83,6 +83,11 @@ internal static class McpResponseFactory
     {
         var payload = new JsonObject();
 
+        if (commandState.RequestCharge.HasValue)
+        {
+            payload["requestCharge"] = commandState.RequestCharge.Value;
+        }
+
         if (commandState.IsError)
         {
             payload["error"] = GetErrorPayloadMessage(commandState);
@@ -100,11 +105,6 @@ internal static class McpResponseFactory
         if (resultNode != null)
         {
             payload["result"] = resultNode;
-        }
-
-        if (commandState.RequestCharge.HasValue)
-        {
-            payload["requestCharge"] = commandState.RequestCharge.Value;
         }
 
         if (commandState.OutputFormat == OutputFormat.CSV)

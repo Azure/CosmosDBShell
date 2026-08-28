@@ -100,9 +100,9 @@ Both representations are always byte-for-byte equivalent.
 | ----- | ------------ | ----------- |
 | `result` | Commands that produce output | The command result as JSON (objects, arrays, or a scalar). Text-only results are represented as a JSON string. Failed transactional batches include their per-operation summary here alongside `error`. |
 | `outputText` | CSV output commands with non-empty text | The CSV rendering of the result. Omitted when the CSV output is empty or whitespace. |
-| `requestCharge` | Successful instrumented data-plane commands | The Cosmos DB request charge (in RUs) consumed by the command, as a number. |
+| `requestCharge` | Instrumented data-plane command results | The Cosmos DB request charge (in RUs) consumed by the command, as a number. |
 | `error` | Failed commands | The error message. |
 | `currentLocation` | Always | The shell's current navigation path (for example `/MyDatabase/MyContainer`), or `null` when disconnected. |
 
-Successful results set `result` (and optionally `outputText`); failed results set `error`, may also include a structured `result`, and mark the tool result as an error. `currentLocation` is always included so a client can track navigation state across calls. Successful data-plane commands (`query`, `print`, `ls` for container items, `mkitem`, `replace`, `patch`, `rm`, `import`, and `export`) additionally set `requestCharge` so a client can track RU cost across calls.
+Successful results set `result` (and optionally `outputText`); failed results set `error`, may also include a structured `result`, and mark the tool result as an error. `currentLocation` is always included so a client can track navigation state across calls. Instrumented data-plane commands (`query`, `print`, `ls` for container items, `mkitem`, `replace`, `patch`, `rm`, `import`, and `export`) additionally set `requestCharge` when available so a client can track RU cost across successful and structured-error results.
 

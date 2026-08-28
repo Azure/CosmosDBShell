@@ -184,6 +184,23 @@ public class McpResponseFactoryTests
     }
 
     [Fact]
+    public void CreateSuccess_StructuredError_IncludesRequestChargeWhenSet()
+    {
+        var commandState = new StructuredErrorCommandState(
+            new CommandException("batch", "Batch failed."),
+            new ShellJson(JsonSerializer.SerializeToElement(new { success = false })))
+        {
+            RequestCharge = 3.5,
+        };
+
+        var result = McpResponseFactory.CreateSuccess(commandState, new ConnectedState(null!));
+
+        Assert.True(result.IsError);
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(3.5, result.StructuredContent!.Value.GetProperty("requestCharge").GetDouble());
+    }
+
+    [Fact]
     public void CreateSuccess_OmitsRequestChargeWhenNotSet()
     {
         var commandState = new CommandState
