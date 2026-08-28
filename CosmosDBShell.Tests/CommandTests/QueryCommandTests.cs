@@ -423,6 +423,23 @@ public class QueryCommandTests
         Assert.Equal(["/status/?"], potential);
     }
 
+    [Fact]
+    public void ParseIndexPlan_ExtractsDirectIndexArrays()
+    {
+        const string indexMetrics = """
+        {
+            "UtilizedIndexes": [ { "IndexSpec": "/city/?" } ],
+            "PotentialIndexes": [ { "IndexSpec": "/status/?" } ]
+        }
+        """;
+
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+
+        Assert.True(available);
+        Assert.Equal(["/city/?"], utilized);
+        Assert.Equal(["/status/?"], potential);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

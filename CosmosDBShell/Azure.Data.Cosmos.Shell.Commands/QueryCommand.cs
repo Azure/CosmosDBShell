@@ -321,14 +321,14 @@ internal class QueryCommand : CosmosCommand
 
             bool available = false;
             if (root.TryGetProperty("UtilizedIndexes", out var utilizedGroup)
-                && utilizedGroup.ValueKind == JsonValueKind.Object)
+                && IsIndexGroup(utilizedGroup))
             {
                 available = true;
                 AddIndexSpecs(utilizedGroup, utilized);
             }
 
             if (root.TryGetProperty("PotentialIndexes", out var potentialGroup)
-                && potentialGroup.ValueKind == JsonValueKind.Object)
+                && IsIndexGroup(potentialGroup))
             {
                 available = true;
                 AddIndexSpecs(potentialGroup, potential);
@@ -343,6 +343,11 @@ internal class QueryCommand : CosmosCommand
         }
 
         return (false, utilized, potential);
+    }
+
+    private static bool IsIndexGroup(JsonElement group)
+    {
+        return group.ValueKind is JsonValueKind.Object or JsonValueKind.Array;
     }
 
     // Builds a structured evaluation of an index plan. Pure and side-effect free so it
@@ -371,6 +376,12 @@ internal class QueryCommand : CosmosCommand
 
     private static void AddIndexSpecs(JsonElement group, List<string> target)
     {
+        if (group.ValueKind == JsonValueKind.Array)
+        {
+            AddIndexSpecs(group.EnumerateArray(), target);
+            return;
+        }
+
         if (group.ValueKind != JsonValueKind.Object)
         {
             return;
@@ -380,14 +391,19 @@ internal class QueryCommand : CosmosCommand
         {
             if (group.TryGetProperty(kind, out var array) && array.ValueKind == JsonValueKind.Array)
             {
-                foreach (var element in array.EnumerateArray())
-                {
-                    var spec = ExtractIndexSpec(element);
-                    if (!string.IsNullOrEmpty(spec))
-                    {
-                        target.Add(spec);
-                    }
-                }
+                AddIndexSpecs(array.EnumerateArray(), target);
+            }
+        }
+    }
+
+    private static void AddIndexSpecs(JsonElement.ArrayEnumerator elements, List<string> target)
+    {
+        foreach (var element in elements)
+        {
+            var spec = ExtractIndexSpec(element);
+            if (!string.IsNullOrEmpty(spec))
+            {
+                target.Add(spec);
             }
         }
     }
