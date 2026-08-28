@@ -153,15 +153,22 @@ theme reload
 Execute SQL query.
 
 ```text
-Usage: query [-m <ARG>] [--explain] query
+Usage: query [-m <ARG>] [-mx <ARG>] [-f <ARG>] [--bucket <ARG>]
+             [--database <ARG>] [--container <ARG>] [--explain] query
 
 Arguments:
     query       The query to execute
 
 Options:
-    -max, -m    Maximum number of items returned. Use 0 or a negative value for no limit
-    --explain   Show the query execution plan (index usage and a plain-language
-                evaluation) instead of returning documents
+    --max, -m             Maximum number of items returned. Use 0 or a negative value
+                          for no limit
+    --metrics, -mx        Show query metrics (Display or File)
+    --format, -f          Output format (json, table, csv)
+    --bucket              The throughput bucket to use for the query
+    --database, -db       The database to query against
+    --container, -con     The container to query against
+    --explain             Show the query execution plan (index usage and a
+                          plain-language evaluation) instead of returning documents
 ```
 
 `query` does not apply a default item limit. Use `--max <n>` to cap returned items when needed, or `--max 0` to disable the limit explicitly.
