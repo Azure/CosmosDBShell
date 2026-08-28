@@ -6,6 +6,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -228,8 +229,7 @@ internal class Lexer
     // Use reference equality on the Token key. Token is a record (value equality),
     // so two distinct tokens with identical Type/Value/Start/Length would otherwise
     // collide as map keys. Reference equality guarantees that only the exact token
-    // instance produced by ReadInterpolatedString / ReadDoubleQuotedString in this
-    // lexer can retrieve its source map.
+    // instance produced by ReadInterpolatedString can retrieve its source map.
     private readonly Dictionary<Token, int[]> interpolatedStringSourceMaps = new(ReferenceEqualityComparer.Instance);
 
     private int position;
@@ -629,20 +629,13 @@ internal class Lexer
     private Token ReadDoubleQuotedString(int startPosition)
     {
         var sb = new StringBuilder();
-        bool hasInterpolation = false;
         bool terminated = false;
-
-        // Mirrors the source-position tracking in ReadInterpolatedString so callers can
-        // map cooked content indices back to absolute outer-source positions when the
-        // string contains "$..." interpolations.
-        var sourcePositions = new List<int>();
 
         // Skip opening quote
         this.Advance();
 
         while (this.position < this.input.Length)
         {
-            var sourcePos = this.position + this.positionOffset;
             var ch = this.input[this.position];
 
             if (ch == '"')
@@ -664,33 +657,28 @@ internal class Lexer
                     case 't': sb.Append('\t'); break;
                     case '\\': sb.Append('\\'); break;
                     case '"': sb.Append('"'); break;
+                    case 'u' when this.position + 4 < this.input.Length &&
+                        int.TryParse(
+                            this.input.AsSpan(this.position + 1, 4),
+                            NumberStyles.HexNumber,
+                            CultureInfo.InvariantCulture,
+                            out int character):
+                        sb.Append((char)character);
+                        this.position += 4;
+                        break;
                     default: sb.Append(ch); break;
                 }
 
-                sourcePositions.Add(sourcePos);
                 this.Advance();
             }
             else
             {
-                // Track whether the string contains an unescaped '$' so we can treat it as
-                // an interpolated string at parse-time ("... $var ...").
-                if (ch == '$')
-                {
-                    hasInterpolation = true;
-                }
-
                 sb.Append(ch);
-                sourcePositions.Add(sourcePos);
                 this.Advance();
             }
         }
 
-        var tokenType = hasInterpolation ? TokenType.InterpolatedString : TokenType.String;
-        var token = this.MakeToken(tokenType, sb.ToString(), startPosition, this.position - startPosition);
-        if (hasInterpolation)
-        {
-            this.interpolatedStringSourceMaps[token] = sourcePositions.ToArray();
-        }
+        var token = this.MakeToken(TokenType.String, sb.ToString(), startPosition, this.position - startPosition);
 
         if (!terminated)
         {
@@ -916,6 +904,16 @@ internal class Lexer
                 // Handle escape sequences
                 this.Advance();
                 ch = this.input[this.position];
+                if (ch == '$')
+                {
+                    sb.Append('\\');
+                    sourcePositions.Add(sourcePos);
+                    sb.Append('$');
+                    sourcePositions.Add(this.position + this.positionOffset);
+                    this.Advance();
+                    continue;
+                }
+
                 switch (ch)
                 {
                     case 'n': sb.Append('\n'); break;
@@ -925,6 +923,15 @@ internal class Lexer
                     case '"': sb.Append('"'); break;
                     case '{': sb.Append('{'); break;  // Allow escaping braces
                     case '}': sb.Append('}'); break;
+                    case 'u' when this.position + 4 < this.input.Length &&
+                        int.TryParse(
+                            this.input.AsSpan(this.position + 1, 4),
+                            NumberStyles.HexNumber,
+                            CultureInfo.InvariantCulture,
+                            out int character):
+                        sb.Append((char)character);
+                        this.position += 4;
+                        break;
                     default: sb.Append(ch); break;
                 }
 
