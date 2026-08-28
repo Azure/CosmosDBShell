@@ -153,16 +153,36 @@ theme reload
 Execute SQL query.
 
 ```text
-Usage: query [-m <ARG>] query
+Usage: query [-m <ARG>] [-mx <ARG>] [-f <ARG>] [--bucket <ARG>]
+             [--database <ARG>] [--container <ARG>] [--explain] query
 
 Arguments:
     query       The query to execute
 
 Options:
-    -max, -m    Maximum number of items returned. Use 0 or a negative value for no limit
+    --max, -m             Maximum number of items returned. Use 0 or a negative value
+                          for no limit
+    --metrics, -mx        Show query metrics (Display or File)
+    --format, -f          Output format (json, table, csv)
+    --bucket              The throughput bucket to use for the query
+    --database, -db       The database to query against
+    --container, -con     The container to query against
+    --explain             Show the query execution plan (index usage and a
+                          plain-language evaluation) instead of returning documents
 ```
 
 `query` does not apply a default item limit. Use `--max <n>` to cap returned items when needed, or `--max 0` to disable the limit explicitly.
+
+#### Explain a query
+
+`query "<sql>" --explain` reports how the query engine resolved the query rather than returning documents. When Cosmos DB returns index metrics, it shows whether the query performed a full scan or an index seek, lists the utilized and potential indexes, the index hit ratio, and the request charge. If index metrics are unavailable or unrecognized, the scan type is reported as unknown instead of assuming a full scan. A plain-language summary highlights confirmed full scans and recommends indexes to add.
+
+```text
+query "SELECT * FROM c WHERE c.city = 'Seattle'" --explain
+```
+
+To keep the cost low, `--explain` executes only the first page of the query (`MaxItemCount = 1`), so the reported metrics are an estimate based on that page. `--max` is ignored when `--explain` is supplied.
+
 
 ### print
 
