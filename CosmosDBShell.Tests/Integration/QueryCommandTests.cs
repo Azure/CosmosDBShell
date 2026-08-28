@@ -131,6 +131,32 @@ public class QueryCommandTests : EmulatorFixtureTestBase
     }
 
     [Fact]
+    public async Task Query_Explain_ReturnsIndexPlanWithoutDocuments()
+    {
+        var query = $"SELECT * FROM c WHERE c.id = '{this.GetSeedItemId(1)}'";
+
+        var output = await ExecuteWithOutputAsync($"query \"{query}\" --explain");
+
+        using var document = JsonDocument.Parse(output);
+        var root = document.RootElement;
+        Assert.Equal(query, root.GetProperty("query").GetString());
+        Assert.True(root.GetProperty("estimate").GetBoolean());
+        Assert.False(root.TryGetProperty("values", out _));
+
+        var plan = root.GetProperty("plan");
+        Assert.Equal(JsonValueKind.Array, plan.GetProperty("utilizedIndexes").ValueKind);
+        Assert.Equal(JsonValueKind.Array, plan.GetProperty("potentialIndexes").ValueKind);
+        Assert.True(plan.GetProperty("requestCharge").GetDouble() >= 0);
+
+        var evaluation = root.GetProperty("evaluation");
+        Assert.True(evaluation.GetProperty("planAvailable").GetBoolean());
+        var fullScan = evaluation.GetProperty("fullScan").GetBoolean();
+        var indexSeek = evaluation.GetProperty("indexSeek").GetBoolean();
+        Assert.NotEqual(fullScan, indexSeek);
+        Assert.True(evaluation.GetProperty("messages").GetArrayLength() > 0);
+    }
+
+    [Fact]
     public async Task Query_MetricsFile_Csv_WritesMetricsCsvFile()
     {
         var outputFile = CreateTempFile(".csv");
