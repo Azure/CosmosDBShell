@@ -347,7 +347,28 @@ internal class QueryCommand : CosmosCommand
 
     private static bool IsIndexGroup(JsonElement group)
     {
-        return group.ValueKind is JsonValueKind.Object or JsonValueKind.Array;
+        if (group.ValueKind == JsonValueKind.Array)
+        {
+            return true;
+        }
+
+        if (group.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        bool hasProperties = false;
+        foreach (var property in group.EnumerateObject())
+        {
+            hasProperties = true;
+            if (property.Name is "SingleIndexes" or "CompositeIndexes"
+                && property.Value.ValueKind == JsonValueKind.Array)
+            {
+                return true;
+            }
+        }
+
+        return !hasProperties;
     }
 
     // Builds a structured evaluation of an index plan. Pure and side-effect free so it
@@ -401,7 +422,7 @@ internal class QueryCommand : CosmosCommand
         foreach (var element in elements)
         {
             var spec = ExtractIndexSpec(element);
-            if (!string.IsNullOrEmpty(spec))
+            if (!string.IsNullOrWhiteSpace(spec))
             {
                 target.Add(spec);
             }
@@ -412,14 +433,14 @@ internal class QueryCommand : CosmosCommand
     {
         if (element.ValueKind == JsonValueKind.String)
         {
-            return element.GetString();
+            return element.GetString()?.Trim();
         }
 
         if (element.ValueKind == JsonValueKind.Object)
         {
             if (element.TryGetProperty("IndexSpec", out var spec) && spec.ValueKind == JsonValueKind.String)
             {
-                return spec.GetString();
+                return spec.GetString()?.Trim();
             }
 
             if (element.TryGetProperty("IndexSpecs", out var specs) && specs.ValueKind == JsonValueKind.Array)
@@ -429,8 +450,8 @@ internal class QueryCommand : CosmosCommand
                 {
                     if (path.ValueKind == JsonValueKind.String)
                     {
-                        var value = path.GetString();
-                        if (!string.IsNullOrEmpty(value))
+                        var value = path.GetString()?.Trim();
+                        if (!string.IsNullOrWhiteSpace(value))
                         {
                             paths.Add(value);
                         }
@@ -587,10 +608,10 @@ internal class QueryCommand : CosmosCommand
             throw new CommandException("query", MessageService.GetString("command-query-error-empty_query"));
         }
 
-        var returnState = CreateCommandState(this.OutputFormat);
-
         try
         {
+            var returnState = CreateCommandState(this.OutputFormat);
+
             // The query must execute to obtain index metrics; Cosmos has no zero-cost
             // EXPLAIN. Reading only the first page keeps the RU cost low while still
             // reflecting the plan and index usage chosen by the query engine.
@@ -652,11 +673,11 @@ internal class QueryCommand : CosmosCommand
 
     private async Task<CommandState> ExecuteQueryAsync(Container container, ShellInterpreter shell, CancellationToken token)
     {
-        var returnState = CreateCommandState(this.OutputFormat);
-        var aggregatedDocuments = new List<JsonElement>();
-
         try
         {
+            var returnState = CreateCommandState(this.OutputFormat);
+            var aggregatedDocuments = new List<JsonElement>();
+
             var options = new QueryRequestOptions
             {
                 PopulateIndexMetrics = true,

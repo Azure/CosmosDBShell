@@ -501,6 +501,39 @@ public class QueryCommandTests
     }
 
     [Fact]
+    public void ParseIndexPlan_UnrecognizedIndexGroup_ReturnsUnavailable()
+    {
+        const string indexMetrics = "{\"UtilizedIndexes\":{\"UnexpectedIndexes\":[]}}";
+
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+
+        Assert.False(available);
+        Assert.Empty(utilized);
+        Assert.Empty(potential);
+    }
+
+    [Fact]
+    public void ParseIndexPlan_TrimsSpecsAndIgnoresWhitespaceOnlyValues()
+    {
+        const string indexMetrics = """
+        {
+            "UtilizedIndexes": [
+                "   ",
+                " /city/? ",
+                { "IndexSpec": " /name/? " },
+                { "IndexSpecs": [ " /age ASC ", "   ", "/name ASC " ] }
+            ]
+        }
+        """;
+
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+
+        Assert.True(available);
+        Assert.Equal(["/city/?", "/name/?", "/age ASC, /name ASC"], utilized);
+        Assert.Empty(potential);
+    }
+
+    [Fact]
     public void ParseIndexPlan_RecognizedEmptyGroups_ReturnsAvailable()
     {
         const string indexMetrics = "{\"UtilizedIndexes\":{},\"PotentialIndexes\":{}}";
