@@ -122,7 +122,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         bool dryRun = this.DryRun == true;
 
         // In dry-run mode, count what would be deleted without issuing any delete.
-        async Task<(bool Deleted, double RequestCharge)> TryDeleteAsync(string id, PartitionKey partitionKey)
+        async Task<(bool Counted, double RequestCharge)> TryDeleteAsync(string id, PartitionKey partitionKey)
         {
             if (dryRun)
             {
@@ -186,7 +186,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         {
                             var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
                             totalCharge += deleteResult.RequestCharge;
-                            if (deleteResult.Deleted)
+                            if (deleteResult.Counted)
                             {
                                 totalCount++;
                             }
@@ -219,7 +219,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         {
                             var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
                             totalCharge += deleteResult.RequestCharge;
-                            if (deleteResult.Deleted)
+                            if (deleteResult.Counted)
                             {
                                 totalCount++;
                             }
@@ -285,7 +285,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                     {
                         var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
                         totalCharge += deleteResult.RequestCharge;
-                        if (deleteResult.Deleted)
+                        if (deleteResult.Counted)
                         {
                             totalCount++;
                         }
