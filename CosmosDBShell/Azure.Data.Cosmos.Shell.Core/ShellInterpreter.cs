@@ -29,8 +29,6 @@ public partial class ShellInterpreter : IDisposable
 
     private const int MAXHISTORYITEMS = 60;
 
-    private const double TimeoutInSeconds = 10.0;
-
     private const int OptionalArmDiscoveryTimeoutSeconds = 3;
 
     private const string EncodedHistoryLinePrefix = "CosmosDBShellHistoryV1:";
@@ -39,6 +37,8 @@ public partial class ShellInterpreter : IDisposable
     // DecodeHistoryLine can unambiguously tell a value it produced apart from a
     // user command that just happens to start with the prefix string.
     private const string EncodedHistoryLineMarker = "E:";
+
+    private static readonly TimeSpan LocalEmulatorOperationTimeout = TimeSpan.FromSeconds(10);
 
     private static CancellationTokenSource? currentTokenSource;
 
@@ -109,15 +109,6 @@ public partial class ShellInterpreter : IDisposable
     /// Gets or sets a value indicating whether the shell will echo commands before executing them in scripts.
     /// </summary>
     public bool Echo { get; set; } = true;
-
-    internal static CancellationTokenSource TokenSource
-    {
-        get
-        {
-            currentTokenSource?.Dispose();
-            return currentTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(TimeoutInSeconds));
-        }
-    }
 
     internal static CancellationTokenSource UserCancellationTokenSource
     {
@@ -427,6 +418,8 @@ public partial class ShellInterpreter : IDisposable
     public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token)
     {
         using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
+        var isLocalEmulatorOperation = this.State is ConnectedState connectedState
+            && ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectedState.Client?.Endpoint.ToString());
         var state = new CommandState();
 
         // Snapshot redirect state so a '>' / '2>' on this command does not leak into
@@ -441,12 +434,17 @@ public partial class ShellInterpreter : IDisposable
         diagnostics?.LogCommand(command);
         CommandState? result = null;
         var wasCancelled = false;
+        using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+        if (isLocalEmulatorOperation)
+        {
+            operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+        }
 
         try
         {
             try
             {
-                state = await this.RunCommandAsync(state, command, token);
+                state = await this.RunCommandAsync(state, command, operationTokenSource.Token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -454,16 +452,28 @@ public partial class ShellInterpreter : IDisposable
                 result = new CommandState();
                 return result;
             }
+            catch (OperationCanceledException e) when (isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested)
+            {
+                var shellException = new ShellException(
+                    CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, e.Message),
+                    e);
+                this.ReportExecutionError(shellException, command);
+                this.Disconnect();
+                result = new ErrorCommandState(shellException);
+                return result;
+            }
             catch (TaskCanceledException e)
             {
                 var shellException = new ShellException(CommandException.GetDisplayMessage(e), e);
                 this.ReportExecutionError(shellException, command);
+                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 result = new ErrorCommandState(shellException);
                 return result;
             }
             catch (Exception e)
             {
                 this.ReportExecutionError(e, command);
+                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
                 result = new ErrorCommandState(inner);
                 return result;
@@ -771,7 +781,7 @@ public partial class ShellInterpreter : IDisposable
                     this.history.Remove(command);
                     this.history.Add(command);
                     this.SaveHistory();
-                    CancellationToken token = TokenSource.Token;
+                    CancellationToken token = UserCancellationTokenSource.Token;
                     await this.ExecuteCommandAsync(command, token);
                 }
             }
@@ -935,13 +945,19 @@ public partial class ShellInterpreter : IDisposable
         {
             WriteLine(MessageService.GetString("shell-connect-key-auth"));
             var keyMode = mode ?? (isEmulator ? ConnectionMode.Gateway : ConnectionMode.Direct);
-            var keyOptions = CreateClientOptions(keyMode);
+            var keyOptions = CreateClientOptions(keyMode, isEmulator);
             client = new CosmosClient(connectionString, keyOptions);
 
             AccountProperties keyProps;
+            using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+            if (isEmulator)
+            {
+                operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+            }
+
             try
             {
-                keyProps = await ReadAccountAsync(client, token);
+                keyProps = await ReadAccountAsync(client, operationTokenSource.Token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -1529,6 +1545,16 @@ public partial class ShellInterpreter : IDisposable
         this.CurrentBatch = null;
     }
 
+    internal void DisconnectLocalEmulatorAfterConnectivityFailure(Exception exception)
+    {
+        if (this.State is ConnectedState connectedState
+            && ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectedState.Client.Endpoint.ToString())
+            && CommandException.IsConnectivityFailure(exception))
+        {
+            this.Disconnect();
+        }
+    }
+
     internal void PrintCommand(string cmdString)
     {
         // Print the shell prompt similar to how it appears when typing command
@@ -1778,7 +1804,7 @@ public partial class ShellInterpreter : IDisposable
         return Console.ReadLine();
     }
 
-    private static CosmosClientOptions CreateClientOptions(ConnectionMode requestedMode)
+    internal static CosmosClientOptions CreateClientOptions(ConnectionMode requestedMode, bool isEmulator = false)
     {
         var options = new CosmosClientOptions
         {
@@ -1793,6 +1819,11 @@ public partial class ShellInterpreter : IDisposable
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             },
         };
+
+        if (isEmulator)
+        {
+            options.RequestTimeout = TimeSpan.FromSeconds(5);
+        }
 
         return options;
     }
