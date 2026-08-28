@@ -56,8 +56,7 @@ internal class CanICommand : CosmosCommand
             throw new CommandException("can-i", MessageService.GetArgsString("command-can-i-invalid-action", "action", this.Action ?? string.Empty));
         }
 
-        var format = this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
-        commandState.SetFormat(format);
+        commandState.SetFormat(this.OutputFormat);
 
         string? databaseName = this.Database;
         string? containerName = this.Container;

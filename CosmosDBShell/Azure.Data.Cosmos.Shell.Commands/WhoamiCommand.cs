@@ -42,8 +42,7 @@ internal class WhoamiCommand : CosmosCommand
             throw new NotConnectedException("whoami");
         }
 
-        var format = this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
-        commandState.SetFormat(format);
+        commandState.SetFormat(this.OutputFormat);
 
         var credentialType = shell.ActiveCredentialType ?? "Unknown";
         var credential = shell.ActiveCredential;

@@ -50,6 +50,18 @@ public class WhoamiCommandTests
     }
 
     [Fact]
+    public async Task Whoami_WithoutCommandFormat_DefersToSessionDefault()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Connect(CreateTestClient(), credentialTypeOverride: "AccountKey");
+        var command = new WhoamiCommand();
+
+        var state = await command.ExecuteAsync(shell, new CommandState(), "whoami", CancellationToken.None);
+
+        Assert.False(state.OutputFormatExplicitlySet);
+    }
+
+    [Fact]
     public async Task Whoami_JsonFormat_SetsJsonOutput()
     {
         using var shell = ShellInterpreter.CreateInstance();

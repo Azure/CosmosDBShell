@@ -95,6 +95,18 @@ public class CanICommandTests
     }
 
     [Fact]
+    public async Task CanI_WithoutCommandFormat_DefersToSessionDefault()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Connect(CreateTestClient(), credentialTypeOverride: "AccountKey");
+        var command = new CanICommand { Action = "manage" };
+
+        var state = await command.ExecuteAsync(shell, new CommandState(), "can-i manage", CancellationToken.None);
+
+        Assert.False(state.OutputFormatExplicitlySet);
+    }
+
+    [Fact]
     public async Task CanI_CsvFormat_SetsCsvOutput()
     {
         using var shell = ShellInterpreter.CreateInstance();
