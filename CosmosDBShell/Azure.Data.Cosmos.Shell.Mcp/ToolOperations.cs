@@ -417,7 +417,6 @@ internal class ToolOperations
                 var parameter = command.Parameters.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (parameter != null)
                 {
-                    suppliedParameters.Add(parameter.Name[0]);
                     var bindError = this.BindMember(
                         cmd,
                         parameter.PropertyInfo,
@@ -429,6 +428,13 @@ internal class ToolOperations
                     if (bindError != null)
                     {
                         return bindError;
+                    }
+
+                    var boundValue = parameter.PropertyInfo.GetValue(cmd);
+                    if (boundValue != null
+                        && (boundValue is not string stringValue || !string.IsNullOrWhiteSpace(stringValue)))
+                    {
+                        suppliedParameters.Add(parameter.Name[0]);
                     }
 
                     continue;
@@ -456,6 +462,15 @@ internal class ToolOperations
             var missingMessage = $"Missing required parameter(s) for command '{command.CommandName}': {string.Join("; ", missingDetails)}.";
             this.logger?.LogWarning("Missing required parameter(s) for command {CommandName}.", command.CommandName);
             return McpResponseFactory.CreateError(missingMessage, ShellInterpreter.Instance.State);
+        }
+
+        var batchSubcommand = (cmd as BatchCommand)?.Subcommand?.Trim();
+        if (!string.IsNullOrEmpty(batchSubcommand)
+            && !string.Equals(batchSubcommand, "run", StringComparison.OrdinalIgnoreCase))
+        {
+            const string errorMessage = "MCP supports only the stateless 'batch run' subcommand. Run stateful batch commands manually in the shell.";
+            this.logger?.LogWarning(errorMessage);
+            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
         }
 
         if (RequiresConfirmation(command))
