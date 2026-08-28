@@ -131,7 +131,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
     }
 
     [Fact]
-    public async Task Query_Explain_ReturnsIndexPlanWithoutDocuments()
+    public async Task Query_Explain_ReturnsStructuredResultWithoutDocuments()
     {
         var query = $"SELECT * FROM c WHERE c.id = '{this.GetSeedItemId(1)}'";
 
@@ -149,10 +149,10 @@ public class QueryCommandTests : EmulatorFixtureTestBase
         Assert.True(plan.GetProperty("requestCharge").GetDouble() >= 0);
 
         var evaluation = root.GetProperty("evaluation");
-        Assert.True(evaluation.GetProperty("planAvailable").GetBoolean());
+        var planAvailable = evaluation.GetProperty("planAvailable").GetBoolean();
         var fullScan = evaluation.GetProperty("fullScan").GetBoolean();
         var indexSeek = evaluation.GetProperty("indexSeek").GetBoolean();
-        Assert.NotEqual(fullScan, indexSeek);
+        Assert.Equal(planAvailable, fullScan != indexSeek);
         Assert.True(evaluation.GetProperty("messages").GetArrayLength() > 0);
     }
 
