@@ -231,6 +231,27 @@ public class ToolOperationsCallToolTests
     }
 
     [Theory]
+    [InlineData("query", "query")]
+    [InlineData("batch", "subcommand")]
+    public async Task CallTool_NullRequiredParameter_ReturnsMissingParameterError(string command, string parameter)
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            [parameter] = Json("null"),
+        };
+
+        var result = await tool.CallToolHandler(CallContext(command, arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Contains("Missing required parameter", root.GetProperty("error").GetString());
+        }
+    }
+
+    [Theory]
     [InlineData("begin")]
     [InlineData("add")]
     [InlineData("execute")]

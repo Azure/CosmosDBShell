@@ -431,7 +431,8 @@ internal class ToolOperations
                     }
 
                     var boundValue = parameter.PropertyInfo.GetValue(cmd);
-                    if (boundValue is not string stringValue || !string.IsNullOrWhiteSpace(stringValue))
+                    if (boundValue != null
+                        && (boundValue is not string stringValue || !string.IsNullOrWhiteSpace(stringValue)))
                     {
                         suppliedParameters.Add(parameter.Name[0]);
                     }
@@ -463,7 +464,7 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(missingMessage, ShellInterpreter.Instance.State);
         }
 
-        var batchSubcommand = (cmd as BatchCommand)?.Subcommand.Trim();
+        var batchSubcommand = (cmd as BatchCommand)?.Subcommand?.Trim();
         if (!string.IsNullOrEmpty(batchSubcommand)
             && !string.Equals(batchSubcommand, "run", StringComparison.OrdinalIgnoreCase))
         {
