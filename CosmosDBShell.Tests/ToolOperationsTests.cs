@@ -171,6 +171,17 @@ public class ToolOperationsTests
     }
 
     [Fact]
+    public void GetTool_BatchDescription_OnlyOffersStatelessRunThroughMcp()
+    {
+        var factory = new CommandRunner().Commands["batch"];
+
+        var tool = ToolOperations.GetTool(factory);
+
+        Assert.Contains("MCP supports only the one-shot 'run' subcommand", tool.Description);
+        Assert.Contains("available only in the interactive shell", tool.Description);
+    }
+
+    [Fact]
     public void GetTool_MapsReadOnlyAnnotationHints()
     {
         var factory = new CommandRunner().Commands["query"];

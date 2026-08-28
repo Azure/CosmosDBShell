@@ -179,6 +179,8 @@ public partial class ShellInterpreter : IDisposable
 
     internal int? McpPort { get; set; }
 
+    internal PendingBatchState? CurrentBatch { get; set; }
+
     internal Queue<VariableContainer> VariableContainers { get; } = new();
 
     /// <summary>
@@ -1459,6 +1461,7 @@ public partial class ShellInterpreter : IDisposable
     {
         this.State?.Dispose();
         this.State = new ConnectedState(client, armContext);
+        this.CurrentBatch = null;
         CosmosCompleteCommand.ClearDatabases();
         CosmosCompleteCommand.ClearContainers();
         this.Diagnostics?.LogConnect(client.Endpoint, client.ClientOptions.ConnectionMode);
@@ -1523,6 +1526,7 @@ public partial class ShellInterpreter : IDisposable
     {
         this.State?.Dispose();
         this.State = new DisconnectedState();
+        this.CurrentBatch = null;
     }
 
     internal void PrintCommand(string cmdString)
@@ -1572,6 +1576,12 @@ public partial class ShellInterpreter : IDisposable
                 && state.RenderUser is { } renderUser)
             {
                 renderUser();
+                return state;
+            }
+
+            if (inMachineMode && state is StructuredErrorCommandState structuredError)
+            {
+                this.WriteMachineError(structuredError.Exception.Message, structuredError.Result);
                 return state;
             }
 
@@ -2106,14 +2116,20 @@ public partial class ShellInterpreter : IDisposable
     // redirection (`ErrOutRedirect` / `2>` / `2>>`) so scripts that redirect
     // stderr still capture errors in --quiet / --output json modes; otherwise
     // the object is written to the process stderr.
-    private void WriteMachineError(string errorMessage)
+    private void WriteMachineError(string errorMessage, ShellObject? result = null)
     {
-        var errObj = new
+        var error = new Dictionary<string, object?>
         {
-            status = "error",
-            error = errorMessage,
+            ["status"] = "error",
+            ["error"] = errorMessage,
         };
-        var json = JsonSerializer.Serialize(errObj);
+
+        if (result?.ConvertShellObject(Parser.DataType.Json) is JsonElement resultElement)
+        {
+            error["result"] = resultElement;
+        }
+
+        var json = JsonSerializer.Serialize(error);
 
         if (this.ErrOutRedirect != null)
         {
