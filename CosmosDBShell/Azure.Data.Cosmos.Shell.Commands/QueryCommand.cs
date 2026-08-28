@@ -544,23 +544,23 @@ internal class QueryCommand : CosmosCommand
         table.AddColumns(string.Empty, string.Empty);
         table.HideHeaders();
         table.AddRow(
-            Theme.FormatHelpName(Markup.Escape(MessageService.GetString("command-query-explain-utilized"))),
-            Theme.FormatTableValue(Markup.Escape(evaluation.UtilizedIndexes.Count > 0 ? string.Join(", ", evaluation.UtilizedIndexes) : "-")));
+            Theme.FormatHelpName(MessageService.GetString("command-query-explain-utilized")),
+            Theme.FormatTableValue(evaluation.UtilizedIndexes.Count > 0 ? string.Join(", ", evaluation.UtilizedIndexes) : "-"));
         table.AddRow(
-            Theme.FormatHelpName(Markup.Escape(MessageService.GetString("command-query-explain-potential"))),
-            Theme.FormatTableValue(Markup.Escape(evaluation.PotentialIndexes.Count > 0 ? string.Join(", ", evaluation.PotentialIndexes) : "-")));
+            Theme.FormatHelpName(MessageService.GetString("command-query-explain-potential")),
+            Theme.FormatTableValue(evaluation.PotentialIndexes.Count > 0 ? string.Join(", ", evaluation.PotentialIndexes) : "-"));
         table.AddRow(
-            Theme.FormatHelpName(Markup.Escape(MessageService.GetString("command-query-index_hit_ratio"))),
-            Theme.FormatTableValue(Markup.Escape(evaluation.IndexHitRatio?.ToString(CultureInfo.InvariantCulture) ?? "N/A")));
+            Theme.FormatHelpName(MessageService.GetString("command-query-index_hit_ratio")),
+            Theme.FormatTableValue(evaluation.IndexHitRatio?.ToString(CultureInfo.InvariantCulture) ?? "N/A"));
         table.AddRow(
-            Theme.FormatHelpName(Markup.Escape(MessageService.GetString("command-query-retrieved"))),
-            Theme.FormatTableValue(Markup.Escape(evaluation.RetrievedDocumentCount?.ToString(CultureInfo.InvariantCulture) ?? "N/A")));
+            Theme.FormatHelpName(MessageService.GetString("command-query-retrieved")),
+            Theme.FormatTableValue(evaluation.RetrievedDocumentCount?.ToString(CultureInfo.InvariantCulture) ?? "N/A"));
         table.AddRow(
-            Theme.FormatHelpName(Markup.Escape(MessageService.GetString("command-query-output"))),
-            Theme.FormatTableValue(Markup.Escape(evaluation.OutputDocumentCount?.ToString(CultureInfo.InvariantCulture) ?? "N/A")));
+            Theme.FormatHelpName(MessageService.GetString("command-query-output")),
+            Theme.FormatTableValue(evaluation.OutputDocumentCount?.ToString(CultureInfo.InvariantCulture) ?? "N/A"));
         table.AddRow(
-            Theme.FormatHelpName(Markup.Escape(MessageService.GetString("command-query-explain-charge"))),
-            Theme.FormatTableValue(Markup.Escape(requestCharge.ToString(CultureInfo.InvariantCulture))));
+            Theme.FormatHelpName(MessageService.GetString("command-query-explain-charge")),
+            Theme.FormatTableValue(requestCharge.ToString(CultureInfo.InvariantCulture)));
         AnsiConsole.Write(table);
 
         AnsiConsole.MarkupLine(MessageService.GetString("command-query-explain-estimate_note"));
