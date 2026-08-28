@@ -24,6 +24,7 @@
 
 ### New features
 
+- **`whoami` and `can-i` access diagnostics.** `whoami` reports the current credential type and, for Microsoft Entra ID connections, the principal, tenant, application id, user principal name, display name, and token expiry decoded from the Cosmos DB access token. `can-i <read|query|write|manage>` probes data-plane access with safe, non-mutating requests and reports `allow`, `deny`, or `indeterminate`. Both commands are data-plane only (no control-plane dependency): account-key and emulator connections are reported from the master key, and RBAC role assignments are not enumerated. Both support `--format` (`table`, `json`, or `csv`). ([#163](https://github.com/Azure/CosmosDBShell/issues/163))
 - **Deterministic machine output and exit codes.** Global `--output`/`--quiet`, structured JSON/CSV machine mode, and stable process exit codes (`0`–`6`) for automation and CI. ([#173](https://github.com/Azure/CosmosDBShell/pull/173), [#155](https://github.com/Azure/CosmosDBShell/issues/155), [#176](https://github.com/Azure/CosmosDBShell/issues/176), [#177](https://github.com/Azure/CosmosDBShell/issues/177))
 - **`setup-cosmosdb-shell` GitHub Action** and [CI/CD guide](docs/ci.md) for installing the self-contained shell in pipelines without a .NET SDK on the runner. ([#173](https://github.com/Azure/CosmosDBShell/pull/173))
 
@@ -89,6 +90,8 @@ A focused cycle on top of 1.1.115-preview. New `ttl` and `conflict` commands man
 ### Improvements
 
 - **Structured (JSON) tool results for MCP.** MCP tool results now carry the machine-readable JSON payload (`result`/`outputText`/`error` plus `currentLocation`) as first-class `structuredContent` in addition to the existing JSON text block, so agents can consume structured results directly. The two representations are kept byte-for-byte equivalent, and text-only clients are unaffected. ([#154](https://github.com/Azure/CosmosDBShell/issues/154))
+
+- **Destructive MCP commands now prompt for confirmation instead of being blocked.** When an MCP client invokes `delete`, `rm`, `rmcon`, or `rmdb`, the server sends an elicitation prompt describing the exact command line and only runs it if the user approves; declining, cancelling, or a client that cannot confirm results in nothing being executed. This removes the need for any write opt-in flag. ([#158](https://github.com/Azure/CosmosDBShell/issues/158))
 
 ### Fixes
 

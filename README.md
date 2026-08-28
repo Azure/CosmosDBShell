@@ -9,6 +9,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Connect via Entra ID, connection string, or Azure CLI/Developer tools
 - Navigate with `ls` and `cd` (Account -> Databases -> Containers -> Items)
 - Inspect the current location with `pwd`
+- Inspect the connected identity with `whoami`, and probe data-plane access with `can-i` (both support `--format` table/json/csv)
 - Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
 - Inspect a query's execution plan and index usage with `query "<sql>" --explain`
 - Atomic multi-operation transactions on a single partition key: `batch`
