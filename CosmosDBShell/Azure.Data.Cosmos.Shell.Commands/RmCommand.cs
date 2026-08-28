@@ -241,7 +241,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                     break;
                 }
 
-                var response = await feedIterator.ReadNextAsync(token);
+                using var response = await feedIterator.ReadNextAsync(token);
 
                 // The scan pages that locate matching items consume RUs regardless of whether
                 // any item is ultimately deleted (including in --dry-run), so include each

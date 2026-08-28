@@ -735,7 +735,7 @@ internal class QueryCommand : CosmosCommand
                 // correct; the detailed metrics payload is built separately from the response.
                 var pageRequestCharge = response.Headers.RequestCharge;
                 totalRequestCharge += pageRequestCharge;
-                AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", pageRequestCharge.ToString() } }));
+                AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", pageRequestCharge.ToString("F2", CultureInfo.InvariantCulture) } }));
 
                 var pageDocuments = queryDocument.RootElement.GetProperty("Documents");
                 var pageExceedsLimit = PageExceedsLimit(aggregatedDocuments.Count, pageDocuments, effectiveMaxItemCount);
