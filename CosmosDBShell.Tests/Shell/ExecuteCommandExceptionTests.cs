@@ -514,6 +514,26 @@ public class ExecuteCommandExceptionTests
         Assert.Contains("CosmosDiagnostics", exception.ToString());
     }
 
+    [Theory]
+    [InlineData(System.Net.HttpStatusCode.RequestTimeout)]
+    [InlineData(System.Net.HttpStatusCode.BadGateway)]
+    [InlineData(System.Net.HttpStatusCode.ServiceUnavailable)]
+    [InlineData(System.Net.HttpStatusCode.GatewayTimeout)]
+    public void CommandException_CosmosConnectivityStatus_IsConnectivityFailure(System.Net.HttpStatusCode statusCode)
+    {
+        var exception = new Microsoft.Azure.Cosmos.CosmosException("unavailable", statusCode, 0, "activity", 0);
+
+        Assert.True(CommandException.IsConnectivityFailure(exception));
+    }
+
+    [Fact]
+    public void CommandException_NestedHttpRequestException_IsConnectivityFailure()
+    {
+        var exception = new InvalidOperationException("outer", new HttpRequestException("connection refused"));
+
+        Assert.True(CommandException.IsConnectivityFailure(exception));
+    }
+
     [Fact]
     public async Task ExecuteCommandAsync_ShellException_PreservesExceptionInErrorState()
     {
