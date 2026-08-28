@@ -951,12 +951,14 @@ internal class StatementParser
                     var optionName = optionNameToken.Value;
                     this.expressionParser.Advance();
 
+                    Token? separatorToken = null;
                     Expression? optionValue = null;
                     if (!this.expressionParser.IsAtEnd &&
                         this.expressionParser.Current != null &&
                         (this.expressionParser.Current.Type == TokenType.Colon ||
                          this.expressionParser.Current.Type == TokenType.Assignment))
                     {
+                        separatorToken = this.expressionParser.Current;
                         this.expressionParser.Advance();
 
                         if (!this.expressionParser.IsAtEnd &&
@@ -979,7 +981,7 @@ internal class StatementParser
                         }
                     }
 
-                    command.Arguments.Add(new CommandOption(optionStartToken, optionNameToken, optionValue));
+                    command.Arguments.Add(new CommandOption(optionStartToken, optionNameToken, separatorToken, optionValue));
                 }
                 else
                 {

@@ -109,18 +109,7 @@ internal class CommandExpression : Expression
         foreach (var arg in this.Arguments)
         {
             sb.Append(' ');
-            var argStr = arg.ToString();
-
-            if (argStr != null && argStr.Contains(' ') && !argStr.StartsWith('"'))
-            {
-                sb.Append('"');
-                sb.Append(argStr);
-                sb.Append('"');
-            }
-            else
-            {
-                sb.Append(argStr);
-            }
+            sb.Append(CommandArgumentFormatter.Format(arg));
         }
 
         return sb.ToString();

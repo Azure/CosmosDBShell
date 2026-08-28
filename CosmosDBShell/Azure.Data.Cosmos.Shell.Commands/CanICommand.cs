@@ -24,7 +24,7 @@ using Spectre.Console;
 Probes whether the current identity can perform an action against a container without mutating data.
 
 Actions: read, query, write, manage. The probe issues a safe, non-mutating data-plane request (a point read of a random id,
-a COUNT query, or a delete of a random non-existent id) and reports allow, deny, or indeterminate based on the response.
+a minimal TOP 1 query, or a delete of a random non-existent id) and reports allow, deny, or indeterminate based on the response.
 
 The 'write' result is a heuristic derived from delete permission. The 'manage' action cannot be probed on the data plane and is
 reported as indeterminate. Account-key and emulator connections use a master key and are reported as allow. Use --format

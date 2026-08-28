@@ -180,63 +180,9 @@ internal class ToolOperations
         return names.Any(name => name.Equals(argumentName, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string FormatParameter(string? p)
-    {
-        if (p == null)
-        {
-            return "\"\"";
-        }
-
-        // Check if parameter needs quoting (contains spaces or special characters)
-        bool needsQuoting = string.IsNullOrEmpty(p) ||
-            p.Contains(' ') ||
-            p.Contains('\t') ||
-            p.Contains('\n') ||
-            p.Contains('\r') ||
-            p.Contains('"') ||
-            p.Contains('\\');
-
-        if (needsQuoting)
-        {
-            var sb = new StringBuilder(p.Length + 10); // Add some extra capacity for quotes and escaping
-            sb.Append('"');
-
-            // Escape double quotes and other special characters using backslash sequences
-            foreach (char c in p)
-            {
-                switch (c)
-                {
-                    case '"':
-                        sb.Append("\\\"");
-                        break;
-                    case '\\':
-                        sb.Append("\\\\");
-                        break;
-                    case '\n':
-                        sb.Append("\\n");
-                        break;
-                    case '\r':
-                        sb.Append("\\r");
-                        break;
-                    case '\t':
-                        sb.Append("\\t");
-                        break;
-                    default:
-                        sb.Append(c);
-                        break;
-                }
-            }
-
-            sb.Append('"');
-            return sb.ToString();
-        }
-
-        return p;
-    }
-
     internal static string FormatOptionForHistory(Option option, object? value)
     {
-        return $" --{option.Name[0]} {FormatParameter(value?.ToString())}";
+        return $" --{option.Name[0]} {ShellLiteral.Quote(value?.ToString())}";
     }
 
     private static JsonObject CreatePropertySchema(Type propertyType, string? description, string[] names, object? defaultValue = null)
@@ -471,7 +417,6 @@ internal class ToolOperations
                 var parameter = command.Parameters.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (parameter != null)
                 {
-                    suppliedParameters.Add(parameter.Name[0]);
                     var bindError = this.BindMember(
                         cmd,
                         parameter.PropertyInfo,
@@ -479,10 +424,17 @@ internal class ToolOperations
                         memberKind: "parameter",
                         memberDisplay: parameter.Name[0],
                         commandName: command.CommandName,
-                        appendToHistory: value => sb.Append(' ').Append(FormatParameter(value?.ToString())));
+                        appendToHistory: value => sb.Append(' ').Append(ShellLiteral.Quote(value?.ToString())));
                     if (bindError != null)
                     {
                         return bindError;
+                    }
+
+                    var boundValue = parameter.PropertyInfo.GetValue(cmd);
+                    if (boundValue != null
+                        && (boundValue is not string stringValue || !string.IsNullOrWhiteSpace(stringValue)))
+                    {
+                        suppliedParameters.Add(parameter.Name[0]);
                     }
 
                     continue;
@@ -510,6 +462,15 @@ internal class ToolOperations
             var missingMessage = $"Missing required parameter(s) for command '{command.CommandName}': {string.Join("; ", missingDetails)}.";
             this.logger?.LogWarning("Missing required parameter(s) for command {CommandName}.", command.CommandName);
             return McpResponseFactory.CreateError(missingMessage, ShellInterpreter.Instance.State);
+        }
+
+        var batchSubcommand = (cmd as BatchCommand)?.Subcommand?.Trim();
+        if (!string.IsNullOrEmpty(batchSubcommand)
+            && !string.Equals(batchSubcommand, "run", StringComparison.OrdinalIgnoreCase))
+        {
+            const string errorMessage = "MCP supports only the stateless 'batch run' subcommand. Run stateful batch commands manually in the shell.";
+            this.logger?.LogWarning(errorMessage);
+            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
         }
 
         if (RequiresConfirmation(command))

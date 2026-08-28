@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Net;
+using System.Net.Sockets;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Util;
 
@@ -87,6 +88,30 @@ public class CommandException : ShellException
         }
 
         return new CommandException(command, displayMessage);
+    }
+
+    internal static bool IsConnectivityFailure(Exception exception)
+    {
+        if (exception is HttpRequestException or SocketException)
+        {
+            return true;
+        }
+
+        if (exception is CosmosException cosmosException
+            && cosmosException.StatusCode is HttpStatusCode.RequestTimeout
+                or HttpStatusCode.BadGateway
+                or HttpStatusCode.ServiceUnavailable
+                or HttpStatusCode.GatewayTimeout)
+        {
+            return true;
+        }
+
+        if (exception is OperationCanceledException && IsRequestTimeout(exception))
+        {
+            return true;
+        }
+
+        return exception.InnerException != null && IsConnectivityFailure(exception.InnerException);
     }
 
     private static string GetMessage(Exception exception)

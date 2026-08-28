@@ -50,6 +50,40 @@ namespace CosmosShell.Tests.Parser
             Assert.Equal("Hello World", text.Text);
         }
 
+        [Theory]
+        [InlineData("\"$name\"", "$name")]
+        [InlineData("\"$(echo injected)\"", "$(echo injected)")]
+        public async Task EvaluateDoubleQuotedString_DollarSyntax_RemainsLiteral(string input, string expected)
+        {
+            var result = await EvaluateExpressionAsync(input);
+
+            var text = Assert.IsType<ShellText>(result);
+            Assert.Equal(expected, text.Text);
+        }
+
+        [Theory]
+        [InlineData("$\"literal \\$name\"", "literal $name")]
+        [InlineData("$\"literal \\$(echo injected)\"", "literal $(echo injected)")]
+        public async Task EvaluateInterpolatedString_EscapedDollar_RemainsLiteral(string input, string expected)
+        {
+            var result = await EvaluateExpressionAsync(input);
+
+            var text = Assert.IsType<ShellText>(result);
+            Assert.Equal(expected, text.Text);
+        }
+
+        [Theory]
+        [InlineData("\"a\\u001Bb\"", "a\u001Bb")]
+        [InlineData("$\"a\\u001Bb\"", "a\u001Bb")]
+        [InlineData("$\"$(1 + 1)a\\u001Bb\"", "2a\u001Bb")]
+        public async Task EvaluateString_UnicodeEscape_DecodesInBothStringForms(string input, string expected)
+        {
+            var result = await EvaluateExpressionAsync(input);
+
+            var text = Assert.IsType<ShellText>(result);
+            Assert.Equal(expected, text.Text);
+        }
+
         [Fact]
         public void ParseInterpolatedString_SingleVariable_CreatesVariableExpression()
         {
@@ -183,6 +217,46 @@ namespace CosmosShell.Tests.Parser
 
             var txt = Assert.IsType<ShellText>(result);
             Assert.Equal("The sum of 10 and 5 is 15", txt.Text);
+        }
+
+        [Fact]
+        public void ParseInterpolatedString_CommandExpression_ReportsError()
+        {
+            var result = TryParse("$\"Result: $((echo hello))\"");
+
+            Assert.True(result.ErrorCount > 0);
+            var interpolated = Assert.IsType<InterpolatedStringExpression>(result.Expr);
+            Assert.IsType<ErrorExpression>(interpolated.Expressions[1]);
+        }
+
+        [Fact]
+        public void ParseInterpolatedString_CommandNestedInExpression_ReportsError()
+        {
+            var result = TryParse("$\"Result: $(1 + (echo hello))\"");
+
+            Assert.True(result.ErrorCount > 0);
+            var interpolated = Assert.IsType<InterpolatedStringExpression>(result.Expr);
+            Assert.IsType<ErrorExpression>(interpolated.Expressions[1]);
+        }
+
+        [Fact]
+        public void ParseInterpolatedString_CommandNestedInJson_ReportsError()
+        {
+            var result = TryParse("$\"Result: $({ value: (echo hello) })\"");
+
+            Assert.True(result.ErrorCount > 0);
+            var interpolated = Assert.IsType<InterpolatedStringExpression>(result.Expr);
+            Assert.IsType<ErrorExpression>(interpolated.Expressions[1]);
+        }
+
+        [Fact]
+        public void ParseInterpolatedString_TrailingExpressionTokens_ReportsError()
+        {
+            var result = TryParse("$\"Result: $(echo hello)\"");
+
+            Assert.True(result.ErrorCount > 0);
+            var interpolated = Assert.IsType<InterpolatedStringExpression>(result.Expr);
+            Assert.IsType<ErrorExpression>(interpolated.Expressions[1]);
         }
 
         [Fact]

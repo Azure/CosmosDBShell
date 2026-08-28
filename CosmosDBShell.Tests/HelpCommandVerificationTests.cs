@@ -9,6 +9,7 @@ using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Xunit;
 
+[Collection(ConsoleOutputTestCollection.Name)]
 public class HelpCommandVerificationTests
 {
     [Fact]

@@ -74,6 +74,8 @@ error-request_timeout = The request timed out while communicating with Azure Cos
 error-invalid_bucket_value = Throughput bucket value '{ $bucket }' is invalid. Valid range is 0-5.
 error-variable_not_set = Variable '{ $name }' is not set.
 error-mutually-exclusive-options = Options '-c' and '-k' cannot be used together.
+error-startup-container-requires-database = Option '--container' requires '--database'.
+error-startup-navigation-requires-connect = Startup navigation options require '--connect'.
 error-shell-not-initialized = Shell is not initialized
 error-unable_to_read_container = Unable to read container.
 error-arm-context-required = Database and container resource operations require Azure Resource Manager context. Reconnect with Entra ID and provide --subscription and --resource-group, or use --connect-subscription and --connect-resource-group at startup. Alternatively, use an identity that can discover the Cosmos DB account through ARM.
@@ -151,6 +153,7 @@ command-query-description-bucket = The throughput bucket to use for the query
 command-query-description-format = Output format (json, table, csv)
 command-query-description-database = The database to query against
 command-query-description-container = The container to query against
+command-query-description-explain = Show the query execution plan (index usage and a plain-language evaluation) instead of returning documents
 command-query-fetched = Fetched { $count } documents.
 command-query-request_charge = Request Charge: { $charge } RUs
 command-query-document_header = Document
@@ -174,6 +177,16 @@ command-query-index_metric-utilized_single = Utilized Single Indexes
 command-query-index_metric-potential_single = Potential Single Indexes
 command-query-index_metric-utilized_composite = Utilized Composite Indexes
 command-query-index_metric-potential_composite = Potential Composite Indexes
+command-query-explain-header = Query execution plan
+command-query-explain-unavailable = Index plan unavailable: Cosmos DB did not return a recognized index metrics payload, so scan type could not be determined.
+command-query-explain-full_scan = Full scan: the query did not use any index. Every document was examined, which is expensive on large containers.
+command-query-explain-index_seek = Index seek: the query used index(es): { $indexes }.
+command-query-explain-recommend_index = Consider adding index(es) on: { $indexes }.
+command-query-explain-hit_ratio = Index hit ratio: { $ratio } (1 = every retrieved document matched the filter).
+command-query-explain-utilized = Utilized indexes
+command-query-explain-potential = Potential indexes
+command-query-explain-charge = Request Charge
+command-query-explain-estimate_note = Note: metrics are an estimate based on the first page of results.
 command-query-error-empty_query = Query text cannot be empty. Example: query "SELECT * FROM c".
 command-query-error-request_failed = Query request failed with status code { $statusCode } ({ $status }).
 command-query-error-no_content_stream = Query response did not contain a content stream.
@@ -262,6 +275,54 @@ command-patch-error-status-returned = Patch operation returned: { $status }
 command-patch-error-failed = Failed to patch item: { $status } - { $message }
 command-patch-error-not_found = Item '{ $id }' not found.
 command-patch-error-etag_mismatch = Item '{ $id }' was modified since it was last read (ETag mismatch).
+
+command-batch-description = Executes multiple write operations against a single partition key as one atomic transactional batch, either in a single call (run) or as a stateful batch (begin, add, execute, cancel, status, show).
+command-batch-description-subcommand = The action to perform: run, begin, add, execute, cancel, status, or show.
+command-batch-description-data = The batch operations as a JSON array, or a single operation as a JSON object.
+command-batch-description-partition-key = The partition key shared by every operation in the batch.
+command-batch-description-database = The database containing the target container.
+command-batch-description-container = The target container for the batch.
+command-batch-success = Batch of { $count } { $count ->
+    [one] operation
+    *[other] operations
+} committed (RU charge: { $charge })
+command-batch-begun = Started a batch on { $database }/{ $container }. Add operations with 'batch add' and commit with 'batch execute'.
+command-batch-added = Added { $count } { $count ->
+    [one] operation
+    *[other] operations
+} ({ $total } pending).
+command-batch-cancelled = Discarded the pending batch ({ $count } { $count ->
+    [one] operation
+    *[other] operations
+}).
+command-batch-status-inactive = No batch is currently active.
+command-batch-status-target = Target
+command-batch-status-partition-key = Partition key
+command-batch-status-operation-count = Operations
+command-batch-status-column-index = #
+command-batch-status-column-operation = Operation
+command-batch-status-column-id = Item ID
+command-batch-error-missing_subcommand = Missing subcommand. Use one of: run, begin, add, execute, cancel, status, show.
+command-batch-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: run, begin, add, execute, cancel, status, show.
+command-batch-error-missing_pk = A partition key is required. Specify it with --partition-key.
+command-batch-error-invalid_pk_json = Partition key must be a JSON scalar value or a JSON array of values for hierarchical partition keys.
+command-batch-error-missing_data = Batch operations are required. Provide a JSON array of operations, or a single operation object.
+command-batch-error-invalid_json = The batch operations are not valid JSON: { $message }
+command-batch-error-not_object = Each batch operation must be a JSON object, and the batch itself must be a JSON object or an array of objects.
+command-batch-error-missing_op = Each batch operation requires an 'op' string field. Supported: create, upsert, replace, delete, patch.
+command-batch-error-unsupported_op = Unsupported batch operation '{ $op }'. Supported: create, upsert, replace, delete, patch.
+command-batch-error-missing_item = Operation '{ $op }' requires an 'item' object.
+command-batch-error-invalid_item = The 'item' for operation '{ $op }' must be a JSON object.
+command-batch-error-missing_id = Operation '{ $op }' requires an 'id'.
+command-batch-error-missing_patch_ops = A patch operation requires a non-empty 'operations' array.
+command-batch-error-invalid_patch_op = Each entry in 'operations' requires 'op' and 'path' string fields.
+command-batch-error-unsupported_patch_op = Unsupported patch operation '{ $op }' in a batch patch entry. Supported operations: set, add, replace, remove, incr.
+command-batch-error-empty = The batch has no operations. Add at least one operation before executing.
+command-batch-error-too_many = A transactional batch supports at most 100 operations, but { $count } were provided.
+command-batch-error-already_active = A batch is already in progress. Run 'batch execute' or 'batch cancel' first.
+command-batch-error-not_active = No batch is in progress. Start one with 'batch begin'.
+command-batch-error-failed = Batch failed with status { $status } and was rolled back (RU charge: { $charge })
+command-batch-error-execution_failed = Failed to execute batch: { $status } - { $message }
 
 command-export-description = Exports items from a container to a JSON Lines, JSON array, or CSV file.
 command-export-description-file = Destination file path.
@@ -962,6 +1023,8 @@ help-ConnectSubscription = Azure subscription ID for ARM database and container 
 help-ConnectResourceGroup = Azure resource group name for ARM database and container operations at startup.
 help-ConnectVSCodeCredential = Use Visual Studio Code credential for authentication at startup.
 help-ConnectAzureCli = Use the signed-in Azure CLI (az login) identity for authentication at startup.
+help-StartupDatabase = Navigate to this database after connecting at startup.
+help-StartupContainer = Navigate to this container after connecting at startup. Requires --database.
 help-EnableMcpServer = Enable MCP server for programmatic control of the shell
 help-EnableLspServer = Enable Language Server Protocol (LSP) server for editor integration
 help-McpPort = Enable MCP HTTP server. Optionally specify a port with --mcp <port>; default is 6128.
@@ -1062,6 +1125,7 @@ expression_error_invalid_json = Invalid JSON: {$message}
 expression_error_expected_comma_or_bracket = Expected ',' or ']' in JSON array (got '{$token}')
 expression_error_expected_property_name = Expected property name in JSON object, but got '{ $token }'
 expression_error_expected_comma_or_brace = Expected ',' or '{"}"}' in JSON object, but got '{ $token }'
+expression_error_command_in_interpolation = Commands are not allowed inside interpolated string expressions.
 
 statement_error_expected_after_pipe = Expected statement after pipe '|'
 statement_error_expected_if = Expected 'if'
