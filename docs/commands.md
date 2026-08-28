@@ -168,7 +168,7 @@ Options:
 
 #### Explain a query
 
-`query "<sql>" --explain` reports how the query engine resolved the query rather than returning documents. It shows whether the query performed a full scan or an index seek, lists the utilized and potential indexes, the index hit ratio, and the request charge. A plain-language summary highlights full scans and recommends indexes to add.
+`query "<sql>" --explain` reports how the query engine resolved the query rather than returning documents. When Cosmos DB returns index metrics, it shows whether the query performed a full scan or an index seek, lists the utilized and potential indexes, the index hit ratio, and the request charge. If index metrics are unavailable or unrecognized, the scan type is reported as unknown instead of assuming a full scan. A plain-language summary highlights confirmed full scans and recommends indexes to add.
 
 ```text
 query "SELECT * FROM c WHERE c.city = 'Seattle'" --explain

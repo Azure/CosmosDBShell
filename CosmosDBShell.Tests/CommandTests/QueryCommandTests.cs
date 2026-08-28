@@ -6,6 +6,7 @@ namespace CosmosShell.Tests.CommandTests;
 
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Core;
 using Microsoft.Azure.Cosmos;
 
 public class QueryCommandTests
@@ -67,6 +68,23 @@ public class QueryCommandTests
             this.QueryPreparationTime = queryPreparationTime;
             this.TotalTime = totalTime;
         }
+    }
+
+    [Fact]
+    public void CreateCommandState_WithoutCommandFormat_DefersToSessionDefault()
+    {
+        var state = QueryCommand.CreateCommandState(null);
+
+        Assert.False(state.OutputFormatExplicitlySet);
+    }
+
+    [Fact]
+    public void CreateCommandState_WithCommandFormat_MarksFormatExplicit()
+    {
+        var state = QueryCommand.CreateCommandState("json");
+
+        Assert.True(state.OutputFormatExplicitlySet);
+        Assert.Equal(OutputFormat.JSon, state.OutputFormat);
     }
 
     [Fact]
@@ -319,6 +337,7 @@ public class QueryCommandTests
     public void EvaluatePlan_NoUtilizedIndexes_ReportsFullScan()
     {
         var evaluation = QueryCommand.EvaluatePlan(
+            planAvailable: true,
             utilizedIndexes: [],
             potentialIndexes: [],
             indexHitRatio: 0,
@@ -327,13 +346,31 @@ public class QueryCommandTests
 
         Assert.True(evaluation.FullScan);
         Assert.False(evaluation.IndexSeek);
+        Assert.True(evaluation.PlanAvailable);
         Assert.Empty(evaluation.UtilizedIndexes);
+    }
+
+    [Fact]
+    public void EvaluatePlan_UnavailablePlan_DoesNotReportScanType()
+    {
+        var evaluation = QueryCommand.EvaluatePlan(
+            planAvailable: false,
+            utilizedIndexes: [],
+            potentialIndexes: [],
+            indexHitRatio: null,
+            retrievedDocumentCount: null,
+            outputDocumentCount: null);
+
+        Assert.False(evaluation.PlanAvailable);
+        Assert.False(evaluation.FullScan);
+        Assert.False(evaluation.IndexSeek);
     }
 
     [Fact]
     public void EvaluatePlan_WithUtilizedIndexes_ReportsIndexSeek()
     {
         var evaluation = QueryCommand.EvaluatePlan(
+            planAvailable: true,
             utilizedIndexes: ["/city/?"],
             potentialIndexes: [],
             indexHitRatio: 1,
@@ -350,6 +387,7 @@ public class QueryCommandTests
     public void EvaluatePlan_PreservesPotentialIndexRecommendations()
     {
         var evaluation = QueryCommand.EvaluatePlan(
+            planAvailable: true,
             utilizedIndexes: ["/city/?"],
             potentialIndexes: ["/age/?"],
             indexHitRatio: 0.5,
@@ -378,8 +416,9 @@ public class QueryCommandTests
         }
         """;
 
-        var (utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
 
+        Assert.True(available);
         Assert.Equal(["/city/?", "/age ASC, /name ASC"], utilized);
         Assert.Equal(["/status/?"], potential);
     }
@@ -390,8 +429,9 @@ public class QueryCommandTests
     [InlineData("   ")]
     public void ParseIndexPlan_NullOrEmpty_ReturnsEmptyLists(string? indexMetrics)
     {
-        var (utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
 
+        Assert.False(available);
         Assert.Empty(utilized);
         Assert.Empty(potential);
     }
@@ -399,8 +439,31 @@ public class QueryCommandTests
     [Fact]
     public void ParseIndexPlan_MalformedJson_ReturnsEmptyLists()
     {
-        var (utilized, potential) = QueryCommand.ParseIndexPlan("{ not valid json");
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan("{ not valid json");
 
+        Assert.False(available);
+        Assert.Empty(utilized);
+        Assert.Empty(potential);
+    }
+
+    [Fact]
+    public void ParseIndexPlan_UnexpectedObject_ReturnsUnavailable()
+    {
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan("{}");
+
+        Assert.False(available);
+        Assert.Empty(utilized);
+        Assert.Empty(potential);
+    }
+
+    [Fact]
+    public void ParseIndexPlan_RecognizedEmptyGroups_ReturnsAvailable()
+    {
+        const string indexMetrics = "{\"UtilizedIndexes\":{},\"PotentialIndexes\":{}}";
+
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+
+        Assert.True(available);
         Assert.Empty(utilized);
         Assert.Empty(potential);
     }

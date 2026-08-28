@@ -131,6 +131,13 @@ internal class QueryCommand : CosmosCommand
         return pageDocuments.GetArrayLength() > remainingCapacity;
     }
 
+    internal static CommandState CreateCommandState(string? outputFormat)
+    {
+        var state = new CommandState();
+        state.SetFormat(outputFormat);
+        return state;
+    }
+
     internal static List<Dictionary<string, object>> GetMetrics(ResponseMessage msg)
     {
         var queryMetrics = msg.Diagnostics.GetQueryMetrics();
@@ -293,14 +300,14 @@ internal class QueryCommand : CosmosCommand
     // into flat lists of utilized and potential index specifications. The metrics group
     // single and composite indexes separately; both are flattened here because the
     // evaluation only cares about whether an index contributed, not its arity.
-    internal static (List<string> Utilized, List<string> Potential) ParseIndexPlan(string? indexMetricsJson)
+    internal static (bool Available, List<string> Utilized, List<string> Potential) ParseIndexPlan(string? indexMetricsJson)
     {
         var utilized = new List<string>();
         var potential = new List<string>();
 
         if (string.IsNullOrWhiteSpace(indexMetricsJson))
         {
-            return (utilized, potential);
+            return (false, utilized, potential);
         }
 
         try
@@ -309,18 +316,25 @@ internal class QueryCommand : CosmosCommand
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
             {
-                return (utilized, potential);
+                return (false, utilized, potential);
             }
 
-            if (root.TryGetProperty("UtilizedIndexes", out var utilizedGroup))
+            bool available = false;
+            if (root.TryGetProperty("UtilizedIndexes", out var utilizedGroup)
+                && utilizedGroup.ValueKind == JsonValueKind.Object)
             {
+                available = true;
                 AddIndexSpecs(utilizedGroup, utilized);
             }
 
-            if (root.TryGetProperty("PotentialIndexes", out var potentialGroup))
+            if (root.TryGetProperty("PotentialIndexes", out var potentialGroup)
+                && potentialGroup.ValueKind == JsonValueKind.Object)
             {
+                available = true;
                 AddIndexSpecs(potentialGroup, potential);
             }
+
+            return (available, utilized, potential);
         }
         catch (JsonException)
         {
@@ -328,22 +342,24 @@ internal class QueryCommand : CosmosCommand
             // "no plan details available" rather than failing the explain.
         }
 
-        return (utilized, potential);
+        return (false, utilized, potential);
     }
 
     // Builds a structured evaluation of an index plan. Pure and side-effect free so it
     // can be unit tested without a live Cosmos response. A query is reported as a full
     // scan when no index contributed; otherwise it is an index seek.
     internal static PlanEvaluation EvaluatePlan(
+        bool planAvailable,
         IReadOnlyList<string> utilizedIndexes,
         IReadOnlyList<string> potentialIndexes,
         double? indexHitRatio,
         long? retrievedDocumentCount,
         long? outputDocumentCount)
     {
-        bool indexSeek = utilizedIndexes.Count > 0;
-        bool fullScan = !indexSeek;
+        bool indexSeek = planAvailable && utilizedIndexes.Count > 0;
+        bool fullScan = planAvailable && !indexSeek;
         return new PlanEvaluation(
+            planAvailable,
             fullScan,
             indexSeek,
             indexHitRatio,
@@ -416,7 +432,11 @@ internal class QueryCommand : CosmosCommand
     {
         var messages = new List<string>();
 
-        if (evaluation.FullScan)
+        if (!evaluation.PlanAvailable)
+        {
+            messages.Add(MessageService.GetString("command-query-explain-unavailable"));
+        }
+        else if (evaluation.FullScan)
         {
             messages.Add(MessageService.GetString("command-query-explain-full_scan"));
         }
@@ -464,6 +484,7 @@ internal class QueryCommand : CosmosCommand
             },
             evaluation = new
             {
+                planAvailable = evaluation.PlanAvailable,
                 fullScan = evaluation.FullScan,
                 indexSeek = evaluation.IndexSeek,
                 messages,
@@ -550,8 +571,7 @@ internal class QueryCommand : CosmosCommand
             throw new CommandException("query", MessageService.GetString("command-query-error-empty_query"));
         }
 
-        var returnState = new CommandState();
-        returnState.SetFormat(this.OutputFormat ?? Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT"));
+        var returnState = CreateCommandState(this.OutputFormat);
 
         try
         {
@@ -582,8 +602,9 @@ internal class QueryCommand : CosmosCommand
             var cumulative = response?.Diagnostics.GetQueryMetrics()?.CumulativeMetrics;
             double requestCharge = response?.Diagnostics.GetQueryMetrics()?.TotalRequestCharge ?? 0;
 
-            var (utilized, potential) = ParseIndexPlan(response?.IndexMetrics);
+            var (planAvailable, utilized, potential) = ParseIndexPlan(response?.IndexMetrics);
             var evaluation = EvaluatePlan(
+                planAvailable,
                 utilized,
                 potential,
                 cumulative?.IndexHitRatio,
@@ -615,8 +636,7 @@ internal class QueryCommand : CosmosCommand
 
     private async Task<CommandState> ExecuteQueryAsync(Container container, ShellInterpreter shell, CancellationToken token)
     {
-        var returnState = new CommandState();
-        returnState.SetFormat(this.OutputFormat);
+        var returnState = CreateCommandState(this.OutputFormat);
         var aggregatedDocuments = new List<JsonElement>();
 
         try

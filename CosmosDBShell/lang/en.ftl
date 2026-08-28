@@ -176,6 +176,7 @@ command-query-index_metric-potential_single = Potential Single Indexes
 command-query-index_metric-utilized_composite = Utilized Composite Indexes
 command-query-index_metric-potential_composite = Potential Composite Indexes
 command-query-explain-header = Query execution plan
+command-query-explain-unavailable = Index plan unavailable: Cosmos DB did not return a recognized index metrics payload, so scan type could not be determined.
 command-query-explain-full_scan = Full scan: the query did not use any index. Every document was examined, which is expensive on large containers.
 command-query-explain-index_seek = Index seek: the query used index(es): { $indexes }.
 command-query-explain-recommend_index = Consider adding index(es) on: { $indexes }.
