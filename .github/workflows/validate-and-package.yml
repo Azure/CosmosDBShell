@@ -67,7 +67,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Nerdbank.GitVersioning needs full history to walk back to the
           # commit that last changed version.json (the baseline) so it can
@@ -75,7 +75,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           global-json-file: global.json
           cache: true
@@ -228,7 +228,7 @@ jobs:
           (github.event_name != 'pull_request' ||
            github.event.pull_request.head.repo.full_name == github.repository) &&
           hashFiles('TestResults/coverage/Cobertura.xml') != ''
-        uses: actions/upload-code-coverage@v1
+        uses: actions/upload-code-coverage@1c15be36fc3733ba839b1dd643bd9556e4426dc1 # v1.4.1
         with:
           file: TestResults/coverage/Cobertura.xml
           language: C#
@@ -237,7 +237,7 @@ jobs:
 
       - name: Upload code coverage report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: code-coverage-report
           path: TestResults/coverage
@@ -259,7 +259,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-results
           path: TestResults
@@ -267,7 +267,7 @@ jobs:
 
       - name: Upload fuzzer findings
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fuzz-findings
           path: CosmosDBShell.Fuzzer/findings
@@ -388,7 +388,7 @@ jobs:
           $lines -join "`n" | Out-File -FilePath $summary -Encoding utf8 -Append
 
       - name: Upload pointer package
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: CosmosDBShell-pointer-${{ steps.version.outputs.artifact_suffix }}
           path: |
@@ -402,42 +402,42 @@ jobs:
           if-no-files-found: error
 
       - name: Upload win-x64 package
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: CosmosDBShell-win-x64-${{ steps.version.outputs.artifact_suffix }}
           path: out/nupkg/CosmosDBShell.win-x64.*.nupkg
           if-no-files-found: error
 
       - name: Upload win-arm64 package
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: CosmosDBShell-win-arm64-${{ steps.version.outputs.artifact_suffix }}
           path: out/nupkg/CosmosDBShell.win-arm64.*.nupkg
           if-no-files-found: error
 
       - name: Upload linux-x64 package
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: CosmosDBShell-linux-x64-${{ steps.version.outputs.artifact_suffix }}
           path: out/nupkg/CosmosDBShell.linux-x64.*.nupkg
           if-no-files-found: error
 
       - name: Upload linux-arm64 package
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: CosmosDBShell-linux-arm64-${{ steps.version.outputs.artifact_suffix }}
           path: out/nupkg/CosmosDBShell.linux-arm64.*.nupkg
           if-no-files-found: error
 
       - name: Upload osx-x64 package
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: CosmosDBShell-osx-x64-${{ steps.version.outputs.artifact_suffix }}
           path: out/nupkg/CosmosDBShell.osx-x64.*.nupkg
           if-no-files-found: error
 
       - name: Upload osx-arm64 package
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: CosmosDBShell-osx-arm64-${{ steps.version.outputs.artifact_suffix }}
           path: out/nupkg/CosmosDBShell.osx-arm64.*.nupkg
