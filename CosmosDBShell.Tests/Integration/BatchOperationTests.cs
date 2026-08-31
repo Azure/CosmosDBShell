@@ -48,7 +48,7 @@ public class BatchOperationTests : EmulatorFixtureTestBase
         }
 
         Assert.False(state.IsError, FormatError(state));
-        Assert.True(state.RequestCharge > 0);
+        Assert.True(state.RequestCharge is > 0);
         var root = JsonDocument.Parse(output).RootElement;
 
         Assert.True(root.GetProperty("success").GetBoolean());
@@ -96,7 +96,7 @@ public class BatchOperationTests : EmulatorFixtureTestBase
             var batchState = await ExecuteAsync($"batch run '{json}' --partition-key {pk}");
             Assert.True(batchState.IsError);
             Assert.Equal(ShellExitCode.GeneralFailure, batchState.ExitCode);
-            Assert.True(batchState.RequestCharge > 0);
+            Assert.True(batchState.RequestCharge is > 0);
 
             var output = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
             var root = JsonDocument.Parse(output).RootElement;

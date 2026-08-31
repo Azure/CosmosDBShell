@@ -309,7 +309,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "item", count = totalCount, dryRun }));
         commandState.RenderUser = () => AnsiConsole.MarkupLine(renderMessage);
 
-        commandState.RequestCharge = totalCharge;
+        commandState.RequestCharge = totalCharge > 0 ? totalCharge : null;
         return new ExitCode(0);
     }
 

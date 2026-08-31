@@ -67,24 +67,33 @@ internal class PrintCommand : CosmosCommand
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
-                throw new CommandException("print", MessageService.GetString("command-print-error-item_not_found", new Dictionary<string, object>
+                return new ErrorCommandState(new CommandException("print", MessageService.GetString("command-print-error-item_not_found", new Dictionary<string, object>
                 {
                     { "id", this.Id ?? "(null)" },
                     { "partitionKey", this.PartitionKey ?? "(null)" },
-                }));
+                })))
+                {
+                    RequestCharge = response.Headers.RequestCharge,
+                };
             }
             else
             {
-                throw new CommandException("print", MessageService.GetString("command-print-error-request_failed", new Dictionary<string, object>
+                return new ErrorCommandState(new CommandException("print", MessageService.GetString("command-print-error-request_failed", new Dictionary<string, object>
                 {
                     { "id", this.Id ?? "(null)" },
                     { "status", (int)response.StatusCode },
-                }));
+                })))
+                {
+                    RequestCharge = response.Headers.RequestCharge,
+                };
             }
         }
         catch (CosmosException ex)
         {
-            throw new CommandException("print", MessageService.GetArgsString("command-print-error-reading_item", "message", CommandException.GetDisplayMessage(ex)), ex);
+            return new ErrorCommandState(new CommandException("print", MessageService.GetArgsString("command-print-error-reading_item", "message", CommandException.GetDisplayMessage(ex)), ex))
+            {
+                RequestCharge = ex.RequestCharge > 0 ? ex.RequestCharge : null,
+            };
         }
 
         return commandState;

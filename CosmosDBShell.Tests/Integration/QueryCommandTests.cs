@@ -150,7 +150,7 @@ public class QueryCommandTests : EmulatorFixtureTestBase
         }
 
         Assert.False(state.IsError, FormatError(state));
-        Assert.True(state.RequestCharge > 0);
+        Assert.True(state.RequestCharge is > 0);
 
         using var document = JsonDocument.Parse(output);
         var root = document.RootElement;
