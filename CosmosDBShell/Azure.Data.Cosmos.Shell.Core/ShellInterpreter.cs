@@ -549,7 +549,10 @@ public partial class ShellInterpreter : IDisposable
                 this.ReportExecutionError(e, command);
                 this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
-                result = new ErrorCommandState(inner);
+                result = new ErrorCommandState(inner)
+                {
+                    RequestCharge = RequestChargeContext.GetExceptionCharge(e),
+                };
                 return result;
             }
 
@@ -960,9 +963,29 @@ public partial class ShellInterpreter : IDisposable
         // previous command's charge so an uninstrumented command cannot count it again.
         commandState.RequestCharge = null;
         var generation = this.SessionRequestChargeGeneration;
-        var result = await command.ExecuteAsync(this, commandState, commandText, token);
-        this.RecordRequestCharge(result, generation);
-        return result;
+        using var requestChargeScope = RequestChargeContext.Begin();
+        try
+        {
+            var result = await command.ExecuteAsync(this, commandState, commandText, token);
+            if (requestChargeScope.RequestCharge > 0)
+            {
+                result.RequestCharge = (result.RequestCharge ?? 0) + requestChargeScope.RequestCharge;
+            }
+
+            this.RecordRequestCharge(result, generation);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            var requestCharge = requestChargeScope.RequestCharge + RequestChargeContext.GetCosmosExceptionCharge(ex);
+            if (requestCharge > 0)
+            {
+                RequestChargeContext.SetExceptionCharge(ex, requestCharge);
+                this.RecordRequestCharge(new CommandState { RequestCharge = requestCharge }, generation);
+            }
+
+            throw;
+        }
     }
 
     internal void RecordRequestCharge(CommandState commandState, long generation)

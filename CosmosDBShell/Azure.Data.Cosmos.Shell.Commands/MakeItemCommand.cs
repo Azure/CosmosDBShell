@@ -175,6 +175,7 @@ internal class MakeItemCommand : CosmosCommand
                         }
                         catch (CosmosException ce)
                         {
+                            RequestChargeContext.Record(ce.RequestCharge);
                             failCount++;
                             ShellInterpreter.WriteLine(
                                 MessageService.GetArgsString(

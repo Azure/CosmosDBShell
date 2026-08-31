@@ -190,6 +190,22 @@ public class InfoCommandTests
     }
 
     [Fact]
+    public void AddSessionUsage_IncludesCurrentCommandCharge()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.RecordRequestCharge(new CommandState { RequestCharge = 3.75 });
+        using var scope = RequestChargeContext.Begin();
+        RequestChargeContext.Record(1.25);
+        var result = new Dictionary<string, object?>();
+
+        InfoCommand.AddSessionUsage(shell, result, renderOutput: false);
+
+        var json = JsonSerializer.SerializeToElement(result);
+        Assert.Equal(5, json.GetProperty("session").GetProperty("requestCharge").GetDouble());
+        Assert.Equal(2, json.GetProperty("session").GetProperty("chargedOperationCount").GetInt64());
+    }
+
+    [Fact]
     public void RecordRequestCharge_IgnoresPriorConnectionGeneration()
     {
         using var shell = ShellInterpreter.CreateInstance();

@@ -109,6 +109,7 @@ internal class ReplaceCommand : CosmosCommand
             }
             catch (CommandException ex)
             {
+                RequestChargeContext.Record(RequestChargeContext.GetCosmosExceptionCharge(ex));
                 failCount++;
                 ShellInterpreter.WriteLine(ex.Message);
             }

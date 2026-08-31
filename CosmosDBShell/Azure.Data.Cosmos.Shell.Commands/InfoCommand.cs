@@ -304,10 +304,13 @@ internal class InfoCommand : CosmosCommand
     internal static void AddSessionUsage(ShellInterpreter shell, Dictionary<string, object?> mcpTable, bool renderOutput)
     {
         var sessionUsage = shell.SessionUsage;
+        var currentRequestCharge = RequestChargeContext.CurrentRequestCharge;
+        var requestCharge = sessionUsage.RequestCharge + currentRequestCharge;
+        var chargedOperationCount = sessionUsage.ChargedOperationCount + (currentRequestCharge > 0 ? 1 : 0);
         mcpTable["session"] = new Dictionary<string, object?>
         {
-            ["requestCharge"] = sessionUsage.RequestCharge,
-            ["chargedOperationCount"] = sessionUsage.ChargedOperationCount,
+            ["requestCharge"] = requestCharge,
+            ["chargedOperationCount"] = chargedOperationCount,
         };
 
         if (!renderOutput)
@@ -321,16 +324,17 @@ internal class InfoCommand : CosmosCommand
         table.HideHeaders();
         table.AddRow(
             MessageService.GetString("command-stats-session-request-charge"),
-            Theme.FormatTableValue(sessionUsage.RequestCharge.ToString("0.##", CultureInfo.InvariantCulture)));
+            Theme.FormatTableValue(requestCharge.ToString("0.##", CultureInfo.InvariantCulture)));
         table.AddRow(
             MessageService.GetString("command-stats-session-charged-operations"),
-            Theme.FormatTableValue(sessionUsage.ChargedOperationCount.ToString(CultureInfo.InvariantCulture)));
+            Theme.FormatTableValue(chargedOperationCount.ToString(CultureInfo.InvariantCulture)));
         AnsiConsole.Write(table);
     }
 
     private static async Task<ContainerUsageStats> ReadContainerUsageAsync(Container container, CancellationToken token)
     {
         var response = await container.ReadContainerAsync(new ContainerRequestOptions { PopulateQuotaInfo = true }, token);
+        RequestChargeContext.Record(response.RequestCharge);
         return ParseResourceUsage(response.Headers[ResourceUsageHeader]);
     }
 
@@ -343,15 +347,19 @@ internal class InfoCommand : CosmosCommand
         try
         {
             var throughput = await database.ReadThroughputAsync(new RequestOptions(), token);
+            RequestChargeContext.Record(throughput.RequestCharge);
             min = throughput.MinThroughput;
             max = throughput.Resource?.AutoscaleMaxThroughput ?? throughput.Resource?.Throughput ?? min;
         }
         catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
+            RequestChargeContext.Record(ex.RequestCharge);
+
             // Database has no shared throughput; containers provide their own.
         }
         catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest && ThroughputErrors.IsServerlessThroughputError(ex.Message))
         {
+            RequestChargeContext.Record(ex.RequestCharge);
             serverless = true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -517,7 +525,9 @@ internal class InfoCommand : CosmosCommand
         using var iterator = container.GetItemQueryIterator<JsonElement>(new QueryDefinition(queryText));
         while (iterator.HasMoreResults)
         {
-            foreach (var element in await iterator.ReadNextAsync(token))
+            var response = await iterator.ReadNextAsync(token);
+            RequestChargeContext.Record(response.RequestCharge);
+            foreach (var element in response)
             {
                 long count = element.TryGetProperty("count", out var countProperty) && countProperty.TryGetInt64(out var parsed) ? parsed : 0;
                 var keyParts = new List<string>(partitionKeyPaths.Count);
@@ -574,7 +584,9 @@ internal class InfoCommand : CosmosCommand
             new QueryDefinition("SELECT VALUE COUNT(1) FROM c"));
         while (iterator.HasMoreResults)
         {
-            foreach (var value in await iterator.ReadNextAsync(token))
+            var response = await iterator.ReadNextAsync(token);
+            RequestChargeContext.Record(response.RequestCharge);
+            foreach (var value in response)
             {
                 count += value;
             }

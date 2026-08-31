@@ -499,7 +499,10 @@ internal class ToolOperations
         {
             this.logger?.LogError(ex, $"An exception occurred running '{command.CommandName}'. ");
 
-            return McpResponseFactory.CreateError($"Error executing command '{command.CommandName}': {ex.Message}", ShellInterpreter.Instance.State);
+            return McpResponseFactory.CreateError(
+                $"Error executing command '{command.CommandName}': {ex.Message}",
+                ShellInterpreter.Instance.State,
+                RequestChargeContext.GetExceptionCharge(ex));
         }
         finally
         {
