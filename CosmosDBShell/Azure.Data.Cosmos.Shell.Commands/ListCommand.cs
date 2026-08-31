@@ -228,25 +228,36 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         while (feedIterator.HasMoreResults)
         {
             using var response = await feedIterator.ReadNextAsync(token);
-            using var queryDocument = await ReadQueryResponseAsync(response, token);
             AccumulateRequestCharge(returnState, response.Headers.RequestCharge);
-
-            foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
+            JsonDocument queryDocument;
+            try
             {
-                // Check if pattern matches
-                bool shouldList = this.matcher == null;
+                queryDocument = await ReadQueryResponseAsync(response, token);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return new ErrorCommandState(ex) { RequestCharge = returnState.RequestCharge };
+            }
 
-                shouldList = shouldList || MatchesAnyPath(element, matchKeyPropertyNames, this.matcher!);
-
-                if (shouldList)
+            using (queryDocument)
+            {
+                foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
                 {
-                    list.Add(element.Clone());
-                }
+                    // Check if pattern matches
+                    bool shouldList = this.matcher == null;
 
-                if (ResultLimit.IsLimitReached(list.Count, effectiveMaxItemCount))
-                {
-                    limitReached = ShouldReportLimitReached(list.Count, effectiveMaxItemCount, usesServerSideTop, feedIterator.HasMoreResults);
-                    break;
+                    shouldList = shouldList || MatchesAnyPath(element, matchKeyPropertyNames, this.matcher!);
+
+                    if (shouldList)
+                    {
+                        list.Add(element.Clone());
+                    }
+
+                    if (ResultLimit.IsLimitReached(list.Count, effectiveMaxItemCount))
+                    {
+                        limitReached = ShouldReportLimitReached(list.Count, effectiveMaxItemCount, usesServerSideTop, feedIterator.HasMoreResults);
+                        break;
+                    }
                 }
             }
 
