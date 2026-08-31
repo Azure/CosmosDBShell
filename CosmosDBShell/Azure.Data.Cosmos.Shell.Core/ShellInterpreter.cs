@@ -68,6 +68,8 @@ public partial class ShellInterpreter : IDisposable
 
     private double sessionRequestCharge;
 
+    private long sessionChargedOperationCount;
+
     private long sessionRequestChargeGeneration;
 
     internal ShellInterpreter(string? configPath = null)
@@ -166,6 +168,32 @@ public partial class ShellInterpreter : IDisposable
             lock (this.sessionRequestChargeLock)
             {
                 return this.sessionRequestCharge;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the number of command operations that reported a positive request charge
+    /// since the most recent connection.
+    /// </summary>
+    internal long SessionChargedOperationCount
+    {
+        get
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                return this.sessionChargedOperationCount;
+            }
+        }
+    }
+
+    internal (double RequestCharge, long ChargedOperationCount) SessionUsage
+    {
+        get
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                return (this.sessionRequestCharge, this.sessionChargedOperationCount);
             }
         }
     }
@@ -946,6 +974,10 @@ public partial class ShellInterpreter : IDisposable
                 if (generation == this.sessionRequestChargeGeneration)
                 {
                     this.sessionRequestCharge += requestCharge;
+                    if (requestCharge > 0)
+                    {
+                        this.sessionChargedOperationCount++;
+                    }
                 }
             }
         }
@@ -1558,6 +1590,7 @@ public partial class ShellInterpreter : IDisposable
         lock (this.sessionRequestChargeLock)
         {
             this.sessionRequestCharge = 0;
+            this.sessionChargedOperationCount = 0;
             this.sessionRequestChargeGeneration++;
         }
 

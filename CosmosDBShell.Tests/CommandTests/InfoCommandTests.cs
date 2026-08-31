@@ -143,9 +143,11 @@ public class InfoCommandTests
 
         shell.RecordRequestCharge(new CommandState { RequestCharge = 1.25 });
         shell.RecordRequestCharge(new CommandState());
+        shell.RecordRequestCharge(new CommandState { RequestCharge = 0 });
         shell.RecordRequestCharge(new ErrorCommandState(new InvalidOperationException()) { RequestCharge = 2.5 });
 
         Assert.Equal(3.75, shell.SessionRequestCharge);
+        Assert.Equal(2, shell.SessionChargedOperationCount);
     }
 
     [Fact]
@@ -157,6 +159,7 @@ public class InfoCommandTests
         shell.Connect(CreateTestClient(), credentialTypeOverride: "AccountKey");
 
         Assert.Equal(0, shell.SessionRequestCharge);
+        Assert.Equal(0, shell.SessionChargedOperationCount);
     }
 
     [Fact]
@@ -169,6 +172,7 @@ public class InfoCommandTests
         shell.Disconnect();
 
         Assert.Equal(4.5, shell.SessionRequestCharge);
+        Assert.Equal(1, shell.SessionChargedOperationCount);
     }
 
     [Fact]
@@ -182,6 +186,7 @@ public class InfoCommandTests
 
         var json = JsonSerializer.SerializeToElement(result);
         Assert.Equal(3.75, json.GetProperty("session").GetProperty("requestCharge").GetDouble());
+        Assert.Equal(1, json.GetProperty("session").GetProperty("chargedOperationCount").GetInt64());
     }
 
     [Fact]
@@ -194,6 +199,7 @@ public class InfoCommandTests
         shell.RecordRequestCharge(new CommandState { RequestCharge = 8 }, generation);
 
         Assert.Equal(0, shell.SessionRequestCharge);
+        Assert.Equal(0, shell.SessionChargedOperationCount);
     }
 
     [Theory]

@@ -22,6 +22,7 @@ public class CosmosCommandTests
 
         Assert.Null(state.RequestCharge);
         Assert.Equal(2.5, shell.SessionRequestCharge);
+        Assert.Equal(1, shell.SessionChargedOperationCount);
     }
 
     [Fact]

@@ -112,5 +112,7 @@ The `info` command result also includes `session.requestCharge`, the cumulative
 charge observed from instrumented commands during the current connection. A
 successful `connect` starts a new total; navigation between databases and
 containers does not reset it. This session value is telemetry rather than a
-budget or billing total.
+budget or billing total. `session.chargedOperationCount` counts instrumented
+command operations that reported a positive request charge; it counts command
+operations rather than individual query pages or transactional batch items.
 

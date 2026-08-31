@@ -303,9 +303,11 @@ internal class InfoCommand : CosmosCommand
 
     internal static void AddSessionUsage(ShellInterpreter shell, Dictionary<string, object?> mcpTable, bool renderOutput)
     {
+        var sessionUsage = shell.SessionUsage;
         mcpTable["session"] = new Dictionary<string, object?>
         {
-            ["requestCharge"] = shell.SessionRequestCharge,
+            ["requestCharge"] = sessionUsage.RequestCharge,
+            ["chargedOperationCount"] = sessionUsage.ChargedOperationCount,
         };
 
         if (!renderOutput)
@@ -319,7 +321,10 @@ internal class InfoCommand : CosmosCommand
         table.HideHeaders();
         table.AddRow(
             MessageService.GetString("command-stats-session-request-charge"),
-            Theme.FormatTableValue(shell.SessionRequestCharge.ToString("0.##", CultureInfo.InvariantCulture)));
+            Theme.FormatTableValue(sessionUsage.RequestCharge.ToString("0.##", CultureInfo.InvariantCulture)));
+        table.AddRow(
+            MessageService.GetString("command-stats-session-charged-operations"),
+            Theme.FormatTableValue(sessionUsage.ChargedOperationCount.ToString(CultureInfo.InvariantCulture)));
         AnsiConsole.Write(table);
     }
 

@@ -1358,7 +1358,9 @@ the rich console layout. The `--partitions` and
 `--detailed` options issue queries against the data and therefore consume
 request units; at the account root, `--detailed` aggregates every container's
 storage and document count across all databases. In JSON output the connection
-total is available as `session.requestCharge`. This command is read-only.
+total is available as `session.requestCharge`, and `session.chargedOperationCount`
+counts instrumented command operations that reported a positive charge. This
+command is read-only.
 
 ### help
 

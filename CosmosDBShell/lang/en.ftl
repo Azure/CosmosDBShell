@@ -933,6 +933,7 @@ command-stats-account-databases-col-size = Size
 command-stats-account-detailed-cost-note = Aggregating account totals reads every container's quota and consumes request units.
 command-stats-session-heading = Session Usage
 command-stats-session-request-charge = Observed request charge (RUs)
+command-stats-session-charged-operations = Charged operations
 
 command-version-description = Displays the version of Cosmos DB Shell.
 command-version = Cosmos Shell version: { $version }
