@@ -805,7 +805,7 @@ Options:
 
 By default the command targets the current container. Use `--database` and `--container`
 to target a specific resource. The `--sample` value is clamped to the range 1-100 so the
-discovery query always stays bounded.
+discovery query stays bounded both server-side and in the client.
 
 Inferred fields use dot notation for nested objects (for example `address.city`). Each
 field lists the distinct JSON types observed (`string`, `number`, `boolean`, `object`,
@@ -819,7 +819,7 @@ schema --sample=50
 schema --database=MyDB --container=Products
 ```
 
-Sample output:
+Abbreviated sample output (the `indexingPolicy` summary is omitted for brevity):
 
 ```json
 {
@@ -829,15 +829,6 @@ Sample output:
   "documentCountEstimate": 1280,
   "sampleSize": 20,
   "sampledDocuments": 20,
-  "indexingPolicy": {
-        "indexingMode": "Consistent",
-    "automatic": true,
-    "includedPaths": 1,
-    "excludedPaths": 1,
-    "compositeIndexes": 0,
-    "spatialIndexes": 0,
-    "vectorIndexes": 0
-  },
   "fields": [
     { "path": "id", "types": ["string"], "presence": 20 },
     { "path": "category", "types": ["string"], "presence": 20 },

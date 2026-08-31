@@ -49,13 +49,12 @@ internal class SchemaCommand : CosmosCommand
             throw new NotConnectedException("schema");
         }
 
-        var (databaseName, containerName, container) = await ResolveContainerAsync(
+        var (databaseName, containerName, container) = ResolveContainerReference(
             connectedState.Client,
             shell.State,
             this.Database,
             this.Container,
-            "schema",
-            token);
+            "schema");
 
         int sampleSize = NormalizeSample(this.Sample);
 
@@ -66,7 +65,7 @@ internal class SchemaCommand : CosmosCommand
             long? documentCountEstimate = InfoCommand.ParseResourceUsage(containerResponse.Headers[ResourceUsageHeader]).DocumentCount;
             var fields = InferSchema(sampledDocuments);
 
-            return BuildResult(databaseName!, containerName!, containerResponse.Resource, documentCountEstimate, sampleSize, sampledDocuments.Count, fields);
+            return BuildResult(databaseName, containerName, containerResponse.Resource, documentCountEstimate, sampleSize, sampledDocuments.Count, fields);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -105,7 +104,7 @@ internal class SchemaCommand : CosmosCommand
                 continue;
             }
 
-            CollectFields(document, prefix: string.Empty, depth: 0, maxDepth, fields);
+            CollectFields(document, prefix: string.Empty, depth: 0, maxDepth, fields, new HashSet<string>(StringComparer.Ordinal));
         }
 
         return fields
@@ -114,7 +113,13 @@ internal class SchemaCommand : CosmosCommand
             .ToList();
     }
 
-    private static void CollectFields(JsonElement element, string prefix, int depth, int maxDepth, Dictionary<string, FieldAccumulator> fields)
+    private static void CollectFields(
+        JsonElement element,
+        string prefix,
+        int depth,
+        int maxDepth,
+        Dictionary<string, FieldAccumulator> fields,
+        HashSet<string> fieldsSeenInDocument)
     {
         foreach (var property in element.EnumerateObject())
         {
@@ -127,11 +132,14 @@ internal class SchemaCommand : CosmosCommand
             }
 
             accumulator.Types.Add(DescribeValueKind(property.Value.ValueKind));
-            accumulator.Presence++;
+            if (fieldsSeenInDocument.Add(path))
+            {
+                accumulator.Presence++;
+            }
 
             if (property.Value.ValueKind == JsonValueKind.Object && depth + 1 < maxDepth)
             {
-                CollectFields(property.Value, path, depth + 1, maxDepth, fields);
+                CollectFields(property.Value, path, depth + 1, maxDepth, fields, fieldsSeenInDocument);
             }
         }
     }
@@ -151,7 +159,7 @@ internal class SchemaCommand : CosmosCommand
     {
         var documents = new List<JsonElement>(sample);
         using var iterator = container.GetItemQueryIterator<JsonElement>(
-            new QueryDefinition("SELECT * FROM c"),
+            new QueryDefinition(BuildSampleQueryText(sample)),
             requestOptions: new QueryRequestOptions { MaxItemCount = sample });
 
         while (iterator.HasMoreResults && documents.Count < sample)
@@ -169,7 +177,9 @@ internal class SchemaCommand : CosmosCommand
         return documents;
     }
 
-    private static CommandState BuildResult(
+    internal static string BuildSampleQueryText(int sample) => $"SELECT TOP {sample} * FROM c";
+
+    internal static CommandState BuildResult(
         string databaseName,
         string containerName,
         ContainerProperties properties,

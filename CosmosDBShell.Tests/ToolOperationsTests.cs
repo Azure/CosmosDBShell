@@ -197,6 +197,25 @@ public class ToolOperationsTests
     }
 
     [Fact]
+    public void GetTool_SchemaExposesOptionsAndReadOnlyAnnotations()
+    {
+        var factory = new CommandRunner().Commands["schema"];
+
+        var tool = ToolOperations.GetTool(factory);
+        var properties = tool.InputSchema.GetProperty("properties");
+
+        Assert.Equal("integer", properties.GetProperty("sample").GetProperty("type").GetString());
+        Assert.Equal("string", properties.GetProperty("database").GetProperty("type").GetString());
+        Assert.Equal("string", properties.GetProperty("container").GetProperty("type").GetString());
+        Assert.NotNull(tool.Annotations);
+        Assert.Equal("Schema", tool.Annotations!.Title);
+        Assert.True(tool.Annotations.ReadOnlyHint);
+        Assert.True(tool.Annotations.IdempotentHint);
+        Assert.True(tool.Annotations.OpenWorldHint);
+        Assert.NotEqual(true, tool.Annotations.DestructiveHint);
+    }
+
+    [Fact]
     public void GetTool_MapsDestructiveAnnotationHint()
     {
         var factory = new CommandRunner().Commands["delete"];

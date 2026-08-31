@@ -7,6 +7,8 @@ namespace CosmosShell.Tests.CommandTests;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
+using Microsoft.Azure.Cosmos;
 
 /// <summary>
 /// Unit tests for <see cref="SchemaCommand"/>. Covers the pure helpers that clamp the
@@ -51,6 +53,12 @@ public class SchemaCommandTests
     }
 
     [Fact]
+    public void BuildSampleQueryText_UsesServerSideTopLimit()
+    {
+        Assert.Equal("SELECT TOP 42 * FROM c", SchemaCommand.BuildSampleQueryText(42));
+    }
+
+    [Fact]
     public void InferSchema_ReportsTopLevelTypes()
     {
         var documents = Parse(
@@ -77,6 +85,17 @@ public class SchemaCommandTests
 
         Assert.Equal(3, Field(fields, "id").Presence);
         Assert.Equal(1, Field(fields, "optional").Presence);
+    }
+
+    [Fact]
+    public void InferSchema_CountsDuplicatePropertyOncePerDocument()
+    {
+        var documents = Parse("{\"value\":1,\"value\":\"text\"}");
+
+        var field = Field(SchemaCommand.InferSchema(documents), "value");
+
+        Assert.Equal(1, field.Presence);
+        Assert.Equal(new[] { "number", "string" }, field.Types);
     }
 
     [Fact]
@@ -132,6 +151,25 @@ public class SchemaCommandTests
 
         Assert.Single(fields);
         Assert.Equal("id", fields[0].Path);
+    }
+
+    [Fact]
+    public void BuildResult_ReturnsStructuredSchemaSummary()
+    {
+        var properties = new ContainerProperties("Products", "/category");
+        var fields = new[] { new SchemaCommand.FieldSchema("id", new[] { "string" }, 2) };
+
+        var state = SchemaCommand.BuildResult("MyDB", "Products", properties, 12, 20, 2, fields);
+        var result = Assert.IsType<ShellJson>(state.Result).Value;
+
+        Assert.Equal("MyDB", result.GetProperty("database").GetString());
+        Assert.Equal("Products", result.GetProperty("container").GetString());
+        Assert.Equal("/category", result.GetProperty("partitionKeyPaths")[0].GetString());
+        Assert.Equal(12, result.GetProperty("documentCountEstimate").GetInt64());
+        Assert.Equal(20, result.GetProperty("sampleSize").GetInt32());
+        Assert.Equal(2, result.GetProperty("sampledDocuments").GetInt32());
+        Assert.True(result.TryGetProperty("indexingPolicy", out _));
+        Assert.Equal("id", result.GetProperty("fields")[0].GetProperty("path").GetString());
     }
 
     private static SchemaCommand.FieldSchema Field(IReadOnlyList<SchemaCommand.FieldSchema> fields, string path)
