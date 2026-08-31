@@ -46,6 +46,64 @@ public class CompletionTests
     }
 
     [Fact]
+    public void CompleteDatabase_QuotesAndEscapesInvalidShellCharacters()
+    {
+        CosmosCompleteCommand.ClearDatabases();
+        CosmosCompleteCommand.ClearContainers();
+
+        using var shell = ShellInterpreter.CreateInstance();
+        var client = CreateTestClient();
+        shell.State = new ConnectedState(client);
+        CosmosCompleteCommand.SetDatabases(client, ["foo\"bar"]);
+
+        var completion = CosmosCompleteCommand.GetCompletion(shell, "cd foo", AutoComplete.Next);
+
+        Assert.Equal("cd \"foo\\\"bar\"", completion);
+    }
+
+    [Theory]
+    [InlineData("TRUE", "T")]
+    [InlineData("False", "F")]
+    [InlineData("NULL", "N")]
+    public void CompleteDatabase_QuotesReservedLiterals(string databaseName, string prefix)
+    {
+        CosmosCompleteCommand.ClearDatabases();
+        CosmosCompleteCommand.ClearContainers();
+
+        using var shell = ShellInterpreter.CreateInstance();
+        var client = CreateTestClient();
+        shell.State = new ConnectedState(client);
+        CosmosCompleteCommand.SetDatabases(client, [databaseName]);
+
+        var completion = CosmosCompleteCommand.GetCompletion(shell, $"cd {prefix}", AutoComplete.Next);
+
+        Assert.Equal($"cd \"{databaseName}\"", completion);
+    }
+
+    [Fact]
+    public void CompleteDatabase_CyclesThroughQuotedCandidates()
+    {
+        CosmosCompleteCommand.ClearDatabases();
+        CosmosCompleteCommand.ClearContainers();
+
+        using var shell = ShellInterpreter.CreateInstance();
+        var client = CreateTestClient();
+        shell.State = new ConnectedState(client);
+        CosmosCompleteCommand.SetDatabases(client, ["foo bar", "foo baz"]);
+
+        var first = CosmosCompleteCommand.GetCompletion(shell, "cd foo", AutoComplete.Next);
+        Assert.Equal("cd \"foo bar\"", first);
+
+        shell.LastBuffer = first;
+        var second = CosmosCompleteCommand.GetCompletion(shell, first!, AutoComplete.Next);
+        Assert.Equal("cd \"foo baz\"", second);
+
+        shell.LastBuffer = second;
+        var third = CosmosCompleteCommand.GetCompletion(shell, second!, AutoComplete.Next);
+        Assert.Equal("cd \"foo bar\"", third);
+    }
+
+    [Fact]
     public void CompleteContainer_UsesCachedNames()
     {
         CosmosCompleteCommand.ClearDatabases();

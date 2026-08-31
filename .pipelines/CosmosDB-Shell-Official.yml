@@ -89,8 +89,6 @@ extends:
               ob_sdl_binskim_scanOutputDirectoryOnly: false
               ob_sdl_binskim_break: true # always break the build on binskim issues, even if TSA enabled. You can disable it by setting to 'false'
               ob_sdl_roslyn_break: true
-              ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}: # conditionally enable symbolsPublishing for main branch only
-                ob_symbolsPublishing_enabled: true # https://aka.ms/obpipelines/symbols
               # ob_sdl_suppression_suppressionFile: $(Build.SourcesDirectory)\.gdn\job.gdnsuppress
 
             steps:

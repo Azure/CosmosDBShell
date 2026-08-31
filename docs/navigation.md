@@ -270,6 +270,8 @@ Start the shell with options to customize behavior:
 | `--connect-managed-identity <id>` | User-assigned managed identity client ID at startup |
 | `--connect-subscription <id>` | Azure subscription ID for ARM database and container operations at startup |
 | `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations at startup |
+| `--database <id>` | Navigate to this database after connecting at startup |
+| `--container <id>` | Navigate to this container after connecting at startup. Requires `--database` |
 | `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
 | `--diagnostics [path]` | Write timestamped diagnostic logs (commands, timing, errors, connection events) to a file, or to a timestamped file in the config directory by default |
 | `--otel [endpoint]` | Enable distributed tracing so requests carry a sampled W3C `traceparent`. Optionally export spans to an OTLP `endpoint`; falls back to the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable |
@@ -329,6 +331,9 @@ cosmosdbshell -c "connect $CONN; cd mydb/mycont; ls -m 5"
 
 # Start connected to a specific account
 cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
+
+# Start directly in a specific container without constructing a `-k` command
+cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." --database mydb --container mycontainer
 
 # Start connected with explicit ARM account context
 cosmosdbshell --connect https://myaccount.documents.azure.com:443/ --connect-subscription <subscription-id> --connect-resource-group <resource-group>

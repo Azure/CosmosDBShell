@@ -4,8 +4,10 @@
 
 namespace CosmosShell.Tests.CommandTests;
 
+using System.Globalization;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Core;
 using Microsoft.Azure.Cosmos;
 
 public class QueryCommandTests
@@ -67,6 +69,23 @@ public class QueryCommandTests
             this.QueryPreparationTime = queryPreparationTime;
             this.TotalTime = totalTime;
         }
+    }
+
+    [Fact]
+    public void CreateCommandState_WithoutCommandFormat_DefersToSessionDefault()
+    {
+        var state = QueryCommand.CreateCommandState(null);
+
+        Assert.False(state.OutputFormatExplicitlySet);
+    }
+
+    [Fact]
+    public void CreateCommandState_WithCommandFormat_MarksFormatExplicit()
+    {
+        var state = QueryCommand.CreateCommandState("json");
+
+        Assert.True(state.OutputFormatExplicitlySet);
+        Assert.Equal(OutputFormat.JSon, state.OutputFormat);
     }
 
     [Fact]
@@ -313,5 +332,216 @@ public class QueryCommandTests
                 $"ServerSideMetrics.{prop} is not mapped in propertyToMetric. Add it to BuildMetrics and this test.");
             Assert.Contains(propertyToMetric[prop], metricNames);
         }
+    }
+
+    [Fact]
+    public void EvaluatePlan_NoUtilizedIndexes_ReportsFullScan()
+    {
+        var evaluation = QueryCommand.EvaluatePlan(
+            planAvailable: true,
+            utilizedIndexes: [],
+            potentialIndexes: [],
+            indexHitRatio: 0,
+            retrievedDocumentCount: 1000,
+            outputDocumentCount: 1);
+
+        Assert.True(evaluation.FullScan);
+        Assert.False(evaluation.IndexSeek);
+        Assert.True(evaluation.PlanAvailable);
+        Assert.Empty(evaluation.UtilizedIndexes);
+    }
+
+    [Fact]
+    public void EvaluatePlan_UnavailablePlan_DoesNotReportScanType()
+    {
+        var evaluation = QueryCommand.EvaluatePlan(
+            planAvailable: false,
+            utilizedIndexes: [],
+            potentialIndexes: [],
+            indexHitRatio: null,
+            retrievedDocumentCount: null,
+            outputDocumentCount: null);
+
+        Assert.False(evaluation.PlanAvailable);
+        Assert.False(evaluation.FullScan);
+        Assert.False(evaluation.IndexSeek);
+    }
+
+    [Fact]
+    public void EvaluatePlan_WithUtilizedIndexes_ReportsIndexSeek()
+    {
+        var evaluation = QueryCommand.EvaluatePlan(
+            planAvailable: true,
+            utilizedIndexes: ["/city/?"],
+            potentialIndexes: [],
+            indexHitRatio: 1,
+            retrievedDocumentCount: 1,
+            outputDocumentCount: 1);
+
+        Assert.False(evaluation.FullScan);
+        Assert.True(evaluation.IndexSeek);
+        Assert.Equal(1, evaluation.IndexHitRatio);
+        Assert.Collection(evaluation.UtilizedIndexes, spec => Assert.Equal("/city/?", spec));
+    }
+
+    [Fact]
+    public void EvaluatePlan_PreservesPotentialIndexRecommendations()
+    {
+        var evaluation = QueryCommand.EvaluatePlan(
+            planAvailable: true,
+            utilizedIndexes: ["/city/?"],
+            potentialIndexes: ["/age/?"],
+            indexHitRatio: 0.5,
+            retrievedDocumentCount: 200,
+            outputDocumentCount: 100);
+
+        Assert.True(evaluation.IndexSeek);
+        Assert.Collection(evaluation.PotentialIndexes, spec => Assert.Equal("/age/?", spec));
+        Assert.Equal(200, evaluation.RetrievedDocumentCount);
+        Assert.Equal(100, evaluation.OutputDocumentCount);
+    }
+
+    [Fact]
+    public void BuildPlanMessages_FormatsIndexHitRatioInvariantly()
+    {
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+            var evaluation = QueryCommand.EvaluatePlan(
+                planAvailable: true,
+                utilizedIndexes: ["/city/?"],
+                potentialIndexes: [],
+                indexHitRatio: 0.5,
+                retrievedDocumentCount: 1,
+                outputDocumentCount: 1);
+
+            var messages = QueryCommand.BuildPlanMessages(evaluation);
+
+            Assert.Contains(messages, message => message.Contains("0.5", StringComparison.Ordinal));
+            Assert.DoesNotContain(messages, message => message.Contains("0,5", StringComparison.Ordinal));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+        }
+    }
+
+    [Fact]
+    public void ParseIndexPlan_ExtractsSingleAndCompositeIndexSpecs()
+    {
+        const string indexMetrics = """
+        {
+            "UtilizedIndexes": {
+                "SingleIndexes": [ { "IndexSpec": "/city/?" } ],
+                "CompositeIndexes": [ { "IndexSpecs": [ "/age ASC", "/name ASC" ] } ]
+            },
+            "PotentialIndexes": {
+                "SingleIndexes": [ { "IndexSpec": "/status/?" } ],
+                "CompositeIndexes": []
+            }
+        }
+        """;
+
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+
+        Assert.True(available);
+        Assert.Equal(["/city/?", "/age ASC, /name ASC"], utilized);
+        Assert.Equal(["/status/?"], potential);
+    }
+
+    [Fact]
+    public void ParseIndexPlan_ExtractsDirectIndexArrays()
+    {
+        const string indexMetrics = """
+        {
+            "UtilizedIndexes": [ { "IndexSpec": "/city/?" } ],
+            "PotentialIndexes": [ { "IndexSpec": "/status/?" } ]
+        }
+        """;
+
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+
+        Assert.True(available);
+        Assert.Equal(["/city/?"], utilized);
+        Assert.Equal(["/status/?"], potential);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ParseIndexPlan_NullOrEmpty_ReturnsEmptyLists(string? indexMetrics)
+    {
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+
+        Assert.False(available);
+        Assert.Empty(utilized);
+        Assert.Empty(potential);
+    }
+
+    [Fact]
+    public void ParseIndexPlan_MalformedJson_ReturnsEmptyLists()
+    {
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan("{ not valid json");
+
+        Assert.False(available);
+        Assert.Empty(utilized);
+        Assert.Empty(potential);
+    }
+
+    [Fact]
+    public void ParseIndexPlan_UnexpectedObject_ReturnsUnavailable()
+    {
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan("{}");
+
+        Assert.False(available);
+        Assert.Empty(utilized);
+        Assert.Empty(potential);
+    }
+
+    [Fact]
+    public void ParseIndexPlan_UnrecognizedIndexGroup_ReturnsUnavailable()
+    {
+        const string indexMetrics = "{\"UtilizedIndexes\":{\"UnexpectedIndexes\":[]}}";
+
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+
+        Assert.False(available);
+        Assert.Empty(utilized);
+        Assert.Empty(potential);
+    }
+
+    [Fact]
+    public void ParseIndexPlan_TrimsSpecsAndIgnoresWhitespaceOnlyValues()
+    {
+        const string indexMetrics = """
+        {
+            "UtilizedIndexes": [
+                "   ",
+                " /city/? ",
+                { "IndexSpec": " /name/? " },
+                { "IndexSpecs": [ " /age ASC ", "   ", "/name ASC " ] }
+            ]
+        }
+        """;
+
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+
+        Assert.True(available);
+        Assert.Equal(["/city/?", "/name/?", "/age ASC, /name ASC"], utilized);
+        Assert.Empty(potential);
+    }
+
+    [Fact]
+    public void ParseIndexPlan_RecognizedEmptyGroups_ReturnsAvailable()
+    {
+        const string indexMetrics = "{\"UtilizedIndexes\":{},\"PotentialIndexes\":{}}";
+
+        var (available, utilized, potential) = QueryCommand.ParseIndexPlan(indexMetrics);
+
+        Assert.True(available);
+        Assert.Empty(utilized);
+        Assert.Empty(potential);
     }
 }

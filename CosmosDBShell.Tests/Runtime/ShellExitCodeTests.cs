@@ -231,4 +231,20 @@ public class ShellExitCodeTests
 
         Assert.Equal(ShellExitCode.GeneralFailure, ShellExitCode.FromCommandState(state));
     }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, ShellExitCode.NotFound)]
+    [InlineData(HttpStatusCode.TooManyRequests, ShellExitCode.Throttled)]
+    public void FromCommandState_StructuredErrorWithHttpStatus_ReturnsClassifiedExitCode(HttpStatusCode statusCode, int expected)
+    {
+        var exception = new CommandException(
+            "batch",
+            "Batch failed.",
+            new RequestFailedException((int)statusCode, "Batch failed."));
+        var state = new StructuredErrorCommandState(
+            exception,
+            new ShellJson(JsonSerializer.SerializeToElement(new { success = false })));
+
+        Assert.Equal(expected, ShellExitCode.FromCommandState(state));
+    }
 }
