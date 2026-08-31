@@ -40,6 +40,26 @@ internal abstract class CosmosCommand
         string commandName,
         CancellationToken token)
     {
+        var resolved = ResolveContainerReference(client, state, databaseOption, containerOption, commandName);
+
+        // Validate that database and container exist
+        await ValidateContainerExistsAsync(RequireConnectedState(state, commandName), resolved.DatabaseName, resolved.ContainerName, commandName, token);
+
+        return resolved;
+    }
+
+    /// <summary>
+    /// Resolves a container reference from command options and current shell state without
+    /// performing an existence check. Commands that immediately read the container can use
+    /// that read as validation and avoid redundant service requests.
+    /// </summary>
+    protected static (string DatabaseName, string ContainerName, Container Container) ResolveContainerReference(
+        CosmosClient client,
+        State state,
+        string? databaseOption,
+        string? containerOption,
+        string commandName)
+    {
         string? databaseName = null;
         string? containerName = null;
 
@@ -72,11 +92,8 @@ internal abstract class CosmosCommand
             ThrowNotInContainer(commandName);
         }
 
-        // Validate that database and container exist
-        await ValidateContainerExistsAsync(RequireConnectedState(state, commandName), databaseName, containerName, commandName, token);
-
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
-        return (databaseName, containerName, container);
+        return (databaseName!, containerName!, container);
     }
 
     /// <summary>

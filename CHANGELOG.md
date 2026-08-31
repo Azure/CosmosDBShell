@@ -10,6 +10,7 @@
 
 ### New features
 
+- **`schema` discovery command and MCP tool.** A new read-only `schema` command infers a container's structure from a small, bounded sample: it returns the partition key path(s), an indexing policy summary, an estimated document count, and inferred field types (with dot notation for nested objects and per-field presence counts). `--sample <n>` selects how many documents to sample (clamped to 1-100, default 20), `--fields-only` (alias `--short`) returns only the sample count and inferred fields without a metadata read, and `--database`/`--container` override the target. Exposed as a read-only MCP tool so agents can discover container structure cheaply instead of re-sampling or guessing field names. ([#160](https://github.com/Azure/CosmosDBShell/issues/160))
 - **`--database` and `--container` startup options.** Navigate to a database or container at startup without composing a `-k "cd ..."` command. Both require `--connect`, and `--container` requires `--database`. Tools that previously built a startup script string to select a location should pass these options instead. See [navigation](docs/navigation.md).
 
 ### Breaking changes

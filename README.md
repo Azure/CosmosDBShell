@@ -16,6 +16,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Bulk roundtrip with `import` / `export` for JSON Lines and JSON array files, plus CSV import/export (CSV import coerces values to strings; `--partition-key` nests a CSV column under a nested partition key path)
 - Manage container indexing policies with `index` (`show`, `add`, `remove`, `set`)
 - Inspect container/database/account configuration and usage statistics with `info` (partition key, throughput, policies, indexing policy summary, document count, storage size, regions; `--partitions` and `--detailed` for distribution analysis)
+- Discover a container's structure with `schema` — partition key, indexing policy summary, estimated document count, and inferred field types from a bounded sample (`--sample`, default 20); use `--fields-only`/`--short` for field-only output without a metadata read; also exposed as a read-only MCP tool
 - View and scale provisioned RU/s with `throughput` (`show`, `set`/`manual`, `autoscale`)
 - View and set the container default time-to-live with `ttl` (`show`, `set`, `on`, `off`)
 - View and set the container conflict resolution policy with `conflict` (`show`, `set`; last-writer-wins or custom stored procedure)
