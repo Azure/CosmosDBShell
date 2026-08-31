@@ -207,6 +207,8 @@ public class ToolOperationsTests
         Assert.Equal("integer", properties.GetProperty("sample").GetProperty("type").GetString());
         Assert.Equal("string", properties.GetProperty("database").GetProperty("type").GetString());
         Assert.Equal("string", properties.GetProperty("container").GetProperty("type").GetString());
+        Assert.Equal("boolean", properties.GetProperty("fields-only").GetProperty("type").GetString());
+        Assert.Contains("Aliases: short", properties.GetProperty("fields-only").GetProperty("description").GetString());
         Assert.NotNull(tool.Annotations);
         Assert.Equal("Schema", tool.Annotations!.Title);
         Assert.True(tool.Annotations.ReadOnlyHint);

@@ -793,10 +793,12 @@ along with a container metadata read, making it a cheap way for agents and users
 discover a container's structure without re-sampling or guessing field names.
 
 ```text
-Usage: schema [-sample <ARG>] [-database <ARG>] [-container <ARG>]
+Usage: schema [-sample <ARG>] [-fields-only] [-database <ARG>] [-container <ARG>]
 
 Options:
     -sample, -s Maximum number of documents to sample (1-100, default 20)
+    -fields-only, -short
+                Return only sampledDocuments and inferred fields without reading container metadata
     -database, -db
                 Override database name (Optional)
     -container, -con
@@ -818,7 +820,25 @@ The `indexingPolicy` summary contains `indexingMode`, `automatic`, `includedPath
 ```bash
 schema
 schema --sample=50
+schema --fields-only
+schema --short
 schema --database=MyDB --container=Products
+```
+
+`--fields-only` (alias `--short`) skips the container metadata read and returns only
+`sampledDocuments` and `fields`. This is useful when only field names and observed JSON
+types are needed and a smaller CLI or MCP result is preferred.
+
+Short output:
+
+```json
+{
+    "sampledDocuments": 20,
+    "fields": [
+        { "path": "id", "types": ["string"], "presence": 20 },
+        { "path": "price", "types": ["null", "number"], "presence": 18 }
+    ]
+}
 ```
 
 Abbreviated sample output (the `indexingPolicy` summary is omitted for brevity):

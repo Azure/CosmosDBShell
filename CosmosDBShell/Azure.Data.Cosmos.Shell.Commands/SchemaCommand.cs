@@ -17,13 +17,14 @@ using global::Azure.Data.Cosmos.Shell.States;
 [CosmosCommand("schema")]
 [CosmosExample("schema", Description = "Infer the schema of the current container from a small sample")]
 [CosmosExample("schema --sample=50", Description = "Sample up to 50 documents when inferring the schema")]
+[CosmosExample("schema --fields-only", Description = "Return only the inferred fields and sampled document count")]
 [CosmosExample("schema --database=MyDB --container=Products", Description = "Infer the schema for a specific database and container")]
 [McpAnnotation(
     Title = "Schema",
     ReadOnly = true,
     Idempotent = true,
     OpenWorld = true,
-    Description = "Returns a cheap, bounded discovery summary of a Cosmos DB container: partition key path(s), an indexing policy summary, an estimated document count, and inferred field types from a bounded sample of documents. Use this before querying to avoid re-sampling and to avoid guessing field names.")]
+    Description = "Returns a cheap, bounded discovery summary of a Cosmos DB container: partition key path(s), an indexing policy summary, an estimated document count, and inferred field types from a bounded sample of documents. Use fields-only (alias: short) to return only sampledDocuments and fields without reading container metadata. Use this before querying to avoid re-sampling and to avoid guessing field names.")]
 internal class SchemaCommand : CosmosCommand
 {
     internal const int DefaultSample = 20;
@@ -41,6 +42,9 @@ internal class SchemaCommand : CosmosCommand
 
     [CosmosOption("sample", "s")]
     public int? Sample { get; init; }
+
+    [CosmosOption("fields-only", "short")]
+    public bool FieldsOnly { get; init; }
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
@@ -60,10 +64,20 @@ internal class SchemaCommand : CosmosCommand
 
         try
         {
-            var containerResponse = await container.ReadContainerAsync(new ContainerRequestOptions { PopulateQuotaInfo = true }, token);
+            ContainerResponse? containerResponse = null;
+            if (!this.FieldsOnly)
+            {
+                containerResponse = await container.ReadContainerAsync(new ContainerRequestOptions { PopulateQuotaInfo = true }, token);
+            }
+
             var sampledDocuments = await SampleDocumentsAsync(container, sampleSize, token);
-            long? documentCountEstimate = InfoCommand.ParseResourceUsage(containerResponse.Headers[ResourceUsageHeader]).DocumentCount;
             var fields = InferSchema(sampledDocuments);
+            if (this.FieldsOnly)
+            {
+                return BuildFieldsOnlyResult(sampledDocuments.Count, fields);
+            }
+
+            long? documentCountEstimate = InfoCommand.ParseResourceUsage(containerResponse!.Headers[ResourceUsageHeader]).DocumentCount;
 
             return BuildResult(databaseName, containerName, containerResponse.Resource, documentCountEstimate, sampleSize, sampledDocuments.Count, fields);
         }
@@ -179,6 +193,20 @@ internal class SchemaCommand : CosmosCommand
 
     internal static string BuildSampleQueryText(int sample) => $"SELECT TOP {sample} * FROM c";
 
+    internal static CommandState BuildFieldsOnlyResult(int sampledDocuments, IReadOnlyList<FieldSchema> fields)
+    {
+        var output = new Dictionary<string, object?>
+        {
+            ["sampledDocuments"] = sampledDocuments,
+            ["fields"] = BuildFieldsOutput(fields),
+        };
+
+        return new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(output)),
+        };
+    }
+
     internal static CommandState BuildResult(
         string databaseName,
         string containerName,
@@ -213,18 +241,23 @@ internal class SchemaCommand : CosmosCommand
             ["sampleSize"] = sampleSize,
             ["sampledDocuments"] = sampledDocuments,
             ["indexingPolicy"] = indexingPolicy,
-            ["fields"] = fields.Select(field => new Dictionary<string, object?>
-            {
-                ["path"] = field.Path,
-                ["types"] = field.Types,
-                ["presence"] = field.Presence,
-            }).ToList(),
+            ["fields"] = BuildFieldsOutput(fields),
         };
 
         return new CommandState
         {
             Result = new ShellJson(JsonSerializer.SerializeToElement(output)),
         };
+    }
+
+    private static List<Dictionary<string, object?>> BuildFieldsOutput(IReadOnlyList<FieldSchema> fields)
+    {
+        return fields.Select(field => new Dictionary<string, object?>
+        {
+            ["path"] = field.Path,
+            ["types"] = field.Types,
+            ["presence"] = field.Presence,
+        }).ToList();
     }
 
     /// <summary>

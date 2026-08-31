@@ -397,6 +397,7 @@ command-schema-description = Infers the schema of a container from a bounded sam
 command-schema-description-database = The database containing the container
 command-schema-description-container = The container to infer the schema for
 command-schema-description-sample = Maximum number of documents to sample when inferring field types (1-100, default 20).
+command-schema-description-fields-only = Return only sampledDocuments and inferred fields without reading container metadata.
 
 command-index-description = Manages the indexing policy of a container via show, add, remove, and set subcommands.
 command-index-description-subcommand = The action to perform: show, add, remove, or set.

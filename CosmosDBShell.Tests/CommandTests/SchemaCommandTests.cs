@@ -172,6 +172,21 @@ public class SchemaCommandTests
         Assert.Equal("id", result.GetProperty("fields")[0].GetProperty("path").GetString());
     }
 
+    [Fact]
+    public void BuildFieldsOnlyResult_ReturnsOnlySampleCountAndFields()
+    {
+        var fields = new[] { new SchemaCommand.FieldSchema("id", new[] { "string" }, 2) };
+
+        var state = SchemaCommand.BuildFieldsOnlyResult(2, fields);
+        var result = Assert.IsType<ShellJson>(state.Result).Value;
+
+        Assert.Equal(2, result.EnumerateObject().Count());
+        Assert.Equal(2, result.GetProperty("sampledDocuments").GetInt32());
+        Assert.Equal("id", result.GetProperty("fields")[0].GetProperty("path").GetString());
+        Assert.Equal(new[] { "string" }, result.GetProperty("fields")[0].GetProperty("types").EnumerateArray().Select(type => type.GetString()));
+        Assert.Equal(2, result.GetProperty("fields")[0].GetProperty("presence").GetInt32());
+    }
+
     private static SchemaCommand.FieldSchema Field(IReadOnlyList<SchemaCommand.FieldSchema> fields, string path)
     {
         return fields.Single(f => f.Path == path);
