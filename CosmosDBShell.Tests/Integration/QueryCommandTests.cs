@@ -135,7 +135,22 @@ public class QueryCommandTests : EmulatorFixtureTestBase
     {
         var query = $"SELECT * FROM c WHERE c.id = '{this.GetSeedItemId(1)}'";
 
-        var output = await ExecuteWithOutputAsync($"query \"{query}\" --explain");
+        var outputFile = CreateTempFile();
+        Shell.StdOutRedirect = outputFile;
+        CommandState state;
+        string output;
+        try
+        {
+            state = await ExecuteAsync($"query \"{query}\" --explain");
+            output = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            Shell.StdOutRedirect = null;
+        }
+
+        Assert.False(state.IsError, FormatError(state));
+        Assert.True(state.RequestCharge > 0);
 
         using var document = JsonDocument.Parse(output);
         var root = document.RootElement;

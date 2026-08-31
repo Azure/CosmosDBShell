@@ -637,7 +637,7 @@ internal class QueryCommand : CosmosCommand
             }
 
             var cumulative = response?.Diagnostics.GetQueryMetrics()?.CumulativeMetrics;
-            double requestCharge = response?.Diagnostics.GetQueryMetrics()?.TotalRequestCharge ?? 0;
+            double requestCharge = response?.Headers.RequestCharge ?? 0;
 
             var (planAvailable, utilized, potential) = ParseIndexPlan(response?.IndexMetrics);
             var evaluation = EvaluatePlan(
@@ -651,6 +651,7 @@ internal class QueryCommand : CosmosCommand
 
             returnState.Result = BuildExplainJson(this.Query, evaluation, requestCharge, messages);
             returnState.RenderUser = () => RenderExplain(evaluation, requestCharge, messages);
+            returnState.RequestCharge = requestCharge;
             return returnState;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)

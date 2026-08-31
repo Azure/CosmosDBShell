@@ -33,7 +33,22 @@ public class BatchOperationTests : EmulatorFixtureTestBase
             "{\"op\":\"create\",\"item\":{\"id\":\"a\",\"pk\":\"" + pk + "\"}}," +
             "{\"op\":\"create\",\"item\":{\"id\":\"b\",\"pk\":\"" + pk + "\"}}]";
 
-        var output = await ExecuteWithOutputAsync($"batch run '{json}' --partition-key {pk}");
+        var outputFile = CreateTempFile();
+        Shell.StdOutRedirect = outputFile;
+        CommandState state;
+        string output;
+        try
+        {
+            state = await ExecuteAsync($"batch run '{json}' --partition-key {pk}");
+            output = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            Shell.StdOutRedirect = null;
+        }
+
+        Assert.False(state.IsError, FormatError(state));
+        Assert.True(state.RequestCharge > 0);
         var root = JsonDocument.Parse(output).RootElement;
 
         Assert.True(root.GetProperty("success").GetBoolean());
@@ -81,6 +96,7 @@ public class BatchOperationTests : EmulatorFixtureTestBase
             var batchState = await ExecuteAsync($"batch run '{json}' --partition-key {pk}");
             Assert.True(batchState.IsError);
             Assert.Equal(ShellExitCode.GeneralFailure, batchState.ExitCode);
+            Assert.True(batchState.RequestCharge > 0);
 
             var output = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
             var root = JsonDocument.Parse(output).RootElement;
