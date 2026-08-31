@@ -12,6 +12,19 @@ using Microsoft.Azure.Cosmos;
 public class CosmosCommandTests
 {
     [Fact]
+    public async Task ExecuteCosmosCommandAsync_RecordsChargeAndClearsStaleCharge()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState { RequestCharge = 9 };
+
+        state = await shell.ExecuteCosmosCommandAsync(new TestCosmosCommand(2.5), state, string.Empty, CancellationToken.None);
+        state = await shell.ExecuteCosmosCommandAsync(new TestCosmosCommand(null), state, string.Empty, CancellationToken.None);
+
+        Assert.Null(state.RequestCharge);
+        Assert.Equal(2.5, shell.SessionRequestCharge);
+    }
+
+    [Fact]
     public void CreatePartitionKey_WithHierarchicalIntegerComponents_PreservesIntegerTypes()
     {
         using var document = JsonDocument.Parse("""
@@ -42,8 +55,16 @@ public class CosmosCommandTests
 
     private sealed class TestCosmosCommand : CosmosCommand
     {
+        private readonly double? requestCharge;
+
+        public TestCosmosCommand(double? requestCharge = null)
+        {
+            this.requestCharge = requestCharge;
+        }
+
         public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
         {
+            commandState.RequestCharge = this.requestCharge;
             return Task.FromResult(commandState);
         }
 

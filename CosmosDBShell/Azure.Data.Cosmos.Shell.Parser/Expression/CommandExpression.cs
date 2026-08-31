@@ -137,7 +137,7 @@ internal class CommandExpression : Expression
         if (shell.App.Commands.TryGetValue(this.Name, out var factory))
         {
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
-            return await cmd.ExecuteAsync(shell, commandState, string.Empty, token);
+            return await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token);
         }
 
         // Check for script files

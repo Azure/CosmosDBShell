@@ -631,13 +631,20 @@ internal class QueryCommand : CosmosCommand
             using ResponseMessage? response = feedIterator.HasMoreResults
                 ? await feedIterator.ReadNextAsync(token)
                 : null;
-            if (response is not null)
+            double requestCharge = response?.Headers.RequestCharge ?? 0;
+            if (response is not null && !response.IsSuccessStatusCode)
             {
-                await this.ThrowIfRequestFailedAsync(response, shell);
+                try
+                {
+                    await this.ThrowIfRequestFailedAsync(response, shell);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    return new ErrorCommandState(ex) { RequestCharge = requestCharge > 0 ? requestCharge : null };
+                }
             }
 
             var cumulative = response?.Diagnostics.GetQueryMetrics()?.CumulativeMetrics;
-            double requestCharge = response?.Headers.RequestCharge ?? 0;
 
             var (planAvailable, utilized, potential) = ParseIndexPlan(response?.IndexMetrics);
             var evaluation = EvaluatePlan(
@@ -713,7 +720,19 @@ internal class QueryCommand : CosmosCommand
 
                 using var response = await feedIterator.ReadNextAsync(token);
 
-                await this.ThrowIfRequestFailedAsync(response, shell);
+                var pageRequestCharge = response.Headers.RequestCharge;
+                if (!response.IsSuccessStatusCode)
+                {
+                    try
+                    {
+                        await this.ThrowIfRequestFailedAsync(response, shell);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        var failedCharge = totalRequestCharge + pageRequestCharge;
+                        return new ErrorCommandState(ex) { RequestCharge = failedCharge > 0 ? failedCharge : null };
+                    }
+                }
 
                 if (response.Content == null)
                 {
@@ -734,7 +753,6 @@ internal class QueryCommand : CosmosCommand
                 // metrics (and their TotalRequestCharge) can be null when diagnostics are
                 // unavailable. Accumulate and report from the headers so the charge is always
                 // correct; the detailed metrics payload is built separately from the response.
-                var pageRequestCharge = response.Headers.RequestCharge;
                 totalRequestCharge += pageRequestCharge;
                 AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", pageRequestCharge.ToString("F2", CultureInfo.InvariantCulture) } }));
 

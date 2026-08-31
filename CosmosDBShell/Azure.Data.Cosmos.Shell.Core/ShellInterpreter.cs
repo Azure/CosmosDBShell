@@ -922,6 +922,21 @@ public partial class ShellInterpreter : IDisposable
     internal void RecordRequestCharge(CommandState commandState)
         => this.RecordRequestCharge(commandState, this.SessionRequestChargeGeneration);
 
+    internal async Task<CommandState> ExecuteCosmosCommandAsync(
+        CosmosCommand command,
+        CommandState commandState,
+        string commandText,
+        CancellationToken token)
+    {
+        // CommandState is intentionally reused by pipelines and expressions. Clear the
+        // previous command's charge so an uninstrumented command cannot count it again.
+        commandState.RequestCharge = null;
+        var generation = this.SessionRequestChargeGeneration;
+        var result = await command.ExecuteAsync(this, commandState, commandText, token);
+        this.RecordRequestCharge(result, generation);
+        return result;
+    }
+
     internal void RecordRequestCharge(CommandState commandState, long generation)
     {
         if (commandState.RequestCharge is { } requestCharge)
