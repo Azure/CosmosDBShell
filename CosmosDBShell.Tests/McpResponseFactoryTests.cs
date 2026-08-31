@@ -115,6 +115,17 @@ public class McpResponseFactoryTests
     }
 
     [Fact]
+    public void CreateError_WithRequestCharge_IncludesChargeInEquivalentPayloads()
+    {
+        var result = McpResponseFactory.CreateError("boom", new DatabaseState("TestDatabase", null!), 2.5);
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+
+        using var document = JsonDocument.Parse(text);
+        Assert.Equal(2.5, document.RootElement.GetProperty("requestCharge").GetDouble());
+        Assert.Equal(document.RootElement.GetRawText(), result.StructuredContent?.GetRawText());
+    }
+
+    [Fact]
     public void CreateSuccess_WhenDisconnected_UsesNullCurrentLocation()
     {
         var result = McpResponseFactory.CreateSuccess(new CommandState(), new DisconnectedState());
