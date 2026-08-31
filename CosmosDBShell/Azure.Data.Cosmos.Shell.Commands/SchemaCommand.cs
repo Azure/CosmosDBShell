@@ -143,8 +143,8 @@ internal class SchemaCommand : CosmosCommand
         JsonValueKind.True or JsonValueKind.False => "boolean",
         JsonValueKind.Object => "object",
         JsonValueKind.Array => "array",
-        JsonValueKind.Null => "null",
-        _ => "undefined",
+        JsonValueKind.Null or JsonValueKind.Undefined => "null",
+        _ => "null",
     };
 
     private static async Task<List<JsonElement>> SampleDocumentsAsync(Container container, int sample, CancellationToken token)
