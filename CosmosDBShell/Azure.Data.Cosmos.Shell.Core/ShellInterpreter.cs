@@ -48,6 +48,8 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly HashSet<string> diagnosticSecrets = new(StringComparer.Ordinal);
 
+    private readonly object sessionRequestChargeLock = new();
+
     private TokenCredential? activeCredential;
 
     private LineEditor? lineEditor;
@@ -63,6 +65,10 @@ public partial class ShellInterpreter : IDisposable
     private bool disposedValue;
 
     private List<string> history;
+
+    private double sessionRequestCharge;
+
+    private long sessionRequestChargeGeneration;
 
     internal ShellInterpreter(string? configPath = null)
     {
@@ -149,6 +155,31 @@ public partial class ShellInterpreter : IDisposable
     /// or <c>Emulator</c>), or <c>null</c> when not connected.
     /// </summary>
     internal string? ActiveCredentialType { get; private set; }
+
+    /// <summary>
+    /// Gets the request charge observed from instrumented commands since the most recent connection.
+    /// </summary>
+    internal double SessionRequestCharge
+    {
+        get
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                return this.sessionRequestCharge;
+            }
+        }
+    }
+
+    internal long SessionRequestChargeGeneration
+    {
+        get
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                return this.sessionRequestChargeGeneration;
+            }
+        }
+    }
 
     internal string HistoryFile { get; private set; }
 
@@ -888,6 +919,23 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
+    internal void RecordRequestCharge(CommandState commandState)
+        => this.RecordRequestCharge(commandState, this.SessionRequestChargeGeneration);
+
+    internal void RecordRequestCharge(CommandState commandState, long generation)
+    {
+        if (commandState.RequestCharge is { } requestCharge)
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                if (generation == this.sessionRequestChargeGeneration)
+                {
+                    this.sessionRequestCharge += requestCharge;
+                }
+            }
+        }
+    }
+
     internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, CredentialMethod credentialMethod = CredentialMethod.Default, string? subscriptionId = null, string? resourceGroupName = null, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
@@ -1492,6 +1540,12 @@ public partial class ShellInterpreter : IDisposable
     {
         this.State?.Dispose();
         this.State = new ConnectedState(client, armContext);
+        lock (this.sessionRequestChargeLock)
+        {
+            this.sessionRequestCharge = 0;
+            this.sessionRequestChargeGeneration++;
+        }
+
         this.activeCredential = credential;
         this.ActiveCredentialType = credentialTypeOverride ?? credential?.GetType().Name;
         this.CurrentBatch = null;

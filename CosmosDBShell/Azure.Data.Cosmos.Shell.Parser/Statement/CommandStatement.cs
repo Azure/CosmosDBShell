@@ -185,8 +185,15 @@ internal class CommandStatement : Statement
                 return HelpCommand.PrintCommandHelp(this.Name, shell.App, false);
             }
 
+            // CommandState is intentionally reused by pipelines. Clear the previous command's
+            // charge before dispatch so it cannot be counted again when the next command does
+            // not issue an instrumented Cosmos DB request.
+            commandState.RequestCharge = null;
+            var requestChargeGeneration = shell.SessionRequestChargeGeneration;
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
-            return await cmd.ExecuteAsync(shell, commandState, string.Empty, token);
+            var result = await cmd.ExecuteAsync(shell, commandState, string.Empty, token);
+            shell.RecordRequestCharge(result, requestChargeGeneration);
+            return result;
         }
 
         if (File.Exists(this.Name))

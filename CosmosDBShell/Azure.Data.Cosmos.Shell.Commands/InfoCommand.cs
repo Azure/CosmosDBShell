@@ -82,17 +82,17 @@ internal class InfoCommand : CosmosCommand
             // If both database and container are resolved, show container settings
             if (!string.IsNullOrEmpty(databaseName) && !string.IsNullOrEmpty(containerName))
             {
-                return await this.ShowContainerSettingsAsync(connectedState, databaseName, containerName, commandState, renderOutput, token);
+                return await this.ShowContainerSettingsAsync(shell, connectedState, databaseName, containerName, commandState, renderOutput, token);
             }
 
             // If only a database is resolved, show database settings
             if (!string.IsNullOrEmpty(databaseName))
             {
-                return await this.ShowDatabaseSettingsAsync(connectedState, databaseName, commandState, renderOutput, token);
+                return await this.ShowDatabaseSettingsAsync(shell, connectedState, databaseName, commandState, renderOutput, token);
             }
 
             // Otherwise show account overview
-            return await this.PrintOverviewAsync(connectedState, commandState, renderOutput, token);
+            return await this.PrintOverviewAsync(shell, connectedState, commandState, renderOutput, token);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -299,6 +299,28 @@ internal class InfoCommand : CosmosCommand
         }
 
         AnsiConsole.Write(databaseTable);
+    }
+
+    internal static void AddSessionUsage(ShellInterpreter shell, Dictionary<string, object?> mcpTable, bool renderOutput)
+    {
+        mcpTable["session"] = new Dictionary<string, object?>
+        {
+            ["requestCharge"] = shell.SessionRequestCharge,
+        };
+
+        if (!renderOutput)
+        {
+            return;
+        }
+
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-session-heading")));
+        var table = new Table();
+        table.AddColumns(string.Empty, string.Empty);
+        table.HideHeaders();
+        table.AddRow(
+            MessageService.GetString("command-stats-session-request-charge"),
+            Theme.FormatTableValue(shell.SessionRequestCharge.ToString("0.##", CultureInfo.InvariantCulture)));
+        AnsiConsole.Write(table);
     }
 
     private static async Task<ContainerUsageStats> ReadContainerUsageAsync(Container container, CancellationToken token)
@@ -655,7 +677,7 @@ internal class InfoCommand : CosmosCommand
         return string.Create(CultureInfo.InvariantCulture, $"{value:0.##} {units[unit]}");
     }
 
-    private async Task<CommandState> ShowContainerSettingsAsync(ConnectedState state, string databaseName, string containerName, CommandState commandState, bool renderOutput, CancellationToken token)
+    private async Task<CommandState> ShowContainerSettingsAsync(ShellInterpreter shell, ConnectedState state, string databaseName, string containerName, CommandState commandState, bool renderOutput, CancellationToken token)
     {
         await ValidateContainerExistsAsync(state, databaseName, containerName, "info", token);
         var view = await CosmosResourceFacade.GetContainerSettingsAsync(state, databaseName, containerName, token);
@@ -939,12 +961,13 @@ internal class InfoCommand : CosmosCommand
             mcpTable["topPartitionKeys"] = await WriteTopPartitionKeysAsync(container, view.PartitionKeyPaths, renderOutput, token);
         }
 
+        AddSessionUsage(shell, mcpTable, renderOutput);
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
         commandState.RenderUser = renderOutput ? () => { } : null;
         return commandState;
     }
 
-    private async Task<CommandState> ShowDatabaseSettingsAsync(ConnectedState state, string databaseName, CommandState commandState, bool renderOutput, CancellationToken token)
+    private async Task<CommandState> ShowDatabaseSettingsAsync(ShellInterpreter shell, ConnectedState state, string databaseName, CommandState commandState, bool renderOutput, CancellationToken token)
     {
         await ValidateDatabaseExistsAsync(state, databaseName, "info", token);
 
@@ -1027,12 +1050,13 @@ internal class InfoCommand : CosmosCommand
             mcpTable["containers"] = perContainer;
         }
 
+        AddSessionUsage(shell, mcpTable, renderOutput);
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
         commandState.RenderUser = renderOutput ? () => { } : null;
         return commandState;
     }
 
-    private async Task<CommandState> PrintOverviewAsync(ConnectedState state, CommandState commandState, bool renderOutput, CancellationToken token)
+    private async Task<CommandState> PrintOverviewAsync(ShellInterpreter shell, ConnectedState state, CommandState commandState, bool renderOutput, CancellationToken token)
     {
         var client = state.Client;
         var acc = await client.ReadAccountAsync();
@@ -1070,6 +1094,7 @@ internal class InfoCommand : CosmosCommand
             await WriteAccountDatabaseBreakdownAsync(state, databaseNames, mcpTable, renderOutput, token);
         }
 
+        AddSessionUsage(shell, mcpTable, renderOutput);
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
         commandState.RenderUser = renderOutput ? () => { } : null;
         return commandState;

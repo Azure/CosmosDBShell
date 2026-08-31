@@ -4,6 +4,7 @@
 
 namespace CosmosShell.Tests.CommandTests;
 
+using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.States;
@@ -133,6 +134,66 @@ public class InfoCommandTests
     public void FormatSize_Null_ReturnsNotAvailable()
     {
         Assert.Equal(MessageService.GetString("command-stats-na"), InfoCommand.FormatSize(null));
+    }
+
+    [Fact]
+    public void SessionRequestCharge_AccumulatesObservedCharges()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+
+        shell.RecordRequestCharge(new CommandState { RequestCharge = 1.25 });
+        shell.RecordRequestCharge(new CommandState());
+        shell.RecordRequestCharge(new ErrorCommandState(new InvalidOperationException()) { RequestCharge = 2.5 });
+
+        Assert.Equal(3.75, shell.SessionRequestCharge);
+    }
+
+    [Fact]
+    public void Connect_ResetsSessionRequestCharge()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.RecordRequestCharge(new CommandState { RequestCharge = 4.5 });
+
+        shell.Connect(CreateTestClient(), credentialTypeOverride: "AccountKey");
+
+        Assert.Equal(0, shell.SessionRequestCharge);
+    }
+
+    [Fact]
+    public void Disconnect_DoesNotResetSessionRequestCharge()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Connect(CreateTestClient(), credentialTypeOverride: "AccountKey");
+        shell.RecordRequestCharge(new CommandState { RequestCharge = 4.5 });
+
+        shell.Disconnect();
+
+        Assert.Equal(4.5, shell.SessionRequestCharge);
+    }
+
+    [Fact]
+    public void AddSessionUsage_AddsCurrentChargeToStructuredResult()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.RecordRequestCharge(new CommandState { RequestCharge = 3.75 });
+        var result = new Dictionary<string, object?>();
+
+        InfoCommand.AddSessionUsage(shell, result, renderOutput: false);
+
+        var json = JsonSerializer.SerializeToElement(result);
+        Assert.Equal(3.75, json.GetProperty("session").GetProperty("requestCharge").GetDouble());
+    }
+
+    [Fact]
+    public void RecordRequestCharge_IgnoresPriorConnectionGeneration()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var generation = shell.SessionRequestChargeGeneration;
+        shell.Connect(CreateTestClient(), credentialTypeOverride: "AccountKey");
+
+        shell.RecordRequestCharge(new CommandState { RequestCharge = 8 }, generation);
+
+        Assert.Equal(0, shell.SessionRequestCharge);
     }
 
     [Theory]

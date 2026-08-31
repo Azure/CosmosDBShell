@@ -108,3 +108,9 @@ Successful results set `result` (and optionally `outputText`); failed results se
 
 This field reports observed cost; it does not enforce an RU budget. Budget guardrails are tracked separately in [#162](https://github.com/Azure/CosmosDBShell/issues/162).
 
+The `info` command result also includes `session.requestCharge`, the cumulative
+charge observed from instrumented commands during the current connection. A
+successful `connect` starts a new total; navigation between databases and
+containers does not reset it. This session value is telemetry rather than a
+budget or billing total.
+
