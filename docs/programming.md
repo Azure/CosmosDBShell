@@ -72,6 +72,23 @@ echo $"Hello $name"       # interpolate
 echo "Hello $name"        # print $name literally
 ```
 
+### Session request charge variables
+
+The shell provides three built-in session variables:
+
+| Variable | Description |
+| --- | --- |
+| `$sessionRequestCharge` | Read-only cumulative request charge observed during the current connection. |
+| `$sessionChargedOperationCount` | Read-only number of command operations that reported a positive charge. |
+| `$sessionMaxRequestCharge` | Configurable warning threshold in RUs. A positive value enables the warning; `0` disables it. |
+
+For example, `$sessionMaxRequestCharge = 100` prints one warning when the
+current connection reaches or exceeds 100 observed RUs. The warning is emitted
+only once for that threshold. A successful `connect` resets the accumulated
+charge and operation count and rearms the warning, while preserving the
+configured maximum. Assigning a different positive maximum also rearms the
+warning for the new threshold.
+
 For script positional parameters, see [Writing and Running Scripts](#writing-and-running-scripts).
 
 ## Writing and Running Scripts

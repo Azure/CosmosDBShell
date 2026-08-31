@@ -115,5 +115,7 @@ successful `connect` starts a new total; navigation between databases and
 containers does not reset it. This session value is telemetry rather than a
 budget or billing total. `session.chargedOperationCount` counts
 command operations that reported a positive request charge; it counts command
-operations rather than individual query pages or transactional batch items.
+operations rather than individual query pages or transactional batch items. If
+the shell variable `$sessionMaxRequestCharge` is set to a positive value, the
+session object also includes `session.maxRequestCharge`.
 

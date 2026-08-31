@@ -142,6 +142,21 @@ internal class CosmosShellCompletionHandler : ICompletionHandler
         }
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in ShellInterpreter.SessionVariableNames)
+        {
+            string variableName = "$" + name;
+            if (seen.Add(name) && variableName.StartsWith(partial, StringComparison.OrdinalIgnoreCase))
+            {
+                items.Add(new CompletionItem
+                {
+                    Label = variableName,
+                    Kind = CompletionItemKind.Variable,
+                    InsertText = variableName,
+                    SortText = "0_" + name,
+                });
+            }
+        }
+
         foreach (var container in ShellInterpreter.Instance.VariableContainers.Reverse())
         {
             foreach (var name in container.Variables.Keys)

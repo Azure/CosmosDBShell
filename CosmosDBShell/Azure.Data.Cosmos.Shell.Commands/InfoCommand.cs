@@ -307,11 +307,17 @@ internal class InfoCommand : CosmosCommand
         var currentRequestCharge = RequestChargeContext.CurrentRequestCharge;
         var requestCharge = sessionUsage.RequestCharge + currentRequestCharge;
         var chargedOperationCount = sessionUsage.ChargedOperationCount + (currentRequestCharge > 0 ? 1 : 0);
-        mcpTable["session"] = new Dictionary<string, object?>
+        var session = new Dictionary<string, object?>
         {
             ["requestCharge"] = requestCharge,
             ["chargedOperationCount"] = chargedOperationCount,
         };
+        if (sessionUsage.MaxRequestCharge > 0)
+        {
+            session["maxRequestCharge"] = sessionUsage.MaxRequestCharge;
+        }
+
+        mcpTable["session"] = session;
 
         if (!renderOutput)
         {
@@ -328,6 +334,13 @@ internal class InfoCommand : CosmosCommand
         table.AddRow(
             MessageService.GetString("command-stats-session-charged-operations"),
             Theme.FormatTableValue(chargedOperationCount.ToString(CultureInfo.InvariantCulture)));
+        if (sessionUsage.MaxRequestCharge > 0)
+        {
+            table.AddRow(
+                MessageService.GetString("command-stats-session-max-request-charge"),
+                Theme.FormatTableValue(sessionUsage.MaxRequestCharge.ToString("0.##", CultureInfo.InvariantCulture)));
+        }
+
         AnsiConsole.Write(table);
     }
 

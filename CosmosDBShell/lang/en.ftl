@@ -934,6 +934,10 @@ command-stats-account-detailed-cost-note = Aggregating account totals reads ever
 command-stats-session-heading = Session Usage
 command-stats-session-request-charge = Observed request charge (RUs)
 command-stats-session-charged-operations = Charged operations
+command-stats-session-max-request-charge = Warning threshold (RUs)
+warning-session-max-request-charge-reached = Session request charge { $requestCharge } RUs has reached the configured warning threshold of { $maximum } RUs.
+error-session-variable-read-only = Variable '${ $name }' is read-only.
+error-session-max-request-charge-invalid = Variable '$sessionMaxRequestCharge' must be a non-negative number. Set it to 0 to disable the warning.
 
 command-version-description = Displays the version of Cosmos DB Shell.
 command-version = Cosmos Shell version: { $version }

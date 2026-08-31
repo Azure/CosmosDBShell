@@ -25,6 +25,12 @@ using Spectre.Console;
 /// </summary>
 public partial class ShellInterpreter : IDisposable
 {
+    private const string SessionRequestChargeVariable = "sessionRequestCharge";
+
+    private const string SessionChargedOperationCountVariable = "sessionChargedOperationCount";
+
+    private const string SessionMaxRequestChargeVariable = "sessionMaxRequestCharge";
+
     internal static readonly ShellInterpreter Instance = new();
 
     private const int MAXHISTORYITEMS = 60;
@@ -69,6 +75,10 @@ public partial class ShellInterpreter : IDisposable
     private double sessionRequestCharge;
 
     private long sessionChargedOperationCount;
+
+    private double sessionMaxRequestCharge;
+
+    private bool sessionRequestChargeWarningIssued;
 
     private long sessionRequestChargeGeneration;
 
@@ -143,6 +153,13 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    internal static IReadOnlyList<string> SessionVariableNames { get; } =
+    [
+        SessionRequestChargeVariable,
+        SessionChargedOperationCountVariable,
+        SessionMaxRequestChargeVariable,
+    ];
+
     internal Dictionary<string, DefStatement> Functions { get; } = [];
 
     /// <summary>
@@ -187,13 +204,13 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
-    internal (double RequestCharge, long ChargedOperationCount) SessionUsage
+    internal (double RequestCharge, long ChargedOperationCount, double MaxRequestCharge) SessionUsage
     {
         get
         {
             lock (this.sessionRequestChargeLock)
             {
-                return (this.sessionRequestCharge, this.sessionChargedOperationCount);
+                return (this.sessionRequestCharge, this.sessionChargedOperationCount, this.sessionMaxRequestCharge);
             }
         }
     }
@@ -720,6 +737,24 @@ public partial class ShellInterpreter : IDisposable
 
     internal ShellObject GetVariable(string name)
     {
+        lock (this.sessionRequestChargeLock)
+        {
+            if (string.Equals(name, SessionRequestChargeVariable, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ShellDecimal(this.sessionRequestCharge);
+            }
+
+            if (string.Equals(name, SessionChargedOperationCountVariable, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ShellDecimal(this.sessionChargedOperationCount);
+            }
+
+            if (string.Equals(name, SessionMaxRequestChargeVariable, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ShellDecimal(this.sessionMaxRequestCharge);
+            }
+        }
+
         var scope = this.GetScope(name);
         if (scope?.TryGetValue(name, out var value) == true)
         {
@@ -990,6 +1025,9 @@ public partial class ShellInterpreter : IDisposable
 
     internal void RecordRequestCharge(CommandState commandState, long generation)
     {
+        bool printWarning = false;
+        double requestChargeTotal = 0;
+        double requestChargeMaximum = 0;
         if (commandState.RequestCharge is { } requestCharge)
         {
             lock (this.sessionRequestChargeLock)
@@ -1001,8 +1039,23 @@ public partial class ShellInterpreter : IDisposable
                     {
                         this.sessionChargedOperationCount++;
                     }
+
+                    if (this.sessionMaxRequestCharge > 0
+                        && !this.sessionRequestChargeWarningIssued
+                        && this.sessionRequestCharge >= this.sessionMaxRequestCharge)
+                    {
+                        this.sessionRequestChargeWarningIssued = true;
+                        printWarning = true;
+                        requestChargeTotal = this.sessionRequestCharge;
+                        requestChargeMaximum = this.sessionMaxRequestCharge;
+                    }
                 }
             }
+        }
+
+        if (printWarning)
+        {
+            this.PrintSessionRequestChargeWarning(requestChargeTotal, requestChargeMaximum);
         }
     }
 
@@ -1614,6 +1667,7 @@ public partial class ShellInterpreter : IDisposable
         {
             this.sessionRequestCharge = 0;
             this.sessionChargedOperationCount = 0;
+            this.sessionRequestChargeWarningIssued = false;
             this.sessionRequestChargeGeneration++;
         }
 
@@ -1877,6 +1931,18 @@ public partial class ShellInterpreter : IDisposable
 
     internal void SetVariable(string variableName, ShellObject value)
     {
+        if (string.Equals(variableName, SessionRequestChargeVariable, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(variableName, SessionChargedOperationCountVariable, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ShellException(MessageService.GetArgsString("error-session-variable-read-only", "name", variableName));
+        }
+
+        if (string.Equals(variableName, SessionMaxRequestChargeVariable, StringComparison.OrdinalIgnoreCase))
+        {
+            this.SetSessionMaxRequestCharge(value);
+            return;
+        }
+
         // Ensure we have at least one variable container (global scope)
         if (this.VariableContainers.Count == 0)
         {
@@ -1917,6 +1983,70 @@ public partial class ShellInterpreter : IDisposable
 
         // Store the variable in the current scope
         currentScope.Set(variableName, shellValue);
+    }
+
+    private void SetSessionMaxRequestCharge(ShellObject value)
+    {
+        double maximum = value switch
+        {
+            ShellNumber number => number.Value,
+            ShellDecimal decimalValue => decimalValue.Value,
+            _ => double.NaN,
+        };
+
+        if (!double.IsFinite(maximum) || maximum < 0)
+        {
+            throw new ShellException(MessageService.GetString("error-session-max-request-charge-invalid"));
+        }
+
+        bool printWarning;
+        double requestChargeTotal;
+        lock (this.sessionRequestChargeLock)
+        {
+            if (maximum != this.sessionMaxRequestCharge)
+            {
+                this.sessionRequestChargeWarningIssued = false;
+            }
+
+            this.sessionMaxRequestCharge = maximum;
+            printWarning = maximum > 0
+                && !this.sessionRequestChargeWarningIssued
+                && this.sessionRequestCharge >= maximum;
+            if (printWarning)
+            {
+                this.sessionRequestChargeWarningIssued = true;
+            }
+
+            requestChargeTotal = this.sessionRequestCharge;
+        }
+
+        if (printWarning)
+        {
+            this.PrintSessionRequestChargeWarning(requestChargeTotal, maximum);
+        }
+    }
+
+    private void PrintSessionRequestChargeWarning(double requestCharge, double maximum)
+    {
+        var message = MessageService.GetArgsString(
+            "warning-session-max-request-charge-reached",
+            "requestCharge",
+            requestCharge.ToString("0.##", CultureInfo.InvariantCulture),
+            "maximum",
+            maximum.ToString("0.##", CultureInfo.InvariantCulture));
+
+        if (this.IsMachineMode)
+        {
+            Console.Error.WriteLine(JsonSerializer.Serialize(new Dictionary<string, string>
+            {
+                ["status"] = "warning",
+                ["warning"] = message,
+            }));
+        }
+        else
+        {
+            AnsiConsole.MarkupLine(Theme.FormatWarning(message));
+        }
     }
 
     /// <summary>

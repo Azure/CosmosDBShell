@@ -7,6 +7,7 @@ namespace CosmosShell.Tests.CommandTests;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
@@ -203,6 +204,19 @@ public class InfoCommandTests
         var json = JsonSerializer.SerializeToElement(result);
         Assert.Equal(5, json.GetProperty("session").GetProperty("requestCharge").GetDouble());
         Assert.Equal(2, json.GetProperty("session").GetProperty("chargedOperationCount").GetInt64());
+    }
+
+    [Fact]
+    public void AddSessionUsage_IncludesConfiguredMaximum()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.SetVariable("sessionMaxRequestCharge", new ShellDecimal(25.5));
+        var result = new Dictionary<string, object?>();
+
+        InfoCommand.AddSessionUsage(shell, result, renderOutput: false);
+
+        var session = JsonSerializer.SerializeToElement(result).GetProperty("session");
+        Assert.Equal(25.5, session.GetProperty("maxRequestCharge").GetDouble());
     }
 
     [Fact]

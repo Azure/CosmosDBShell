@@ -88,6 +88,17 @@ public class CosmosShellCompletionHandlerTests
     }
 
     [Fact]
+    public async Task VariableCompletion_SuggestsSessionVariables()
+    {
+        var completions = await GetCompletionsAsync("echo $session", 0, 13);
+        var labels = Labels(completions);
+
+        Assert.Contains("$sessionRequestCharge", labels);
+        Assert.Contains("$sessionChargedOperationCount", labels);
+        Assert.Contains("$sessionMaxRequestCharge", labels);
+    }
+
+    [Fact]
     public async Task VariableCompletion_IgnoresWhenNotVariableContext()
     {
         var completions = await GetCompletionsAsync("echo fo", 0, 7);

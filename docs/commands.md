@@ -1362,8 +1362,9 @@ storage and document count across all databases. In JSON output the connection
 total is available as `session.requestCharge`, and `session.chargedOperationCount`
 counts command operations that reported a positive charge. Paginated and
 multi-request commands contribute their aggregate observed charge. Azure Resource
-Manager control-plane operations do not consume Cosmos DB request units. This
-command is read-only.
+Manager control-plane operations do not consume Cosmos DB request units. When
+`$sessionMaxRequestCharge` is positive, `session.maxRequestCharge` reports the
+configured warning threshold. This command is read-only.
 
 ### help
 
