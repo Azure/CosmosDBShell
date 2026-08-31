@@ -810,6 +810,8 @@ discovery query stays bounded both server-side and in the client.
 Inferred fields use dot notation for nested objects (for example `address.city`). Each
 field lists the distinct JSON types observed (`string`, `number`, `boolean`, `object`,
 `array`, or `null`) and the number of sampled documents in which the field was present.
+The `indexingPolicy` summary contains `indexingMode`, `automatic`, `includedPaths`,
+`excludedPaths`, `compositeIndexes`, `spatialIndexes`, and `vectorIndexes`.
 
 #### Examples
 
