@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Commands;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
@@ -80,6 +81,18 @@ internal class SchemaCommand : CosmosCommand
             long? documentCountEstimate = InfoCommand.ParseResourceUsage(containerResponse!.Headers[ResourceUsageHeader]).DocumentCount;
 
             return BuildResult(databaseName, containerName, containerResponse.Resource, documentCountEstimate, sampleSize, sampledDocuments.Count, fields);
+        }
+        catch (CosmosException e) when (e.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new CommandException(
+                "schema",
+                MessageService.GetArgsString(
+                    "error-container_not_found",
+                    "container",
+                    containerName,
+                    "database",
+                    databaseName),
+                e);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -191,7 +204,7 @@ internal class SchemaCommand : CosmosCommand
         return documents;
     }
 
-    internal static string BuildSampleQueryText(int sample) => $"SELECT TOP {sample} * FROM c";
+    internal static string BuildSampleQueryText(int sample) => FormattableString.Invariant($"SELECT TOP {sample} * FROM c");
 
     internal static CommandState BuildFieldsOnlyResult(int sampledDocuments, IReadOnlyList<FieldSchema> fields)
     {

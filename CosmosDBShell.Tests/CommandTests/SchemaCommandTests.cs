@@ -4,6 +4,7 @@
 
 namespace CosmosShell.Tests.CommandTests;
 
+using System.Globalization;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
@@ -56,6 +57,22 @@ public class SchemaCommandTests
     public void BuildSampleQueryText_UsesServerSideTopLimit()
     {
         Assert.Equal("SELECT TOP 42 * FROM c", SchemaCommand.BuildSampleQueryText(42));
+    }
+
+    [Fact]
+    public void BuildSampleQueryText_FormatsLimitInvariantly()
+    {
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fa-IR");
+
+            Assert.Equal("SELECT TOP 42 * FROM c", SchemaCommand.BuildSampleQueryText(42));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+        }
     }
 
     [Fact]
