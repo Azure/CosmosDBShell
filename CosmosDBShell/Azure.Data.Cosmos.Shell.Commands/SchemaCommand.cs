@@ -61,12 +61,12 @@ internal class SchemaCommand : CosmosCommand
 
         try
         {
-            var settings = await CosmosResourceFacade.GetContainerSettingsAsync(connectedState, databaseName!, containerName!, token);
+            var containerResponse = await container.ReadContainerAsync(new ContainerRequestOptions { PopulateQuotaInfo = true }, token);
             var sampledDocuments = await SampleDocumentsAsync(container, sampleSize, token);
-            long? documentCountEstimate = await ReadDocumentCountEstimateAsync(container, token);
+            long? documentCountEstimate = InfoCommand.ParseResourceUsage(containerResponse.Headers[ResourceUsageHeader]).DocumentCount;
             var fields = InferSchema(sampledDocuments);
 
-            return BuildResult(databaseName!, containerName!, settings, documentCountEstimate, sampleSize, sampledDocuments.Count, fields);
+            return BuildResult(databaseName!, containerName!, containerResponse.Resource, documentCountEstimate, sampleSize, sampledDocuments.Count, fields);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -90,7 +90,7 @@ internal class SchemaCommand : CosmosCommand
 
     /// <summary>
     /// Infers a per-field type summary from a bounded set of sampled documents. Fields are
-    /// reported using dot notation for nested objects up to <paramref name="maxDepth"/> levels.
+    /// reported using dot notation with at most <paramref name="maxDepth"/> path segments.
     /// Each field lists the distinct JSON types observed and the number of sampled documents in
     /// which the field was present.
     /// </summary>
@@ -169,39 +169,36 @@ internal class SchemaCommand : CosmosCommand
         return documents;
     }
 
-    private static async Task<long?> ReadDocumentCountEstimateAsync(Container container, CancellationToken token)
-    {
-        var response = await container.ReadContainerAsync(new ContainerRequestOptions { PopulateQuotaInfo = true }, token);
-        return InfoCommand.ParseResourceUsage(response.Headers[ResourceUsageHeader]).DocumentCount;
-    }
-
     private static CommandState BuildResult(
         string databaseName,
         string containerName,
-        ContainerSettingsView settings,
+        ContainerProperties properties,
         long? documentCountEstimate,
         int sampleSize,
         int sampledDocuments,
         IReadOnlyList<FieldSchema> fields)
     {
-        Dictionary<string, object?>? indexingPolicy = settings.IndexingPolicy is { } indexing
+        Dictionary<string, object?>? indexingPolicy = properties.IndexingPolicy is { } indexing
             ? new Dictionary<string, object?>
             {
-                ["indexingMode"] = indexing.IndexingMode,
+                ["indexingMode"] = indexing.IndexingMode.ToString(),
                 ["automatic"] = indexing.Automatic,
-                ["includedPaths"] = indexing.IncludedPathCount,
-                ["excludedPaths"] = indexing.ExcludedPathCount,
-                ["compositeIndexes"] = indexing.CompositeIndexCount,
-                ["spatialIndexes"] = indexing.SpatialIndexCount,
-                ["vectorIndexes"] = indexing.VectorIndexCount,
+                ["includedPaths"] = indexing.IncludedPaths?.Count ?? 0,
+                ["excludedPaths"] = indexing.ExcludedPaths?.Count ?? 0,
+                ["compositeIndexes"] = indexing.CompositeIndexes?.Count ?? 0,
+                ["spatialIndexes"] = indexing.SpatialIndexes?.Count ?? 0,
+                ["vectorIndexes"] = indexing.VectorIndexes?.Count ?? 0,
             }
             : null;
+
+        IReadOnlyList<string> partitionKeyPaths = properties.PartitionKeyPaths?.ToArray()
+            ?? (properties.PartitionKeyPath != null ? [properties.PartitionKeyPath] : []);
 
         var output = new Dictionary<string, object?>
         {
             ["database"] = databaseName,
             ["container"] = containerName,
-            ["partitionKeyPaths"] = settings.PartitionKeyPaths,
+            ["partitionKeyPaths"] = partitionKeyPaths,
             ["documentCountEstimate"] = documentCountEstimate,
             ["sampleSize"] = sampleSize,
             ["sampledDocuments"] = sampledDocuments,

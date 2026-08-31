@@ -788,9 +788,9 @@ index set '{"indexingMode":"consistent","automatic":true,"includedPaths":[{"path
 
 Infer the schema of a container from a small, bounded sample. The command returns the
 partition key path(s), an indexing policy summary, an estimated document count, and the
-field types inferred from the sample. It is read-only and issues a single bounded query,
-making it a cheap way for agents and users to discover a container's structure without
-re-sampling or guessing field names.
+field types inferred from the sample. It is read-only and uses a bounded sampling query
+along with a container metadata read, making it a cheap way for agents and users to
+discover a container's structure without re-sampling or guessing field names.
 
 ```text
 Usage: schema [-sample <ARG>] [-database <ARG>] [-container <ARG>]
@@ -830,7 +830,7 @@ Sample output:
   "sampleSize": 20,
   "sampledDocuments": 20,
   "indexingPolicy": {
-    "indexingMode": "consistent",
+        "indexingMode": "Consistent",
     "automatic": true,
     "includedPaths": 1,
     "excludedPaths": 1,

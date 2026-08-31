@@ -141,13 +141,10 @@ public class SchemaCommandTests
 
     private static List<JsonElement> Parse(params string[] json)
     {
-        var documents = new List<JsonElement>(json.Length);
-        foreach (var text in json)
+        return json.Select(text =>
         {
             using var document = JsonDocument.Parse(text);
-            documents.Add(document.RootElement.Clone());
-        }
-
-        return documents;
+            return document.RootElement.Clone();
+        }).ToList();
     }
 }
