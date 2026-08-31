@@ -54,46 +54,38 @@ internal class PrintCommand : CosmosCommand
         try
         {
             using var response = await container.ReadItemStreamAsync(this.Id, new PartitionKey(this.PartitionKey), cancellationToken: token);
+            RequestChargeContext.Record(response.Headers.RequestCharge);
 
             if (response.IsSuccessStatusCode)
             {
-                commandState.RequestCharge = response.Headers.RequestCharge;
                 using var reader = new StreamReader(response.Content);
                 var content = await reader.ReadToEndAsync();
 
                 // Parse the content as JSON for structured output
-                var jsonDocument = System.Text.Json.JsonDocument.Parse(content);
-                commandState.Result = new ShellJson(jsonDocument.RootElement);
+                using var jsonDocument = System.Text.Json.JsonDocument.Parse(content);
+                commandState.Result = new ShellJson(jsonDocument.RootElement.Clone());
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
-                return new ErrorCommandState(new CommandException("print", MessageService.GetString("command-print-error-item_not_found", new Dictionary<string, object>
+                throw new CommandException("print", MessageService.GetString("command-print-error-item_not_found", new Dictionary<string, object>
                 {
                     { "id", this.Id ?? "(null)" },
                     { "partitionKey", this.PartitionKey ?? "(null)" },
-                })))
-                {
-                    RequestCharge = response.Headers.RequestCharge,
-                };
+                }));
             }
             else
             {
-                return new ErrorCommandState(new CommandException("print", MessageService.GetString("command-print-error-request_failed", new Dictionary<string, object>
+                throw new CommandException("print", MessageService.GetString("command-print-error-request_failed", new Dictionary<string, object>
                 {
                     { "id", this.Id ?? "(null)" },
                     { "status", (int)response.StatusCode },
-                })))
-                {
-                    RequestCharge = response.Headers.RequestCharge,
-                };
+                }));
             }
         }
         catch (CosmosException ex)
         {
-            return new ErrorCommandState(new CommandException("print", MessageService.GetArgsString("command-print-error-reading_item", "message", CommandException.GetDisplayMessage(ex)), ex))
-            {
-                RequestCharge = ex.RequestCharge > 0 ? ex.RequestCharge : null,
-            };
+            RequestChargeContext.Record(ex.RequestCharge);
+            throw new CommandException("print", MessageService.GetArgsString("command-print-error-reading_item", "message", CommandException.GetDisplayMessage(ex)), ex);
         }
 
         return commandState;

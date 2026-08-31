@@ -2003,7 +2003,7 @@ public partial class ShellInterpreter : IDisposable
         double requestChargeTotal;
         lock (this.sessionRequestChargeLock)
         {
-            if (maximum != this.sessionMaxRequestCharge)
+            if (Math.Abs(maximum - this.sessionMaxRequestCharge) > 1e-9)
             {
                 this.sessionRequestChargeWarningIssued = false;
             }

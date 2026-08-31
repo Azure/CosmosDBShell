@@ -130,6 +130,7 @@ internal class ReplaceCommand : CosmosCommand
 
         if (failCount > 0)
         {
+            RequestChargeContext.Record(charge);
             throw new CommandException(
                 "replace",
                 MessageService.GetArgsString(

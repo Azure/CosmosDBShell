@@ -634,14 +634,8 @@ internal class QueryCommand : CosmosCommand
             double requestCharge = response?.Headers.RequestCharge ?? 0;
             if (response is not null && !response.IsSuccessStatusCode)
             {
-                try
-                {
-                    await this.ThrowIfRequestFailedAsync(response, shell);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    return new ErrorCommandState(ex) { RequestCharge = requestCharge > 0 ? requestCharge : null };
-                }
+                RequestChargeContext.Record(requestCharge);
+                await this.ThrowIfRequestFailedAsync(response, shell);
             }
 
             var cumulative = response?.Diagnostics.GetQueryMetrics()?.CumulativeMetrics;
@@ -723,15 +717,8 @@ internal class QueryCommand : CosmosCommand
                 var pageRequestCharge = response.Headers.RequestCharge;
                 if (!response.IsSuccessStatusCode)
                 {
-                    try
-                    {
-                        await this.ThrowIfRequestFailedAsync(response, shell);
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        var failedCharge = totalRequestCharge + pageRequestCharge;
-                        return new ErrorCommandState(ex) { RequestCharge = failedCharge > 0 ? failedCharge : null };
-                    }
+                    RequestChargeContext.Record(totalRequestCharge + pageRequestCharge);
+                    await this.ThrowIfRequestFailedAsync(response, shell);
                 }
 
                 if (response.Content == null)

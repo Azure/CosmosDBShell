@@ -249,7 +249,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 totalCharge += response.Headers.RequestCharge;
 
                 using var streamReader = new StreamReader(response.Content);
-                var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync());
+                using var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync());
 
                 foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
                 {

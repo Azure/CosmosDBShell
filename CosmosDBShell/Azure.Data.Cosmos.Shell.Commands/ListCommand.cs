@@ -236,7 +236,8 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                return new ErrorCommandState(ex) { RequestCharge = returnState.RequestCharge };
+                RequestChargeContext.Record(returnState.RequestCharge ?? 0);
+                throw new CommandException("ls", ex);
             }
 
             using (queryDocument)
