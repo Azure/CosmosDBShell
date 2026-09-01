@@ -266,7 +266,11 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             }
         }
 
-        var reachedLimit = limitReached && effectiveMaxItemCount.HasValue;
+        var reachedLimit = ShouldReportLimitReachedForResult(
+            this.IsMcpRequest,
+            returnState.ContinuationToken,
+            limitReached,
+            effectiveMaxItemCount);
         returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "item", values = list, limitReached = reachedLimit }));
 
         var itemsElement = JsonSerializer.SerializeToElement(new { type = "item", values = list });
@@ -364,5 +368,12 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
     internal static bool ShouldReportLimitReached(int currentCount, int? effectiveMaxItemCount, bool usesServerSideTop, bool iteratorHasMoreResults)
     {
         return ResultLimit.IsLimitReached(currentCount, effectiveMaxItemCount) && (usesServerSideTop || iteratorHasMoreResults);
+    }
+
+    internal static bool ShouldReportLimitReachedForResult(bool isMcpRequest, string? continuationToken, bool limitReached, int? effectiveMaxItemCount)
+    {
+        return isMcpRequest
+            ? continuationToken != null
+            : limitReached && effectiveMaxItemCount.HasValue;
     }
 }
