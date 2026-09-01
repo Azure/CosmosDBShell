@@ -75,7 +75,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
           cache: true
@@ -228,7 +228,7 @@ jobs:
           (github.event_name != 'pull_request' ||
            github.event.pull_request.head.repo.full_name == github.repository) &&
           hashFiles('TestResults/coverage/Cobertura.xml') != ''
-        uses: actions/upload-code-coverage@1c15be36fc3733ba839b1dd643bd9556e4426dc1 # v1.4.1
+        uses: actions/upload-code-coverage@d8e329117199404bba6fc81efe8093dc7c015e34 # v1.4.2
         with:
           file: TestResults/coverage/Cobertura.xml
           language: C#
