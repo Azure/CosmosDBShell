@@ -82,17 +82,17 @@ internal class InfoCommand : CosmosCommand
             // If both database and container are resolved, show container settings
             if (!string.IsNullOrEmpty(databaseName) && !string.IsNullOrEmpty(containerName))
             {
-                return await this.ShowContainerSettingsAsync(connectedState, databaseName, containerName, commandState, renderOutput, token);
+                return await this.ShowContainerSettingsAsync(shell, connectedState, databaseName, containerName, commandState, renderOutput, token);
             }
 
             // If only a database is resolved, show database settings
             if (!string.IsNullOrEmpty(databaseName))
             {
-                return await this.ShowDatabaseSettingsAsync(connectedState, databaseName, commandState, renderOutput, token);
+                return await this.ShowDatabaseSettingsAsync(shell, connectedState, databaseName, commandState, renderOutput, token);
             }
 
             // Otherwise show account overview
-            return await this.PrintOverviewAsync(connectedState, commandState, renderOutput, token);
+            return await this.PrintOverviewAsync(shell, connectedState, commandState, renderOutput, token);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -301,9 +301,53 @@ internal class InfoCommand : CosmosCommand
         AnsiConsole.Write(databaseTable);
     }
 
+    internal static void AddSessionUsage(ShellInterpreter shell, Dictionary<string, object?> mcpTable, bool renderOutput)
+    {
+        var sessionUsage = shell.SessionUsage;
+        var currentRequestCharge = RequestChargeContext.CurrentRequestCharge;
+        var requestCharge = sessionUsage.RequestCharge + currentRequestCharge;
+        var chargedOperationCount = sessionUsage.ChargedOperationCount + (currentRequestCharge > 0 ? 1 : 0);
+        var session = new Dictionary<string, object?>
+        {
+            ["requestCharge"] = requestCharge,
+            ["chargedOperationCount"] = chargedOperationCount,
+        };
+        if (sessionUsage.RequestChargeWarningThreshold > 0)
+        {
+            session["requestChargeWarningThreshold"] = sessionUsage.RequestChargeWarningThreshold;
+        }
+
+        mcpTable["session"] = session;
+
+        if (!renderOutput)
+        {
+            return;
+        }
+
+        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-stats-session-heading")));
+        var table = new Table();
+        table.AddColumns(string.Empty, string.Empty);
+        table.HideHeaders();
+        table.AddRow(
+            MessageService.GetString("command-stats-session-request-charge"),
+            Theme.FormatTableValue(requestCharge.ToString("0.##", CultureInfo.InvariantCulture)));
+        table.AddRow(
+            MessageService.GetString("command-stats-session-charged-operations"),
+            Theme.FormatTableValue(chargedOperationCount.ToString(CultureInfo.InvariantCulture)));
+        if (sessionUsage.RequestChargeWarningThreshold > 0)
+        {
+            table.AddRow(
+            MessageService.GetString("command-stats-session-request-charge-warning-threshold"),
+            Theme.FormatTableValue(sessionUsage.RequestChargeWarningThreshold.ToString("0.##", CultureInfo.InvariantCulture)));
+        }
+
+        AnsiConsole.Write(table);
+    }
+
     private static async Task<ContainerUsageStats> ReadContainerUsageAsync(Container container, CancellationToken token)
     {
         var response = await container.ReadContainerAsync(new ContainerRequestOptions { PopulateQuotaInfo = true }, token);
+        RequestChargeContext.Record(response.RequestCharge);
         return ParseResourceUsage(response.Headers[ResourceUsageHeader]);
     }
 
@@ -316,15 +360,19 @@ internal class InfoCommand : CosmosCommand
         try
         {
             var throughput = await database.ReadThroughputAsync(new RequestOptions(), token);
+            RequestChargeContext.Record(throughput.RequestCharge);
             min = throughput.MinThroughput;
             max = throughput.Resource?.AutoscaleMaxThroughput ?? throughput.Resource?.Throughput ?? min;
         }
         catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
+            RequestChargeContext.Record(ex.RequestCharge);
+
             // Database has no shared throughput; containers provide their own.
         }
         catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest && ThroughputErrors.IsServerlessThroughputError(ex.Message))
         {
+            RequestChargeContext.Record(ex.RequestCharge);
             serverless = true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -490,7 +538,9 @@ internal class InfoCommand : CosmosCommand
         using var iterator = container.GetItemQueryIterator<JsonElement>(new QueryDefinition(queryText));
         while (iterator.HasMoreResults)
         {
-            foreach (var element in await iterator.ReadNextAsync(token))
+            var response = await iterator.ReadNextAsync(token);
+            RequestChargeContext.Record(response.RequestCharge);
+            foreach (var element in response)
             {
                 long count = element.TryGetProperty("count", out var countProperty) && countProperty.TryGetInt64(out var parsed) ? parsed : 0;
                 var keyParts = new List<string>(partitionKeyPaths.Count);
@@ -547,7 +597,9 @@ internal class InfoCommand : CosmosCommand
             new QueryDefinition("SELECT VALUE COUNT(1) FROM c"));
         while (iterator.HasMoreResults)
         {
-            foreach (var value in await iterator.ReadNextAsync(token))
+            var response = await iterator.ReadNextAsync(token);
+            RequestChargeContext.Record(response.RequestCharge);
+            foreach (var value in response)
             {
                 count += value;
             }
@@ -655,7 +707,7 @@ internal class InfoCommand : CosmosCommand
         return string.Create(CultureInfo.InvariantCulture, $"{value:0.##} {units[unit]}");
     }
 
-    private async Task<CommandState> ShowContainerSettingsAsync(ConnectedState state, string databaseName, string containerName, CommandState commandState, bool renderOutput, CancellationToken token)
+    private async Task<CommandState> ShowContainerSettingsAsync(ShellInterpreter shell, ConnectedState state, string databaseName, string containerName, CommandState commandState, bool renderOutput, CancellationToken token)
     {
         await ValidateContainerExistsAsync(state, databaseName, containerName, "info", token);
         var view = await CosmosResourceFacade.GetContainerSettingsAsync(state, databaseName, containerName, token);
@@ -939,12 +991,13 @@ internal class InfoCommand : CosmosCommand
             mcpTable["topPartitionKeys"] = await WriteTopPartitionKeysAsync(container, view.PartitionKeyPaths, renderOutput, token);
         }
 
+        AddSessionUsage(shell, mcpTable, renderOutput);
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
         commandState.RenderUser = renderOutput ? () => { } : null;
         return commandState;
     }
 
-    private async Task<CommandState> ShowDatabaseSettingsAsync(ConnectedState state, string databaseName, CommandState commandState, bool renderOutput, CancellationToken token)
+    private async Task<CommandState> ShowDatabaseSettingsAsync(ShellInterpreter shell, ConnectedState state, string databaseName, CommandState commandState, bool renderOutput, CancellationToken token)
     {
         await ValidateDatabaseExistsAsync(state, databaseName, "info", token);
 
@@ -1027,12 +1080,13 @@ internal class InfoCommand : CosmosCommand
             mcpTable["containers"] = perContainer;
         }
 
+        AddSessionUsage(shell, mcpTable, renderOutput);
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
         commandState.RenderUser = renderOutput ? () => { } : null;
         return commandState;
     }
 
-    private async Task<CommandState> PrintOverviewAsync(ConnectedState state, CommandState commandState, bool renderOutput, CancellationToken token)
+    private async Task<CommandState> PrintOverviewAsync(ShellInterpreter shell, ConnectedState state, CommandState commandState, bool renderOutput, CancellationToken token)
     {
         var client = state.Client;
         var acc = await client.ReadAccountAsync();
@@ -1070,6 +1124,7 @@ internal class InfoCommand : CosmosCommand
             await WriteAccountDatabaseBreakdownAsync(state, databaseNames, mcpTable, renderOutput, token);
         }
 
+        AddSessionUsage(shell, mcpTable, renderOutput);
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(mcpTable));
         commandState.RenderUser = renderOutput ? () => { } : null;
         return commandState;

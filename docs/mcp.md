@@ -100,8 +100,22 @@ Both representations are always byte-for-byte equivalent.
 | ----- | ------------ | ----------- |
 | `result` | Commands that produce output | The command result as JSON (objects, arrays, or a scalar). Text-only results are represented as a JSON string. Failed transactional batches include their per-operation summary here alongside `error`. |
 | `outputText` | CSV output commands with non-empty text | The CSV rendering of the result. Omitted when the CSV output is empty or whitespace. |
+| `requestCharge` | Charged data-plane command results | The Cosmos DB request charge (in RUs) consumed by the command, as a number. This is omitted for commands that do not issue a billable request. |
 | `error` | Failed commands | The error message. |
 | `currentLocation` | Always | The shell's current navigation path (for example `/MyDatabase/MyContainer`), or `null` when disconnected. |
 
-Successful results set `result` (and optionally `outputText`); failed results set `error`, may also include a structured `result`, and mark the tool result as an error. `currentLocation` is always included so a client can track navigation state across calls.
+Successful results set `result` (and optionally `outputText`); failed results set `error`, may also include a structured `result`, and mark the tool result as an error. `currentLocation` is always included so a client can track navigation state across calls. Commands report `requestCharge` whenever their Cosmos DB data-plane requests expose one, including paginated reads, metadata and configuration operations, scripts, change feed reads, handled probes, and charged failures. Multi-request commands aggregate the observed charges. Azure Resource Manager control-plane operations do not consume or report Cosmos DB request units.
+
+This field reports observed cost; it does not enforce an RU budget. Budget guardrails are tracked separately in [#162](https://github.com/Azure/CosmosDBShell/issues/162).
+
+The `info` command result also includes `session.requestCharge`, the cumulative
+charge observed from data-plane commands during the current connection,
+including the current `info` request cost. A
+successful `connect` starts a new total; navigation between databases and
+containers does not reset it. This session value is telemetry rather than a
+budget or billing total. `session.chargedOperationCount` counts
+command operations that reported a positive request charge; it counts command
+operations rather than individual query pages or transactional batch items. If
+the shell variable `$sessionRequestChargeWarningThreshold` is set to a positive value, the
+session object also includes `session.requestChargeWarningThreshold`.
 

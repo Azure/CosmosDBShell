@@ -25,6 +25,12 @@ using Spectre.Console;
 /// </summary>
 public partial class ShellInterpreter : IDisposable
 {
+    private const string SessionRequestChargeVariable = "sessionRequestCharge";
+
+    private const string SessionChargedOperationCountVariable = "sessionChargedOperationCount";
+
+    private const string SessionRequestChargeWarningThresholdVariable = "sessionRequestChargeWarningThreshold";
+
     internal static readonly ShellInterpreter Instance = new();
 
     private const int MAXHISTORYITEMS = 60;
@@ -48,6 +54,8 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly HashSet<string> diagnosticSecrets = new(StringComparer.Ordinal);
 
+    private readonly object sessionRequestChargeLock = new();
+
     private TokenCredential? activeCredential;
 
     private LineEditor? lineEditor;
@@ -63,6 +71,16 @@ public partial class ShellInterpreter : IDisposable
     private bool disposedValue;
 
     private List<string> history;
+
+    private double sessionRequestCharge;
+
+    private long sessionChargedOperationCount;
+
+    private double sessionRequestChargeWarningThreshold;
+
+    private bool sessionRequestChargeWarningIssued;
+
+    private long sessionRequestChargeGeneration;
 
     internal ShellInterpreter(string? configPath = null)
     {
@@ -135,6 +153,13 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    internal static IReadOnlyList<string> SessionVariableNames { get; } =
+    [
+        SessionRequestChargeVariable,
+        SessionChargedOperationCountVariable,
+        SessionRequestChargeWarningThresholdVariable,
+    ];
+
     internal Dictionary<string, DefStatement> Functions { get; } = [];
 
     /// <summary>
@@ -149,6 +174,57 @@ public partial class ShellInterpreter : IDisposable
     /// or <c>Emulator</c>), or <c>null</c> when not connected.
     /// </summary>
     internal string? ActiveCredentialType { get; private set; }
+
+    /// <summary>
+    /// Gets the request charge observed from instrumented commands since the most recent connection.
+    /// </summary>
+    internal double SessionRequestCharge
+    {
+        get
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                return this.sessionRequestCharge;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the number of command operations that reported a positive request charge
+    /// since the most recent connection.
+    /// </summary>
+    internal long SessionChargedOperationCount
+    {
+        get
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                return this.sessionChargedOperationCount;
+            }
+        }
+    }
+
+    internal (double RequestCharge, long ChargedOperationCount, double RequestChargeWarningThreshold) SessionUsage
+    {
+        get
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                return (this.sessionRequestCharge, this.sessionChargedOperationCount, this.sessionRequestChargeWarningThreshold);
+            }
+        }
+    }
+
+    internal long SessionRequestChargeGeneration
+    {
+        get
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                return this.sessionRequestChargeGeneration;
+            }
+        }
+    }
 
     internal string HistoryFile { get; private set; }
 
@@ -490,7 +566,10 @@ public partial class ShellInterpreter : IDisposable
                 this.ReportExecutionError(e, command);
                 this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
-                result = new ErrorCommandState(inner);
+                result = new ErrorCommandState(inner)
+                {
+                    RequestCharge = RequestChargeContext.GetExceptionCharge(e),
+                };
                 return result;
             }
 
@@ -658,6 +737,24 @@ public partial class ShellInterpreter : IDisposable
 
     internal ShellObject GetVariable(string name)
     {
+        lock (this.sessionRequestChargeLock)
+        {
+            if (string.Equals(name, SessionRequestChargeVariable, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ShellDecimal(this.sessionRequestCharge);
+            }
+
+            if (string.Equals(name, SessionChargedOperationCountVariable, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ShellDecimal(this.sessionChargedOperationCount);
+            }
+
+            if (string.Equals(name, SessionRequestChargeWarningThresholdVariable, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ShellDecimal(this.sessionRequestChargeWarningThreshold);
+            }
+        }
+
         var scope = this.GetScope(name);
         if (scope?.TryGetValue(name, out var value) == true)
         {
@@ -886,6 +983,80 @@ public partial class ShellInterpreter : IDisposable
         }
         */
         return currentState;
+    }
+
+    internal void RecordRequestCharge(CommandState commandState)
+        => this.RecordRequestCharge(commandState, this.SessionRequestChargeGeneration);
+
+    internal async Task<CommandState> ExecuteCosmosCommandAsync(
+        CosmosCommand command,
+        CommandState commandState,
+        string commandText,
+        CancellationToken token)
+    {
+        // CommandState is intentionally reused by pipelines and expressions. Clear the
+        // previous command's charge so an uninstrumented command cannot count it again.
+        commandState.RequestCharge = null;
+        var generation = this.SessionRequestChargeGeneration;
+        using var requestChargeScope = RequestChargeContext.Begin();
+        try
+        {
+            var result = await command.ExecuteAsync(this, commandState, commandText, token);
+            if (requestChargeScope.RequestCharge > 0)
+            {
+                result.RequestCharge = (result.RequestCharge ?? 0) + requestChargeScope.RequestCharge;
+            }
+
+            this.RecordRequestCharge(result, generation);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            var requestCharge = requestChargeScope.RequestCharge + RequestChargeContext.GetCosmosExceptionCharge(ex);
+            if (requestCharge > 0)
+            {
+                RequestChargeContext.SetExceptionCharge(ex, requestCharge);
+                this.RecordRequestCharge(new CommandState { RequestCharge = requestCharge }, generation);
+            }
+
+            throw;
+        }
+    }
+
+    internal void RecordRequestCharge(CommandState commandState, long generation)
+    {
+        bool printWarning = false;
+        double requestChargeTotal = 0;
+        double requestChargeWarningThreshold = 0;
+        if (commandState.RequestCharge is { } requestCharge)
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                if (generation == this.sessionRequestChargeGeneration)
+                {
+                    this.sessionRequestCharge += requestCharge;
+                    if (requestCharge > 0)
+                    {
+                        this.sessionChargedOperationCount++;
+                    }
+
+                    if (this.sessionRequestChargeWarningThreshold > 0
+                        && !this.sessionRequestChargeWarningIssued
+                        && this.sessionRequestCharge >= this.sessionRequestChargeWarningThreshold)
+                    {
+                        this.sessionRequestChargeWarningIssued = true;
+                        printWarning = true;
+                        requestChargeTotal = this.sessionRequestCharge;
+                        requestChargeWarningThreshold = this.sessionRequestChargeWarningThreshold;
+                    }
+                }
+            }
+        }
+
+        if (printWarning)
+        {
+            this.PrintSessionRequestChargeWarning(requestChargeTotal, requestChargeWarningThreshold);
+        }
     }
 
     internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, CredentialMethod credentialMethod = CredentialMethod.Default, string? subscriptionId = null, string? resourceGroupName = null, CancellationToken token = default)
@@ -1492,6 +1663,14 @@ public partial class ShellInterpreter : IDisposable
     {
         this.State?.Dispose();
         this.State = new ConnectedState(client, armContext);
+        lock (this.sessionRequestChargeLock)
+        {
+            this.sessionRequestCharge = 0;
+            this.sessionChargedOperationCount = 0;
+            this.sessionRequestChargeWarningIssued = false;
+            this.sessionRequestChargeGeneration++;
+        }
+
         this.activeCredential = credential;
         this.ActiveCredentialType = credentialTypeOverride ?? credential?.GetType().Name;
         this.CurrentBatch = null;
@@ -1752,6 +1931,18 @@ public partial class ShellInterpreter : IDisposable
 
     internal void SetVariable(string variableName, ShellObject value)
     {
+        if (string.Equals(variableName, SessionRequestChargeVariable, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(variableName, SessionChargedOperationCountVariable, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ShellException(MessageService.GetArgsString("error-session-variable-read-only", "name", variableName));
+        }
+
+        if (string.Equals(variableName, SessionRequestChargeWarningThresholdVariable, StringComparison.OrdinalIgnoreCase))
+        {
+            this.SetSessionRequestChargeWarningThreshold(value);
+            return;
+        }
+
         // Ensure we have at least one variable container (global scope)
         if (this.VariableContainers.Count == 0)
         {
@@ -1792,6 +1983,70 @@ public partial class ShellInterpreter : IDisposable
 
         // Store the variable in the current scope
         currentScope.Set(variableName, shellValue);
+    }
+
+    private void SetSessionRequestChargeWarningThreshold(ShellObject value)
+    {
+        double maximum = value switch
+        {
+            ShellNumber number => number.Value,
+            ShellDecimal decimalValue => decimalValue.Value,
+            _ => double.NaN,
+        };
+
+        if (!double.IsFinite(maximum) || maximum < 0)
+        {
+            throw new ShellException(MessageService.GetString("error-session-request-charge-warning-threshold-invalid"));
+        }
+
+        bool printWarning;
+        double requestChargeTotal;
+        lock (this.sessionRequestChargeLock)
+        {
+            if (Math.Abs(maximum - this.sessionRequestChargeWarningThreshold) > 1e-9)
+            {
+                this.sessionRequestChargeWarningIssued = false;
+            }
+
+            this.sessionRequestChargeWarningThreshold = maximum;
+            printWarning = maximum > 0
+                && !this.sessionRequestChargeWarningIssued
+                && this.sessionRequestCharge >= maximum;
+            if (printWarning)
+            {
+                this.sessionRequestChargeWarningIssued = true;
+            }
+
+            requestChargeTotal = this.sessionRequestCharge;
+        }
+
+        if (printWarning)
+        {
+            this.PrintSessionRequestChargeWarning(requestChargeTotal, maximum);
+        }
+    }
+
+    private void PrintSessionRequestChargeWarning(double requestCharge, double warningThreshold)
+    {
+        var message = MessageService.GetArgsString(
+            "warning-session-request-charge-threshold-reached",
+            "requestCharge",
+            requestCharge.ToString("0.##", CultureInfo.InvariantCulture),
+            "warningThreshold",
+            warningThreshold.ToString("0.##", CultureInfo.InvariantCulture));
+
+        if (this.IsMachineMode)
+        {
+            Console.Error.WriteLine(JsonSerializer.Serialize(new Dictionary<string, string>
+            {
+                ["status"] = "warning",
+                ["warning"] = message,
+            }));
+        }
+        else
+        {
+            AnsiConsole.MarkupLine(Theme.FormatWarning(message));
+        }
     }
 
     /// <summary>

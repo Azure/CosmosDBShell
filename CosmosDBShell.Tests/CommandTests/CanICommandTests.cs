@@ -92,6 +92,28 @@ public class CanICommandTests
         Assert.Equal("key", json.GetProperty("method").GetString());
         Assert.Equal("MyDB", json.GetProperty("database").GetString());
         Assert.Equal("Products", json.GetProperty("container").GetString());
+        Assert.Null(state.RequestCharge);
+    }
+
+    [Fact]
+    public void Build_ProbeResultSetsRequestCharge()
+    {
+        var command = new CanICommand();
+
+        var state = command.Build(
+            new CommandState(),
+            "query",
+            "MyDB",
+            "Products",
+            "allow",
+            "probe",
+            200,
+            null,
+            1.75);
+
+        Assert.Equal(1.75, state.RequestCharge);
+        var json = Assert.IsType<ShellJson>(state.Result).Value;
+        Assert.Equal("probe", json.GetProperty("method").GetString());
     }
 
     [Fact]

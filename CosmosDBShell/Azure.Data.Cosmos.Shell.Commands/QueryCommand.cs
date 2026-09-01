@@ -631,13 +631,14 @@ internal class QueryCommand : CosmosCommand
             using ResponseMessage? response = feedIterator.HasMoreResults
                 ? await feedIterator.ReadNextAsync(token)
                 : null;
-            if (response is not null)
+            double requestCharge = response?.Headers.RequestCharge ?? 0;
+            if (response is not null && !response.IsSuccessStatusCode)
             {
+                RequestChargeContext.Record(requestCharge);
                 await this.ThrowIfRequestFailedAsync(response, shell);
             }
 
             var cumulative = response?.Diagnostics.GetQueryMetrics()?.CumulativeMetrics;
-            double requestCharge = response?.Diagnostics.GetQueryMetrics()?.TotalRequestCharge ?? 0;
 
             var (planAvailable, utilized, potential) = ParseIndexPlan(response?.IndexMetrics);
             var evaluation = EvaluatePlan(
@@ -651,6 +652,7 @@ internal class QueryCommand : CosmosCommand
 
             returnState.Result = BuildExplainJson(this.Query, evaluation, requestCharge, messages);
             returnState.RenderUser = () => RenderExplain(evaluation, requestCharge, messages);
+            returnState.RequestCharge = requestCharge;
             return returnState;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -677,6 +679,7 @@ internal class QueryCommand : CosmosCommand
         {
             var returnState = CreateCommandState(this.OutputFormat);
             var aggregatedDocuments = new List<JsonElement>();
+            double totalRequestCharge = 0;
 
             var options = new QueryRequestOptions
             {
@@ -711,7 +714,12 @@ internal class QueryCommand : CosmosCommand
 
                 using var response = await feedIterator.ReadNextAsync(token);
 
-                await this.ThrowIfRequestFailedAsync(response, shell);
+                var pageRequestCharge = response.Headers.RequestCharge;
+                if (!response.IsSuccessStatusCode)
+                {
+                    RequestChargeContext.Record(totalRequestCharge + pageRequestCharge);
+                    await this.ThrowIfRequestFailedAsync(response, shell);
+                }
 
                 if (response.Content == null)
                 {
@@ -727,11 +735,13 @@ internal class QueryCommand : CosmosCommand
 
                 using var queryDocument = JsonDocument.Parse(responseContent);
                 ShellInterpreter.WriteLine(MessageService.GetString("command-query-fetched", new Dictionary<string, object> { { "count", queryDocument.RootElement.GetProperty("_count").ToString() } }));
-                var queryMetrics = response.Diagnostics.GetQueryMetrics();
-                if (queryMetrics != null)
-                {
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", queryMetrics.TotalRequestCharge.ToString() } }));
-                }
+
+                // Cosmos always returns the RU cost in the response headers, whereas query
+                // metrics (and their TotalRequestCharge) can be null when diagnostics are
+                // unavailable. Accumulate and report from the headers so the charge is always
+                // correct; the detailed metrics payload is built separately from the response.
+                totalRequestCharge += pageRequestCharge;
+                AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", pageRequestCharge.ToString("F2", CultureInfo.InvariantCulture) } }));
 
                 var pageDocuments = queryDocument.RootElement.GetProperty("Documents");
                 var pageExceedsLimit = PageExceedsLimit(aggregatedDocuments.Count, pageDocuments, effectiveMaxItemCount);
@@ -751,7 +761,7 @@ internal class QueryCommand : CosmosCommand
                             {
                                 { "type", "item" },
                                 { "values", aggregatedDocuments },
-                                { "requestCharge", queryMetrics?.TotalRequestCharge ?? 0 },
+                                { "requestCharge", totalRequestCharge },
                                 { "queryMetrics", metricProperty },
                                 { "indexMetrics", parsedIndexMetrics ?? new Dictionary<string, object>() },
                             });
@@ -888,6 +898,7 @@ internal class QueryCommand : CosmosCommand
                 AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
             }
 
+            returnState.RequestCharge = totalRequestCharge;
             return returnState;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)

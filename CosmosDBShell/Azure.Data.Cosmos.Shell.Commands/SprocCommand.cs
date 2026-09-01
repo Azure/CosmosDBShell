@@ -212,7 +212,9 @@ internal class SprocCommand : CosmosCommand
         using var iterator = container.Scripts.GetStoredProcedureQueryIterator<StoredProcedureProperties>();
         while (iterator.HasMoreResults)
         {
-            foreach (var properties in await iterator.ReadNextAsync(token))
+            var response = await iterator.ReadNextAsync(token);
+            RequestChargeContext.Record(response.RequestCharge);
+            foreach (var properties in response)
             {
                 items.Add(new
                 {
@@ -277,6 +279,7 @@ internal class SprocCommand : CosmosCommand
         try
         {
             var response = await container.Scripts.ReadStoredProcedureAsync(name, cancellationToken: token);
+            RequestChargeContext.Record(response.RequestCharge);
             commandState.Result = new ShellText(response.Resource.Body ?? string.Empty) { Highlighter = JavaScriptOutputHighlighter.BuildMarkup };
             return commandState;
         }
@@ -293,11 +296,13 @@ internal class SprocCommand : CosmosCommand
         bool exists;
         try
         {
-            await container.Scripts.ReadStoredProcedureAsync(name, cancellationToken: token);
+            var response = await container.Scripts.ReadStoredProcedureAsync(name, cancellationToken: token);
+            RequestChargeContext.Record(response.RequestCharge);
             exists = true;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
+            RequestChargeContext.Record(ex.RequestCharge);
             exists = false;
         }
 
@@ -337,10 +342,12 @@ internal class SprocCommand : CosmosCommand
         try
         {
             var read = await container.Scripts.ReadStoredProcedureAsync(name, cancellationToken: token);
+            RequestChargeContext.Record(read.RequestCharge);
             existingBody = read.Resource.Body ?? string.Empty;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
+            RequestChargeContext.Record(ex.RequestCharge);
             existingBody = null;
         }
 
@@ -384,11 +391,14 @@ internal class SprocCommand : CosmosCommand
             try
             {
                 response = await container.Scripts.ReplaceStoredProcedureAsync(properties, cancellationToken: token);
+                RequestChargeContext.Record(response.RequestCharge);
                 replaced = true;
             }
             catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
             {
+                RequestChargeContext.Record(ex.RequestCharge);
                 response = await container.Scripts.CreateStoredProcedureAsync(properties, cancellationToken: token);
+                RequestChargeContext.Record(response.RequestCharge);
                 replaced = false;
             }
         }
@@ -397,6 +407,7 @@ internal class SprocCommand : CosmosCommand
             try
             {
                 response = await container.Scripts.CreateStoredProcedureAsync(properties, cancellationToken: token);
+                RequestChargeContext.Record(response.RequestCharge);
                 replaced = false;
             }
             catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
@@ -446,6 +457,7 @@ internal class SprocCommand : CosmosCommand
                 response.RequestCharge.ToString("F2")));
 
             commandState.Result = new ShellJson(response.Resource.Clone());
+            commandState.RequestCharge = response.RequestCharge;
             return commandState;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -461,6 +473,7 @@ internal class SprocCommand : CosmosCommand
         try
         {
             var response = await container.Scripts.DeleteStoredProcedureAsync(name, cancellationToken: token);
+            RequestChargeContext.Record(response.RequestCharge);
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, deleted = true }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
                 "command-sproc-deleted",
@@ -489,6 +502,7 @@ internal class SprocCommand : CosmosCommand
         try
         {
             var read = await container.Scripts.ReadStoredProcedureAsync(name, cancellationToken: token);
+            RequestChargeContext.Record(read.RequestCharge);
             existingBody = read.Resource.Body ?? string.Empty;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -507,6 +521,7 @@ internal class SprocCommand : CosmosCommand
 
         var properties = new StoredProcedureProperties { Id = name, Body = newBody };
         var response = await container.Scripts.ReplaceStoredProcedureAsync(properties, cancellationToken: token);
+        RequestChargeContext.Record(response.RequestCharge);
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, changed = true }));
         commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(

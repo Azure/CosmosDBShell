@@ -111,6 +111,7 @@ internal class ExportCommand : CosmosCommand
                 exported = count,
                 requestCharge = charge,
             })),
+            RequestCharge = charge,
         };
     }
 
