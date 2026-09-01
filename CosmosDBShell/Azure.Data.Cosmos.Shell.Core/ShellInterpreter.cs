@@ -29,7 +29,7 @@ public partial class ShellInterpreter : IDisposable
 
     private const string SessionChargedOperationCountVariable = "sessionChargedOperationCount";
 
-    private const string SessionMaxRequestChargeVariable = "sessionMaxRequestCharge";
+    private const string SessionRequestChargeWarningThresholdVariable = "sessionRequestChargeWarningThreshold";
 
     internal static readonly ShellInterpreter Instance = new();
 
@@ -76,7 +76,7 @@ public partial class ShellInterpreter : IDisposable
 
     private long sessionChargedOperationCount;
 
-    private double sessionMaxRequestCharge;
+    private double sessionRequestChargeWarningThreshold;
 
     private bool sessionRequestChargeWarningIssued;
 
@@ -157,7 +157,7 @@ public partial class ShellInterpreter : IDisposable
     [
         SessionRequestChargeVariable,
         SessionChargedOperationCountVariable,
-        SessionMaxRequestChargeVariable,
+        SessionRequestChargeWarningThresholdVariable,
     ];
 
     internal Dictionary<string, DefStatement> Functions { get; } = [];
@@ -204,13 +204,13 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
-    internal (double RequestCharge, long ChargedOperationCount, double MaxRequestCharge) SessionUsage
+    internal (double RequestCharge, long ChargedOperationCount, double RequestChargeWarningThreshold) SessionUsage
     {
         get
         {
             lock (this.sessionRequestChargeLock)
             {
-                return (this.sessionRequestCharge, this.sessionChargedOperationCount, this.sessionMaxRequestCharge);
+                return (this.sessionRequestCharge, this.sessionChargedOperationCount, this.sessionRequestChargeWarningThreshold);
             }
         }
     }
@@ -749,9 +749,9 @@ public partial class ShellInterpreter : IDisposable
                 return new ShellDecimal(this.sessionChargedOperationCount);
             }
 
-            if (string.Equals(name, SessionMaxRequestChargeVariable, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(name, SessionRequestChargeWarningThresholdVariable, StringComparison.OrdinalIgnoreCase))
             {
-                return new ShellDecimal(this.sessionMaxRequestCharge);
+                return new ShellDecimal(this.sessionRequestChargeWarningThreshold);
             }
         }
 
@@ -1027,7 +1027,7 @@ public partial class ShellInterpreter : IDisposable
     {
         bool printWarning = false;
         double requestChargeTotal = 0;
-        double requestChargeMaximum = 0;
+        double requestChargeWarningThreshold = 0;
         if (commandState.RequestCharge is { } requestCharge)
         {
             lock (this.sessionRequestChargeLock)
@@ -1040,14 +1040,14 @@ public partial class ShellInterpreter : IDisposable
                         this.sessionChargedOperationCount++;
                     }
 
-                    if (this.sessionMaxRequestCharge > 0
+                    if (this.sessionRequestChargeWarningThreshold > 0
                         && !this.sessionRequestChargeWarningIssued
-                        && this.sessionRequestCharge >= this.sessionMaxRequestCharge)
+                        && this.sessionRequestCharge >= this.sessionRequestChargeWarningThreshold)
                     {
                         this.sessionRequestChargeWarningIssued = true;
                         printWarning = true;
                         requestChargeTotal = this.sessionRequestCharge;
-                        requestChargeMaximum = this.sessionMaxRequestCharge;
+                        requestChargeWarningThreshold = this.sessionRequestChargeWarningThreshold;
                     }
                 }
             }
@@ -1055,7 +1055,7 @@ public partial class ShellInterpreter : IDisposable
 
         if (printWarning)
         {
-            this.PrintSessionRequestChargeWarning(requestChargeTotal, requestChargeMaximum);
+            this.PrintSessionRequestChargeWarning(requestChargeTotal, requestChargeWarningThreshold);
         }
     }
 
@@ -1937,9 +1937,9 @@ public partial class ShellInterpreter : IDisposable
             throw new ShellException(MessageService.GetArgsString("error-session-variable-read-only", "name", variableName));
         }
 
-        if (string.Equals(variableName, SessionMaxRequestChargeVariable, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(variableName, SessionRequestChargeWarningThresholdVariable, StringComparison.OrdinalIgnoreCase))
         {
-            this.SetSessionMaxRequestCharge(value);
+            this.SetSessionRequestChargeWarningThreshold(value);
             return;
         }
 
@@ -1985,7 +1985,7 @@ public partial class ShellInterpreter : IDisposable
         currentScope.Set(variableName, shellValue);
     }
 
-    private void SetSessionMaxRequestCharge(ShellObject value)
+    private void SetSessionRequestChargeWarningThreshold(ShellObject value)
     {
         double maximum = value switch
         {
@@ -1996,19 +1996,19 @@ public partial class ShellInterpreter : IDisposable
 
         if (!double.IsFinite(maximum) || maximum < 0)
         {
-            throw new ShellException(MessageService.GetString("error-session-max-request-charge-invalid"));
+            throw new ShellException(MessageService.GetString("error-session-request-charge-warning-threshold-invalid"));
         }
 
         bool printWarning;
         double requestChargeTotal;
         lock (this.sessionRequestChargeLock)
         {
-            if (Math.Abs(maximum - this.sessionMaxRequestCharge) > 1e-9)
+            if (Math.Abs(maximum - this.sessionRequestChargeWarningThreshold) > 1e-9)
             {
                 this.sessionRequestChargeWarningIssued = false;
             }
 
-            this.sessionMaxRequestCharge = maximum;
+            this.sessionRequestChargeWarningThreshold = maximum;
             printWarning = maximum > 0
                 && !this.sessionRequestChargeWarningIssued
                 && this.sessionRequestCharge >= maximum;
@@ -2026,14 +2026,14 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
-    private void PrintSessionRequestChargeWarning(double requestCharge, double maximum)
+    private void PrintSessionRequestChargeWarning(double requestCharge, double warningThreshold)
     {
         var message = MessageService.GetArgsString(
-            "warning-session-max-request-charge-reached",
+            "warning-session-request-charge-threshold-reached",
             "requestCharge",
             requestCharge.ToString("0.##", CultureInfo.InvariantCulture),
-            "maximum",
-            maximum.ToString("0.##", CultureInfo.InvariantCulture));
+            "warningThreshold",
+            warningThreshold.ToString("0.##", CultureInfo.InvariantCulture));
 
         if (this.IsMachineMode)
         {

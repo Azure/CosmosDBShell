@@ -21,7 +21,7 @@ public class SessionRequestChargeTests
 
         var charge = Assert.IsType<ShellDecimal>(shell.GetVariable("sessionRequestCharge"));
         var operationCount = Assert.IsType<ShellDecimal>(shell.GetVariable("sessionChargedOperationCount"));
-        var maximum = Assert.IsType<ShellDecimal>(shell.GetVariable("sessionMaxRequestCharge"));
+        var maximum = Assert.IsType<ShellDecimal>(shell.GetVariable("sessionRequestChargeWarningThreshold"));
 
         Assert.Equal(3.75, charge.Value);
         Assert.Equal(2, operationCount.Value);
@@ -38,10 +38,10 @@ public class SessionRequestChargeTests
     }
 
     [Fact]
-    public void SessionMaxRequestCharge_WarnsOnlyOnceWhenReached()
+    public void SessionRequestChargeWarningThreshold_WarnsOnlyOnceWhenReached()
     {
         using var shell = ShellInterpreter.CreateInstance();
-        shell.SetVariable("sessionMaxRequestCharge", new ShellDecimal(3));
+        shell.SetVariable("sessionRequestChargeWarningThreshold", new ShellDecimal(3));
 
         var output = CaptureConsole(() =>
         {
@@ -54,10 +54,10 @@ public class SessionRequestChargeTests
     }
 
     [Fact]
-    public void SessionMaxRequestCharge_ZeroDisablesWarning()
+    public void SessionRequestChargeWarningThreshold_ZeroDisablesWarning()
     {
         using var shell = ShellInterpreter.CreateInstance();
-        shell.SetVariable("sessionMaxRequestCharge", new ShellNumber(0));
+        shell.SetVariable("sessionRequestChargeWarningThreshold", new ShellNumber(0));
 
         var output = CaptureConsole(() => shell.RecordRequestCharge(new CommandState { RequestCharge = 10 }));
 
@@ -68,23 +68,23 @@ public class SessionRequestChargeTests
     public void Connect_PreservesMaximumAndRearmsWarning()
     {
         using var shell = ShellInterpreter.CreateInstance();
-        shell.SetVariable("sessionMaxRequestCharge", new ShellNumber(2));
+        shell.SetVariable("sessionRequestChargeWarningThreshold", new ShellNumber(2));
         _ = CaptureConsole(() => shell.RecordRequestCharge(new CommandState { RequestCharge = 2 }));
 
         shell.Connect(CreateTestClient(), credentialTypeOverride: "AccountKey");
         var output = CaptureConsole(() => shell.RecordRequestCharge(new CommandState { RequestCharge = 2 }));
 
-        Assert.Equal(2, Assert.IsType<ShellDecimal>(shell.GetVariable("sessionMaxRequestCharge")).Value);
+        Assert.Equal(2, Assert.IsType<ShellDecimal>(shell.GetVariable("sessionRequestChargeWarningThreshold")).Value);
         Assert.Equal(1, CountOccurrences(output, "has reached the configured warning threshold"));
     }
 
     [Fact]
-    public void SessionMaxRequestCharge_RejectsInvalidValues()
+    public void SessionRequestChargeWarningThreshold_RejectsInvalidValues()
     {
         using var shell = ShellInterpreter.CreateInstance();
 
-        Assert.Throws<ShellException>(() => shell.SetVariable("sessionMaxRequestCharge", new ShellDecimal(-1)));
-        Assert.Throws<ShellException>(() => shell.SetVariable("sessionMaxRequestCharge", new ShellText("ten")));
+        Assert.Throws<ShellException>(() => shell.SetVariable("sessionRequestChargeWarningThreshold", new ShellDecimal(-1)));
+        Assert.Throws<ShellException>(() => shell.SetVariable("sessionRequestChargeWarningThreshold", new ShellText("ten")));
     }
 
     private static CosmosClient CreateTestClient() => new(

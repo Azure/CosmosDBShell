@@ -80,9 +80,9 @@ The shell provides three built-in session variables:
 | --- | --- |
 | `$sessionRequestCharge` | Read-only cumulative request charge observed during the current connection. |
 | `$sessionChargedOperationCount` | Read-only number of command operations that reported a positive charge. |
-| `$sessionMaxRequestCharge` | Configurable warning threshold in RUs. A positive value enables the warning; `0` disables it. |
+| `$sessionRequestChargeWarningThreshold` | Configurable warning threshold in RUs. A positive value enables the warning; `0` disables it. |
 
-For example, `$sessionMaxRequestCharge = 100` prints one warning when the
+For example, `$sessionRequestChargeWarningThreshold = 100` prints one warning when the
 current connection reaches or exceeds 100 observed RUs. The warning is emitted
 only once for that threshold. A successful `connect` resets the accumulated
 charge and operation count and rearms the warning, while preserving the

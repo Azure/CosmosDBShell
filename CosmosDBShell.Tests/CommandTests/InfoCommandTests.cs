@@ -210,13 +210,13 @@ public class InfoCommandTests
     public void AddSessionUsage_IncludesConfiguredMaximum()
     {
         using var shell = ShellInterpreter.CreateInstance();
-        shell.SetVariable("sessionMaxRequestCharge", new ShellDecimal(25.5));
+        shell.SetVariable("sessionRequestChargeWarningThreshold", new ShellDecimal(25.5));
         var result = new Dictionary<string, object?>();
 
         InfoCommand.AddSessionUsage(shell, result, renderOutput: false);
 
         var session = JsonSerializer.SerializeToElement(result).GetProperty("session");
-        Assert.Equal(25.5, session.GetProperty("maxRequestCharge").GetDouble());
+        Assert.Equal(25.5, session.GetProperty("requestChargeWarningThreshold").GetDouble());
     }
 
     [Fact]

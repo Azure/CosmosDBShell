@@ -312,9 +312,9 @@ internal class InfoCommand : CosmosCommand
             ["requestCharge"] = requestCharge,
             ["chargedOperationCount"] = chargedOperationCount,
         };
-        if (sessionUsage.MaxRequestCharge > 0)
+        if (sessionUsage.RequestChargeWarningThreshold > 0)
         {
-            session["maxRequestCharge"] = sessionUsage.MaxRequestCharge;
+            session["requestChargeWarningThreshold"] = sessionUsage.RequestChargeWarningThreshold;
         }
 
         mcpTable["session"] = session;
@@ -334,11 +334,11 @@ internal class InfoCommand : CosmosCommand
         table.AddRow(
             MessageService.GetString("command-stats-session-charged-operations"),
             Theme.FormatTableValue(chargedOperationCount.ToString(CultureInfo.InvariantCulture)));
-        if (sessionUsage.MaxRequestCharge > 0)
+        if (sessionUsage.RequestChargeWarningThreshold > 0)
         {
             table.AddRow(
-                MessageService.GetString("command-stats-session-max-request-charge"),
-                Theme.FormatTableValue(sessionUsage.MaxRequestCharge.ToString("0.##", CultureInfo.InvariantCulture)));
+            MessageService.GetString("command-stats-session-request-charge-warning-threshold"),
+            Theme.FormatTableValue(sessionUsage.RequestChargeWarningThreshold.ToString("0.##", CultureInfo.InvariantCulture)));
         }
 
         AnsiConsole.Write(table);

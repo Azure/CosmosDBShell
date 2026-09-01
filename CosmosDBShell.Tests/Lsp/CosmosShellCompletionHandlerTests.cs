@@ -95,7 +95,7 @@ public class CosmosShellCompletionHandlerTests
 
         Assert.Contains("$sessionRequestCharge", labels);
         Assert.Contains("$sessionChargedOperationCount", labels);
-        Assert.Contains("$sessionMaxRequestCharge", labels);
+        Assert.Contains("$sessionRequestChargeWarningThreshold", labels);
     }
 
     [Fact]

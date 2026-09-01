@@ -1363,7 +1363,7 @@ total is available as `session.requestCharge`, and `session.chargedOperationCoun
 counts command operations that reported a positive charge. Paginated and
 multi-request commands contribute their aggregate observed charge. Azure Resource
 Manager control-plane operations do not consume Cosmos DB request units. When
-`$sessionMaxRequestCharge` is positive, `session.maxRequestCharge` reports the
+`$sessionRequestChargeWarningThreshold` is positive, `session.requestChargeWarningThreshold` reports the
 configured warning threshold. This command is read-only.
 
 ### help
