@@ -98,7 +98,6 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var hasArmContext = state.ArmContext is not null;
         var result = new CommandState();
         result.SetFormat(this.OutputFormat);
-        result.IsPage = this.IsMcpRequest;
         result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "database", values = list }));
         result.RenderTabular = () =>
         {
@@ -169,7 +168,6 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var hasArmContext = state.ArmContext is not null;
         var result = new CommandState();
         result.SetFormat(this.OutputFormat);
-        result.IsPage = this.IsMcpRequest;
         result.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "container", values = list }));
         result.RenderTabular = () =>
         {

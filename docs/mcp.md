@@ -100,7 +100,7 @@ Both representations are always byte-for-byte equivalent.
 | ----- | ------------ | ----------- |
 | `result` | Commands that produce output | The command result as JSON (objects, arrays, or a scalar). Text-only results are represented as a JSON string. Failed transactional batches include their per-operation summary here alongside `error`. |
 | `outputText` | CSV output commands with non-empty text | The CSV rendering of the result. Omitted when the CSV output is empty or whitespace. |
-| `continuationToken` | Paged `query` and `ls` results | Opaque token for the next page, or `null` when no more results are available. Omitted for `query --explain`, which returns an execution plan rather than a page. |
+| `continuationToken` | Paged `query` and container-item `ls` results | Opaque token for the next page, or `null` when no more results are available. Omitted for `query --explain` and database/container name listings, which are not paged. |
 | `error` | Failed commands | The error message. |
 | `currentLocation` | Always | The shell's current navigation path (for example `/MyDatabase/MyContainer`), or `null` when disconnected. |
 
