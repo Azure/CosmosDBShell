@@ -212,7 +212,9 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var client = state.Client;
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
         var opt = new QueryRequestOptions();
-        var effectiveMaxItemCount = ResultLimit.ResolveMaxItemCount(this.Max);
+        var effectiveMaxItemCount = this.IsMcpRequest
+            ? ResultLimit.ResolvePageSize(this.Max)
+            : ResultLimit.ResolveMaxItemCount(this.Max);
         if (effectiveMaxItemCount.HasValue)
         {
             opt.MaxItemCount = effectiveMaxItemCount.Value;

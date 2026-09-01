@@ -688,9 +688,9 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                 PopulateIndexMetrics = true,
             };
 
-            var effectiveMaxItemCount = ResultLimit.ResolveMaxItemCount(
-                this.Max,
-                defaultMaxItemCount: this.IsMcpRequest ? ResultLimit.DefaultMaxItemCount : null);
+            var effectiveMaxItemCount = this.IsMcpRequest
+                ? ResultLimit.ResolvePageSize(this.Max)
+                : ResultLimit.ResolveMaxItemCount(this.Max, defaultMaxItemCount: null);
             if (effectiveMaxItemCount.HasValue)
             {
                 options.MaxItemCount = effectiveMaxItemCount.Value;

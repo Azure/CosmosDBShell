@@ -101,11 +101,17 @@ internal class ToolOperations
             var propertyInfo = option.PropertyInfo
                 ?? throw new InvalidOperationException($"Option '{option.Name[0]}' for command '{command.CommandName}' is missing property metadata.");
 
-            properties[option.Name[0]] = CreatePropertySchema(
+            var propertySchema = CreatePropertySchema(
                 propertyInfo.PropertyType,
                 GetMcpOptionDescription(command, option),
                 option.Name,
                 GetMcpDefaultValue(command, option));
+            if (IsPagedMaxOption(command, option))
+            {
+                propertySchema["minimum"] = 1;
+            }
+
+            properties[option.Name[0]] = propertySchema;
         }
 
         if (command.IsPaged)
@@ -241,7 +247,7 @@ internal class ToolOperations
     {
         var description = option.GetDescription(command.CommandName);
         return IsPagedMaxOption(command, option)
-            ? $"{description} Through MCP this bounds a single page rather than the whole result set, so a call can return fewer items and still have more available; use continuationToken to detect the end."
+            ? $"{description} Through MCP this must be positive and bounds a single page rather than the whole result set. Omitted or non-positive values use the default of {DefaultPageSize}. A call can return fewer items and still have more available; use continuationToken to detect the end."
             : description;
     }
 

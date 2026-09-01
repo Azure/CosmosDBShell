@@ -108,7 +108,7 @@ Successful results set `result` (and optionally `outputText`); failed results se
 
 ### Pagination
 
-MCP calls to `query` and container-item `ls` return one Cosmos DB page per call. When `max` is omitted, the server applies a safe default cap of `100` items. To continue, pass a non-null returned `continuationToken` as the next call's `continuation` argument while keeping the query and other options unchanged. The token is opaque; do not parse or edit it. When the token is `null`, the result set is exhausted: stop paging and do not send another request with `continuation`.
+MCP calls to `query` and container-item `ls` return one Cosmos DB page per call. `max` must be positive; when it is omitted or non-positive, the server applies a safe default cap of `100` items. To continue, pass a non-null returned `continuationToken` as the next call's `continuation` argument while keeping the query and other options unchanged. The token is opaque; do not parse or edit it. When the token is `null`, the result set is exhausted: stop paging and do not send another request with `continuation`.
 
 `continuation` is exposed only to MCP callers — there is no corresponding shell option, and the token is never echoed into the shell's command output.
 
