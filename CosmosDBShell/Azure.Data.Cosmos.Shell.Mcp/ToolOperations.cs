@@ -25,7 +25,7 @@ internal class ToolOperations
     private const string MaxArgument = "max";
 
     private const string ContinuationDescription =
-        "Continuation token returned by a previous call to this tool. Pass it back to fetch the next page, or omit it to start from the beginning. The value is opaque; do not modify it.";
+        "Non-null continuation token returned by a previous call to this tool. Pass it back to fetch the next page, or omit this argument to start from the beginning. A null output token means the result is exhausted and no further call should be made. The value is opaque; do not modify it.";
 
     private readonly ILogger<ToolOperations> logger;
     private readonly Lazy<List<Tool>> cachedTools;
@@ -219,13 +219,13 @@ internal class ToolOperations
             return false;
         }
 
-        if (value.ValueKind is not JsonValueKind.String and not JsonValueKind.Null)
+        if (value.ValueKind is not JsonValueKind.String)
         {
-            errorMessage = "Invalid value for MCP argument 'continuation'. Expected a string or null.";
+            errorMessage = "Invalid value for MCP argument 'continuation'. Expected a non-null string.";
             return true;
         }
 
-        paged.Continuation = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        paged.Continuation = value.GetString();
         return true;
     }
 

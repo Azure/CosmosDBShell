@@ -184,13 +184,15 @@ public class ToolOperationsTests
         Assert.Equal("token-1", command.Continuation);
     }
 
-    [Fact]
-    public void TrySetContinuation_RejectsNonStringValue()
+    [Theory]
+    [InlineData("42")]
+    [InlineData("null")]
+    public void TrySetContinuation_RejectsNonStringValue(string json)
     {
         var command = new ListCommand();
 
-        Assert.True(ToolOperations.TrySetContinuation(command, "continuation", Json("42"), out var error));
-        Assert.Equal("Invalid value for MCP argument 'continuation'. Expected a string or null.", error);
+        Assert.True(ToolOperations.TrySetContinuation(command, "continuation", Json(json), out var error));
+        Assert.Equal("Invalid value for MCP argument 'continuation'. Expected a non-null string.", error);
         Assert.Null(command.Continuation);
     }
 
