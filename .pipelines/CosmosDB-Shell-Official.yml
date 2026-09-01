@@ -889,6 +889,7 @@ extends:
                       -p:PublishSingleFile=false \
                       -p:PackAsTool=false \
                       -p:CosmosDBShellExcludeMsalRuntime=true \
+                      -p:CosmosDBShellExcludeMcpAndLsp=true \
                       --output "$publish_dir" \
                       --configfile "$(Build.SourcesDirectory)/.pipelines/nuget.config"
 
@@ -936,6 +937,10 @@ extends:
                     rpm -qlp "$package" | grep -Fx '/usr/libexec/cosmosdbshell/CosmosDBShell.dll'
                     if rpm -qlp "$package" | grep -q 'libmsalruntime\.so'; then
                       echo "$(basename "$package") still carries libmsalruntime.so." >&2
+                      exit 1
+                    fi
+                    if rpm -qlp "$package" | grep -Eq '/(ModelContextProtocol|OmniSharp|Azure\.Identity\.Broker|Microsoft\.Identity\.Client\.Broker).*\.dll$'; then
+                      echo "$(basename "$package") unexpectedly contains an excluded feature assembly." >&2
                       exit 1
                     fi
                     echo "Validated $(basename "$package") [$size bytes]"

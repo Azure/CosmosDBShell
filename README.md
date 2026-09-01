@@ -88,10 +88,15 @@ sudo dnf install ./cosmosdbshell-<version>-<release>.<architecture>.rpm
 cosmosdbshell
 ```
 
-The RPM excludes the native MSAL runtime to remain within the Azure Cloud Shell
-package-size limit. Visual Studio Code credential authentication is unavailable
-in this build; selecting it prints a warning and falls back to other credentials.
-Use `--azure-cli` to select the signed-in Azure CLI identity explicitly.
+The RPM retains the interactive shell, scripting, ARM management, and both
+direct and gateway Cosmos DB connectivity. To reduce its deployment footprint,
+it excludes MCP, LSP, and the native and managed broker components used by
+Visual Studio Code credential authentication. Invoking `--mcp`, `--lsp`, or
+`--stdio` reports that the feature is unavailable. OpenTelemetry tracing and
+OTLP export remain available through `--otel`.
+Selecting Visual Studio Code credential authentication prints a warning and
+falls back to other credentials. Use `--azure-cli` to select the signed-in Azure
+CLI identity explicitly.
 
 ## Architecture
 

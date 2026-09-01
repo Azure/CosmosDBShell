@@ -32,6 +32,8 @@ yes_char = Y
 no_char = N
 
 error = Error:
+error-lsp-not-included = LSP support is not included in this build.
+error-mcp-not-included = MCP support is not included in this build.
 error-connection_failed = Failed to connect to the Cosmos DB account.
 error-emulator_connection_failed =
     Could not reach the Cosmos DB emulator at { $endpoint }.

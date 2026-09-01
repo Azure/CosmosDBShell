@@ -18,4 +18,7 @@
   <PropertyGroup Condition="'$(CosmosDBShellExcludeMsalRuntime)' == 'true'">
     <DefineConstants>$(DefineConstants);COSMOSDBSHELL_NO_MSAL_RUNTIME</DefineConstants>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(CosmosDBShellExcludeMcpAndLsp)' == 'true'">
+    <DefineConstants>$(DefineConstants);COSMOSDBSHELL_NO_MCP_LSP</DefineConstants>
+  </PropertyGroup>
 </Project>

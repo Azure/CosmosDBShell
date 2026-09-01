@@ -4,7 +4,7 @@
 
 ### Build & pipeline
 
-- The official pipeline now produces compressed `x86_64` and `aarch64` RPM packages from the framework-dependent Linux builds. The packages require the .NET 10 runtime and are validated against the Azure Cloud Shell 25 MB package-size limit.
+- The official pipeline now produces compressed `x86_64` and `aarch64` RPM packages from lightweight framework-dependent Linux builds. The packages retain the interactive shell, scripting, ARM management, direct/gateway connectivity, and OpenTelemetry export while excluding MCP, LSP, and brokered Visual Studio Code authentication. They require the .NET 10 runtime and are validated against the Azure Cloud Shell 25 MB package-size limit.
 
 ## 1.1.209-preview — 2026-08-26
 

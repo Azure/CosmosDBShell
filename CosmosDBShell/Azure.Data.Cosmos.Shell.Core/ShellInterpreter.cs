@@ -986,6 +986,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 WriteLine(MessageService.GetString("shell-connect-vscode-credential-msal-runtime-missing"));
             }
+#if !COSMOSDBSHELL_NO_MSAL_RUNTIME
             else
             {
                 WriteLine(MessageService.GetString("shell-connect-vscode-credential-auth"));
@@ -1010,6 +1011,7 @@ public partial class ShellInterpreter : IDisposable
                 // VS Code credential unavailable or expired; continue the credential chain.
                 WriteLine(MessageService.GetString("shell-connect-vscode-credential-fallback"));
             }
+#endif
         }
 
         // Step 3: Static token from COSMOSDB_SHELL_TOKEN environment variable

@@ -7,11 +7,15 @@ using System.CommandLine.Parsing;
 using System.Reflection;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+#if !COSMOSDBSHELL_NO_MCP_LSP
 using Azure.Data.Cosmos.Shell.Lsp;
 using Azure.Data.Cosmos.Shell.Mcp;
+#endif
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
+#if !COSMOSDBSHELL_NO_MCP_LSP
 using Microsoft.Extensions.Hosting;
+#endif
 using Spectre.Console;
 
 internal class Program
@@ -25,6 +29,7 @@ internal class Program
         // accidentally trigger LSP mode.
         args = NormalizeArguments(args);
 
+#if !COSMOSDBSHELL_NO_MCP_LSP
         // Handle LSP mode early, before any other code can write to stdout.
         // The LSP protocol requires exclusive access to stdin/stdout. Only
         // inspect the prefix before -c / -k so that a command tail of literally
@@ -37,8 +42,9 @@ internal class Program
             await server.WaitForExit;
             return;
         }
+#endif
 
-        IHost? host = null;
+        IDisposable? host = null;
         TracingBootstrap? tracing = null;
         try
         {
@@ -181,12 +187,18 @@ internal class Program
                 }
             }
 
-            if (o.StartLspServer)
+            if (o.StartLspServer || o.LspStdio)
             {
+#if COSMOSDBSHELL_NO_MCP_LSP
+                ShellInterpreter.WriteLine(MessageService.GetString("error-lsp-not-included"));
+                Environment.ExitCode = ShellExitCode.UsageError;
+                return;
+#else
                 // Already handled above, but keep for completeness
                 var server = await LspServer.CreateLanguageServerAsync();
                 await server.WaitForExit;
                 return;
+#endif
             }
 
             if (!string.IsNullOrWhiteSpace(o.ExecuteAndQuit) && !string.IsNullOrWhiteSpace(o.ExecuteAndContinue))
@@ -399,6 +411,11 @@ internal class Program
 
             if (o.McpPort is int mcpPort)
             {
+#if COSMOSDBSHELL_NO_MCP_LSP
+                WriteStartupError(MessageService.GetString("error-mcp-not-included"));
+                Environment.ExitCode = ShellExitCode.UsageError;
+                return;
+#else
                 if (mcpPort <= 0)
                 {
                     WriteStartupError(MessageService.GetString("mcp-error-invalid-port"));
@@ -419,14 +436,15 @@ internal class Program
 
                 if (host != null)
                 {
+                    var mcpHost = (IHost)host;
                     ShellInterpreter.Instance.McpPort = mcpPort;
                     hostTask = Task.Run(async () =>
                     {
                         try
                         {
                             var token = CancellationToken.None;
-                            await host.StartAsync(token);
-                            await host.WaitForShutdownAsync(token);
+                            await mcpHost.StartAsync(token);
+                            await mcpHost.WaitForShutdownAsync(token);
                         }
                         catch (Exception ex)
                         {
@@ -435,6 +453,7 @@ internal class Program
                         }
                     });
                 }
+#endif
             }
 
             if (Console.IsInputRedirected)
@@ -516,12 +535,14 @@ internal class Program
         ShellInterpreter.WriteLine(heading);
     }
 
-    private static async Task StopHostAsync(IHost? host, Task? hostTask)
+    private static async Task StopHostAsync(IDisposable? host, Task? hostTask)
     {
-        if (host != null)
+#if !COSMOSDBSHELL_NO_MCP_LSP
+        if (host is IHost mcpHost)
         {
-            await host.StopAsync();
+            await mcpHost.StopAsync();
         }
+#endif
 
         if (hostTask != null)
         {

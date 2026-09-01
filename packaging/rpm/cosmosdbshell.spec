@@ -21,7 +21,8 @@ AutoReqProv:    no
 
 %description
 Azure Cosmos DB Shell is a command-line tool for interactive navigation,
-queries, scripting, and MCP server workflows with Azure Cosmos DB.
+queries, and scripting with Azure Cosmos DB. This lightweight build excludes
+MCP, LSP, and brokered Visual Studio Code authentication.
 
 %prep
 
