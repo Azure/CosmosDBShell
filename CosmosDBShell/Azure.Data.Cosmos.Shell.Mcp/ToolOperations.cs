@@ -18,6 +18,15 @@ using ModelContextProtocol.Server;
 
 internal class ToolOperations
 {
+    internal const int DefaultPageSize = ResultLimit.DefaultMaxItemCount;
+
+    private const string ContinuationArgument = "continuation";
+
+    private const string MaxArgument = "max";
+
+    private const string ContinuationDescription =
+        "Continuation token returned by a previous call to this tool. Pass it back to fetch the next page, or omit it to start from the beginning. The value is opaque; do not modify it.";
+
     private readonly ILogger<ToolOperations> logger;
     private readonly Lazy<List<Tool>> cachedTools;
 
@@ -94,9 +103,17 @@ internal class ToolOperations
 
             properties[option.Name[0]] = CreatePropertySchema(
                 propertyInfo.PropertyType,
-                option.GetDescription(command.CommandName),
+                GetMcpOptionDescription(command, option),
                 option.Name,
-                option.DefaultValue);
+                GetMcpDefaultValue(command, option));
+        }
+
+        if (command.IsPaged)
+        {
+            properties[ContinuationArgument] = CreatePropertySchema(
+                typeof(string),
+                ContinuationDescription,
+                [ContinuationArgument]);
         }
 
         if (properties.Count > 0)
@@ -183,6 +200,47 @@ internal class ToolOperations
     internal static string FormatOptionForHistory(Option option, object? value)
     {
         return $" --{option.Name[0]} {ShellLiteral.Quote(value?.ToString())}";
+    }
+
+    internal static void ConfigurePaging(object command)
+    {
+        if (command is IPagedCommand paged)
+        {
+            paged.IsMcpRequest = true;
+        }
+    }
+
+    internal static bool TrySetContinuation(object command, string argumentName, JsonElement value)
+    {
+        if (command is not IPagedCommand paged
+            || !argumentName.Equals(ContinuationArgument, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        paged.Continuation = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        return true;
+    }
+
+    private static object? GetMcpDefaultValue(CommandFactory command, Option option)
+    {
+        return IsPagedMaxOption(command, option)
+            ? DefaultPageSize
+            : option.DefaultValue;
+    }
+
+    // The shared description states the shell's whole-result semantics, which differ under MCP.
+    private static string? GetMcpOptionDescription(CommandFactory command, Option option)
+    {
+        var description = option.GetDescription(command.CommandName);
+        return IsPagedMaxOption(command, option)
+            ? $"{description} Through MCP this bounds a single page rather than the whole result set, so a call can return fewer items and still have more available; use continuationToken to detect the end."
+            : description;
+    }
+
+    private static bool IsPagedMaxOption(CommandFactory command, Option option)
+    {
+        return command.IsPaged && option.Name.Contains(MaxArgument, StringComparer.OrdinalIgnoreCase);
     }
 
     private static JsonObject CreatePropertySchema(Type propertyType, string? description, string[] names, object? defaultValue = null)
@@ -384,6 +442,7 @@ internal class ToolOperations
         }
 
         var cmd = command.CreateCommand();
+        ConfigurePaging(cmd);
         var suppliedParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         if (parameters.Params.Arguments != null)
@@ -440,8 +499,15 @@ internal class ToolOperations
                     continue;
                 }
 
+                // Kept out of the echoed command line: tokens are large and add no diagnostic value.
+                if (TrySetContinuation(cmd, par.Key, par.Value))
+                {
+                    continue;
+                }
+
                 var knownNames = command.Options.SelectMany(o => o.Name)
                     .Concat(command.Parameters.SelectMany(p => p.Name))
+                    .Concat(command.IsPaged ? new[] { ContinuationArgument } : Array.Empty<string>())
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
                 var unknownArgMessage = $"Unknown argument '{par.Key}' for command '{command.CommandName}'. Known arguments: {string.Join(", ", knownNames)}.";

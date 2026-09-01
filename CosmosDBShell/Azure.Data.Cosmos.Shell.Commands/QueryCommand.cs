@@ -35,8 +35,8 @@ internal enum MetricTarget
     ReadOnly = true,
     Idempotent = true,
     OpenWorld = true,
-    Description = "Executes a Cosmos DB NoSQL query against the current container and returns matching documents. Pass explain=true to return the query execution plan (utilized/potential indexes and a plain-language evaluation) instead of documents. Use the cosmos://docs/nosql-query-language resource for query syntax reference.")]
-internal class QueryCommand : CosmosCommand
+    Description = "Executes a Cosmos DB NoSQL query against the current container and returns one bounded page of matching documents. Pass the returned continuationToken as continuation to retrieve the next page. Pass explain=true to return the query execution plan (utilized/potential indexes and a plain-language evaluation) instead of documents. Use the cosmos://docs/nosql-query-language resource for query syntax reference.")]
+internal class QueryCommand : CosmosCommand, IPagedCommand
 {
     [CosmosParameter("query")]
     public string? Query { get; init; }
@@ -61,6 +61,10 @@ internal class QueryCommand : CosmosCommand
 
     [CosmosOption("explain")]
     public bool? Explain { get; init; }
+
+    public bool IsMcpRequest { get; set; }
+
+    public string? Continuation { get; set; }
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
@@ -676,6 +680,7 @@ internal class QueryCommand : CosmosCommand
         try
         {
             var returnState = CreateCommandState(this.OutputFormat);
+            returnState.IsPage = this.IsMcpRequest;
             var aggregatedDocuments = new List<JsonElement>();
 
             var options = new QueryRequestOptions
@@ -683,7 +688,9 @@ internal class QueryCommand : CosmosCommand
                 PopulateIndexMetrics = true,
             };
 
-            var effectiveMaxItemCount = ResultLimit.ResolveMaxItemCount(this.Max, defaultMaxItemCount: null);
+            var effectiveMaxItemCount = ResultLimit.ResolveMaxItemCount(
+                this.Max,
+                defaultMaxItemCount: this.IsMcpRequest ? ResultLimit.DefaultMaxItemCount : null);
             if (effectiveMaxItemCount.HasValue)
             {
                 options.MaxItemCount = effectiveMaxItemCount.Value;
@@ -699,7 +706,7 @@ internal class QueryCommand : CosmosCommand
                 throw new CommandException("query", MessageService.GetString("command-query-error-empty_query"));
             }
 
-            using var feedIterator = container.GetItemQueryStreamIterator(this.Query, null, options);
+            using var feedIterator = container.GetItemQueryStreamIterator(this.Query, this.Continuation, options);
             var limitReached = false;
 
             while (feedIterator.HasMoreResults)
@@ -732,6 +739,8 @@ internal class QueryCommand : CosmosCommand
                 {
                     AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", queryMetrics.TotalRequestCharge.ToString() } }));
                 }
+
+                returnState.ContinuationToken = response.ContinuationToken;
 
                 var pageDocuments = queryDocument.RootElement.GetProperty("Documents");
                 var pageExceedsLimit = PageExceedsLimit(aggregatedDocuments.Count, pageDocuments, effectiveMaxItemCount);
@@ -874,6 +883,11 @@ internal class QueryCommand : CosmosCommand
                 else
                 {
                     GeneratePlainResultDocument(returnState, aggregatedDocuments);
+                }
+
+                if (this.IsMcpRequest)
+                {
+                    break;
                 }
 
                 if (ResultLimit.IsLimitReached(aggregatedDocuments.Count, effectiveMaxItemCount))

@@ -242,6 +242,8 @@ Options:
 
 `query` does not apply a default item limit. Use `--max <n>` to cap returned items when needed, or `--max 0` to disable the limit explicitly.
 
+When called through MCP, `query` and container-item `ls` return one page at a time and default to at most `100` items when `max` is omitted. The MCP result includes `continuationToken`; pass a non-null value back as the tool's `continuation` argument, with the same query and options, to retrieve the next page. A null token means there are no more pages. `continuation` is an MCP-only argument and is deliberately not a shell option, so interactive and scripted commands are unaffected and retain their existing multi-page behavior.
+
 #### Explain a query
 
 `query "<sql>" --explain` reports how the query engine resolved the query rather than returning documents. When Cosmos DB returns index metrics, it shows whether the query performed a full scan or an index seek, lists the utilized and potential indexes, the index hit ratio, and the request charge. If index metrics are unavailable or unrecognized, the scan type is reported as unknown instead of assuming a full scan. A plain-language summary highlights confirmed full scans and recommends indexes to add.
