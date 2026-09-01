@@ -326,6 +326,28 @@ public class ToolOperationsCallToolTests
     }
 
     [Fact]
+    public async Task CallTool_InvalidContinuationType_ReturnsError()
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["query"] = Json("\"SELECT * FROM c\""),
+            ["continuation"] = Json("42"),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("query", arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Equal(
+                "Invalid value for MCP argument 'continuation'. Expected a string or null.",
+                root.GetProperty("error").GetString());
+        }
+    }
+
+    [Fact]
     public async Task CallTool_EchoCommand_ReturnsSuccessResult()
     {
         var tool = CreateToolOperations();

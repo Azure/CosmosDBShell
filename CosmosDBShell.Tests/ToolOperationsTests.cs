@@ -179,8 +179,19 @@ public class ToolOperationsTests
     {
         var command = new ListCommand();
 
-        Assert.True(ToolOperations.TrySetContinuation(command, "continuation", Json("\"token-1\"")));
+        Assert.True(ToolOperations.TrySetContinuation(command, "continuation", Json("\"token-1\""), out var error));
+        Assert.Null(error);
         Assert.Equal("token-1", command.Continuation);
+    }
+
+    [Fact]
+    public void TrySetContinuation_RejectsNonStringValue()
+    {
+        var command = new ListCommand();
+
+        Assert.True(ToolOperations.TrySetContinuation(command, "continuation", Json("42"), out var error));
+        Assert.Equal("Invalid value for MCP argument 'continuation'. Expected a string or null.", error);
+        Assert.Null(command.Continuation);
     }
 
     [Fact]
@@ -188,7 +199,8 @@ public class ToolOperationsTests
     {
         var command = new ListCommand();
 
-        Assert.False(ToolOperations.TrySetContinuation(command, "max", Json("\"token-1\"")));
+        Assert.False(ToolOperations.TrySetContinuation(command, "max", Json("\"token-1\""), out var error));
+        Assert.Null(error);
         Assert.Null(command.Continuation);
     }
 

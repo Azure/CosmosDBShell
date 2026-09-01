@@ -210,12 +210,19 @@ internal class ToolOperations
         }
     }
 
-    internal static bool TrySetContinuation(object command, string argumentName, JsonElement value)
+    internal static bool TrySetContinuation(object command, string argumentName, JsonElement value, out string? errorMessage)
     {
+        errorMessage = null;
         if (command is not IPagedCommand paged
             || !argumentName.Equals(ContinuationArgument, StringComparison.OrdinalIgnoreCase))
         {
             return false;
+        }
+
+        if (value.ValueKind is not JsonValueKind.String and not JsonValueKind.Null)
+        {
+            errorMessage = "Invalid value for MCP argument 'continuation'. Expected a string or null.";
+            return true;
         }
 
         paged.Continuation = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
@@ -500,8 +507,14 @@ internal class ToolOperations
                 }
 
                 // Kept out of the echoed command line: tokens are large and add no diagnostic value.
-                if (TrySetContinuation(cmd, par.Key, par.Value))
+                if (TrySetContinuation(cmd, par.Key, par.Value, out var continuationError))
                 {
+                    if (continuationError != null)
+                    {
+                        this.logger?.LogWarning("{Message}", continuationError);
+                        return McpResponseFactory.CreateError(continuationError, ShellInterpreter.Instance.State);
+                    }
+
                     continue;
                 }
 
