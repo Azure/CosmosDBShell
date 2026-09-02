@@ -44,8 +44,8 @@ internal static class Program
     private static void WriteUsage()
     {
         Console.Error.WriteLine("Usage:");
-        Console.Error.WriteLine("  localization export <source.ftl> <catalog.json>");
-        Console.Error.WriteLine("  localization import <source.ftl> <catalog.json> <output.ftl>");
-        Console.Error.WriteLine("  localization verify <source.ftl> <catalog.json>");
+        Console.Error.WriteLine("  dotnet run --project tools/Localization/CosmosDBShell.Localization.csproj -- export <source.ftl> <catalog.json>");
+        Console.Error.WriteLine("  dotnet run --project tools/Localization/CosmosDBShell.Localization.csproj -- import <source.ftl> <catalog.json> <output.ftl>");
+        Console.Error.WriteLine("  dotnet run --project tools/Localization/CosmosDBShell.Localization.csproj -- verify <source.ftl> <catalog.json>");
     }
 }

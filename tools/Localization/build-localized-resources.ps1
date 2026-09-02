@@ -19,7 +19,7 @@ if ($VerifyOnly) {
 }
 
 Get-ChildItem (Join-Path $repoRoot 'l10n') -Filter 'CosmosDBShell.*.json' -File | ForEach-Object {
-    if ($_.Name -notmatch '^CosmosDBShell\.(?<locale>[^.]+(?:-[^.]+)?)\.json$') {
+    if ($_.Name -notmatch '^CosmosDBShell\.(?<locale>[^.]+)\.json$') {
         return
     }
 

@@ -96,7 +96,7 @@ internal static class FluentCatalogConverter
         var actual = ReadCatalog(catalogPath);
         if (expected.Count != actual.Count || expected.Any(pair => !actual.TryGetValue(pair.Key, out var value) || value != pair.Value))
         {
-            throw new InvalidDataException($"'{catalogPath}' is not synchronized with '{sourcePath}'. Run the localization export command.");
+            throw new InvalidDataException($"'{catalogPath}' is not synchronized with '{sourcePath}'. Regenerate the canonical catalog with the export subcommand.");
         }
     }
 
@@ -246,11 +246,7 @@ internal static class FluentCatalogConverter
                 throw new InvalidDataException($"Translation '{path}' contains unknown placeholder '{{{index}}}'.");
             }
 
-            if (!seen.Add(index))
-            {
-                throw new InvalidDataException($"Translation '{path}' contains duplicate placeholder '{{{index}}}'.");
-            }
-
+            seen.Add(index);
             elements.Add(placeholders[index]);
             position = match.Index + match.Length;
         }

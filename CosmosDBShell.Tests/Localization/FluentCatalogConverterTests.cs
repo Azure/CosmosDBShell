@@ -21,15 +21,18 @@ public class FluentCatalogConverterTests
             }.
             """;
 
-        var catalog = FluentCatalogConverter.Export(new StringReader(source));
+        using var exportReader = new StringReader(source);
+        var catalog = FluentCatalogConverter.Export(exportReader);
         catalog["greeting"] = "{0}, hello!";
         catalog["removed"] = "{1}: {0}.";
         catalog["removed.__p1.one"] = "entry";
         catalog["removed.__p1.other"] = "entries";
 
-        var translated = FluentCatalogConverter.Import(new StringReader(source), catalog);
+        using var importReader = new StringReader(source);
+        var translated = FluentCatalogConverter.Import(importReader, catalog);
         var context = new MessageContext("en", new MessageContextOptions { UseIsolating = false });
-        Assert.Empty(context.AddMessages(new StringReader(translated)));
+        using var translatedReader = new StringReader(translated);
+        Assert.Empty(context.AddMessages(translatedReader));
         Assert.Equal("Ada, hello!", context.Format(context.GetMessage("greeting"), new Dictionary<string, object> { ["name"] = "Ada" }));
         Assert.Equal("entry: 1.", context.Format(context.GetMessage("removed"), new Dictionary<string, object> { ["count"] = 1 }));
         Assert.Equal("entries: 2.", context.Format(context.GetMessage("removed"), new Dictionary<string, object> { ["count"] = 2 }));
@@ -39,10 +42,12 @@ public class FluentCatalogConverterTests
     public void Import_RejectsMissingPlaceholder()
     {
         const string source = "greeting = Hello, { $name }!";
-        var catalog = FluentCatalogConverter.Export(new StringReader(source));
+        using var exportReader = new StringReader(source);
+        var catalog = FluentCatalogConverter.Export(exportReader);
         catalog["greeting"] = "Hello!";
 
-        var exception = Assert.Throws<InvalidDataException>(() => FluentCatalogConverter.Import(new StringReader(source), catalog));
+        using var importReader = new StringReader(source);
+        var exception = Assert.Throws<InvalidDataException>(() => FluentCatalogConverter.Import(importReader, catalog));
 
         Assert.Contains("missing placeholder", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -56,13 +61,16 @@ public class FluentCatalogConverterTests
                *[other] many items
             }
             """;
-        var catalog = FluentCatalogConverter.Export(new StringReader(source));
+        using var exportReader = new StringReader(source);
+        var catalog = FluentCatalogConverter.Export(exportReader);
         catalog["items.__p0.other"] = "many items\non several lines";
 
-        var translated = FluentCatalogConverter.Import(new StringReader(source), catalog);
+        using var importReader = new StringReader(source);
+        var translated = FluentCatalogConverter.Import(importReader, catalog);
         var context = new MessageContext("en", new MessageContextOptions { UseIsolating = false });
 
-        Assert.Empty(context.AddMessages(new StringReader(translated)));
+        using var translatedReader = new StringReader(translated);
+        Assert.Empty(context.AddMessages(translatedReader));
         Assert.Equal(
             "many items\non several lines",
             context.Format(context.GetMessage("items"), new Dictionary<string, object> { ["count"] = 2 }));
@@ -79,16 +87,36 @@ public class FluentCatalogConverterTests
             }
             """;
 
-        var catalog = FluentCatalogConverter.Export(new StringReader(source));
+        using var exportReader = new StringReader(source);
+        var catalog = FluentCatalogConverter.Export(exportReader);
         catalog["items.__p0.0"] = "none";
         catalog["items.__p0.1"] = "single";
 
-        var translated = FluentCatalogConverter.Import(new StringReader(source), catalog);
+        using var importReader = new StringReader(source);
+        var translated = FluentCatalogConverter.Import(importReader, catalog);
         var context = new MessageContext("en", new MessageContextOptions { UseIsolating = false });
 
-        Assert.Empty(context.AddMessages(new StringReader(translated)));
+        using var translatedReader = new StringReader(translated);
+        Assert.Empty(context.AddMessages(translatedReader));
         Assert.Equal("none", context.Format(context.GetMessage("items"), new Dictionary<string, object> { ["count"] = 0 }));
         Assert.Equal("single", context.Format(context.GetMessage("items"), new Dictionary<string, object> { ["count"] = 1 }));
+    }
+
+    [Fact]
+    public void Import_AllowsRepeatedPlaceholders()
+    {
+        const string source = "greeting = Hello, { $name }!";
+        using var exportReader = new StringReader(source);
+        var catalog = FluentCatalogConverter.Export(exportReader);
+        catalog["greeting"] = "{0}, meet {0}.";
+
+        using var importReader = new StringReader(source);
+        var translated = FluentCatalogConverter.Import(importReader, catalog);
+        var context = new MessageContext("en", new MessageContextOptions { UseIsolating = false });
+        using var translatedReader = new StringReader(translated);
+
+        Assert.Empty(context.AddMessages(translatedReader));
+        Assert.Equal("Ada, meet Ada.", context.Format(context.GetMessage("greeting"), new Dictionary<string, object> { ["name"] = "Ada" }));
     }
 
     [Fact]
@@ -97,10 +125,13 @@ public class FluentCatalogConverterTests
         var root = FindRepositoryRoot();
         var sourcePath = Path.Combine(root, "CosmosDBShell", "lang", "en.ftl");
         var sourceText = File.ReadAllText(sourcePath, Encoding.UTF8);
-        var catalog = FluentCatalogConverter.Export(new StringReader(sourceText));
+        using var exportReader = new StringReader(sourceText);
+        var catalog = FluentCatalogConverter.Export(exportReader);
 
-        var generated = FluentCatalogConverter.Import(new StringReader(sourceText), catalog);
-        var roundTrippedCatalog = FluentCatalogConverter.Export(new StringReader(generated));
+        using var importReader = new StringReader(sourceText);
+        var generated = FluentCatalogConverter.Import(importReader, catalog);
+        using var roundTripReader = new StringReader(generated);
+        var roundTrippedCatalog = FluentCatalogConverter.Export(roundTripReader);
 
         Assert.True(catalog.Count > 1000);
         Assert.Equal(catalog, roundTrippedCatalog);
