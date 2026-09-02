@@ -91,6 +91,35 @@ public class ListCommandTests
         Assert.False(ListCommand.ShouldReportLimitReached(currentCount: 9, effectiveMaxItemCount: 10, usesServerSideTop: true, iteratorHasMoreResults: true));
     }
 
+    [Theory]
+    [InlineData("next-page", true)]
+    [InlineData(null, false)]
+    public void ShouldReportLimitReachedForResult_McpUsesContinuationToken(string? continuationToken, bool expected)
+    {
+        Assert.Equal(
+            expected,
+            ListCommand.ShouldReportLimitReachedForResult(
+                isMcpRequest: true,
+                continuationToken,
+                limitReached: false,
+                effectiveMaxItemCount: 100));
+    }
+
+    [Theory]
+    [InlineData(true, 10, true)]
+    [InlineData(true, null, false)]
+    [InlineData(false, 10, false)]
+    public void ShouldReportLimitReachedForResult_ShellRetainsExistingSemantics(bool limitReached, int? effectiveMaxItemCount, bool expected)
+    {
+        Assert.Equal(
+            expected,
+            ListCommand.ShouldReportLimitReachedForResult(
+                isMcpRequest: false,
+                continuationToken: "ignored",
+                limitReached,
+                effectiveMaxItemCount));
+    }
+
     [Fact]
     public void GetPartitionKeyPropertyNames_ReturnsAllHierarchicalPaths()
     {

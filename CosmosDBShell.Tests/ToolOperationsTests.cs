@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests;
 
 using System.Text.Json;
+using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
@@ -29,8 +30,27 @@ public class ToolOperationsTests
         Assert.Equal("string", databaseProperty.GetProperty("type").GetString());
         Assert.Equal("string", containerProperty.GetProperty("type").GetString());
         Assert.Equal("integer", maxProperty.GetProperty("type").GetString());
+        Assert.Equal(ToolOperations.DefaultPageSize, maxProperty.GetProperty("default").GetInt32());
+        Assert.Equal(1, maxProperty.GetProperty("minimum").GetInt32());
         Assert.Contains("Aliases: db", databaseProperty.GetProperty("description").GetString());
         Assert.Contains("Aliases: con", containerProperty.GetProperty("description").GetString());
+    }
+
+    [Theory]
+    [InlineData("query")]
+    [InlineData("ls")]
+    public void GetTool_PagedMaxDescription_DocumentsSinglePageSemanticsWithoutChangingShellHelp(string commandName)
+    {
+        var factory = new CommandRunner().Commands[commandName];
+
+        var tool = ToolOperations.GetTool(factory);
+        var schema = JsonDocument.Parse(tool.InputSchema.GetRawText()).RootElement;
+        var maxDescription = schema.GetProperty("properties").GetProperty("max").GetProperty("description").GetString();
+
+        Assert.Contains("continuationToken", maxDescription);
+
+        var shellDescription = factory.Options.Single(option => option.Name[0] == "max").GetDescription(commandName);
+        Assert.DoesNotContain("continuationToken", shellDescription);
     }
 
     [Fact]
@@ -99,6 +119,92 @@ public class ToolOperationsTests
         var formattedOption = ToolOperations.FormatOptionForHistory(databaseOption, null);
 
         Assert.Equal(" --database \"\"", formattedOption);
+    }
+
+    [Fact]
+    public void ConfigurePaging_MarksQueryAsMcpRequest()
+    {
+        var command = new QueryCommand();
+
+        ToolOperations.ConfigurePaging(command);
+
+        Assert.Null(command.Max);
+        Assert.True(command.IsMcpRequest);
+    }
+
+    [Fact]
+    public void ConfigurePaging_PreservesExplicitMaximum()
+    {
+        var command = new ListCommand { Max = 25 };
+
+        ToolOperations.ConfigurePaging(command);
+
+        Assert.Equal(25, command.Max);
+        Assert.True(command.IsMcpRequest);
+    }
+
+    [Theory]
+    [InlineData("query")]
+    [InlineData("ls")]
+    public void GetTool_ExposesContinuationWithoutMakingItAShellOption(string commandName)
+    {
+        var factory = new CommandRunner().Commands[commandName];
+
+        Assert.True(factory.IsPaged);
+        Assert.DoesNotContain(factory.AllOptions, option => ToolOperations.MatchesArgumentName(option.Name, "continuation"));
+
+        var tool = ToolOperations.GetTool(factory);
+        var schema = JsonDocument.Parse(tool.InputSchema.GetRawText()).RootElement;
+        var continuation = schema.GetProperty("properties").GetProperty("continuation");
+
+        Assert.Equal("string", continuation.GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void GetTool_OmitsContinuationForUnpagedCommands()
+    {
+        var factory = new CommandRunner().Commands["echo"];
+
+        var tool = ToolOperations.GetTool(factory);
+        var schema = JsonDocument.Parse(tool.InputSchema.GetRawText()).RootElement;
+
+        Assert.False(factory.IsPaged);
+        if (schema.TryGetProperty("properties", out var properties))
+        {
+            Assert.False(properties.TryGetProperty("continuation", out _));
+        }
+    }
+
+    [Fact]
+    public void TrySetContinuation_AssignsTokenToPagedCommand()
+    {
+        var command = new ListCommand();
+
+        Assert.True(ToolOperations.TrySetContinuation(command, "continuation", Json("\"token-1\""), out var error));
+        Assert.Null(error);
+        Assert.Equal("token-1", command.Continuation);
+    }
+
+    [Theory]
+    [InlineData("42")]
+    [InlineData("null")]
+    public void TrySetContinuation_RejectsNonStringValue(string json)
+    {
+        var command = new ListCommand();
+
+        Assert.True(ToolOperations.TrySetContinuation(command, "continuation", Json(json), out var error));
+        Assert.Equal("Invalid value for MCP argument 'continuation'. Expected a non-null string.", error);
+        Assert.Null(command.Continuation);
+    }
+
+    [Fact]
+    public void TrySetContinuation_IgnoresUnrelatedArguments()
+    {
+        var command = new ListCommand();
+
+        Assert.False(ToolOperations.TrySetContinuation(command, "max", Json("\"token-1\""), out var error));
+        Assert.Null(error);
+        Assert.Null(command.Continuation);
     }
 
     [Theory]
@@ -242,5 +348,11 @@ public class ToolOperationsTests
         Assert.Contains("Display", enumValues);
         Assert.Contains("File", enumValues);
         Assert.Equal("Display", metrics.GetProperty("default").GetString());
+    }
+
+    private static JsonElement Json(string raw)
+    {
+        using var document = JsonDocument.Parse(raw);
+        return document.RootElement.Clone();
     }
 }

@@ -198,6 +198,8 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--theme <name>` | Color theme profile to apply at startup (`default`, `light`, `dark`, `monochrome`). Falls back to `COSMOSDB_SHELL_THEME`. |
 | `--help` | Show help |
 
+MCP `query` and container-item `ls` calls return bounded, resumable pages. They default to at most 100 items and include a continuation token for the next call; see [MCP pagination](docs/mcp.md#pagination).
+
 Examples:
 
 ```bash
