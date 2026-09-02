@@ -123,7 +123,7 @@ public class FluentCatalogConverterTests
     public void EnglishCatalog_RoundTripsAllPatterns()
     {
         var root = FindRepositoryRoot();
-        var sourcePath = Path.Combine(root, "CosmosDBShell", "lang", "en.ftl");
+        var sourcePath = Path.Join(root, "CosmosDBShell", "lang", "en.ftl");
         var sourceText = File.ReadAllText(sourcePath, Encoding.UTF8);
         using var exportReader = new StringReader(sourceText);
         var catalog = FluentCatalogConverter.Export(exportReader);
@@ -140,12 +140,12 @@ public class FluentCatalogConverterTests
     [Fact]
     public void VerifyFile_IgnoresJsonPropertyOrdering()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"cosmos-l10n-{Guid.NewGuid():N}");
+        var directory = Path.Join(Path.GetTempPath(), $"cosmos-l10n-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         try
         {
-            var sourcePath = Path.Combine(directory, "en.ftl");
-            var catalogPath = Path.Combine(directory, "catalog.json");
+            var sourcePath = Path.Join(directory, "en.ftl");
+            var catalogPath = Path.Join(directory, "catalog.json");
             File.WriteAllText(sourcePath, "z_key = Last\na-key = First");
             File.WriteAllText(catalogPath, "{\"z_key\":\"Last\",\"a-key\":\"First\"}");
 
@@ -162,7 +162,7 @@ public class FluentCatalogConverterTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory != null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "CosmosDBShell.sln")))
+            if (File.Exists(Path.Join(directory.FullName, "CosmosDBShell.sln")))
             {
                 return directory.FullName;
             }

@@ -34,7 +34,27 @@ internal static class Program
 
             return 0;
         }
-        catch (Exception exception)
+        catch (ArgumentException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 1;
+        }
+        catch (IOException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 1;
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 1;
+        }
+        catch (System.Text.Json.JsonException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 1;
+        }
+        catch (FormatException exception)
         {
             Console.Error.WriteLine(exception.Message);
             return 1;

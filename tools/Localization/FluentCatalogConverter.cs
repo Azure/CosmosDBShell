@@ -102,8 +102,10 @@ internal static class FluentCatalogConverter
 
     private static SortedDictionary<string, string> ReadCatalog(string path)
     {
-        var catalog = JsonSerializer.Deserialize<SortedDictionary<string, string>>(File.ReadAllText(path));
-        return catalog ?? throw new InvalidDataException($"Translation catalog '{path}' is empty or invalid.");
+        var catalog = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path));
+        return catalog is null
+            ? throw new InvalidDataException($"Translation catalog '{path}' is empty or invalid.")
+            : new SortedDictionary<string, string>(catalog, StringComparer.Ordinal);
     }
 
     private static FluentResource Parse(TextReader source)
