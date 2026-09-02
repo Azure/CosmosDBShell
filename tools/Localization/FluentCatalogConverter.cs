@@ -11,8 +11,10 @@ using System.Text.RegularExpressions;
 using Fluent.Net;
 using Fluent.Net.RuntimeAst;
 
-internal static partial class FluentCatalogConverter
+internal static class FluentCatalogConverter
 {
+    private static readonly Regex PlaceholderRegex = new(@"\{(\d+)\}", RegexOptions.CultureInvariant);
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -235,7 +237,7 @@ internal static partial class FluentCatalogConverter
         var seen = new HashSet<int>();
         var elements = new List<Node>();
         var position = 0;
-        foreach (Match match in PlaceholderRegex().Matches(translation))
+        foreach (Match match in PlaceholderRegex.Matches(translation))
         {
             AddText(elements, translation[position..match.Index]);
             var index = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
@@ -401,6 +403,4 @@ internal static partial class FluentCatalogConverter
         };
     }
 
-    [GeneratedRegex(@"\{(\d+)\}", RegexOptions.CultureInvariant)]
-    private static partial Regex PlaceholderRegex();
 }
