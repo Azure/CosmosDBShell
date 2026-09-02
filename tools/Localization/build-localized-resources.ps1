@@ -9,7 +9,7 @@ $project = Join-Path $PSScriptRoot 'CosmosDBShell.Localization.csproj'
 $source = Join-Path $repoRoot 'CosmosDBShell/lang/en.ftl'
 $catalog = Join-Path $repoRoot 'l10n/CosmosDBShell.json'
 
-dotnet run --project $project --no-restore -- verify $source $catalog
+dotnet run --project $project --configuration Release --no-restore --property CosmosLocalizationExecutable=true -- verify $source $catalog
 if ($LASTEXITCODE -ne 0) {
     throw 'The canonical localization catalog is not synchronized with en.ftl.'
 }
@@ -25,7 +25,7 @@ Get-ChildItem (Join-Path $repoRoot 'l10n') -Filter 'CosmosDBShell.*.json' -File 
 
     $locale = $Matches.locale
     $output = Join-Path $repoRoot "CosmosDBShell/lang/$locale.ftl"
-    dotnet run --project $project --no-restore -- import $source $_.FullName $output
+    dotnet run --project $project --configuration Release --no-restore --property CosmosLocalizationExecutable=true -- import $source $_.FullName $output
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to generate the Fluent resource for locale '$locale'."
     }

@@ -1,12 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType Condition="'$(CosmosLocalizationExecutable)' == 'true'">Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <SelfContained>true</SelfContained>
-    <UseCurrentRuntimeIdentifier>true</UseCurrentRuntimeIdentifier>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
