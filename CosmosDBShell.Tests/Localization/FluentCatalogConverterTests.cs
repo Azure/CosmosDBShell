@@ -53,6 +53,20 @@ public class FluentCatalogConverterTests
     }
 
     [Fact]
+    public void Import_RejectsOversizedPlaceholderIndex()
+    {
+        const string source = "greeting = Hello, { $name }!";
+        using var exportReader = new StringReader(source);
+        var catalog = FluentCatalogConverter.Export(exportReader);
+        catalog["greeting"] = "Hello, {999999999999}!";
+
+        using var importReader = new StringReader(source);
+        var exception = Assert.Throws<InvalidDataException>(() => FluentCatalogConverter.Import(importReader, catalog));
+
+        Assert.Contains("invalid placeholder", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Import_SupportsMultilineTranslatedSelectVariant()
     {
         const string source = """

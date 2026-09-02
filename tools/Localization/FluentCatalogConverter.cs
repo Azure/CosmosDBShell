@@ -242,7 +242,11 @@ internal static class FluentCatalogConverter
         foreach (Match match in PlaceholderRegex.Matches(translation))
         {
             AddText(elements, translation[position..match.Index]);
-            var index = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+            if (!int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var index))
+            {
+                throw new InvalidDataException($"Translation '{path}' contains invalid placeholder '{match.Value}'.");
+            }
+
             if (index >= placeholders.Length)
             {
                 throw new InvalidDataException($"Translation '{path}' contains unknown placeholder '{{{index}}}'.");
