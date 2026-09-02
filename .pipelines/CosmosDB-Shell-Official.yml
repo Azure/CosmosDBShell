@@ -92,6 +92,14 @@ extends:
               # ob_sdl_suppression_suppressionFile: $(Build.SourcesDirectory)\.gdn\job.gdnsuppress
 
             steps:
+              - task: CopyFiles@2
+                displayName: "Stage localization diagnostics"
+                condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+                inputs:
+                  SourceFolder: "$(Build.ArtifactStagingDirectory)"
+                  Contents: "loc/**"
+                  TargetFolder: '$(Build.SourcesDirectory)\out'
+
               - task: UseDotNet@2
                 continueOnError: true
                 inputs:
@@ -135,6 +143,12 @@ extends:
                   projects: $(BuildSolution)
                   custom: "restore"
                   arguments: "--configfile $(Build.SourcesDirectory)\\.pipelines\\nuget.config"
+
+              - task: PowerShell@2
+                displayName: "Validate and generate localized resources"
+                inputs:
+                  filePath: "$(Build.SourcesDirectory)\\tools\\Localization\\build-localized-resources.ps1"
+                  pwsh: true
 
               - task: ComponentGovernanceComponentDetection@0
                 displayName: "Component Governance - Component Detection"
@@ -765,6 +779,8 @@ extends:
                       "$(Build.SourcesDirectory)\CosmosDBShell.Fuzzer\obj",
                       "$(Build.SourcesDirectory)\CosmosDBShell.Analyzer\bin",
                       "$(Build.SourcesDirectory)\CosmosDBShell.Analyzer\obj",
+                      "$(Build.SourcesDirectory)\tools\Localization\bin",
+                      "$(Build.SourcesDirectory)\tools\Localization\obj",
                       "$(Build.SourcesDirectory)\TestResults"
                     )
                     foreach ($d in $dirs) {
@@ -784,7 +800,7 @@ extends:
                       # already zipped into out\zip and were staged to _binskim-scan\
                       # above for scanning, so keeping a third loose copy here would
                       # just duplicate them in the published artifact.
-                      $keep = @('zip', 'nupkg', '_manifest')
+                      $keep = @('zip', 'nupkg', 'loc', '_manifest')
                       Get-ChildItem -Path $outDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $keep -notcontains $_.Name } | ForEach-Object {
                         Write-Host "Trimming $($_.FullName) from out\"
                         Remove-Item -Recurse -Force $_.FullName
