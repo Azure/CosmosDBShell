@@ -42,13 +42,13 @@ internal static class MessageService
     internal static IReadOnlyList<string> GetCultureFallbacks(CultureInfo culture)
     {
         var names = new List<string>();
-        if (culture.TwoLetterISOLanguageName.Equals("en", StringComparison.OrdinalIgnoreCase))
-        {
-            return names;
-        }
-
         for (var current = culture; !string.IsNullOrEmpty(current.Name); current = current.Parent)
         {
+            if (current.Name.Equals("en", StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
             if (!names.Contains(current.Name, StringComparer.OrdinalIgnoreCase))
             {
                 names.Add(current.Name);

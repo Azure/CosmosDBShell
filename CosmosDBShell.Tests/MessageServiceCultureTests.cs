@@ -22,7 +22,7 @@ public class MessageServiceCultureTests
     [InlineData("zh-Hans-CN", "zh-Hans-CN", "zh-Hans", "zh")]
     [InlineData("zh-Hant", "zh-Hant", "zh")]
     [InlineData("de-DE", "de-DE", "de")]
-    [InlineData("en-US")]
+    [InlineData("en-US", "en-US")]
     public void GetCultureFallbacks_ReturnsSpecificToNeutralCultures(string cultureName, params string[] expected)
     {
         Assert.Equal(expected, MessageService.GetCultureFallbacks(CultureInfo.GetCultureInfo(cultureName)));
