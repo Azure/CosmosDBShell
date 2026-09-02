@@ -160,6 +160,31 @@ public class McpResponseFactoryTests
         Assert.Equal("/TestDatabase/TestContainer", structured.GetProperty("currentLocation").GetString());
     }
 
+    [Theory]
+    [InlineData("next-page")]
+    [InlineData(null)]
+    public void CreateSuccess_PagedResult_IncludesContinuationToken(string? continuationToken)
+    {
+        var commandState = new CommandState
+        {
+            IsPage = true,
+            ContinuationToken = continuationToken,
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { values = Array.Empty<object>() })),
+        };
+
+        var result = McpResponseFactory.CreateSuccess(commandState, new ConnectedState(null!));
+        var token = result.StructuredContent!.Value.GetProperty("continuationToken");
+
+        if (continuationToken == null)
+        {
+            Assert.Equal(JsonValueKind.Null, token.ValueKind);
+        }
+        else
+        {
+            Assert.Equal(continuationToken, token.GetString());
+        }
+    }
+
     [Fact]
     public void CreateError_PopulatesStructuredContentMatchingTextBlock()
     {

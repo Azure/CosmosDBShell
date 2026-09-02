@@ -36,6 +36,16 @@ public class ResultLimitTests
     }
 
     [Theory]
+    [InlineData(null, ResultLimit.DefaultMaxItemCount)]
+    [InlineData(0, ResultLimit.DefaultMaxItemCount)]
+    [InlineData(-1, ResultLimit.DefaultMaxItemCount)]
+    [InlineData(25, 25)]
+    public void ResolvePageSize_AlwaysReturnsPositiveBound(int? requestedMax, int expected)
+    {
+        Assert.Equal(expected, ResultLimit.ResolvePageSize(requestedMax));
+    }
+
+    [Theory]
     [InlineData(99, 100, false)]
     [InlineData(100, 100, true)]
     [InlineData(101, 100, true)]

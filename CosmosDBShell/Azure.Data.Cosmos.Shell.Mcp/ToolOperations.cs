@@ -18,6 +18,15 @@ using ModelContextProtocol.Server;
 
 internal class ToolOperations
 {
+    internal const int DefaultPageSize = ResultLimit.DefaultMaxItemCount;
+
+    private const string ContinuationArgument = "continuation";
+
+    private const string MaxArgument = "max";
+
+    private const string ContinuationDescription =
+        "Non-null continuation token returned by a previous call to this tool. Pass it back to fetch the next page, or omit this argument to start from the beginning. A null output token means the result is exhausted and no further call should be made. The value is opaque; do not modify it.";
+
     private readonly ILogger<ToolOperations> logger;
     private readonly Lazy<List<Tool>> cachedTools;
 
@@ -92,11 +101,25 @@ internal class ToolOperations
             var propertyInfo = option.PropertyInfo
                 ?? throw new InvalidOperationException($"Option '{option.Name[0]}' for command '{command.CommandName}' is missing property metadata.");
 
-            properties[option.Name[0]] = CreatePropertySchema(
+            var propertySchema = CreatePropertySchema(
                 propertyInfo.PropertyType,
-                option.GetDescription(command.CommandName),
+                GetMcpOptionDescription(command, option),
                 option.Name,
-                option.DefaultValue);
+                GetMcpDefaultValue(command, option));
+            if (IsPagedMaxOption(command, option))
+            {
+                propertySchema["minimum"] = 1;
+            }
+
+            properties[option.Name[0]] = propertySchema;
+        }
+
+        if (command.IsPaged)
+        {
+            properties[ContinuationArgument] = CreatePropertySchema(
+                typeof(string),
+                ContinuationDescription,
+                [ContinuationArgument]);
         }
 
         if (properties.Count > 0)
@@ -183,6 +206,54 @@ internal class ToolOperations
     internal static string FormatOptionForHistory(Option option, object? value)
     {
         return $" --{option.Name[0]} {ShellLiteral.Quote(value?.ToString())}";
+    }
+
+    internal static void ConfigurePaging(object command)
+    {
+        if (command is IPagedCommand paged)
+        {
+            paged.IsMcpRequest = true;
+        }
+    }
+
+    internal static bool TrySetContinuation(object command, string argumentName, JsonElement value, out string? errorMessage)
+    {
+        errorMessage = null;
+        if (command is not IPagedCommand paged
+            || !argumentName.Equals(ContinuationArgument, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (value.ValueKind is not JsonValueKind.String)
+        {
+            errorMessage = "Invalid value for MCP argument 'continuation'. Expected a non-null string.";
+            return true;
+        }
+
+        paged.Continuation = value.GetString();
+        return true;
+    }
+
+    private static object? GetMcpDefaultValue(CommandFactory command, Option option)
+    {
+        return IsPagedMaxOption(command, option)
+            ? DefaultPageSize
+            : option.DefaultValue;
+    }
+
+    // The shared description states the shell's whole-result semantics, which differ under MCP.
+    private static string? GetMcpOptionDescription(CommandFactory command, Option option)
+    {
+        var description = option.GetDescription(command.CommandName);
+        return IsPagedMaxOption(command, option)
+            ? $"{description} Through MCP this must be positive and bounds a single page rather than the whole result set. Omitted or non-positive values use the default of {DefaultPageSize}. A call can return fewer items and still have more available; use continuationToken to detect the end."
+            : description;
+    }
+
+    private static bool IsPagedMaxOption(CommandFactory command, Option option)
+    {
+        return command.IsPaged && option.Name.Contains(MaxArgument, StringComparer.OrdinalIgnoreCase);
     }
 
     private static JsonObject CreatePropertySchema(Type propertyType, string? description, string[] names, object? defaultValue = null)
@@ -384,6 +455,7 @@ internal class ToolOperations
         }
 
         var cmd = command.CreateCommand();
+        ConfigurePaging(cmd);
         var suppliedParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         if (parameters.Params.Arguments != null)
@@ -440,8 +512,21 @@ internal class ToolOperations
                     continue;
                 }
 
+                // Kept out of the echoed command line: tokens are large and add no diagnostic value.
+                if (TrySetContinuation(cmd, par.Key, par.Value, out var continuationError))
+                {
+                    if (continuationError != null)
+                    {
+                        this.logger?.LogWarning("{Message}", continuationError);
+                        return McpResponseFactory.CreateError(continuationError, ShellInterpreter.Instance.State);
+                    }
+
+                    continue;
+                }
+
                 var knownNames = command.Options.SelectMany(o => o.Name)
                     .Concat(command.Parameters.SelectMany(p => p.Name))
+                    .Concat(command.IsPaged ? new[] { ContinuationArgument } : Array.Empty<string>())
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
                 var unknownArgMessage = $"Unknown argument '{par.Key}' for command '{command.CommandName}'. Known arguments: {string.Join(", ", knownNames)}.";

@@ -110,6 +110,11 @@ internal static class McpResponseFactory
             payload["result"] = resultNode;
         }
 
+        if (commandState.IsPage)
+        {
+            payload["continuationToken"] = commandState.ContinuationToken;
+        }
+
         if (commandState.OutputFormat == OutputFormat.CSV)
         {
             var outputText = commandState.GenerateOutputText();

@@ -45,6 +45,11 @@ internal class CommandFactory(Type commandType, CosmosCommandAttribute attr)
     public bool McpRestricted { get => this.McpAnnotation?.Restricted ?? false; }
 
     /// <summary>
+    /// Gets a value indicating whether the command returns bounded, resumable pages over MCP.
+    /// </summary>
+    internal bool IsPaged => typeof(IPagedCommand).IsAssignableFrom(commandType);
+
+    /// <summary>
     /// Gets the list of parameters for the command.
     /// </summary>
     public List<Parameter> Parameters { get; } = [];

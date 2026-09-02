@@ -20,7 +20,7 @@ using Spectre.Console;
 [CosmosExample("ls --database=MyDB --container=Products", Description = "List items from specific database and container")]
 [CosmosExample("ls \"*active*\" --format=table", Description = "Filter and display results in table format")]
 [CosmosExample("ls active --key=status", Description = "Filter items where 'status' field equals 'active'")]
-internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInterpreter>
+internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInterpreter>, IPagedCommand
 {
     private PatternMatcher? matcher;
 
@@ -41,6 +41,10 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
     [CosmosOption("key", "k")]
     public string? Key { get; init; }
+
+    public bool IsMcpRequest { get; set; }
+
+    public string? Continuation { get; set; }
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
@@ -208,7 +212,9 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var client = state.Client;
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
         var opt = new QueryRequestOptions();
-        var effectiveMaxItemCount = ResultLimit.ResolveMaxItemCount(this.Max);
+        var effectiveMaxItemCount = this.IsMcpRequest
+            ? ResultLimit.ResolvePageSize(this.Max)
+            : ResultLimit.ResolveMaxItemCount(this.Max);
         if (effectiveMaxItemCount.HasValue)
         {
             opt.MaxItemCount = effectiveMaxItemCount.Value;
@@ -218,11 +224,12 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var partitionKeyPropertyNames = GetPartitionKeyPropertyNames(partitionKeyPaths);
         var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
 
-        var queryText = BuildItemQueryText(effectiveMaxItemCount, this.Filter);
-        var usesServerSideTop = effectiveMaxItemCount.HasValue && !HasClientSideFilter(this.Filter);
-        using var feedIterator = container.GetItemQueryStreamIterator(queryText, requestOptions: opt);
+        var queryText = BuildItemQueryText(this.IsMcpRequest ? null : effectiveMaxItemCount, this.Filter);
+        var usesServerSideTop = !this.IsMcpRequest && effectiveMaxItemCount.HasValue && !HasClientSideFilter(this.Filter);
+        using var feedIterator = container.GetItemQueryStreamIterator(queryText, this.Continuation, opt);
         var returnState = new CommandState();
         returnState.SetFormat(this.OutputFormat);
+        returnState.IsPage = this.IsMcpRequest;
         var list = new List<JsonElement>();
         var limitReached = false;
         while (feedIterator.HasMoreResults)
@@ -240,6 +247,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
                 throw new CommandException("ls", ex);
             }
 
+            returnState.ContinuationToken = response.ContinuationToken;
             using (queryDocument)
             {
                 foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
@@ -266,9 +274,18 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             {
                 break;
             }
+
+            if (this.IsMcpRequest)
+            {
+                break;
+            }
         }
 
-        var reachedLimit = limitReached && effectiveMaxItemCount.HasValue;
+        var reachedLimit = ShouldReportLimitReachedForResult(
+            this.IsMcpRequest,
+            returnState.ContinuationToken,
+            limitReached,
+            effectiveMaxItemCount);
         returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "item", values = list, limitReached = reachedLimit }));
 
         var itemsElement = JsonSerializer.SerializeToElement(new { type = "item", values = list });
@@ -371,5 +388,12 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
     internal static bool ShouldReportLimitReached(int currentCount, int? effectiveMaxItemCount, bool usesServerSideTop, bool iteratorHasMoreResults)
     {
         return ResultLimit.IsLimitReached(currentCount, effectiveMaxItemCount) && (usesServerSideTop || iteratorHasMoreResults);
+    }
+
+    internal static bool ShouldReportLimitReachedForResult(bool isMcpRequest, string? continuationToken, bool limitReached, int? effectiveMaxItemCount)
+    {
+        return isMcpRequest
+            ? continuationToken != null
+            : limitReached && effectiveMaxItemCount.HasValue;
     }
 }
