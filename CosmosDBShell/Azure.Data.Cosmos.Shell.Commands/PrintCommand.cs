@@ -54,6 +54,7 @@ internal class PrintCommand : CosmosCommand
         try
         {
             using var response = await container.ReadItemStreamAsync(this.Id, new PartitionKey(this.PartitionKey), cancellationToken: token);
+            RequestChargeContext.Record(response.Headers.RequestCharge);
 
             if (response.IsSuccessStatusCode)
             {
@@ -61,8 +62,8 @@ internal class PrintCommand : CosmosCommand
                 var content = await reader.ReadToEndAsync();
 
                 // Parse the content as JSON for structured output
-                var jsonDocument = System.Text.Json.JsonDocument.Parse(content);
-                commandState.Result = new ShellJson(jsonDocument.RootElement);
+                using var jsonDocument = System.Text.Json.JsonDocument.Parse(content);
+                commandState.Result = new ShellJson(jsonDocument.RootElement.Clone());
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
@@ -83,6 +84,7 @@ internal class PrintCommand : CosmosCommand
         }
         catch (CosmosException ex)
         {
+            RequestChargeContext.Record(ex.RequestCharge);
             throw new CommandException("print", MessageService.GetArgsString("command-print-error-reading_item", "message", CommandException.GetDisplayMessage(ex)), ex);
         }
 

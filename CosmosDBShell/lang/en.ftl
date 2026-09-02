@@ -937,6 +937,13 @@ command-stats-account-databases-col-containers = Containers
 command-stats-account-databases-col-count = Documents
 command-stats-account-databases-col-size = Size
 command-stats-account-detailed-cost-note = Aggregating account totals reads every container's quota and consumes request units.
+command-stats-session-heading = Session Usage
+command-stats-session-request-charge = Observed request charge (RUs)
+command-stats-session-charged-operations = Charged operations
+command-stats-session-request-charge-warning-threshold = Warning threshold (RUs)
+warning-session-request-charge-threshold-reached = Session request charge { $requestCharge } RUs has reached the configured warning threshold of { $warningThreshold } RUs.
+error-session-variable-read-only = Variable '${ $name }' is read-only.
+error-session-request-charge-warning-threshold-invalid = Variable '$sessionRequestChargeWarningThreshold' must be a non-negative number. Set it to 0 to disable the warning.
 
 command-version-description = Displays the version of Cosmos DB Shell.
 command-version = Cosmos Shell version: { $version }

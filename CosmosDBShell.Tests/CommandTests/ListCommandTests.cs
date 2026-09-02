@@ -252,4 +252,15 @@ public class ListCommandTests
         var item = Assert.Single(document.RootElement.GetProperty("Documents").EnumerateArray());
         Assert.Equal("1", item.GetProperty("id").GetString());
     }
+
+    [Fact]
+    public void AccumulateRequestCharge_AddsEveryPageCharge()
+    {
+        var state = new CommandState();
+
+        ListCommand.AccumulateRequestCharge(state, 1.25);
+        ListCommand.AccumulateRequestCharge(state, 2.5);
+
+        Assert.Equal(3.75, state.RequestCharge);
+    }
 }

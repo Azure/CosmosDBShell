@@ -173,6 +173,7 @@ internal class WatchCommand : CosmosCommand
             while (!token.IsCancellationRequested)
             {
                 using var response = await iterator.ReadNextAsync(token);
+                RequestChargeContext.Record(response.Headers.RequestCharge);
 
                 if (response.StatusCode == HttpStatusCode.NotModified)
                 {

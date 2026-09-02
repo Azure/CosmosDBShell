@@ -27,6 +27,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         while (iterator.HasMoreResults)
         {
             var page = await iterator.ReadNextAsync(token);
+            RequestChargeContext.Record(page.RequestCharge);
             foreach (var database in page)
             {
                 yield return database.Id;
@@ -41,6 +42,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         while (iterator.HasMoreResults)
         {
             var page = await iterator.ReadNextAsync(token);
+            RequestChargeContext.Record(page.RequestCharge);
             foreach (var container in page)
             {
                 yield return container.Id;
@@ -53,10 +55,12 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         try
         {
             var response = await client.GetDatabase(databaseName).ReadAsync(cancellationToken: token);
+            RequestChargeContext.Record(response.RequestCharge);
             return response.StatusCode == HttpStatusCode.OK;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
+            RequestChargeContext.Record(ex.RequestCharge);
             return false;
         }
     }
@@ -66,10 +70,12 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         try
         {
             var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+            RequestChargeContext.Record(response.RequestCharge);
             return response.StatusCode == HttpStatusCode.OK;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
+            RequestChargeContext.Record(ex.RequestCharge);
             return false;
         }
     }
@@ -78,6 +84,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     {
         var throughput = CreateThroughputProperties(scale, maxRu);
         var response = await client.CreateDatabaseIfNotExistsAsync(databaseName, throughput, cancellationToken: token);
+        RequestChargeContext.Record(response.RequestCharge);
         return response.Database.Id;
     }
 
@@ -114,22 +121,26 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         var throughput = CreateThroughputProperties(scale, maxRu);
         var database = client.GetDatabase(databaseName);
         var response = await database.CreateContainerIfNotExistsAsync(props, throughput, cancellationToken: token);
+        RequestChargeContext.Record(response.RequestCharge);
         return response.Container.Id;
     }
 
-    public Task DeleteDatabaseAsync(string databaseName, CancellationToken token)
+    public async Task DeleteDatabaseAsync(string databaseName, CancellationToken token)
     {
-        return client.GetDatabase(databaseName).DeleteAsync(cancellationToken: token);
+        var response = await client.GetDatabase(databaseName).DeleteAsync(cancellationToken: token);
+        RequestChargeContext.Record(response.RequestCharge);
     }
 
-    public Task DeleteContainerAsync(string databaseName, string containerName, CancellationToken token)
+    public async Task DeleteContainerAsync(string databaseName, string containerName, CancellationToken token)
     {
-        return client.GetDatabase(databaseName).GetContainer(containerName).DeleteContainerAsync(cancellationToken: token);
+        var response = await client.GetDatabase(databaseName).GetContainer(containerName).DeleteContainerAsync(cancellationToken: token);
+        RequestChargeContext.Record(response.RequestCharge);
     }
 
     public async Task<IReadOnlyList<string>> GetPartitionKeyPathsAsync(string databaseName, string containerName, CancellationToken token)
     {
         var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+        RequestChargeContext.Record(response.RequestCharge);
         var properties = response.Resource;
         if (properties == null)
         {
@@ -147,6 +158,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     public async Task<ContainerSettingsView> GetContainerSettingsAsync(string databaseName, string containerName, CancellationToken token)
     {
         var dpResponse = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+        RequestChargeContext.Record(dpResponse.RequestCharge);
         var properties = GetContainerPropertiesOrThrow(dpResponse);
         int? dpMin = null;
         int? dpMax = null;
@@ -155,19 +167,23 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         try
         {
             var throughputResponse = await client.GetDatabase(databaseName).GetContainer(containerName).ReadThroughputAsync(new RequestOptions(), token);
+            RequestChargeContext.Record(throughputResponse.RequestCharge);
             dpMin = throughputResponse.MinThroughput;
             dpMax = throughputResponse.Resource?.AutoscaleMaxThroughput ?? throughputResponse.Resource?.Throughput ?? dpMin;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
+            RequestChargeContext.Record(ex.RequestCharge);
             dpAvailability = ThroughputAvailability.NotConfigured;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.BadRequest && ThroughputErrors.IsServerlessThroughputError(ex.Message))
         {
+            RequestChargeContext.Record(ex.RequestCharge);
             dpAvailability = ThroughputAvailability.Serverless;
         }
         catch (Exception ex)
         {
+            RequestChargeContext.Record(RequestChargeContext.GetCosmosExceptionCharge(ex));
             dpAvailability = ThroughputAvailability.Unavailable;
             dpError = ex.Message;
         }
@@ -217,6 +233,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     public async Task<string> GetIndexingPolicyJsonAsync(string databaseName, string containerName, CancellationToken token)
     {
         var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+        RequestChargeContext.Record(response.RequestCharge);
         var properties = GetContainerPropertiesOrThrow(response);
         var policy = properties.IndexingPolicy
             ?? throw new IndexPolicyMissingException();
@@ -227,16 +244,19 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     {
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
         var current = await container.ReadContainerAsync(cancellationToken: token);
+        RequestChargeContext.Record(current.RequestCharge);
         var props = GetContainerPropertiesOrThrow(current);
         var policy = ParseIndexingPolicy(indexPolicyJson);
         props.IndexingPolicy = policy;
         var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
+        RequestChargeContext.Record(replaced.RequestCharge);
         return JsonSerializer.Serialize(replaced.Resource?.IndexingPolicy ?? policy, IndexingPolicyJsonOptions);
     }
 
     public async Task<ContainerTtlView> GetTimeToLiveAsync(string databaseName, string containerName, CancellationToken token)
     {
         var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+        RequestChargeContext.Record(response.RequestCharge);
         var props = GetContainerPropertiesOrThrow(response);
         return new ContainerTtlView(props.DefaultTimeToLive);
     }
@@ -245,9 +265,11 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     {
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
         var current = await container.ReadContainerAsync(cancellationToken: token);
+        RequestChargeContext.Record(current.RequestCharge);
         var props = GetContainerPropertiesOrThrow(current);
         props.DefaultTimeToLive = defaultTimeToLive;
         var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
+        RequestChargeContext.Record(replaced.RequestCharge);
         var updated = GetContainerPropertiesOrThrow(replaced);
         return new ContainerTtlView(updated.DefaultTimeToLive);
     }
@@ -255,6 +277,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     public async Task<ContainerAnalyticalTtlView> GetAnalyticalTimeToLiveAsync(string databaseName, string containerName, CancellationToken token)
     {
         var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+        RequestChargeContext.Record(response.RequestCharge);
         var props = GetContainerPropertiesOrThrow(response);
         return new ContainerAnalyticalTtlView(props.AnalyticalStoreTimeToLiveInSeconds);
     }
@@ -263,9 +286,11 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     {
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
         var current = await container.ReadContainerAsync(cancellationToken: token);
+        RequestChargeContext.Record(current.RequestCharge);
         var props = GetContainerPropertiesOrThrow(current);
         props.AnalyticalStoreTimeToLiveInSeconds = analyticalTimeToLive;
         var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
+        RequestChargeContext.Record(replaced.RequestCharge);
         var updated = GetContainerPropertiesOrThrow(replaced);
         return new ContainerAnalyticalTtlView(updated.AnalyticalStoreTimeToLiveInSeconds);
     }
@@ -273,6 +298,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     public async Task<ConflictResolutionView> GetConflictResolutionPolicyAsync(string databaseName, string containerName, CancellationToken token)
     {
         var response = await client.GetDatabase(databaseName).GetContainer(containerName).ReadContainerAsync(cancellationToken: token);
+        RequestChargeContext.Record(response.RequestCharge);
         var props = GetContainerPropertiesOrThrow(response);
         return ToConflictResolutionView(props.ConflictResolutionPolicy);
     }
@@ -281,9 +307,11 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     {
         var container = client.GetDatabase(databaseName).GetContainer(containerName);
         var current = await container.ReadContainerAsync(cancellationToken: token);
+        RequestChargeContext.Record(current.RequestCharge);
         var props = GetContainerPropertiesOrThrow(current);
         props.ConflictResolutionPolicy = BuildConflictResolutionPolicy(update);
         var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
+        RequestChargeContext.Record(replaced.RequestCharge);
         var updated = GetContainerPropertiesOrThrow(replaced);
         return ToConflictResolutionView(updated.ConflictResolutionPolicy);
     }
@@ -298,10 +326,12 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
             var throughputResponse = !isContainer
                 ? await client.GetDatabase(databaseName).ReadThroughputAsync(new RequestOptions(), token)
                 : await client.GetDatabase(databaseName).GetContainer(containerName).ReadThroughputAsync(new RequestOptions(), token);
+            RequestChargeContext.Record(throughputResponse.RequestCharge);
             return BuildThroughputView(scope, resourceName, throughputResponse);
         }
         catch (CosmosException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
         {
+            RequestChargeContext.Record(ex.RequestCharge);
             return new ThroughputView(scope, resourceName, false, null, null, null, ThroughputAvailability.NotConfigured, null);
         }
     }
@@ -318,6 +348,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
             currentResponse = !isContainer
                 ? await client.GetDatabase(databaseName).ReadThroughputAsync(new RequestOptions(), token)
                 : await client.GetDatabase(databaseName).GetContainer(containerName).ReadThroughputAsync(new RequestOptions(), token);
+            RequestChargeContext.Record(currentResponse.RequestCharge);
         }
         catch (CosmosException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
         {
@@ -341,6 +372,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
             var throughputResponse = !isContainer
                 ? await client.GetDatabase(databaseName).ReplaceThroughputAsync(properties, cancellationToken: token)
                 : await client.GetDatabase(databaseName).GetContainer(containerName).ReplaceThroughputAsync(properties, cancellationToken: token);
+            RequestChargeContext.Record(throughputResponse.RequestCharge);
             return BuildThroughputView(scope, resourceName, throughputResponse);
         }
         catch (CosmosException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)

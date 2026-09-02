@@ -27,15 +27,18 @@ internal static class McpResponseFactory
         return CreateResponse(CreateSuccessPayload(commandState), shellState, commandState.IsError);
     }
 
-    public static CallToolResult CreateError(string message, State shellState)
+    public static CallToolResult CreateError(string message, State shellState, double? requestCharge = null)
     {
-        return CreateResponse(
-            new JsonObject
-            {
-                ["error"] = message,
-            },
-            shellState,
-            isError: true);
+        var payload = new JsonObject
+        {
+            ["error"] = message,
+        };
+        if (requestCharge is not null)
+        {
+            payload["requestCharge"] = requestCharge.Value;
+        }
+
+        return CreateResponse(payload, shellState, isError: true);
     }
 
     internal static string? GetCurrentLocation(State shellState)
@@ -82,6 +85,11 @@ internal static class McpResponseFactory
     private static JsonObject CreateSuccessPayload(CommandState commandState)
     {
         var payload = new JsonObject();
+
+        if (commandState.RequestCharge.HasValue)
+        {
+            payload["requestCharge"] = commandState.RequestCharge.Value;
+        }
 
         if (commandState.IsError)
         {

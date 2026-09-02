@@ -576,7 +576,7 @@ internal class ToolOperations
         try
         {
             ShellInterpreter.Instance.PrintCommand(sb.ToString());
-            var response = await cmd.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), command.CommandName, cancellationToken);
+            var response = await ShellInterpreter.Instance.ExecuteCosmosCommandAsync(cmd, new CommandState(), command.CommandName, cancellationToken);
             ShellInterpreter.Instance.CancelPrompt();
             return McpResponseFactory.CreateSuccess(response, ShellInterpreter.Instance.State);
         }
@@ -584,7 +584,10 @@ internal class ToolOperations
         {
             this.logger?.LogError(ex, $"An exception occurred running '{command.CommandName}'. ");
 
-            return McpResponseFactory.CreateError($"Error executing command '{command.CommandName}': {ex.Message}", ShellInterpreter.Instance.State);
+            return McpResponseFactory.CreateError(
+                $"Error executing command '{command.CommandName}': {ex.Message}",
+                ShellInterpreter.Instance.State,
+                RequestChargeContext.GetExceptionCharge(ex));
         }
         finally
         {

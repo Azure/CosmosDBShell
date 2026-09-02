@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Improvements
+
+- Cosmos DB data-plane commands now consistently expose their aggregate observed request charge in structured output and connection-scoped `info` telemetry, including metadata/configuration operations, scripts, change feed reads, paginated operations, handled probes, and charged failures. Azure Resource Manager control-plane operations remain uncharged.
+- Added `$sessionRequestCharge` and `$sessionChargedOperationCount` as read-only shell variables. Set `$sessionRequestChargeWarningThreshold` to a positive RU threshold to print one warning when the current connection reaches it; `info` reports it as `session.requestChargeWarningThreshold`.
+
 ### Fixes
 
 - Local emulator outages are now detected across Cosmos DB commands. Requests fail promptly with an error and return the shell to its disconnected state instead of leaving an unresponsive session labeled as connected.
@@ -91,7 +96,8 @@ A focused cycle on top of 1.1.115-preview. New `ttl` and `conflict` commands man
 ### Improvements
 
 - **Structured (JSON) tool results for MCP.** MCP tool results now carry the machine-readable JSON payload (`result`/`outputText`/`error` plus `currentLocation`) as first-class `structuredContent` in addition to the existing JSON text block, so agents can consume structured results directly. The two representations are kept byte-for-byte equivalent, and text-only clients are unaffected. ([#154](https://github.com/Azure/CosmosDBShell/issues/154))
-
+- **Request charge in MCP structured results.** Instrumented data-plane commands (`query`, including `--explain`; `print`; container-scoped `ls`; `can-i` probes; `batch run`; `mkitem`; `replace`; `patch`; `rm`; `import`; and `export`) now report the Cosmos DB request charge (in RUs) consumed by the operation as a uniform `requestCharge` field on the MCP tool result, so agents can track observed RU cost consistently across calls. Budget enforcement remains tracked separately in #162. ([#162](https://github.com/Azure/CosmosDBShell/issues/162))
+- **Connection-scoped request-charge totals.** The shell accumulates request charges observed from instrumented commands and reports the total in `info` as `session.requestCharge`, together with the number of positively charged command operations as `session.chargedOperationCount`. A successful `connect` starts new totals; database and container navigation do not reset them. This is usage telemetry, not budget enforcement or billing data. ([#162](https://github.com/Azure/CosmosDBShell/issues/162))
 - **Destructive MCP commands now prompt for confirmation instead of being blocked.** When an MCP client invokes `delete`, `rm`, `rmcon`, or `rmdb`, the server sends an elicitation prompt describing the exact command line and only runs it if the user approves; declining, cancelling, or a client that cannot confirm results in nothing being executed. This removes the need for any write opt-in flag. ([#158](https://github.com/Azure/CosmosDBShell/issues/158))
 
 ### Fixes

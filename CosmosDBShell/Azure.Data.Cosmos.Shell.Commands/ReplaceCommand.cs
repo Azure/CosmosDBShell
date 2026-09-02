@@ -63,6 +63,7 @@ internal class ReplaceCommand : CosmosCommand
                 failed = summary.Failed,
                 requestCharge = summary.RequestCharge,
             })),
+            RequestCharge = summary.RequestCharge,
         };
     }
 
@@ -108,6 +109,7 @@ internal class ReplaceCommand : CosmosCommand
             }
             catch (CommandException ex)
             {
+                RequestChargeContext.Record(RequestChargeContext.GetCosmosExceptionCharge(ex));
                 failCount++;
                 ShellInterpreter.WriteLine(ex.Message);
             }
@@ -128,6 +130,7 @@ internal class ReplaceCommand : CosmosCommand
 
         if (failCount > 0)
         {
+            RequestChargeContext.Record(charge);
             throw new CommandException(
                 "replace",
                 MessageService.GetArgsString(

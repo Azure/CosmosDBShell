@@ -74,7 +74,7 @@ internal static class BatchExecutor
                 operations.Count,
                 "charge",
                 response.RequestCharge.ToString("F2", CultureInfo.InvariantCulture));
-            return CreateResultState(summary, successMessage);
+            return CreateResultState(summary, successMessage, response.RequestCharge);
         }
 
         var errorMessage = MessageService.GetArgsString(
@@ -88,14 +88,21 @@ internal static class BatchExecutor
                 commandName,
                 errorMessage,
                 new RequestFailedException((int)response.StatusCode, errorMessage)),
-            new ShellJson(summary));
+            new ShellJson(summary))
+        {
+            RequestCharge = response.RequestCharge,
+        };
         errorState.RenderUser = () => ShellInterpreter.WriteLine(errorMessage);
         return errorState;
     }
 
-    private static CommandState CreateResultState(JsonElement summary, string message)
+    internal static CommandState CreateResultState(JsonElement summary, string message, double requestCharge)
     {
-        var state = new CommandState { Result = new ShellJson(summary) };
+        var state = new CommandState
+        {
+            Result = new ShellJson(summary),
+            RequestCharge = requestCharge,
+        };
         state.RenderUser = () => ShellInterpreter.WriteLine(message);
         return state;
     }

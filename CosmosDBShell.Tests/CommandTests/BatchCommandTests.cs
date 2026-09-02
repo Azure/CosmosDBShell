@@ -262,6 +262,23 @@ public class BatchCommandTests
             () => BatchExecutor.ExecuteAsync("batch", null!, default, operations, CancellationToken.None));
     }
 
+    [Fact]
+    public void CreateResultState_PreservesBatchResultAndRequestCharge()
+    {
+        var summary = JsonSerializer.SerializeToElement(new
+        {
+            success = true,
+            requestCharge = 4.25,
+        });
+
+        var state = BatchExecutor.CreateResultState(summary, "Batch committed.", 4.25);
+
+        Assert.Equal(4.25, state.RequestCharge);
+        var result = Assert.IsType<ShellJson>(state.Result).Value;
+        Assert.True(result.GetProperty("success").GetBoolean());
+        Assert.Equal(4.25, result.GetProperty("requestCharge").GetDouble());
+    }
+
     [Theory]
     [InlineData(1, "1 operation")]
     [InlineData(2, "2 operations")]

@@ -186,7 +186,7 @@ internal class CommandStatement : Statement
             }
 
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
-            return await cmd.ExecuteAsync(shell, commandState, string.Empty, token);
+            return await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token);
         }
 
         if (File.Exists(this.Name))

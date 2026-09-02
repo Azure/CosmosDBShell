@@ -133,6 +133,7 @@ internal class PatchCommand : CosmosCommand
                     patched = true,
                     requestCharge = response.RequestCharge,
                 })),
+                RequestCharge = response.RequestCharge,
             };
         }
         catch (CosmosException ce) when (ce.StatusCode == System.Net.HttpStatusCode.NotFound)

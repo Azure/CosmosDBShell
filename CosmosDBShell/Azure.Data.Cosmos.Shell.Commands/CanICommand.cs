@@ -75,7 +75,7 @@ internal class CanICommand : CosmosCommand
         // mutating or control-plane operation, so it is always reported as indeterminate.
         if (action == "manage")
         {
-            return this.Build(commandState, action, databaseName, containerName, "indeterminate", "none", null, MessageService.GetString("command-can-i-manage-note"));
+            return this.Build(commandState, action, databaseName, containerName, "indeterminate", "none", null, MessageService.GetString("command-can-i-manage-note"), null);
         }
 
         if (string.IsNullOrEmpty(databaseName) || string.IsNullOrEmpty(containerName))
@@ -86,24 +86,18 @@ internal class CanICommand : CosmosCommand
         // Account-key and emulator connections use a master key, which grants full access.
         if (shell.ActiveCredential is null)
         {
-            return this.Build(commandState, action, databaseName, containerName, "allow", "key", null, MessageService.GetString("command-can-i-key-note"));
+            return this.Build(commandState, action, databaseName, containerName, "allow", "key", null, MessageService.GetString("command-can-i-key-note"), null);
         }
 
         var container = connectedState.Client.GetContainer(databaseName, containerName);
 
-        HttpStatusCode statusCode;
-        switch (action)
+        var probeResult = action switch
         {
-            case "read":
-                statusCode = await ProbeReadAsync(container, token);
-                break;
-            case "query":
-                statusCode = await ProbeQueryAsync(container, token);
-                break;
-            default:
-                statusCode = await ProbeWriteAsync(container, token);
-                break;
-        }
+            "read" => await ProbeReadAsync(container, token),
+            "query" => await ProbeQueryAsync(container, token),
+            _ => await ProbeWriteAsync(container, token),
+        };
+        var statusCode = probeResult.StatusCode;
 
         var (decision, statusNote) = MapDecision(statusCode);
         string? note = statusNote;
@@ -120,20 +114,20 @@ internal class CanICommand : CosmosCommand
             note = MessageService.GetString("command-can-i-write-heuristic-note");
         }
 
-        return this.Build(commandState, action, databaseName, containerName, decision, "probe", (int)statusCode, note);
+        return this.Build(commandState, action, databaseName, containerName, decision, "probe", (int)statusCode, note, probeResult.RequestCharge);
     }
 
-    private static async Task<HttpStatusCode> ProbeReadAsync(Container container, CancellationToken token)
+    private static async Task<ProbeResult> ProbeReadAsync(Container container, CancellationToken token)
     {
         using var response = await container.ReadItemStreamAsync(
             Guid.NewGuid().ToString(),
             new PartitionKey(Guid.NewGuid().ToString()),
             requestOptions: null,
             cancellationToken: token);
-        return response.StatusCode;
+        return CreateProbeResult(response);
     }
 
-    private static async Task<HttpStatusCode> ProbeQueryAsync(Container container, CancellationToken token)
+    private static async Task<ProbeResult> ProbeQueryAsync(Container container, CancellationToken token)
     {
         // A minimal TOP 1 query with a single-item page proves query authorization without
         // forcing a full scan (as an aggregate like COUNT would) on large containers.
@@ -142,10 +136,10 @@ internal class CanICommand : CosmosCommand
             new QueryDefinition("SELECT TOP 1 c.id FROM c"),
             requestOptions: requestOptions);
         using var response = await iterator.ReadNextAsync(token);
-        return response.StatusCode;
+        return CreateProbeResult(response);
     }
 
-    private static async Task<HttpStatusCode> ProbeWriteAsync(Container container, CancellationToken token)
+    private static async Task<ProbeResult> ProbeWriteAsync(Container container, CancellationToken token)
     {
         // Deleting a random, almost-certainly-nonexistent id is non-mutating: an authorized
         // caller gets 404 NotFound, an unauthorized caller gets 403 Forbidden. The bogus
@@ -158,7 +152,12 @@ internal class CanICommand : CosmosCommand
             new PartitionKey(Guid.NewGuid().ToString()),
             requestOptions: requestOptions,
             cancellationToken: token);
-        return response.StatusCode;
+        return CreateProbeResult(response);
+    }
+
+    internal static ProbeResult CreateProbeResult(ResponseMessage response)
+    {
+        return new ProbeResult(response.StatusCode, response.Headers.RequestCharge);
     }
 
     private static (string Decision, string? Note) MapDecision(HttpStatusCode statusCode)
@@ -185,7 +184,7 @@ internal class CanICommand : CosmosCommand
         return string.IsNullOrEmpty(containerName) ? $"/{databaseName}" : $"/{databaseName}/{containerName}";
     }
 
-    private CommandState Build(
+    internal CommandState Build(
         CommandState commandState,
         string action,
         string? databaseName,
@@ -193,7 +192,8 @@ internal class CanICommand : CosmosCommand
         string decision,
         string method,
         int? statusCode,
-        string? note)
+        string? note,
+        double? requestCharge)
     {
         var result = new Dictionary<string, object?>
         {
@@ -208,6 +208,7 @@ internal class CanICommand : CosmosCommand
 
         commandState.RenderUser = () => this.RenderTable(action, databaseName, containerName, decision, method, statusCode, note);
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(result));
+        commandState.RequestCharge = requestCharge;
         return commandState;
     }
 
@@ -239,4 +240,6 @@ internal class CanICommand : CosmosCommand
             AnsiConsole.MarkupLine(Theme.FormatMuted(note));
         }
     }
+
+    internal readonly record struct ProbeResult(HttpStatusCode StatusCode, double RequestCharge);
 }

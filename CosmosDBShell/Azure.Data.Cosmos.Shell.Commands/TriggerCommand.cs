@@ -182,7 +182,9 @@ internal class TriggerCommand : CosmosCommand
         using var iterator = container.Scripts.GetTriggerQueryIterator<TriggerProperties>();
         while (iterator.HasMoreResults)
         {
-            foreach (var properties in await iterator.ReadNextAsync(token))
+            var response = await iterator.ReadNextAsync(token);
+            RequestChargeContext.Record(response.RequestCharge);
+            foreach (var properties in response)
             {
                 items.Add(new
                 {
@@ -252,6 +254,7 @@ internal class TriggerCommand : CosmosCommand
         try
         {
             var response = await container.Scripts.ReadTriggerAsync(name, cancellationToken: token);
+            RequestChargeContext.Record(response.RequestCharge);
             commandState.Result = new ShellText(response.Resource.Body ?? string.Empty) { Highlighter = JavaScriptOutputHighlighter.BuildMarkup };
             return commandState;
         }
@@ -268,11 +271,13 @@ internal class TriggerCommand : CosmosCommand
         bool exists;
         try
         {
-            await container.Scripts.ReadTriggerAsync(name, cancellationToken: token);
+            var response = await container.Scripts.ReadTriggerAsync(name, cancellationToken: token);
+            RequestChargeContext.Record(response.RequestCharge);
             exists = true;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
+            RequestChargeContext.Record(ex.RequestCharge);
             exists = false;
         }
 
@@ -320,10 +325,12 @@ internal class TriggerCommand : CosmosCommand
         try
         {
             var read = await container.Scripts.ReadTriggerAsync(name, cancellationToken: token);
+            RequestChargeContext.Record(read.RequestCharge);
             existingBody = read.Resource.Body ?? string.Empty;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
+            RequestChargeContext.Record(ex.RequestCharge);
             existingBody = null;
         }
 
@@ -373,11 +380,14 @@ internal class TriggerCommand : CosmosCommand
             try
             {
                 response = await container.Scripts.ReplaceTriggerAsync(properties, cancellationToken: token);
+                RequestChargeContext.Record(response.RequestCharge);
                 replaced = true;
             }
             catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
             {
+                RequestChargeContext.Record(ex.RequestCharge);
                 response = await container.Scripts.CreateTriggerAsync(properties, cancellationToken: token);
+                RequestChargeContext.Record(response.RequestCharge);
                 replaced = false;
             }
         }
@@ -386,6 +396,7 @@ internal class TriggerCommand : CosmosCommand
             try
             {
                 response = await container.Scripts.CreateTriggerAsync(properties, cancellationToken: token);
+                RequestChargeContext.Record(response.RequestCharge);
                 replaced = false;
             }
             catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
@@ -421,6 +432,7 @@ internal class TriggerCommand : CosmosCommand
         try
         {
             var response = await container.Scripts.DeleteTriggerAsync(name, cancellationToken: token);
+            RequestChargeContext.Record(response.RequestCharge);
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "trigger", id = name, deleted = true }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
                 "command-trigger-deleted",
@@ -449,6 +461,7 @@ internal class TriggerCommand : CosmosCommand
         try
         {
             var read = await container.Scripts.ReadTriggerAsync(name, cancellationToken: token);
+            RequestChargeContext.Record(read.RequestCharge);
             existing = read.Resource;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -474,6 +487,7 @@ internal class TriggerCommand : CosmosCommand
             TriggerOperation = existing.TriggerOperation,
         };
         var response = await container.Scripts.ReplaceTriggerAsync(properties, cancellationToken: token);
+        RequestChargeContext.Record(response.RequestCharge);
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "trigger", id = name, changed = true }));
         commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(

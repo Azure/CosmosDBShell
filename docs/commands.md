@@ -1407,7 +1407,11 @@ data/total storage size. Use `index show` for the full indexing policy JSON. Whe
 only a database is in scope it reports the container count, aggregate document
 count, total storage, and shared throughput. When neither is in scope (the
 account root) it reports account metadata: read/write regions and the database
-count.
+count. Every scope also includes the cumulative request charge observed from
+Cosmos DB data-plane requests during the current connection, including the
+requests made by the current `info` command. The total resets to zero
+after each successful `connect`; changing database or container scope does not
+reset it. It is session telemetry, not a budget or billing total.
 
 On serverless accounts, throughput/offer settings are not available, so the
 scale section reports that throughput settings are not available for serverless
@@ -1431,7 +1435,13 @@ with redirection, the report is written to the file as a plain-text grid instead
 the rich console layout. The `--partitions` and
 `--detailed` options issue queries against the data and therefore consume
 request units; at the account root, `--detailed` aggregates every container's
-storage and document count across all databases. This command is read-only.
+storage and document count across all databases. In JSON output the connection
+total is available as `session.requestCharge`, and `session.chargedOperationCount`
+counts command operations that reported a positive charge. Paginated and
+multi-request commands contribute their aggregate observed charge. Azure Resource
+Manager control-plane operations do not consume Cosmos DB request units. When
+`$sessionRequestChargeWarningThreshold` is positive, `session.requestChargeWarningThreshold` reports the
+configured warning threshold. This command is read-only.
 
 ### help
 
