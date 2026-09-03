@@ -548,6 +548,7 @@ internal class ImportCommand : CosmosCommand
                 requestCharge = charge,
                 dryRun,
             })),
+            RequestCharge = charge > 0 ? charge : null,
         };
     }
 

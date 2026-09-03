@@ -42,6 +42,8 @@ The MCP server runs locally with your user permissions. Connected clients can ex
 
 Server-side programming commands — stored procedures (`sproc`), user-defined functions (`udf`), and triggers (`trigger`) — are restricted from MCP. Run those commands manually in the shell.
 
+Transactional batches invoked through MCP must use the one-shot `batch run` subcommand. Stateful batch subcommands (`begin`, `add`, `execute`, `cancel`, `status`, and `show`, including their aliases) are restricted to the interactive shell because MCP tool calls share no client-specific batch state.
+
 ### Destructive Command Confirmation
 
 Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an explicit user confirmation. When a client invokes one, the server sends an MCP elicitation prompt describing the exact command line before anything runs:
@@ -96,10 +98,41 @@ Both representations are always byte-for-byte equivalent.
 
 | Field | When present | Description |
 | ----- | ------------ | ----------- |
-| `result` | Successful commands that produce output | The command result as JSON (objects, arrays, or a scalar). Text-only results are represented as a JSON string. |
+| `result` | Commands that produce output | The command result as JSON (objects, arrays, or a scalar). Text-only results are represented as a JSON string. Failed transactional batches include their per-operation summary here alongside `error`. |
 | `outputText` | CSV output commands with non-empty text | The CSV rendering of the result. Omitted when the CSV output is empty or whitespace. |
+| `continuationToken` | Paged `query` and container-item `ls` results | Opaque token for the next page, or `null` when no more results are available. Omitted for `query --explain` and database/container name listings, which are not paged. |
+| `requestCharge` | Charged data-plane command results | The Cosmos DB request charge (in RUs) consumed by the command, as a number. This is omitted for commands that do not issue a billable request. |
 | `error` | Failed commands | The error message. |
 | `currentLocation` | Always | The shell's current navigation path (for example `/MyDatabase/MyContainer`), or `null` when disconnected. |
 
-Successful results set `result` (and optionally `outputText`); failed results set `error` and mark the tool result as an error. `currentLocation` is always included so a client can track navigation state across calls.
+Successful results set `result` (and optionally `outputText`); failed results set `error`, may also include a structured `result`, and mark the tool result as an error. `currentLocation` is always included so a client can track navigation state across calls. Commands report `requestCharge` whenever their Cosmos DB data-plane requests expose one, including paginated reads, metadata and configuration operations, scripts, change feed reads, handled probes, and charged failures. Multi-request commands aggregate the observed charges. Azure Resource Manager control-plane operations do not consume or report Cosmos DB request units.
+
+This field reports observed cost; it does not enforce an RU budget. Budget guardrails are tracked separately in [#162](https://github.com/Azure/CosmosDBShell/issues/162).
+
+The `info` command result also includes `session.requestCharge`, the cumulative
+charge observed from data-plane commands during the current connection,
+including the current `info` request cost. A
+successful `connect` starts a new total; navigation between databases and
+containers does not reset it. This session value is telemetry rather than a
+budget or billing total. `session.chargedOperationCount` counts
+command operations that reported a positive request charge; it counts command
+operations rather than individual query pages or transactional batch items. If
+the shell variable `$sessionRequestChargeWarningThreshold` is set to a positive value, the
+session object also includes `session.requestChargeWarningThreshold`.
+
+### Pagination
+
+MCP calls to `query` and container-item `ls` return one Cosmos DB page per call. `max` must be positive; when it is omitted or non-positive, the server applies a safe default cap of `100` items. To continue, pass a non-null returned `continuationToken` as the next call's `continuation` argument while keeping the query and other options unchanged. The token is opaque; do not parse or edit it. When the token is `null`, the result set is exhausted: stop paging and do not send another request with `continuation`.
+
+`continuation` is exposed only to MCP callers — there is no corresponding shell option, and the token is never echoed into the shell's command output.
+
+Because `max` bounds a single page, a call can return fewer items than requested and still have more available; treat a non-null `continuationToken` as the only signal that more results exist. For `ls`, the `result.limitReached` flag reports that same condition and is kept for parity with shell and script output.
+
+```json
+{
+	"query": "SELECT * FROM c WHERE c.status = 'active'",
+	"max": 50,
+	"continuation": "<token from the previous result>"
+}
+```
 

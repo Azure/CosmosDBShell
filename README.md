@@ -9,10 +9,14 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Connect via Entra ID, connection string, or Azure CLI/Developer tools
 - Navigate with `ls` and `cd` (Account -> Databases -> Containers -> Items)
 - Inspect the current location with `pwd`
+- Inspect the connected identity with `whoami`, and probe data-plane access with `can-i` (both support `--format` table/json/csv)
 - Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
+- Inspect a query's execution plan and index usage with `query "<sql>" --explain`
+- Atomic multi-operation transactions on a single partition key: `batch`
 - Bulk roundtrip with `import` / `export` for JSON Lines and JSON array files, plus CSV import/export (CSV import coerces values to strings; `--partition-key` nests a CSV column under a nested partition key path)
 - Manage container indexing policies with `index` (`show`, `add`, `remove`, `set`)
 - Inspect container/database/account configuration and usage statistics with `info` (partition key, throughput, policies, indexing policy summary, document count, storage size, regions; `--partitions` and `--detailed` for distribution analysis)
+- Discover a container's structure with `schema` — partition key, indexing policy summary, estimated document count, and inferred field types from a bounded sample (`--sample`, default 20); use `--fields-only`/`--short` for field-only output without a metadata read; also exposed as a read-only MCP tool
 - View and scale provisioned RU/s with `throughput` (`show`, `set`/`manual`, `autoscale`)
 - View and set the container default time-to-live with `ttl` (`show`, `set`, `on`, `off`)
 - View and set the container conflict resolution policy with `conflict` (`show`, `set`; last-writer-wins or custom stored procedure)
@@ -227,6 +231,8 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--color-system <n>` | Colors: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
 | `--theme <name>` | Color theme profile to apply at startup (`default`, `light`, `dark`, `monochrome`). Falls back to `COSMOSDB_SHELL_THEME`. |
 | `--help` | Show help |
+
+MCP `query` and container-item `ls` calls return bounded, resumable pages. They default to at most 100 items and include a continuation token for the next call; see [MCP pagination](docs/mcp.md#pagination).
 
 Examples:
 

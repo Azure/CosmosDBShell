@@ -156,6 +156,7 @@ command-query-description-bucket = The throughput bucket to use for the query
 command-query-description-format = Output format (json, table, csv)
 command-query-description-database = The database to query against
 command-query-description-container = The container to query against
+command-query-description-explain = Show the query execution plan (index usage and a plain-language evaluation) instead of returning documents
 command-query-fetched = Fetched { $count } documents.
 command-query-request_charge = Request Charge: { $charge } RUs
 command-query-document_header = Document
@@ -179,6 +180,16 @@ command-query-index_metric-utilized_single = Utilized Single Indexes
 command-query-index_metric-potential_single = Potential Single Indexes
 command-query-index_metric-utilized_composite = Utilized Composite Indexes
 command-query-index_metric-potential_composite = Potential Composite Indexes
+command-query-explain-header = Query execution plan
+command-query-explain-unavailable = Index plan unavailable: Cosmos DB did not return a recognized index metrics payload, so scan type could not be determined.
+command-query-explain-full_scan = Full scan: the query did not use any index. Every document was examined, which is expensive on large containers.
+command-query-explain-index_seek = Index seek: the query used index(es): { $indexes }.
+command-query-explain-recommend_index = Consider adding index(es) on: { $indexes }.
+command-query-explain-hit_ratio = Index hit ratio: { $ratio } (1 = every retrieved document matched the filter).
+command-query-explain-utilized = Utilized indexes
+command-query-explain-potential = Potential indexes
+command-query-explain-charge = Request Charge
+command-query-explain-estimate_note = Note: metrics are an estimate based on the first page of results.
 command-query-error-empty_query = Query text cannot be empty. Example: query "SELECT * FROM c".
 command-query-error-request_failed = Query request failed with status code { $statusCode } ({ $status }).
 command-query-error-no_content_stream = Query response did not contain a content stream.
@@ -268,6 +279,54 @@ command-patch-error-failed = Failed to patch item: { $status } - { $message }
 command-patch-error-not_found = Item '{ $id }' not found.
 command-patch-error-etag_mismatch = Item '{ $id }' was modified since it was last read (ETag mismatch).
 
+command-batch-description = Executes multiple write operations against a single partition key as one atomic transactional batch, either in a single call (run) or as a stateful batch (begin, add, execute, cancel, status, show).
+command-batch-description-subcommand = The action to perform: run, begin, add, execute, cancel, status, or show.
+command-batch-description-data = The batch operations as a JSON array, or a single operation as a JSON object.
+command-batch-description-partition-key = The partition key shared by every operation in the batch.
+command-batch-description-database = The database containing the target container.
+command-batch-description-container = The target container for the batch.
+command-batch-success = Batch of { $count } { $count ->
+    [one] operation
+    *[other] operations
+} committed (RU charge: { $charge })
+command-batch-begun = Started a batch on { $database }/{ $container }. Add operations with 'batch add' and commit with 'batch execute'.
+command-batch-added = Added { $count } { $count ->
+    [one] operation
+    *[other] operations
+} ({ $total } pending).
+command-batch-cancelled = Discarded the pending batch ({ $count } { $count ->
+    [one] operation
+    *[other] operations
+}).
+command-batch-status-inactive = No batch is currently active.
+command-batch-status-target = Target
+command-batch-status-partition-key = Partition key
+command-batch-status-operation-count = Operations
+command-batch-status-column-index = #
+command-batch-status-column-operation = Operation
+command-batch-status-column-id = Item ID
+command-batch-error-missing_subcommand = Missing subcommand. Use one of: run, begin, add, execute, cancel, status, show.
+command-batch-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: run, begin, add, execute, cancel, status, show.
+command-batch-error-missing_pk = A partition key is required. Specify it with --partition-key.
+command-batch-error-invalid_pk_json = Partition key must be a JSON scalar value or a JSON array of values for hierarchical partition keys.
+command-batch-error-missing_data = Batch operations are required. Provide a JSON array of operations, or a single operation object.
+command-batch-error-invalid_json = The batch operations are not valid JSON: { $message }
+command-batch-error-not_object = Each batch operation must be a JSON object, and the batch itself must be a JSON object or an array of objects.
+command-batch-error-missing_op = Each batch operation requires an 'op' string field. Supported: create, upsert, replace, delete, patch.
+command-batch-error-unsupported_op = Unsupported batch operation '{ $op }'. Supported: create, upsert, replace, delete, patch.
+command-batch-error-missing_item = Operation '{ $op }' requires an 'item' object.
+command-batch-error-invalid_item = The 'item' for operation '{ $op }' must be a JSON object.
+command-batch-error-missing_id = Operation '{ $op }' requires an 'id'.
+command-batch-error-missing_patch_ops = A patch operation requires a non-empty 'operations' array.
+command-batch-error-invalid_patch_op = Each entry in 'operations' requires 'op' and 'path' string fields.
+command-batch-error-unsupported_patch_op = Unsupported patch operation '{ $op }' in a batch patch entry. Supported operations: set, add, replace, remove, incr.
+command-batch-error-empty = The batch has no operations. Add at least one operation before executing.
+command-batch-error-too_many = A transactional batch supports at most 100 operations, but { $count } were provided.
+command-batch-error-already_active = A batch is already in progress. Run 'batch execute' or 'batch cancel' first.
+command-batch-error-not_active = No batch is in progress. Start one with 'batch begin'.
+command-batch-error-failed = Batch failed with status { $status } and was rolled back (RU charge: { $charge })
+command-batch-error-execution_failed = Failed to execute batch: { $status } - { $message }
+
 command-export-description = Exports items from a container to a JSON Lines, JSON array, or CSV file.
 command-export-description-file = Destination file path.
 command-export-description-database = The database to read from.
@@ -336,6 +395,12 @@ command-mkcon-error_partition_key_empty = Partition key path cannot be empty. Pr
 command-mkcon-error_partition_key_slash = Partition key path must start with a forward slash (/), for example: mkcon name /pk.
 command-mkcon-error_invalid_index_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
 command-mkcon-description-index_policy = The indexing policy as a JSON string. Follows the Cosmos DB indexing policy schema.
+
+command-schema-description = Infers the schema of a container from a bounded sample and returns its partition key, indexing policy summary, an estimated document count, and inferred field types.
+command-schema-description-database = The database containing the container
+command-schema-description-container = The container to infer the schema for
+command-schema-description-sample = Maximum number of documents to sample when inferring field types (1-100, default 20).
+command-schema-description-fields-only = Return only sampledDocuments and inferred fields without reading container metadata.
 
 command-index-description = Manages the indexing policy of a container via show, add, remove, and set subcommands.
 command-index-description-subcommand = The action to perform: show, add, remove, or set.
@@ -875,12 +940,53 @@ command-stats-account-databases-col-containers = Containers
 command-stats-account-databases-col-count = Documents
 command-stats-account-databases-col-size = Size
 command-stats-account-detailed-cost-note = Aggregating account totals reads every container's quota and consumes request units.
+command-stats-session-heading = Session Usage
+command-stats-session-request-charge = Observed request charge (RUs)
+command-stats-session-charged-operations = Charged operations
+command-stats-session-request-charge-warning-threshold = Warning threshold (RUs)
+warning-session-request-charge-threshold-reached = Session request charge { $requestCharge } RUs has reached the configured warning threshold of { $warningThreshold } RUs.
+error-session-variable-read-only = Variable '${ $name }' is read-only.
+error-session-request-charge-warning-threshold-invalid = Variable '$sessionRequestChargeWarningThreshold' must be a non-negative number. Set it to 0 to disable the warning.
 
 command-version-description = Displays the version of Cosmos DB Shell.
 command-version = Cosmos Shell version: { $version }
 command-version-mcp = MCP running on port { $mcp_port}
 command-version-mcp-off = MCP server is off.
 command-version-repo = Report issues at [link={ $url }]{ $url }[/]
+
+command-whoami-description = Shows the authenticated identity and credential type for the current connection.
+command-whoami-description-format = { command-query-description-format }
+command-whoami-title = Identity
+command-whoami-credential-type = Credential Type
+command-whoami-principal-id = Principal Id
+command-whoami-tenant-id = Tenant Id
+command-whoami-application-id = Application Id
+command-whoami-user-principal-name = User Principal Name
+command-whoami-display-name = Display Name
+command-whoami-identity-type = Identity Type
+command-whoami-token-expires = Token Expires
+command-whoami-key-auth-note = Connected with account-key or emulator credentials; no Entra identity is available.
+command-whoami-token-error = Could not acquire an access token to determine identity: { $message }
+
+command-can-i-description = Probes whether the current identity can perform an action against a container without mutating data.
+command-can-i-description-action = The action to probe: read, query, write, or manage.
+command-can-i-description-database = The database to probe (defaults to the current database).
+command-can-i-description-container = The container to probe (defaults to the current container).
+command-can-i-description-format = { command-query-description-format }
+command-can-i-title = Access Check
+command-can-i-action = Action
+command-can-i-scope = Scope
+command-can-i-decision = Decision
+command-can-i-method = Method
+command-can-i-status = Status Code
+command-can-i-invalid-action = Unknown action '{ $action }'. Use read, query, write, or manage.
+command-can-i-requires-container = A container is required. Provide --database and --container, or run can-i from within a container scope.
+command-can-i-manage-note = 'manage' cannot be probed on the data plane without a mutating or control-plane operation.
+command-can-i-key-note = Connected with a master key (account-key or emulator); all data actions are permitted.
+command-can-i-write-heuristic-note = Heuristic: write access is inferred from delete permission via a non-mutating probe.
+command-can-i-throttled-note = Request was throttled (429); the action appears permitted.
+command-can-i-unexpected-status = The probe returned an unexpected status ({ $status }); access could not be determined.
+command-can-i-query-notfound-note = The query returned 404 Not Found; the target database or container may not exist, so query access could not be determined.
 
 help-RequiredWord = Required.
 help-ErrorsHeadingText = ERROR(S):

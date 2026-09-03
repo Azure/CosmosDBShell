@@ -118,25 +118,26 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
 
         var totalCount = 0;
+        double totalCharge = 0;
         bool dryRun = this.DryRun == true;
 
         // In dry-run mode, count what would be deleted without issuing any delete.
-        async Task<bool> TryDeleteAsync(string id, PartitionKey partitionKey)
+        async Task<(bool Counted, double RequestCharge)> TryDeleteAsync(string id, PartitionKey partitionKey)
         {
             if (dryRun)
             {
-                return true;
+                return (true, 0);
             }
 
             try
             {
-                await container.DeleteItemAsync<object>(id, partitionKey, cancellationToken: token);
-                return true;
+                var deleteResponse = await container.DeleteItemAsync<object>(id, partitionKey, cancellationToken: token);
+                return (true, deleteResponse.RequestCharge);
             }
             catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 // Item was already deleted, skip
-                return false;
+                return (false, ex.RequestCharge);
             }
         }
 
@@ -183,7 +184,9 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
                         if (id != null && shouldDelete)
                         {
-                            if (await TryDeleteAsync(id, CreatePartitionKey(pkElements)))
+                            var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
+                            totalCharge += deleteResult.RequestCharge;
+                            if (deleteResult.Counted)
                             {
                                 totalCount++;
                             }
@@ -214,7 +217,9 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         var id = idElement.GetString();
                         if (id != null)
                         {
-                            if (await TryDeleteAsync(id, CreatePartitionKey(pkElements)))
+                            var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
+                            totalCharge += deleteResult.RequestCharge;
+                            if (deleteResult.Counted)
                             {
                                 totalCount++;
                             }
@@ -236,9 +241,15 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                     break;
                 }
 
-                var response = await feedIterator.ReadNextAsync(token);
+                using var response = await feedIterator.ReadNextAsync(token);
+
+                // The scan pages that locate matching items consume RUs regardless of whether
+                // any item is ultimately deleted (including in --dry-run), so include each
+                // page's request charge from the response headers.
+                totalCharge += response.Headers.RequestCharge;
+
                 using var streamReader = new StreamReader(response.Content);
-                var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync());
+                using var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync());
 
                 foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
                 {
@@ -272,7 +283,9 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
                     if (shouldDelete)
                     {
-                        if (await TryDeleteAsync(id, CreatePartitionKey(pkElements)))
+                        var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
+                        totalCharge += deleteResult.RequestCharge;
+                        if (deleteResult.Counted)
                         {
                             totalCount++;
                         }
@@ -296,6 +309,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "item", count = totalCount, dryRun }));
         commandState.RenderUser = () => AnsiConsole.MarkupLine(renderMessage);
 
+        commandState.RequestCharge = totalCharge > 0 ? totalCharge : null;
         return new ExitCode(0);
     }
 

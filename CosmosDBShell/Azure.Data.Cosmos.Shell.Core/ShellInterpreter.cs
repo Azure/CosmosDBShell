@@ -25,11 +25,15 @@ using Spectre.Console;
 /// </summary>
 public partial class ShellInterpreter : IDisposable
 {
+    private const string SessionRequestChargeVariable = "sessionRequestCharge";
+
+    private const string SessionChargedOperationCountVariable = "sessionChargedOperationCount";
+
+    private const string SessionRequestChargeWarningThresholdVariable = "sessionRequestChargeWarningThreshold";
+
     internal static readonly ShellInterpreter Instance = new();
 
     private const int MAXHISTORYITEMS = 60;
-
-    private const double TimeoutInSeconds = 10.0;
 
     private const int OptionalArmDiscoveryTimeoutSeconds = 3;
 
@@ -40,6 +44,8 @@ public partial class ShellInterpreter : IDisposable
     // user command that just happens to start with the prefix string.
     private const string EncodedHistoryLineMarker = "E:";
 
+    private static readonly TimeSpan LocalEmulatorOperationTimeout = TimeSpan.FromSeconds(10);
+
     private static CancellationTokenSource? currentTokenSource;
 
     private readonly string cfgPath;
@@ -47,6 +53,10 @@ public partial class ShellInterpreter : IDisposable
     private readonly string welcomeMarkerFile;
 
     private readonly HashSet<string> diagnosticSecrets = new(StringComparer.Ordinal);
+
+    private readonly object sessionRequestChargeLock = new();
+
+    private TokenCredential? activeCredential;
 
     private LineEditor? lineEditor;
 
@@ -61,6 +71,16 @@ public partial class ShellInterpreter : IDisposable
     private bool disposedValue;
 
     private List<string> history;
+
+    private double sessionRequestCharge;
+
+    private long sessionChargedOperationCount;
+
+    private double sessionRequestChargeWarningThreshold;
+
+    private bool sessionRequestChargeWarningIssued;
+
+    private long sessionRequestChargeGeneration;
 
     internal ShellInterpreter(string? configPath = null)
     {
@@ -122,15 +142,6 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
-    internal static CancellationTokenSource TokenSource
-    {
-        get
-        {
-            currentTokenSource?.Dispose();
-            return currentTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(TimeoutInSeconds));
-        }
-    }
-
     internal static CancellationTokenSource UserCancellationTokenSource
     {
         get
@@ -154,7 +165,78 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    internal static IReadOnlyList<string> SessionVariableNames { get; } =
+    [
+        SessionRequestChargeVariable,
+        SessionChargedOperationCountVariable,
+        SessionRequestChargeWarningThresholdVariable,
+    ];
+
     internal Dictionary<string, DefStatement> Functions { get; } = [];
+
+    /// <summary>
+    /// Gets the token credential backing the current connection, or <c>null</c> when the
+    /// connection uses an account key or emulator credentials (no Entra identity available).
+    /// </summary>
+    internal TokenCredential? ActiveCredential => this.activeCredential;
+
+    /// <summary>
+    /// Gets a label describing how the current connection authenticated (for example
+    /// <c>DefaultAzureCredential</c>, <c>ManagedIdentityCredential</c>, <c>AccountKey</c>,
+    /// or <c>Emulator</c>), or <c>null</c> when not connected.
+    /// </summary>
+    internal string? ActiveCredentialType { get; private set; }
+
+    /// <summary>
+    /// Gets the request charge observed from instrumented commands since the most recent connection.
+    /// </summary>
+    internal double SessionRequestCharge
+    {
+        get
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                return this.sessionRequestCharge;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the number of command operations that reported a positive request charge
+    /// since the most recent connection.
+    /// </summary>
+    internal long SessionChargedOperationCount
+    {
+        get
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                return this.sessionChargedOperationCount;
+            }
+        }
+    }
+
+    internal (double RequestCharge, long ChargedOperationCount, double RequestChargeWarningThreshold) SessionUsage
+    {
+        get
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                return (this.sessionRequestCharge, this.sessionChargedOperationCount, this.sessionRequestChargeWarningThreshold);
+            }
+        }
+    }
+
+    internal long SessionRequestChargeGeneration
+    {
+        get
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                return this.sessionRequestChargeGeneration;
+            }
+        }
+    }
 
     internal string HistoryFile { get; private set; }
 
@@ -190,6 +272,8 @@ public partial class ShellInterpreter : IDisposable
     internal DiagnosticLog? Diagnostics { get; private set; }
 
     internal int? McpPort { get; set; }
+
+    internal PendingBatchState? CurrentBatch { get; set; }
 
     internal Queue<VariableContainer> VariableContainers { get; } = new();
 
@@ -437,6 +521,8 @@ public partial class ShellInterpreter : IDisposable
     public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token)
     {
         using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
+        var isLocalEmulatorOperation = this.State is ConnectedState connectedState
+            && ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectedState.Client?.Endpoint.ToString());
         var state = new CommandState();
 
         // Snapshot redirect state so a '>' / '2>' on this command does not leak into
@@ -451,12 +537,17 @@ public partial class ShellInterpreter : IDisposable
         diagnostics?.LogCommand(command);
         CommandState? result = null;
         var wasCancelled = false;
+        using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+        if (isLocalEmulatorOperation)
+        {
+            operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+        }
 
         try
         {
             try
             {
-                state = await this.RunCommandAsync(state, command, token);
+                state = await this.RunCommandAsync(state, command, operationTokenSource.Token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -464,18 +555,33 @@ public partial class ShellInterpreter : IDisposable
                 result = new CommandState();
                 return result;
             }
+            catch (OperationCanceledException e) when (isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested)
+            {
+                var shellException = new ShellException(
+                    CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, e.Message),
+                    e);
+                this.ReportExecutionError(shellException, command);
+                this.Disconnect();
+                result = new ErrorCommandState(shellException);
+                return result;
+            }
             catch (TaskCanceledException e)
             {
                 var shellException = new ShellException(CommandException.GetDisplayMessage(e), e);
                 this.ReportExecutionError(shellException, command);
+                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 result = new ErrorCommandState(shellException);
                 return result;
             }
             catch (Exception e)
             {
                 this.ReportExecutionError(e, command);
+                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
-                result = new ErrorCommandState(inner);
+                result = new ErrorCommandState(inner)
+                {
+                    RequestCharge = RequestChargeContext.GetExceptionCharge(e),
+                };
                 return result;
             }
 
@@ -643,6 +749,24 @@ public partial class ShellInterpreter : IDisposable
 
     internal ShellObject GetVariable(string name)
     {
+        lock (this.sessionRequestChargeLock)
+        {
+            if (string.Equals(name, SessionRequestChargeVariable, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ShellDecimal(this.sessionRequestCharge);
+            }
+
+            if (string.Equals(name, SessionChargedOperationCountVariable, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ShellDecimal(this.sessionChargedOperationCount);
+            }
+
+            if (string.Equals(name, SessionRequestChargeWarningThresholdVariable, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ShellDecimal(this.sessionRequestChargeWarningThreshold);
+            }
+        }
+
         var scope = this.GetScope(name);
         if (scope?.TryGetValue(name, out var value) == true)
         {
@@ -781,7 +905,7 @@ public partial class ShellInterpreter : IDisposable
                     this.history.Remove(command);
                     this.history.Add(command);
                     this.SaveHistory();
-                    CancellationToken token = TokenSource.Token;
+                    CancellationToken token = UserCancellationTokenSource.Token;
                     await this.ExecuteCommandAsync(command, token);
                 }
             }
@@ -873,6 +997,80 @@ public partial class ShellInterpreter : IDisposable
         return currentState;
     }
 
+    internal void RecordRequestCharge(CommandState commandState)
+        => this.RecordRequestCharge(commandState, this.SessionRequestChargeGeneration);
+
+    internal async Task<CommandState> ExecuteCosmosCommandAsync(
+        CosmosCommand command,
+        CommandState commandState,
+        string commandText,
+        CancellationToken token)
+    {
+        // CommandState is intentionally reused by pipelines and expressions. Clear the
+        // previous command's charge so an uninstrumented command cannot count it again.
+        commandState.RequestCharge = null;
+        var generation = this.SessionRequestChargeGeneration;
+        using var requestChargeScope = RequestChargeContext.Begin();
+        try
+        {
+            var result = await command.ExecuteAsync(this, commandState, commandText, token);
+            if (requestChargeScope.RequestCharge > 0)
+            {
+                result.RequestCharge = (result.RequestCharge ?? 0) + requestChargeScope.RequestCharge;
+            }
+
+            this.RecordRequestCharge(result, generation);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            var requestCharge = requestChargeScope.RequestCharge + RequestChargeContext.GetCosmosExceptionCharge(ex);
+            if (requestCharge > 0)
+            {
+                RequestChargeContext.SetExceptionCharge(ex, requestCharge);
+                this.RecordRequestCharge(new CommandState { RequestCharge = requestCharge }, generation);
+            }
+
+            throw;
+        }
+    }
+
+    internal void RecordRequestCharge(CommandState commandState, long generation)
+    {
+        bool printWarning = false;
+        double requestChargeTotal = 0;
+        double requestChargeWarningThreshold = 0;
+        if (commandState.RequestCharge is { } requestCharge)
+        {
+            lock (this.sessionRequestChargeLock)
+            {
+                if (generation == this.sessionRequestChargeGeneration)
+                {
+                    this.sessionRequestCharge += requestCharge;
+                    if (requestCharge > 0)
+                    {
+                        this.sessionChargedOperationCount++;
+                    }
+
+                    if (this.sessionRequestChargeWarningThreshold > 0
+                        && !this.sessionRequestChargeWarningIssued
+                        && this.sessionRequestCharge >= this.sessionRequestChargeWarningThreshold)
+                    {
+                        this.sessionRequestChargeWarningIssued = true;
+                        printWarning = true;
+                        requestChargeTotal = this.sessionRequestCharge;
+                        requestChargeWarningThreshold = this.sessionRequestChargeWarningThreshold;
+                    }
+                }
+            }
+        }
+
+        if (printWarning)
+        {
+            this.PrintSessionRequestChargeWarning(requestChargeTotal, requestChargeWarningThreshold);
+        }
+    }
+
     internal async Task ConnectAsync(string connectionString, string? loginHint = null, ConnectionMode? mode = null, string? tenantId = null, string? authorityHost = null, string? managedIdentityClientId = null, CredentialMethod credentialMethod = CredentialMethod.Default, string? subscriptionId = null, string? resourceGroupName = null, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
@@ -945,13 +1143,19 @@ public partial class ShellInterpreter : IDisposable
         {
             WriteLine(MessageService.GetString("shell-connect-key-auth"));
             var keyMode = mode ?? (isEmulator ? ConnectionMode.Gateway : ConnectionMode.Direct);
-            var keyOptions = CreateClientOptions(keyMode);
+            var keyOptions = CreateClientOptions(keyMode, isEmulator);
             client = new CosmosClient(connectionString, keyOptions);
 
             AccountProperties keyProps;
+            using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+            if (isEmulator)
+            {
+                operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+            }
+
             try
             {
-                keyProps = await ReadAccountAsync(client, token);
+                keyProps = await ReadAccountAsync(client, operationTokenSource.Token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -970,7 +1174,7 @@ public partial class ShellInterpreter : IDisposable
             }
 
             WriteLine(MessageService.GetArgsString("command-connect-connected", "account", keyProps.Id));
-            this.Connect(client);
+            this.Connect(client, credentialTypeOverride: isEmulator ? "Emulator" : "AccountKey");
             return;
         }
 
@@ -1046,7 +1250,7 @@ public partial class ShellInterpreter : IDisposable
             }
 
             WriteLine(MessageService.GetArgsString("command-connect-connected", "account", tokenProps.Id));
-            this.Connect(client);
+            this.Connect(client, credential: credential);
             return;
         }
 
@@ -1212,7 +1416,7 @@ public partial class ShellInterpreter : IDisposable
         var explicitlyRequested = IsArmContextExplicitlyRequested(subscriptionId, resourceGroupName);
         if (!explicitlyRequested)
         {
-            this.Connect(client);
+            this.Connect(client, credential: credential);
             WriteLine(MessageService.GetArgsString("command-connect-connected", "account", accountId));
 
             ArmCosmosContext? discoveredArmContext;
@@ -1234,7 +1438,7 @@ public partial class ShellInterpreter : IDisposable
         }
 
         var armContext = await this.TryDiscoverArmContextAsync(credential, client.Endpoint, subscriptionId, resourceGroupName, authorityHostUri, token);
-        this.Connect(client, armContext);
+        this.Connect(client, armContext, credential);
         WriteLine(MessageService.GetArgsString("command-connect-connected", "account", accountId));
     }
 
@@ -1476,10 +1680,21 @@ public partial class ShellInterpreter : IDisposable
     /// <summary>
     /// Connects to a client &amp; disposes old state.
     /// </summary>
-    internal void Connect(CosmosClient client, ArmCosmosContext? armContext = null)
+    internal void Connect(CosmosClient client, ArmCosmosContext? armContext = null, TokenCredential? credential = null, string? credentialTypeOverride = null)
     {
         this.State?.Dispose();
         this.State = new ConnectedState(client, armContext);
+        lock (this.sessionRequestChargeLock)
+        {
+            this.sessionRequestCharge = 0;
+            this.sessionChargedOperationCount = 0;
+            this.sessionRequestChargeWarningIssued = false;
+            this.sessionRequestChargeGeneration++;
+        }
+
+        this.activeCredential = credential;
+        this.ActiveCredentialType = credentialTypeOverride ?? credential?.GetType().Name;
+        this.CurrentBatch = null;
         CosmosCompleteCommand.ClearDatabases();
         CosmosCompleteCommand.ClearContainers();
         this.Diagnostics?.LogConnect(client.Endpoint, client.ClientOptions.ConnectionMode);
@@ -1544,6 +1759,19 @@ public partial class ShellInterpreter : IDisposable
     {
         this.State?.Dispose();
         this.State = new DisconnectedState();
+        this.activeCredential = null;
+        this.ActiveCredentialType = null;
+        this.CurrentBatch = null;
+    }
+
+    internal void DisconnectLocalEmulatorAfterConnectivityFailure(Exception exception)
+    {
+        if (this.State is ConnectedState connectedState
+            && ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectedState.Client.Endpoint.ToString())
+            && CommandException.IsConnectivityFailure(exception))
+        {
+            this.Disconnect();
+        }
     }
 
     internal void PrintCommand(string cmdString)
@@ -1593,6 +1821,12 @@ public partial class ShellInterpreter : IDisposable
                 && state.RenderUser is { } renderUser)
             {
                 renderUser();
+                return state;
+            }
+
+            if (inMachineMode && state is StructuredErrorCommandState structuredError)
+            {
+                this.WriteMachineError(structuredError.Exception.Message, structuredError.Result);
                 return state;
             }
 
@@ -1718,6 +1952,18 @@ public partial class ShellInterpreter : IDisposable
 
     internal void SetVariable(string variableName, ShellObject value)
     {
+        if (string.Equals(variableName, SessionRequestChargeVariable, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(variableName, SessionChargedOperationCountVariable, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ShellException(MessageService.GetArgsString("error-session-variable-read-only", "name", variableName));
+        }
+
+        if (string.Equals(variableName, SessionRequestChargeWarningThresholdVariable, StringComparison.OrdinalIgnoreCase))
+        {
+            this.SetSessionRequestChargeWarningThreshold(value);
+            return;
+        }
+
         // Ensure we have at least one variable container (global scope)
         if (this.VariableContainers.Count == 0)
         {
@@ -1760,6 +2006,70 @@ public partial class ShellInterpreter : IDisposable
         currentScope.Set(variableName, shellValue);
     }
 
+    private void SetSessionRequestChargeWarningThreshold(ShellObject value)
+    {
+        double maximum = value switch
+        {
+            ShellNumber number => number.Value,
+            ShellDecimal decimalValue => decimalValue.Value,
+            _ => double.NaN,
+        };
+
+        if (!double.IsFinite(maximum) || maximum < 0)
+        {
+            throw new ShellException(MessageService.GetString("error-session-request-charge-warning-threshold-invalid"));
+        }
+
+        bool printWarning;
+        double requestChargeTotal;
+        lock (this.sessionRequestChargeLock)
+        {
+            if (Math.Abs(maximum - this.sessionRequestChargeWarningThreshold) > 1e-9)
+            {
+                this.sessionRequestChargeWarningIssued = false;
+            }
+
+            this.sessionRequestChargeWarningThreshold = maximum;
+            printWarning = maximum > 0
+                && !this.sessionRequestChargeWarningIssued
+                && this.sessionRequestCharge >= maximum;
+            if (printWarning)
+            {
+                this.sessionRequestChargeWarningIssued = true;
+            }
+
+            requestChargeTotal = this.sessionRequestCharge;
+        }
+
+        if (printWarning)
+        {
+            this.PrintSessionRequestChargeWarning(requestChargeTotal, maximum);
+        }
+    }
+
+    private void PrintSessionRequestChargeWarning(double requestCharge, double warningThreshold)
+    {
+        var message = MessageService.GetArgsString(
+            "warning-session-request-charge-threshold-reached",
+            "requestCharge",
+            requestCharge.ToString("0.##", CultureInfo.InvariantCulture),
+            "warningThreshold",
+            warningThreshold.ToString("0.##", CultureInfo.InvariantCulture));
+
+        if (this.IsMachineMode)
+        {
+            Console.Error.WriteLine(JsonSerializer.Serialize(new Dictionary<string, string>
+            {
+                ["status"] = "warning",
+                ["warning"] = message,
+            }));
+        }
+        else
+        {
+            AnsiConsole.MarkupLine(Theme.FormatWarning(message));
+        }
+    }
+
     /// <summary>
     /// Releases the unmanaged resources used by the <see cref="ShellInterpreter"/> and optionally releases the managed resources.
     /// </summary>
@@ -1789,7 +2099,7 @@ public partial class ShellInterpreter : IDisposable
         return Console.ReadLine();
     }
 
-    private static CosmosClientOptions CreateClientOptions(ConnectionMode requestedMode)
+    internal static CosmosClientOptions CreateClientOptions(ConnectionMode requestedMode, bool isEmulator = false)
     {
         var options = new CosmosClientOptions
         {
@@ -1804,6 +2114,11 @@ public partial class ShellInterpreter : IDisposable
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             },
         };
+
+        if (isEmulator)
+        {
+            options.RequestTimeout = TimeSpan.FromSeconds(5);
+        }
 
         return options;
     }
@@ -2127,14 +2442,20 @@ public partial class ShellInterpreter : IDisposable
     // redirection (`ErrOutRedirect` / `2>` / `2>>`) so scripts that redirect
     // stderr still capture errors in --quiet / --output json modes; otherwise
     // the object is written to the process stderr.
-    private void WriteMachineError(string errorMessage)
+    private void WriteMachineError(string errorMessage, ShellObject? result = null)
     {
-        var errObj = new
+        var error = new Dictionary<string, object?>
         {
-            status = "error",
-            error = errorMessage,
+            ["status"] = "error",
+            ["error"] = errorMessage,
         };
-        var json = JsonSerializer.Serialize(errObj);
+
+        if (result?.ConvertShellObject(Parser.DataType.Json) is JsonElement resultElement)
+        {
+            error["result"] = resultElement;
+        }
+
+        var json = JsonSerializer.Serialize(error);
 
         if (this.ErrOutRedirect != null)
         {

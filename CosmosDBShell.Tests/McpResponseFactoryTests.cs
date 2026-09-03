@@ -82,6 +82,27 @@ public class McpResponseFactoryTests
     }
 
     [Fact]
+    public void CreateSuccess_StructuredError_IncludesErrorAndResult()
+    {
+        var state = new StructuredErrorCommandState(
+            new CommandException("batch", "Batch failed."),
+            new ShellJson(JsonSerializer.SerializeToElement(new
+            {
+                success = false,
+                statusCode = 409,
+            })));
+
+        var result = McpResponseFactory.CreateSuccess(state, new ConnectedState(null!));
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+
+        using var document = JsonDocument.Parse(text);
+        Assert.True(result.IsError);
+        Assert.Equal("Batch failed.", document.RootElement.GetProperty("error").GetString());
+        Assert.False(document.RootElement.GetProperty("result").GetProperty("success").GetBoolean());
+        Assert.Equal(409, document.RootElement.GetProperty("result").GetProperty("statusCode").GetInt32());
+    }
+
+    [Fact]
     public void CreateError_WrapsMessageWithCurrentLocation()
     {
         var result = McpResponseFactory.CreateError("boom", new DatabaseState("TestDatabase", null!));
@@ -91,6 +112,17 @@ public class McpResponseFactoryTests
         Assert.True(result.IsError);
         Assert.Equal("/TestDatabase", document.RootElement.GetProperty("currentLocation").GetString());
         Assert.Equal("boom", document.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public void CreateError_WithRequestCharge_IncludesChargeInEquivalentPayloads()
+    {
+        var result = McpResponseFactory.CreateError("boom", new DatabaseState("TestDatabase", null!), 2.5);
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+
+        using var document = JsonDocument.Parse(text);
+        Assert.Equal(2.5, document.RootElement.GetProperty("requestCharge").GetDouble());
+        Assert.Equal(document.RootElement.GetRawText(), result.StructuredContent?.GetRawText());
     }
 
     [Fact]
@@ -128,6 +160,31 @@ public class McpResponseFactoryTests
         Assert.Equal("/TestDatabase/TestContainer", structured.GetProperty("currentLocation").GetString());
     }
 
+    [Theory]
+    [InlineData("next-page")]
+    [InlineData(null)]
+    public void CreateSuccess_PagedResult_IncludesContinuationToken(string? continuationToken)
+    {
+        var commandState = new CommandState
+        {
+            IsPage = true,
+            ContinuationToken = continuationToken,
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { values = Array.Empty<object>() })),
+        };
+
+        var result = McpResponseFactory.CreateSuccess(commandState, new ConnectedState(null!));
+        var token = result.StructuredContent!.Value.GetProperty("continuationToken");
+
+        if (continuationToken == null)
+        {
+            Assert.Equal(JsonValueKind.Null, token.ValueKind);
+        }
+        else
+        {
+            Assert.Equal(continuationToken, token.GetString());
+        }
+    }
+
     [Fact]
     public void CreateError_PopulatesStructuredContentMatchingTextBlock()
     {
@@ -143,5 +200,53 @@ public class McpResponseFactoryTests
         Assert.Equal(text, structured.GetRawText());
         Assert.Equal("boom", structured.GetProperty("error").GetString());
         Assert.Equal("/TestDatabase", structured.GetProperty("currentLocation").GetString());
+    }
+
+    [Fact]
+    public void CreateSuccess_IncludesRequestChargeWhenSet()
+    {
+        var commandState = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { result = "success" })),
+            RequestCharge = 4.25,
+        };
+
+        var result = McpResponseFactory.CreateSuccess(commandState, new ConnectedState(null!));
+
+        Assert.NotNull(result.StructuredContent);
+        var structured = result.StructuredContent!.Value;
+        Assert.True(structured.TryGetProperty("requestCharge", out var requestCharge));
+        Assert.Equal(4.25, requestCharge.GetDouble());
+    }
+
+    [Fact]
+    public void CreateSuccess_StructuredError_IncludesRequestChargeWhenSet()
+    {
+        var commandState = new StructuredErrorCommandState(
+            new CommandException("batch", "Batch failed."),
+            new ShellJson(JsonSerializer.SerializeToElement(new { success = false })))
+        {
+            RequestCharge = 3.5,
+        };
+
+        var result = McpResponseFactory.CreateSuccess(commandState, new ConnectedState(null!));
+
+        Assert.True(result.IsError);
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(3.5, result.StructuredContent!.Value.GetProperty("requestCharge").GetDouble());
+    }
+
+    [Fact]
+    public void CreateSuccess_OmitsRequestChargeWhenNotSet()
+    {
+        var commandState = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { result = "success" })),
+        };
+
+        var result = McpResponseFactory.CreateSuccess(commandState, new ConnectedState(null!));
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.False(result.StructuredContent!.Value.TryGetProperty("requestCharge", out _));
     }
 }

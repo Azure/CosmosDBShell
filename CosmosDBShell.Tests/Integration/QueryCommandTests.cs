@@ -131,6 +131,47 @@ public class QueryCommandTests : EmulatorFixtureTestBase
     }
 
     [Fact]
+    public async Task Query_Explain_ReturnsStructuredResultWithoutDocuments()
+    {
+        var query = $"SELECT * FROM c WHERE c.id = '{this.GetSeedItemId(1)}'";
+
+        var outputFile = CreateTempFile();
+        Shell.StdOutRedirect = outputFile;
+        CommandState state;
+        string output;
+        try
+        {
+            state = await ExecuteAsync($"query \"{query}\" --explain");
+            output = await File.ReadAllTextAsync(outputFile, TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            Shell.StdOutRedirect = null;
+        }
+
+        Assert.False(state.IsError, FormatError(state));
+        Assert.True(state.RequestCharge is > 0);
+
+        using var document = JsonDocument.Parse(output);
+        var root = document.RootElement;
+        Assert.Equal(query, root.GetProperty("query").GetString());
+        Assert.True(root.GetProperty("estimate").GetBoolean());
+        Assert.False(root.TryGetProperty("values", out _));
+
+        var plan = root.GetProperty("plan");
+        Assert.Equal(JsonValueKind.Array, plan.GetProperty("utilizedIndexes").ValueKind);
+        Assert.Equal(JsonValueKind.Array, plan.GetProperty("potentialIndexes").ValueKind);
+        Assert.True(plan.GetProperty("requestCharge").GetDouble() >= 0);
+
+        var evaluation = root.GetProperty("evaluation");
+        var planAvailable = evaluation.GetProperty("planAvailable").GetBoolean();
+        var fullScan = evaluation.GetProperty("fullScan").GetBoolean();
+        var indexSeek = evaluation.GetProperty("indexSeek").GetBoolean();
+        Assert.Equal(planAvailable, fullScan != indexSeek);
+        Assert.True(evaluation.GetProperty("messages").GetArrayLength() > 0);
+    }
+
+    [Fact]
     public async Task Query_MetricsFile_Csv_WritesMetricsCsvFile()
     {
         var outputFile = CreateTempFile(".csv");

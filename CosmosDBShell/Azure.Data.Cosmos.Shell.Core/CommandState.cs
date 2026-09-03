@@ -69,6 +69,22 @@ public partial class CommandState
     /// </summary>
     internal Func<TabularData>? RenderTabular { get; set; }
 
+    /// <summary>
+    /// Gets or sets a value indicating whether this result is a resumable page.
+    /// </summary>
+    internal bool IsPage { get; set; }
+
+    /// <summary>
+    /// Gets or sets the token for retrieving the next page, or <see langword="null"/> when the result is exhausted.
+    /// </summary>
+    internal string? ContinuationToken { get; set; }
+
+    /// <summary>
+    /// Gets or sets the Cosmos DB request charge (in RUs) consumed by the command, when applicable.
+    /// Data-plane commands set this so consumers such as the MCP structured payload can report cost uniformly.
+    /// </summary>
+    internal double? RequestCharge { get; set; }
+
     internal bool BreakBlock { get; set; } = false;
 
     internal bool ContinueBlock { get; set; } = false;

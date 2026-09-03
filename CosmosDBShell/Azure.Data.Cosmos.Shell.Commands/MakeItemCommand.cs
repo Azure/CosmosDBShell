@@ -59,7 +59,7 @@ internal class MakeItemCommand : CosmosCommand
             "mkitem",
             token);
 
-        var summary = await WriteItemAsync(container, commandState, jsonOpt, this.Force == true, token);
+        var summary = await WriteItemAsync(container, jsonOpt, this.Force == true, token);
 
         var returnState = new CommandState();
         returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
@@ -70,6 +70,7 @@ internal class MakeItemCommand : CosmosCommand
             failed = summary.Failed,
             requestCharge = summary.RequestCharge,
         }));
+        returnState.RequestCharge = summary.RequestCharge;
         return returnState;
     }
 
@@ -131,7 +132,7 @@ internal class MakeItemCommand : CosmosCommand
         }
     }
 
-    private static async Task<WriteSummary> WriteItemAsync(Container container, CommandState commandState, string? jsonOpt, bool force, CancellationToken token)
+    private static async Task<WriteSummary> WriteItemAsync(Container container, string? jsonOpt, bool force, CancellationToken token)
     {
         if (!string.IsNullOrEmpty(jsonOpt))
         {
@@ -154,7 +155,6 @@ internal class MakeItemCommand : CosmosCommand
                                 ? await container.UpsertItemAsync(element, cancellationToken: token)
                                 : await container.CreateItemAsync(element, cancellationToken: token);
                             charge += result.RequestCharge;
-
                             if (result.StatusCode == System.Net.HttpStatusCode.Created)
                             {
                                 createdCount++;
@@ -175,6 +175,7 @@ internal class MakeItemCommand : CosmosCommand
                         }
                         catch (CosmosException ce)
                         {
+                            RequestChargeContext.Record(ce.RequestCharge);
                             failCount++;
                             ShellInterpreter.WriteLine(
                                 MessageService.GetArgsString(

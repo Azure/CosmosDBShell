@@ -5,11 +5,20 @@
 ### Build & pipeline
 
 - The official pipeline now produces compressed `x86_64` and `aarch64` RPM packages from lightweight framework-dependent Linux builds. The packages retain the interactive shell, scripting, ARM management, direct/gateway connectivity, and OpenTelemetry export while excluding MCP, LSP, and brokered Visual Studio Code authentication. They require the .NET 10 runtime and are validated against the Azure Cloud Shell 25 MB package-size limit.
+### Improvements
+
+- Cosmos DB data-plane commands now consistently expose their aggregate observed request charge in structured output and connection-scoped `info` telemetry, including metadata/configuration operations, scripts, change feed reads, paginated operations, handled probes, and charged failures. Azure Resource Manager control-plane operations remain uncharged.
+- Added `$sessionRequestCharge` and `$sessionChargedOperationCount` as read-only shell variables. Set `$sessionRequestChargeWarningThreshold` to a positive RU threshold to print one warning when the current connection reaches it; `info` reports it as `session.requestChargeWarningThreshold`.
+
+### Fixes
+
+- Local emulator outages are now detected across Cosmos DB commands. Requests fail promptly with an error and return the shell to its disconnected state instead of leaving an unresponsive session labeled as connected.
 
 ## 1.1.209-preview — 2026-08-26
 
 ### New features
 
+- **`schema` discovery command and MCP tool.** A new read-only `schema` command infers a container's structure from a small, bounded sample: it returns the partition key path(s), an indexing policy summary, an estimated document count, and inferred field types (with dot notation for nested objects and per-field presence counts). `--sample <n>` selects how many documents to sample (clamped to 1-100, default 20), `--fields-only` (alias `--short`) returns only the sample count and inferred fields without a metadata read, and `--database`/`--container` override the target. Exposed as a read-only MCP tool so agents can discover container structure cheaply instead of re-sampling or guessing field names. ([#160](https://github.com/Azure/CosmosDBShell/issues/160))
 - **`--database` and `--container` startup options.** Navigate to a database or container at startup without composing a `-k "cd ..."` command. Both require `--connect`, and `--container` requires `--database`. Tools that previously built a startup script string to select a location should pass these options instead. See [navigation](docs/navigation.md).
 
 ### Breaking changes
@@ -24,6 +33,7 @@
 
 ### New features
 
+- **`whoami` and `can-i` access diagnostics.** `whoami` reports the current credential type and, for Microsoft Entra ID connections, the principal, tenant, application id, user principal name, display name, and token expiry decoded from the Cosmos DB access token. `can-i <read|query|write|manage>` probes data-plane access with safe, non-mutating requests and reports `allow`, `deny`, or `indeterminate`. Both commands are data-plane only (no control-plane dependency): account-key and emulator connections are reported from the master key, and RBAC role assignments are not enumerated. Both support `--format` (`table`, `json`, or `csv`). ([#163](https://github.com/Azure/CosmosDBShell/issues/163))
 - **Deterministic machine output and exit codes.** Global `--output`/`--quiet`, structured JSON/CSV machine mode, and stable process exit codes (`0`–`6`) for automation and CI. ([#173](https://github.com/Azure/CosmosDBShell/pull/173), [#155](https://github.com/Azure/CosmosDBShell/issues/155), [#176](https://github.com/Azure/CosmosDBShell/issues/176), [#177](https://github.com/Azure/CosmosDBShell/issues/177))
 - **`setup-cosmosdb-shell` GitHub Action** and [CI/CD guide](docs/ci.md) for installing the self-contained shell in pipelines without a .NET SDK on the runner. ([#173](https://github.com/Azure/CosmosDBShell/pull/173))
 
@@ -89,6 +99,9 @@ A focused cycle on top of 1.1.115-preview. New `ttl` and `conflict` commands man
 ### Improvements
 
 - **Structured (JSON) tool results for MCP.** MCP tool results now carry the machine-readable JSON payload (`result`/`outputText`/`error` plus `currentLocation`) as first-class `structuredContent` in addition to the existing JSON text block, so agents can consume structured results directly. The two representations are kept byte-for-byte equivalent, and text-only clients are unaffected. ([#154](https://github.com/Azure/CosmosDBShell/issues/154))
+- **Request charge in MCP structured results.** Instrumented data-plane commands (`query`, including `--explain`; `print`; container-scoped `ls`; `can-i` probes; `batch run`; `mkitem`; `replace`; `patch`; `rm`; `import`; and `export`) now report the Cosmos DB request charge (in RUs) consumed by the operation as a uniform `requestCharge` field on the MCP tool result, so agents can track observed RU cost consistently across calls. Budget enforcement remains tracked separately in #162. ([#162](https://github.com/Azure/CosmosDBShell/issues/162))
+- **Connection-scoped request-charge totals.** The shell accumulates request charges observed from instrumented commands and reports the total in `info` as `session.requestCharge`, together with the number of positively charged command operations as `session.chargedOperationCount`. A successful `connect` starts new totals; database and container navigation do not reset them. This is usage telemetry, not budget enforcement or billing data. ([#162](https://github.com/Azure/CosmosDBShell/issues/162))
+- **Destructive MCP commands now prompt for confirmation instead of being blocked.** When an MCP client invokes `delete`, `rm`, `rmcon`, or `rmdb`, the server sends an elicitation prompt describing the exact command line and only runs it if the user approves; declining, cancelling, or a client that cannot confirm results in nothing being executed. This removes the need for any write opt-in flag. ([#158](https://github.com/Azure/CosmosDBShell/issues/158))
 
 ### Fixes
 

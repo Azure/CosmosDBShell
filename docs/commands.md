@@ -34,6 +34,75 @@ Disconnect the current connection.
 Usage: disconnect
 ```
 
+## Diagnostics
+
+### whoami
+
+Show the authenticated identity and credential type for the current connection.
+
+For Microsoft Entra ID connections (interactive browser, device code, managed
+identity, Visual Studio Code, static token, or `DefaultAzureCredential`) it
+acquires a Cosmos DB access token and decodes the principal id, tenant id,
+application id, user principal name, display name, and identity type from the
+token claims. The token expiry is taken from the acquired token's metadata
+(`ExpiresOn`) rather than the `exp` claim. The token signature is not validated;
+the claims are used for local display only.
+
+Account-key and emulator connections use a master key and have no Entra
+identity, so only the credential type is reported.
+
+```text
+Usage: whoami [--format=<table|json|csv>]
+
+Options:
+    --format, -f    Output format: table (default), json, or csv
+```
+
+Data-plane RBAC role assignments are a control-plane concept and are not
+reported. The default interactive report is rendered as a table; use
+`--format json` or `--format csv` for machine-readable output. Redirected output
+is written in the selected format (JSON by default, or `table`/`csv` when
+`COSMOSDB_SHELL_FORMAT` or `--format` selects them). The
+`COSMOSDB_SHELL_FORMAT` environment variable sets the default format. This
+command is read-only.
+
+### can-i
+
+Probe whether the current identity can perform an action against a container
+without mutating data.
+
+```text
+Usage: can-i <action> [--database=<name>] [--container=<name>] [--format=<table|json|csv>]
+
+Arguments:
+    <action>            The action to probe: read, query, write, or manage
+
+Options:
+    --database, -db     Target database name (defaults to the current database)
+    --container, -con   Target container name (defaults to the current container)
+    --format, -f        Output format: table (default), json, or csv
+```
+
+The probe issues a safe, non-mutating data-plane request and reports `allow`,
+`deny`, or `indeterminate` based on the response:
+
+- `read` — a point read of a random id.
+- `query` — a minimal `SELECT TOP 1` query with a page size of 1.
+- `write` — a delete of a random, almost-certainly-nonexistent id (non-mutating).
+  A `deny` means no delete permission; an `allow` is a heuristic inference that
+  write access is present.
+- `manage` — cannot be probed on the data plane without a mutating or
+  control-plane operation, so it is always reported as `indeterminate`.
+
+Account-key and emulator connections use a master key and are reported as
+`allow` with method `key`. Entra connections use method `probe` and include the
+HTTP status code observed. The default interactive report is rendered as a
+table; use `--format json` or `--format csv` for machine-readable output.
+Redirected output is written in the selected format (JSON by default, or
+`table`/`csv` when `COSMOSDB_SHELL_FORMAT` or `--format` selects them). The
+`COSMOSDB_SHELL_FORMAT` environment variable sets the default format. This
+command does not mutate data.
+
 ## Navigation
 
 ### ls
@@ -153,16 +222,38 @@ theme reload
 Execute SQL query.
 
 ```text
-Usage: query [-m <ARG>] query
+Usage: query [-m <ARG>] [-mx <ARG>] [-f <ARG>] [--bucket <ARG>]
+             [--database <ARG>] [--container <ARG>] [--explain] query
 
 Arguments:
     query       The query to execute
 
 Options:
-    -max, -m    Maximum number of items returned. Use 0 or a negative value for no limit
+    --max, -m             Maximum number of items returned. Use 0 or a negative value
+                          for no limit
+    --metrics, -mx        Show query metrics (Display or File)
+    --format, -f          Output format (json, table, csv)
+    --bucket              The throughput bucket to use for the query
+    --database, -db       The database to query against
+    --container, -con     The container to query against
+    --explain             Show the query execution plan (index usage and a
+                          plain-language evaluation) instead of returning documents
 ```
 
 `query` does not apply a default item limit. Use `--max <n>` to cap returned items when needed, or `--max 0` to disable the limit explicitly.
+
+When called through MCP, `query` and container-item `ls` return one page at a time. `max` must be positive; omitted or non-positive values use the safe default of `100` items. The MCP result includes `continuationToken`; pass a non-null value back as the tool's `continuation` argument, with the same query and options, to retrieve the next page. A null token means there are no more pages. `continuation` is an MCP-only argument and is deliberately not a shell option, so interactive and scripted commands are unaffected and retain their existing multi-page behavior.
+
+#### Explain a query
+
+`query "<sql>" --explain` reports how the query engine resolved the query rather than returning documents. When Cosmos DB returns index metrics, it shows whether the query performed a full scan or an index seek, lists the utilized and potential indexes, the index hit ratio, and the request charge. If index metrics are unavailable or unrecognized, the scan type is reported as unknown instead of assuming a full scan. A plain-language summary highlights confirmed full scans and recommends indexes to add.
+
+```text
+query "SELECT * FROM c WHERE c.city = 'Seattle'" --explain
+```
+
+To keep the cost low, `--explain` executes only the first page of the query (`MaxItemCount = 1`), so the reported metrics are an estimate based on that page. `--max` is ignored when `--explain` is supplied.
+
 
 ### print
 
@@ -293,6 +384,97 @@ patch set order-42 customer-7 /name "Ada Lovelace" --etag="<etag-from-read>"
 - `replace` against a missing field, or `incr` against a non-numeric field, surfaces a Cosmos `BadRequest` with the underlying reason.
 - `remove` with a `value` argument is rejected up front.
 - `incr` with a non-numeric value is rejected up front.
+
+### batch
+
+Execute multiple write operations against a single partition key as one atomic Cosmos DB transactional batch. Either run a batch in a single call, or build one up statefully across several commands. Every operation in a batch must share the same partition key, execution requires between 1 and 100 operations, and if any operation fails the entire batch is rolled back. A pending stateful batch may be empty until operations are added.
+
+```text
+Usage: batch subcommand [data] [--partition-key <ARG>] [-database <ARG>] [-container <ARG>]
+
+Arguments:
+    subcommand  The action to perform: run, begin, add, execute, cancel, status, or show
+    [data]      Batch operations as a JSON array, or a single operation as a JSON object (Optional)
+
+Options:
+    --partition-key, --pk
+               The partition key shared by every operation in the batch. Required for `run` and `begin`; the stateful `add`, `execute`, `cancel`, `status`, and `show` subcommands use the active batch's partition key.
+    -database, -db
+               Override database name (Optional)
+    -container, -con
+               Override container name (Optional)
+```
+
+#### Subcommands
+
+|Subcommand|Description|
+|-|-|
+|`run <json> --partition-key <pk>`|Parse a JSON array of operations and execute them atomically in a single call. Also reads piped input.|
+|`begin --partition-key <pk>`|Start a stateful batch bound to a partition key, database, and container.|
+|`add <json>`|Queue one operation (JSON object) or several (JSON array) onto the active batch.|
+|`execute` (`exec`, `commit`)|Commit the queued operations atomically and clear the active batch.|
+|`cancel` (`abort`)|Discard the active batch without executing it.|
+|`status`|Report the active batch target, partition key, and a compact list of queued operations.|
+|`show`|Print the queued operations as a JSON array (the same shape accepted by `run`/`add`).|
+
+When a stateful batch is active the prompt shows a `[batch:N]` indicator, where `N` is the number of queued operations.
+
+In interactive user output, `status` uses a compact table while `show` always prints the full queued-operation JSON. Use `--output json`, redirection, or a pipeline to obtain the structured JSON result from `status`.
+
+#### Operation schema
+
+Each operation is a JSON object with an `op` field:
+
+|Operation|Shape|
+|-|-|
+|`create`|`{"op":"create","item":{...}}`|
+|`upsert`|`{"op":"upsert","item":{...}}`|
+|`replace`|`{"op":"replace","id":"1","item":{...}}` (the `id` is optional when `item.id` is present)|
+|`delete`|`{"op":"delete","id":"3"}`|
+|`patch`|`{"op":"patch","id":"1","operations":[{"op":"set","path":"/name","value":"x"}]}`|
+
+Patch sub-operations use the same `op`/`path`/`value` shape and semantics as the [`patch`](#patch) command (`set`, `add`, `replace`, `remove`, `incr`). Patch values are typed JSON values, for example `"value":"active"`, `"value":42`, or `"value":true`.
+
+#### Result
+
+In interactive user output, `batch run` and `batch execute` print a concise outcome with the operation count and request charge. Their full result is emitted as a JSON summary when using `--output json`, redirection, a pipeline, or MCP:
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "requestCharge": 12.34,
+  "operationCount": 2,
+  "operations": [
+    { "index": 0, "op": "create", "statusCode": 201, "id": "a", "etag": "..." },
+    { "index": 1, "op": "delete", "statusCode": 204, "id": "b" }
+  ]
+}
+```
+
+When the batch fails, `success` is `false`, the failing operation reports its own status code, and the remaining operations report `424` (Failed Dependency) because the transaction was rolled back.
+
+#### Examples
+
+```bash
+batch run '[{"op":"create","item":{"id":"1","pk":"a"}},{"op":"delete","id":"2"}]' --partition-key a
+echo '[{"op":"upsert","item":{"id":"3","pk":"a"}}]' | batch run --partition-key a
+
+batch begin --partition-key a
+batch add '{"op":"upsert","item":{"id":"3","pk":"a"}}'
+batch add '{"op":"patch","id":"3","operations":[{"op":"set","path":"/status","value":"done"}]}'
+batch status
+batch show       # prints the queued operations as a JSON array
+batch execute
+```
+
+#### Errors
+
+- Missing `--partition-key` for `run` or `begin` is rejected up front.
+- `add`, `execute`, or `cancel` with no active batch: `No batch is in progress. Start one with 'batch begin'.`
+- `begin` while a batch is already active: `A batch is already in progress. Run 'batch execute' or 'batch cancel' first.`
+- More than 100 operations is rejected before any call to Cosmos DB.
+- A transactional failure prints a one-line message, returns a result summary with `success` set to `false` and per-operation status codes, and rolls back every operation.
 
 ### rm
 
@@ -602,6 +784,81 @@ index add /address/* /name/?
 index remove /address/*
 index set --mode=consistent --automatic=true
 index set '{"indexingMode":"consistent","automatic":true,"includedPaths":[{"path":"/*"}],"excludedPaths":[]}'
+```
+
+### schema
+
+Infer the schema of a container from a small, bounded sample. The command returns the
+partition key path(s), an indexing policy summary, an estimated document count, and the
+field types inferred from the sample. It is read-only and uses a bounded sampling query
+along with a container metadata read, making it a cheap way for agents and users to
+discover a container's structure without re-sampling or guessing field names.
+
+```text
+Usage: schema [-sample <ARG>] [-fields-only] [-database <ARG>] [-container <ARG>]
+
+Options:
+    -sample, -s Maximum number of documents to sample (1-100, default 20)
+    -fields-only, -short
+                Return only sampledDocuments and inferred fields without reading container metadata
+    -database, -db
+                Override database name (Optional)
+    -container, -con
+                Override container name (Optional)
+```
+
+By default the command targets the current container. Use `--database` and `--container`
+to target a specific resource. The `--sample` value is clamped to the range 1-100 so the
+discovery query stays bounded both server-side and in the client.
+
+Inferred fields use dot notation for nested objects (for example `address.city`). Each
+field lists the distinct JSON types observed (`string`, `number`, `boolean`, `object`,
+`array`, or `null`) and the number of sampled documents in which the field was present.
+The `indexingPolicy` summary contains `indexingMode`, `automatic`, `includedPaths`,
+`excludedPaths`, `compositeIndexes`, `spatialIndexes`, and `vectorIndexes`.
+
+#### Examples
+
+```bash
+schema
+schema --sample=50
+schema --fields-only
+schema --short
+schema --database=MyDB --container=Products
+```
+
+`--fields-only` (alias `--short`) skips the container metadata read and returns only
+`sampledDocuments` and `fields`. This is useful when only field names and observed JSON
+types are needed and a smaller CLI or MCP result is preferred.
+
+Short output:
+
+```json
+{
+    "sampledDocuments": 20,
+    "fields": [
+        { "path": "id", "types": ["string"], "presence": 20 },
+        { "path": "price", "types": ["null", "number"], "presence": 18 }
+    ]
+}
+```
+
+Abbreviated sample output (the `indexingPolicy` summary is omitted for brevity):
+
+```json
+{
+  "database": "MyDB",
+  "container": "Products",
+  "partitionKeyPaths": ["/category"],
+  "documentCountEstimate": 1280,
+  "sampleSize": 20,
+  "sampledDocuments": 20,
+  "fields": [
+    { "path": "id", "types": ["string"], "presence": 20 },
+    { "path": "category", "types": ["string"], "presence": 20 },
+    { "path": "price", "types": ["number"], "presence": 18 }
+  ]
+}
 ```
 
 ### throughput
@@ -1150,7 +1407,11 @@ data/total storage size. Use `index show` for the full indexing policy JSON. Whe
 only a database is in scope it reports the container count, aggregate document
 count, total storage, and shared throughput. When neither is in scope (the
 account root) it reports account metadata: read/write regions and the database
-count.
+count. Every scope also includes the cumulative request charge observed from
+Cosmos DB data-plane requests during the current connection, including the
+requests made by the current `info` command. The total resets to zero
+after each successful `connect`; changing database or container scope does not
+reset it. It is session telemetry, not a budget or billing total.
 
 On serverless accounts, throughput/offer settings are not available, so the
 scale section reports that throughput settings are not available for serverless
@@ -1174,7 +1435,13 @@ with redirection, the report is written to the file as a plain-text grid instead
 the rich console layout. The `--partitions` and
 `--detailed` options issue queries against the data and therefore consume
 request units; at the account root, `--detailed` aggregates every container's
-storage and document count across all databases. This command is read-only.
+storage and document count across all databases. In JSON output the connection
+total is available as `session.requestCharge`, and `session.chargedOperationCount`
+counts command operations that reported a positive charge. Paginated and
+multi-request commands contribute their aggregate observed charge. Azure Resource
+Manager control-plane operations do not consume Cosmos DB request units. When
+`$sessionRequestChargeWarningThreshold` is positive, `session.requestChargeWarningThreshold` reports the
+configured warning threshold. This command is read-only.
 
 ### help
 

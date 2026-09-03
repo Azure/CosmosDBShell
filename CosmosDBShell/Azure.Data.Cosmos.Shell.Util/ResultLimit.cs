@@ -18,6 +18,11 @@ internal static class ResultLimit
         return requestedMax.Value <= 0 ? null : requestedMax.Value;
     }
 
+    public static int ResolvePageSize(int? requestedMax)
+    {
+        return requestedMax is > 0 ? requestedMax.Value : DefaultMaxItemCount;
+    }
+
     public static bool IsLimitReached(int count, int? effectiveMaxItemCount)
     {
         return effectiveMaxItemCount.HasValue && count >= effectiveMaxItemCount.Value;

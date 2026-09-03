@@ -27,15 +27,18 @@ internal static class McpResponseFactory
         return CreateResponse(CreateSuccessPayload(commandState), shellState, commandState.IsError);
     }
 
-    public static CallToolResult CreateError(string message, State shellState)
+    public static CallToolResult CreateError(string message, State shellState, double? requestCharge = null)
     {
-        return CreateResponse(
-            new JsonObject
-            {
-                ["error"] = message,
-            },
-            shellState,
-            isError: true);
+        var payload = new JsonObject
+        {
+            ["error"] = message,
+        };
+        if (requestCharge is not null)
+        {
+            payload["requestCharge"] = requestCharge.Value;
+        }
+
+        return CreateResponse(payload, shellState, isError: true);
     }
 
     internal static string? GetCurrentLocation(State shellState)
@@ -83,9 +86,20 @@ internal static class McpResponseFactory
     {
         var payload = new JsonObject();
 
+        if (commandState.RequestCharge.HasValue)
+        {
+            payload["requestCharge"] = commandState.RequestCharge.Value;
+        }
+
         if (commandState.IsError)
         {
             payload["error"] = GetErrorPayloadMessage(commandState);
+
+            var errorResultNode = CreateResultNode(commandState);
+            if (errorResultNode != null)
+            {
+                payload["result"] = errorResultNode;
+            }
 
             return payload;
         }
@@ -94,6 +108,11 @@ internal static class McpResponseFactory
         if (resultNode != null)
         {
             payload["result"] = resultNode;
+        }
+
+        if (commandState.IsPage)
+        {
+            payload["continuationToken"] = commandState.ContinuationToken;
         }
 
         if (commandState.OutputFormat == OutputFormat.CSV)
