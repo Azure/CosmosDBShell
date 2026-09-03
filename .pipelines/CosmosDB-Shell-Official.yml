@@ -13,6 +13,8 @@ trigger: # https://aka.ms/obpipelines/triggers
     include:
       - "main"
 
+pr: none
+
 parameters: # parameters are shown up in ADO UI in a build queue time
   - name: "debug"
     displayName: "Enable debug output"
@@ -92,6 +94,15 @@ extends:
               # ob_sdl_suppression_suppressionFile: $(Build.SourcesDirectory)\.gdn\job.gdnsuppress
 
             steps:
+              - task: OneLocBuild@3
+                displayName: "OneLoc localization build"
+                inputs:
+                  locProj: "l10n/LocProject.json"
+                  outDir: "$(Build.ArtifactStagingDirectory)"
+                  lclSource: "lclFilesInRepo"
+                  isCreatePrSelected: false
+                  repoType: "gitHub"
+
               - task: UseDotNet@2
                 continueOnError: true
                 inputs:
