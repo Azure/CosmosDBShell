@@ -905,6 +905,18 @@ extends:
                       fi
                     done
 
+                    set +e
+                    "$publish_dir/CosmosDBShell" --output json --lsp >lsp.stdout 2>lsp.stderr
+                    lsp_exit=$?
+                    set -e
+                    if [[ $lsp_exit -ne 2 || -s lsp.stdout ]]; then
+                      echo "Lightweight --lsp smoke test did not return a machine-mode usage error." >&2
+                      exit 1
+                    fi
+                    grep -F '"status":"error"' lsp.stderr
+                    grep -F '"error":"LSP support is not included in this build."' lsp.stderr
+                    rm -f lsp.stdout lsp.stderr
+
                     tar -czf "$rpm_root/SOURCES/cosmosdbshell-payload.tar.gz" -C "$publish_dir" .
                     rpmbuild -bb "$rpm_root/SPECS/cosmosdbshell.spec" \
                       --target "$rpm_arch" \

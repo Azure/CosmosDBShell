@@ -187,20 +187,6 @@ internal class Program
                 }
             }
 
-            if (o.StartLspServer || o.LspStdio)
-            {
-#if COSMOSDBSHELL_NO_MCP_LSP
-                ShellInterpreter.WriteLine(MessageService.GetString("error-lsp-not-included"));
-                Environment.ExitCode = ShellExitCode.UsageError;
-                return;
-#else
-                // Already handled above, but keep for completeness
-                var server = await LspServer.CreateLanguageServerAsync();
-                await server.WaitForExit;
-                return;
-#endif
-            }
-
             if (!string.IsNullOrWhiteSpace(o.ExecuteAndQuit) && !string.IsNullOrWhiteSpace(o.ExecuteAndContinue))
             {
                 Environment.ExitCode = ShellExitCode.UsageError;
@@ -250,6 +236,20 @@ internal class Program
                 }
 
                 AnsiConsole.WriteLine(message);
+            }
+
+            if (o.StartLspServer || o.LspStdio)
+            {
+#if COSMOSDBSHELL_NO_MCP_LSP
+                WriteStartupError(MessageService.GetString("error-lsp-not-included"));
+                Environment.ExitCode = ShellExitCode.UsageError;
+                return;
+#else
+                // Already handled above, but keep for completeness
+                var server = await LspServer.CreateLanguageServerAsync();
+                await server.WaitForExit;
+                return;
+#endif
             }
 
             if (o.Container != null && o.Database == null)
