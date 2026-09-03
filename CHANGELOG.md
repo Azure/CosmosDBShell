@@ -4,7 +4,7 @@
 
 ### Build & pipeline
 
-- The official pipeline now produces compressed `x86_64` and `aarch64` RPM packages from lightweight framework-dependent Linux builds. The packages retain the interactive shell, scripting, ARM management, direct/gateway connectivity, and OpenTelemetry export while excluding MCP, LSP, and brokered Visual Studio Code authentication. They require the .NET 10 runtime and are validated against the Azure Cloud Shell 25 MB package-size limit.
+- The official pipeline now produces compressed `cosmosdbshell-lite` RPM packages for `x86_64` and `aarch64` from lightweight framework-dependent Linux builds. The packages retain the interactive shell, scripting, ARM management, direct/gateway connectivity, and OpenTelemetry export while excluding MCP, LSP, and brokered Visual Studio Code authentication. They require the .NET 10 runtime and are validated against the Azure Cloud Shell 25 MB package-size limit.
 ### Improvements
 
 - Cosmos DB data-plane commands now consistently expose their aggregate observed request charge in structured output and connection-scoped `info` telemetry, including metadata/configuration operations, scripts, change feed reads, paginated operations, handled probes, and charged failures. Azure Resource Manager control-plane operations remain uncharged.

@@ -68,13 +68,13 @@ Run the tests:
 dotnet test CosmosDBShell.sln
 ```
 
-## Install from RPM Artifacts
+## Install from Lightweight RPM Artifacts
 
-The official pipeline produces framework-dependent RPMs for internal Azure
-Cloud Shell deployments and controlled evaluation environments:
+The official pipeline produces framework-dependent `cosmosdbshell-lite` RPMs
+for internal Azure Cloud Shell deployments and controlled evaluation environments:
 
-- `cosmosdbshell-<version>-<release>.x86_64.rpm`
-- `cosmosdbshell-<version>-<release>.aarch64.rpm`
+- `cosmosdbshell-lite-<version>-<release>.x86_64.rpm`
+- `cosmosdbshell-lite-<version>-<release>.aarch64.rpm`
 
 These artifacts are intended for internal Azure Cloud Shell deployment and
 controlled environments. They are not currently a supported general-purpose
@@ -86,14 +86,14 @@ not require the .NET SDK. On Azure Linux, install the package that matches the
 host architecture with `tdnf`:
 
 ```bash
-sudo tdnf install ./cosmosdbshell-<version>-<release>.<architecture>.rpm
+sudo tdnf install ./cosmosdbshell-lite-<version>-<release>.<architecture>.rpm
 cosmosdbshell
 ```
 
 On other RPM-based distributions, use `dnf`:
 
 ```bash
-sudo dnf install ./cosmosdbshell-<version>-<release>.<architecture>.rpm
+sudo dnf install ./cosmosdbshell-lite-<version>-<release>.<architecture>.rpm
 cosmosdbshell
 ```
 

@@ -827,12 +827,12 @@ extends:
                       allowPackageConflicts: true
 
           - job: rpm
-            displayName: Build RPM packages
+            displayName: Build lightweight RPM packages
             pool:
               type: linux
             variables:
               ob_outputDirectory: "$(Build.SourcesDirectory)/out"
-              ob_artifactBaseName: cosmos_shell_rpm
+              ob_artifactBaseName: cosmos_shell_lite_rpm
               ob_git_fetchDepth: -1
             steps:
               - task: UseDotNet@2
@@ -873,7 +873,7 @@ extends:
                   rpm_root="$(Build.SourcesDirectory)/.rpmbuild"
                   output_dir="$(Build.SourcesDirectory)/out/rpm"
                   mkdir -p "$rpm_root"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} "$output_dir"
-                  cp "$(Build.SourcesDirectory)/packaging/rpm/cosmosdbshell.spec" "$rpm_root/SPECS/"
+                  cp "$(Build.SourcesDirectory)/packaging/rpm/cosmosdbshell-lite.spec" "$rpm_root/SPECS/"
                   cp "$(Build.SourcesDirectory)/LICENSE.md" "$(Build.SourcesDirectory)/NOTICE.html" "$rpm_root/SOURCES/"
 
                   for entry in "linux-x64:x86_64" "linux-arm64:aarch64"; do
@@ -917,21 +917,21 @@ extends:
                     grep -F '"error":"LSP support is not included in this build."' lsp.stderr
                     rm -f lsp.stdout lsp.stderr
 
-                    tar -czf "$rpm_root/SOURCES/cosmosdbshell-payload.tar.gz" -C "$publish_dir" .
-                    rpmbuild -bb "$rpm_root/SPECS/cosmosdbshell.spec" \
+                    tar -czf "$rpm_root/SOURCES/cosmosdbshell-lite-payload.tar.gz" -C "$publish_dir" .
+                    rpmbuild -bb "$rpm_root/SPECS/cosmosdbshell-lite.spec" \
                       --target "$rpm_arch" \
                       --define "_topdir $rpm_root" \
                       --define "package_version $(CosmosDBShell_RpmVersion)" \
                       --define "package_release $(CosmosDBShell_RpmRelease)"
                   done
 
-                  find "$rpm_root/RPMS" -type f -name '*.rpm' -exec cp {} "$output_dir/" \;
-                displayName: Build framework-dependent RPMs
+                  find "$rpm_root/RPMS" -type f -name 'cosmosdbshell-lite-*.rpm' -exec cp {} "$output_dir/" \;
+                displayName: Build lightweight framework-dependent RPMs
 
               - script: |
                   set -euo pipefail
                   output_dir="$(Build.SourcesDirectory)/out/rpm"
-                  mapfile -t packages < <(find "$output_dir" -maxdepth 1 -type f -name '*.rpm' | sort)
+                  mapfile -t packages < <(find "$output_dir" -maxdepth 1 -type f -name 'cosmosdbshell-lite-*.rpm' | sort)
                   if [[ ${#packages[@]} -ne 2 ]]; then
                     echo "Expected two RPM packages; found ${#packages[@]}." >&2
                     exit 1
@@ -943,6 +943,7 @@ extends:
                       echo "$(basename "$package") is $size bytes and exceeds the 25 MB Cloud Shell limit." >&2
                       exit 1
                     fi
+                    rpm -qp --queryformat '%{NAME}\n' "$package" | grep -Fx 'cosmosdbshell-lite'
                     rpm -qpR "$package" | grep -Fx 'dotnet-runtime-10.0 >= 10.0'
                     rpm -qlp "$package" | grep -Fx '/usr/bin/cosmosdbshell'
                     rpm -qlp "$package" | grep -Fx '/usr/libexec/cosmosdbshell/CosmosDBShell'
@@ -957,7 +958,7 @@ extends:
                     fi
                     echo "Validated $(basename "$package") [$size bytes]"
                   done
-                displayName: Validate RPM packages
+                displayName: Validate lightweight RPM packages
 
           - job: CodeQLAnalyze
             displayName: CodeQL (C#)

@@ -1,10 +1,10 @@
-Name:           cosmosdbshell
+Name:           cosmosdbshell-lite
 Version:        %{package_version}
 Release:        %{package_release}%{?dist}
-Summary:        Interactive shell for Azure Cosmos DB
+Summary:        Lightweight interactive shell for Azure Cosmos DB
 License:        MIT
 URL:            https://github.com/Azure/CosmosDBShell
-Source0:        cosmosdbshell-payload.tar.gz
+Source0:        cosmosdbshell-lite-payload.tar.gz
 Source1:        LICENSE.md
 Source2:        NOTICE.html
 Requires:       dotnet-runtime-10.0 >= 10.0
