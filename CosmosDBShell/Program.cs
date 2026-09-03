@@ -434,9 +434,8 @@ internal class Program
                     return;
                 }
 
-                if (host != null)
+                if (host is IHost mcpHost)
                 {
-                    var mcpHost = (IHost)host;
                     ShellInterpreter.Instance.McpPort = mcpPort;
                     hostTask = Task.Run(async () =>
                     {
