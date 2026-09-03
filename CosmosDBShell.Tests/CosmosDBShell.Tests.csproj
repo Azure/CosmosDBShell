@@ -32,6 +32,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CosmosDBShell\CosmosDBShell.csproj" />
+    <ProjectReference Include="..\tools\Localization\CosmosDBShell.Localization.csproj" />
   </ItemGroup>
 
   <ItemGroup>

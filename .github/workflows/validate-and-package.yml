@@ -132,6 +132,10 @@ jobs:
       - name: Restore
         run: dotnet restore CosmosDBShell.sln
 
+      - name: Validate and generate localized resources
+        shell: pwsh
+        run: ./tools/Localization/build-localized-resources.ps1
+
       - name: Build solution
         shell: pwsh
         run: |

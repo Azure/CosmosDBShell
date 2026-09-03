@@ -13,6 +13,8 @@ trigger: # https://aka.ms/obpipelines/triggers
     include:
       - "main"
 
+pr: none
+
 parameters: # parameters are shown up in ADO UI in a build queue time
   - name: "debug"
     displayName: "Enable debug output"
@@ -92,6 +94,15 @@ extends:
               # ob_sdl_suppression_suppressionFile: $(Build.SourcesDirectory)\.gdn\job.gdnsuppress
 
             steps:
+              - task: OneLocBuild@3
+                displayName: "OneLoc localization build"
+                inputs:
+                  locProj: "l10n/LocProject.json"
+                  outDir: "$(Build.ArtifactStagingDirectory)"
+                  lclSource: "lclFilesInRepo"
+                  isCreatePrSelected: false
+                  repoType: "gitHub"
+
               - task: UseDotNet@2
                 continueOnError: true
                 inputs:
@@ -135,6 +146,12 @@ extends:
                   projects: $(BuildSolution)
                   custom: "restore"
                   arguments: "--configfile $(Build.SourcesDirectory)\\.pipelines\\nuget.config"
+
+              - task: PowerShell@2
+                displayName: "Validate and generate localized resources"
+                inputs:
+                  filePath: "$(Build.SourcesDirectory)\\tools\\Localization\\build-localized-resources.ps1"
+                  pwsh: true
 
               - task: ComponentGovernanceComponentDetection@0
                 displayName: "Component Governance - Component Detection"
@@ -765,6 +782,8 @@ extends:
                       "$(Build.SourcesDirectory)\CosmosDBShell.Fuzzer\obj",
                       "$(Build.SourcesDirectory)\CosmosDBShell.Analyzer\bin",
                       "$(Build.SourcesDirectory)\CosmosDBShell.Analyzer\obj",
+                      "$(Build.SourcesDirectory)\tools\Localization\bin",
+                      "$(Build.SourcesDirectory)\tools\Localization\obj",
                       "$(Build.SourcesDirectory)\TestResults"
                     )
                     foreach ($d in $dirs) {

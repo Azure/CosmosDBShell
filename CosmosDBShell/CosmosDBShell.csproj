@@ -72,7 +72,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="lang\en.ftl" />
+    <EmbeddedResource Include="lang\*.ftl" />
     <EmbeddedResource Include="cosmos_welcome.ans" />
     <EmbeddedResource Include="Azure.Data.Cosmos.Shell.Mcp\ServerInstructions.md" />
     <EmbeddedResource Include="..\docs\programming.md" Link="docs\programming.md" />
