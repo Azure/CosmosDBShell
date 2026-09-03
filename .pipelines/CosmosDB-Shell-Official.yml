@@ -31,6 +31,10 @@ variables:
   BuildConfiguration: Release
 
   WindowsContainerImage: "onebranch.azurecr.io/windows/ltsc2022/vse2022:latest" # Docker image which is used to build the project https://aka.ms/obpipelines/containers
+  # Azure Linux is RPM-native and resolves packages from packages.microsoft.com.
+  # The build containers cannot reach the public Ubuntu archives, so an
+  # Ubuntu image cannot install the RPM tooling the rpm job needs.
+  LinuxContainerImage: "mcr.microsoft.com/onebranch/azurelinux/build:3.0"
 
 resources:
   repositories:
@@ -821,6 +825,140 @@ extends:
                       nuGetFeedType: "internal"
                       publishVstsFeed: "CosmosDB/CosmosDBShell"
                       allowPackageConflicts: true
+
+          - job: rpm
+            displayName: Build lightweight RPM packages
+            pool:
+              type: linux
+            variables:
+              ob_outputDirectory: "$(Build.SourcesDirectory)/out"
+              ob_artifactBaseName: cosmos_shell_lite_rpm
+              ob_git_fetchDepth: -1
+            steps:
+              - task: UseDotNet@2
+                inputs:
+                  packageType: "sdk"
+                  useGlobalJson: true
+                  performMultiLevelLookup: true
+
+              - script: |
+                  set -euo pipefail
+                  dotnet tool restore --configfile "$(Build.SourcesDirectory)/.pipelines/nuget.config"
+                  package_version="$(dotnet tool run nbgv get-version -v NuGetPackageVersion)"
+                  package_version="${package_version%%+*}"
+                  if [[ ! "$package_version" =~ ^([0-9]+\.[0-9]+\.[0-9]+)(-(.+))?$ ]]; then
+                    echo "Unsupported RPM package version: $package_version" >&2
+                    exit 1
+                  fi
+
+                  echo "##vso[task.setvariable variable=CosmosDBShell_RpmVersion]${BASH_REMATCH[1]}"
+                  if [[ -n "${BASH_REMATCH[3]:-}" ]]; then
+                    rpm_release="0.${BASH_REMATCH[3]//[^[:alnum:].]/.}"
+                  else
+                    rpm_release="1"
+                  fi
+                  echo "##vso[task.setvariable variable=CosmosDBShell_RpmRelease]$rpm_release"
+                displayName: Compute RPM version
+
+              - script: |
+                  set -euo pipefail
+                  if ! command -v rpmbuild >/dev/null 2>&1; then
+                    if ! command -v tdnf >/dev/null 2>&1; then
+                      echo "rpmbuild is unavailable and tdnf is not installed; run this job in the configured Azure Linux container." >&2
+                      exit 1
+                    fi
+                    tdnf install -y rpm-build
+                  fi
+
+                  rpm_root="$(Build.SourcesDirectory)/.rpmbuild"
+                  output_dir="$(Build.SourcesDirectory)/out/rpm"
+                  mkdir -p "$rpm_root"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} "$output_dir"
+                  cp "$(Build.SourcesDirectory)/packaging/rpm/cosmosdbshell-lite.spec" "$rpm_root/SPECS/"
+                  cp "$(Build.SourcesDirectory)/LICENSE.md" "$(Build.SourcesDirectory)/NOTICE.html" "$rpm_root/SOURCES/"
+
+                  for entry in "linux-x64:x86_64" "linux-arm64:aarch64"; do
+                    rid="${entry%%:*}"
+                    rpm_arch="${entry##*:}"
+                    publish_dir="$(Build.SourcesDirectory)/.rpm-publish/$rid"
+
+                    rm -rf "$publish_dir"
+                    dotnet publish "$(Build.SourcesDirectory)/CosmosDBShell/CosmosDBShell.csproj" \
+                      --configuration "$(BuildConfiguration)" \
+                      --runtime "$rid" \
+                      --self-contained false \
+                      -p:PublishSingleFile=false \
+                      -p:PackAsTool=false \
+                      -p:CosmosDBShellExcludeMsalRuntime=true \
+                      -p:CosmosDBShellExcludeMcpAndLsp=true \
+                      --output "$publish_dir" \
+                      --configfile "$(Build.SourcesDirectory)/.pipelines/nuget.config"
+
+                    # Ships for linux-x64 only and doubles the package size. The VS Code
+                    # broker credential falls back when it is absent, as it already does
+                    # on linux-arm64, where this library does not exist at all.
+                    rm -f "$publish_dir/libmsalruntime.so"
+
+                    for required in CosmosDBShell CosmosDBShell.dll; do
+                      if [[ ! -f "$publish_dir/$required" ]]; then
+                        echo "Expected $required in $publish_dir." >&2
+                        exit 1
+                      fi
+                    done
+
+                    set +e
+                    "$publish_dir/CosmosDBShell" --output json --lsp >lsp.stdout 2>lsp.stderr
+                    lsp_exit=$?
+                    set -e
+                    if [[ $lsp_exit -ne 2 || -s lsp.stdout ]]; then
+                      echo "Lightweight --lsp smoke test did not return a machine-mode usage error." >&2
+                      exit 1
+                    fi
+                    grep -F '"status":"error"' lsp.stderr
+                    grep -F '"error":"LSP support is not included in this build."' lsp.stderr
+                    rm -f lsp.stdout lsp.stderr
+
+                    tar -czf "$rpm_root/SOURCES/cosmosdbshell-lite-payload.tar.gz" -C "$publish_dir" .
+                    rpmbuild -bb "$rpm_root/SPECS/cosmosdbshell-lite.spec" \
+                      --target "$rpm_arch" \
+                      --define "_topdir $rpm_root" \
+                      --define "package_version $(CosmosDBShell_RpmVersion)" \
+                      --define "package_release $(CosmosDBShell_RpmRelease)"
+                  done
+
+                  find "$rpm_root/RPMS" -type f -name 'cosmosdbshell-lite-*.rpm' -exec cp {} "$output_dir/" \;
+                displayName: Build lightweight framework-dependent RPMs
+
+              - script: |
+                  set -euo pipefail
+                  output_dir="$(Build.SourcesDirectory)/out/rpm"
+                  mapfile -t packages < <(find "$output_dir" -maxdepth 1 -type f -name 'cosmosdbshell-lite-*.rpm' | sort)
+                  if [[ ${#packages[@]} -ne 2 ]]; then
+                    echo "Expected two RPM packages; found ${#packages[@]}." >&2
+                    exit 1
+                  fi
+
+                  for package in "${packages[@]}"; do
+                    size="$(stat -c %s "$package")"
+                    if (( size > 25000000 )); then
+                      echo "$(basename "$package") is $size bytes and exceeds the 25 MB Cloud Shell limit." >&2
+                      exit 1
+                    fi
+                    rpm -qp --queryformat '%{NAME}\n' "$package" | grep -Fx 'cosmosdbshell-lite'
+                    rpm -qpR "$package" | grep -Fx 'dotnet-runtime-10.0 >= 10.0'
+                    rpm -qlp "$package" | grep -Fx '/usr/bin/cosmosdbshell'
+                    rpm -qlp "$package" | grep -Fx '/usr/libexec/cosmosdbshell/CosmosDBShell'
+                    rpm -qlp "$package" | grep -Fx '/usr/libexec/cosmosdbshell/CosmosDBShell.dll'
+                    if rpm -qlp "$package" | grep -q 'libmsalruntime\.so'; then
+                      echo "$(basename "$package") still carries libmsalruntime.so." >&2
+                      exit 1
+                    fi
+                    if rpm -qlp "$package" | grep -Eq '/(ModelContextProtocol|OmniSharp|Azure\.Identity\.Broker|Microsoft\.Identity\.Client\.Broker).*\.dll$'; then
+                      echo "$(basename "$package") unexpectedly contains an excluded feature assembly." >&2
+                      exit 1
+                    fi
+                    echo "Validated $(basename "$package") [$size bytes]"
+                  done
+                displayName: Validate lightweight RPM packages
 
           - job: CodeQLAnalyze
             displayName: CodeQL (C#)

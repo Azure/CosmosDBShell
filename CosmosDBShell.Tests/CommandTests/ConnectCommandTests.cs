@@ -17,6 +17,16 @@ using Spectre.Console;
 public class ConnectCommandTests
 {
     [Fact]
+    public void VSCodeCredential_SupportMatchesBuildCapability()
+    {
+#if COSMOSDBSHELL_NO_MSAL_RUNTIME
+        Assert.False(ShellInterpreter.IsVSCodeCredentialSupported);
+#else
+        Assert.True(ShellInterpreter.IsVSCodeCredentialSupported);
+#endif
+    }
+
+    [Fact]
     public void CreateClientOptions_Emulator_UsesShortRequestTimeout()
     {
         var options = ShellInterpreter.CreateClientOptions(ConnectionMode.Gateway, isEmulator: true);

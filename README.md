@@ -68,6 +68,45 @@ Run the tests:
 dotnet test CosmosDBShell.sln
 ```
 
+## Install from Lightweight RPM Artifacts
+
+The official pipeline produces framework-dependent `cosmosdbshell-lite` RPMs
+for internal Azure Cloud Shell deployments and controlled evaluation environments:
+
+- `cosmosdbshell-lite-<version>-<release>.x86_64.rpm`
+- `cosmosdbshell-lite-<version>-<release>.aarch64.rpm`
+
+These artifacts are intended for internal Azure Cloud Shell deployment and
+controlled environments. They are not currently a supported general-purpose
+Linux distribution channel; installation on other RPM-based distributions is
+for evaluation in environments that provide the required runtime.
+
+The RPM requires the .NET 10 runtime package (`dotnet-runtime-10.0`), but does
+not require the .NET SDK. On Azure Linux, install the package that matches the
+host architecture with `tdnf`:
+
+```bash
+sudo tdnf install ./cosmosdbshell-lite-<version>-<release>.<architecture>.rpm
+cosmosdbshell
+```
+
+On other RPM-based distributions, use `dnf`:
+
+```bash
+sudo dnf install ./cosmosdbshell-lite-<version>-<release>.<architecture>.rpm
+cosmosdbshell
+```
+
+The RPM retains the interactive shell, scripting, ARM management, and both
+direct and gateway Cosmos DB connectivity. To reduce its deployment footprint,
+it excludes MCP, LSP, and the native and managed broker components used by
+Visual Studio Code credential authentication. Invoking `--mcp`, `--lsp`, or
+`--stdio` reports that the feature is unavailable. OpenTelemetry tracing and
+OTLP export remain available through `--otel`.
+Selecting Visual Studio Code credential authentication prints a warning and
+falls back to other credentials. Use `--azure-cli` to select the signed-in Azure
+CLI identity explicitly.
+
 ## Architecture
 
 | Folder | Purpose |
