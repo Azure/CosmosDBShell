@@ -70,8 +70,8 @@ dotnet test CosmosDBShell.sln
 
 ## Install from RPM Artifacts
 
-The official pipeline produces framework-dependent RPMs for Azure Linux and
-other RPM-based distributions:
+The official pipeline produces framework-dependent RPMs for internal Azure
+Cloud Shell deployments and controlled evaluation environments:
 
 - `cosmosdbshell-<version>-<release>.x86_64.rpm`
 - `cosmosdbshell-<version>-<release>.aarch64.rpm`
