@@ -76,6 +76,11 @@ other RPM-based distributions:
 - `cosmosdbshell-<version>-<release>.x86_64.rpm`
 - `cosmosdbshell-<version>-<release>.aarch64.rpm`
 
+These artifacts are intended for internal Azure Cloud Shell deployment and
+controlled environments. They are not currently a supported general-purpose
+Linux distribution channel; installation on other RPM-based distributions is
+for evaluation in environments that provide the required runtime.
+
 The RPM requires the .NET 10 runtime package (`dotnet-runtime-10.0`), but does
 not require the .NET SDK. On Azure Linux, install the package that matches the
 host architecture with `tdnf`:
