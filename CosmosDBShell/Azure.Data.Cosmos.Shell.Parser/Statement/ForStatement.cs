@@ -107,7 +107,7 @@ internal class ForStatement : Statement
                 JsonValueKind.String => new ShellText(arr.GetString() ?? string.Empty),
                 JsonValueKind.True => new ShellBool(true),
                 JsonValueKind.False => new ShellBool(false),
-                JsonValueKind.Null => new ShellText("null"),
+                JsonValueKind.Null => new ShellJson(arr),
                 JsonValueKind.Object or JsonValueKind.Array => new ShellJson(arr),
                 _ => new ShellText(arr.ToString()),
             };

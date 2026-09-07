@@ -18,6 +18,119 @@ public class CosmosShellWorkspaceTests
     private readonly CosmosShellWorkspace workspace = new();
     private readonly DocumentUri uri = DocumentUri.From("file:///ws.csh");
 
+    [Theory]
+    [InlineData("return")]
+    [InlineData("if true { return }")]
+    [InlineData("def empty { return }")]
+    [InlineData("def empty { if true { return } }")]
+    public void BareReturn_AtStatementBoundary_IsValid(string source)
+    {
+        this.workspace.OpenDocument(this.uri, source, 1);
+        var document = this.workspace.GetDocument(this.uri)!;
+        Assert.True(document.LastParseResult!.Success);
+        Assert.Empty(document.Diagnostics);
+    }
+
+    [Theory]
+    [InlineData("def identity [value] { return $value }; identity 1")]
+    [InlineData("def identity [value] { return $value }; $result = (identity 1)")]
+    [InlineData("def first { return (second) }; def second { return 1 }; first")]
+    [InlineData("def recursive { recursive }")]
+    [InlineData("def outer { def inner { return 1 }; inner }; outer")]
+    public void LocalFunctionCalls_AreResolvedWithoutUnknownCommandDiagnostics(string source)
+    {
+        this.workspace.OpenDocument(this.uri, source, 1);
+        var document = this.workspace.GetDocument(this.uri)!;
+        Assert.True(document.LastParseResult!.Success);
+        Assert.Empty(document.Diagnostics);
+        Assert.Contains(document.SemanticModel!.Symbols, symbol => symbol is Azure.Data.Cosmos.Shell.Lsp.Semantics.FunctionSymbol);
+        Assert.Contains(document.SemanticModel.References, reference => reference.Symbol is Azure.Data.Cosmos.Shell.Lsp.Semantics.FunctionSymbol && !reference.IsDefinition);
+    }
+
+    [Theory]
+    [InlineData("def example { missing_command_xyz }")]
+    [InlineData("if true { missing_command_xyz }")]
+    [InlineData("if false {} else { missing_command_xyz }")]
+    [InlineData("while true { missing_command_xyz }")]
+    [InlineData("do { missing_command_xyz } while false")]
+    [InlineData("for $item in [1] { missing_command_xyz }")]
+    [InlineData("loop { missing_command_xyz }")]
+    [InlineData("echo 1 | missing_command_xyz")]
+    [InlineData("$result = (missing_command_xyz)")]
+    [InlineData("def example { return (missing_command_xyz) }")]
+    [InlineData("if (missing_command_xyz) {}")]
+    [InlineData("exec (missing_command_xyz)")]
+    public void NestedCommands_AreAnalyzedAtTheirSourcePosition(string source)
+    {
+        this.workspace.OpenDocument(this.uri, source, 1);
+        var diagnostic = Assert.Single(this.workspace.GetDocument(this.uri)!.Diagnostics);
+        Assert.Equal("Unknown command 'missing_command_xyz'.", diagnostic.Message);
+        var start = source.IndexOf("missing_command_xyz", System.StringComparison.Ordinal);
+        Assert.Equal(new Position(0, start), diagnostic.Range.Start);
+        Assert.Equal(new Position(0, start + "missing_command_xyz".Length), diagnostic.Range.End);
+    }
+
+    [Theory]
+    [InlineData("def example { ls --not_an_option_xyz }")]
+    [InlineData("while true { ls --not_an_option_xyz }")]
+    [InlineData("$value = (ls --not_an_option_xyz)")]
+    public void NestedBuiltinOptions_StillReceiveValidation(string source)
+    {
+        this.workspace.OpenDocument(this.uri, source, 1);
+        Assert.Contains(this.workspace.GetDocument(this.uri)!.Diagnostics, diagnostic => diagnostic.Message.Contains("Unknown option '-not_an_option_xyz'"));
+    }
+
+    [Fact]
+    public void RemovingFunctionDefinition_ClearsSymbolsAndReportsUnresolvedCall()
+    {
+        this.workspace.OpenDocument(this.uri, "def local_function_xyz { return 1 }; local_function_xyz", 1);
+        var document = this.workspace.GetDocument(this.uri)!;
+        var model = document.SemanticModel!;
+        var symbol = Assert.Single(model.Symbols.OfType<Azure.Data.Cosmos.Shell.Lsp.Semantics.FunctionSymbol>());
+        var references = model.References.Where(reference => ReferenceEquals(reference.Symbol, symbol)).ToArray();
+        Assert.Equal(2, references.Length);
+        Assert.Single(references, reference => reference.IsDefinition);
+        Assert.Single(references, reference => !reference.IsDefinition);
+
+        this.workspace.UpdateDocument(this.uri, "local_function_xyz", 2);
+        Assert.Empty(document.SemanticModel!.Symbols.OfType<Azure.Data.Cosmos.Shell.Lsp.Semantics.FunctionSymbol>());
+        Assert.Equal("Unknown command 'local_function_xyz'.", Assert.Single(document.Diagnostics).Message);
+        Assert.Single(model.Symbols.OfType<Azure.Data.Cosmos.Shell.Lsp.Semantics.FunctionSymbol>());
+    }
+
+    [Fact]
+    public void FunctionNames_RemainCaseSensitive()
+    {
+        this.workspace.OpenDocument(this.uri, "def lower_function_xyz {} ; LOWER_FUNCTION_XYZ", 1);
+        Assert.Equal("Unknown command 'LOWER_FUNCTION_XYZ'.", Assert.Single(this.workspace.GetDocument(this.uri)!.Diagnostics).Message);
+    }
+
+    [Theory]
+    [InlineData("value", "Value")]
+    [InlineData("VALUE", "value")]
+    [InlineData("item", "ITEM")]
+    public void VariableReferences_KeepCaseDistinctDefinitions(string first, string second)
+    {
+        var source = $"${first} = 1; ${second} = 2; echo ${second}; echo ${first}";
+        this.workspace.OpenDocument(this.uri, source, 1);
+        var document = this.workspace.GetDocument(this.uri)!;
+        Assert.Empty(document.Diagnostics);
+        var model = document.SemanticModel!;
+        var variables = model.Symbols.OfType<Azure.Data.Cosmos.Shell.Lsp.Semantics.VariableSymbol>().ToArray();
+        Assert.Equal(2, variables.Length);
+        foreach (var name in new[] { first, second })
+        {
+            var symbol = Assert.Single(variables, variable => variable.Name == name);
+            var references = model.FindReferences(symbol).ToArray();
+            Assert.Equal(2, references.Length);
+            var definition = Assert.Single(references, reference => reference.IsDefinition);
+            var usage = Assert.Single(references, reference => !reference.IsDefinition);
+            Assert.Equal(source.IndexOf("$" + name, System.StringComparison.Ordinal), definition.Start);
+            Assert.Equal(source.LastIndexOf("$" + name, System.StringComparison.Ordinal), usage.Start);
+            Assert.Same(symbol, model.GetSymbolAt(usage.Start + 1));
+        }
+    }
+
     [Fact]
     public void OpenDocument_StoresAndParses()
     {

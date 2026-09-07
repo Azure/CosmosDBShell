@@ -89,6 +89,18 @@ docs/                                        # User-facing documentation
 - **Tests** live in `CosmosDBShell.Tests/`. Add or update tests when changing behavior.
 - Match the existing C# style. Prefer clear names over abbreviations.
 
+### Script Language Tests
+
+When changing value semantics, extend `ValueOriginCases` in [StatementExecutionTests.cs](CosmosDBShell.Tests/Parser/StatementExecutionTests.cs). The matrix evaluates each operand as a literal, a JSON property, a loop variable, and a function argument/return, checking both result type and value across all combinations. Keep raw JSON fixtures distinct from shell JSON construction so number serialization does not silently change the test input.
+
+Exercise syntax and control flow through `ShellInterpreter.RunCommandAsync` or script-file execution, which includes production parse/semantic validation. Check that invalid statements prevent execution and that returns, failures, and cancellation restore call scopes. For editor changes, check symbol identity, definition/reference locations, and hover ranges as well as diagnostics.
+
+Run the offline regression suite without a database:
+
+```bash
+dotnet test CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --filter "Category!=Emulator"
+```
+
 ### Running Against the Emulator
 
 You can develop and test without an Azure subscription by using the [Azure Cosmos DB Emulator](https://learn.microsoft.com/azure/cosmos-db/emulator):

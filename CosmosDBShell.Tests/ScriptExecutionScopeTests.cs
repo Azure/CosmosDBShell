@@ -17,6 +17,36 @@ using Xunit;
 public class ScriptExecutionScopeTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BareReturn_BeforeBlockEnd_ExitsFileAndRestoresScope(bool expression)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.SetVariable("value", new ShellNumber(1));
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(path, "$value = 2; if true { return }; unknown_after_return_xyz", TestContext.Current.CancellationToken);
+            var token = new Token(TokenType.Identifier, path, 0, path.Length);
+            var state = expression
+                ? await new CommandExpression(token).RunScriptAsync(shell, new(), TestContext.Current.CancellationToken)
+                : await new CommandStatement(token).RunScriptAsync(shell, new(), TestContext.Current.CancellationToken);
+            Assert.False(state.IsError);
+            Assert.False(state.ReturnFunc);
+            Assert.Null(state.Result);
+            Assert.Null(state.ReturnValue);
+            Assert.Single(shell.VariableContainers);
+            Assert.Equal(1, Assert.IsType<ShellNumber>(shell.GetVariable("value")).Value);
+            Assert.Null(shell.CurrentScriptFileName);
+            Assert.Null(shell.CurrentScriptContent);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Theory]
     [InlineData("if $cancel {}")]
     [InlineData("{ if $cancel {} }")]
     [InlineData("while true { if $cancel {} }")]

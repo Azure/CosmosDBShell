@@ -24,6 +24,17 @@ public class ShellProcessTests
 {
     private static readonly Regex AnsiEscape = new("\x1b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
 
+    [Theory]
+    [InlineData("identity")]
+    [InlineData("identity 1 2")]
+    [InlineData("$result = (identity)")]
+    public async Task WrongFunctionArgumentCount_ReturnsUsageExitCode(string invocation)
+    {
+        var result = await RunShellAsync($"def identity [value] {{ return $value }}; {invocation}", cancellationToken: TestContext.Current.CancellationToken, extraArgs: ["--quiet"]);
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("expects 1 arguments", result.StdErr);
+    }
+
     [Fact]
     public async Task DeepExpression_FailsBeforeExecution_WithoutCrashingProcess()
     {

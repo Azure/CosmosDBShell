@@ -225,7 +225,11 @@ Scripts are parsed and validated before their statements execute. Functions pres
 
 Parser nesting, expression tree depth, and active function/script calls have fixed [resource limits](docs/programming.md#resource-limits). Limit violations fail with diagnostics rather than continuing recursive parsing or execution.
 
-Script diagnostics preserve source files, runtime failure categories, and function/script call sites. The language server shares the runtime's control-flow and duplicate-parameter checks. See [validation and errors](docs/programming.md#validation-and-errors).
+Script diagnostics preserve source files, runtime failure categories, and function/script call sites. The language server shares the runtime's control-flow and duplicate-parameter checks, recognizes document-local functions, and checks nested commands and options. Incorrect function argument counts produce usage exit code `2`. See [validation and errors](docs/programming.md#validation-and-errors).
+
+Loops and functions preserve JSON `null` values. Numeric conditions use the same zero/nonzero rule for shell values and JSON properties, including fractional numbers. See [value conversion rules](docs/programming.md#numbers).
+
+JSON strings use the same `+` concatenation rules as shell strings. A bare `return` is valid immediately before a closing block brace. Editor variable symbols distinguish case-sensitive names such as `$value` and `$Value`.
 
 ## Deterministic Exit Codes
 

@@ -719,6 +719,7 @@ internal class StatementParser
             if (!this.expressionParser.IsAtEnd &&
                 this.expressionParser.Current != null &&
                 this.expressionParser.Current.Type != TokenType.Semicolon &&
+                this.expressionParser.Current.Type != TokenType.CloseBrace &&
                 this.expressionParser.Current.Type != TokenType.Eol)
             {
                 value = this.expressionParser.ParseExpression();

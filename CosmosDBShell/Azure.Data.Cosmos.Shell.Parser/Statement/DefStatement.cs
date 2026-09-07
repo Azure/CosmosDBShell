@@ -96,12 +96,13 @@ internal class DefStatement : Statement
     {
         if (args.Length != this.Parameters.Length)
         {
-            throw new CommandException(this.Name, MessageService.GetString("script-error-argument-count", new Dictionary<string, object>
+            var message = MessageService.GetString("script-error-argument-count", new Dictionary<string, object>
             {
                 ["name"] = this.Name,
                 ["expected"] = this.Parameters.Length,
                 ["actual"] = args.Length,
-            }));
+            });
+            throw new CommandException(this.Name, message, new ArgumentException(message));
         }
 
         var arguments = new VariableContainer();

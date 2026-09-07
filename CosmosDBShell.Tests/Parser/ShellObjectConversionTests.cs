@@ -37,6 +37,20 @@ public class ShellObjectConversionTests
         Assert.Equal(false, Json("0").ConvertShellObject(DataType.Boolean));
     }
 
+    [Theory]
+    [InlineData("1.5", true)]
+    [InlineData("-0.5", true)]
+    [InlineData("2147483648", true)]
+    [InlineData("9007199254740993", true)]
+    [InlineData("0.0", false)]
+    [InlineData("-0.0", false)]
+    public void ShellJson_NumericBooleanConversion_MatchesShellDecimal(string source, bool expected)
+    {
+        var json = Json(source);
+        Assert.Equal(expected, json.ConvertShellObject(DataType.Boolean));
+        Assert.Equal(new ShellDecimal(json.Value.GetDouble()).ConvertShellObject(DataType.Boolean), json.ConvertShellObject(DataType.Boolean));
+    }
+
     [Fact]
     public void ShellJson_StringValue_TextReturnsUnquoted()
     {

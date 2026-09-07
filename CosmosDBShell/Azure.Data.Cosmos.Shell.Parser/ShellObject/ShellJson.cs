@@ -66,7 +66,7 @@ internal class ShellJson : ShellObject
 
                 if (this.Value.ValueKind == JsonValueKind.Number)
                 {
-                    return this.Value.GetInt32() != 0;
+                    return this.Value.GetDouble() != 0;
                 }
 
                 throw new InvalidOperationException($"Cannot convert JSON {this.Value.ValueKind} to boolean");

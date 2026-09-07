@@ -32,7 +32,15 @@ Integer literals use signed 32-bit values. Arithmetic between integers stays int
 
 JSON numbers use the same rules in expressions and `for` loops: integer-form values within the `Int32` range become integers; fractional, exponent-form, or larger values use `double`. Large JSON integers can therefore lose precision beyond the exact range of `double`. For example, a JSON property containing `3` divided by `2` produces `1`, while a property containing `3.0` produces `1.5`.
 
+JSON construction is a separate conversion boundary: a shell decimal with an integral value can be serialized without its fractional suffix. For example, `$object = {"value":3.0}` currently stores JSON `3`, so `$object.value / 2` uses integer division. Use a decimal divisor (`2.0`) when floating-point division is required after JSON construction.
+
+Numeric Boolean conversion uses zero versus nonzero, including for fractional and large JSON numbers. JSON numbers use the same `double` conversion as decimal shell values for this check, so `if 1.5` and `if $object.value` behave alike when the property contains `1.5`.
+
+JSON `null` remains JSON `null` when bound by a `for` loop or passed through a function. Rebuilding an array from that value produces `[null]`, not `["null"]`. Text conversion remains explicit and separate from JSON type preservation.
+
 ### Strings
+
+The `+` operator concatenates when either operand is a shell string or a JSON string, including values read through JSON paths or passed as function arguments. Numeric-looking strings remain text: two JSON properties containing `"2"` concatenate to `"22"`, not `4`.
 
 | Type | Syntax | Notes |
 | ------ | ------ | ----- |
@@ -118,9 +126,15 @@ Host-requested cancellation propagates through script files, blocks, loops, and 
 
 Parser errors from script files retain their own filename and source text, including when reached through a command expression. Runtime exceptions retain their original cause and exit-code category: attaching a source location does not turn authentication, throttling, connectivity, or arithmetic failures into usage errors.
 
+Calling a function with too few or too many arguments is a usage error (exit code `2`), including calls within expressions. The function body is not executed.
+
 Functions defined in a script retain the definition's source location even when invoked later from another file. Runtime diagnostics show the innermost source location first, followed by the recorded function/script call sites in human-readable output. JSON error messages include the originating file, line, and column. Diagnostic logs retain source locations and underlying exception details through the existing secret-redaction pipeline.
 
 The language server applies the same control-flow and duplicate-parameter validation as script execution. File-level `return` is valid; `break` and `continue` require an enclosing loop in the same function. Diagnostics use exclusive-end editor ranges and are refreshed when a document changes.
+
+The language server also recognizes case-sensitive function names declared in the current document, including recursive calls and calls from other function bodies. It checks commands and built-in options inside blocks, branches, loops, pipelines, and command expressions. Function-name discovery is document-wide: it does not prove that a definition has executed before a call, or resolve functions loaded dynamically from other files. Runtime registration and execution order are unchanged.
+
+Variable symbols and hover lookups are also case-sensitive: `$value` and `$Value` remain distinct. Variable analysis still treats the first occurrence of each name as its definition and does not model the runtime's call scopes.
 
 ### Resource Limits
 
@@ -359,7 +373,7 @@ def add [a b] { return ($a + $b) }
 add 2 3 | echo $"sum=$."
 ```
 
-- `return` stops the current function even inside nested blocks or loops and sets its result. A bare `return` has no result. Outside a function or script file, `return` is rejected.
+- `return` stops the current function even inside nested blocks or loops and sets its result. A bare `return` has no result and can appear immediately before `}`, as in `def empty { return }`; no semicolon is required there. Outside a function or script file, `return` is rejected.
 - Returned JSON can be accessed with paths downstream
 - Without `return`, function completes with last state
 

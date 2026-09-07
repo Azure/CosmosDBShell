@@ -19,7 +19,7 @@ public enum SymbolKind
     Command,
 
     /// <summary>
-    /// A user-defined function (future extension / placeholder).
+    /// A user-defined function.
     /// </summary>
     Function,
 

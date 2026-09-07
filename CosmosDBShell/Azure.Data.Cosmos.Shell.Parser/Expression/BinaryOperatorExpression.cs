@@ -120,7 +120,9 @@ internal class BinaryOperatorExpression : Expression
                 }
 
                 // For strings, concatenate
-                if (leftResult.DataType == DataType.Text || rightResult.DataType == DataType.Text)
+                if (leftResult.DataType == DataType.Text || rightResult.DataType == DataType.Text ||
+                    leftResult is ShellJson { Value.ValueKind: JsonValueKind.String } ||
+                    rightResult is ShellJson { Value.ValueKind: JsonValueKind.String })
                 {
                     var leftStrObj = leftResult.ConvertShellObject(DataType.Text);
                     var rightStrObj = rightResult.ConvertShellObject(DataType.Text);

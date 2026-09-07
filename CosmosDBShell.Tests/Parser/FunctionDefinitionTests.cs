@@ -12,6 +12,36 @@ namespace CosmosShell.Tests.Parser;
 
 public class FunctionDefinitionTests : TestBase
 {
+    [Theory]
+    [InlineData("return")]
+    [InlineData("return;")]
+    [InlineData("return\n")]
+    [InlineData("if true { return }")]
+    [InlineData("while true { return }")]
+    [InlineData("do { return } while true")]
+    [InlineData("for $item in [1] { return }")]
+    [InlineData("loop { return }")]
+    public async Task BareReturn_ExitsFunctionWithoutResult(string body)
+    {
+        var scopeCount = Shell.VariableContainers.Count;
+        var script = $"def empty {{ {body} }}; empty";
+        var state = await Shell.RunCommandAsync(new(), script, TestContext.Current.CancellationToken);
+        Assert.False(state.IsError);
+        Assert.False(state.ReturnFunc);
+        Assert.Null(state.Result);
+        Assert.Null(state.ReturnValue);
+        Assert.Equal(scopeCount, Shell.VariableContainers.Count);
+    }
+
+    [Fact]
+    public async Task BareReturn_InNestedBlock_SkipsRemainingFunctionBody()
+    {
+        var state = await Shell.RunCommandAsync(new(), "def empty { if true { return }; unknown_after_return_xyz }; empty", TestContext.Current.CancellationToken);
+        Assert.False(state.IsError);
+        Assert.Null(state.Result);
+        Assert.False(state.ReturnFunc);
+    }
+
     [Fact]
     public async Task ReturnExpression_CompletesInnerFunction_ThenExitsOuterFunction()
     {
@@ -44,10 +74,14 @@ public class FunctionDefinitionTests : TestBase
     [Theory]
     [InlineData("identity")]
     [InlineData("identity 1 2")]
+    [InlineData("$result = (identity)")]
+    [InlineData("$result = (identity 1 2)")]
     public async Task WrongArgumentCount_IsRejected(string invocation)
     {
         await RunScriptAsync("$value = 99; def identity [value] { return $value }");
-        await Assert.ThrowsAsync<Azure.Data.Cosmos.Shell.Core.CommandException>(() => RunScriptAsync(invocation));
+        var exception = await Assert.ThrowsAsync<Azure.Data.Cosmos.Shell.Core.CommandException>(() => RunScriptAsync(invocation));
+        Assert.IsType<ArgumentException>(exception.InnerException);
+        Assert.Equal(Azure.Data.Cosmos.Shell.Core.ShellExitCode.UsageError, Azure.Data.Cosmos.Shell.Core.ShellExitCode.FromException(exception));
     }
 
     [Fact]

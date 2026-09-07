@@ -17,6 +17,56 @@ using Azure.Data.Cosmos.Shell.Parser;
 /// </summary>
 public class StatementExecutionTests : TestBase
 {
+    public static System.Collections.Generic.IEnumerable<object[]> ValueOriginCases()
+    {
+        var operations = new (string Left, string Operator, string Right, string Type, string Expected)[]
+        {
+            ("\"2\"", "+", "\"2\"", "Text", "22"),
+            ("\"hello\"", "+", "\"world\"", "Text", "helloworld"),
+            ("\"\"", "+", "\"text\"", "Text", "text"),
+            ("\"value=\"", "+", "2", "Text", "value=2"),
+            ("2", "+", "\"px\"", "Text", "2px"),
+            ("3", "+", "2", "Number", "5"),
+            ("3.5", "+", "2", "Decimal", "5.5"),
+            ("3", "/", "2", "Number", "1"),
+            ("3.0", "/", "2", "Decimal", "1.5"),
+            ("[1]", "+", "[2]", "Json", "[1,2]"),
+            ("\"a\"", "==", "\"a\"", "Boolean", "true"),
+            ("true", "&&", "false", "Boolean", "false"),
+        };
+
+        foreach (var operation in operations)
+        {
+            var leftOrigins = new[] { operation.Left, "$source.left", "$leftItem", "(identity $source.left)" };
+            var rightOrigins = new[] { operation.Right, "$source.right", "$rightItem", "(identity $source.right)" };
+            foreach (var left in leftOrigins)
+            {
+                foreach (var right in rightOrigins)
+                {
+                    var script = $"def identity [value] {{ return $value }}; " +
+                        $"for $leftItem in $source.leftItems {{ for $rightItem in $source.rightItems {{ " +
+                        $"$actual = {left} {operation.Operator} {right} }} }}";
+                    var source = $"{{\"left\":{operation.Left},\"right\":{operation.Right}," +
+                        $"\"leftItems\":[{operation.Left}],\"rightItems\":[{operation.Right}]}}";
+                    yield return [source, script, operation.Type, operation.Expected];
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(ValueOriginCases))]
+    public async Task Operators_PreserveResultsAcrossValueOrigins(string source, string script, string expectedType, string expected)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(source);
+        SetVariable("source", new ShellJson(document.RootElement.Clone()));
+        var state = await Shell.RunCommandAsync(new(), script, TestContext.Current.CancellationToken);
+        Assert.False(state.IsError);
+        var actual = GetVariable("actual")!;
+        Assert.Equal(expectedType, actual.DataType.ToString());
+        Assert.Equal(expected, actual.ConvertShellObject(DataType.Text));
+    }
+
     [Fact]
     public async Task SyntaxError_PreventsEarlierAssignment()
     {
@@ -275,11 +325,27 @@ public class StatementExecutionTests : TestBase
     }
 
     [Fact]
-    public async Task For_OverNull_BindsNullAsText()
+    public async Task For_OverNull_PreservesNullThroughFunctionAndArray()
     {
-        var state = await RunScriptAsync("for $x in [null] { }");
+        var state = await RunScriptAsync("def identity [value] { return $value }; for $x in [null] { $result = [(identity $x)] }");
         Assert.False(state.IsError);
-        Assert.Equal("null", Assert.IsType<ShellText>(GetVariable("x")).Text);
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, Assert.IsType<ShellJson>(GetVariable("x")).Value.ValueKind);
+        Assert.Equal("[null]", Assert.IsType<ShellJson>(GetVariable("result")).Value.GetRawText());
+    }
+
+    [Theory]
+    [InlineData("1.5", true)]
+    [InlineData("-0.5", true)]
+    [InlineData("2147483648.0", true)]
+    [InlineData("0.0", false)]
+    public async Task NumericTruthiness_IsIndependentOfValueOrigin(string number, bool expected)
+    {
+        var state = await RunScriptAsync($"$direct = false; if {number} {{ $direct = true }}; $obj = {{value: {number}}}; $json = false; if $obj.value {{ $json = true }}; def truth [value] {{ if $value {{ return true }}; return false }}; $function = (truth $obj.value); for $item in [{number}] {{ $loop = (truth $item) }}");
+        Assert.False(state.IsError);
+        foreach (var name in new[] { "direct", "json", "function", "loop" })
+        {
+            Assert.Equal(expected, Assert.IsType<ShellBool>(GetVariable(name)).Value);
+        }
     }
 
     [Fact]
