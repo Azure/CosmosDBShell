@@ -32,7 +32,7 @@ Integer literals use signed 32-bit values. Arithmetic between integers stays int
 
 JSON numbers use the same rules in expressions and `for` loops: integer-form values within the `Int32` range become integers; fractional, exponent-form, or larger values use `double`. Large JSON integers can therefore lose precision beyond the exact range of `double`. For example, a JSON property containing `3` divided by `2` produces `1`, while a property containing `3.0` produces `1.5`.
 
-JSON construction is a separate conversion boundary: a shell decimal with an integral value can be serialized without its fractional suffix. For example, `$object = {"value":3.0}` currently stores JSON `3`, so `$object.value / 2` uses integer division. Use a decimal divisor (`2.0`) when floating-point division is required after JSON construction.
+JSON construction preserves the distinction between integers and shell decimals. Integral decimal values retain a fractional suffix or exponent, so `$object = {"value":3.0}` stores JSON `3.0` and `$object.value / 2` produces `1.5`. This also applies to arrays, computed decimal values, and repeated reconstruction after loop or function calls. Integer values remain JSON integers. The original spelling and number of trailing zeros are not preserved; values still use IEEE 754 `double` precision.
 
 Numeric Boolean conversion uses zero versus nonzero, including for fractional and large JSON numbers. JSON numbers use the same `double` conversion as decimal shell values for this check, so `if 1.5` and `if $object.value` behave alike when the property contains `1.5`.
 

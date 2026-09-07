@@ -15,6 +15,34 @@ using Azure.Data.Cosmos.Shell.Parser;
 /// </summary>
 public class ShellObjectConversionTests
 {
+    [Theory]
+    [InlineData("3.0")]
+    [InlineData("-3.0")]
+    [InlineData("0.0")]
+    [InlineData("-0.0")]
+    [InlineData("3.5")]
+    [InlineData("2147483647.0")]
+    [InlineData("1e20")]
+    [InlineData("1e-20")]
+    [InlineData("5e-324")]
+    [InlineData("1.7976931348623157e308")]
+    public void ShellDecimal_JsonRoundTrip_PreservesDecimalTypeAndValue(string source)
+    {
+        var value = double.Parse(source, System.Globalization.CultureInfo.InvariantCulture);
+        var json = Assert.IsType<JsonElement>(new ShellDecimal(value).ConvertShellObject(DataType.Json));
+        var restored = Assert.IsType<ShellDecimal>(ShellNumber.FromJson(json));
+        Assert.Equal(BitConverter.DoubleToInt64Bits(value), BitConverter.DoubleToInt64Bits(restored.Value));
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void ShellDecimal_NonFiniteValues_CannotBecomeJsonNumbers(double value)
+    {
+        Assert.Throws<ArgumentException>(() => new ShellDecimal(value).ConvertShellObject(DataType.Json));
+    }
+
     private static ShellJson Json(string raw)
     {
         using var doc = JsonDocument.Parse(raw);

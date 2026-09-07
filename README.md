@@ -231,6 +231,8 @@ Loops and functions preserve JSON `null` values. Numeric conditions use the same
 
 JSON strings use the same `+` concatenation rules as shell strings. A bare `return` is valid immediately before a closing block brace. Editor variable symbols distinguish case-sensitive names such as `$value` and `$Value`.
 
+JSON objects and arrays preserve decimal number types across roundtrips: constructing `{"value":3.0}` no longer changes subsequent division into integer arithmetic.
+
 ## Deterministic Exit Codes
 
 When running scripts or automation, Cosmos DB Shell maps execution failures to a set of stable exit codes (accessible via `$?`, `%ERRORLEVEL%`, or `$LASTEXITCODE`):

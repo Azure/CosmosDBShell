@@ -91,7 +91,7 @@ docs/                                        # User-facing documentation
 
 ### Script Language Tests
 
-When changing value semantics, extend `ValueOriginCases` in [StatementExecutionTests.cs](CosmosDBShell.Tests/Parser/StatementExecutionTests.cs). The matrix evaluates each operand as a literal, a JSON property, a loop variable, and a function argument/return, checking both result type and value across all combinations. Keep raw JSON fixtures distinct from shell JSON construction so number serialization does not silently change the test input.
+When changing value semantics, extend `ValueOriginCases` in [StatementExecutionTests.cs](CosmosDBShell.Tests/Parser/StatementExecutionTests.cs). The matrix evaluates each operand as a literal, a JSON property, a loop variable, and a function argument/return, checking both result type and value across all combinations. Each combination runs with both raw JSON fixtures and shell-constructed JSON so serialization changes cannot silently alter the input's numeric type. Include repeated object/array reconstruction and integral decimal values when changing JSON conversion.
 
 Exercise syntax and control flow through `ShellInterpreter.RunCommandAsync` or script-file execution, which includes production parse/semantic validation. Check that invalid statements prevent execution and that returns, failures, and cancellation restore call scopes. For editor changes, check symbol identity, definition/reference locations, and hover ranges as well as diagnostics.
 

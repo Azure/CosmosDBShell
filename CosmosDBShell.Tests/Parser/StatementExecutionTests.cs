@@ -49,6 +49,7 @@ public class StatementExecutionTests : TestBase
                     var source = $"{{\"left\":{operation.Left},\"right\":{operation.Right}," +
                         $"\"leftItems\":[{operation.Left}],\"rightItems\":[{operation.Right}]}}";
                     yield return [source, script, operation.Type, operation.Expected];
+                    yield return [source, $"$source = {source}; " + script, operation.Type, operation.Expected];
                 }
             }
         }
@@ -65,6 +66,24 @@ public class StatementExecutionTests : TestBase
         var actual = GetVariable("actual")!;
         Assert.Equal(expectedType, actual.DataType.ToString());
         Assert.Equal(expected, actual.ConvertShellObject(DataType.Text));
+    }
+
+    [Theory]
+    [InlineData("3.0", 1.5)]
+    [InlineData("-3.0", -1.5)]
+    [InlineData("0.0", 0.0)]
+    [InlineData("1.5 * 2", 1.5)]
+    [InlineData("3.5", 1.75)]
+    public async Task DecimalValues_SurviveRepeatedJsonConstruction(string expression, double expected)
+    {
+        var script = $"$initial = {expression}; $object = {{\"value\":$initial}}; " +
+            "$array = [$object.value]; for $item in $array { " +
+            "$rebuilt = {\"value\":$item}; $result = $rebuilt.value / 2 }";
+        var state = await Shell.RunCommandAsync(new(), script, TestContext.Current.CancellationToken);
+        Assert.False(state.IsError);
+        Assert.Equal(expected, Assert.IsType<ShellDecimal>(GetVariable("result")).Value);
+        var rebuilt = Assert.IsType<ShellJson>(GetVariable("rebuilt"));
+        Assert.IsType<ShellDecimal>(ShellNumber.FromJson(rebuilt.Value.GetProperty("value")));
     }
 
     [Fact]

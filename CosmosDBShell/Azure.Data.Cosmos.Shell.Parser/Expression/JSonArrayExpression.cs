@@ -144,7 +144,7 @@ internal class JsonArrayExpression : Expression
             }
         }
 
-        var element = JsonSerializer.SerializeToElement(items);
+        var element = JsonSerializer.SerializeToElement(items, ShellDecimal.JsonSerializationOptions);
         return new ShellJson(element);
     }
 
