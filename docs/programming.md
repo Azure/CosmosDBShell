@@ -114,6 +114,8 @@ Each command text or script file is fully parsed and checked for invalid control
 
 Runtime failures stop execution but do not roll back earlier successful commands. A failed command expression propagates an error rather than silently producing an empty result. Cancellation is checked between block statements and loop iterations, including loops without database commands.
 
+Host-requested cancellation propagates through script files, blocks, loops, and function calls without being converted into a positional runtime error. The shell reports a neutral result and records cancellation in the diagnostic log; call scopes and source context are restored. Cancellation exceptions without a canceled host token still follow the existing error/timeout handling.
+
 Parser errors from script files retain their own filename and source text, including when reached through a command expression. Runtime exceptions retain their original cause and exit-code category: attaching a source location does not turn authentication, throttling, connectivity, or arithmetic failures into usage errors.
 
 Functions defined in a script retain the definition's source location even when invoked later from another file. Runtime diagnostics show the innermost source location first, followed by the recorded function/script call sites in human-readable output. JSON error messages include the originating file, line, and column. Diagnostic logs retain source locations and underlying exception details through the existing secret-redaction pipeline.

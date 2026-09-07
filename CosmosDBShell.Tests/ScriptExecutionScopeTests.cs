@@ -16,6 +16,61 @@ using Xunit;
 
 public class ScriptExecutionScopeTests
 {
+    [Theory]
+    [InlineData("if $cancel {}")]
+    [InlineData("{ if $cancel {} }")]
+    [InlineData("while true { if $cancel {} }")]
+    [InlineData("do { if $cancel {} } while true")]
+    [InlineData("for $item in [1] { if $cancel {} }")]
+    [InlineData("loop { if $cancel {} }")]
+    [InlineData("def run { if $cancel {} }; run")]
+    [InlineData("def run { if $cancel {} }; $result = (run)")]
+    [InlineData("def run { if $cancel {} }; exec \"run\"")]
+    public async Task CancellationDuringFileExecution_IsNotReportedAsRuntimeFailure(string body)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var cancellation = new CancellationTokenSource();
+        var trigger = new CancelOnConversion(cancellation);
+        var globals = new VariableContainer();
+        globals.Set("cancel", trigger);
+        shell.VariableContainers.Push(globals);
+        var script = Path.GetTempFileName().Replace('\\', '/');
+        var output = Path.GetTempFileName();
+        var log = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(script, body, TestContext.Current.CancellationToken);
+            shell.EnableDiagnostics(log);
+            shell.ErrOutRedirect = output;
+            var state = await shell.ExecuteCommandAsync($"exec \"{script}\"", cancellation.Token);
+
+            Assert.True(trigger.WasEvaluated);
+            Assert.True(cancellation.IsCancellationRequested);
+            Assert.False(state.IsError);
+            Assert.Equal(ShellExitCode.Success, state.ExitCode);
+            Assert.Single(shell.VariableContainers);
+            Assert.Same(trigger, shell.GetVariable("cancel"));
+            Assert.Null(shell.CurrentScriptFileName);
+            Assert.Null(shell.CurrentScriptContent);
+            Assert.Empty(File.ReadAllText(output));
+            shell.Diagnostics!.Dispose();
+            var entries = File.ReadAllText(log);
+            Assert.Contains("[CANCELLED]", entries);
+            Assert.DoesNotContain("[ERROR", entries);
+            Assert.DoesNotContain("[FAIL]", entries);
+            var next = await shell.RunCommandAsync(new(), "$value = 1", CancellationToken.None);
+            Assert.False(next.IsError);
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            shell.Dispose();
+            File.Delete(script);
+            File.Delete(output);
+            File.Delete(log);
+        }
+    }
+
     [Fact]
     public async Task RecursiveScript_StopsAtCallLimit_AndRestoresScope()
     {
@@ -171,5 +226,21 @@ public class ScriptExecutionScopeTests
         var state = await command.RunAsync(shell, new CommandState(), CancellationToken.None);
 
         Assert.True(state.IsError);
+    }
+    private sealed class CancelOnConversion(CancellationTokenSource cancellation) : ShellObject(DataType.Boolean)
+    {
+        public bool WasEvaluated { get; private set; }
+
+        public override object? ConvertShellObject(DataType type)
+        {
+            if (type != DataType.Boolean)
+            {
+                return new ShellBool(true).ConvertShellObject(type);
+            }
+
+            this.WasEvaluated = true;
+            cancellation.Cancel();
+            throw new OperationCanceledException(cancellation.Token);
+        }
     }
 }
