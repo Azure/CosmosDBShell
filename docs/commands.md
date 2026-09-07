@@ -502,7 +502,9 @@ Examples:
 
 ### export
 
-Stream items from a container to a local file. Default format is JSON Lines (one compact JSON object per line); pass `--format=array` for a single JSON array, or `--format=csv` for CSV. Items are streamed end-to-end for JSON formats; CSV buffers items to compute the column set. The CSV separator follows the `COSMOSDB_SHELL_CSVSEP` environment variable (default `;`).
+Stream items from a container to a local file. Default format is JSON Lines (one compact JSON object per line); pass `--format=array` for a single JSON array, or `--format=csv` for CSV. JSON formats stream incrementally. CSV spools documents to a private temporary file to compute the complete column set, keeping only the column names and current record in memory. Allow enough temporary disk space for the JSON spool as well as the destination export. The CSV separator follows the `COSMOSDB_SHELL_CSVSEP` environment variable (default `;`).
+
+All formats write to a temporary file in the destination directory and move it into place only after successful completion. An existing destination requires `--force` and is preserved if reading, writing, or cancellation interrupts the export. Temporary files are removed on normal completion and handled failures; an abrupt process termination can leave an unfinished destination-directory temporary file. Once `--max` items have been emitted, no further query pages are requested.
 
 ```text
 Usage: export <file> [options]
@@ -530,7 +532,7 @@ The summary line reports the number of items written and the total RU charge.
 
 ### import
 
-Bulk-load items from a JSON Lines, JSON array, or CSV file into a container. Format is auto-detected: a `.csv` extension selects CSV, otherwise the first non-whitespace character is inspected (`[` ⇒ array, otherwise JSON Lines). It can be forced with `--format`. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist. For CSV, the header row defines property names and every value is imported as a string; the CSV separator follows `COSMOSDB_SHELL_CSVSEP` (default `;`). JSON Lines and JSON array inputs are streamed item-by-item, but CSV import reads and parses the entire file into memory before importing, so very large CSV files can cause a significant memory spike.
+Bulk-load items from a JSON Lines, JSON array, or CSV file into a container. Format is auto-detected: a `.csv` extension selects CSV, otherwise the first non-whitespace character is inspected (`[` ⇒ array, otherwise JSON Lines). It can be forced with `--format`. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist. For CSV, the header row defines property names and every value is imported as a string; the CSV separator follows `COSMOSDB_SHELL_CSVSEP` (default `;`). All formats are read incrementally rather than loading the complete file into memory. CSV supports quoted separators, escaped quotes, and multiline fields; malformed records abort the import with their physical start line. Earlier writes are not rolled back, so use `--dry-run` first when the entire file must be validated before any writes.
 
 ```text
 Usage: import <file> [options]

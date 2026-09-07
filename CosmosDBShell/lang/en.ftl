@@ -363,6 +363,7 @@ command-import-dry-run-success = Dry run: { $count } valid { $count ->
     *[other] items
 }
 command-import-error-missing_file = A source file path is required.
+command-import-error-invalid_csv = Invalid CSV record at line { $line }.
 command-import-error-file_not_found = File '{ $file }' was not found.
 command-import-error-blank_line = Line { $line } is blank.
 command-import-error-not_object = Line { $line } is not a JSON object.

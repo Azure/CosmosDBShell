@@ -56,6 +56,12 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly object sessionRequestChargeLock = new();
 
+    private readonly SemaphoreSlim executionGate = new(1, 1);
+
+    private readonly AsyncLocal<bool> ownsExecutionGate = new();
+
+    private long stateVersion;
+
     private TokenCredential? activeCredential;
 
     private LineEditor? lineEditor;
@@ -253,7 +259,17 @@ public partial class ShellInterpreter : IDisposable
 
     internal bool AppendErrRedirection { get; set; }
 
-    internal State State { get; set; }
+    internal long StateVersion => Interlocked.Read(ref this.stateVersion);
+
+    internal State State
+    {
+        get;
+        set
+        {
+            field = value;
+            Interlocked.Increment(ref this.stateVersion);
+        }
+    }
 
     internal Program.CosmosShellOptions? Options { get; set; }
 
@@ -507,6 +523,39 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="token">A cancellation token to observe while waiting for the task to complete.</param>
     /// <returns>A <see cref="CommandState"/> representing the result of the command execution.</returns>
     public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token)
+    {
+        try
+        {
+            return await this.RunSerializedAsync(() => this.ExecuteCommandCoreAsync(command, token), token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            this.Diagnostics?.LogCancelled(0, command);
+            return new CommandState();
+        }
+    }
+
+    internal async Task<T> RunSerializedAsync<T>(Func<Task<T>> operation, CancellationToken token)
+    {
+        if (this.ownsExecutionGate.Value)
+        {
+            return await operation();
+        }
+
+        await this.executionGate.WaitAsync(token);
+        try
+        {
+            this.ownsExecutionGate.Value = true;
+            return await operation();
+        }
+        finally
+        {
+            this.ownsExecutionGate.Value = false;
+            this.executionGate.Release();
+        }
+    }
+
+    private async Task<CommandState> ExecuteCommandCoreAsync(string command, CancellationToken token)
     {
         using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
         var isLocalEmulatorOperation = this.State is ConnectedState connectedState
@@ -988,7 +1037,14 @@ public partial class ShellInterpreter : IDisposable
     internal void RecordRequestCharge(CommandState commandState)
         => this.RecordRequestCharge(commandState, this.SessionRequestChargeGeneration);
 
-    internal async Task<CommandState> ExecuteCosmosCommandAsync(
+    internal Task<CommandState> ExecuteCosmosCommandAsync(
+        CosmosCommand command,
+        CommandState commandState,
+        string commandText,
+        CancellationToken token)
+        => this.RunSerializedAsync(() => this.ExecuteCosmosCommandCoreAsync(command, commandState, commandText, token), token);
+
+    private async Task<CommandState> ExecuteCosmosCommandCoreAsync(
         CosmosCommand command,
         CommandState commandState,
         string commandText,

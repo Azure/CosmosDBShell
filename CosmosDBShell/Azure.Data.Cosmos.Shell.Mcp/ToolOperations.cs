@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.Extensions.Logging;
@@ -558,27 +559,53 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
         }
 
+        var server = parameters.Server;
+        Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit =
+            server?.ClientCapabilities?.Elicitation != null ? server.ElicitAsync : null;
+        return await this.ExecuteToolAsync(command, cmd, sb.ToString(), elicit, cancellationToken);
+    }
+
+    internal async Task<CallToolResult> ExecuteToolAsync(
+        CommandFactory command,
+        CosmosCommand cmd,
+        string commandLine,
+        Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit,
+        CancellationToken cancellationToken)
+    {
+        var shell = ShellInterpreter.Instance;
+        long? confirmedVersion = null;
         if (RequiresConfirmation(command))
         {
-            var server = parameters.Server;
-            Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit =
-                server?.ClientCapabilities?.Elicitation != null ? server.ElicitAsync : null;
-
-            var confirmation = await this.ConfirmDestructiveAsync(elicit, command.CommandName, sb.ToString(), cancellationToken);
+            var snapshot = await shell.RunSerializedAsync(
+                () => Task.FromResult((Version: shell.StateVersion, Context: DescribeContext(shell.State))), cancellationToken);
+            var confirmation = await this.ConfirmDestructiveAsync(
+                elicit, command.CommandName, commandLine, cancellationToken, snapshot.Context);
             if (confirmation != null)
             {
                 return confirmation;
             }
+
+            confirmedVersion = snapshot.Version;
         }
 
         this.logger?.LogTrace($"Invoking '{command.CommandName}'.");
 
         try
         {
-            ShellInterpreter.Instance.PrintCommand(sb.ToString());
-            var response = await ShellInterpreter.Instance.ExecuteCosmosCommandAsync(cmd, new CommandState(), command.CommandName, cancellationToken);
-            ShellInterpreter.Instance.CancelPrompt();
-            return McpResponseFactory.CreateSuccess(response, ShellInterpreter.Instance.State);
+            return await shell.RunSerializedAsync(
+                async () =>
+                {
+                    if (confirmedVersion.HasValue && confirmedVersion.Value != shell.StateVersion)
+                    {
+                        return McpResponseFactory.CreateError(
+                            "The shell context changed while awaiting confirmation. Nothing was executed. Retry the command and confirm its current target.", shell.State);
+                    }
+
+                    var response = await shell.ExecuteCosmosCommandAsync(cmd, new CommandState(), command.CommandName, cancellationToken);
+                    shell.CancelPrompt();
+                    return McpResponseFactory.CreateSuccess(response, shell.State);
+                },
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -595,6 +622,12 @@ internal class ToolOperations
         }
     }
 
+    private static string DescribeContext(State state)
+    {
+        var endpoint = state is ConnectedState connected ? connected.Client.Endpoint.ToString() : "(disconnected)";
+        return $"Account: {endpoint}\nCurrent location: {McpResponseFactory.GetCurrentLocation(state) ?? "(none)"}\nExplicit database/container arguments in the command override this location.";
+    }
+
     // Gates a destructive command behind an MCP elicitation confirmation. Returns
     // null when the operation is approved and should proceed; otherwise returns the
     // CallToolResult to send back (refusal, denial, or a failed confirmation).
@@ -604,7 +637,8 @@ internal class ToolOperations
         Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit,
         string commandName,
         string commandLine,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? context = null)
     {
         if (elicit == null)
         {
@@ -620,6 +654,7 @@ internal class ToolOperations
         {
             Message =
                 $"Confirm destructive operation. The agent wants to run: {commandLine}\n" +
+                (context is null ? string.Empty : context + "\n") +
                 "This can permanently change or delete data in the connected Azure Cosmos DB account and cannot be undone. Approve this operation?",
             RequestedSchema = new ElicitRequestParams.RequestSchema(),
         };
