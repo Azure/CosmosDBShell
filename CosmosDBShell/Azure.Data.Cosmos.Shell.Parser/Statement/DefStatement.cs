@@ -107,7 +107,7 @@ internal class DefStatement : Statement
             arguments.Set(this.Parameters[i].TrimStart('$'), argument);
         }
 
-        shell.VariableContainers.Push(arguments);
+        shell.PushCallScope(arguments, token);
         try
         {
             var result = await this.Statement.RunAsync(shell, commandState, token);
@@ -123,7 +123,7 @@ internal class DefStatement : Statement
         }
         finally
         {
-            shell.VariableContainers.Pop();
+            shell.PopCallScope();
         }
     }
 

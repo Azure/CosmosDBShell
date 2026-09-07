@@ -400,7 +400,7 @@ internal class CommandStatement : Statement
             frame.Set((i + 1).ToString(), new ShellText(evaluated.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty));
         }
 
-        shell.VariableContainers.Push(frame);
+        shell.PushCallScope(frame, token);
         var currentState = commandState;
         string scriptContent = string.Empty;
         var priorFileName = shell.CurrentScriptFileName;
@@ -473,7 +473,7 @@ internal class CommandStatement : Statement
             shell.CurrentScriptFileName = priorFileName;
             shell.CurrentScriptContent = priorContent;
 
-            shell.VariableContainers.Pop();
+            shell.PopCallScope();
         }
 
         /*

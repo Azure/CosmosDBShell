@@ -69,4 +69,16 @@ public class FunctionDefinitionTests : TestBase
         Assert.Single(Shell.VariableContainers);
     }
 
+    [Fact]
+    public async Task RecursiveFunction_StopsAtLimit_AndRestoresInterpreter()
+    {
+        await RunScriptAsync("$value = 1; def recurse { recurse }");
+        var exception = await Assert.ThrowsAsync<Azure.Data.Cosmos.Shell.Core.ShellException>(() => RunScriptAsync("recurse"));
+        Assert.Contains("depth", exception.Message);
+        Assert.Single(Shell.VariableContainers);
+        var state = await RunScriptAsync("def valid { return 2 }; $result = (valid)");
+        Assert.False(state.IsError);
+        Assert.Equal(2, Assert.IsType<Azure.Data.Cosmos.Shell.Parser.ShellNumber>(GetVariable("result")).Value);
+    }
+
 }

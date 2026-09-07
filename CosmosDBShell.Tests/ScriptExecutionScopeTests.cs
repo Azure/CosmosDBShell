@@ -16,6 +16,29 @@ using Xunit;
 
 public class ScriptExecutionScopeTests
 {
+    [Fact]
+    public async Task RecursiveScript_StopsAtCallLimit_AndRestoresScope()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        shell.SetVariable("value", new ShellNumber(1));
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(path, "exec $0", TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new(TokenType.Identifier, path, 0, path.Length));
+            var exception = await Assert.ThrowsAnyAsync<Exception>(() => command.RunScriptAsync(shell, new(), CancellationToken.None));
+            Assert.Contains("call depth", exception.ToString());
+            Assert.Single(shell.VariableContainers);
+            Assert.Null(shell.CurrentScriptFileName);
+            var state = await shell.RunCommandAsync(new(), "$value = 2", CancellationToken.None);
+            Assert.False(state.IsError);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

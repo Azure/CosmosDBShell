@@ -82,6 +82,44 @@ internal class StatementParser
 
     public Statement? ParseStatement()
     {
+        if (this.expressionParser.IsAtEnd || !this.lexer.Budget.TryEnter(this.Errors, this.expressionParser.Current))
+        {
+            return null;
+        }
+
+        try
+        {
+            return this.ParseStatementCore();
+        }
+        finally
+        {
+            this.lexer.Budget.Exit();
+        }
+    }
+
+    private static string RedirectLabel(Token redirectToken)
+        => redirectToken.Type switch
+        {
+            TokenType.RedirectOutput => ">",
+            TokenType.RedirectAppendOutput => ">>",
+            TokenType.RedirectError => "2>",
+            TokenType.RedirectAppendError => "2>>",
+            _ => redirectToken.Value,
+        };
+
+    private static bool IsCommandTerminator(Token token)
+        => token.Type == TokenType.Semicolon ||
+           token.Type == TokenType.Eol ||
+           token.Type == TokenType.CloseBrace ||
+           token.Type == TokenType.Pipe ||
+           token.Type == TokenType.GreaterThan ||
+           token.Type == TokenType.RedirectOutput ||
+           token.Type == TokenType.RedirectAppendOutput ||
+           token.Type == TokenType.RedirectError ||
+           token.Type == TokenType.RedirectAppendError;
+
+    private Statement? ParseStatementCore()
+    {
         if (this.expressionParser.IsAtEnd)
         {
             return null;
@@ -147,27 +185,6 @@ internal class StatementParser
 
         return segments[0];
     }
-
-    private static string RedirectLabel(Token redirectToken)
-        => redirectToken.Type switch
-        {
-            TokenType.RedirectOutput => ">",
-            TokenType.RedirectAppendOutput => ">>",
-            TokenType.RedirectError => "2>",
-            TokenType.RedirectAppendError => "2>>",
-            _ => redirectToken.Value,
-        };
-
-    private static bool IsCommandTerminator(Token token)
-        => token.Type == TokenType.Semicolon ||
-           token.Type == TokenType.Eol ||
-           token.Type == TokenType.CloseBrace ||
-           token.Type == TokenType.Pipe ||
-           token.Type == TokenType.GreaterThan ||
-           token.Type == TokenType.RedirectOutput ||
-           token.Type == TokenType.RedirectAppendOutput ||
-           token.Type == TokenType.RedirectError ||
-           token.Type == TokenType.RedirectAppendError;
 
     /// <summary>
     /// Detects the start of a '2&gt;' or '2&gt;&gt;' stderr redirect in command context.

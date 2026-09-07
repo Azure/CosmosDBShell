@@ -26,6 +26,12 @@ internal class ExpressionParser
     {
         get
         {
+            if (this.lexer.Budget.Exceeded)
+            {
+                this.aborted = true;
+                return null;
+            }
+
             this.Initialize();
             if (this.currentToken == null)
             {
@@ -37,7 +43,7 @@ internal class ExpressionParser
         }
     }
 
-    public bool IsAtEnd => this.currentToken == null || this.aborted;
+    public bool IsAtEnd => this.currentToken == null || this.aborted || this.lexer.Budget.Exceeded;
 
     /// <summary>
     /// Returns the token immediately following <see cref="Current"/> without consuming it.
@@ -455,6 +461,11 @@ internal class ExpressionParser
     // Power operator (right associative)
     private Expression ParsePower()
     {
+        return this.ParseNested(this.ParsePowerCore);
+    }
+
+    private Expression ParsePowerCore()
+    {
         if (this.aborted)
         {
             return this.CreateAbortExpression();
@@ -484,6 +495,29 @@ internal class ExpressionParser
     // Unary operators (!, -, +)
     private Expression ParseUnary()
     {
+        return this.ParseNested(this.ParseUnaryCore);
+    }
+
+    private Expression ParseNested(Func<Expression> parse)
+    {
+        if (!this.lexer.Budget.TryEnter(this.lexer.Errors, this.currentToken))
+        {
+            this.aborted = true;
+            return this.CreateAbortExpression();
+        }
+
+        try
+        {
+            return parse();
+        }
+        finally
+        {
+            this.lexer.Budget.Exit();
+        }
+    }
+
+    private Expression ParseUnaryCore()
+    {
         if (this.aborted)
         {
             return this.CreateAbortExpression();
@@ -510,6 +544,11 @@ internal class ExpressionParser
 
     // Primary expressions (literals, variables, parentheses)
     private Expression ParsePrimary()
+    {
+        return this.ParseNested(this.ParsePrimaryCore);
+    }
+
+    private Expression ParsePrimaryCore()
     {
         if (this.aborted)
         {
@@ -894,7 +933,7 @@ internal class ExpressionParser
                         if (rawStart >= 0 && rawEnd >= rawStart && rawEnd <= this.lexer.RawInput.Length)
                         {
                             var rawSlice = this.lexer.RawInput.Substring(rawStart, rawEnd - rawStart);
-                            var rawLexer = new Lexer(rawSlice, rawStartOuter);
+                            var rawLexer = new Lexer(rawSlice, rawStartOuter, this.lexer.Budget);
                             var rawParser = new ExpressionParser(rawLexer);
                             var expr = this.ValidateInterpolatedExpression(rawParser, rawParser.ParseExpression());
 
@@ -913,7 +952,7 @@ internal class ExpressionParser
                     // Token positions may drift through escape sequences but stay correct
                     // for escape-free interpolations, which covers the common case.
                     var innerOffset = OuterPos(startExprPos);
-                    var exprLexer = new Lexer(exprContent, innerOffset);
+                    var exprLexer = new Lexer(exprContent, innerOffset, this.lexer.Budget);
                     var exprParser = new ExpressionParser(exprLexer);
                     var expr2 = this.ValidateInterpolatedExpression(exprParser, exprParser.ParseExpression());
 

@@ -37,6 +37,8 @@ public partial class ShellInterpreter : IDisposable
 
     private const int OptionalArmDiscoveryTimeoutSeconds = 3;
 
+    internal const int MaximumCallDepth = 64;
+
     private const string EncodedHistoryLinePrefix = "CosmosDBShellHistoryV1:";
 
     // Sentinel written immediately after the prefix by EncodeHistoryLine so that
@@ -61,6 +63,8 @@ public partial class ShellInterpreter : IDisposable
     private readonly AsyncLocal<bool> ownsExecutionGate = new();
 
     private long stateVersion;
+
+    private int callDepth;
 
     private TokenCredential? activeCredential;
 
@@ -1991,6 +1995,24 @@ public partial class ShellInterpreter : IDisposable
     internal void DeclareFunction(DefStatement defStatement)
     {
         this.Functions[defStatement.Name] = defStatement;
+    }
+
+    internal void PushCallScope(VariableContainer frame, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (this.callDepth >= MaximumCallDepth)
+        {
+            throw new ShellException(MessageService.GetArgsString("script-error-call-depth", "limit", MaximumCallDepth));
+        }
+
+        this.VariableContainers.Push(frame);
+        this.callDepth++;
+    }
+
+    internal void PopCallScope()
+    {
+        this.VariableContainers.Pop();
+        this.callDepth--;
     }
 
     internal void SetVariable(string variableName, ShellObject value)

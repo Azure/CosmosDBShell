@@ -114,6 +114,12 @@ Each command text or script file is fully parsed and checked for invalid control
 
 Runtime failures stop execution but do not roll back earlier successful commands. A failed command expression propagates an error rather than silently producing an empty result. Cancellation is checked between block statements and loop iterations, including loops without database commands.
 
+### Resource Limits
+
+The parser has a shared nesting budget of 128 recursive parsing entries. Statements, expression operators, primary expressions, and interpolation subparsers share this budget, so the allowed number of source-level parentheses depends on the surrounding syntax. Exceeding it produces a parser diagnostic before execution, including in editor/highlighter parsing. Sequential statements do not accumulate nesting depth.
+
+At most 64 function and script-file calls may be active at once, including mixed or indirect recursion. Exceeding this limit produces a runtime error, unwinds call scopes, and leaves the interpreter usable. Calls also check cancellation before entering a new scope. These are fixed safety limits, not a sandbox or a wall-clock timeout; long-running valid scripts still require host cancellation.
+
 ## Variable Usage
 
 ```bash

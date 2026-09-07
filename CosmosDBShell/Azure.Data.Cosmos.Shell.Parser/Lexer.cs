@@ -246,14 +246,17 @@ internal class Lexer
     /// a <c>$(...)</c> interpolation inside an interpolated string) so that the produced
     /// tokens carry positions relative to the outer buffer.
     /// </summary>
-    public Lexer(string input, int positionOffset)
+    public Lexer(string input, int positionOffset, ParsingBudget? budget = null)
     {
         this.input = input ?? string.Empty;
         this.position = 0;
         this.positionOffset = positionOffset;
         this.putBackTokens = new Stack<Token>();
         this.lastToken = null;
+        this.Budget = budget ?? new ParsingBudget();
     }
+
+    internal ParsingBudget Budget { get; }
 
     public List<Token> Comments { get; } = new();
 
@@ -299,6 +302,11 @@ internal class Lexer
 
     public Token? NextToken()
     {
+        if (this.Budget.Exceeded)
+        {
+            return null;
+        }
+
         // If we have tokens that were put back, return them first
         if (this.putBackTokens.Count > 0)
         {
@@ -977,5 +985,37 @@ internal class Lexer
         }
 
         return token;
+    }
+
+    internal sealed class ParsingBudget
+    {
+        internal const int MaximumDepth = 128;
+
+        private int depth;
+
+        public bool Exceeded { get; private set; }
+
+        public bool TryEnter(ErrorList errors, Token? token)
+        {
+            if (this.Exceeded)
+            {
+                return false;
+            }
+
+            if (this.depth >= MaximumDepth)
+            {
+                this.Exceeded = true;
+                errors.Add(new ParseError(token?.Start ?? 0, token?.Length ?? 1, MessageService.GetArgsString("script-error-parse-depth", "limit", MaximumDepth)));
+                return false;
+            }
+
+            this.depth++;
+            return true;
+        }
+
+        public void Exit()
+        {
+            this.depth--;
+        }
     }
 }
