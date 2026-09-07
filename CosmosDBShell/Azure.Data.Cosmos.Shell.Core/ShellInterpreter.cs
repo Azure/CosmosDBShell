@@ -2138,6 +2138,7 @@ public partial class ShellInterpreter : IDisposable
                 this.editorCancelTokenSource?.Dispose();
                 this.State?.Dispose();
                 this.Diagnostics?.Dispose();
+                this.executionGate.Dispose();
             }
 
             this.disposedValue = true;

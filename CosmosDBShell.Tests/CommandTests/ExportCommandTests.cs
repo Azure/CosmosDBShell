@@ -221,9 +221,9 @@ public class ExportCommandTests
     [InlineData(2)]
     public async Task WriteFileAsync_FailurePreservesExistingFileAndRemovesTemporaryFile(int format)
     {
-        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var directory = Path.Join(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "export.json");
+        var path = Path.Join(directory, "export.json");
         try
         {
             await File.WriteAllTextAsync(path, "previous export", TestContext.Current.CancellationToken);
@@ -243,9 +243,9 @@ public class ExportCommandTests
     [InlineData(false)]
     public async Task WriteFileAsync_RespectsOverwriteFlag(bool overwrite)
     {
-        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var directory = Path.Join(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "export.json");
+        var path = Path.Join(directory, "export.json");
         try
         {
             await File.WriteAllTextAsync(path, "previous export", TestContext.Current.CancellationToken);
@@ -274,9 +274,9 @@ public class ExportCommandTests
     [Fact]
     public async Task WriteFileAsync_CancellationPreservesExistingFile()
     {
-        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var directory = Path.Join(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "export.json");
+        var path = Path.Join(directory, "export.json");
         using var cancellation = new CancellationTokenSource();
         try
         {
@@ -321,6 +321,55 @@ public class ExportCommandTests
         using var writer = new StringWriter();
         Assert.Equal(200, await ExportCommand.WriteCsvAsync(TransientItemsAsync(), writer, ',', TestContext.Current.CancellationToken));
         Assert.Contains("199", writer.ToString());
+    }
+
+    [Fact]
+    public void DeleteTemporaryFile_DoesNotThrowWhenDirectoryIsMissing()
+    {
+        var directory = Directory.CreateTempSubdirectory("cosmos-export-test-");
+        var path = Path.Join(directory.FullName, "export.tmp");
+        directory.Delete();
+
+        Assert.IsAssignableFrom<IOException>(new DirectoryNotFoundException());
+        ExportCommand.DeleteTemporaryFile(path);
+    }
+
+    [Fact]
+    public void DeleteTemporaryFile_DoesNotThrowWhenPathIsDirectory()
+    {
+        var directory = Directory.CreateTempSubdirectory("cosmos-export-test-");
+        try
+        {
+            ExportCommand.DeleteTemporaryFile(directory.FullName);
+            Assert.True(directory.Exists);
+        }
+        finally
+        {
+            directory.Delete();
+        }
+    }
+
+    [Fact]
+    public async Task WriteArrayAsync_FlushesIncrementallyWithoutFlushingEachItem()
+    {
+        using var stream = new MemoryStream();
+        var item = JsonSerializer.SerializeToElement(new { value = new string('x', 1024) });
+        async IAsyncEnumerable<JsonElement> ItemsAsync()
+        {
+            yield return item;
+            Assert.Equal(0, stream.Length);
+            for (var index = 0; index < 128; index++)
+            {
+                yield return item;
+            }
+
+            Assert.True(stream.Length >= 64 * 1024);
+            await Task.Yield();
+        }
+
+        Assert.Equal(129, await ExportCommand.WriteArrayAsync(ItemsAsync(), stream, TestContext.Current.CancellationToken));
+        using var result = JsonDocument.Parse(stream.ToArray());
+        Assert.Equal(129, result.RootElement.GetArrayLength());
     }
 
     private static async IAsyncEnumerable<JsonElement> TransientItemsAsync()
