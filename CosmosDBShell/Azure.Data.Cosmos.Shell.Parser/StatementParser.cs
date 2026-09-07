@@ -1238,13 +1238,18 @@ internal class StatementParser
             var statements = parser.ParseStatements();
             if (!parser.Errors.HasErrors)
             {
-                foreach (var statement in statements)
-                {
-                    Validate(statement, parser.Errors, inFunction: allowReturn, loopDepth: 0);
-                }
+                ValidateStatements(statements, parser.Errors, allowReturn);
             }
 
             return new ScriptParseResult(statements.AsReadOnly(), parser.Errors);
+        }
+
+        internal static void ValidateStatements(IEnumerable<Statement> statements, ErrorList errors, bool allowReturn)
+        {
+            foreach (var statement in statements)
+            {
+                Validate(statement, errors, inFunction: allowReturn, loopDepth: 0);
+            }
         }
 
         private static void Validate(Statement statement, ErrorList errors, bool inFunction, int loopDepth)

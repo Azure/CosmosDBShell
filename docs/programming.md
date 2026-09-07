@@ -114,6 +114,12 @@ Each command text or script file is fully parsed and checked for invalid control
 
 Runtime failures stop execution but do not roll back earlier successful commands. A failed command expression propagates an error rather than silently producing an empty result. Cancellation is checked between block statements and loop iterations, including loops without database commands.
 
+Parser errors from script files retain their own filename and source text, including when reached through a command expression. Runtime exceptions retain their original cause and exit-code category: attaching a source location does not turn authentication, throttling, connectivity, or arithmetic failures into usage errors.
+
+Functions defined in a script retain the definition's source location even when invoked later from another file. Runtime diagnostics show the innermost source location first, followed by the recorded function/script call sites in human-readable output. JSON error messages include the originating file, line, and column. Diagnostic logs retain source locations and underlying exception details through the existing secret-redaction pipeline.
+
+The language server applies the same control-flow and duplicate-parameter validation as script execution. File-level `return` is valid; `break` and `continue` require an enclosing loop in the same function. Diagnostics use exclusive-end editor ranges and are refreshed when a document changes.
+
 ### Resource Limits
 
 The parser has a shared nesting budget of 128 recursive parsing entries. Statements, expression operators, primary expressions, and interpolation subparsers share this budget, so the allowed number of source-level parentheses depends on the surrounding syntax. Exceeding it produces a parser diagnostic before execution, including in editor/highlighter parsing. Sequential statements do not accumulate nesting depth.

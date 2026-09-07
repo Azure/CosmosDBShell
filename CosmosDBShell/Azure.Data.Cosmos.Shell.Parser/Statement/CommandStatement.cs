@@ -174,7 +174,7 @@ internal class CommandStatement : Statement
                 args.Add(evaluated);
             }
 
-            return await function.ExecuteFunctionAsync(shell, commandState, token, args.ToArray());
+            return await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
         }
 
         if (shell.App.Commands.TryGetValue(this.Name, out var factory))
@@ -414,7 +414,7 @@ internal class CommandStatement : Statement
             var parser = StatementParser.ScriptParseResult.Parse(scriptContent, allowReturn: true);
             if (parser.Errors.HasErrors)
             {
-                return new ParserErrorCommandState(parser.Errors);
+                return new ParserErrorCommandState(parser.Errors, fileName, scriptContent);
             }
 
             foreach (var statement in parser.Statements)
@@ -461,7 +461,7 @@ internal class CommandStatement : Statement
                         shell.ErrOutRedirect = null;
                     }
                 }
-                catch (Exception e)
+                catch (Exception e) when (e is not OperationCanceledException)
                 {
                     var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(scriptContent, statement.Start);
                     throw new PositionalException(fileName, e, line, column, lineText);

@@ -19,6 +19,37 @@ using Xunit;
 
 public class ShellExitCodeTests
 {
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, ShellExitCode.AuthFailure)]
+    [InlineData(HttpStatusCode.NotFound, ShellExitCode.NotFound)]
+    [InlineData(HttpStatusCode.TooManyRequests, ShellExitCode.Throttled)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, ShellExitCode.ConnectionError)]
+    public void NestedSourceWrappers_PreserveFailureCategory(HttpStatusCode status, int expected)
+    {
+        var cause = new CosmosException("failure", status, 0, "test", 0);
+        var inner = new PositionalException("child.csh", cause, 3, 5, "query");
+        var outer = new PositionalException("parent.csh", inner, 1, 1, "child.csh");
+        Assert.Equal(expected, ShellExitCode.FromException(outer));
+        Assert.Equal(expected, new ErrorCommandState(outer).ExitCode);
+    }
+
+    [Fact]
+    public void PositionalRuntimeFailure_RemainsRuntimeFailure()
+    {
+        Assert.Equal(ShellExitCode.GeneralFailure, ShellExitCode.FromException(new PositionalException("script.csh", new DivideByZeroException(), 1, 1)));
+    }
+
+    [Fact]
+    public void ExpressionFailure_PreservesOriginalStateAndCause()
+    {
+        var cause = new RequestFailedException(429, "throttled");
+        var state = new ErrorCommandState(cause);
+        var failure = new CommandState.FailureException(state);
+        Assert.Same(state, failure.State);
+        Assert.Same(cause, failure.InnerException);
+        Assert.Equal(ShellExitCode.Throttled, ShellExitCode.FromException(failure));
+    }
+
     [Fact]
     public void FromException_Null_ReturnsGeneralFailure()
     {

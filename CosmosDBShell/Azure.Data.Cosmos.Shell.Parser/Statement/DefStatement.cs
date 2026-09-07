@@ -19,6 +19,9 @@ using Azure.Data.Cosmos.Shell.Util;
 [AstHelp("statement-def")]
 internal class DefStatement : Statement
 {
+    private string? sourceName;
+    private string? sourceText;
+
     public DefStatement(Token defToken, Token nameToken, string[] parameters, Statement statement)
     {
         this.DefToken = defToken ?? throw new ArgumentNullException(nameof(defToken));
@@ -71,6 +74,8 @@ internal class DefStatement : Statement
     /// </remarks>
     public override Task<CommandState> RunAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
+        this.sourceName = shell.CurrentScriptFileName;
+        this.sourceText = shell.CurrentScriptContent;
         shell.DeclareFunction(this);
         return Task.FromResult(commandState);
     }
@@ -108,8 +113,12 @@ internal class DefStatement : Statement
         }
 
         shell.PushCallScope(arguments, token);
+        var callerName = shell.CurrentScriptFileName;
+        var callerText = shell.CurrentScriptContent;
         try
         {
+            shell.CurrentScriptFileName = this.sourceName;
+            shell.CurrentScriptContent = this.sourceText;
             var result = await this.Statement.RunAsync(shell, commandState, token);
             if (result.ReturnFunc)
             {
@@ -121,9 +130,29 @@ internal class DefStatement : Statement
 
             return result;
         }
+        catch (Exception exception) when (exception is not PositionalException && exception is not OperationCanceledException && this.sourceName != null && this.sourceText != null)
+        {
+            var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(this.sourceText, this.Statement.Start);
+            throw new PositionalException(this.sourceName, exception, line, column, lineText);
+        }
         finally
         {
+            shell.CurrentScriptFileName = callerName;
+            shell.CurrentScriptContent = callerText;
             shell.PopCallScope();
+        }
+    }
+
+    internal async Task<CommandState> ExecuteCallAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, int start, params ShellObject[] args)
+    {
+        try
+        {
+            return await this.ExecuteFunctionAsync(shell, commandState, token, args);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException && shell.CurrentScriptFileName != null && shell.CurrentScriptContent != null)
+        {
+            var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(shell.CurrentScriptContent, start);
+            throw new PositionalException(shell.CurrentScriptFileName, exception, line, column, lineText);
         }
     }
 

@@ -84,14 +84,9 @@ internal class CommandExpression : Expression
         // Execute the command asynchronously and return the result
         var resultState = await this.ExecuteCommandAsync(interpreter, currentState, cancellationToken);
 
-        if (resultState is ParserErrorCommandState parserError)
-        {
-            throw new CommandException(this.Name, string.Join("; ", parserError.Errors.Select(error => error.Message)));
-        }
-
         if (resultState.IsError)
         {
-            throw new CommandException(this.Name, MessageService.GetArgsString("script-error-command-failed", "name", this.Name));
+            throw new CommandState.FailureException(resultState);
         }
 
         // Return the result from the command state
@@ -140,7 +135,7 @@ internal class CommandExpression : Expression
                 args.Add(evaluated);
             }
 
-            return await function.ExecuteFunctionAsync(shell, commandState, token, args.ToArray());
+            return await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
         }
 
         // Check for built-in commands

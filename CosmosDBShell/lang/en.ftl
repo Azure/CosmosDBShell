@@ -369,6 +369,7 @@ script-error-loop-control = break and continue require an enclosing loop in the 
 script-error-return-context = return requires an enclosing function or script file.
 script-error-duplicate-parameter = Duplicate function parameter '{ $name }'.
 script-error-command-failed = Command expression '{ $name }' failed.
+script-error-expression-failed = Command expression failed.
 script-error-call-depth = Maximum function/script call depth of { $limit } exceeded.
 script-error-parse-depth = Maximum parser nesting budget of { $limit } exceeded. Simplify the expression or split the script.
 command-import-error-file_not_found = File '{ $file }' was not found.

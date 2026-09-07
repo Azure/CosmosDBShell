@@ -18,6 +18,28 @@ using Azure.Data.Cosmos.Shell.Parser;
 /// </summary>
 public class StatementPositionalErrorTests : TestBase
 {
+    [Theory]
+    [InlineData("broken")]
+    [InlineData("$result = (broken)")]
+    public async Task FunctionFailure_PreservesDefinitionAndCallerSources(string invocation)
+    {
+        const string definition = "def broken {\n totallyunknowncmd999\n}";
+        Shell.CurrentScriptFileName = "definition.csh";
+        Shell.CurrentScriptContent = definition;
+        await new StatementParser(definition).ParseStatement()!.RunAsync(Shell, new(), CancellationToken.None);
+        Shell.CurrentScriptFileName = "caller.csh";
+        Shell.CurrentScriptContent = invocation;
+
+        var exception = await Assert.ThrowsAsync<PositionalException>(() => new StatementParser(invocation).ParseStatement()!.RunAsync(Shell, new(), CancellationToken.None));
+        var frames = PositionalException.GetSourceTrace(exception);
+        Assert.Equal("definition.csh", frames[0].FileName);
+        Assert.Equal(2, frames[0].Line);
+        Assert.Equal("caller.csh", frames[^1].FileName);
+        Assert.Equal("caller.csh", Shell.CurrentScriptFileName);
+        Assert.Equal(invocation, Shell.CurrentScriptContent);
+        Assert.Equal(ShellExitCode.UsageError, ShellExitCode.FromException(exception));
+    }
+
     private async Task RunWithScriptContextAsync(string script)
     {
         Shell.CurrentScriptFileName = "script.csh";

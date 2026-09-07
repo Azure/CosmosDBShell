@@ -618,8 +618,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 this.ReportExecutionError(e, command);
                 this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
-                var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
-                result = new ErrorCommandState(inner)
+                result = new ErrorCommandState(e)
                 {
                     RequestCharge = RequestChargeContext.GetExceptionCharge(e),
                 };
@@ -635,7 +634,7 @@ public partial class ShellInterpreter : IDisposable
 
             if (state is ParserErrorCommandState parserErrorState)
             {
-                this.ReportParserErrors(parserErrorState.Errors, command);
+                this.ReportParserErrors(parserErrorState.Errors, parserErrorState.SourceText ?? command, parserErrorState.SourceName);
                 result = state;
                 return result;
             }
@@ -668,7 +667,7 @@ public partial class ShellInterpreter : IDisposable
                         }
                         else if (result is ParserErrorCommandState parserErrorResult)
                         {
-                            diagnostics.LogParserErrors(command, parserErrorResult.Errors);
+                            diagnostics.LogParserErrors(command, parserErrorResult.Errors, parserErrorResult.SourceName, parserErrorResult.SourceText);
                         }
                     }
 
@@ -2588,9 +2587,17 @@ public partial class ShellInterpreter : IDisposable
             return;
         }
 
+        if (FindException<CommandState.FailureException>(e)?.State is ParserErrorCommandState parserError)
+        {
+            this.ReportParserErrors(parserError.Errors, parserError.SourceText ?? sourceText ?? string.Empty, parserError.SourceName);
+            return;
+        }
+
         if (this.IsMachineMode)
         {
-            this.WriteMachineError(e.Message);
+            var sourceTrace = PositionalException.GetSourceTrace(e);
+            var location = sourceTrace.FirstOrDefault();
+            this.WriteMachineError(location == null ? e.Message : $"{location.FileName}:{location.Line}:{location.Column}: {e.Message}");
             return;
         }
 
@@ -2743,6 +2750,9 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportPositionalError(PositionalException pe)
     {
+        var frames = PositionalException.GetSourceTrace(pe);
+        pe = frames[0];
+        var callTrace = frames.Skip(1).Select(frame => $"  at {frame.FileName}:{frame.Line}:{frame.Column}").ToArray();
         if (this.ErrOutRedirect != null)
         {
             var errorMessage = $"[{Path.GetFileName(pe.FileName)}:{pe.Line}:{pe.Column}]: error: {pe.Message}";
@@ -2750,6 +2760,11 @@ public partial class ShellInterpreter : IDisposable
             {
                 errorMessage += Environment.NewLine + pe.LineText;
                 errorMessage += Environment.NewLine + new string(' ', Math.Max(0, pe.Column - 1)) + "^";
+            }
+
+            if (callTrace.Length > 0)
+            {
+                errorMessage += Environment.NewLine + string.Join(Environment.NewLine, callTrace);
             }
 
             if (this.AppendErrRedirection)
@@ -2768,6 +2783,11 @@ public partial class ShellInterpreter : IDisposable
             {
                 AnsiConsole.MarkupLine("  " + Theme.FormatMuted(pe.LineText));
                 AnsiConsole.MarkupLine("  " + Theme.FormatError(new string(' ', Math.Max(0, pe.Column - 1)) + "^"));
+            }
+
+            foreach (var frame in callTrace)
+            {
+                AnsiConsole.MarkupLine(Theme.FormatMuted(frame));
             }
         }
     }
@@ -2816,7 +2836,7 @@ public partial class ShellInterpreter : IDisposable
         return (line, column);
     }
 
-    private void ReportParserErrors(ErrorList errors, string commandText)
+    private void ReportParserErrors(ErrorList errors, string commandText, string? sourceName = null)
     {
         if (this.IsMachineMode
             && errors != null && errors.Count > 0)
@@ -2826,7 +2846,8 @@ public partial class ShellInterpreter : IDisposable
             {
                 if (err != null && err.ErrorLevel == ErrorLevel.Error)
                 {
-                    errorStrings.Add(err.Message ?? "Parser error");
+                    var (line, column) = this.OffsetToLineColumn(commandText, err.Start);
+                    errorStrings.Add(sourceName == null ? err.Message : $"{sourceName}:{line + 1}:{column + 1}: {err.Message}");
                 }
             }
 
@@ -2882,7 +2903,7 @@ public partial class ShellInterpreter : IDisposable
                 error.Message,
                 lineNumber,
                 rendered,
-                origin: this.GetDiagnosticOrigin(this.CurrentScriptFileName));
+                origin: this.GetDiagnosticOrigin(sourceName ?? this.CurrentScriptFileName));
         }
 
         if (redirected && fileBuffer != null)

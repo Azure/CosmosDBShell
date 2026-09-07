@@ -161,4 +161,34 @@ public class CosmosShellWorkspaceTests
         Assert.NotNull(doc);
         Assert.NotEmpty(doc!.Diagnostics);
     }
+
+    [Theory]
+    [InlineData("break")]
+    [InlineData("continue")]
+    [InlineData("def duplicate [value value] { return $value }")]
+    [InlineData("loop { def invalid { break } }")]
+    public void RuntimeSemanticErrors_AreReportedByLsp(string source)
+    {
+        this.workspace.OpenDocument(this.uri, source, 1);
+        var document = this.workspace.GetDocument(this.uri)!;
+        var expected = Azure.Data.Cosmos.Shell.Parser.StatementParser.ScriptParseResult.Parse(source, allowReturn: true);
+        Assert.False(document.LastParseResult!.Success);
+        foreach (var error in expected.Errors)
+        {
+            Assert.Contains(document.Diagnostics, diagnostic => diagnostic.Message == error.Message);
+        }
+    }
+
+    [Fact]
+    public void SemanticRange_UsesExclusiveEnd_AndClearsAfterFix()
+    {
+        this.workspace.OpenDocument(this.uri, "\r\nbreak", 1);
+        var document = this.workspace.GetDocument(this.uri)!;
+        var diagnostic = Assert.Single(document.Diagnostics);
+        Assert.Equal(new Position(1, 0), diagnostic.Range.Start);
+        Assert.Equal(new Position(1, 5), diagnostic.Range.End);
+        this.workspace.UpdateDocument(this.uri, "loop { break }\nreturn 1", 2);
+        Assert.True(document.LastParseResult!.Success);
+        Assert.Empty(document.Diagnostics);
+    }
 }

@@ -96,7 +96,11 @@ public class ScriptExecutionScopeTests
         {
             await File.WriteAllTextAsync(path, "if true {", TestContext.Current.CancellationToken);
             var expression = new CommandExpression(new(TokenType.Identifier, path, 0, path.Length));
-            await Assert.ThrowsAsync<CommandException>(() => expression.EvaluateAsync(shell, new(), CancellationToken.None));
+            var failure = await Assert.ThrowsAsync<CommandState.FailureException>(() => expression.EvaluateAsync(shell, new(), CancellationToken.None));
+            var state = Assert.IsType<ParserErrorCommandState>(failure.State);
+            Assert.Equal(path, state.SourceName);
+            Assert.Equal("if true {", state.SourceText);
+            Assert.Equal(ShellExitCode.UsageError, ShellExitCode.FromException(failure));
         }
         finally
         {

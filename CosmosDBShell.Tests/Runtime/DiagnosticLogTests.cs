@@ -130,6 +130,35 @@ public class DiagnosticLogTests : IDisposable
     }
 
     [Fact]
+    public void LogError_PreservesSourceChain_AndRedactsEveryEntry()
+    {
+        using (var log = DiagnosticLog.Create(this.path))
+        {
+            log.AddSecret("private-source");
+            var cause = new InvalidOperationException("private-source failed");
+            var child = new Azure.Data.Cosmos.Shell.Parser.PositionalException("private-source.csh", cause, 3, 2);
+            log.LogError("invoke", new Azure.Data.Cosmos.Shell.Parser.PositionalException("caller.csh", child, 1, 1));
+        }
+
+        var text = File.ReadAllText(this.path);
+        Assert.Contains(".csh:3:2", text);
+        Assert.Contains("caller.csh:1:1", text);
+        Assert.Contains("InvalidOperationException:", text);
+        Assert.DoesNotContain("private-source", text);
+    }
+
+    [Fact]
+    public void LogParserErrors_ResolvesFileCoordinates()
+    {
+        using (var log = DiagnosticLog.Create(this.path))
+        {
+            log.LogParserErrors("exec child", new[] { new Azure.Data.Cosmos.Shell.Parser.ParseError(2, 1, "Unexpected token") }, "child.csh", "\r\n}");
+        }
+
+        Assert.Contains("child.csh:2:1: Unexpected token", LastEntry());
+    }
+
+    [Fact]
     public void LogParserErrors_NoErrors_WritesNothing()
     {
         using (var log = DiagnosticLog.Create(this.path))

@@ -225,6 +225,8 @@ Scripts are parsed and validated before their statements execute. Functions pres
 
 Parser nesting and active function/script calls have fixed [resource limits](docs/programming.md#resource-limits). Limit violations fail with diagnostics rather than continuing recursive parsing or execution.
 
+Script diagnostics preserve source files, runtime failure categories, and function/script call sites. The language server shares the runtime's control-flow and duplicate-parameter checks. See [validation and errors](docs/programming.md#validation-and-errors).
+
 ## Deterministic Exit Codes
 
 When running scripts or automation, Cosmos DB Shell maps execution failures to a set of stable exit codes (accessible via `$?`, `%ERRORLEVEL%`, or `$LASTEXITCODE`):
