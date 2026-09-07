@@ -141,7 +141,7 @@ internal class CosmosShellCompletionHandler : ICompletionHandler
             return;
         }
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var name in ShellInterpreter.SessionVariableNames)
         {
             string variableName = "$" + name;
