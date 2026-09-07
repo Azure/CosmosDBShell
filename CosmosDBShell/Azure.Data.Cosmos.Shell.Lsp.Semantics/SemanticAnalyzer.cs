@@ -113,6 +113,7 @@ public sealed class SemanticAnalyzer
                 this.VisitCommand(command);
                 break;
             case DefStatement definition:
+                this.functions[definition.Name] = this.functionDefinitions[definition];
                 this.references.Add(new ReferenceInfo
                 {
                     Symbol = this.functionDefinitions[definition],

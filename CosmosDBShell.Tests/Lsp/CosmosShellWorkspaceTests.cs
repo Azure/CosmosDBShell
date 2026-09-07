@@ -48,6 +48,30 @@ public class CosmosShellWorkspaceTests
     }
 
     [Theory]
+    [InlineData("repeat", "repeat")]
+    [InlineData("$first = (repeat)", "$second = (repeat)")]
+    public void FunctionRedefinition_BindsCallsToLatestPrecedingDefinition(string firstCall, string secondCall)
+    {
+        var source = $"def repeat {{ return 1 }}; {firstCall}; def repeat {{ return 2 }}; {secondCall}";
+        this.workspace.OpenDocument(this.uri, source, 1);
+        var document = this.workspace.GetDocument(this.uri)!;
+        Assert.Empty(document.Diagnostics);
+        var model = document.SemanticModel!;
+        var functions = model.Symbols.OfType<Azure.Data.Cosmos.Shell.Lsp.Semantics.FunctionSymbol>().OrderBy(symbol => symbol.Start).ToArray();
+        Assert.Equal(2, functions.Length);
+        var calls = model.References.Where(reference => !reference.IsDefinition && reference.Symbol is Azure.Data.Cosmos.Shell.Lsp.Semantics.FunctionSymbol).OrderBy(reference => reference.Start).ToArray();
+        Assert.Equal(2, calls.Length);
+        Assert.Same(functions[0], calls[0].Symbol);
+        Assert.Same(functions[1], calls[1].Symbol);
+        Assert.Same(functions[1], model.GetSymbolAt(calls[1].Start + 1));
+        foreach (var function in functions)
+        {
+            Assert.Single(model.FindReferences(function), reference => reference.IsDefinition);
+            Assert.Single(model.FindReferences(function), reference => !reference.IsDefinition);
+        }
+    }
+
+    [Theory]
     [InlineData("def example { missing_command_xyz }")]
     [InlineData("if true { missing_command_xyz }")]
     [InlineData("if false {} else { missing_command_xyz }")]
