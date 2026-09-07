@@ -588,7 +588,7 @@ internal class ToolOperations
             confirmedVersion = snapshot.Version;
         }
 
-        this.logger?.LogTrace($"Invoking '{command.CommandName}'.");
+        this.logger?.LogTrace($"Requested '{command.CommandName}'.");
 
         try
         {
@@ -618,7 +618,7 @@ internal class ToolOperations
         }
         finally
         {
-            this.logger?.LogTrace($"Finished executing '{command.CommandName}'.");
+            this.logger?.LogTrace($"Finished handling request for '{command.CommandName}'.");
         }
     }
 

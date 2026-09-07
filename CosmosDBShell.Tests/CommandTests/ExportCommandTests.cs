@@ -324,6 +324,17 @@ public class ExportCommandTests
     }
 
     [Fact]
+    public void DeleteTemporaryFile_DoesNotThrowWhenDirectoryIsMissing()
+    {
+        var directory = Directory.CreateTempSubdirectory("cosmos-export-test-");
+        var path = Path.Join(directory.FullName, "export.tmp");
+        directory.Delete();
+
+        Assert.IsAssignableFrom<IOException>(new DirectoryNotFoundException());
+        ExportCommand.DeleteTemporaryFile(path);
+    }
+
+    [Fact]
     public void DeleteTemporaryFile_DoesNotThrowWhenPathIsDirectory()
     {
         var directory = Directory.CreateTempSubdirectory("cosmos-export-test-");
