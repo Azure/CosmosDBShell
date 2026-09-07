@@ -1269,7 +1269,7 @@ internal class StatementParser
                     {
                         if (!names.Add(parameter.TrimStart('$')))
                         {
-                            errors.Add(new ParseError(function.NameToken.Start, function.NameToken.Length, MessageService.GetArgsString("script-error-duplicate-parameter", "name", parameter)));
+                            errors.Add(new ParseError(function.Start, function.Length, MessageService.GetArgsString("script-error-duplicate-parameter", "name", parameter)));
                         }
                     }
 
