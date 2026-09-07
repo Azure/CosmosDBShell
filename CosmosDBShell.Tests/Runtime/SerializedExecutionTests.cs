@@ -5,6 +5,22 @@ using Azure.Data.Cosmos.Shell.Core;
 public class SerializedExecutionTests
 {
     [Fact]
+    public async Task Dispose_ReleasesExecutionGateAndIsIdempotent()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        Assert.Equal(42, await shell.RunSerializedAsync(() => Task.FromResult(42), TestContext.Current.CancellationToken));
+        shell.Dispose();
+        shell.Dispose();
+        var executed = false;
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => shell.RunSerializedAsync(() =>
+        {
+            executed = true;
+            return Task.FromResult(1);
+        }, CancellationToken.None));
+        Assert.False(executed);
+    }
+
+    [Fact]
     public async Task RunSerializedAsync_WaitsForOtherExecutionButAllowsNestedCalls()
     {
         using var shell = ShellInterpreter.CreateInstance();

@@ -171,7 +171,11 @@ internal class ExportCommand : CosmosCommand
         await foreach (var item in items.WithCancellation(token))
         {
             item.WriteTo(writer);
-            await writer.FlushAsync(token);
+            if (writer.BytesPending >= 64 * 1024)
+            {
+                await writer.FlushAsync(token);
+            }
+
             count++;
         }
 
@@ -205,7 +209,7 @@ internal class ExportCommand : CosmosCommand
             spoolOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         }
 
-        await using var spool = new FileStream(Path.Combine(Path.GetTempPath(), $"cosmos-csv-{Guid.NewGuid():N}.tmp"), spoolOptions);
+        await using var spool = new FileStream(Path.Join(Path.GetTempPath(), $"cosmos-csv-{Guid.NewGuid():N}.tmp"), spoolOptions);
         using var spoolWriter = new StreamWriter(spool, new UTF8Encoding(false), leaveOpen: true);
         var headers = new List<string>();
         var headerSet = new HashSet<string>(StringComparer.Ordinal);
@@ -324,7 +328,7 @@ internal class ExportCommand : CosmosCommand
         var destination = Path.GetFullPath(filePath);
         var directory = Path.GetDirectoryName(destination)!;
         Directory.CreateDirectory(directory);
-        var temporary = Path.Combine(directory, $".cosmos-export-{Guid.NewGuid():N}.tmp");
+        var temporary = Path.Join(directory, $".cosmos-export-{Guid.NewGuid():N}.tmp");
         try
         {
             int count;
@@ -362,7 +366,19 @@ internal class ExportCommand : CosmosCommand
         }
         finally
         {
-            System.IO.File.Delete(temporary);
+            DeleteTemporaryFile(temporary);
+        }
+    }
+
+    internal static void DeleteTemporaryFile(string path)
+    {
+        try
+        {
+            System.IO.File.Delete(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Trace.TraceWarning("Export temporary-file cleanup failed ({0}).", exception.GetType().Name);
         }
     }
 
