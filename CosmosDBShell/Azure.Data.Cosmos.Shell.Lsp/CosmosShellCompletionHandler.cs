@@ -157,7 +157,7 @@ internal class CosmosShellCompletionHandler : ICompletionHandler
             }
         }
 
-        foreach (var container in ShellInterpreter.Instance.VariableContainers.Reverse())
+        foreach (var container in ShellInterpreter.Instance.VariableContainers)
         {
             foreach (var name in container.Variables.Keys)
             {

@@ -279,7 +279,7 @@ public partial class ShellInterpreter : IDisposable
 
     internal PendingBatchState? CurrentBatch { get; set; }
 
-    internal Queue<VariableContainer> VariableContainers { get; } = new();
+    internal Stack<VariableContainer> VariableContainers { get; } = new();
 
     /// <summary>
     /// Gets a value indicating whether the shell is running in machine mode, where
@@ -962,10 +962,18 @@ public partial class ShellInterpreter : IDisposable
 
     internal async Task<CommandState> RunCommandAsync(CommandState currentState, string commandText, CancellationToken token)
     {
-        var lexer = new Lexer(commandText);
-        var parser = new StatementParser(lexer);
+        var parser = StatementParser.ScriptParseResult.Parse(commandText);
+        if (parser.Errors.HasErrors)
+        {
+            if (LooksLikeConnectionStringLine(commandText))
+            {
+                parser.Errors.Add(new ParseError(0, 1, MessageService.GetString("error-command-not-found-connection-string"), ErrorLevel.Warning));
+            }
 
-        foreach (var statements in parser.ParseStatements())
+            return new ParserErrorCommandState(parser.Errors);
+        }
+
+        foreach (var statements in parser.Statements)
         {
             if (token.IsCancellationRequested)
             {
@@ -2002,23 +2010,10 @@ public partial class ShellInterpreter : IDisposable
         // Ensure we have at least one variable container (global scope)
         if (this.VariableContainers.Count == 0)
         {
-            this.VariableContainers.Enqueue(new VariableContainer());
+            this.VariableContainers.Push(new VariableContainer());
         }
 
-        // When running inside a script, always write to the current (script) frame.
-        // This ensures script-local assignments don't modify variables in caller scopes.
-        // Outside of scripts, search for existing variable to maintain back-compat.
-        VariableContainer currentScope;
-        if (!string.IsNullOrEmpty(this.CurrentScriptFileName))
-        {
-            // Script execution: always use current frame (script-local by default)
-            currentScope = this.VariableContainers.Last();
-        }
-        else
-        {
-            // Interactive/global: update existing variable if found, else use current frame
-            currentScope = this.GetScope(variableName) ?? this.VariableContainers.Last();
-        }
+        var currentScope = this.VariableContainers.Peek();
 
         var targetType = value.DataType;
 
@@ -2204,7 +2199,7 @@ public partial class ShellInterpreter : IDisposable
 
     private VariableContainer? GetScope(string name)
     {
-        foreach (var container in this.VariableContainers.Reverse())
+        foreach (var container in this.VariableContainers)
         {
             if (container.Variables.ContainsKey(name))
             {

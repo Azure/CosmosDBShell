@@ -221,6 +221,8 @@ cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c seed.csh mydb my
 echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
 ```
 
+Scripts are parsed and validated before their statements execute. Functions preserve argument types and keep assignments local; `return`, `break`, and `continue` propagate through nested blocks to their owning function, script, or loop. Integer overflow is reported as an error. See the [language rules and compatibility notes](docs/programming.md#operators), including operator precedence, compound assignment, numeric promotion, and runtime errors. Runtime failures do not roll back earlier successful operations.
+
 ## Deterministic Exit Codes
 
 When running scripts or automation, Cosmos DB Shell maps execution failures to a set of stable exit codes (accessible via `$?`, `%ERRORLEVEL%`, or `$LASTEXITCODE`):

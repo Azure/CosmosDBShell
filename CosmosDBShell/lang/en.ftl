@@ -364,6 +364,11 @@ command-import-dry-run-success = Dry run: { $count } valid { $count ->
 }
 command-import-error-missing_file = A source file path is required.
 command-import-error-invalid_csv = Invalid CSV record at line { $line }.
+script-error-argument-count = Function '{ $name }' expects { $expected } arguments, got { $actual }.
+script-error-loop-control = break and continue require an enclosing loop in the same function or script.
+script-error-return-context = return requires an enclosing function or script file.
+script-error-duplicate-parameter = Duplicate function parameter '{ $name }'.
+script-error-command-failed = Command expression '{ $name }' failed.
 command-import-error-file_not_found = File '{ $file }' was not found.
 command-import-error-blank_line = Line { $line } is blank.
 command-import-error-not_object = Line { $line } is not a JSON object.

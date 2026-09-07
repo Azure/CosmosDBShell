@@ -39,6 +39,64 @@ public class OperatorEvaluationTests
     }
 
     [Theory]
+    [InlineData("2147483647 + 1")]
+    [InlineData("(-2147483647 - 1) - 1")]
+    [InlineData("2147483647 * 2")]
+    [InlineData("2 ** 31")]
+    [InlineData("-(-2147483647 - 1)")]
+    public async Task IntegerOverflow_Throws(string input)
+    {
+        await Assert.ThrowsAsync<OverflowException>(() => EvalAsync(input));
+    }
+
+    [Theory]
+    [InlineData("3", 1.0)]
+    [InlineData("3.0", 1.5)]
+    [InlineData("3.5", 1.75)]
+    [InlineData("2147483648", 1073741824.0)]
+    public async Task JsonNumbers_UseConsistentArithmetic(string number, double expected)
+    {
+        using var document = JsonDocument.Parse(number);
+        var expression = new BinaryOperatorExpression(
+            new ConstantExpression(new(TokenType.Number, number, 0, number.Length), new ShellJson(document.RootElement)),
+            new(TokenType.Divide, "/", 0, 1),
+            new ConstantExpression(new(TokenType.Number, "2", 0, 1), new ShellNumber(2)));
+        var result = await expression.EvaluateAsync(ShellInterpreter.Instance, new(), CancellationToken.None);
+        Assert.Equal(expected, Assert.IsType<double>(result.ConvertShellObject(DataType.Decimal)));
+    }
+
+    [Fact]
+    public async Task NotEqual_EvaluatesEachOperandOnce()
+    {
+        var left = new CountingExpression();
+        var right = new CountingExpression();
+        var expression = new BinaryOperatorExpression(left, new(TokenType.NotEqual, "!=", 0, 2), right);
+        await expression.EvaluateAsync(ShellInterpreter.Instance, new(), CancellationToken.None);
+        Assert.Equal(1, left.Count);
+        Assert.Equal(1, right.Count);
+    }
+
+    private sealed class CountingExpression : Expression
+    {
+        public int Count { get; private set; }
+
+        public override int Start => 0;
+
+        public override int Length => 1;
+
+        public override Task<ShellObject> EvaluateAsync(ShellInterpreter interpreter, CommandState currentState, CancellationToken cancellationToken)
+        {
+            this.Count++;
+            return Task.FromResult<ShellObject>(new ShellNumber(this.Count));
+        }
+
+        public override void Accept(IAstVisitor visitor)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    [Theory]
     [InlineData("1.5 + 2.5", 4.0)]
     [InlineData("5.0 - 2.5", 2.5)]
     [InlineData("2.5 * 2.0", 5.0)]

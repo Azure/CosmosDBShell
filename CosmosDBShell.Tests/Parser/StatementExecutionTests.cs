@@ -17,10 +17,62 @@ using Azure.Data.Cosmos.Shell.Parser;
 /// </summary>
 public class StatementExecutionTests : TestBase
 {
+    [Fact]
+    public async Task SyntaxError_PreventsEarlierAssignment()
+    {
+        SetVariable("value", new ShellNumber(1));
+        var state = await Shell.RunCommandAsync(new(), "$value = 2; if true {", System.Threading.CancellationToken.None);
+
+        Assert.True(state.IsError);
+        Assert.Equal(1, GetInt("value"));
+    }
+
+    [Theory]
+    [InlineData("break")]
+    [InlineData("continue")]
+    [InlineData("return 1")]
+    [InlineData("if false { break }")]
+    [InlineData("def duplicate [value value] { return $value }")]
+    [InlineData("for $item in [1] { def invalid { break } }")]
+    public async Task SemanticError_PreventsEarlierAssignment(string invalid)
+    {
+        SetVariable("value", new ShellNumber(1));
+        var state = await Shell.RunCommandAsync(new(), $"$value = 2; {invalid}", System.Threading.CancellationToken.None);
+        Assert.True(state.IsError);
+        Assert.Equal(1, GetInt("value"));
+    }
+
     private int GetInt(string name)
     {
         var value = GetVariable(name);
         return (int)Assert.IsType<ShellNumber>(value).Value;
+    }
+
+    [Theory]
+    [InlineData("if true { return 1 }")]
+    [InlineData("while true { if true { return 1 } }")]
+    [InlineData("do { if true { return 1 } } while true")]
+    [InlineData("loop { if true { return 1 } }")]
+    [InlineData("for $item in [1,2] { if true { return 1 } }")]
+    public async Task NestedReturn_ExitsFunction(string body)
+    {
+        var state = await RunScriptAsync($"def probe {{ {body}; return 2 }}; $result = (probe)");
+        Assert.False(state.IsError);
+        Assert.Equal(1, GetInt("result"));
+        Assert.False(state.ReturnFunc);
+    }
+
+    [Theory]
+    [InlineData("for $item in [1,2] { if true { continue }; $count = $count + 1 }")]
+    [InlineData("while $index < 2 { $index = $index + 1; if true { continue }; $count = $count + 1 }")]
+    [InlineData("do { $index = $index + 1; if true { continue }; $count = $count + 1 } while $index < 2")]
+    [InlineData("loop { $index = $index + 1; if $index > 2 { break }; if true { continue }; $count = $count + 1 }")]
+    public async Task NestedContinue_SkipsRemainderOfIteration(string body)
+    {
+        var state = await RunScriptAsync($"$count = 0; $index = 0; {body}");
+        Assert.False(state.IsError);
+        Assert.Equal(0, GetInt("count"));
+        Assert.False(state.ContinueBlock);
     }
 
     [Fact]
@@ -29,6 +81,15 @@ public class StatementExecutionTests : TestBase
         var state = await RunScriptAsync("$x = 0\nif 1 < 2 { $x = 10 } else { $x = 20 }");
         Assert.False(state.IsError);
         Assert.Equal(10, GetInt("x"));
+    }
+
+    [Theory]
+    [InlineData("dir \"*.missing-regression-file\" --directory .")]
+    [InlineData("$files = (dir \"*.missing-regression-file\" --directory .)")]
+    public async Task ReusedCommand_BindsOptionsWithoutMutatingAst(string command)
+    {
+        var state = await RunScriptAsync($"def probe {{ {command} }}; probe; probe");
+        Assert.False(state.IsError);
     }
 
     [Fact]
@@ -160,6 +221,43 @@ public class StatementExecutionTests : TestBase
         Assert.Equal(19, GetInt("x"));
     }
 
+    [Theory]
+    [InlineData("+=", 9)]
+    [InlineData("-=", 3)]
+    [InlineData("*=", 18)]
+    [InlineData("/=", 2)]
+    public async Task CompoundAssignment_UsesArithmeticRules(string assignment, int expected)
+    {
+        var script = $"$value = 6; $value {assignment} 3";
+        var parser = new StatementParser(script);
+        var statements = parser.ParseStatements();
+        Assert.False(parser.Errors.HasErrors);
+        Assert.Equal($"$value {assignment} 3", statements[1].ToString());
+        var state = await RunScriptAsync(script);
+        Assert.False(state.IsError);
+        Assert.Equal(expected, GetInt("value"));
+    }
+
+    [Fact]
+    public async Task CompoundAssignment_InFunction_RemainsLocal()
+    {
+        var state = await RunScriptAsync("$value = 1; def increment { $value += 2; return $value }; $local = (increment)");
+        Assert.False(state.IsError);
+        Assert.Equal(1, GetInt("value"));
+        Assert.Equal(3, GetInt("local"));
+    }
+
+    [Theory]
+    [InlineData("while true {}")]
+    [InlineData("do {} while true")]
+    [InlineData("loop {}")]
+    [InlineData("for $value in [1] {}")]
+    public async Task PureLoop_ObservesCancellation(string script)
+    {
+        var statement = Assert.Single(new StatementParser(script).ParseStatements());
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => statement.RunAsync(Shell, new(), new System.Threading.CancellationToken(true)));
+    }
+
     [Fact]
     public async Task For_OverStrings_BindsTextElements()
     {
@@ -205,5 +303,15 @@ public class StatementExecutionTests : TestBase
     {
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => RunScriptAsync("for $x in 5 { }"));
+    }
+
+    [Theory]
+    [InlineData("[1.5,2.5]", 4.0)]
+    [InlineData("[2147483648.0,1]", 2147483649.0)]
+    public async Task For_OverDecimalAndLargeNumbers_PreservesValues(string values, double expected)
+    {
+        var state = await RunScriptAsync($"$sum = 0; for $value in {values} {{ $sum = $sum + $value }}");
+        Assert.False(state.IsError);
+        Assert.Equal(expected, Assert.IsType<ShellDecimal>(GetVariable("sum")).Value);
     }
 }

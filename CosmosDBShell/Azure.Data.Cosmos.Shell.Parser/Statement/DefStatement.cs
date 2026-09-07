@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 /// <summary>
 /// Represents a function definition statement that declares a reusable function.
@@ -86,36 +87,43 @@ internal class DefStatement : Statement
     /// Creates a new variable scope for parameters, executes the function body,
     /// then restores the previous scope.
     /// </remarks>
-    public async Task<CommandState> ExecuteFunctionAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, params string[] args)
+    public async Task<CommandState> ExecuteFunctionAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, params ShellObject[] args)
     {
-        var arguments = new VariableContainer();
-
-        for (int i = 0; i < this.Parameters.Length && i < args.Length; i++)
+        if (args.Length != this.Parameters.Length)
         {
-            arguments.Set(this.Parameters[i], new ShellText(args[i]));
+            throw new CommandException(this.Name, MessageService.GetString("script-error-argument-count", new Dictionary<string, object>
+            {
+                ["name"] = this.Name,
+                ["expected"] = this.Parameters.Length,
+                ["actual"] = args.Length,
+            }));
         }
 
-        shell.VariableContainers.Enqueue(arguments);
+        var arguments = new VariableContainer();
+
+        for (int i = 0; i < this.Parameters.Length; i++)
+        {
+            var argument = args[i] is ShellIdentifier identifier ? new ShellText(identifier.Value) : args[i];
+            arguments.Set(this.Parameters[i].TrimStart('$'), argument);
+        }
+
+        shell.VariableContainers.Push(arguments);
         try
         {
-            return await this.Statement.RunAsync(shell, commandState, token);
+            var result = await this.Statement.RunAsync(shell, commandState, token);
+            if (result.ReturnFunc)
+            {
+                result.ReturnFunc = false;
+                result.Result = result.ReturnValue;
+                result.ReturnValue = null;
+                result.OutputRendered = false;
+            }
+
+            return result;
         }
         finally
         {
-            // Remove the function frame we pushed. Since VariableContainers is a Queue (FIFO),
-            // we need to rotate all elements except the last one to the back, then dequeue the last one.
-            var count = shell.VariableContainers.Count;
-            if (count > 0)
-            {
-                // Rotate (count - 1) elements to the back
-                for (int i = 0; i < count - 1; i++)
-                {
-                    shell.VariableContainers.Enqueue(shell.VariableContainers.Dequeue());
-                }
-
-                // Now the function frame is at the front, dequeue it
-                shell.VariableContainers.Dequeue();
-            }
+            shell.VariableContainers.Pop();
         }
     }
 

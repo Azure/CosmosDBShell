@@ -12,7 +12,7 @@ This document covers scripts and custom commands in Cosmos Shell.
 ### Identifiers
 
 - Allowed: letters, digits, `_`, `-`, `.`, `\`, `$`
-- Keywords (case-insensitive): `if`, `while`, `for`, `do`, `loop`, `def`, `return`, `break`, `continue`
+- Keywords (case-insensitive): `if`, `else`, `while`, `for`, `in`, `do`, `loop`, `def`, `return`, `break`, `continue`, `exec`
 
 ### Variables
 
@@ -20,10 +20,17 @@ This document covers scripts and custom commands in Cosmos Shell.
 - Script args: `$0` = path, `$1`, `$2`... = positional arguments
 - Assign: `$name = <expression>`
 
+Variable names are case-sensitive. For compatibility, the lexer also accepts hyphens in variable names: `$name-1` refers to a variable named `name-1`, not subtraction. Use spaces around arithmetic and assignment operators, for example `$name - 1` and `$name -= 1`.
+
 ### Numbers
 
 - Integers: `42`, `314`
 - Negatives: `-1`
+- Decimal literals: `3.14`, `3.0`
+
+Integer literals use signed 32-bit values. Arithmetic between integers stays integer arithmetic, including truncating division (`3 / 2` is `1`). Integer overflow raises an error instead of wrapping. Use a decimal operand for floating-point arithmetic (`3.0 / 2` is `1.5`). Decimal values use IEEE 754 `double`, not exact base-10 decimal arithmetic.
+
+JSON numbers use the same rules in expressions and `for` loops: integer-form values within the `Int32` range become integers; fractional, exponent-form, or larger values use `double`. Large JSON integers can therefore lose precision beyond the exact range of `double`. For example, a JSON property containing `3` divided by `2` produces `1`, while a property containing `3.0` produces `1.5`.
 
 ### Strings
 
@@ -62,6 +69,50 @@ $.values[0].id      # property and array access
 | Logical | `&&` `\|\|` `^` `!` |
 | Grouping | `( ... )` |
 | Assignment | `=` `+=` `-=` `*=` `/=` |
+
+Precedence, from lowest to highest:
+
+| Level | Operators | Associativity |
+| --- | --- | --- |
+| 1 | `\|\|` | Left |
+| 2 | `&&` | Left |
+| 3 | `^` | Left |
+| 4 | `==`, `!=` | Left |
+| 5 | `<`, `<=`, `>`, `>=` | Left |
+| 6 | `+`, `-` | Left |
+| 7 | `*`, `/`, `%` | Left |
+| 8 | `**` | Right |
+| 9 | Unary `!`, `+`, `-` | Right |
+
+Parentheses override precedence. Unary operators bind more tightly than power: `-2 ** 2` is `4`; use `-(2 ** 2)` for `-4`. `&&` and `||` short-circuit; other binary operators evaluate each operand exactly once. Assignment is a statement, not an expression. Compound assignments use the same arithmetic rules as their corresponding binary operators and evaluate the right-hand side once.
+
+### Statement Grammar
+
+The following EBNF summarizes statement structure; command arguments retain shell-word quoting and option syntax. Expressions follow the precedence table above and include literals, variables, JSON construction, paths, and parenthesized command calls.
+
+```ebnf
+script     = { statement, [ separator ] } ;
+separator  = ";" | newline ;
+statement  = simple, { "|", simple } ;
+simple     = assignment | command | block
+           | "if", expression, statement, [ "else", statement ]
+           | "while", expression, statement
+           | "do", statement, "while", expression
+           | "for", variable, "in", expression, statement
+           | "loop", statement
+           | "def", name, [ parameters ], statement
+           | "return", [ expression ] | "break" | "continue"
+           | "exec", expression, { argument } ;
+block      = "{", script, "}" ;
+assignment = variable, ( "=" | "+=" | "-=" | "*=" | "/=" ), expression ;
+parameters = "[", { name }, "]" | "(", [ name, { ",", name } ], ")" ;
+```
+
+### Validation and Errors
+
+Each command text or script file is fully parsed and checked for invalid control-flow placement and duplicate function parameters before any of its statements execute. Syntax or semantic errors prevent execution of that entire input. Script files are checked when invoked, including calls through `exec` and command expressions; callers are not recursively preflighted against dynamically selected files.
+
+Runtime failures stop execution but do not roll back earlier successful commands. A failed command expression propagates an error rather than silently producing an empty result. Cancellation is checked between block statements and loop iterations, including loops without database commands.
 
 ## Variable Usage
 
@@ -173,6 +224,8 @@ Piping the contents of a script file directly runs those statements as standard 
 
 Each script run gets its own variable scope. Variables from the caller are readable at script start, but assignments inside the script stay local to that script run and do not leak back to the caller.
 
+This also applies when a script is called as an expression. `return [expression]` exits the current script file and supplies its result, including from nested blocks or loops. A return inside a function exits only that function. Script positional arguments remain text values, unlike typed function parameters.
+
 ## Control Flow
 
 ### if/else
@@ -250,11 +303,13 @@ loop {
 ### break / continue
 
 ```bash
-while $true {
+while true {
     if $skip { continue }
     if $done { break }
 }
 ```
+
+`break` exits the nearest enclosing loop; `continue` skips the rest of its current iteration. Nested blocks and conditionals preserve these signals. Neither may cross a function or script-file boundary. Bare blocks do not introduce variable scopes.
 
 ## Custom Commands (def)
 
@@ -275,9 +330,11 @@ greet "Cosmos"
 
 ### Parameters and Scope
 
-- Arguments available as `$param1`, `$param2` inside body
-- Functions have own variable scope (don't leak to caller)
-- Globals remain readable
+- Arguments are available as `$param1`, `$param2` inside the body and retain their numeric, boolean, text, or JSON types. Unquoted shell words are text.
+- The argument count must exactly match the parameter count. Duplicate parameter names are rejected.
+- Functions have their own variable scope. Assignments, including compound assignments to existing outer variables, stay local.
+- Variables are read from the nearest active call frame, then outer caller frames and globals. Functions do not capture lexical closures. Frames are removed on success, failure, and cancellation.
+- Return a value to update a caller variable explicitly, for example `$total = (add $total 1)`. Session settings such as `$sessionRequestChargeWarningThreshold` remain session-wide.
 
 ### Returning Values
 
@@ -286,7 +343,7 @@ def add [a b] { return ($a + $b) }
 add 2 3 | echo $"sum=$."
 ```
 
-- `return` stops execution and sets result
+- `return` stops the current function even inside nested blocks or loops and sets its result. A bare `return` has no result. Outside a function or script file, `return` is rejected.
 - Returned JSON can be accessed with paths downstream
 - Without `return`, function completes with last state
 

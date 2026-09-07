@@ -69,6 +69,7 @@ internal class DoWhileStatement : Statement
     {
         do
         {
+            token.ThrowIfCancellationRequested();
             try
             {
                 commandState = await this.Statement.RunAsync(shell, commandState, token);
@@ -90,6 +91,12 @@ internal class DoWhileStatement : Statement
                 throw;
             }
 
+            if (commandState.IsError || commandState.ReturnFunc)
+            {
+                return commandState;
+            }
+
+            commandState.ContinueBlock = false;
             if (commandState.BreakBlock)
             {
                 commandState.BreakBlock = false; // Reset break state

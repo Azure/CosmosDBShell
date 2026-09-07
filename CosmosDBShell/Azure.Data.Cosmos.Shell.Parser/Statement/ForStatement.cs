@@ -100,9 +100,10 @@ internal class ForStatement : Statement
 
         foreach (var arr in collection.EnumerateArray())
         {
+            token.ThrowIfCancellationRequested();
             ShellObject elementValue = arr.ValueKind switch
             {
-                JsonValueKind.Number => new ShellNumber(arr.GetInt32()),
+                JsonValueKind.Number => ShellNumber.FromJson(arr),
                 JsonValueKind.String => new ShellText(arr.GetString() ?? string.Empty),
                 JsonValueKind.True => new ShellBool(true),
                 JsonValueKind.False => new ShellBool(false),
@@ -133,6 +134,12 @@ internal class ForStatement : Statement
                 throw;
             }
 
+            if (commandState.IsError || commandState.ReturnFunc)
+            {
+                return commandState;
+            }
+
+            commandState.ContinueBlock = false;
             if (commandState.BreakBlock)
             {
                 commandState.BreakBlock = false; // Reset break state

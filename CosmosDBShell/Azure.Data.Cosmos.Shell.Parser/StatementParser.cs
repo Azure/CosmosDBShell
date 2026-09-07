@@ -851,6 +851,19 @@ internal class StatementParser
                 var current = this.expressionParser.Current;
                 this.expressionParser.Advance();
 
+                var compoundOperator = this.expressionParser.IsAtEnd ? null : this.expressionParser.Current;
+                if (compoundOperator?.Type is TokenType.Plus or TokenType.Minus or TokenType.Multiply or TokenType.Divide &&
+                    this.expressionParser.Peek() is { Type: TokenType.Assignment } equals &&
+                    compoundOperator.Start + compoundOperator.Length == equals.Start)
+                {
+                    this.expressionParser.Advance();
+                    this.expressionParser.Advance();
+                    var value = this.expressionParser.ParseExpression();
+                    var variable = new VariableExpression(current, current.Value.StartsWith('$') ? current.Value[1..] : current.Value);
+                    var assignmentToken = new Token(TokenType.Assignment, compoundOperator.Value + "=", compoundOperator.Start, compoundOperator.Length + equals.Length);
+                    return new AssignmentStatement(variable, assignmentToken, value);
+                }
+
                 if (!this.expressionParser.IsAtEnd &&
                     this.expressionParser.Current != null &&
                     this.expressionParser.Current.Type == TokenType.Assignment)
@@ -1187,6 +1200,93 @@ internal class StatementParser
             }
 
             this.expressionParser.Advance();
+        }
+    }
+
+    internal sealed class ScriptParseResult
+    {
+        private ScriptParseResult(IReadOnlyList<Statement> statements, ErrorList errors)
+        {
+            this.Statements = statements;
+            this.Errors = errors;
+        }
+
+        public IReadOnlyList<Statement> Statements { get; }
+
+        public ErrorList Errors { get; }
+
+        public static ScriptParseResult Parse(string source, bool allowReturn = false)
+        {
+            var parser = new StatementParser(source);
+            var statements = parser.ParseStatements();
+            if (!parser.Errors.HasErrors)
+            {
+                foreach (var statement in statements)
+                {
+                    Validate(statement, parser.Errors, inFunction: allowReturn, loopDepth: 0);
+                }
+            }
+
+            return new ScriptParseResult(statements.AsReadOnly(), parser.Errors);
+        }
+
+        private static void Validate(Statement statement, ErrorList errors, bool inFunction, int loopDepth)
+        {
+            switch (statement)
+            {
+                case BreakStatement or ContinueStatement when loopDepth == 0:
+                    errors.Add(new ParseError(statement.Start, statement.Length, MessageService.GetString("script-error-loop-control")));
+                    break;
+                case ReturnStatement when !inFunction:
+                    errors.Add(new ParseError(statement.Start, statement.Length, MessageService.GetString("script-error-return-context")));
+                    break;
+                case DefStatement function:
+                    var names = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var parameter in function.Parameters)
+                    {
+                        if (!names.Add(parameter.TrimStart('$')))
+                        {
+                            errors.Add(new ParseError(function.NameToken.Start, function.NameToken.Length, MessageService.GetArgsString("script-error-duplicate-parameter", "name", parameter)));
+                        }
+                    }
+
+                    Validate(function.Statement, errors, inFunction: true, loopDepth: 0);
+                    break;
+                case BlockStatement block:
+                    foreach (var child in block.Statements)
+                    {
+                        Validate(child, errors, inFunction, loopDepth);
+                    }
+
+                    break;
+                case PipeStatement pipe:
+                    foreach (var child in pipe.Statements)
+                    {
+                        Validate(child, errors, inFunction, loopDepth);
+                    }
+
+                    break;
+                case IfStatement conditional:
+                    Validate(conditional.Statement, errors, inFunction, loopDepth);
+                    if (conditional.ElseStatement != null)
+                    {
+                        Validate(conditional.ElseStatement, errors, inFunction, loopDepth);
+                    }
+
+                    break;
+                case ForStatement forLoop:
+                    Validate(forLoop.Statement, errors, inFunction, loopDepth + 1);
+                    break;
+                case WhileStatement whileLoop:
+                    Validate(whileLoop.Statement, errors, inFunction, loopDepth + 1);
+                    break;
+                case DoWhileStatement doLoop:
+                    Validate(doLoop.Statement, errors, inFunction, loopDepth + 1);
+                    break;
+                case LoopStatement loop:
+                    Validate(loop.Statement, errors, inFunction, loopDepth + 1);
+                    break;
+            }
         }
     }
 }
