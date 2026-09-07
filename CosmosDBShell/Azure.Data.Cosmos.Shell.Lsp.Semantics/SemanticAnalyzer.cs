@@ -28,7 +28,9 @@ public sealed class SemanticAnalyzer
     private readonly List<Symbol> symbols = new();
     private readonly List<ReferenceInfo> references = new();
     private readonly List<SemanticDiagnostic> diagnostics = new();
-    private readonly HashSet<string> declaredVariables = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> declaredVariables = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, FunctionSymbol> functions = new(StringComparer.Ordinal);
+    private readonly Dictionary<DefStatement, FunctionSymbol> functionDefinitions = new();
 
     /// <summary>
     /// Analyzes a collection of parsed statements to produce a semantic model.
@@ -38,43 +40,139 @@ public sealed class SemanticAnalyzer
     /// <returns>A <see cref="SemanticModel"/> containing symbols, references, and diagnostics.</returns>
     public SemanticModel Analyze(IEnumerable<Statement> statements, string source)
     {
-        foreach (var st in statements)
+        this.symbols.Clear();
+        this.references.Clear();
+        this.diagnostics.Clear();
+        this.declaredVariables.Clear();
+        this.functions.Clear();
+        this.functionDefinitions.Clear();
+        var statementList = statements.ToList();
+        foreach (var statement in statementList)
+        {
+            this.CollectFunctions(statement);
+        }
+
+        foreach (var st in statementList)
         {
             this.VisitStatement(st);
         }
 
         return new SemanticModel
         {
-            Symbols = this.symbols,
-            References = this.references,
-            Diagnostics = this.diagnostics,
+            Symbols = this.symbols.ToArray(),
+            References = this.references.ToArray(),
+            Diagnostics = this.diagnostics.ToArray(),
         };
     }
 
-    /// <summary>
-    /// Helper method to extract expression properties via reflection.
-    /// </summary>
-    /// <param name="owner">The object containing the property.</param>
-    /// <param name="prop">The property name to extract.</param>
-    /// <returns>The extracted expression.</returns>
-    private static Expression GetExpression(object owner, string prop)
-        => (Expression)(owner.GetType().GetProperty(prop)!.GetValue(owner)!);
+    private static IEnumerable<Statement> GetChildStatements(Statement statement)
+    {
+        return statement switch
+        {
+            BlockStatement block => block.Statements,
+            PipeStatement pipe => pipe.Statements,
+            DefStatement function => [function.Statement],
+            IfStatement conditional when conditional.ElseStatement != null => [conditional.Statement, conditional.ElseStatement],
+            IfStatement conditional => [conditional.Statement],
+            ForStatement forLoop => [forLoop.Statement],
+            WhileStatement whileLoop => [whileLoop.Statement],
+            DoWhileStatement doLoop => [doLoop.Statement],
+            LoopStatement loop => [loop.Statement],
+            _ => [],
+        };
+    }
+
+    private void CollectFunctions(Statement statement)
+    {
+        if (statement is DefStatement definition)
+        {
+            var symbol = new FunctionSymbol(definition.Name, definition.NameToken.Start, definition.NameToken.Length);
+            this.functionDefinitions[definition] = symbol;
+            this.functions.TryAdd(definition.Name, symbol);
+            this.symbols.Add(symbol);
+        }
+
+        foreach (var child in GetChildStatements(statement))
+        {
+            this.CollectFunctions(child);
+        }
+    }
 
     /// <summary>
     /// Visits a statement node in the AST to extract semantic information.
     /// </summary>
     /// <param name="st">The statement to analyze.</param>
     /// <remarks>
-    /// Currently handles:
-    /// - CommandStatement: Validates command existence and options
-    /// - Other statements: Extracts expressions via reflection for variable analysis.
+    /// Visits expressions and child statements without executing declarations or commands.
     /// </remarks>
     private void VisitStatement(Statement st)
     {
-        if (st is CommandStatement cmd)
+        switch (st)
         {
-            var name = cmd.Name ?? string.Empty;
-            if (name.Length > 0)
+            case CommandStatement command:
+                this.VisitCommand(command);
+                break;
+            case DefStatement definition:
+                this.functions[definition.Name] = this.functionDefinitions[definition];
+                this.references.Add(new ReferenceInfo
+                {
+                    Symbol = this.functionDefinitions[definition],
+                    Start = definition.NameToken.Start,
+                    Length = definition.NameToken.Length,
+                    IsDefinition = true,
+                });
+                break;
+            case AssignmentStatement assignment:
+                this.RecordVariableReference(assignment.Variable);
+                this.VisitExpression(assignment.Value);
+                break;
+            case ReturnStatement returned when returned.Value != null:
+                this.VisitExpression(returned.Value);
+                break;
+            case IfStatement conditional:
+                this.VisitExpression(conditional.Condition);
+                break;
+            case WhileStatement whileLoop:
+                this.VisitExpression(whileLoop.Condition);
+                break;
+            case DoWhileStatement doLoop:
+                this.VisitExpression(doLoop.Condition);
+                break;
+            case ForStatement forLoop:
+                this.VisitExpression(forLoop.Collection);
+                break;
+            case ExecStatement executed:
+                this.VisitExpression(executed.CommandExpression);
+                foreach (var argument in executed.Arguments)
+                {
+                    this.VisitExpression(argument);
+                }
+
+                break;
+        }
+
+        foreach (var child in GetChildStatements(st))
+        {
+            this.VisitStatement(child);
+        }
+    }
+
+    private void VisitCommand(CommandStatement cmd)
+    {
+        var name = cmd.Name ?? string.Empty;
+        if (name.Length > 0)
+        {
+            if (this.functions.TryGetValue(name, out var function))
+            {
+                this.references.Add(new ReferenceInfo
+                {
+                    Symbol = function,
+                    Start = cmd.Start,
+                    Length = cmd.CommandToken.Length,
+                    IsDefinition = false,
+                });
+            }
+            else
             {
                 var sym = new CommandSymbol(name, cmd.Start, Math.Max(1, name.Length));
                 this.symbols.Add(sym);
@@ -102,19 +200,11 @@ public sealed class SemanticAnalyzer
                     this.ValidateCommandOptions(cmd, factory);
                 }
             }
-
-            foreach (var arg in cmd.Arguments)
-            {
-                this.VisitExpression(arg);
-            }
-
-            return;
         }
 
-        var expProp = st.GetType().GetProperty("Expression");
-        if (expProp?.GetValue(st) is Expression expr)
+        foreach (var arg in cmd.Arguments)
         {
-            this.VisitExpression(expr);
+            this.VisitExpression(arg);
         }
     }
 
@@ -229,11 +319,30 @@ public sealed class SemanticAnalyzer
                 this.RecordVariableReference(ve);
                 break;
             case BinaryOperatorExpression be:
-                this.VisitExpression(GetExpression(be, "Left"));
-                this.VisitExpression(GetExpression(be, "Right"));
+                this.VisitExpression(be.Left);
+                this.VisitExpression(be.Right);
                 break;
             case UnaryOperatorExpression ue:
-                this.VisitExpression(GetExpression(ue, "Expression"));
+                this.VisitExpression(ue.Expression);
+                break;
+            case CommandExpression command:
+                var statement = new CommandStatement(command.CommandToken);
+                statement.Arguments.AddRange(command.Arguments);
+                this.VisitCommand(statement);
+                break;
+            case CommandOption option when option.Value != null:
+                this.VisitExpression(option.Value);
+                break;
+            case FilterPipeExpression pipe:
+                this.VisitExpression(pipe.Left);
+                this.VisitExpression(pipe.Right);
+                break;
+            case FilterCallExpression call:
+                foreach (var argument in call.Arguments)
+                {
+                    this.VisitExpression(argument);
+                }
+
                 break;
             case ParensExpression pe:
                 this.VisitExpression(pe.InnerExpression);
@@ -296,7 +405,7 @@ public sealed class SemanticAnalyzer
         else
         {
             // Subsequent occurrence - reference to existing symbol
-            var sym = this.symbols.OfType<VariableSymbol>().First(v => v.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            var sym = this.symbols.OfType<VariableSymbol>().First(v => v.Name.Equals(name, StringComparison.Ordinal));
             this.references.Add(new ReferenceInfo
             {
                 Symbol = sym,

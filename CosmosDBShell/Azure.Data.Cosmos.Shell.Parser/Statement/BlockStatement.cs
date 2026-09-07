@@ -84,6 +84,7 @@ internal class BlockStatement : Statement
     {
         foreach (var statement in this.Statements)
         {
+            token.ThrowIfCancellationRequested();
             try
             {
                 commandState = await statement.RunAsync(shell, commandState, token);
@@ -92,7 +93,7 @@ internal class BlockStatement : Statement
             {
                 throw;
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OperationCanceledException)
             {
                 var content = shell.CurrentScriptContent;
                 var fileName = shell.CurrentScriptFileName;
@@ -105,34 +106,14 @@ internal class BlockStatement : Statement
                 throw;
             }
 
+            if (commandState.BreakBlock || commandState.ContinueBlock || commandState.ReturnFunc)
+            {
+                return commandState;
+            }
+
             commandState = shell.PrintState(commandState, markAsRendered: true);
             if (commandState.IsError)
             {
-                return commandState;
-            }
-
-            // Propagate break out of this block (do not clear it here)
-            if (commandState.BreakBlock)
-            {
-                return commandState;
-            }
-
-            if (commandState.ContinueBlock)
-            {
-                commandState.ContinueBlock = false; // Reset continue state
-                return commandState;
-            }
-
-            if (commandState.ReturnFunc)
-            {
-                commandState.ReturnFunc = false; // Reset return state
-
-                if (commandState.ReturnValue != null)
-                {
-                    commandState.Result = commandState.ReturnValue;
-                    commandState.ReturnValue = null; // Reset return value
-                }
-
                 return commandState;
             }
         }

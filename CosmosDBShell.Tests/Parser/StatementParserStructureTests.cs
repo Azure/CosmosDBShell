@@ -31,6 +31,18 @@ public class StatementParserStructureTests
         return (parser.ParseStatements(), lexer.Errors);
     }
 
+    [Theory]
+    [InlineData("def duplicate [value value] { return $value }")]
+    [InlineData("def duplicate [value $value] { return $value }")]
+    public void DuplicateParameters_HighlightFunctionDefinition(string source)
+    {
+        var result = StatementParser.ScriptParseResult.Parse(source);
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(0, error.Start);
+        Assert.Equal(source.Length, error.Length);
+    }
+
     [Fact]
     public void AppendOutputRedirect_IsRecognized()
     {

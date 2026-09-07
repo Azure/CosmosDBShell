@@ -24,6 +24,38 @@ public class ShellProcessTests
 {
     private static readonly Regex AnsiEscape = new("\x1b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
 
+    [Theory]
+    [InlineData("identity")]
+    [InlineData("identity 1 2")]
+    [InlineData("$result = (identity)")]
+    public async Task WrongFunctionArgumentCount_ReturnsUsageExitCode(string invocation)
+    {
+        var result = await RunShellAsync($"def identity [value] {{ return $value }}; {invocation}", cancellationToken: TestContext.Current.CancellationToken, extraArgs: ["--quiet"]);
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("expects 1 arguments", result.StdErr);
+    }
+
+    [Fact]
+    public async Task DeepExpression_FailsBeforeExecution_WithoutCrashingProcess()
+    {
+        var script = "echo BEFORE_DEPTH_ERROR; $value = " + string.Join(" + ", Enumerable.Repeat("1", 10001));
+        var result = await RunShellAsync(script, cancellationToken: TestContext.Current.CancellationToken, extraArgs: ["--quiet"]);
+        Assert.Equal(2, result.ExitCode);
+        Assert.DoesNotContain("BEFORE_DEPTH_ERROR", result.StdOut);
+        Assert.Contains("expression tree depth", result.StdErr);
+        Assert.DoesNotContain("Stack overflow", result.StdErr);
+    }
+
+    [Fact]
+    public async Task ExpressionAtDepthLimit_EvaluatesSuccessfully()
+    {
+        var script = "$value = " + string.Join(" + ", Enumerable.Repeat("1", 128)) + "; echo $value";
+        var result = await RunShellAsync(script, cancellationToken: TestContext.Current.CancellationToken, extraArgs: ["--quiet"]);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("128", result.StdOut);
+        Assert.Empty(result.StdErr);
+    }
+
     [Fact]
     public async Task StdinPipedScript_VersionCommand_PrintsVersionLineAndExitsZero()
     {

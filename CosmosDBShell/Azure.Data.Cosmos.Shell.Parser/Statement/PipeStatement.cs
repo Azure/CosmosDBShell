@@ -84,7 +84,8 @@ internal class PipeStatement : Statement
     {
         foreach (var statement in this.Statements)
         {
-            if (commandState.IsError)
+            token.ThrowIfCancellationRequested();
+            if (commandState.IsError || commandState.BreakBlock || commandState.ContinueBlock || commandState.ReturnFunc)
             {
                 return commandState;
             }

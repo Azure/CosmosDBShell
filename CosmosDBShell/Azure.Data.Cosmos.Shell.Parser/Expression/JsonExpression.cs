@@ -160,7 +160,7 @@ internal class JsonExpression : Expression
         }
 
         // Serialize the dictionary to a JsonElement
-        var element = JsonSerializer.SerializeToElement(dict);
+        var element = JsonSerializer.SerializeToElement(dict, ShellDecimal.JsonSerializationOptions);
         return new ShellJson(element);
     }
 

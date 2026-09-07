@@ -13,6 +13,8 @@ using System.Text.Json.Nodes;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
+using CsvHelper;
+using CsvHelper.Configuration;
 using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
@@ -256,99 +258,42 @@ internal class ImportCommand : CosmosCommand
     /// <returns>A list of (1-based start line, field values) records.</returns>
     internal static List<(int StartLine, List<string> Fields)> ParseCsvWithLines(string content, char separator)
     {
-        var records = new List<(int StartLine, List<string> Fields)>();
-        var record = new List<string>();
-        var field = new StringBuilder();
-        var inQuotes = false;
-        var hasContent = false;
-        var physicalLine = 1;
-        var recordStartLine = 0;
+        using var reader = new StringReader(content);
+        return ReadCsvRecords(reader, separator, CancellationToken.None).ToList();
+    }
 
-        for (var i = 0; i < content.Length; i++)
+    internal static IEnumerable<(int StartLine, List<string> Fields)> ReadCsvRecords(TextReader reader, char separator, CancellationToken token)
+    {
+        using var parser = new CsvParser(reader, new CsvConfiguration(CultureInfo.InvariantCulture)
         {
-            var c = content[i];
-            if (inQuotes)
+            Delimiter = separator.ToString(),
+            IgnoreBlankLines = false,
+            ExceptionMessagesContainRawData = false,
+        });
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            var startLine = parser.RawRow + 1;
+            string[]? fields;
+            try
             {
-                if (c == '"')
+                if (!parser.Read())
                 {
-                    if (i + 1 < content.Length && content[i + 1] == '"')
-                    {
-                        field.Append('"');
-                        i++;
-                    }
-                    else
-                    {
-                        inQuotes = false;
-                    }
-                }
-                else
-                {
-                    if (c == '\n')
-                    {
-                        physicalLine++;
-                    }
-
-                    field.Append(c);
-                }
-            }
-            else if (c == '"')
-            {
-                if (recordStartLine == 0)
-                {
-                    recordStartLine = physicalLine;
+                    yield break;
                 }
 
-                inQuotes = true;
-                hasContent = true;
+                fields = parser.Record;
             }
-            else if (c == separator)
+            catch (CsvHelperException ex)
             {
-                if (recordStartLine == 0)
-                {
-                    recordStartLine = physicalLine;
-                }
+                throw new CommandException("import", MessageService.GetArgsString("command-import-error-invalid_csv", "line", startLine), ex);
+            }
 
-                record.Add(field.ToString());
-                field.Clear();
-                hasContent = true;
-            }
-            else if (c == '\r')
+            if (fields is not null && parser.RawRecord.TrimEnd('\r', '\n').Length > 0)
             {
-                // Ignored; line breaks are handled on '\n'.
-            }
-            else if (c == '\n')
-            {
-                record.Add(field.ToString());
-                field.Clear();
-                if (hasContent || record.Count > 1)
-                {
-                    records.Add((recordStartLine == 0 ? physicalLine : recordStartLine, record));
-                }
-
-                record = new List<string>();
-                hasContent = false;
-                recordStartLine = 0;
-                physicalLine++;
-            }
-            else
-            {
-                if (recordStartLine == 0)
-                {
-                    recordStartLine = physicalLine;
-                }
-
-                field.Append(c);
-                hasContent = true;
+                yield return (startLine, fields.ToList());
             }
         }
-
-        if (hasContent || field.Length > 0 || record.Count > 0)
-        {
-            record.Add(field.ToString());
-            records.Add((recordStartLine == 0 ? physicalLine : recordStartLine, record));
-        }
-
-        return records;
     }
 
     /// <summary>
@@ -433,17 +378,17 @@ internal class ImportCommand : CosmosCommand
         string[]? partitionKeySegments,
         [EnumeratorCancellation] CancellationToken token)
     {
-        var content = await System.IO.File.ReadAllTextAsync(filePath, token);
-        var records = ParseCsvWithLines(content, ShellInterpreter.CSVSeparator);
-        if (records.Count == 0)
+        await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var reader = new StreamReader(stream);
+        List<string>? headers = null;
+        foreach (var (startLine, fields) in ReadCsvRecords(reader, ShellInterpreter.CSVSeparator, token))
         {
-            yield break;
-        }
+            if (headers is null)
+            {
+                headers = fields;
+                continue;
+            }
 
-        var headers = records[0].Fields;
-        for (var r = 1; r < records.Count; r++)
-        {
-            var (startLine, fields) = records[r];
             yield return (startLine, BuildCsvObject(headers, fields, partitionKeySegments));
         }
     }

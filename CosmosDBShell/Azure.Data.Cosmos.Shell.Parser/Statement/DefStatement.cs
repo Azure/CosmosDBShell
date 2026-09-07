@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 /// <summary>
 /// Represents a function definition statement that declares a reusable function.
@@ -18,6 +19,9 @@ using Azure.Data.Cosmos.Shell.Core;
 [AstHelp("statement-def")]
 internal class DefStatement : Statement
 {
+    private string? sourceName;
+    private string? sourceText;
+
     public DefStatement(Token defToken, Token nameToken, string[] parameters, Statement statement)
     {
         this.DefToken = defToken ?? throw new ArgumentNullException(nameof(defToken));
@@ -70,6 +74,8 @@ internal class DefStatement : Statement
     /// </remarks>
     public override Task<CommandState> RunAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
+        this.sourceName = shell.CurrentScriptFileName;
+        this.sourceText = shell.CurrentScriptContent;
         shell.DeclareFunction(this);
         return Task.FromResult(commandState);
     }
@@ -86,36 +92,68 @@ internal class DefStatement : Statement
     /// Creates a new variable scope for parameters, executes the function body,
     /// then restores the previous scope.
     /// </remarks>
-    public async Task<CommandState> ExecuteFunctionAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, params string[] args)
+    public async Task<CommandState> ExecuteFunctionAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, params ShellObject[] args)
     {
-        var arguments = new VariableContainer();
-
-        for (int i = 0; i < this.Parameters.Length && i < args.Length; i++)
+        if (args.Length != this.Parameters.Length)
         {
-            arguments.Set(this.Parameters[i], new ShellText(args[i]));
+            var message = MessageService.GetString("script-error-argument-count", new Dictionary<string, object>
+            {
+                ["name"] = this.Name,
+                ["expected"] = this.Parameters.Length,
+                ["actual"] = args.Length,
+            });
+            throw new CommandException(this.Name, message, new ArgumentException(message));
         }
 
-        shell.VariableContainers.Enqueue(arguments);
+        var arguments = new VariableContainer();
+
+        for (int i = 0; i < this.Parameters.Length; i++)
+        {
+            var argument = args[i] is ShellIdentifier identifier ? new ShellText(identifier.Value) : args[i];
+            arguments.Set(this.Parameters[i].TrimStart('$'), argument);
+        }
+
+        shell.PushCallScope(arguments, token);
+        var callerName = shell.CurrentScriptFileName;
+        var callerText = shell.CurrentScriptContent;
         try
         {
-            return await this.Statement.RunAsync(shell, commandState, token);
+            shell.CurrentScriptFileName = this.sourceName;
+            shell.CurrentScriptContent = this.sourceText;
+            var result = await this.Statement.RunAsync(shell, commandState, token);
+            if (result.ReturnFunc)
+            {
+                result.ReturnFunc = false;
+                result.Result = result.ReturnValue;
+                result.ReturnValue = null;
+                result.OutputRendered = false;
+            }
+
+            return result;
+        }
+        catch (Exception exception) when (exception is not PositionalException && exception is not OperationCanceledException && this.sourceName != null && this.sourceText != null)
+        {
+            var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(this.sourceText, this.Statement.Start);
+            throw new PositionalException(this.sourceName, exception, line, column, lineText);
         }
         finally
         {
-            // Remove the function frame we pushed. Since VariableContainers is a Queue (FIFO),
-            // we need to rotate all elements except the last one to the back, then dequeue the last one.
-            var count = shell.VariableContainers.Count;
-            if (count > 0)
-            {
-                // Rotate (count - 1) elements to the back
-                for (int i = 0; i < count - 1; i++)
-                {
-                    shell.VariableContainers.Enqueue(shell.VariableContainers.Dequeue());
-                }
+            shell.CurrentScriptFileName = callerName;
+            shell.CurrentScriptContent = callerText;
+            shell.PopCallScope();
+        }
+    }
 
-                // Now the function frame is at the front, dequeue it
-                shell.VariableContainers.Dequeue();
-            }
+    internal async Task<CommandState> ExecuteCallAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, int start, params ShellObject[] args)
+    {
+        try
+        {
+            return await this.ExecuteFunctionAsync(shell, commandState, token, args);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException && shell.CurrentScriptFileName != null && shell.CurrentScriptContent != null)
+        {
+            var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(shell.CurrentScriptContent, start);
+            throw new PositionalException(shell.CurrentScriptFileName, exception, line, column, lineText);
         }
     }
 

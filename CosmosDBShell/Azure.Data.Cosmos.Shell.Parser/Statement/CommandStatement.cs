@@ -167,14 +167,14 @@ internal class CommandStatement : Statement
 
         if (shell.Functions.TryGetValue(this.Name, out var function))
         {
-            var args = new List<string>();
+            var args = new List<ShellObject>();
             foreach (var a in this.Arguments)
             {
                 var evaluated = await a.EvaluateAsync(shell, commandState, token);
-                args.Add(evaluated?.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty);
+                args.Add(evaluated);
             }
 
-            return await function.ExecuteFunctionAsync(shell, commandState, token, args.ToArray());
+            return await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
         }
 
         if (shell.App.Commands.TryGetValue(this.Name, out var factory))
@@ -254,9 +254,10 @@ internal class CommandStatement : Statement
 
             var pi = matchingProperty.Prop;
             var attr = matchingProperty.Attr;
+            var optionValue = opt.Value;
 
             // If option already has an inline value (e.g. -opt:VAL parsed earlier) leave it.
-            if (!IsBoolean(pi) && opt.Value == null)
+            if (!IsBoolean(pi) && optionValue == null)
             {
                 int nextIndex = i + 1;
                 if (nextIndex < this.Arguments.Count &&
@@ -264,15 +265,15 @@ internal class CommandStatement : Statement
                     !consumedArgumentIndices.Contains(nextIndex))
                 {
                     // Treat next expression as the value of this non-boolean option.
-                    opt.Value = this.Arguments[nextIndex];
+                    optionValue = this.Arguments[nextIndex];
                     consumedArgumentIndices.Add(nextIndex);
                 }
             }
 
             // Now assign the option value to the command instance.
-            if (opt.Value != null)
+            if (optionValue != null)
             {
-                var evaluatedValue = await opt.Value.EvaluateAsync(shell, commandState, token);
+                var evaluatedValue = await optionValue.EvaluateAsync(shell, commandState, token);
                 var stringValue = evaluatedValue.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty;
 
                 var targetType = Nullable.GetUnderlyingType(pi.PropertyType) ?? pi.PropertyType;
@@ -371,7 +372,7 @@ internal class CommandStatement : Statement
         return cmd;
     }
 
-    public async Task<CommandState> RunScriptAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
+    public async Task<CommandState> RunScriptAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, bool renderOutput = true)
     {
         var fileName = this.Name;
 
@@ -383,7 +384,7 @@ internal class CommandStatement : Statement
 
         // Shadow variables from the current scope chain into the script frame.
         // (Copy values so the script can mutate its own bindings.)
-        foreach (var container in shell.VariableContainers)
+        foreach (var container in shell.VariableContainers.Reverse())
         {
             foreach (var kvp in container.Variables)
             {
@@ -399,7 +400,7 @@ internal class CommandStatement : Statement
             frame.Set((i + 1).ToString(), new ShellText(evaluated.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty));
         }
 
-        shell.VariableContainers.Enqueue(frame);
+        shell.PushCallScope(frame, token);
         var currentState = commandState;
         string scriptContent = string.Empty;
         var priorFileName = shell.CurrentScriptFileName;
@@ -410,9 +411,13 @@ internal class CommandStatement : Statement
             scriptContent = File.ReadAllText(fileName);
             shell.CurrentScriptFileName = fileName;
             shell.CurrentScriptContent = scriptContent;
-            var lexer = new Lexer(scriptContent);
-            var parser = new StatementParser(lexer);
-            foreach (var statement in parser.ParseStatements())
+            var parser = StatementParser.ScriptParseResult.Parse(scriptContent, allowReturn: true);
+            if (parser.Errors.HasErrors)
+            {
+                return new ParserErrorCommandState(parser.Errors, fileName, scriptContent);
+            }
+
+            foreach (var statement in parser.Statements)
             {
                 if (token.IsCancellationRequested)
                 {
@@ -428,6 +433,15 @@ internal class CommandStatement : Statement
                         break;
                     }
 
+                    if (currentState.ReturnFunc)
+                    {
+                        currentState.ReturnFunc = false;
+                        currentState.Result = currentState.ReturnValue;
+                        currentState.ReturnValue = null;
+                        currentState.OutputRendered = false;
+                        return currentState;
+                    }
+
                     shell.StdOutRedirect = this.OutputRedirect;
                     shell.AppendOutRedirection = this.AppendOutput;
 
@@ -436,7 +450,10 @@ internal class CommandStatement : Statement
 
                     try
                     {
-                        currentState = shell.PrintState(currentState, markAsRendered: true);
+                        if (renderOutput)
+                        {
+                            currentState = shell.PrintState(currentState, markAsRendered: true);
+                        }
                     }
                     finally
                     {
@@ -444,7 +461,7 @@ internal class CommandStatement : Statement
                         shell.ErrOutRedirect = null;
                     }
                 }
-                catch (Exception e)
+                catch (Exception e) when (e is not OperationCanceledException)
                 {
                     var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(scriptContent, statement.Start);
                     throw new PositionalException(fileName, e, line, column, lineText);
@@ -456,22 +473,7 @@ internal class CommandStatement : Statement
             shell.CurrentScriptFileName = priorFileName;
             shell.CurrentScriptContent = priorContent;
 
-            // Remove the script frame we pushed. Since VariableContainers is a Queue (FIFO),
-            // we need to rotate all elements except the last one to the back, then dequeue the last one.
-            // Example: [A, B, C] where C (script frame) needs to be removed:
-            //   Rotate A: [B, C, A], Rotate B: [C, A, B], Dequeue C: [A, B]
-            var count = shell.VariableContainers.Count;
-            if (count > 0)
-            {
-                // Rotate (count - 1) elements to the back
-                for (int i = 0; i < count - 1; i++)
-                {
-                    shell.VariableContainers.Enqueue(shell.VariableContainers.Dequeue());
-                }
-
-                // Now the script frame is at the front, dequeue it
-                shell.VariableContainers.Dequeue();
-            }
+            shell.PopCallScope();
         }
 
         /*

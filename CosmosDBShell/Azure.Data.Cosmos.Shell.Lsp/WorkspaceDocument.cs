@@ -69,6 +69,7 @@ public class WorkspaceDocument(DocumentUri uri, string content, int version)
         lock (this.parseLock)
         {
             this.Diagnostics.Clear();
+            this.SemanticModel = null;
 
             try
             {
@@ -76,11 +77,16 @@ public class WorkspaceDocument(DocumentUri uri, string content, int version)
                 var parser = new StatementParser(lexer);
                 var statements = parser.ParseStatements();
 
+                if (!parser.Errors.HasErrors)
+                {
+                    StatementParser.ScriptParseResult.ValidateStatements(statements, parser.Errors, allowReturn: true);
+                }
+
                 this.LastParseResult = new ParseResult
                 {
                     Statements = statements,
                     Comments = lexer.Comments,
-                    Success = true,
+                    Success = !parser.Errors.HasErrors,
                     Errors = lexer.Errors,
                 };
 
@@ -95,7 +101,7 @@ public class WorkspaceDocument(DocumentUri uri, string content, int version)
                 foreach (var sdiag in this.SemanticModel.Diagnostics)
                 {
                     var (sl, sc) = ToLineColumn(this.Content, sdiag.Start);
-                    var (el, ec) = ToLineColumn(this.Content, sdiag.Start + Math.Max(0, sdiag.Length - 1));
+                    var (el, ec) = ToLineColumn(this.Content, sdiag.Start + Math.Max(0, sdiag.Length));
                     if (sdiag.Length == 0)
                     {
                         el = sl;
@@ -142,7 +148,7 @@ public class WorkspaceDocument(DocumentUri uri, string content, int version)
     private static Diagnostic ToDiagnostic(ParseError error, string content)
     {
         var (startLine, startCol) = ToLineColumn(content, error.Start);
-        var (endLine, endCol) = ToLineColumn(content, error.Start + Math.Max(0, error.Length - 1));
+        var (endLine, endCol) = ToLineColumn(content, error.Start + Math.Max(0, error.Length));
         if (error.Length == 0)
         {
             endLine = startLine;

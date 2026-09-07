@@ -54,6 +54,10 @@ Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an expli
 
 This replaces any opt-in write flag: destructive commands are always allowed to be invoked, but always require confirmation.
 
+Confirmation includes the connected account endpoint and current navigation location alongside the command and its explicit target arguments. If the connection or navigation state changes while confirmation is pending, the approved command is refused without executing; retry it to confirm the new context. Even navigating away and back invalidates the pending confirmation.
+
+Shell and MCP command execution is serialized against the shared interpreter. Confirmation prompts do not hold the execution lock, so the shell remains usable while waiting. Clients still share a connection and navigation context: pass explicit `database` and `container` arguments for independent operations rather than relying on an earlier `cd` call.
+
 The MCP confirmation applies even when a command is invoked with a force / no-prompt argument (for example `rmdb OldDB true`). That argument only skips the *interactive shell* prompt; it does not bypass the MCP elicitation gate.
 
 Database and container resource actions are executed through Azure Resource Manager when an ARM context is attached (Entra ID connections). MCP sessions connected with account keys, emulator credentials, or static data-plane tokens fall back to the Cosmos DB data plane for these actions.
@@ -61,6 +65,8 @@ Database and container resource actions are executed through Azure Resource Mana
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.
 
 ### Data Exposure
+
+MCP tool invocations are not echoed as command lines and are not added to the interactive shell history. Interactive commands retain their complete history entries for replay, including any supplied connection strings. Protect the history file accordingly. Tool results and command-generated output remain available as before.
 
 Your MCP client may use a remote LLM. Command outputs, query results, and file contents could be transmitted to external services. **Treat all shell output as potentially shared.**
 

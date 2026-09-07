@@ -91,6 +91,7 @@
     <PackageReference Include="Azure.ResourceManager.CosmosDB" />
     <PackageReference Include="System.CommandLine" />
     <PackageReference Include="Fluent.Net" />
+    <PackageReference Include="CsvHelper" />
     <PackageReference Include="Microsoft.Azure.Cosmos" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="ModelContextProtocol" />

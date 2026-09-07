@@ -84,6 +84,11 @@ internal class CommandExpression : Expression
         // Execute the command asynchronously and return the result
         var resultState = await this.ExecuteCommandAsync(interpreter, currentState, cancellationToken);
 
+        if (resultState.IsError)
+        {
+            throw new CommandState.FailureException(resultState);
+        }
+
         // Return the result from the command state
         if (resultState.Result != null)
         {
@@ -123,14 +128,14 @@ internal class CommandExpression : Expression
         // Check for user-defined functions first
         if (shell.Functions.TryGetValue(this.Name, out var function))
         {
-            var args = new List<string>();
+            var args = new List<ShellObject>();
             foreach (var a in this.Arguments)
             {
                 var evaluated = await a.EvaluateAsync(shell, commandState, token);
-                args.Add(evaluated?.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty);
+                args.Add(evaluated);
             }
 
-            return await function.ExecuteFunctionAsync(shell, commandState, token, args.ToArray());
+            return await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
         }
 
         // Check for built-in commands
@@ -163,215 +168,20 @@ internal class CommandExpression : Expression
     /// <summary>
     /// Creates a command instance with bound parameters and options.
     /// </summary>
-    internal async Task<CosmosCommand> CreateCommandAsync(CommandFactory factory, ShellInterpreter shell, CommandState commandState, CancellationToken token)
+    internal Task<CosmosCommand> CreateCommandAsync(CommandFactory factory, ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
-        var cmd = factory.CreateCommand();
-
-        // Build a map of option properties on the command type for quick lookup.
-        var optionProperties = cmd.GetType().GetProperties()
-            .Select(p => new { Prop = p, Attr = p.GetCustomAttribute<CosmosOptionAttribute>() })
-            .Where(x => x.Attr != null)
-            .ToList();
-
-        bool IsBoolean(System.Reflection.PropertyInfo pi)
-            => (Nullable.GetUnderlyingType(pi.PropertyType) ?? pi.PropertyType) == typeof(bool);
-
-        // First pass: bind option values (including space-separated values) and record which argument indices are consumed.
-        var consumedArgumentIndices = new HashSet<int>();
-
-        for (int i = 0; i < this.Arguments.Count; i++)
-        {
-            if (this.Arguments[i] is not CommandOption opt)
-            {
-                continue;
-            }
-
-            var rawName = opt.Name.TrimStart('-');
-            var matchingProperty = optionProperties
-                .FirstOrDefault(x => x.Attr!.Names.Contains(rawName, StringComparer.OrdinalIgnoreCase));
-
-            if (matchingProperty == null)
-            {
-                var knownNames = optionProperties
-                    .Where(x => x.Attr != null)
-                    .SelectMany(x => x.Attr!.Names)
-                    .Where(n => !string.IsNullOrEmpty(n));
-
-                // The parser stores only the first '-' in MinusToken; a second
-                // '-' for '--option' is consumed but discarded. Reconstruct the
-                // exact dash prefix from the gap between the two tokens so the
-                // suggestion echoes back what the user typed.
-                var dashCount = Math.Max(1, opt.NameToken.Start - opt.MinusToken.Start);
-                var typedPrefix = new string('-', dashCount);
-                var (msg, hint) = Azure.Data.Cosmos.Shell.Util.UnknownOptionMessage.Build(typedPrefix, rawName, knownNames);
-                throw new UnknownOptionException(this.Name, msg, hint);
-            }
-
-            var pi = matchingProperty.Prop;
-            var attr = matchingProperty.Attr;
-
-            // For boolean options, the presence of the option is enough. Do not consume the next
-            // positional argument as a value (e.g. `dir "*.csh" -l` should not treat -l as taking
-            // the filter as its value).
-            if (IsBoolean(pi))
-            {
-                if (opt.Value == null)
-                {
-                    opt.Value = new ConstantExpression(new Token(TokenType.Identifier, "true", 0, 0), new ShellText("true"));
-                }
-            }
-            else if (opt.Value == null)
-            {
-                int nextIndex = i + 1;
-                if (nextIndex < this.Arguments.Count &&
-                    this.Arguments[nextIndex] is not CommandOption &&
-                    !consumedArgumentIndices.Contains(nextIndex))
-                {
-                    opt.Value = this.Arguments[nextIndex];
-                    consumedArgumentIndices.Add(nextIndex);
-                }
-            }
-
-            if (opt.Value != null)
-            {
-                var evaluatedValue = await opt.Value.EvaluateAsync(shell, commandState, token);
-                var stringValue = evaluatedValue.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty;
-
-                var targetType = Nullable.GetUnderlyingType(pi.PropertyType) ?? pi.PropertyType;
-                pi.SetValue(cmd, CommandOptionBinder.ConvertOptionValue(this.Name, rawName, stringValue, targetType));
-            }
-            else
-            {
-                if (attr?.DefaultValue != null)
-                {
-                    pi.SetValue(cmd, attr.DefaultValue);
-                }
-                else if (IsBoolean(pi))
-                {
-                    pi.SetValue(cmd, true);
-                }
-                else
-                {
-                    throw new CommandException(this.Name, $"Option '{rawName}' requires a value.");
-                }
-            }
-        }
-
-        // Collect parameter properties
-        var parameters = cmd.GetType().GetProperties()
-            .Select(p => new { Prop = p, Attr = p.GetCustomAttribute<CosmosParameterAttribute>() })
-            .Where(x => x.Attr != null)
-            .ToList();
-
-        // Remaining positional arguments
-        var positional = new List<Expression>();
-        for (int i = 0; i < this.Arguments.Count; i++)
-        {
-            if (this.Arguments[i] is CommandOption)
-            {
-                continue;
-            }
-
-            if (consumedArgumentIndices.Contains(i))
-            {
-                continue;
-            }
-
-            positional.Add(this.Arguments[i]);
-        }
-
-        // Bind positional parameters
-        int argIndex = 0;
-        foreach (var param in parameters)
-        {
-            var prop = param.Prop;
-            var attr = param.Attr!;
-            if (argIndex >= positional.Count)
-            {
-                if (attr.IsRequired)
-                {
-                    var message = !string.IsNullOrEmpty(attr.RequiredErrorKey)
-                        ? MessageService.GetString(attr.RequiredErrorKey)
-                        : $"Missing required parameter: {prop.Name}";
-                    throw new CommandException(this.Name, message);
-                }
-
-                break;
-            }
-
-            if (prop.PropertyType.IsArray)
-            {
-                var arr = new List<string>();
-                while (argIndex < positional.Count)
-                {
-                    var evaluatedArg = await positional[argIndex].EvaluateAsync(shell, commandState, token);
-                    var stringValue = evaluatedArg.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty;
-                    arr.Add(stringValue);
-                    argIndex++;
-                }
-
-                prop.SetValue(cmd, arr.ToArray());
-            }
-            else
-            {
-                var evaluatedArg = await positional[argIndex].EvaluateAsync(shell, commandState, token);
-                var stringValue = evaluatedArg.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty;
-                Parameter.SetValue(cmd, prop, stringValue);
-                argIndex++;
-            }
-        }
-
-        if (argIndex < positional.Count && parameters.All(p => !p.Prop.PropertyType.IsArray))
-        {
-            throw new CommandException(this.Name, $"Too many arguments. Expected {parameters.Count}, got {positional.Count}");
-        }
-
-        return cmd;
+        var statement = new CommandStatement(this.CommandToken);
+        statement.Arguments.AddRange(this.Arguments);
+        return statement.CreateCommandAsync(factory, shell, commandState, token);
     }
 
     /// <summary>
     /// Runs a script file.
     /// </summary>
-    internal async Task<CommandState> RunScriptAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
+    internal Task<CommandState> RunScriptAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
-        var fileName = this.Name;
-
-        var arguments = new VariableContainer();
-        arguments.Set("0", new ShellText(fileName));
-
-        for (int i = 0; i < this.Arguments.Count; i++)
-        {
-            var evaluated = await this.Arguments[i].EvaluateAsync(shell, commandState, token);
-            arguments.Set((i + 1).ToString(), new ShellText(evaluated.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty));
-        }
-
-        shell.VariableContainers.Enqueue(arguments);
-        var currentState = commandState;
-
-        try
-        {
-            var scriptContent = File.ReadAllText(fileName);
-            var lexer = new Lexer(scriptContent);
-            var parser = new StatementParser(lexer);
-            foreach (var statement in parser.ParseStatements())
-            {
-                if (token.IsCancellationRequested)
-                {
-                    break;
-                }
-
-                currentState = await statement.RunAsync(shell, currentState, token);
-                if (currentState.IsError)
-                {
-                    break;
-                }
-            }
-        }
-        finally
-        {
-            shell.VariableContainers.Dequeue();
-        }
-
-        return currentState;
+        var statement = new CommandStatement(this.CommandToken);
+        statement.Arguments.AddRange(this.Arguments);
+        return statement.RunScriptAsync(shell, commandState, token, renderOutput: false);
     }
 }

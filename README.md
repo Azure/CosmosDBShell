@@ -32,6 +32,10 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - MCP server for AI/tool integration
 - Distributed tracing via OpenTelemetry (`--otel`): emits a sampled W3C `traceparent` on Cosmos requests, with optional OTLP export
 
+Exports replace their destination only after successful completion, preserving an existing file on failure or cancellation. Imports stream records; CSV exports use temporary disk storage to discover columns without retaining all documents in memory. See [import/export](docs/commands.md#export).
+
+MCP command execution is serialized with the shell, and destructive confirmations are invalidated by connection or navigation changes. MCP invocations are not echoed or added to history. Interactive history remains fully replayable, including connection strings; treat its file as sensitive. See [MCP security](docs/mcp.md#security) and [history](docs/navigation.md#history).
+
 ## Quick Start
 
 **Requirements:** .NET SDK 10.0+.
@@ -216,6 +220,18 @@ cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c seed.csh mydb my
 # Run a script from piped command text.
 echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
 ```
+
+Scripts are parsed and validated before their statements execute. Functions preserve argument types and keep assignments local; `return`, `break`, and `continue` propagate through nested blocks to their owning function, script, or loop. Integer overflow is reported as an error. See the [language rules and compatibility notes](docs/programming.md#operators), including operator precedence, compound assignment, numeric promotion, and runtime errors. Runtime failures do not roll back earlier successful operations.
+
+Parser nesting, expression tree depth, and active function/script calls have fixed [resource limits](docs/programming.md#resource-limits). Limit violations fail with diagnostics rather than continuing recursive parsing or execution.
+
+Script diagnostics preserve source files, runtime failure categories, and function/script call sites. The language server shares the runtime's control-flow and duplicate-parameter checks, recognizes document-local functions, and checks nested commands and options. Incorrect function argument counts produce usage exit code `2`. See [validation and errors](docs/programming.md#validation-and-errors).
+
+Loops and functions preserve JSON `null` values. Numeric conditions use the same zero/nonzero rule for shell values and JSON properties, including fractional numbers. See [value conversion rules](docs/programming.md#numbers).
+
+JSON strings use the same `+` concatenation rules as shell strings. A bare `return` is valid immediately before a closing block brace. Editor variable symbols distinguish case-sensitive names such as `$value` and `$Value`.
+
+JSON objects and arrays preserve decimal number types across roundtrips: constructing `{"value":3.0}` no longer changes subsequent division into integer arithmetic.
 
 ## Deterministic Exit Codes
 

@@ -129,6 +129,27 @@ internal sealed class DiagnosticLog : IDisposable
     public void LogError(string command, Exception exception)
     {
         this.WriteLine("ERROR", $"{this.Flatten(command)} -> {exception.GetType().Name}: {this.Flatten(exception.Message)}");
+        foreach (var frame in PositionalException.GetSourceTrace(exception))
+        {
+            this.WriteLine("ERROR", this.Flatten($"at {frame.FileName}:{frame.Line}:{frame.Column}"));
+        }
+
+        for (var inner = exception.InnerException; inner != null; inner = inner.InnerException)
+        {
+            if (inner is not PositionalException)
+            {
+                this.WriteLine("ERROR", $"{inner.GetType().Name}: {this.Flatten(inner.Message)}");
+            }
+        }
+
+        for (Exception? current = exception; current != null; current = current.InnerException)
+        {
+            if (current is CommandState.FailureException { State: ParserErrorCommandState parserError })
+            {
+                this.LogParserErrors(command, parserError.Errors, parserError.SourceName, parserError.SourceText);
+                break;
+            }
+        }
     }
 
     /// <summary>
@@ -136,17 +157,19 @@ internal sealed class DiagnosticLog : IDisposable
     /// </summary>
     /// <param name="command">The command text.</param>
     /// <param name="errors">The parser errors to record.</param>
-    public void LogParserErrors(string command, IEnumerable<ParseError> errors)
+    /// <param name="sourceName">The script file containing the errors.</param>
+    /// <param name="sourceText">The script text used to resolve source positions.</param>
+    public void LogParserErrors(string command, IEnumerable<ParseError> errors, string? sourceName = null, string? sourceText = null)
     {
         if (errors is null)
         {
             return;
         }
 
+        var sourceErrors = errors.Where(static error => error is not null).ToArray();
         var detail = string.Join(
             "; ",
-            errors
-                .Where(static error => error is not null)
+            sourceErrors
                 .Select(static error => $"{(error.ErrorLevel == ErrorLevel.Warning ? "warning" : "error")}: {error.Message}"));
 
         if (string.IsNullOrEmpty(detail))
@@ -155,6 +178,14 @@ internal sealed class DiagnosticLog : IDisposable
         }
 
         this.WriteLine("ERROR", $"{this.Flatten(command)} -> {this.Flatten(detail)}");
+        if (sourceName != null && sourceText != null)
+        {
+            foreach (var error in sourceErrors)
+            {
+                var (line, column, _) = PositionalErrorHelper.GetLineAndColumn(sourceText, error.Start);
+                this.WriteLine("ERROR", this.Flatten($"{sourceName}:{line}:{column}: {error.Message}"));
+            }
+        }
     }
 
     /// <summary>
