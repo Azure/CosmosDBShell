@@ -13,6 +13,15 @@ namespace CosmosShell.Tests.Parser;
 public class FunctionDefinitionTests : TestBase
 {
     [Fact]
+    public async Task ReturnExpression_CompletesInnerFunction_ThenExitsOuterFunction()
+    {
+        var state = await RunScriptAsync("def inner { $local = 1; return $local + 1 }; def outer { return (inner); totallyunknowncmd999 }; $result = (outer)");
+        Assert.False(state.IsError);
+        Assert.False(state.ReturnFunc);
+        Assert.Equal(2, Assert.IsType<Azure.Data.Cosmos.Shell.Parser.ShellNumber>(GetVariable("result")).Value);
+    }
+
+    [Fact]
     public async Task Arguments_PreserveNumericTypes()
     {
         var state = await RunScriptAsync("def add [a b] { return $a + $b }; $result = (add 2 3)");
