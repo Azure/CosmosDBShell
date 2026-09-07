@@ -122,8 +122,8 @@ public sealed class SemanticAnalyzer
                 });
                 break;
             case AssignmentStatement assignment:
-                this.VisitExpression(assignment.Value);
                 this.RecordVariableReference(assignment.Variable);
+                this.VisitExpression(assignment.Value);
                 break;
             case ReturnStatement returned when returned.Value != null:
                 this.VisitExpression(returned.Value);

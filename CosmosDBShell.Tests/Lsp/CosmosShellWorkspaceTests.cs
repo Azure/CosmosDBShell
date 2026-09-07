@@ -131,6 +131,27 @@ public class CosmosShellWorkspaceTests
         }
     }
 
+    [Theory]
+    [InlineData("$value = $value + 1", 2)]
+    [InlineData("$value = 0; $value = $value + 1", 3)]
+    public void SelfReferentialAssignment_DefinitionRemainsAtFirstAssignmentTarget(string source, int occurrenceCount)
+    {
+        this.workspace.OpenDocument(this.uri, source, 1);
+        var document = this.workspace.GetDocument(this.uri)!;
+        Assert.Empty(document.Diagnostics);
+        var model = document.SemanticModel!;
+        var symbol = Assert.Single(model.Symbols.OfType<Azure.Data.Cosmos.Shell.Lsp.Semantics.VariableSymbol>());
+        var references = model.FindReferences(symbol).ToArray();
+        Assert.Equal(occurrenceCount, references.Length);
+        var definition = Assert.Single(references, reference => reference.IsDefinition);
+        Assert.Equal(0, definition.Start);
+        Assert.Equal("$value".Length, definition.Length);
+        Assert.Equal(0, symbol.Start);
+        var usage = Assert.Single(references, reference => reference.Start == source.LastIndexOf("$value", System.StringComparison.Ordinal));
+        Assert.False(usage.IsDefinition);
+        Assert.Same(symbol, model.GetSymbolAt(usage.Start + 1));
+    }
+
     [Fact]
     public void OpenDocument_StoresAndParses()
     {
