@@ -372,6 +372,7 @@ script-error-command-failed = Command expression '{ $name }' failed.
 script-error-expression-failed = Command expression failed.
 script-error-call-depth = Maximum function/script call depth of { $limit } exceeded.
 script-error-parse-depth = Maximum parser nesting budget of { $limit } exceeded. Simplify the expression or split the script.
+script-error-expression-depth = Maximum expression tree depth of { $limit } exceeded. Simplify the expression or split the script.
 command-import-error-file_not_found = File '{ $file }' was not found.
 command-import-error-blank_line = Line { $line } is blank.
 command-import-error-not_object = Line { $line } is not a JSON object.

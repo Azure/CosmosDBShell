@@ -990,6 +990,7 @@ internal class Lexer
     internal sealed class ParsingBudget
     {
         internal const int MaximumDepth = 128;
+        internal const int MaximumExpressionDepth = 128;
 
         private int depth;
 
@@ -1016,6 +1017,15 @@ internal class Lexer
         public void Exit()
         {
             this.depth--;
+        }
+
+        public void RejectExpressionDepth(ErrorList errors, Token? token)
+        {
+            if (!this.Exceeded)
+            {
+                this.Exceeded = true;
+                errors.Add(new ParseError(token?.Start ?? 0, token?.Length ?? 1, MessageService.GetArgsString("script-error-expression-depth", "limit", MaximumExpressionDepth)));
+            }
         }
     }
 }

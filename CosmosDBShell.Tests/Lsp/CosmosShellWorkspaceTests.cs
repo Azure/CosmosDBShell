@@ -191,4 +191,16 @@ public class CosmosShellWorkspaceTests
         Assert.True(document.LastParseResult!.Success);
         Assert.Empty(document.Diagnostics);
     }
+
+    [Fact]
+    public void DeepExpression_IsRejectedBeforeSemanticAnalysis()
+    {
+        this.workspace.OpenDocument(this.uri, "$value = " + string.Join(" + ", Enumerable.Repeat("1", 10001)), 1);
+        var document = this.workspace.GetDocument(this.uri)!;
+        Assert.False(document.LastParseResult!.Success);
+        Assert.Contains(document.Diagnostics, diagnostic => diagnostic.Message.Contains("expression tree depth"));
+        this.workspace.UpdateDocument(this.uri, "$value = 1", 2);
+        Assert.True(document.LastParseResult!.Success);
+        Assert.Empty(document.Diagnostics);
+    }
 }

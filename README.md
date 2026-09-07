@@ -223,7 +223,7 @@ echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;
 
 Scripts are parsed and validated before their statements execute. Functions preserve argument types and keep assignments local; `return`, `break`, and `continue` propagate through nested blocks to their owning function, script, or loop. Integer overflow is reported as an error. See the [language rules and compatibility notes](docs/programming.md#operators), including operator precedence, compound assignment, numeric promotion, and runtime errors. Runtime failures do not roll back earlier successful operations.
 
-Parser nesting and active function/script calls have fixed [resource limits](docs/programming.md#resource-limits). Limit violations fail with diagnostics rather than continuing recursive parsing or execution.
+Parser nesting, expression tree depth, and active function/script calls have fixed [resource limits](docs/programming.md#resource-limits). Limit violations fail with diagnostics rather than continuing recursive parsing or execution.
 
 Script diagnostics preserve source files, runtime failure categories, and function/script call sites. The language server shares the runtime's control-flow and duplicate-parameter checks. See [validation and errors](docs/programming.md#validation-and-errors).
 

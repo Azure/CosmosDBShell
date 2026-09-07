@@ -124,6 +124,8 @@ The language server applies the same control-flow and duplicate-parameter valida
 
 The parser has a shared nesting budget of 128 recursive parsing entries. Statements, expression operators, primary expressions, and interpolation subparsers share this budget, so the allowed number of source-level parentheses depends on the surrounding syntax. Exceeding it produces a parser diagnostic before execution, including in editor/highlighter parsing. Sequential statements do not accumulate nesting depth.
 
+Expression trees also have a maximum depth of 128 nodes, including operators and containing expressions such as parentheses, arrays, objects, and interpolation. This independent check rejects long flat operator chains that do not require deep parser recursion. Overdeep expressions are replaced with error nodes before execution or editor analysis; the containing input is not executed. Split a long expression into intermediate assignments when needed.
+
 At most 64 function and script-file calls may be active at once, including mixed or indirect recursion. Exceeding this limit produces a runtime error, unwinds call scopes, and leaves the interpreter usable. Calls also check cancellation before entering a new scope. These are fixed safety limits, not a sandbox or a wall-clock timeout; long-running valid scripts still require host cancellation.
 
 ## Variable Usage

@@ -179,7 +179,7 @@ internal class ExpressionParser
             return this.CreateAbortExpression();
         }
 
-        return this.ParseOr();
+        return this.ValidateDepth(this.ParseOr());
     }
 
     /// <summary>
@@ -200,7 +200,7 @@ internal class ExpressionParser
         this.inFilterMode = true;
         try
         {
-            return this.ParsePipeExpression();
+            return this.ValidateDepth(this.ParsePipeExpression());
         }
         finally
         {
@@ -216,7 +216,43 @@ internal class ExpressionParser
             return this.CreateAbortExpression();
         }
 
-        return this.ParsePrimary();
+        return this.ValidateDepth(this.ParsePrimary());
+    }
+
+    private Expression ValidateDepth(Expression expression)
+    {
+        var pending = new Stack<(Expression Expression, int Depth)>();
+        pending.Push((expression, 1));
+        while (pending.TryPop(out var current))
+        {
+            if (current.Depth > Lexer.ParsingBudget.MaximumExpressionDepth)
+            {
+                this.lexer.Budget.RejectExpressionDepth(this.lexer.Errors, this.currentToken ?? this.lastNonNullToken);
+                this.aborted = true;
+                return this.CreateAbortExpression();
+            }
+
+            IEnumerable<Expression> children = current.Expression switch
+            {
+                BinaryOperatorExpression binary => [binary.Left, binary.Right],
+                FilterPipeExpression pipe => [pipe.Left, pipe.Right],
+                UnaryOperatorExpression unary => [unary.Expression],
+                ParensExpression parens => [parens.InnerExpression],
+                JsonExpression json => json.Properties.Values,
+                JsonArrayExpression array => array.Expressions,
+                InterpolatedStringExpression interpolated => interpolated.Expressions,
+                FilterCallExpression call => call.Arguments,
+                CommandExpression command => command.Arguments,
+                CommandOption option when option.Value != null => [option.Value],
+                _ => [],
+            };
+            foreach (var child in children)
+            {
+                pending.Push((child, current.Depth + 1));
+            }
+        }
+
+        return expression;
     }
 
     private Expression ParsePipeExpression()
@@ -508,7 +544,7 @@ internal class ExpressionParser
 
         try
         {
-            return parse();
+            return this.ValidateDepth(parse());
         }
         finally
         {

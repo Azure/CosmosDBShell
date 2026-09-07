@@ -15,6 +15,60 @@ using Azure.Data.Cosmos.Shell.Parser;
 public class ExpressionParserErrorTests
 {
     [Theory]
+    [InlineData("+")]
+    [InlineData("-")]
+    [InlineData("*")]
+    [InlineData("/")]
+    [InlineData("==")]
+    [InlineData("<")]
+    [InlineData("|")]
+    public void FlatOperatorChain_RejectsDeepTree(string operation)
+    {
+        var lexer = new Lexer(string.Join($" {operation} ", Enumerable.Repeat("1", 10001)));
+        var parser = new ExpressionParser(lexer);
+        var expression = parser.ParseFilterExpression();
+        Assert.IsType<ErrorExpression>(expression);
+        Assert.Contains(lexer.Errors, error => error.Message.Contains("expression tree depth"));
+        Assert.True(parser.IsAtEnd);
+    }
+
+    [Theory]
+    [InlineData("", "")]
+    [InlineData("(", ")")]
+    [InlineData("[", "]")]
+    [InlineData("{value: ", "}")]
+    [InlineData("$\"$(", ")\"")]
+    public void ExpressionDepth_IsCheckedAcrossContainingNodes(string prefix, string suffix)
+    {
+        var source = prefix + string.Join(" + ", Enumerable.Repeat("1", 140)) + suffix;
+        var lexer = new Lexer(source);
+        new ExpressionParser(lexer).ParseExpression();
+        Assert.Contains(lexer.Errors, error => error.Message.Contains("expression tree depth"));
+    }
+
+    [Theory]
+    [InlineData(128, false)]
+    [InlineData(129, true)]
+    public void ExpressionDepth_HasExplicitBoundary(int operands, bool rejected)
+    {
+        var lexer = new Lexer(string.Join(" + ", Enumerable.Repeat("1", operands)));
+        new ExpressionParser(lexer).ParseExpression();
+        Assert.Equal(rejected, lexer.Errors.HasErrors);
+    }
+
+    [Theory]
+    [InlineData("(", ")")]
+    [InlineData("[", "]")]
+    [InlineData("{value: ", "}")]
+    [InlineData("$\"$(", ")\"")]
+    public void ContainingNode_CountsTowardsTotalDepth(string prefix, string suffix)
+    {
+        var lexer = new Lexer(prefix + string.Join(" + ", Enumerable.Repeat("1", 128)) + suffix);
+        new ExpressionParser(lexer).ParseExpression();
+        Assert.Contains(lexer.Errors, error => error.Message.Contains("expression tree depth"));
+    }
+
+    [Theory]
     [InlineData("(", "1", ")")]
     [InlineData("!", "true", "")]
     [InlineData("2 ** ", "1", "")]
