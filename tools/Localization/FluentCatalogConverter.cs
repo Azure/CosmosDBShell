@@ -18,6 +18,7 @@ internal static class FluentCatalogConverter
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
+        NewLine = "\n",
     };
 
     public static SortedDictionary<string, string> Export(TextReader source)
@@ -76,8 +77,14 @@ internal static class FluentCatalogConverter
     {
         using var source = File.OpenText(sourcePath);
         var catalog = Export(source);
+        var content = JsonSerializer.Serialize(catalog, JsonOptions) + "\n";
+        if (File.Exists(catalogPath) && File.ReadAllText(catalogPath).ReplaceLineEndings("\n") == content)
+        {
+            return;
+        }
+
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(catalogPath))!);
-        File.WriteAllText(catalogPath, JsonSerializer.Serialize(catalog, JsonOptions) + Environment.NewLine);
+        File.WriteAllText(catalogPath, content);
     }
 
     public static void ImportFile(string sourcePath, string catalogPath, string outputPath)

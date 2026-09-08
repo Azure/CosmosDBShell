@@ -94,14 +94,17 @@ extends:
               # ob_sdl_suppression_suppressionFile: $(Build.SourcesDirectory)\.gdn\job.gdnsuppress
 
             steps:
-              - task: OneLocBuild@3
-                displayName: "OneLoc localization build"
-                inputs:
-                  locProj: "l10n/LocProject.json"
-                  outDir: "$(Build.ArtifactStagingDirectory)"
-                  lclSource: "lclFilesInRepo"
-                  isCreatePrSelected: false
-                  repoType: "gitHub"
+              # Enable after OneLoc onboarding and dependency feed access are configured.
+              # - task: OneLocBuild@3
+              #   displayName: "OneLoc localization build"
+              #   inputs:
+              #     locProj: "l10n/LocProject.json"
+              #     outDir: "$(Build.ArtifactStagingDirectory)"
+              #     lclSource: "lclFilesInRepo"
+              #     isCreatePrSelected: false
+              #     repoType: "gitHub"
+              #     packageSourceAuth: "patAuth"
+              #     dependencyPackageSource: "https://pkgs.dev.azure.com/msdata/CosmosDB/_packaging/CosmosDB_PublicPackages/nuget/v3/index.json"
 
               - task: UseDotNet@2
                 continueOnError: true

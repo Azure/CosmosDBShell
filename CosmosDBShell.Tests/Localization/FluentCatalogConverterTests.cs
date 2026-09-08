@@ -171,6 +171,85 @@ public class FluentCatalogConverterTests
         }
     }
 
+    [Fact]
+    public void ExportFile_CreatesAndUpdatesCatalog()
+    {
+        var directory = Path.Join(Path.GetTempPath(), $"cosmos-l10n-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var sourcePath = Path.Join(directory, "en.ftl");
+            var catalogPath = Path.Join(directory, "l10n", "catalog.json");
+            File.WriteAllText(sourcePath, "greeting = Hello!");
+
+            FluentCatalogConverter.ExportFile(sourcePath, catalogPath);
+            FluentCatalogConverter.VerifyFile(sourcePath, catalogPath);
+
+            File.WriteAllText(sourcePath, "greeting = Welcome!");
+            FluentCatalogConverter.ExportFile(sourcePath, catalogPath);
+            FluentCatalogConverter.VerifyFile(sourcePath, catalogPath);
+            Assert.Contains("Welcome!", File.ReadAllText(catalogPath));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void ExportFile_PreservesUnchangedCatalog(string newline)
+    {
+        var directory = Path.Join(Path.GetTempPath(), $"cosmos-l10n-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var sourcePath = Path.Join(directory, "en.ftl");
+            var catalogPath = Path.Join(directory, "catalog.json");
+            File.WriteAllText(sourcePath, "greeting = Hello!");
+            FluentCatalogConverter.ExportFile(sourcePath, catalogPath);
+            var content = File.ReadAllText(catalogPath).ReplaceLineEndings(newline);
+            File.WriteAllText(catalogPath, content);
+            File.SetLastWriteTimeUtc(catalogPath, new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            var timestamp = File.GetLastWriteTimeUtc(catalogPath);
+
+            FluentCatalogConverter.ExportFile(sourcePath, catalogPath);
+
+            Assert.Equal(content, File.ReadAllText(catalogPath));
+            Assert.Equal(timestamp, File.GetLastWriteTimeUtc(catalogPath));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void VerifyFile_RejectsStaleCatalogWithoutChangingIt()
+    {
+        var directory = Path.Join(Path.GetTempPath(), $"cosmos-l10n-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var sourcePath = Path.Join(directory, "en.ftl");
+            var catalogPath = Path.Join(directory, "catalog.json");
+            File.WriteAllText(sourcePath, "greeting = Hello!");
+            FluentCatalogConverter.ExportFile(sourcePath, catalogPath);
+            var content = File.ReadAllText(catalogPath);
+            var timestamp = File.GetLastWriteTimeUtc(catalogPath);
+            File.WriteAllText(sourcePath, "greeting = Welcome!");
+
+            Assert.Throws<InvalidDataException>(() => FluentCatalogConverter.VerifyFile(sourcePath, catalogPath));
+            Assert.Equal(content, File.ReadAllText(catalogPath));
+            Assert.Equal(timestamp, File.GetLastWriteTimeUtc(catalogPath));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

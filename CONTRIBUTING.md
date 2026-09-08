@@ -89,6 +89,33 @@ docs/                                        # User-facing documentation
 - **Tests** live in `CosmosDBShell.Tests/`. Add or update tests when changing behavior.
 - Match the existing C# style. Prefer clear names over abbreviations.
 
+### Updating Localized Text
+
+Edit `CosmosDBShell/lang/en.ftl`, then build normally:
+
+```bash
+dotnet build CosmosDBShell/CosmosDBShell.csproj
+```
+
+Local shell builds automatically update `l10n/CosmosDBShell.json`. The exporter
+does not rewrite an unchanged catalog, including files with different line endings.
+Commit the source and updated catalog together. This runs during a build, not on
+each editor save; design-time builds do not update the catalog.
+
+CI builds only verify the committed catalog and fail if it is missing or stale;
+they never repair it. This applies when `CI`, `TF_BUILD`, `GITHUB_ACTIONS`, or
+`ContinuousIntegrationBuild` is `true`. To check locally without updating it:
+
+```bash
+dotnet build CosmosDBShell/CosmosDBShell.csproj -p:ContinuousIntegrationBuild=true
+```
+
+The independent **Localization Catalog** GitHub Actions check verifies the catalog
+without building the shell or generating translations. The **build-test-package**
+check also verifies it before building the shell and is already required on `main`.
+Repository administrators should keep that check required, or require
+**Localization Catalog** as a dedicated gate, on protected target branches.
+
 ### Running Against the Emulator
 
 You can develop and test without an Azure subscription by using the [Azure Cosmos DB Emulator](https://learn.microsoft.com/azure/cosmos-db/emulator):
