@@ -72,7 +72,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="lang\en.ftl" />
+    <EmbeddedResource Include="lang\*.ftl" />
     <EmbeddedResource Include="cosmos_welcome.ans" />
     <EmbeddedResource Include="Azure.Data.Cosmos.Shell.Mcp\ServerInstructions.md" />
     <EmbeddedResource Include="..\docs\programming.md" Link="docs\programming.md" />
@@ -114,10 +114,26 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\tools\Localization\CosmosDBShell.Localization.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false"
+                      OutputItemType="LocalizationTool"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishTrimmed;PublishAot;PackAsTool" />
     <ProjectReference Include="..\CosmosDBShell.Analyzer\CosmosDBShell.Analyzer.csproj">
       <ReferenceOutputAssembly>False</ReferenceOutputAssembly>
 	  <OutputItemType>Analyzer</OutputItemType>
     </ProjectReference>
   </ItemGroup>
+
+  <Target Name="SynchronizeLocalizationCatalog"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="ResolveProjectReferences"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_LocalizationCatalogCommand>export</_LocalizationCatalogCommand>
+      <_LocalizationCatalogCommand Condition="'$(CI)' == 'true' or '$(TF_BUILD)' == 'true' or '$(GITHUB_ACTIONS)' == 'true' or '$(ContinuousIntegrationBuild)' == 'true'">verify</_LocalizationCatalogCommand>
+    </PropertyGroup>
+    <Exec Command="dotnet &quot;%(LocalizationTool.Identity)&quot; $(_LocalizationCatalogCommand) &quot;$(MSBuildProjectDirectory)/lang/en.ftl&quot; &quot;$(MSBuildProjectDirectory)/../l10n/CosmosDBShell.json&quot;" />
+  </Target>
 
 </Project>
