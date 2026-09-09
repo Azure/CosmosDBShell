@@ -7,7 +7,6 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using Azure.Data.Cosmos.Shell.Parser;
-using Microsoft.AspNetCore.Http.Metadata;
 using RadLine;
 using Spectre.Console;
 using Spectre.Console.Rendering;

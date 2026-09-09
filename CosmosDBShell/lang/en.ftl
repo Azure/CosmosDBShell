@@ -17,6 +17,7 @@ shell-connect-static-token-auth = Connecting with externally provided access tok
 shell-connect-static-token-expiry = Expires in { $timespan } (expiration: { $expiration }).
 shell-connect-vscode-credential-auth = Connecting with Visual Studio Code credential...
 shell-connect-vscode-credential-fallback = Visual Studio Code credential unavailable, falling back...
+shell-connect-vscode-credential-msal-runtime-missing = WARNING: Visual Studio Code credential is unavailable because this build excludes the native MSAL runtime. Falling back to other credentials; use --azure-cli to select the Azure CLI identity explicitly.
 shell-connect-devicecode-fallback = Browser authentication failed, falling back to device code authentication...
 shell-connect-arm-discovery-failed = Using Cosmos DB data plane.
 shell-connect-arm-discovery-ambiguous = Multiple ARM Cosmos DB accounts match the connected endpoint. Reconnect with --subscription and --resource-group, or use --connect-subscription and --connect-resource-group at startup, to specify which account to use. Using Cosmos DB data plane for now.
@@ -31,6 +32,8 @@ yes_char = Y
 no_char = N
 
 error = Error:
+error-lsp-not-included = LSP support is not included in this build.
+error-mcp-not-included = MCP support is not included in this build.
 error-connection_failed = Failed to connect to the Cosmos DB account.
 error-emulator_connection_failed =
     Could not reach the Cosmos DB emulator at { $endpoint }.
