@@ -181,6 +181,23 @@ public class DoctorCommandTests
         Assert.DoesNotContain("password", text);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RenderUser_QuietSuppressesTextButPreservesReport(bool who)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Quiet = true };
+        shell.State = new DisconnectedState();
+        var result = await new DoctorCommand { Who = who, Database = "missing", Format = "json" }
+            .ExecuteAsync(shell, new CommandState(), "doctor --database missing", CancellationToken.None);
+
+        Assert.Empty(CaptureConsole(() => result.RenderUser!(), color: true));
+        Assert.Equal(1, result.ExitCode);
+        using var report = JsonDocument.Parse(result.GenerateOutputText());
+        Assert.Equal("FAIL", report.RootElement.GetProperty("status").GetString());
+    }
+
     [Fact]
     public void RenderUser_ColorsEachStatusDistinctly()
     {

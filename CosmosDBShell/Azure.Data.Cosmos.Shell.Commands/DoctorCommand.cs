@@ -103,7 +103,7 @@ internal sealed class DoctorCommand : CosmosCommand
         {
             checks.Add(Check("connection", this.Database != null || this.Container != null || this.Query ? "FAIL" : "SKIP", "not-connected"));
             checks.Add(Check("arm", this.Arm ? "FAIL" : "SKIP", "not-connected"));
-            return this.CreateResult(checks, commandState);
+            return this.CreateResult(checks, commandState, shell.Options?.Quiet == true);
         }
 
         checks.Add(Check("connection", "PASS", connected.Client.ClientOptions.ConnectionMode == ConnectionMode.Direct ? "direct-configured" : "gateway-configured"));
@@ -214,7 +214,7 @@ internal sealed class DoctorCommand : CosmosCommand
         }
 
         token.ThrowIfCancellationRequested();
-        return this.CreateResult(checks, commandState);
+        return this.CreateResult(checks, commandState, shell.Options?.Quiet == true);
     }
 
     internal static async Task<DoctorCheck> RunCheckAsync(
@@ -290,7 +290,7 @@ internal sealed class DoctorCommand : CosmosCommand
     private static bool HasProxyConfiguration() => new[] { "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy" }
         .Any(name => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(name)));
 
-    internal CommandState CreateResult(List<DoctorCheck> checks, CommandState commandState)
+    internal CommandState CreateResult(List<DoctorCheck> checks, CommandState commandState, bool quiet = false)
     {
         var result = new DoctorCommandState(checks.Any(check => check.Status == "FAIL"));
         if (commandState.OutputFormatExplicitlySet)
@@ -308,6 +308,11 @@ internal sealed class DoctorCommand : CosmosCommand
         }));
         result.RenderUser = () =>
         {
+            if (quiet)
+            {
+                return;
+            }
+
             if (this.IncludeIdentity)
             {
                 AnsiConsole.MarkupLine(Theme.FormatSectionHeader(Message("who-heading")));
