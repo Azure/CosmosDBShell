@@ -200,6 +200,7 @@
   "command-disconnect-success": "Disconnected from \u0027{0}\u0027",
   "command-doctor-account-readable": "Account metadata was read using the current client. This does not establish container permissions or Direct replica connectivity.",
   "command-doctor-arm-credential-required": "No usable ARM context or Entra credential. Reconnect with Entra ID; subscription and resource-group arguments alone do not enable ARM with key authentication.",
+  "command-doctor-arm-forbidden": "ARM access was forbidden. Check Azure management-plane RBAC at the account or an inherited resource-group or subscription scope. Cosmos DB data-plane roles do not grant ARM access; a 403 alone does not identify a missing role.",
   "command-doctor-arm-readable": "ARM account metadata was read. Management write permissions and role assignments are not assessed.",
   "command-doctor-arm-unavailable": "No ARM context; management capabilities are not assessed. Use --arm to opt into discovery with an existing Entra credential.",
   "command-doctor-authentication-configured": "The existing client credential will be used. Successful acquisition and authorization are assessed only by subsequent service operations.",

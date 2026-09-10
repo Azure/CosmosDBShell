@@ -38,6 +38,7 @@ command-doctor-arm-credential-required = No usable ARM context or Entra credenti
 command-doctor-arm-unavailable = No ARM context; management capabilities are not assessed. Use --arm to opt into discovery with an existing Entra credential.
 command-doctor-unauthorized = Authentication was rejected. Check credential expiry, authentication configuration, and local clock settings, then reconnect.
 command-doctor-forbidden = Access was forbidden. Check data-plane permissions at the selected scope and account network restrictions; a 403 alone does not identify a missing role.
+command-doctor-arm-forbidden = ARM access was forbidden. Check Azure management-plane RBAC at the account or an inherited resource-group or subscription scope. Cosmos DB data-plane roles do not grant ARM access; a 403 alone does not identify a missing role.
 command-doctor-not-found = The requested resource was not found. Check the selected target and connection.
 command-doctor-throttled = The service throttled the probe. Retry later or review the request budget.
 command-doctor-unreachable = The service could not be reached. Check DNS, proxy, firewall, and private-endpoint routing. For Direct-mode failures, try reconnecting with --connect-mode gateway.

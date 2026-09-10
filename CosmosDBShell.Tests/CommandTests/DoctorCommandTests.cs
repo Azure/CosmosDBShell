@@ -221,6 +221,26 @@ public class DoctorCommandTests
         Assert.DoesNotContain('\u001b', plain);
     }
 
+    [Theory]
+    [InlineData("arm", true)]
+    [InlineData("access", false)]
+    [InlineData("query", false)]
+    public async Task Forbidden_UsesScopeSpecificGuidance(string id, bool managementPlane)
+    {
+        var check = await DoctorCommand.RunCheckAsync(id,
+            _ => throw new global::Azure.RequestFailedException(403, "SECRET_TOKEN"),
+            "unused", true, TimeSpan.FromSeconds(1), CancellationToken.None, CancellationToken.None);
+
+        Assert.Equal("forbidden", check.Code);
+        Assert.Equal("FAIL", check.Status);
+        Assert.Equal(managementPlane, check.Message.Contains("management-plane RBAC", StringComparison.Ordinal));
+        Assert.DoesNotContain("SECRET_TOKEN", check.Message);
+        if (!managementPlane)
+        {
+            Assert.Contains("data-plane permissions", check.Message);
+        }
+    }
+
     [Fact]
     public async Task Timeout_BoundsEvenANonCooperativeProbe()
     {

@@ -111,7 +111,7 @@ is returned for failing checks and over MCP.
 
 - `dns-failed`: check DNS and private-endpoint resolution.
 - `unauthorized`: check credential expiry and authentication configuration, then reconnect.
-- `forbidden`: check permissions at the selected scope and account network restrictions. A generic 403 does not identify a missing role.
+- `forbidden`: for `access`/`query`, check data-plane permissions at the selected scope and account network restrictions. For `arm`, check management-plane RBAC on the account or inherited resource-group/subscription scope; data-plane roles do not grant ARM access. A generic 403 does not identify a missing role.
 - `unreachable` or `timeout`: check routing, proxy, and firewall settings. For Direct-mode failures, try gateway mode (`connect --mode gateway <endpoint>`, or startup `--connect-mode gateway`).
 - `tls-failed`: check certificate trust and hostname configuration; do not disable certificate validation for non-emulator endpoints.
 

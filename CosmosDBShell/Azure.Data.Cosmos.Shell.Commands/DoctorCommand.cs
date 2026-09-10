@@ -240,6 +240,7 @@ internal sealed class DoctorCommand : CosmosCommand
             var code = ClassifyFailure(exception);
             return Check(id, required ? "FAIL" : "WARN", code) with
             {
+                Message = Message(id == "arm" && code == "forbidden" ? "arm-forbidden" : code),
                 DurationMs = stopwatch.ElapsedMilliseconds,
                 RequestCharge = exception is CosmosException cosmos ? cosmos.RequestCharge : null,
             };
