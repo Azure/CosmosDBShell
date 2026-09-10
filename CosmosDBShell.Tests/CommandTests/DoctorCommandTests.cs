@@ -18,8 +18,8 @@ using global::Azure.ResourceManager.CosmosDB;
 public class DoctorCommandTests
 {
     [Theory]
-    [InlineData("doctor who --format json")]
-    [InlineData("doctor --who --format json")]
+    [InlineData("doctor who --no-update-check --format json")]
+    [InlineData("doctor --who --no-update-check --format json")]
     public async Task WhoAliases_ReturnStructuredContextWithoutTextHeading(string command)
     {
         using var shell = ShellInterpreter.CreateInstance();
@@ -45,7 +45,7 @@ public class DoctorCommandTests
         var originalState = new DisconnectedState();
         shell.State = originalState;
 
-        var result = await new DoctorCommand { Format = "json" }.ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
+        var result = await new DoctorCommand { NoUpdateCheck = true, Format = "json" }.ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
 
         using var report = JsonDocument.Parse(result.GenerateOutputText());
         Assert.Equal(1, report.RootElement.GetProperty("schemaVersion").GetInt32());
@@ -74,7 +74,7 @@ public class DoctorCommandTests
         shell.State = new ContainerState("private-container", "private-database", client);
         var state = shell.State;
 
-        var result = await new DoctorCommand { Who = true, Format = "json", ResolveHostAsync = (_, _) => Task.CompletedTask }
+        var result = await new DoctorCommand { NoUpdateCheck = true, Who = true, Format = "json", ResolveHostAsync = (_, _) => Task.CompletedTask }
             .ExecuteAsync(shell, new CommandState(), "doctor --who", CancellationToken.None);
 
         var output = result.GenerateOutputText();
@@ -97,8 +97,8 @@ public class DoctorCommandTests
     {
         using var shell = ShellInterpreter.CreateInstance();
         shell.State = new DisconnectedState();
-        var normal = await new DoctorCommand().ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
-        var who = await new DoctorCommand { Who = true }.ExecuteAsync(shell, new CommandState(), "doctor --who", CancellationToken.None);
+        var normal = await new DoctorCommand { NoUpdateCheck = true }.ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
+        var who = await new DoctorCommand { NoUpdateCheck = true, Who = true }.ExecuteAsync(shell, new CommandState(), "doctor --who", CancellationToken.None);
 
         Assert.DoesNotContain("Doctor Who?", CaptureConsole(() => normal.RenderUser!()));
         Assert.StartsWith("Doctor Who?", CaptureConsole(() => who.RenderUser!()));
@@ -113,8 +113,8 @@ public class DoctorCommandTests
     }
 
     [Theory]
-    [InlineData("doctor --database db --format json")]
-    [InlineData("doctor --arm --format json")]
+    [InlineData("doctor --database db --no-update-check --format json")]
+    [InlineData("doctor --arm --no-update-check --format json")]
     public async Task RegisteredCommand_ExplicitDisconnectedChecksFailWithReport(string command)
     {
         using var shell = ShellInterpreter.CreateInstance();
@@ -191,7 +191,7 @@ public class DoctorCommandTests
         using var shell = ShellInterpreter.CreateInstance();
         shell.Options = new Program.CosmosShellOptions { Quiet = true };
         shell.State = new DisconnectedState();
-        var result = await new DoctorCommand { Who = who, Database = "missing", Format = "json" }
+        var result = await new DoctorCommand { NoUpdateCheck = true, Who = who, Database = "missing", Format = "json" }
             .ExecuteAsync(shell, new CommandState(), "doctor --database missing", CancellationToken.None);
 
         Assert.Empty(CaptureConsole(() => result.RenderUser!(), color: true));
@@ -377,6 +377,7 @@ public class DoctorCommandTests
         var state = shell.State;
         var result = await new DoctorCommand
         {
+            NoUpdateCheck = true,
             Format = "json",
             ResolveHostAsync = (_, _) => throw new SocketException((int)SocketError.HostNotFound),
         }.ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
@@ -426,7 +427,7 @@ public class DoctorCommandTests
         shell.State = new ContainerState("container", "database", client);
         var state = shell.State;
 
-        var result = await new DoctorCommand { Who = true, Query = true, Format = "json", ResolveHostAsync = (_, _) => Task.CompletedTask }.ExecuteAsync(shell, new CommandState(), "doctor --who", CancellationToken.None);
+        var result = await new DoctorCommand { NoUpdateCheck = true, Who = true, Query = true, Format = "json", ResolveHostAsync = (_, _) => Task.CompletedTask }.ExecuteAsync(shell, new CommandState(), "doctor --who", CancellationToken.None);
 
         Assert.False(result.IsError);
         Assert.Equal(3.5, result.RequestCharge);
@@ -520,7 +521,7 @@ public class DoctorCommandTests
         database.ReadAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).Returns(response);
         shell.State = new DatabaseState("database", client);
 
-        var result = await new DoctorCommand { ResolveHostAsync = (_, _) => Task.CompletedTask }
+        var result = await new DoctorCommand { NoUpdateCheck = true, ResolveHostAsync = (_, _) => Task.CompletedTask }
             .ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
 
         Assert.Contains("clock-skew", result.GenerateOutputText());
@@ -568,7 +569,7 @@ public class DoctorCommandTests
         shell.State = new ConnectedState(client, context);
         var state = shell.State;
 
-        var result = await new DoctorCommand { Arm = required, Format = "json", ResolveHostAsync = (_, _) => Task.CompletedTask }.ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
+        var result = await new DoctorCommand { NoUpdateCheck = true, Arm = required, Format = "json", ResolveHostAsync = (_, _) => Task.CompletedTask }.ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
 
         using var report = JsonDocument.Parse(result.GenerateOutputText());
         Assert.Equal(status, report.RootElement.GetProperty("status").GetString());
@@ -589,7 +590,7 @@ public class DoctorCommandTests
         client.ClientOptions.Returns(new CosmosClientOptions());
         shell.Connect(client, credential: credential);
 
-        var result = await new DoctorCommand { Arm = true, Query = true, Database = "database", Container = "container", Format = "json", ResolveHostAsync = (_, _) => Task.CompletedTask }.ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
+        var result = await new DoctorCommand { NoUpdateCheck = true, Arm = true, Query = true, Database = "database", Container = "container", Format = "json", ResolveHostAsync = (_, _) => Task.CompletedTask }.ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
 
         Assert.True(result.IsError);
         Assert.Contains("interactive-credential", result.GenerateOutputText());

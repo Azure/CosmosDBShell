@@ -49,6 +49,10 @@ The structured report also includes a `summary` with verdict counts, elapsed
 only from existing successful response Date headers; it never adds a network probe.
 Its nullable `clockOffsetSeconds` and `clockUncertaintySeconds` describe an estimate,
 not trusted time. Missing usable headers produce `clock-unavailable` (`SKIP`).
+The `updates` check performs one bounded, unauthenticated public GitHub release lookup,
+even without a Cosmos connection. Pass `no-update-check: true` to prevent this request.
+The lookup sends no Cosmos credentials or target names and installs nothing. Newer
+eligible releases produce `WARN` and `latestVersion`; unavailable checks produce `SKIP`.
 
 The versioned report is available in `result`, including when `isError` is true.
 Doctor's report omits secrets, raw exception messages, and document data. The standard

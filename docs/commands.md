@@ -49,6 +49,7 @@ doctor --database MyDb --container Items --query --format json
 doctor --arm --timeout 30
 doctor who
 doctor --who --database MyDb --container Items --query --format json
+doctor --no-update-check
 ```
 
 | Option | Behavior |
@@ -58,12 +59,34 @@ doctor --who --database MyDb --container Items --query --format json
 | `--query` | Read one query response page using `SELECT TOP 1 VALUE 1 FROM c`. Requires a container, consumes RUs, and returns no document data. |
 | `--arm` | Require an ARM account read. If no context exists, opt into account discovery using the existing noninteractive Entra credential. |
 | `--who` | Include known credential type, selected scope, and an explicit unassessed-write-access entry. `doctor who` is an alias. |
+| `--no-update-check` | Skip the public GitHub release lookup. Other requested network checks still run. |
 | `--timeout` | Overall network-check deadline, 1-120 seconds (default 20). Each check has a five-second limit. |
 | `--format`, `-f` | Standard shell formats: `user`, `json`, `table`, or `csv`. Otherwise inherit the session format. |
 
 Local checks report shell version, runtime, platform, and whether proxy environment
-variables are present. Proxy values are never shown. Installation method is reported
-as unknown rather than inferred from an unreliable executable path.
+variables are present. Proxy values are never shown. The shell version uses the same
+display version as `version`, including preview labels.
+
+The `updates` check replaces the former `installation` entry. By default, it makes
+one unauthenticated HTTPS request to `api.github.com/repos/Azure/CosmosDBShell/releases?per_page=100`,
+including while disconnected from Cosmos DB. It runs after connection diagnostics,
+with a five-second limit inside the overall `--timeout` budget. The response is capped
+at 5 MiB; there are no retries, pagination, downloads, installation changes, or caching.
+Only a fixed User-Agent is sent, not Cosmos credentials, resource names, or the installed
+version. Normal HTTP networking exposes the client's network address to GitHub and
+may use configured proxies. Use `--no-update-check` to disable this lookup, including
+for offline or restricted environments. This does not disable Cosmos or ARM probes.
+
+Versions are compared semantically, ignoring build metadata. Stable installations
+consider only stable releases; preview installations also consider prereleases.
+GitHub's prerelease flag is honored even for numeric tags such as `v1.1.209`.
+A newer eligible version produces `WARN` / `update-available`, with a release-page
+link and nullable `latestVersion` in JSON. It does not cause exit code 1. Otherwise,
+`PASS` / `update-current` means no newer version was found among the checked releases,
+not that every package-manager feed has been checked. Network or rate-limit failures,
+invalid responses, unknown versions, exhausted budgets, or no eligible releases produce
+`SKIP`; they never imply the installed version is current. Updates remain manual,
+using the original installation method.
 
 Connected checks resolve the account hostname and read account, database, or container
 metadata through the existing SDK client. A metadata read does not prove item access
@@ -125,7 +148,7 @@ JSON has `schemaVersion: 1`, an aggregate `status`, a `summary`, and a `checks` 
 The additive `summary` fields are `pass`, `warn`, `fail`, `skip`, `durationMs`, and nullable
 `requestCharge`. Each check
 contains stable `id`, `status`, and `code` fields, a localized `message`, `durationMs`,
-and nullable `requestCharge`, `credentialType`, `clockOffsetSeconds`, and
+and nullable `requestCharge`, `credentialType`, `latestVersion`, `clockOffsetSeconds`, and
 `clockUncertaintySeconds` fields. Only the `clock` entry populates clock values; a
 positive offset means the response clock is ahead of the local clock.
 `credentialType` is populated

@@ -25,9 +25,9 @@ public class ShellProcessTests
     private static readonly Regex AnsiEscape = new("\x1b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
 
     [Theory]
-    [InlineData("doctor --format json", 0, "PASS")]
-    [InlineData("doctor --database missing --format json", 1, "FAIL")]
-    [InlineData("doctor --arm --format json", 1, "FAIL")]
+    [InlineData("doctor --no-update-check --format json", 0, "PASS")]
+    [InlineData("doctor --database missing --no-update-check --format json", 1, "FAIL")]
+    [InlineData("doctor --arm --no-update-check --format json", 1, "FAIL")]
     public async Task Doctor_ReportsJsonAndRequiredCheckExitCode(string command, int exitCode, string status)
     {
         var result = await RunShellAsync(

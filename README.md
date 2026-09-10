@@ -298,6 +298,10 @@ Doctor keeps wrapped diagnostic messages aligned and reports explicit reasons fo
 It shows per-check duration and observed RUs, plus verdict counts and total elapsed time.
 Clock-offset estimates reuse existing response headers without extra requests; missing
 headers are reported as unassessed rather than implying that the clock is correct.
+Doctor also checks public GitHub releases for newer shell versions, including without
+a Cosmos connection. Preview installations include preview releases; stable installations
+consider stable releases only. Use `doctor --no-update-check` to suppress this external
+lookup. Updates are advisory and are never downloaded or installed automatically.
 
 Doctor distinguishes DNS, TLS, socket, proxy-authentication, and credential failures without exposing raw exception text. ARM permission failures include management-plane guidance rather than data-plane role advice.
 

@@ -45,11 +45,16 @@ internal sealed class DoctorCommand : CosmosCommand
     [CosmosOption("arm")]
     public bool Arm { get; init; }
 
+    [CosmosOption("no-update-check")]
+    public bool NoUpdateCheck { get; init; }
+
     [CosmosOption("timeout")]
     public int Timeout { get; init; } = 20;
 
     internal Func<string, CancellationToken, Task> ResolveHostAsync { get; init; } = async (host, token) =>
         await Dns.GetHostAddressesAsync(host, token);
+
+    internal Func<CancellationToken, Task<JsonElement>> FetchReleasesAsync { get; init; } = ShellUpdateChecker.FetchReleasesAsync;
 
     public override async Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
@@ -77,12 +82,12 @@ internal sealed class DoctorCommand : CosmosCommand
             throw new CommandException("doctor", Message("query-without-container"));
         }
 
+        var currentVersion = ShellInterpreter.GetDisplayVersion(typeof(ShellInterpreter).Assembly);
         var checks = new List<DoctorCheck>
         {
-            new("shell", "PASS", typeof(ShellInterpreter).Assembly.GetName().Version?.ToString() ?? "unknown"),
+            new("shell", "PASS", currentVersion),
             new("runtime", "PASS", RuntimeInformation.FrameworkDescription),
             new("platform", "PASS", $"{Environment.OSVersion.Platform} / {RuntimeInformation.ProcessArchitecture}"),
-            Check("installation", "SKIP", "installation-unknown"),
             Check("proxy", "PASS", HasProxyConfiguration() ? "proxy-configured" : "proxy-not-configured"),
         };
 
@@ -101,19 +106,20 @@ internal sealed class DoctorCommand : CosmosCommand
             checks.Add(Check("write-access", "SKIP", "write-not-assessed"));
         }
 
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(TimeSpan.FromSeconds(this.Timeout));
         if (shell.State is not ConnectedState connected)
         {
             checks.Add(Check("connection", this.Database != null || this.Container != null || this.Query ? "FAIL" : "SKIP", "not-connected"));
             checks.Add(Check("arm", this.Arm ? "FAIL" : "SKIP", "not-connected"));
             checks.Add(CreateClockCheck(checks));
+            checks.Add(await this.CheckUpdatesAsync(currentVersion, deadline.Token, token));
             return this.CreateResult(checks, commandState, shell.Options?.Quiet == true, stopwatch.ElapsedMilliseconds);
         }
 
         checks.Add(Check("connection", "PASS", connected.Client.ClientOptions.ConnectionMode == ConnectionMode.Direct ? "direct-configured" : "gateway-configured"));
         var canProbeCredential = !MayPrompt(shell.ActiveCredential?.GetType().Name);
         checks.Add(Check("authentication", canProbeCredential ? "PASS" : this.Query || this.Arm || this.Database != null || this.Container != null ? "FAIL" : "WARN", canProbeCredential ? "authentication-configured" : "interactive-credential"));
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(this.Timeout));
 
         var dns = await RunCheckAsync(
             "dns",
@@ -221,6 +227,8 @@ internal sealed class DoctorCommand : CosmosCommand
 
         token.ThrowIfCancellationRequested();
         checks.Add(CreateClockCheck(checks));
+        checks.Add(await this.CheckUpdatesAsync(currentVersion, deadline.Token, token));
+        token.ThrowIfCancellationRequested();
         return this.CreateResult(checks, commandState, shell.Options?.Quiet == true, stopwatch.ElapsedMilliseconds);
     }
 
@@ -387,6 +395,42 @@ internal sealed class DoctorCommand : CosmosCommand
     internal static bool MayPrompt(string? credentialType) => credentialType is not
         (null or "AzureCliCredential" or "ManagedIdentityCredential" or "StaticTokenCredential" or "EnvironmentCredential" or "WorkloadIdentityCredential" or "ClientSecretCredential" or "ClientCertificateCredential");
 
+    internal async Task<DoctorCheck> CheckUpdatesAsync(string currentVersion, CancellationToken deadline, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (this.NoUpdateCheck)
+        {
+            return Check("updates", "SKIP", "update-check-disabled");
+        }
+
+        ShellUpdateChecker.UpdateInfo? update = null;
+        var result = await RunCheckAsync(
+            "updates",
+            async checkToken =>
+            {
+                update = ShellUpdateChecker.CompareReleases(currentVersion, await this.FetchReleasesAsync(checkToken));
+                return null;
+            },
+            "update-current",
+            false,
+            TimeSpan.FromSeconds(5),
+            deadline,
+            token);
+        token.ThrowIfCancellationRequested();
+        if (result.Status != "PASS")
+        {
+            return Check("updates", "SKIP", result.Code == "timeout" ? "update-check-timeout" : "update-check-unavailable") with { DurationMs = result.DurationMs };
+        }
+
+        var status = update!.Code == "update-available" ? "WARN" : update.Code == "update-current" ? "PASS" : "SKIP";
+        return Check("updates", status, update.Code) with
+        {
+            DurationMs = result.DurationMs,
+            LatestVersion = update.LatestVersion,
+            Message = update.LatestVersion == null ? Message(update.Code) : $"{Message(update.Code)} {update.LatestVersion}",
+        };
+    }
+
     internal (string? Database, string? Container) ResolveTarget(State state)
     {
         var database = this.Database ?? (state as DatabaseState)?.DatabaseName;
@@ -425,7 +469,7 @@ internal sealed class DoctorCommand : CosmosCommand
             schemaVersion = 1,
             status = result.IsError ? "FAIL" : checks.Any(check => check.Status == "WARN") ? "WARN" : "PASS",
             summary,
-            checks = checks.Select(check => new { id = check.Id, status = check.Status, code = check.Code, message = check.Message, durationMs = check.DurationMs, requestCharge = check.RequestCharge, credentialType = check.CredentialType, clockOffsetSeconds = check.Id == "clock" ? check.Clock?.OffsetSeconds : null, clockUncertaintySeconds = check.Id == "clock" ? check.Clock?.UncertaintySeconds : null }),
+            checks = checks.Select(check => new { id = check.Id, status = check.Status, code = check.Code, message = check.Message, durationMs = check.DurationMs, requestCharge = check.RequestCharge, credentialType = check.CredentialType, latestVersion = check.LatestVersion, clockOffsetSeconds = check.Id == "clock" ? check.Clock?.OffsetSeconds : null, clockUncertaintySeconds = check.Id == "clock" ? check.Clock?.UncertaintySeconds : null }),
         }));
         result.RenderUser = () =>
         {
@@ -491,6 +535,8 @@ internal sealed class DoctorCommand : CosmosCommand
     internal sealed record DoctorCheck(string Id, string Status, string Message, string Code = "available", long DurationMs = 0, double? RequestCharge = null)
     {
         public string? CredentialType { get; init; }
+
+        public string? LatestVersion { get; init; }
 
         public ClockSample? Clock { get; init; }
     }
