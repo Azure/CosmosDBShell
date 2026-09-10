@@ -126,9 +126,10 @@ internal sealed class DoctorCommand : CosmosCommand
             token);
         checks.Add(dns);
 
+        DoctorCheck access;
         if (dns.Status == "PASS" && canProbeCredential)
         {
-            checks.Add(await RunCheckAsync(
+            access = await RunCheckAsync(
                 "access",
                 async checkToken =>
                 {
@@ -151,14 +152,15 @@ internal sealed class DoctorCommand : CosmosCommand
                 true,
                 TimeSpan.FromSeconds(5),
                 deadline.Token,
-                token));
+                token);
         }
         else
         {
-            checks.Add(Check("access", "SKIP", "dependency-failed"));
+            access = Check("access", "SKIP", !canProbeCredential ? "interactive-credential" : "dependency-failed");
         }
 
-        if (this.Query && checks.Last().Status == "PASS")
+        checks.Add(access);
+        if (this.Query && access.Status == "PASS")
         {
             checks.Add(await RunCheckAsync(
                 "query",
@@ -179,7 +181,7 @@ internal sealed class DoctorCommand : CosmosCommand
         }
         else
         {
-            checks.Add(Check("query", "SKIP", this.Query ? "dependency-failed" : "query-not-requested"));
+            checks.Add(Check("query", "SKIP", !this.Query ? "query-not-requested" : !canProbeCredential ? "interactive-credential" : "dependency-failed"));
         }
 
         if (!canProbeCredential && (connected.ArmContext != null || this.Arm))
@@ -371,10 +373,16 @@ internal sealed class DoctorCommand : CosmosCommand
                 AnsiConsole.MarkupLine(Theme.FormatSectionHeader(Message("who-heading")));
             }
 
+            var grid = new Grid();
+            grid.AddColumn(new GridColumn().Width(4).NoWrap().PadRight(2));
+            grid.AddColumn(new GridColumn().Width(18).NoWrap().PadRight(1));
+            grid.AddColumn(new GridColumn());
             foreach (var check in checks)
             {
-                AnsiConsole.MarkupLine($"{FormatStatus(check.Status)}  {Theme.FormatHelpName(check.Id.PadRight(18))} {FormatCheckMessage(check)}");
+                grid.AddRow(FormatStatus(check.Status), Theme.FormatHelpName(check.Id), FormatCheckMessage(check));
             }
+
+            AnsiConsole.Write(grid);
         };
         return result;
     }

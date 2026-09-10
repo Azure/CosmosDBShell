@@ -88,6 +88,9 @@ active theme's `success`, `warning`, `error`, and `muted` colors, so `--theme mo
 redirection, and machine mode stay uncolored. DNS and data-plane probes on a connected
 client are required. Failed prerequisites skip their dependent checks. Without a
 connection, local checks still run; an explicitly requested remote target fails.
+Credential-blocked access and requested query probes use `interactive-credential`
+instead of a generic dependency failure. Text messages wrap within their column,
+keeping continuation lines aligned beneath the message rather than the status.
 The command returns exit code 1 if any required check fails, otherwise 0. Invalid
 arguments and caller cancellation follow the shell's existing error contract.
 

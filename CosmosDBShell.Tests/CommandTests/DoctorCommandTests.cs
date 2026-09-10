@@ -224,6 +224,22 @@ public class DoctorCommandTests
     }
 
     [Theory]
+    [InlineData(60)]
+    [InlineData(100)]
+    public void RenderUser_WrapsMessagesWithinTheirColumn(int width)
+    {
+        var result = new DoctorCommand().CreateResult(
+            [new("access", "FAIL", "[literal] " + string.Join(" ", Enumerable.Repeat("wrapped", 30)))], new CommandState());
+
+        var output = CaptureConsole(() => result.RenderUser!(), width: width);
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => line.TrimEnd('\r')).ToArray();
+        Assert.True(lines.Length > 1);
+        Assert.Contains("[literal]", lines[0]);
+        Assert.All(lines, line => Assert.True(line.Length <= width));
+        Assert.All(lines.Skip(1), line => Assert.StartsWith(new string(' ', 25), line));
+    }
+
+    [Theory]
     [InlineData("arm", true)]
     [InlineData("access", false)]
     [InlineData("query", false)]
@@ -463,15 +479,23 @@ public class DoctorCommandTests
         client.ClientOptions.Returns(new CosmosClientOptions());
         shell.Connect(client, credential: credential);
 
-        var result = await new DoctorCommand { Arm = true, Format = "json", ResolveHostAsync = (_, _) => Task.CompletedTask }.ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
+        var result = await new DoctorCommand { Arm = true, Query = true, Database = "database", Container = "container", Format = "json", ResolveHostAsync = (_, _) => Task.CompletedTask }.ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
 
         Assert.True(result.IsError);
         Assert.Contains("interactive-credential", result.GenerateOutputText());
+        using var report = JsonDocument.Parse(result.GenerateOutputText());
+        foreach (var id in new[] { "access", "query" })
+        {
+            var check = Assert.Single(report.RootElement.GetProperty("checks").EnumerateArray(), check => check.GetProperty("id").GetString() == id);
+            Assert.Equal("SKIP", check.GetProperty("status").GetString());
+            Assert.Equal("interactive-credential", check.GetProperty("code").GetString());
+        }
+
         Assert.Empty(credential.ReceivedCalls());
         await client.DidNotReceive().ReadAccountAsync();
     }
 
-    private static string CaptureConsole(Action action, bool color = false)
+    private static string CaptureConsole(Action action, bool color = false, int width = 120)
     {
         var saved = AnsiConsole.Console;
         using var writer = new StringWriter();
@@ -483,6 +507,7 @@ public class DoctorCommandTests
                 ColorSystem = color ? ColorSystemSupport.Standard : ColorSystemSupport.NoColors,
                 Out = new AnsiConsoleOutput(writer),
             });
+            AnsiConsole.Console.Profile.Width = width;
 
             action();
         }

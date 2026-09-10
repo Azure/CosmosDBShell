@@ -294,6 +294,7 @@ Color values must be empty or one standard ANSI 16 color name (`black`, `maroon`
 The `literal` key colors every JSON/JavaScript literal at once. To match an editor more closely you can override individual literal types with `string`, `number`, `boolean`, and `null`; any you leave unset fall back to `literal`. The `string_escape` key colors backslash escape sequences (`\n`, `\"`, `\uXXXX`) inside strings; leave it unset to color escapes the same as the surrounding string.
 
 The `success`, `warning`, `error`, and `muted` keys color status verdicts such as the `PASS`, `WARN`, `FAIL`, and `SKIP` columns in `doctor`.
+Doctor keeps wrapped diagnostic messages aligned and reports explicit reasons for credential-blocked probes.
 
 Doctor distinguishes DNS, TLS, socket, proxy-authentication, and credential failures without exposing raw exception text. ARM permission failures include management-plane guidance rather than data-plane role advice.
 
