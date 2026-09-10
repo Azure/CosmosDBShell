@@ -1,8 +1,12 @@
 command-doctor-description = Run bounded, read-only environment and connectivity checks without changing the current connection or navigation.
+command-doctor-clock-unavailable = No usable Date header from an existing successful response. Clock offset could not be estimated; no additional request was sent.
+command-doctor-clock-skew = Response time suggests a clock offset beyond five minutes plus request-time uncertainty. Check local time synchronization; proxies and server clocks can affect this estimate.
+command-doctor-clock-within-tolerance = Response time suggests no clock offset beyond five minutes plus request-time uncertainty. This is an estimate, not a trusted time source.
 command-doctor-description-subcommand = Optional 'who' alias for --who.
 command-doctor-description-who = Include known credential type, selected scope, and unassessed write access without acquiring an additional token or starting a login.
 command-doctor-invalid-subcommand = Unknown subcommand. Use doctor who or doctor --who.
 command-doctor-who-heading = Doctor Who?
+command-doctor-summary = Summary
 command-doctor-identity-configured = Configured credential type (not a verified principal):
 command-doctor-identity-unknown = Credential identity is not available from the connection metadata; no identity token was requested.
 command-doctor-scope-account = Account scope selected. Access is assessed by subsequent probes.

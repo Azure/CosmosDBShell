@@ -91,6 +91,12 @@ connection, local checks still run; an explicitly requested remote target fails.
 Credential-blocked access and requested query probes use `interactive-credential`
 instead of a generic dependency failure. Text messages wrap within their column,
 keeping continuation lines aligned beneath the message rather than the status.
+Each check shows milliseconds and observed RUs. Wide terminals use separate numeric
+columns; narrow terminals include these values in the message column. A final summary
+counts all four verdicts and reports elapsed command time and total observed RUs.
+Elapsed command time is measured separately, not summed from individual checks, and
+excludes rendering. Local/unmeasured checks show `0 ms`; sub-millisecond probes can
+also round down to zero. Unknown RU charges appear as `-`, not as a measured zero.
 The command returns exit code 1 if any required check fails, otherwise 0. Invalid
 arguments and caller cancellation follow the shell's existing error contract.
 
@@ -104,9 +110,25 @@ resource names, principal IDs, and tenant IDs are omitted. Write access is alway
 `SKIP`: successful metadata/query/ARM reads never establish write permissions or
 effective roles. The text format starts with `Doctor Who?`; JSON and MCP do not.
 
-JSON has `schemaVersion: 1`, an aggregate `status`, and a `checks` array. Each check
+The `clock` check uses an RFC 1123 `Date` header from an already successful database,
+container, query, or ARM response. It sends no additional requests. If multiple samples
+exist, it uses the one with the shortest request interval. The server time is compared
+with the local UTC midpoint of that interval, allowing half the interval plus one second
+for uncertainty. An absolute offset exceeding five minutes plus that uncertainty is
+`WARN` (`clock-skew`), otherwise `PASS` (`clock-within-tolerance`). Missing or invalid
+headers yield `SKIP` (`clock-unavailable`), including disconnected runs and account-only
+reads without another usable response. The account-read SDK API exposes no Date header.
+This is not a trusted time source or proof of an authentication problem: proxies,
+server clocks, and changes to local time during a probe can affect the estimate.
+
+JSON has `schemaVersion: 1`, an aggregate `status`, a `summary`, and a `checks` array.
+The additive `summary` fields are `pass`, `warn`, `fail`, `skip`, `durationMs`, and nullable
+`requestCharge`. Each check
 contains stable `id`, `status`, and `code` fields, a localized `message`, `durationMs`,
-and nullable `requestCharge` and `credentialType` fields. `credentialType` is populated
+and nullable `requestCharge`, `credentialType`, `clockOffsetSeconds`, and
+`clockUncertaintySeconds` fields. Only the `clock` entry populates clock values; a
+positive offset means the response clock is ahead of the local clock.
+`credentialType` is populated
 only for a known identity entry. Parse IDs and codes, not message text. The same report
 is returned for failing checks and over MCP.
 
@@ -121,6 +143,7 @@ is returned for failing checks and over MCP.
 - `connection-reset`: retry and check network stability and intermediaries.
 - `proxy-authentication-required`: HTTP 407 requires proxy authentication, not Cosmos DB role changes.
 - `credential-unavailable` / `authentication-failed`: check credential configuration or token acquisition, respectively. Neither proves a missing Cosmos DB role.
+- `clock-skew`: check local time synchronization, considering that intermediary or server clocks can also affect the estimate.
 
 Classification uses HTTP status codes, structured HTTP/socket errors, and known inner
 exceptions, not exception message text. HTTP 408 is a timeout; HTTP 503 remains
@@ -129,7 +152,7 @@ are not attributed to an arbitrary inner failure. Raw exceptions remain omitted.
 
 The report omits endpoints, account and target names, keys, tokens, connection strings,
 proxy values, document data, and raw exception messages. It does not inspect role
-assignments, scan port ranges, estimate clock skew, or independently validate emulator
+assignments, scan port ranges, or independently validate emulator
 certificates. Existing client TLS policy remains in effect. A timed-out SDK operation
 that lacks cancellation support may finish in the background; doctor stops waiting
 at the deadline and never disposes the shared client.

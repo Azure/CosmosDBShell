@@ -44,6 +44,11 @@ Pass `who: true` (or `subcommand: "who"`) to include known credential type, sele
 scope, and unassessed write access. This adds no token acquisition or network probes.
 The identity entry's `credentialType` describes configuration, not a verified
 principal. The text-only `Doctor Who?` heading is not part of the structured report.
+The structured report also includes a `summary` with verdict counts, elapsed
+`durationMs`, and nullable total `requestCharge`. The `clock` check estimates offset
+only from existing successful response Date headers; it never adds a network probe.
+Its nullable `clockOffsetSeconds` and `clockUncertaintySeconds` describe an estimate,
+not trusted time. Missing usable headers produce `clock-unavailable` (`SKIP`).
 
 The versioned report is available in `result`, including when `isError` is true.
 Doctor's report omits secrets, raw exception messages, and document data. The standard

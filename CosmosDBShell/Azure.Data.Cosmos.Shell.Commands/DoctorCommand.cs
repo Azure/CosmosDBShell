@@ -1,6 +1,7 @@
 namespace Azure.Data.Cosmos.Shell.Commands;
 
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -52,6 +53,7 @@ internal sealed class DoctorCommand : CosmosCommand
 
     public override async Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
+        var stopwatch = Stopwatch.StartNew();
         token.ThrowIfCancellationRequested();
         commandState.SetFormat(this.Format);
         if (this.Subcommand != null && this.Subcommand != "who")
@@ -103,7 +105,8 @@ internal sealed class DoctorCommand : CosmosCommand
         {
             checks.Add(Check("connection", this.Database != null || this.Container != null || this.Query ? "FAIL" : "SKIP", "not-connected"));
             checks.Add(Check("arm", this.Arm ? "FAIL" : "SKIP", "not-connected"));
-            return this.CreateResult(checks, commandState, shell.Options?.Quiet == true);
+            checks.Add(CreateClockCheck(checks));
+            return this.CreateResult(checks, commandState, shell.Options?.Quiet == true, stopwatch.ElapsedMilliseconds);
         }
 
         checks.Add(Check("connection", "PASS", connected.Client.ClientOptions.ConnectionMode == ConnectionMode.Direct ? "direct-configured" : "gateway-configured"));
@@ -129,24 +132,24 @@ internal sealed class DoctorCommand : CosmosCommand
         DoctorCheck access;
         if (dns.Status == "PASS" && canProbeCredential)
         {
-            access = await RunCheckAsync(
+            access = await RunResponseCheckAsync(
                 "access",
                 async checkToken =>
                 {
                     if (container != null)
                     {
                         var response = await connected.Client.GetContainer(database!, container).ReadContainerAsync(cancellationToken: checkToken);
-                        return response.RequestCharge;
+                        return new ProbeResponse(response.RequestCharge, response.Headers?["Date"]);
                     }
 
                     if (database != null)
                     {
                         var response = await connected.Client.GetDatabase(database).ReadAsync(cancellationToken: checkToken);
-                        return response.RequestCharge;
+                        return new ProbeResponse(response.RequestCharge, response.Headers?["Date"]);
                     }
 
                     await connected.Client.ReadAccountAsync().WaitAsync(checkToken);
-                    return null;
+                    return new ProbeResponse(null, null);
                 },
                 container != null ? "container-readable" : database != null ? "database-readable" : "account-readable",
                 true,
@@ -162,7 +165,7 @@ internal sealed class DoctorCommand : CosmosCommand
         checks.Add(access);
         if (this.Query && access.Status == "PASS")
         {
-            checks.Add(await RunCheckAsync(
+            checks.Add(await RunResponseCheckAsync(
                 "query",
                 async checkToken =>
                 {
@@ -171,7 +174,7 @@ internal sealed class DoctorCommand : CosmosCommand
                         requestOptions: new QueryRequestOptions { MaxItemCount = 1, MaxConcurrency = 1, MaxBufferedItemCount = 1 });
                     using var response = await iterator.ReadNextAsync(checkToken);
                     response.EnsureSuccessStatusCode();
-                    return response.Headers.RequestCharge;
+                    return new ProbeResponse(response.Headers.RequestCharge, response.Headers["Date"]);
                 },
                 "query-readable",
                 true,
@@ -190,7 +193,7 @@ internal sealed class DoctorCommand : CosmosCommand
         }
         else if (connected.ArmContext != null || (this.Arm && shell.ActiveCredential != null))
         {
-            checks.Add(await RunCheckAsync(
+            checks.Add(await RunResponseCheckAsync(
                 "arm",
                 async checkToken =>
                 {
@@ -201,8 +204,9 @@ internal sealed class DoctorCommand : CosmosCommand
                         throw new InvalidOperationException();
                     }
 
-                    await context.Account.GetAsync(checkToken);
-                    return null;
+                    var response = await context.Account.GetAsync(checkToken);
+                    response.GetRawResponse().Headers.TryGetValue("Date", out var date);
+                    return new ProbeResponse(null, date);
                 },
                 "arm-readable",
                 this.Arm,
@@ -216,7 +220,59 @@ internal sealed class DoctorCommand : CosmosCommand
         }
 
         token.ThrowIfCancellationRequested();
-        return this.CreateResult(checks, commandState, shell.Options?.Quiet == true);
+        checks.Add(CreateClockCheck(checks));
+        return this.CreateResult(checks, commandState, shell.Options?.Quiet == true, stopwatch.ElapsedMilliseconds);
+    }
+
+    internal static async Task<DoctorCheck> RunResponseCheckAsync(
+        string id,
+        Func<CancellationToken, Task<ProbeResponse>> probe,
+        string successCode,
+        bool required,
+        TimeSpan timeout,
+        CancellationToken deadline,
+        CancellationToken token)
+    {
+        ClockSample? clock = null;
+        var result = await RunCheckAsync(
+            id,
+            async checkToken =>
+            {
+                var started = DateTimeOffset.UtcNow;
+                var response = await probe(checkToken);
+                clock = ReadClockSample(response.DateHeader, started, DateTimeOffset.UtcNow);
+                return response.RequestCharge;
+            },
+            successCode,
+            required,
+            timeout,
+            deadline,
+            token);
+        return result with { Clock = result.Status == "PASS" ? clock : null };
+    }
+
+    internal static ClockSample? ReadClockSample(string? date, DateTimeOffset started, DateTimeOffset completed)
+    {
+        if (completed < started || !DateTimeOffset.TryParseExact(date, "r", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var serverTime))
+        {
+            return null;
+        }
+
+        var halfDuration = (completed - started).TotalSeconds / 2;
+        return new ClockSample((serverTime - started).TotalSeconds - halfDuration, halfDuration + 1);
+    }
+
+    internal static DoctorCheck CreateClockCheck(IEnumerable<DoctorCheck> checks)
+    {
+        var sample = checks.Where(check => check.Status == "PASS" && check.Clock != null)
+            .Select(check => check.Clock!).OrderBy(clock => clock.UncertaintySeconds).FirstOrDefault();
+        if (sample == null)
+        {
+            return Check("clock", "SKIP", "clock-unavailable");
+        }
+
+        var skewed = Math.Abs(sample.OffsetSeconds) > 300 + sample.UncertaintySeconds;
+        return Check("clock", skewed ? "WARN" : "PASS", skewed ? "clock-skew" : "clock-within-tolerance") with { Clock = sample };
     }
 
     internal static async Task<DoctorCheck> RunCheckAsync(
@@ -345,7 +401,7 @@ internal sealed class DoctorCommand : CosmosCommand
     private static bool HasProxyConfiguration() => new[] { "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy" }
         .Any(name => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(name)));
 
-    internal CommandState CreateResult(List<DoctorCheck> checks, CommandState commandState, bool quiet = false)
+    internal CommandState CreateResult(List<DoctorCheck> checks, CommandState commandState, bool quiet = false, long durationMs = 0)
     {
         var result = new DoctorCommandState(checks.Any(check => check.Status == "FAIL"));
         if (commandState.OutputFormatExplicitlySet)
@@ -355,11 +411,21 @@ internal sealed class DoctorCommand : CosmosCommand
 
         result.SetFormat(this.Format);
         result.RequestCharge = checks.Any(check => check.RequestCharge.HasValue) ? checks.Sum(check => check.RequestCharge ?? 0) : null;
+        var summary = new
+        {
+            pass = checks.Count(check => check.Status == "PASS"),
+            warn = checks.Count(check => check.Status == "WARN"),
+            fail = checks.Count(check => check.Status == "FAIL"),
+            skip = checks.Count(check => check.Status == "SKIP"),
+            durationMs,
+            requestCharge = result.RequestCharge,
+        };
         result.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
             schemaVersion = 1,
             status = result.IsError ? "FAIL" : checks.Any(check => check.Status == "WARN") ? "WARN" : "PASS",
-            checks = checks.Select(check => new { id = check.Id, status = check.Status, code = check.Code, message = check.Message, durationMs = check.DurationMs, requestCharge = check.RequestCharge, credentialType = check.CredentialType }),
+            summary,
+            checks = checks.Select(check => new { id = check.Id, status = check.Status, code = check.Code, message = check.Message, durationMs = check.DurationMs, requestCharge = check.RequestCharge, credentialType = check.CredentialType, clockOffsetSeconds = check.Id == "clock" ? check.Clock?.OffsetSeconds : null, clockUncertaintySeconds = check.Id == "clock" ? check.Clock?.UncertaintySeconds : null }),
         }));
         result.RenderUser = () =>
         {
@@ -376,13 +442,31 @@ internal sealed class DoctorCommand : CosmosCommand
             var grid = new Grid();
             grid.AddColumn(new GridColumn().Width(4).NoWrap().PadRight(2));
             grid.AddColumn(new GridColumn().Width(18).NoWrap().PadRight(1));
+            var separateMetrics = AnsiConsole.Profile.Width >= 100;
+            if (separateMetrics)
+            {
+                grid.AddColumn(new GridColumn().RightAligned().NoWrap().PadRight(2));
+                grid.AddColumn(new GridColumn().RightAligned().NoWrap().PadRight(2));
+            }
+
             grid.AddColumn(new GridColumn());
             foreach (var check in checks)
             {
-                grid.AddRow(FormatStatus(check.Status), Theme.FormatHelpName(check.Id), FormatCheckMessage(check));
+                var duration = $"{check.DurationMs.ToString(CultureInfo.InvariantCulture)} ms";
+                var charge = $"{FormatCharge(check.RequestCharge)} RU";
+                if (separateMetrics)
+                {
+                    grid.AddRow(FormatStatus(check.Status), Theme.FormatHelpName(check.Id), Theme.FormatMuted(duration), Theme.FormatMuted(charge), FormatCheckMessage(check));
+                }
+                else
+                {
+                    grid.AddRow(FormatStatus(check.Status), Theme.FormatHelpName(check.Id), $"{FormatCheckMessage(check)} {Theme.FormatMuted($"({duration}, {charge})")}");
+                }
             }
 
             AnsiConsole.Write(grid);
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine($"{Theme.FormatSectionHeader(Message("summary"))}: {summary.pass} {FormatStatus("PASS")} | {summary.warn} {FormatStatus("WARN")} | {summary.fail} {FormatStatus("FAIL")} | {summary.skip} {FormatStatus("SKIP")} | {durationMs.ToString(CultureInfo.InvariantCulture)} ms | {FormatCharge(result.RequestCharge)} RU");
         };
         return result;
     }
@@ -402,10 +486,18 @@ internal sealed class DoctorCommand : CosmosCommand
     private static string FormatCheckMessage(DoctorCheck check) =>
         check.Status == "SKIP" ? Theme.FormatMuted(check.Message) : Markup.Escape(check.Message);
 
+    private static string FormatCharge(double? charge) => charge?.ToString("0.########", CultureInfo.InvariantCulture) ?? "-";
+
     internal sealed record DoctorCheck(string Id, string Status, string Message, string Code = "available", long DurationMs = 0, double? RequestCharge = null)
     {
         public string? CredentialType { get; init; }
+
+        public ClockSample? Clock { get; init; }
     }
+
+    internal sealed record ProbeResponse(double? RequestCharge, string? DateHeader);
+
+    internal sealed record ClockSample(double OffsetSeconds, double UncertaintySeconds);
 
     private sealed class DoctorCommandState(bool failed) : CommandState
     {

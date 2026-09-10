@@ -232,11 +232,12 @@ public class DoctorCommandTests
             [new("access", "FAIL", "[literal] " + string.Join(" ", Enumerable.Repeat("wrapped", 30)))], new CommandState());
 
         var output = CaptureConsole(() => result.RenderUser!(), width: width);
-        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => line.TrimEnd('\r')).ToArray();
+        var lines = output.Split('\n').Select(line => line.TrimEnd('\r')).TakeWhile(line => !string.IsNullOrWhiteSpace(line)).ToArray();
         Assert.True(lines.Length > 1);
         Assert.Contains("[literal]", lines[0]);
         Assert.All(lines, line => Assert.True(line.Length <= width));
-        Assert.All(lines.Skip(1), line => Assert.StartsWith(new string(' ', 25), line));
+        var messageColumn = lines[0].IndexOf("[literal]", StringComparison.Ordinal);
+        Assert.All(lines.Skip(1), line => Assert.StartsWith(new string(' ', messageColumn), line));
     }
 
     [Theory]
@@ -389,8 +390,12 @@ public class DoctorCommandTests
         Assert.Same(state, shell.State);
     }
 
-    [Fact]
-    public async Task Query_UsesOneConstantProjectionPageAndPreservesState()
+    [Theory]
+    [InlineData("query", "Sat, 01 Jan 2000 00:00:00 GMT", "WARN")]
+    [InlineData("container", "Sat, 01 Jan 2000 00:00:00 GMT", "WARN")]
+    [InlineData("query", "SECRET_DATE", "SKIP")]
+    [InlineData("query", null, "SKIP")]
+    public async Task Query_UsesOneConstantProjectionPageAndPreservesState(string dateSource, string? dateHeader, string clockStatus)
     {
         using var shell = ShellInterpreter.CreateInstance();
         var client = Substitute.For<CosmosClient>();
@@ -400,12 +405,23 @@ public class DoctorCommandTests
         client.GetContainer("database", "container").Returns(container);
         var metadata = Substitute.For<ContainerResponse>();
         metadata.RequestCharge.Returns(1.5);
+        var headers = new Headers();
+        if (dateSource == "container" && dateHeader != null)
+        {
+            headers.Add("Date", dateHeader);
+        }
+
+        metadata.Headers.Returns(headers);
         container.ReadContainerAsync(Arg.Any<ContainerRequestOptions>(), Arg.Any<CancellationToken>()).Returns(metadata);
         var iterator = Substitute.For<FeedIterator>();
         container.GetItemQueryStreamIterator("SELECT TOP 1 VALUE 1 FROM c", null, Arg.Is<QueryRequestOptions>(options => options.MaxItemCount == 1 && options.MaxConcurrency == 1)).Returns(iterator);
         var content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("SECRET_DOCUMENT"));
         var response = new ResponseMessage(HttpStatusCode.OK) { Content = content };
         response.Headers.Add("x-ms-request-charge", "2");
+        if (dateSource == "query" && dateHeader != null)
+        {
+            response.Headers.Add("Date", dateHeader);
+        }
         iterator.ReadNextAsync(Arg.Any<CancellationToken>()).Returns(response);
         shell.State = new ContainerState("container", "database", client);
         var state = shell.State;
@@ -417,6 +433,11 @@ public class DoctorCommandTests
         Assert.Contains("query-readable", result.GenerateOutputText());
         Assert.Contains("write-not-assessed", result.GenerateOutputText());
         Assert.DoesNotContain("SECRET_DOCUMENT", result.GenerateOutputText());
+        Assert.DoesNotContain("SECRET_DATE", result.GenerateOutputText());
+        using var report = JsonDocument.Parse(result.GenerateOutputText());
+        var clock = Assert.Single(report.RootElement.GetProperty("checks").EnumerateArray(), check => check.GetProperty("id").GetString() == "clock");
+        Assert.Equal(clockStatus, clock.GetProperty("status").GetString());
+        await container.Received(1).ReadContainerAsync(Arg.Any<ContainerRequestOptions>(), Arg.Any<CancellationToken>());
         Assert.False(content.CanRead);
         await iterator.Received(1).ReadNextAsync(Arg.Any<CancellationToken>());
         iterator.Received(1).Dispose();
@@ -433,6 +454,93 @@ public class DoctorCommandTests
     }
 
     [Theory]
+    [InlineData(-600, "WARN")]
+    [InlineData(600, "WARN")]
+    [InlineData(300, "PASS")]
+    [InlineData(-300, "PASS")]
+    [InlineData(0, "PASS")]
+    public void ClockCheck_AccountsForRequestTimeAndTimestampResolution(int offset, string status)
+    {
+        var started = new DateTimeOffset(2026, 9, 10, 12, 0, 0, TimeSpan.Zero);
+        var clock = DoctorCommand.ReadClockSample(started.AddSeconds(offset).ToString("r"), started, started.AddSeconds(4));
+        Assert.NotNull(clock);
+        Assert.Equal(offset - 2, clock.OffsetSeconds);
+        Assert.Equal(3, clock.UncertaintySeconds);
+        var check = DoctorCommand.CreateClockCheck([new("access", "PASS", "read") { Clock = clock }]);
+        Assert.Equal(status, check.Status);
+        var result = new DoctorCommand().CreateResult([check], new CommandState());
+        Assert.Equal(0, result.ExitCode);
+        using var report = JsonDocument.Parse(result.GenerateOutputText());
+        Assert.Equal(offset - 2, report.RootElement.GetProperty("checks")[0].GetProperty("clockOffsetSeconds").GetDouble());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("SECRET_DATE")]
+    public void ClockCheck_UnusableDateIsSkipped(string? date)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var clock = DoctorCommand.ReadClockSample(date, now, now);
+        Assert.Null(clock);
+        var check = DoctorCommand.CreateClockCheck([new("access", "PASS", "read") { Clock = clock }]);
+        Assert.Equal("SKIP", check.Status);
+        Assert.Equal("clock-unavailable", check.Code);
+        Assert.DoesNotContain("SECRET_DATE", check.Message);
+    }
+
+    [Fact]
+    public void ClockCheck_UsesLowestUncertaintyAndIgnoresFailedProbes()
+    {
+        var check = DoctorCommand.CreateClockCheck([
+            new("access", "PASS", "read") { Clock = new(500, 200) },
+            new("query", "PASS", "read") { Clock = new(600, 1) },
+            new("arm", "FAIL", "failed") { Clock = new(0, 0) },
+        ]);
+        Assert.Equal("WARN", check.Status);
+        Assert.Equal(600, check.Clock!.OffsetSeconds);
+        var now = DateTimeOffset.UtcNow;
+        Assert.Null(DoctorCommand.ReadClockSample(now.ToString("r"), now, now.AddSeconds(-1)));
+    }
+
+    [Fact]
+    public async Task DatabaseResponse_ProvidesClockSampleWithoutExtraReads()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var client = Substitute.For<CosmosClient>();
+        client.Endpoint.Returns(new Uri("https://private-account.documents.azure.com"));
+        client.ClientOptions.Returns(new CosmosClientOptions());
+        var database = Substitute.For<Database>();
+        client.GetDatabase("database").Returns(database);
+        var response = Substitute.For<DatabaseResponse>();
+        var headers = new Headers();
+        headers.Add("Date", "Sat, 01 Jan 2000 00:00:00 GMT");
+        response.Headers.Returns(headers);
+        response.RequestCharge.Returns(1.25);
+        database.ReadAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).Returns(response);
+        shell.State = new DatabaseState("database", client);
+
+        var result = await new DoctorCommand { ResolveHostAsync = (_, _) => Task.CompletedTask }
+            .ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
+
+        Assert.Contains("clock-skew", result.GenerateOutputText());
+        Assert.Equal(1.25, result.RequestCharge);
+        Assert.Equal(0, result.ExitCode);
+        await database.Received(1).ReadAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>());
+        await client.DidNotReceive().ReadAccountAsync();
+    }
+
+    [Fact]
+    public void Summary_PreservesUnknownCharges()
+    {
+        var result = new DoctorCommand().CreateResult([new("clock", "SKIP", "no date")], new CommandState());
+        using var report = JsonDocument.Parse(result.GenerateOutputText());
+        Assert.Equal(JsonValueKind.Null, report.RootElement.GetProperty("summary").GetProperty("requestCharge").ValueKind);
+        Assert.Null(result.RequestCharge);
+        Assert.Contains("- RU", CaptureConsole(() => result.RenderUser!()));
+    }
+
+    [Theory]
     [InlineData(false, false, "PASS", 0)]
     [InlineData(false, true, "WARN", 0)]
     [InlineData(true, true, "FAIL", 1)]
@@ -444,9 +552,11 @@ public class DoctorCommandTests
         client.ClientOptions.Returns(new CosmosClientOptions());
         client.ReadAccountAsync().Returns(Substitute.For<AccountProperties>());
         var account = Substitute.For<CosmosDBAccountResource>();
+        var rawResponse = Substitute.ForPartsOf<global::Azure.Response>();
+        Assert.False(rawResponse.Headers.TryGetValue("Date", out _));
         account.GetAsync(Arg.Any<CancellationToken>()).Returns(_ => fails
             ? Task.FromException<global::Azure.Response<CosmosDBAccountResource>>(new global::Azure.RequestFailedException(403, "SECRET_TOKEN"))
-            : Task.FromResult(global::Azure.Response.FromValue(account, Substitute.For<global::Azure.Response>())));
+            : Task.FromResult(global::Azure.Response.FromValue(account, rawResponse)));
         var context = new ArmCosmosContext(
             Substitute.For<ArmClient>(),
             new ResourceIdentifier("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/group/providers/Microsoft.DocumentDB/databaseAccounts/account"),
@@ -517,5 +627,40 @@ public class DoctorCommandTests
         }
 
         return writer.ToString();
+    }
+
+    [Theory]
+    [InlineData(60)]
+    [InlineData(120)]
+    public void RenderUser_ShowsMeasuredCostsDurationsAndSummary(int width)
+    {
+        var result = new DoctorCommand().CreateResult([
+            new("access", "PASS", "read", DurationMs: 123, RequestCharge: 1.25),
+            new("arm", "WARN", "unavailable", DurationMs: 456),
+            new("query", "FAIL", "failed", DurationMs: 789, RequestCharge: 0),
+            new("clock", "SKIP", "no date"),
+        ], new CommandState(), durationMs: 1500);
+        var text = CaptureConsole(() => result.RenderUser!(), width: width);
+        Assert.Contains("123 ms", text);
+        Assert.Contains("456 ms", text);
+        Assert.Contains("789 ms", text);
+        Assert.Contains("1.25 RU", text);
+        Assert.Contains("0 RU", text);
+        Assert.Contains("- RU", text);
+        Assert.Contains("Summary:", text);
+        Assert.Contains("1 PASS", text);
+        Assert.Contains("1 WARN", text);
+        Assert.Contains("1 FAIL", text);
+        Assert.Contains("1 SKIP", text);
+        Assert.Contains("1500 ms", text);
+        using var report = JsonDocument.Parse(result.GenerateOutputText());
+        var summary = report.RootElement.GetProperty("summary");
+        foreach (var status in new[] { "pass", "warn", "fail", "skip" })
+        {
+            Assert.Equal(1, summary.GetProperty(status).GetInt32());
+        }
+
+        Assert.Equal(1500, summary.GetProperty("durationMs").GetInt64());
+        Assert.Equal(1.25, summary.GetProperty("requestCharge").GetDouble());
     }
 }

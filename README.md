@@ -295,6 +295,9 @@ The `literal` key colors every JSON/JavaScript literal at once. To match an edit
 
 The `success`, `warning`, `error`, and `muted` keys color status verdicts such as the `PASS`, `WARN`, `FAIL`, and `SKIP` columns in `doctor`.
 Doctor keeps wrapped diagnostic messages aligned and reports explicit reasons for credential-blocked probes.
+It shows per-check duration and observed RUs, plus verdict counts and total elapsed time.
+Clock-offset estimates reuse existing response headers without extra requests; missing
+headers are reported as unassessed rather than implying that the clock is correct.
 
 Doctor distinguishes DNS, TLS, socket, proxy-authentication, and credential failures without exposing raw exception text. ARM permission failures include management-plane guidance rather than data-plane role advice.
 
