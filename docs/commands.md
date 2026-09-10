@@ -123,6 +123,8 @@ also round down to zero. Unknown RU charges appear as `-`, not as a measured zer
 The command returns exit code 1 if any required check fails, otherwise 0. Invalid
 arguments and caller cancellation follow the shell's existing error contract.
 
+The `who` subcommand ignores case and surrounding whitespace, so `doctor WHO` is
+equivalent to `doctor who`.
 `doctor who` runs the normal checks and adds `identity`, `scope`, and `write-access`
 entries. Known credential types (including `AccountKey` and `Emulator`) are reported
 from connection metadata, not by invoking `whoami` or acquiring an additional token.

@@ -1,3 +1,7 @@
+// ------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+// ------------------------------------------------------------
+
 namespace Azure.Data.Cosmos.Shell.Commands;
 
 using System.Diagnostics;
@@ -28,7 +32,7 @@ internal sealed class DoctorCommand : CosmosCommand
     [CosmosOption("who")]
     public bool Who { get; init; }
 
-    private bool IncludeIdentity => this.Who || this.Subcommand == "who";
+    private bool IncludeIdentity => this.Who || string.Equals(this.Subcommand?.Trim(), "who", StringComparison.OrdinalIgnoreCase);
 
     [CosmosOption("database", "db")]
     public string? Database { get; init; }
@@ -61,7 +65,7 @@ internal sealed class DoctorCommand : CosmosCommand
         var stopwatch = Stopwatch.StartNew();
         token.ThrowIfCancellationRequested();
         commandState.SetFormat(this.Format);
-        if (this.Subcommand != null && this.Subcommand != "who")
+        if (this.Subcommand != null && !string.Equals(this.Subcommand.Trim(), "who", StringComparison.OrdinalIgnoreCase))
         {
             throw new CommandException("doctor", Message("invalid-subcommand"));
         }
@@ -135,10 +139,8 @@ internal sealed class DoctorCommand : CosmosCommand
             token);
         checks.Add(dns);
 
-        DoctorCheck access;
-        if (dns.Status == "PASS" && canProbeCredential)
-        {
-            access = await RunResponseCheckAsync(
+        var access = dns.Status == "PASS" && canProbeCredential
+            ? await RunResponseCheckAsync(
                 "access",
                 async checkToken =>
                 {
@@ -161,12 +163,8 @@ internal sealed class DoctorCommand : CosmosCommand
                 true,
                 TimeSpan.FromSeconds(5),
                 deadline.Token,
-                token);
-        }
-        else
-        {
-            access = Check("access", "SKIP", !canProbeCredential ? "interactive-credential" : "dependency-failed");
-        }
+                token)
+            : Check("access", "SKIP", !canProbeCredential ? "interactive-credential" : "dependency-failed");
 
         checks.Add(access);
         if (this.Query && access.Status == "PASS")

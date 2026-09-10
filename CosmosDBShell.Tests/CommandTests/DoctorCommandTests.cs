@@ -19,6 +19,9 @@ public class DoctorCommandTests
 {
     [Theory]
     [InlineData("doctor who --no-update-check --format json")]
+    [InlineData("doctor WHO --no-update-check --format json")]
+    [InlineData("doctor Who --no-update-check --format json")]
+    [InlineData("doctor \" who \" --no-update-check --format json")]
     [InlineData("doctor --who --no-update-check --format json")]
     public async Task WhoAliases_ReturnStructuredContextWithoutTextHeading(string command)
     {
@@ -101,7 +104,7 @@ public class DoctorCommandTests
         var who = await new DoctorCommand { NoUpdateCheck = true, Who = true }.ExecuteAsync(shell, new CommandState(), "doctor --who", CancellationToken.None);
 
         Assert.DoesNotContain("Doctor Who?", CaptureConsole(() => normal.RenderUser!()));
-        Assert.StartsWith("Doctor Who?", CaptureConsole(() => who.RenderUser!()));
+        Assert.StartsWith("Doctor Who?", CaptureConsole(() => who.RenderUser!()), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -219,7 +222,7 @@ public class DoctorCommandTests
         var prefixes = lines.Take(4).Select(line => line[..line.IndexOf("  ", StringComparison.Ordinal)]).ToArray();
         Assert.Equal(4, prefixes.Distinct(StringComparer.Ordinal).Count());
         Assert.All(prefixes, prefix => Assert.Contains('\u001b', prefix));
-        Assert.Contains("PASS  shell", plain);
+        Assert.Contains("PASS  shell", plain, StringComparison.Ordinal);
         Assert.DoesNotContain('\u001b', plain);
     }
 
@@ -417,7 +420,7 @@ public class DoctorCommandTests
         var iterator = Substitute.For<FeedIterator>();
         container.GetItemQueryStreamIterator("SELECT TOP 1 VALUE 1 FROM c", null, Arg.Is<QueryRequestOptions>(options => options.MaxItemCount == 1 && options.MaxConcurrency == 1)).Returns(iterator);
         var content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("SECRET_DOCUMENT"));
-        var response = new ResponseMessage(HttpStatusCode.OK) { Content = content };
+        using var response = new ResponseMessage(HttpStatusCode.OK) { Content = content };
         response.Headers.Add("x-ms-request-charge", "2");
         if (dateSource == "query" && dateHeader != null)
         {
@@ -580,15 +583,18 @@ public class DoctorCommandTests
         Assert.Same(context, ((ConnectedState)shell.State).ArmContext);
     }
 
-    [Fact]
-    public async Task InteractiveCredential_IsNeverAcquiredByDoctor()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("AzureCliCredential")]
+    [InlineData("ManagedIdentityCredential")]
+    public async Task InteractiveCredential_IsNeverAcquiredByDoctor(string? credentialTypeOverride)
     {
         using var shell = ShellInterpreter.CreateInstance();
         var credential = Substitute.For<TokenCredential>();
         var client = Substitute.For<CosmosClient>();
         client.Endpoint.Returns(new Uri("https://private-account.documents.azure.com"));
         client.ClientOptions.Returns(new CosmosClientOptions());
-        shell.Connect(client, credential: credential);
+        shell.Connect(client, credential: credential, credentialTypeOverride: credentialTypeOverride);
 
         var result = await new DoctorCommand { NoUpdateCheck = true, Arm = true, Query = true, Database = "database", Container = "container", Format = "json", ResolveHostAsync = (_, _) => Task.CompletedTask }.ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
 

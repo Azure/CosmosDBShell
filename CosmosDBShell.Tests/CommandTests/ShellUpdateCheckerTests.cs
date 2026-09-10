@@ -12,6 +12,8 @@ public class ShellUpdateCheckerTests
     public async Task FetchReleases_UsesOnlyPublicMetadataEndpoint()
     {
         using var handler = new ReleaseHandler();
+        using var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]") };
+        handler.Response = response;
         using var client = new HttpClient(handler);
         var releases = await ShellUpdateChecker.FetchReleasesAsync(client, CancellationToken.None);
         Assert.Equal(JsonValueKind.Array, releases.ValueKind);
@@ -133,6 +135,8 @@ public class ShellUpdateCheckerTests
 
     private sealed class ReleaseHandler : HttpMessageHandler
     {
+        public HttpResponseMessage Response { get; set; } = null!;
+
         public int Calls { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -144,7 +148,7 @@ public class ShellUpdateCheckerTests
             Assert.Null(request.Headers.Authorization);
             Assert.Null(request.Content);
             Assert.False(request.Headers.Contains("Cookie"));
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]") });
+            return Task.FromResult(this.Response);
         }
     }
 }
