@@ -625,6 +625,7 @@ public class DoctorCommandTests
                 Out = new AnsiConsoleOutput(writer),
             });
             AnsiConsole.Console.Profile.Width = width;
+            AnsiConsole.Console.Profile.Capabilities.Ansi = color;
 
             action();
         }
