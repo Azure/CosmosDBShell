@@ -12,6 +12,11 @@ There are **no folders inside a container** – containers hold items (JSON docu
 
 ## Moving Around
 
+`doctor` checks the current scope without navigating. Its `--database` and
+`--container` options select a diagnostic target only. An explicit database does not
+inherit the current container; specify both options to check another container.
+See [doctor troubleshooting](commands.md#doctor).
+
 ### The `ls` Command
 
 The `ls` command lists resources at the current level:

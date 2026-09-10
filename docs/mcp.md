@@ -32,6 +32,33 @@ MCP servers will start automatically without manual refresh.
 
 ## Security
 
+### Read-Only Diagnostics
+
+The `doctor` tool reports local environment and current-connection diagnostics without
+changing connection, navigation, or settings. Pass `database` and `container` for an
+explicit target, `query: true` for a bounded constant-projection query (consumes RUs),
+or `arm: true` to require an ARM check and opt into bounded discovery. It does not
+initiate interactive login. See [doctor](commands.md#doctor) for limits and verdicts.
+
+Pass `who: true` (or `subcommand: "who"`) to include known credential type, selected
+scope, and unassessed write access. This adds no token acquisition or network probes.
+The identity entry's `credentialType` describes configuration, not a verified
+principal. The text-only `Doctor Who?` heading is not part of the structured report.
+The structured report also includes a `summary` with verdict counts, elapsed
+`durationMs`, and nullable total `requestCharge`. The `clock` check estimates offset
+only from existing successful response Date headers; it never adds a network probe.
+Its nullable `clockOffsetSeconds` and `clockUncertaintySeconds` describe an estimate,
+not trusted time. Missing usable headers produce `clock-unavailable` (`SKIP`).
+The `updates` check performs one bounded, unauthenticated public GitHub release lookup,
+even without a Cosmos connection. Pass `no-update-check: true` to prevent this request.
+The lookup sends no Cosmos credentials or target names and installs nothing. Newer
+eligible releases produce `WARN` and `latestVersion`; unavailable checks produce `SKIP`.
+
+The versioned report is available in `result`, including when `isError` is true.
+Doctor's report omits secrets, raw exception messages, and document data. The standard
+MCP envelope still includes `currentLocation`; review resource names before sharing
+the complete MCP response outside your organization.
+
 ### How MCP Works
 
 The MCP server runs locally with your user permissions. Connected clients can execute shell commands, which means they can:

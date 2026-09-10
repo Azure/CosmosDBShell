@@ -93,6 +93,7 @@
     <PackageReference Include="Fluent.Net" />
     <PackageReference Include="Microsoft.Azure.Cosmos" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="NuGet.Versioning" />
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
     <PackageReference Include="OmniSharp.Extensions.LanguageServer" />

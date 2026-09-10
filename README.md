@@ -10,6 +10,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Navigate with `ls` and `cd` (Account -> Databases -> Containers -> Items)
 - Inspect the current location with `pwd`
 - Inspect the connected identity with `whoami`, and probe data-plane access with `can-i` (both support `--format` table/json/csv)
+- Diagnose environment and connectivity with read-only `doctor` checks, versioned JSON reports, and optional query and ARM probes; use `doctor who` for known identity and access context ([troubleshooting](docs/commands.md#doctor))
 - Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
 - Inspect a query's execution plan and index usage with `query "<sql>" --explain`
 - Atomic multi-operation transactions on a single partition key: `batch`
@@ -291,6 +292,18 @@ unknown_command = "bold red"
 Color values must be empty or one standard ANSI 16 color name (`black`, `maroon`, `green`, `olive`, `navy`, `purple`, `teal`, `silver`, `grey`, `red`, `lime`, `yellow`, `blue`, `fuchsia`, `aqua`, `white`). Style values may combine modifiers (`bold`, `dim`, `italic`, `underline`, `strikethrough`, `invert`, `conceal`, `slowblink`, `rapidblink`) with at most one ANSI 16 color. Empty string means "use the terminal's default foreground".
 
 The `literal` key colors every JSON/JavaScript literal at once. To match an editor more closely you can override individual literal types with `string`, `number`, `boolean`, and `null`; any you leave unset fall back to `literal`. The `string_escape` key colors backslash escape sequences (`\n`, `\"`, `\uXXXX`) inside strings; leave it unset to color escapes the same as the surrounding string.
+
+The `success`, `warning`, `error`, and `muted` keys color status verdicts such as the `PASS`, `WARN`, `FAIL`, and `SKIP` columns in `doctor`.
+Doctor keeps wrapped diagnostic messages aligned and reports explicit reasons for credential-blocked probes.
+It shows per-check duration and observed RUs, plus verdict counts and total elapsed time.
+Clock-offset estimates reuse existing response headers without extra requests; missing
+headers are reported as unassessed rather than implying that the clock is correct.
+Doctor also checks public GitHub releases for newer shell versions, including without
+a Cosmos connection. Preview installations include preview releases; stable installations
+consider stable releases only. Use `doctor --no-update-check` to suppress this external
+lookup. Updates are advisory and are never downloaded or installed automatically.
+
+Doctor distinguishes DNS, TLS, socket, proxy-authentication, and credential failures without exposing raw exception text. ARM permission failures include management-plane guidance rather than data-plane role advice.
 
 Runtime commands for working with files:
 

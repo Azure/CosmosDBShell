@@ -36,6 +36,152 @@ Usage: disconnect
 
 ## Diagnostics
 
+### doctor
+
+Run bounded, read-only checks without changing the connection, navigation, or settings.
+`doctor` also works while disconnected. It reports observed results, not a guarantee
+that every operation or partition is healthy.
+
+```text
+doctor
+doctor --database MyDb --container Items
+doctor --database MyDb --container Items --query --format json
+doctor --arm --timeout 30
+doctor who
+doctor --who --database MyDb --container Items --query --format json
+doctor --no-update-check
+```
+
+| Option | Behavior |
+| ------ | -------- |
+| `--database`, `--db` | Check this database instead of the current one. An explicit database does not inherit the current container. |
+| `--container`, `--con` | Check this container in the explicit or current database. |
+| `--query` | Read one query response page using `SELECT TOP 1 VALUE 1 FROM c`. Requires a container, consumes RUs, and returns no document data. |
+| `--arm` | Require an ARM account read. If no context exists, opt into account discovery using the existing noninteractive Entra credential. |
+| `--who` | Include known credential type, selected scope, and an explicit unassessed-write-access entry. `doctor who` is an alias. |
+| `--no-update-check` | Skip the public GitHub release lookup. Other requested network checks still run. |
+| `--timeout` | Overall network-check deadline, 1-120 seconds (default 20). Each check has a five-second limit. |
+| `--format`, `-f` | Standard shell formats: `user`, `json`, `table`, or `csv`. Otherwise inherit the session format. |
+
+Local checks report shell version, runtime, platform, and whether proxy environment
+variables are present. Proxy values are never shown. The shell version uses the same
+display version as `version`, including preview labels.
+
+The `updates` check replaces the former `installation` entry. By default, it makes
+one unauthenticated HTTPS request to `api.github.com/repos/Azure/CosmosDBShell/releases?per_page=100`,
+including while disconnected from Cosmos DB. It runs after connection diagnostics,
+with a five-second limit inside the overall `--timeout` budget. The response is capped
+at 5 MiB; there are no retries, pagination, downloads, installation changes, or caching.
+Only a fixed User-Agent is sent, not Cosmos credentials, resource names, or the installed
+version. Normal HTTP networking exposes the client's network address to GitHub and
+may use configured proxies. Use `--no-update-check` to disable this lookup, including
+for offline or restricted environments. This does not disable Cosmos or ARM probes.
+
+Versions are compared semantically, ignoring build metadata. Stable installations
+consider only stable releases; preview installations also consider prereleases.
+GitHub's prerelease flag is honored even for numeric tags such as `v1.1.209`.
+A newer eligible version produces `WARN` / `update-available`, with a release-page
+link and nullable `latestVersion` in JSON. It does not cause exit code 1. Otherwise,
+`PASS` / `update-current` means no newer version was found among the checked releases,
+not that every package-manager feed has been checked. Network or rate-limit failures,
+invalid responses, unknown versions, exhausted budgets, or no eligible releases produce
+`SKIP`; they never imply the installed version is current. Updates remain manual,
+using the original installation method.
+
+Connected checks resolve the account hostname and read account, database, or container
+metadata through the existing SDK client. A metadata read does not prove item access
+or Direct-mode replica connectivity. `--query` adds a bounded query probe, not a scan
+or a write-permission test. Reported RUs include charges returned by completed probes;
+they do not estimate charges for operations whose response was not observed.
+
+ARM checks run automatically only when a context is already attached. Missing ARM
+context is normally `SKIP`; failure of an automatic ARM check is `WARN`. With `--arm`,
+an unavailable or failing ARM check is `FAIL`. Discovery is bounded and its result is
+not attached to the shell. Key and emulator connections cannot acquire ARM context
+just by specifying a subscription or resource group.
+
+Credentials that may launch interactive authentication, including this shell's
+`DefaultAzureCredential`, are not probed. Unknown credential types are also skipped
+conservatively. Reconnect with Azure CLI or managed identity for these checks. An
+explicit target, `--query`, or `--arm` makes this inability to probe a failure;
+otherwise it is a warning. Doctor never starts a new login flow itself.
+
+Results use `PASS`, `WARN`, `FAIL`, and `SKIP`. In the text format these verdicts use the
+active theme's `success`, `warning`, `error`, and `muted` colors, so `--theme monochrome`,
+redirection, and machine mode stay uncolored. DNS and data-plane probes on a connected
+client are required. Failed prerequisites skip their dependent checks. Without a
+connection, local checks still run; an explicitly requested remote target fails.
+Credential-blocked access and requested query probes use `interactive-credential`
+instead of a generic dependency failure. Text messages wrap within their column,
+keeping continuation lines aligned beneath the message rather than the status.
+Each check shows milliseconds and observed RUs. Wide terminals use separate numeric
+columns; narrow terminals include these values in the message column. A final summary
+counts all four verdicts and reports elapsed command time and total observed RUs.
+Elapsed command time is measured separately, not summed from individual checks, and
+excludes rendering. Local/unmeasured checks show `0 ms`; sub-millisecond probes can
+also round down to zero. Unknown RU charges appear as `-`, not as a measured zero.
+The command returns exit code 1 if any required check fails, otherwise 0. Invalid
+arguments and caller cancellation follow the shell's existing error contract.
+
+The `who` subcommand ignores case and surrounding whitespace, so `doctor WHO` is
+equivalent to `doctor who`.
+`doctor who` runs the normal checks and adds `identity`, `scope`, and `write-access`
+entries. Known credential types (including `AccountKey` and `Emulator`) are reported
+from connection metadata, not by invoking `whoami` or acquiring an additional token.
+`PASS` on identity or scope means the configuration is known, not that a principal
+or permission was verified. Unknown credential types and disconnected identity are
+`SKIP`. Scope respects the current location and explicit database/container options;
+resource names, principal IDs, and tenant IDs are omitted. Write access is always
+`SKIP`: successful metadata/query/ARM reads never establish write permissions or
+effective roles. The text format starts with `Doctor Who?`; JSON and MCP do not.
+
+The `clock` check uses an RFC 1123 `Date` header from an already successful database,
+container, query, or ARM response. It sends no additional requests. If multiple samples
+exist, it uses the one with the shortest request interval. The server time is compared
+with the local UTC midpoint of that interval, allowing half the interval plus one second
+for uncertainty. An absolute offset exceeding five minutes plus that uncertainty is
+`WARN` (`clock-skew`), otherwise `PASS` (`clock-within-tolerance`). Missing or invalid
+headers yield `SKIP` (`clock-unavailable`), including disconnected runs and account-only
+reads without another usable response. The account-read SDK API exposes no Date header.
+This is not a trusted time source or proof of an authentication problem: proxies,
+server clocks, and changes to local time during a probe can affect the estimate.
+
+JSON has `schemaVersion: 1`, an aggregate `status`, a `summary`, and a `checks` array.
+The additive `summary` fields are `pass`, `warn`, `fail`, `skip`, `durationMs`, and nullable
+`requestCharge`. Each check
+contains stable `id`, `status`, and `code` fields, a localized `message`, `durationMs`,
+and nullable `requestCharge`, `credentialType`, `latestVersion`, `clockOffsetSeconds`, and
+`clockUncertaintySeconds` fields. Only the `clock` entry populates clock values; a
+positive offset means the response clock is ahead of the local clock.
+`credentialType` is populated
+only for a known identity entry. Parse IDs and codes, not message text. The same report
+is returned for failing checks and over MCP.
+
+#### Troubleshooting
+
+- `dns-failed`: check DNS and private-endpoint resolution.
+- `unauthorized`: check credential expiry and authentication configuration, then reconnect.
+- `forbidden`: for `access`/`query`, check data-plane permissions at the selected scope and account network restrictions. For `arm`, check management-plane RBAC on the account or inherited resource-group/subscription scope; data-plane roles do not grant ARM access. A generic 403 does not identify a missing role.
+- `unreachable` or `timeout`: check routing, proxy, and firewall settings. For Direct-mode failures, try gateway mode (`connect --mode gateway <endpoint>`, or startup `--connect-mode gateway`).
+- `tls-failed`: check certificate trust and hostname configuration; do not disable certificate validation for non-emulator endpoints.
+- `connection-refused`: check the endpoint port, service/emulator availability, and firewall or proxy routing.
+- `connection-reset`: retry and check network stability and intermediaries.
+- `proxy-authentication-required`: HTTP 407 requires proxy authentication, not Cosmos DB role changes.
+- `credential-unavailable` / `authentication-failed`: check credential configuration or token acquisition, respectively. Neither proves a missing Cosmos DB role.
+- `clock-skew`: check local time synchronization, considering that intermediary or server clocks can also affect the estimate.
+
+Classification uses HTTP status codes, structured HTTP/socket errors, and known inner
+exceptions, not exception message text. HTTP 408 is a timeout; HTTP 503 remains
+`unreachable`. Exception traversal is bounded and ambiguous multi-error aggregates
+are not attributed to an arbitrary inner failure. Raw exceptions remain omitted.
+
+The report omits endpoints, account and target names, keys, tokens, connection strings,
+proxy values, document data, and raw exception messages. It does not inspect role
+assignments, scan port ranges, or independently validate emulator
+certificates. Existing client TLS policy remains in effect. A timed-out SDK operation
+that lacks cancellation support may finish in the background; doctor stops waiting
+at the deadline and never disposes the shared client.
+
 ### whoami
 
 Show the authenticated identity and credential type for the current connection.
