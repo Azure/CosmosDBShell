@@ -167,6 +167,7 @@ internal class ThemeCommand : CosmosCommand
             Row("operator", Theme.FormatOperator("+"));
             Row("error", Theme.FormatError("not found"));
             Row("warning", Theme.FormatWarning("retry?"));
+            Row("success", Theme.FormatSuccess("connected"));
             Row("muted", Theme.FormatMuted("2026-05-11"));
             Row("table value", Theme.FormatTableValue("West US"));
             Row("directory", Theme.FormatDirectory("docs"));

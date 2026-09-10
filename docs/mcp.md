@@ -32,6 +32,24 @@ MCP servers will start automatically without manual refresh.
 
 ## Security
 
+### Read-Only Diagnostics
+
+The `doctor` tool reports local environment and current-connection diagnostics without
+changing connection, navigation, or settings. Pass `database` and `container` for an
+explicit target, `query: true` for a bounded constant-projection query (consumes RUs),
+or `arm: true` to require an ARM check and opt into bounded discovery. It does not
+initiate interactive login. See [doctor](commands.md#doctor) for limits and verdicts.
+
+Pass `who: true` (or `subcommand: "who"`) to include known credential type, selected
+scope, and unassessed write access. This adds no token acquisition or network probes.
+The identity entry's `credentialType` describes configuration, not a verified
+principal. The text-only `Doctor Who?` heading is not part of the structured report.
+
+The versioned report is available in `result`, including when `isError` is true.
+Doctor's report omits secrets, raw exception messages, and document data. The standard
+MCP envelope still includes `currentLocation`; review resource names before sharing
+the complete MCP response outside your organization.
+
 ### How MCP Works
 
 The MCP server runs locally with your user permissions. Connected clients can execute shell commands, which means they can:

@@ -36,6 +36,92 @@ Usage: disconnect
 
 ## Diagnostics
 
+### doctor
+
+Run bounded, read-only checks without changing the connection, navigation, or settings.
+`doctor` also works while disconnected. It reports observed results, not a guarantee
+that every operation or partition is healthy.
+
+```text
+doctor
+doctor --database MyDb --container Items
+doctor --database MyDb --container Items --query --format json
+doctor --arm --timeout 30
+doctor who
+doctor --who --database MyDb --container Items --query --format json
+```
+
+| Option | Behavior |
+| ------ | -------- |
+| `--database`, `--db` | Check this database instead of the current one. An explicit database does not inherit the current container. |
+| `--container`, `--con` | Check this container in the explicit or current database. |
+| `--query` | Read one query response page using `SELECT TOP 1 VALUE 1 FROM c`. Requires a container, consumes RUs, and returns no document data. |
+| `--arm` | Require an ARM account read. If no context exists, opt into account discovery using the existing noninteractive Entra credential. |
+| `--who` | Include known credential type, selected scope, and an explicit unassessed-write-access entry. `doctor who` is an alias. |
+| `--timeout` | Overall network-check deadline, 1-120 seconds (default 20). Each check has a five-second limit. |
+| `--format`, `-f` | Standard shell formats: `user`, `json`, `table`, or `csv`. Otherwise inherit the session format. |
+
+Local checks report shell version, runtime, platform, and whether proxy environment
+variables are present. Proxy values are never shown. Installation method is reported
+as unknown rather than inferred from an unreliable executable path.
+
+Connected checks resolve the account hostname and read account, database, or container
+metadata through the existing SDK client. A metadata read does not prove item access
+or Direct-mode replica connectivity. `--query` adds a bounded query probe, not a scan
+or a write-permission test. Reported RUs include charges returned by completed probes;
+they do not estimate charges for operations whose response was not observed.
+
+ARM checks run automatically only when a context is already attached. Missing ARM
+context is normally `SKIP`; failure of an automatic ARM check is `WARN`. With `--arm`,
+an unavailable or failing ARM check is `FAIL`. Discovery is bounded and its result is
+not attached to the shell. Key and emulator connections cannot acquire ARM context
+just by specifying a subscription or resource group.
+
+Credentials that may launch interactive authentication, including this shell's
+`DefaultAzureCredential`, are not probed. Unknown credential types are also skipped
+conservatively. Reconnect with Azure CLI or managed identity for these checks. An
+explicit target, `--query`, or `--arm` makes this inability to probe a failure;
+otherwise it is a warning. Doctor never starts a new login flow itself.
+
+Results use `PASS`, `WARN`, `FAIL`, and `SKIP`. In the text format these verdicts use the
+active theme's `success`, `warning`, `error`, and `muted` colors, so `--theme monochrome`,
+redirection, and machine mode stay uncolored. DNS and data-plane probes on a connected
+client are required. Failed prerequisites skip their dependent checks. Without a
+connection, local checks still run; an explicitly requested remote target fails.
+The command returns exit code 1 if any required check fails, otherwise 0. Invalid
+arguments and caller cancellation follow the shell's existing error contract.
+
+`doctor who` runs the normal checks and adds `identity`, `scope`, and `write-access`
+entries. Known credential types (including `AccountKey` and `Emulator`) are reported
+from connection metadata, not by invoking `whoami` or acquiring an additional token.
+`PASS` on identity or scope means the configuration is known, not that a principal
+or permission was verified. Unknown credential types and disconnected identity are
+`SKIP`. Scope respects the current location and explicit database/container options;
+resource names, principal IDs, and tenant IDs are omitted. Write access is always
+`SKIP`: successful metadata/query/ARM reads never establish write permissions or
+effective roles. The text format starts with `Doctor Who?`; JSON and MCP do not.
+
+JSON has `schemaVersion: 1`, an aggregate `status`, and a `checks` array. Each check
+contains stable `id`, `status`, and `code` fields, a localized `message`, `durationMs`,
+and nullable `requestCharge` and `credentialType` fields. `credentialType` is populated
+only for a known identity entry. Parse IDs and codes, not message text. The same report
+is returned for failing checks and over MCP.
+
+#### Troubleshooting
+
+- `dns-failed`: check DNS and private-endpoint resolution.
+- `unauthorized`: check credential expiry and authentication configuration, then reconnect.
+- `forbidden`: check permissions at the selected scope and account network restrictions. A generic 403 does not identify a missing role.
+- `unreachable` or `timeout`: check routing, proxy, and firewall settings. For Direct-mode failures, try gateway mode (`connect --mode gateway <endpoint>`, or startup `--connect-mode gateway`).
+- `tls-failed`: check certificate trust and hostname configuration; do not disable certificate validation for non-emulator endpoints.
+
+The report omits endpoints, account and target names, keys, tokens, connection strings,
+proxy values, document data, and raw exception messages. It does not inspect role
+assignments, scan port ranges, estimate clock skew, or independently validate emulator
+certificates. Existing client TLS policy remains in effect. A timed-out SDK operation
+that lacks cancellation support may finish in the background; doctor stops waiting
+at the deadline and never disposes the shared client.
+
 ### whoami
 
 Show the authenticated identity and credential type for the current connection.
