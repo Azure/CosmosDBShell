@@ -2082,7 +2082,7 @@ public partial class ShellInterpreter : IDisposable
     {
         var options = new CosmosClientOptions
         {
-            ApplicationName = "CosmosDBShell",
+            ApplicationName = $"CosmosDBShell/{GetDisplayVersion(typeof(ShellInterpreter).Assembly)}",
             ConnectionMode = requestedMode,
             CosmosClientTelemetryOptions = new CosmosClientTelemetryOptions
             {

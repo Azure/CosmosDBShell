@@ -53,6 +53,8 @@ cd MyContainer
 query "SELECT * FROM c"
 ```
 
+Cosmos DB SDK requests identify the shell as `CosmosDBShell/<version>` in the user agent, using the version reported by the `version` command.
+
 ## Build from Source
 
 ```bash
