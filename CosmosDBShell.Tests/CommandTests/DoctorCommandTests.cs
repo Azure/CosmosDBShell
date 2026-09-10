@@ -150,6 +150,8 @@ public class DoctorCommandTests
     [InlineData(401, "unauthorized")]
     [InlineData(403, "forbidden")]
     [InlineData(404, "not-found")]
+    [InlineData(407, "proxy-authentication-required")]
+    [InlineData(408, "timeout")]
     [InlineData(429, "throttled")]
     [InlineData(503, "unreachable")]
     public async Task ServiceFailures_AreRedactedAndClassified(int status, string code)
@@ -241,6 +243,62 @@ public class DoctorCommandTests
         }
     }
 
+    public static TheoryData<Exception, string> TransportFailures => new()
+    {
+        { new HttpRequestException("secret", new System.Security.Authentication.AuthenticationException("secret")), "tls-failed" },
+        { new HttpRequestException(HttpRequestError.SecureConnectionError), "tls-failed" },
+        { new HttpRequestException(HttpRequestError.NameResolutionError), "dns-failed" },
+        { new HttpRequestException("secret", new SocketException((int)SocketError.HostNotFound)), "dns-failed" },
+        { new SocketException((int)SocketError.TryAgain), "dns-failed" },
+        { new SocketException((int)SocketError.NoData), "dns-failed" },
+        { new SocketException((int)SocketError.NoRecovery), "dns-failed" },
+        { new SocketException((int)SocketError.ConnectionRefused), "connection-refused" },
+        { new HttpRequestException("secret", new SocketException((int)SocketError.ConnectionReset)), "connection-reset" },
+        { new SocketException((int)SocketError.ConnectionAborted), "connection-reset" },
+        { new SocketException((int)SocketError.NetworkUnreachable), "unreachable" },
+        { new SocketException((int)SocketError.TimedOut), "timeout" },
+        { new HttpRequestException("secret", new TimeoutException()), "timeout" },
+        { new HttpRequestException("secret", null, HttpStatusCode.Forbidden), "forbidden" },
+        { new HttpRequestException("secret", null, HttpStatusCode.ProxyAuthenticationRequired), "proxy-authentication-required" },
+        { new HttpRequestException("secret", null, HttpStatusCode.RequestTimeout), "timeout" },
+        { new HttpRequestException("secret", null, HttpStatusCode.ServiceUnavailable), "unreachable" },
+        { new global::Azure.RequestFailedException(0, "secret", new HttpRequestException(HttpRequestError.SecureConnectionError)), "tls-failed" },
+        { new global::Azure.RequestFailedException(403, "secret", new SocketException((int)SocketError.HostNotFound)), "forbidden" },
+        { new global::Azure.Identity.CredentialUnavailableException("secret"), "credential-unavailable" },
+        { new global::Azure.Identity.AuthenticationFailedException("secret"), "authentication-failed" },
+        { new AggregateException(new HttpRequestException(HttpRequestError.NameResolutionError)), "dns-failed" },
+        { new AggregateException(new TimeoutException(), new SocketException((int)SocketError.HostNotFound)), "probe-failed" },
+        { new InvalidOperationException("secret"), "probe-failed" },
+        { new HttpRequestException("secret"), "unreachable" },
+    };
+
+    [Theory]
+    [MemberData(nameof(TransportFailures))]
+    public async Task TransportFailures_AreClassifiedWithoutExposingExceptions(Exception exception, string expected)
+    {
+        var check = await DoctorCommand.RunCheckAsync("access", _ => Task.FromException<double?>(exception),
+            "unused", true, TimeSpan.FromSeconds(1), CancellationToken.None, CancellationToken.None);
+
+        Assert.Equal(expected, check.Code);
+        Assert.Equal("FAIL", check.Status);
+        var result = new DoctorCommand { Format = "json" }.CreateResult([check], new CommandState());
+        Assert.DoesNotContain("secret", result.GenerateOutputText());
+        Assert.DoesNotContain("secret", CaptureConsole(() => result.RenderUser!()));
+        Assert.DoesNotContain("command-doctor-", check.Message);
+    }
+
+    [Fact]
+    public void DeepExceptionChain_IsBounded()
+    {
+        Exception exception = new System.Security.Authentication.AuthenticationException();
+        for (var depth = 0; depth < 32; depth++)
+        {
+            exception = new InvalidOperationException("secret", exception);
+        }
+
+        Assert.Equal("probe-failed", DoctorCommand.ClassifyFailure(exception));
+    }
+
     [Fact]
     public async Task Timeout_BoundsEvenANonCooperativeProbe()
     {
@@ -303,7 +361,7 @@ public class DoctorCommandTests
         var result = await new DoctorCommand
         {
             Format = "json",
-            ResolveHostAsync = (_, _) => throw new SocketException(),
+            ResolveHostAsync = (_, _) => throw new SocketException((int)SocketError.HostNotFound),
         }.ExecuteAsync(shell, new CommandState(), "doctor", CancellationToken.None);
 
         var output = result.GenerateOutputText();

@@ -114,6 +114,15 @@ is returned for failing checks and over MCP.
 - `forbidden`: for `access`/`query`, check data-plane permissions at the selected scope and account network restrictions. For `arm`, check management-plane RBAC on the account or inherited resource-group/subscription scope; data-plane roles do not grant ARM access. A generic 403 does not identify a missing role.
 - `unreachable` or `timeout`: check routing, proxy, and firewall settings. For Direct-mode failures, try gateway mode (`connect --mode gateway <endpoint>`, or startup `--connect-mode gateway`).
 - `tls-failed`: check certificate trust and hostname configuration; do not disable certificate validation for non-emulator endpoints.
+- `connection-refused`: check the endpoint port, service/emulator availability, and firewall or proxy routing.
+- `connection-reset`: retry and check network stability and intermediaries.
+- `proxy-authentication-required`: HTTP 407 requires proxy authentication, not Cosmos DB role changes.
+- `credential-unavailable` / `authentication-failed`: check credential configuration or token acquisition, respectively. Neither proves a missing Cosmos DB role.
+
+Classification uses HTTP status codes, structured HTTP/socket errors, and known inner
+exceptions, not exception message text. HTTP 408 is a timeout; HTTP 503 remains
+`unreachable`. Exception traversal is bounded and ambiguous multi-error aggregates
+are not attributed to an arbitrary inner failure. Raw exceptions remain omitted.
 
 The report omits endpoints, account and target names, keys, tokens, connection strings,
 proxy values, document data, and raw exception messages. It does not inspect role

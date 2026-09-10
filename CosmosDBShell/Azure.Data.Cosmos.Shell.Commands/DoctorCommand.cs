@@ -249,29 +249,81 @@ internal sealed class DoctorCommand : CosmosCommand
 
     internal static string ClassifyFailure(Exception exception)
     {
-        var status = exception switch
+        var fallback = "probe-failed";
+        Exception? current = exception;
+        for (var depth = 0; current != null && depth < 16; depth++)
         {
-            CosmosException cosmos => (int)cosmos.StatusCode,
-            global::Azure.RequestFailedException azure => azure.Status,
-            _ => 0,
-        };
+            var status = current switch
+            {
+                CosmosException cosmos => (int)cosmos.StatusCode,
+                global::Azure.RequestFailedException azure => azure.Status,
+                HttpRequestException http => (int?)http.StatusCode ?? 0,
+                _ => 0,
+            };
+            var code = status switch
+            {
+                401 => "unauthorized",
+                403 => "forbidden",
+                404 => "not-found",
+                407 => "proxy-authentication-required",
+                408 => "timeout",
+                429 => "throttled",
+                502 or 503 or 504 => "unreachable",
+                _ => null,
+            };
+            if (code != null)
+            {
+                return code;
+            }
 
-        return status switch
-        {
-            401 => "unauthorized",
-            403 => "forbidden",
-            404 => "not-found",
-            429 => "throttled",
-            408 or 503 => "unreachable",
-            _ => exception switch
+            code = current switch
             {
                 OperationCanceledException or TimeoutException => "timeout",
-                SocketException => "dns-failed",
                 AuthenticationException => "tls-failed",
-                HttpRequestException => "unreachable",
-                _ => "probe-failed",
-            },
-        };
+                global::Azure.Identity.CredentialUnavailableException => "credential-unavailable",
+                global::Azure.Identity.AuthenticationFailedException => "authentication-failed",
+                SocketException socket => socket.SocketErrorCode switch
+                {
+                    SocketError.HostNotFound or SocketError.TryAgain or SocketError.NoData or SocketError.NoRecovery => "dns-failed",
+                    SocketError.TimedOut => "timeout",
+                    SocketError.ConnectionRefused => "connection-refused",
+                    SocketError.ConnectionReset or SocketError.ConnectionAborted => "connection-reset",
+                    _ => "unreachable",
+                },
+                HttpRequestException http => http.HttpRequestError switch
+                {
+                    HttpRequestError.NameResolutionError => "dns-failed",
+                    HttpRequestError.SecureConnectionError => "tls-failed",
+                    _ => null,
+                },
+                _ => null,
+            };
+            if (code != null)
+            {
+                return code;
+            }
+
+            if (current is HttpRequestException || status >= 500)
+            {
+                fallback = "unreachable";
+            }
+
+            if (current is AggregateException aggregate)
+            {
+                if (aggregate.InnerExceptions.Count != 1)
+                {
+                    return fallback;
+                }
+
+                current = aggregate.InnerExceptions[0];
+            }
+            else
+            {
+                current = current.InnerException;
+            }
+        }
+
+        return fallback;
     }
 
     internal static bool MayPrompt(string? credentialType) => credentialType is not

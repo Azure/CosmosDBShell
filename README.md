@@ -295,6 +295,8 @@ The `literal` key colors every JSON/JavaScript literal at once. To match an edit
 
 The `success`, `warning`, `error`, and `muted` keys color status verdicts such as the `PASS`, `WARN`, `FAIL`, and `SKIP` columns in `doctor`.
 
+Doctor distinguishes DNS, TLS, socket, proxy-authentication, and credential failures without exposing raw exception text. ARM permission failures include management-plane guidance rather than data-plane role advice.
+
 Runtime commands for working with files:
 
 ```bash

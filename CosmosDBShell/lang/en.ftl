@@ -42,10 +42,15 @@ command-doctor-arm-forbidden = ARM access was forbidden. Check Azure management-
 command-doctor-not-found = The requested resource was not found. Check the selected target and connection.
 command-doctor-throttled = The service throttled the probe. Retry later or review the request budget.
 command-doctor-unreachable = The service could not be reached. Check DNS, proxy, firewall, and private-endpoint routing. For Direct-mode failures, try reconnecting with --connect-mode gateway.
-command-doctor-timeout = The check exceeded its time budget. Check network connectivity or retry with --timeout for a longer overall deadline; individual checks remain limited to 5 seconds.
-command-doctor-dns-failed = Account hostname resolution failed. Check DNS and private-endpoint routing.
+command-doctor-timeout = The operation timed out or exceeded its check budget. Check network connectivity. --timeout changes only the overall deadline; individual checks remain limited to 5 seconds and service or transport timeouts may occur sooner.
+command-doctor-dns-failed = Hostname resolution failed during the check. Check account and proxy DNS configuration and private-endpoint routing.
 command-doctor-tls-failed = TLS validation failed. Check certificate trust and hostname configuration; do not disable validation for non-emulator endpoints.
 command-doctor-probe-failed = The probe could not complete. Check connection and credential configuration. Raw exception details are omitted to protect sensitive data.
+command-doctor-proxy-authentication-required = The proxy requires authentication (HTTP 407). Check proxy credentials and transport configuration; this is not a Cosmos DB role assignment failure.
+command-doctor-connection-refused = A connection was refused. Check the endpoint port, whether the service or emulator is running, and firewall or proxy routing.
+command-doctor-connection-reset = A connection was reset or aborted. Retry and check firewall, proxy, and network stability.
+command-doctor-credential-unavailable = The configured credential could not supply a token. Check its environment or existing login session, then reconnect using the intended credential.
+command-doctor-authentication-failed = Token acquisition failed. Check the configured identity, tenant, and credential validity. No specific missing role can be inferred from this failure.
 
 shell-ready = Cosmos DB shell ready.
 shell-not_connected_hint = Not connected. Run 'connect <endpoint>' to authenticate, or 'help connect' for more options.
