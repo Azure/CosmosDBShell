@@ -22,7 +22,7 @@ public class ConnectCommandTests
     public void CreateClientOptions_IncludesApplicationVersion(ConnectionMode mode)
     {
         var options = ShellInterpreter.CreateClientOptions(mode);
-        var version = ShellInterpreter.GetDisplayVersion(typeof(ShellInterpreter).Assembly);
+        var version = ShellInterpreter.GetDisplayVersion(typeof(VersionCommand).Assembly);
 
         Assert.Equal($"CosmosDBShell/{version}", options.ApplicationName);
         Assert.DoesNotContain("+", options.ApplicationName);
