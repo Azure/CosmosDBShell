@@ -16,6 +16,18 @@ using Spectre.Console;
 [Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class ConnectCommandTests
 {
+    [Theory]
+    [InlineData(ConnectionMode.Direct)]
+    [InlineData(ConnectionMode.Gateway)]
+    public void CreateClientOptions_IncludesApplicationVersion(ConnectionMode mode)
+    {
+        var options = ShellInterpreter.CreateClientOptions(mode);
+        var version = ShellInterpreter.GetDisplayVersion(typeof(VersionCommand).Assembly);
+
+        Assert.Equal($"CosmosDBShell/{version}", options.ApplicationName);
+        Assert.DoesNotContain("+", options.ApplicationName);
+    }
+
     [Fact]
     public void CreateClientOptions_Emulator_UsesShortRequestTimeout()
     {
