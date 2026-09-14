@@ -2,6 +2,8 @@
 
 The `connect` command and the `--connect` startup option support multiple authentication methods. The shell automatically selects the appropriate credential type based on the arguments provided.
 
+Cosmos DB SDK requests include `CosmosDBShell/<version>` in the user agent for both Direct and Gateway connections. The application version matches the `version` command, including prerelease labels but excluding build metadata.
+
 ## Credential Decision Tree
 
 The credential type is determined by the first matching rule (top-to-bottom):
