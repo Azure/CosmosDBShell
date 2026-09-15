@@ -94,7 +94,8 @@ internal class ForStatement : Statement
     {
         var evaluatedCollection = await this.Collection.EvaluateAsync(shell, commandState, token);
         var collectionResult = evaluatedCollection.ConvertShellObject(DataType.Json);
-        if (collectionResult is not JsonElement collection)
+        if (collectionResult is not JsonElement collection ||
+            collection.ValueKind != JsonValueKind.Array)
         {
             throw new InvalidOperationException(MessageService.GetString("statement-error-for-collection"));
         }
