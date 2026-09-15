@@ -39,6 +39,45 @@ public class FluentCatalogConverterTests
     }
 
     [Fact]
+    public void Import_UsesEnglishForMissingKeysAndPreservesAvailableTranslations()
+    {
+        const string source = """
+            title = START HERE
+            greeting = Hello, { $name }!
+            items = { $count ->
+                [one] one item
+               *[other] many items
+            }
+            """;
+        var catalog = new Dictionary<string, string>
+        {
+            ["title"] = "HIER STARTEN",
+            ["items.__p0.one"] = "ein Element",
+        };
+        using var sourceReader = new StringReader(source);
+        var translated = FluentCatalogConverter.Import(sourceReader, catalog);
+        var context = new MessageContext("de", new MessageContextOptions { UseIsolating = false });
+        using var translatedReader = new StringReader(translated);
+
+        Assert.Empty(context.AddMessages(translatedReader));
+        Assert.Equal("HIER STARTEN", context.Format(context.GetMessage("title")));
+        Assert.Equal("Hello, Ada!", context.Format(context.GetMessage("greeting"), new Dictionary<string, object> { ["name"] = "Ada" }));
+        Assert.Equal("ein Element", context.Format(context.GetMessage("items"), new Dictionary<string, object> { ["count"] = 1 }));
+        Assert.Equal("many items", context.Format(context.GetMessage("items"), new Dictionary<string, object> { ["count"] = 2 }));
+    }
+
+    [Fact]
+    public void Import_RejectsUnexpectedKeys()
+    {
+        using var source = new StringReader("title = START HERE");
+        var catalog = new Dictionary<string, string> { ["unknown"] = "Unexpected" };
+
+        var exception = Assert.Throws<InvalidDataException>(() => FluentCatalogConverter.Import(source, catalog));
+
+        Assert.Contains("unexpected key", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Import_RejectsMissingPlaceholder()
     {
         const string source = "greeting = Hello, { $name }!";

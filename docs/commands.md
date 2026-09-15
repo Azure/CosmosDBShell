@@ -1616,6 +1616,9 @@ Usage: version
 
 Display the welcome screen.
 
+Headings and descriptions use the OS UI language when translations are available,
+with English text for untranslated entries. Command examples and URLs remain unchanged.
+
 ```text
 Usage: welcome
 ```

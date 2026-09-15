@@ -194,7 +194,12 @@ internal static class FluentCatalogConverter
         expectedKeys.Add(path);
         if (!catalog.TryGetValue(path, out var translation))
         {
-            throw new InvalidDataException($"Translation catalog is missing key '{path}'.");
+            translation = node switch
+            {
+                StringLiteral text => text.Value,
+                Pattern pattern => ExportPattern(pattern),
+                _ => throw new InvalidDataException($"Unsupported translatable Fluent node '{node.GetType().Name}' at '{path}'."),
+            };
         }
 
         switch (node)

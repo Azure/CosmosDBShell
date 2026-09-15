@@ -102,6 +102,14 @@ does not rewrite an unchanged catalog, including files with different line endin
 Commit the source and updated catalog together. This runs during a build, not on
 each editor save; design-time builds do not update the catalog.
 
+Welcome-screen labels are defined by `shell-welcome-*` keys in `en.ftl` and
+referenced as `{{shell-welcome-*}}` placeholders in `CosmosDBShell/cosmos_welcome.ans`.
+Keep the artwork, executable examples, and URLs outside translated strings.
+Packaging runs `tools/Localization/build-localized-resources.ps1` to generate
+locale-specific Fluent files from the OneLoc JSON catalogs. Missing translated
+keys use the English source until OneLoc delivers them; unexpected keys and
+invalid placeholders still fail validation. Do not commit generated Fluent files.
+
 CI builds only verify the committed catalog and fail if it is missing or stale;
 they never repair it. This applies when `CI`, `TF_BUILD`, `GITHUB_ACTIONS`, or
 `ContinuousIntegrationBuild` is `true`. To check locally without updating it:
