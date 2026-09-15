@@ -98,7 +98,7 @@ internal class UnaryOperatorExpression : Expression
                 }
 
             default:
-                throw new NotSupportedException($"Unary operator {this.Operator} is not supported");
+                throw new NotSupportedException(MessageService.GetArgsString("expression-error-unsupported-unary-operator", "operator", this.Operator));
         }
     }
 

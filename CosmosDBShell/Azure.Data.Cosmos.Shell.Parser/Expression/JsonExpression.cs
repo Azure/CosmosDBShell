@@ -53,7 +53,7 @@ internal class JsonExpression : Expression
             var keyObj = kvp.Key.ConvertShellObject(DataType.Text);
             if (keyObj is not string key)
             {
-                throw new InvalidOperationException($"Failed to convert property key {kvp.Key.GetType().Name} to string");
+                throw new InvalidOperationException(MessageService.GetArgsString("expression-error-convert-property-key", "type", kvp.Key.GetType().Name));
             }
 
             if (string.IsNullOrEmpty(key))
@@ -86,7 +86,7 @@ internal class JsonExpression : Expression
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Failed to convert {valueExpr.GetType().Name} to JsonElement");
+                        throw new InvalidOperationException(MessageService.GetArgsString("expression-error-convert-json", "type", valueExpr.GetType().Name));
                     }
 
                     break;
@@ -99,7 +99,7 @@ internal class JsonExpression : Expression
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Failed to convert {valueExpr.GetType().Name} to integer");
+                        throw new InvalidOperationException(MessageService.GetArgsString("expression-error-convert-integer", "type", valueExpr.GetType().Name));
                     }
 
                     break;
@@ -112,7 +112,7 @@ internal class JsonExpression : Expression
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Failed to convert {valueExpr.GetType().Name} to decimal");
+                        throw new InvalidOperationException(MessageService.GetArgsString("expression-error-convert-decimal", "type", valueExpr.GetType().Name));
                     }
 
                     break;
@@ -125,7 +125,7 @@ internal class JsonExpression : Expression
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Failed to convert {valueExpr.GetType().Name} to boolean");
+                        throw new InvalidOperationException(MessageService.GetArgsString("expression-error-convert-boolean", "type", valueExpr.GetType().Name));
                     }
 
                     break;
@@ -138,7 +138,7 @@ internal class JsonExpression : Expression
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Failed to convert {valueExpr.GetType().Name} to string");
+                        throw new InvalidOperationException(MessageService.GetArgsString("expression-error-convert-string", "type", valueExpr.GetType().Name));
                     }
 
                     break;
@@ -151,7 +151,7 @@ internal class JsonExpression : Expression
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Failed to convert {valueExpr.GetType().Name} to string representation");
+                        throw new InvalidOperationException(MessageService.GetArgsString("expression-error-convert-string-representation", "type", valueExpr.GetType().Name));
                     }
 
                     break;

@@ -7,6 +7,8 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System.Linq;
 using System.Text.Json;
 
+using Azure.Data.Cosmos.Shell.Util;
+
 internal static class FilterExpressionUtilities
 {
     private static readonly JsonDocument NullJsonDocument = JsonDocument.Parse("null");
@@ -54,7 +56,7 @@ internal static class FilterExpressionUtilities
             return jsonElement.Clone();
         }
 
-        throw new InvalidOperationException($"Expected JSON value but got {shellObject.GetType().Name}");
+        throw new InvalidOperationException(MessageService.GetArgsString("expression-error-expected-json", "type", shellObject.GetType().Name));
     }
 
     public static JsonElement ToJsonArray(IEnumerable<JsonElement> elements)

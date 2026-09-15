@@ -66,11 +66,9 @@ public class LocalizationKeyAuditTests
             foreach (var example in command.GetCustomAttributes<CosmosExampleAttribute>())
             {
                 Assert.Null(example.Description);
-                if (example.DescriptionKey is not null)
-                {
-                    Assert.Contains(example.DescriptionKey, definedKeys);
-                    Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString(example.DescriptionKey)));
-                }
+                Assert.False(string.IsNullOrWhiteSpace(example.DescriptionKey));
+                Assert.Contains(example.DescriptionKey, definedKeys);
+                Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString(example.DescriptionKey)));
             }
         }
     }
