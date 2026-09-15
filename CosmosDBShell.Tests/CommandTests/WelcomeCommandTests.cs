@@ -4,8 +4,10 @@
 
 namespace CosmosShell.Tests.CommandTests;
 
+using System.Text.RegularExpressions;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 using CosmosShell.Tests;
 
 [Collection(ConsoleOutputTestCollection.Name)]
@@ -16,10 +18,10 @@ public sealed class WelcomeCommandTests
     {
         var expectedVersion = ShellInterpreter.GetDisplayVersion(typeof(WelcomeScreen).Assembly);
 
-        Assert.Contains($"PREVIEW VERSION {expectedVersion}", WelcomeScreen.Text, StringComparison.Ordinal);
+        Assert.Contains($"{MessageService.GetString("shell-welcome-preview")} {expectedVersion}", WelcomeScreen.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("{{", WelcomeScreen.Text, StringComparison.Ordinal);
-        Assert.Contains("START HERE", WelcomeScreen.Text, StringComparison.Ordinal);
-        Assert.Contains("RESOURCES", WelcomeScreen.Text, StringComparison.Ordinal);
+        Assert.Contains(MessageService.GetString("shell-welcome-start"), WelcomeScreen.Text, StringComparison.Ordinal);
+        Assert.Contains(MessageService.GetString("shell-welcome-resources"), WelcomeScreen.Text, StringComparison.Ordinal);
         Assert.Contains("\u001b[", WelcomeScreen.Text, StringComparison.Ordinal);
     }
 
@@ -49,6 +51,28 @@ public sealed class WelcomeCommandTests
     }
 
     [Fact]
+    public void WelcomeScreen_LongTranslationsDoNotShiftCommandsOrResourceLinks()
+    {
+        var assembly = typeof(WelcomeScreen).Assembly;
+        var resourceName = Assert.Single(assembly.GetManifestResourceNames(), name => name.EndsWith("cosmos_welcome.ans", StringComparison.Ordinal));
+        using var stream = assembly.GetManifestResourceStream(resourceName)!;
+        using var reader = new StreamReader(stream);
+        var rendered = WelcomeScreen.Render(reader.ReadToEnd(), "1.2.3", key => key + new string('X', 120));
+        var content = rendered[rendered.IndexOf("shell-welcome-start", StringComparison.Ordinal)..];
+        Assert.DoesNotMatch(@"\x1b\[\d+C", content);
+        var lines = Regex.Replace(content, @"\x1b\[[0-9;]*m", string.Empty).ReplaceLineEndings("\n").Split('\n');
+
+        Assert.All(lines, line => Assert.True(Regex.Matches(line, "shell-welcome-").Count <= 1));
+        Assert.Contains("    connect <endpoint>", lines);
+        Assert.Contains("    help", lines);
+        Assert.Contains("    ls  /  cd <name>  /  pwd", lines);
+        Assert.Contains("    query \"SELECT * FROM c\"", lines);
+        Assert.Contains("    https://github.com/Azure/CosmosDBShell", lines);
+        Assert.Contains("    https://github.com/Azure/CosmosDBShell/blob/main/README.md", lines);
+        Assert.Contains("    https://github.com/Azure/CosmosDBShell/tree/main/examples", lines);
+    }
+
+    [Fact]
     public void ShowWelcomeOnFirstRun_ShowsOnceAndCreatesMarker()
     {
         var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-welcome-{Guid.NewGuid():N}");
@@ -64,7 +88,7 @@ public sealed class WelcomeCommandTests
             Assert.True(shell.ShowWelcomeOnFirstRun());
             Assert.True(File.Exists(shell.WelcomeMarkerFile));
             Assert.False(shell.ShowWelcomeOnFirstRun());
-            Assert.Equal(1, CountOccurrences(output.ToString(), "START HERE"));
+            Assert.Equal(1, CountOccurrences(output.ToString(), MessageService.GetString("shell-welcome-start")));
         }
         finally
         {
@@ -94,13 +118,13 @@ public sealed class WelcomeCommandTests
 
             Assert.False(state.IsError);
             Assert.NotNull(state.RenderUser);
-            Assert.DoesNotContain("START HERE", output.ToString(), StringComparison.Ordinal);
+            Assert.DoesNotContain(MessageService.GetString("shell-welcome-start"), output.ToString(), StringComparison.Ordinal);
 
             // The banner is deferred to RenderUser (invoked by PrintState based on
             // format/redirection/machine-mode), not printed unconditionally during
             // ExecuteAsync.
             state.RenderUser();
-            Assert.Contains("START HERE", output.ToString(), StringComparison.Ordinal);
+            Assert.Contains(MessageService.GetString("shell-welcome-start"), output.ToString(), StringComparison.Ordinal);
         }
         finally
         {
@@ -124,14 +148,17 @@ public sealed class WelcomeCommandTests
             shell.PrintStartupStatus();
 
             var status = output.ToString();
-            Assert.StartsWith("Cosmos DB Shell ", status, StringComparison.Ordinal);
-            Assert.Contains(" | MCP off", status, StringComparison.Ordinal);
-            Assert.Contains(
-                $"{Environment.NewLine}PREVIEW VERSION Commands, output, and behavior may change before general availability.{Environment.NewLine}",
+            Assert.StartsWith(
+                MessageService.GetArgsString(
+                    "shell-startup-status",
+                    "version", ShellInterpreter.GetDisplayVersion(typeof(ShellInterpreter).Assembly),
+                    "mcp_status", MessageService.GetString("shell-startup-mcp-off")),
                 status,
                 StringComparison.Ordinal);
-            Assert.DoesNotContain("Report issues", status, StringComparison.Ordinal);
-            Assert.DoesNotContain("Not connected", status, StringComparison.Ordinal);
+            Assert.Contains(
+                $"{Environment.NewLine}{MessageService.GetString("shell-startup-preview-warning")}{Environment.NewLine}",
+                status,
+                StringComparison.Ordinal);
             Assert.Equal(2, status.Count(character => character == '\n'));
         }
         finally
@@ -156,7 +183,7 @@ public sealed class WelcomeCommandTests
 
             Assert.False(shell.ShowWelcomeOnFirstRun());
             Assert.False(File.Exists(shell.WelcomeMarkerFile));
-            Assert.DoesNotContain("START HERE", output.ToString(), StringComparison.Ordinal);
+            Assert.DoesNotContain(MessageService.GetString("shell-welcome-start"), output.ToString(), StringComparison.Ordinal);
         }
         finally
         {
