@@ -43,6 +43,7 @@ public class FluentCatalogConverterTests
     {
         const string source = """
             title = START HERE
+            pending = English literal awaiting translation
             greeting = Hello, { $name }!
             items = { $count ->
                 [one] one item
@@ -61,6 +62,7 @@ public class FluentCatalogConverterTests
 
         Assert.Empty(context.AddMessages(translatedReader));
         Assert.Equal("HIER STARTEN", context.Format(context.GetMessage("title")));
+        Assert.Equal("English literal awaiting translation", context.Format(context.GetMessage("pending")));
         Assert.Equal("Hello, Ada!", context.Format(context.GetMessage("greeting"), new Dictionary<string, object> { ["name"] = "Ada" }));
         Assert.Equal("ein Element", context.Format(context.GetMessage("items"), new Dictionary<string, object> { ["count"] = 1 }));
         Assert.Equal("many items", context.Format(context.GetMessage("items"), new Dictionary<string, object> { ["count"] = 2 }));
