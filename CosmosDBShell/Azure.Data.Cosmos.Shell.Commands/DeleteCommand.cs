@@ -9,10 +9,10 @@ using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Data.Cosmos.Shell.Core;
 
 [CosmosCommand("delete")]
-[CosmosExample("delete item test-*", Description = "Delete items matching the pattern")]
-[CosmosExample("delete container OldContainer", Description = "Delete a container")]
-[CosmosExample("delete database TestDB", Description = "Delete a database")]
-[CosmosExample("delete item test-* --dry-run", Description = "Preview a deletion without applying it")]
+[CosmosExample("delete item test-*", DescriptionKey = "command-delete-example-1")]
+[CosmosExample("delete container OldContainer", DescriptionKey = "command-delete-example-2")]
+[CosmosExample("delete database TestDB", DescriptionKey = "command-delete-example-3")]
+[CosmosExample("delete item test-* --dry-run", DescriptionKey = "command-delete-example-4")]
 [McpAnnotation(Restricted = true, Destructive = true, Confirmable = true)]
 internal class DeleteCommand : CosmosCommand
 {

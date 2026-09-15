@@ -9,9 +9,9 @@ using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Data.Cosmos.Shell.Core;
 
 [CosmosCommand("jq", External = true)]
-[CosmosExample("echo '{\"a\":1}' | jq", Description = "Process JSON with jq")]
-[CosmosExample("query \"SELECT * FROM c\" | jq '.items[0]'", Description = "Extract first item from query results")]
-[CosmosExample("ls | jq 'length'", Description = "Count number of items in list")]
+[CosmosExample("echo '{\"a\":1}' | jq", DescriptionKey = "command-jq-example-1")]
+[CosmosExample("query \"SELECT * FROM c\" | jq '.items[0]'", DescriptionKey = "command-jq-example-2")]
+[CosmosExample("ls | jq 'length'", DescriptionKey = "command-jq-example-3")]
 internal class JqCommand : CosmosCommand
 {
     [CosmosParameter("args", IsRequired = false)]

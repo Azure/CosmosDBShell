@@ -15,13 +15,13 @@ using Microsoft.Azure.Cosmos.Scripts;
 using Spectre.Console;
 
 [CosmosCommand("udf")]
-[CosmosExample("udf list", Description = "List the user-defined functions in the current container")]
-[CosmosExample("udf show myFunc", Description = "Display the body of a user-defined function")]
-[CosmosExample("udf exists myFunc", Description = "Check whether a user-defined function exists (usable in if conditions)")]
-[CosmosExample("udf create myFunc ./myFunc.js", Description = "Create a user-defined function from a JavaScript file")]
-[CosmosExample("udf create myFunc ./myFunc.js --force", Description = "Create or replace a user-defined function")]
-[CosmosExample("udf edit myFunc", Description = "Edit a user-defined function body in an external editor")]
-[CosmosExample("udf delete myFunc", Description = "Delete a user-defined function")]
+[CosmosExample("udf list", DescriptionKey = "command-udf-example-1")]
+[CosmosExample("udf show myFunc", DescriptionKey = "command-udf-example-2")]
+[CosmosExample("udf exists myFunc", DescriptionKey = "command-udf-example-3")]
+[CosmosExample("udf create myFunc ./myFunc.js", DescriptionKey = "command-udf-example-4")]
+[CosmosExample("udf create myFunc ./myFunc.js --force", DescriptionKey = "command-udf-example-5")]
+[CosmosExample("udf edit myFunc", DescriptionKey = "command-udf-example-6")]
+[CosmosExample("udf delete myFunc", DescriptionKey = "command-udf-example-7")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "User-Defined Functions",

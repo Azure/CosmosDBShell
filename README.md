@@ -72,7 +72,10 @@ dotnet test CosmosDBShell.sln
 ```
 
 The first-run welcome screen and `welcome` command use the OS UI language when
-translations are available. New text remains in English until translated.
+translations are available. Command-example descriptions, theme-preview labels,
+and scripting and endpoint-validation messages also use localization resources.
+New text remains in English until translated; executable examples and option names
+remain unchanged.
 
 ## Architecture
 

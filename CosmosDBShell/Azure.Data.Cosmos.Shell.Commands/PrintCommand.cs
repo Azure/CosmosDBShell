@@ -11,8 +11,8 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
 [CosmosCommand("print")]
-[CosmosExample("print item-123 partitionKey-value", Description = "Retrieve and display a specific item by ID and partition key")]
-[CosmosExample("print user-456 userId123 --database=MyDB --container=Users", Description = "Retrieve item from specific database and container")]
+[CosmosExample("print item-123 partitionKey-value", DescriptionKey = "command-print-example-1")]
+[CosmosExample("print user-456 userId123 --database=MyDB --container=Users", DescriptionKey = "command-print-example-2")]
 internal class PrintCommand : CosmosCommand
 {
     [CosmosParameter("id")]

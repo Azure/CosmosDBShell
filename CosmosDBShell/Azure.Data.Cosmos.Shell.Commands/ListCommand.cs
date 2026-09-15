@@ -13,13 +13,13 @@ using global::Azure.Data.Cosmos.Shell.States;
 using Spectre.Console;
 
 [CosmosCommand("ls")]
-[CosmosExample("ls", Description = "List all databases, containers, or items depending on current context")]
-[CosmosExample("ls *Test*", Description = "Filter results using wildcard pattern")]
-[CosmosExample("ls -max=10", Description = "Limit results to maximum of 10 items")]
-[CosmosExample("ls -max=0", Description = "List all matching items without a limit")]
-[CosmosExample("ls --database=MyDB --container=Products", Description = "List items from specific database and container")]
-[CosmosExample("ls \"*active*\" --format=table", Description = "Filter and display results in table format")]
-[CosmosExample("ls active --key=status", Description = "Filter items where 'status' field equals 'active'")]
+[CosmosExample("ls", DescriptionKey = "command-ls-example-1")]
+[CosmosExample("ls *Test*", DescriptionKey = "command-ls-example-2")]
+[CosmosExample("ls -max=10", DescriptionKey = "command-ls-example-3")]
+[CosmosExample("ls -max=0", DescriptionKey = "command-ls-example-4")]
+[CosmosExample("ls --database=MyDB --container=Products", DescriptionKey = "command-ls-example-5")]
+[CosmosExample("ls \"*active*\" --format=table", DescriptionKey = "command-ls-example-6")]
+[CosmosExample("ls active --key=status", DescriptionKey = "command-ls-example-7")]
 internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInterpreter>, IPagedCommand
 {
     private PatternMatcher? matcher;

@@ -9,10 +9,10 @@ using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 
 [CosmosCommand("filter")]
-[CosmosExample("query \"SELECT * FROM c\" | filter '.items[0]'", Description = "Extract the first query result")]
-[CosmosExample("query \"SELECT * FROM c\" | filter '.items | map({id, status})'", Description = "Project selected fields from query results")]
-[CosmosExample("ls | filter '.items | length'", Description = "Count listed items")]
-[CosmosExample("query \"SELECT * FROM c\" | filter '.items[] | .id'", Description = "Extract ids from each item")]
+[CosmosExample("query \"SELECT * FROM c\" | filter '.items[0]'", DescriptionKey = "command-filter-example-1")]
+[CosmosExample("query \"SELECT * FROM c\" | filter '.items | map({id, status})'", DescriptionKey = "command-filter-example-2")]
+[CosmosExample("ls | filter '.items | length'", DescriptionKey = "command-filter-example-3")]
+[CosmosExample("query \"SELECT * FROM c\" | filter '.items[] | .id'", DescriptionKey = "command-filter-example-4")]
 internal class FilterCommand : CosmosCommand
 {
     [CosmosParameter("expression")]

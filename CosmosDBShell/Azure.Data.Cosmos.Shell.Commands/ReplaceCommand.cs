@@ -11,9 +11,9 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
 [CosmosCommand("replace")]
-[CosmosExample("replace '{\"id\":\"1\",\"name\":\"Updated\"}'", Description = "Replace one existing item")]
-[CosmosExample("echo '{\"id\":\"2\",\"name\":\"Updated\"}' | replace", Description = "Replace item from piped input")]
-[CosmosExample("replace '{\"id\":\"3\",\"status\":\"active\"}' --database=MyDB --container=Items", Description = "Replace item in specific database and container")]
+[CosmosExample("replace '{\"id\":\"1\",\"name\":\"Updated\"}'", DescriptionKey = "command-replace-example-1")]
+[CosmosExample("echo '{\"id\":\"2\",\"name\":\"Updated\"}' | replace", DescriptionKey = "command-replace-example-2")]
+[CosmosExample("replace '{\"id\":\"3\",\"status\":\"active\"}' --database=MyDB --container=Items", DescriptionKey = "command-replace-example-3")]
 internal class ReplaceCommand : CosmosCommand
 {
     [CosmosParameter("data", IsRequired = false)]

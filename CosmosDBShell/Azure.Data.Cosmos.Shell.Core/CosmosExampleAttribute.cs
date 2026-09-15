@@ -49,4 +49,6 @@ internal class CosmosExampleAttribute : Attribute
     /// A brief description explaining the purpose or scenario of this example.
     /// </value>
     public string? Description { get; set; }
+
+    public string? DescriptionKey { get; set; }
 }

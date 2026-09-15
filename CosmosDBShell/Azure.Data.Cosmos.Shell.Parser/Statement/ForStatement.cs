@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 /// <summary>
 /// Represents a for-in loop statement that iterates over elements in a collection.
@@ -95,7 +96,7 @@ internal class ForStatement : Statement
         var collectionResult = evaluatedCollection.ConvertShellObject(DataType.Json);
         if (collectionResult is not JsonElement collection)
         {
-            throw new InvalidOperationException("Collection must evaluate to a JSON array");
+            throw new InvalidOperationException(MessageService.GetString("statement-error-for-collection"));
         }
 
         foreach (var arr in collection.EnumerateArray())

@@ -2,6 +2,10 @@
 
 Parameters with whitespace must be quoted. Escape character: `\`
 
+In-shell example descriptions and `theme show` labels use the OS UI language when
+translations are available, with English fallback for pending translations.
+Executable examples, command names, and flags are not translated.
+
 ## Connection
 
 ### connect

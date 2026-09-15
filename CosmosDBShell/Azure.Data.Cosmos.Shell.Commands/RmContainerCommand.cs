@@ -13,10 +13,10 @@ using global::Azure.Data.Cosmos.Shell.States;
 using Spectre.Console;
 
 [CosmosCommand("rmcon")]
-[CosmosExample("rmcon OldContainer", Description = "Delete container with confirmation prompt")]
-[CosmosExample("rmcon TempData true", Description = "Delete container skipping the interactive confirmation prompt (over MCP, confirmation is still required)")]
-[CosmosExample("rmcon TestContainer --database=TestDB", Description = "Delete container from specific database")]
-[CosmosExample("rmcon OldContainer --dry-run", Description = "Preview the deletion without deleting the container")]
+[CosmosExample("rmcon OldContainer", DescriptionKey = "command-rmcon-example-1")]
+[CosmosExample("rmcon TempData true", DescriptionKey = "command-rmcon-example-2")]
+[CosmosExample("rmcon TestContainer --database=TestDB", DescriptionKey = "command-rmcon-example-3")]
+[CosmosExample("rmcon OldContainer --dry-run", DescriptionKey = "command-rmcon-example-4")]
 [McpAnnotation(Title = "Remove Container", Restricted = true, Destructive = true, Confirmable = true)]
 internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpreter>
 {

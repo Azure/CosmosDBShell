@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 // JsonExpression.cs
 internal class JsonExpression : Expression
@@ -57,7 +58,7 @@ internal class JsonExpression : Expression
 
             if (string.IsNullOrEmpty(key))
             {
-                throw new InvalidOperationException("Property key cannot be null or empty");
+                throw new InvalidOperationException(MessageService.GetString("expression-error-empty-property-key"));
             }
 
             // Evaluate the value expression

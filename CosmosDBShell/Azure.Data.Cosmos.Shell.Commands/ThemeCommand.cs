@@ -15,17 +15,17 @@ using Spectre.Console;
 /// Inspects and switches the active color theme.
 /// </summary>
 [CosmosCommand("theme")]
-[CosmosExample("theme", Description = "Show the active theme name")]
-[CosmosExample("theme list", Description = "List all available themes (built-in plus user files)")]
-[CosmosExample("theme show", Description = "Print a sample of every role using the active theme")]
-[CosmosExample("theme show light", Description = "Print a sample using the light theme without switching to it")]
-[CosmosExample("theme use light", Description = "Switch the active theme for the rest of the session")]
-[CosmosExample("theme load ./my-theme.toml", Description = "Load a theme from a TOML file and switch to it")]
-[CosmosExample("theme validate ./my-theme.toml", Description = "Validate a theme TOML file without loading it")]
-[CosmosExample("theme save my-theme", Description = "Save the active theme as ~/.cosmosdbshell/themes/my-theme.toml")]
-[CosmosExample("theme edit my-theme", Description = "Open my-theme.toml in $EDITOR and reload it on exit")]
-[CosmosExample("theme open", Description = "Open the user themes folder in your OS file browser")]
-[CosmosExample("theme reload", Description = "Re-scan the user themes directory")]
+[CosmosExample("theme", DescriptionKey = "command-theme-example-1")]
+[CosmosExample("theme list", DescriptionKey = "command-theme-example-2")]
+[CosmosExample("theme show", DescriptionKey = "command-theme-example-3")]
+[CosmosExample("theme show light", DescriptionKey = "command-theme-example-4")]
+[CosmosExample("theme use light", DescriptionKey = "command-theme-example-5")]
+[CosmosExample("theme load ./my-theme.toml", DescriptionKey = "command-theme-example-6")]
+[CosmosExample("theme validate ./my-theme.toml", DescriptionKey = "command-theme-example-7")]
+[CosmosExample("theme save my-theme", DescriptionKey = "command-theme-example-8")]
+[CosmosExample("theme edit my-theme", DescriptionKey = "command-theme-example-9")]
+[CosmosExample("theme open", DescriptionKey = "command-theme-example-10")]
+[CosmosExample("theme reload", DescriptionKey = "command-theme-example-11")]
 internal class ThemeCommand : CosmosCommand
 {
     [CosmosParameter("action", IsRequired = false)]
@@ -148,33 +148,33 @@ internal class ThemeCommand : CosmosCommand
             table.AddColumn(string.Empty);
             void Row(string role, string sample) => table.AddRow(Markup.Escape(role), sample);
 
-            Row("command", Theme.FormatCommand("connect"));
-            Row("unknown command", Theme.FormatUnknownCommand("nope"));
-            Row("argument name", Theme.FormatArgumentName("--max"));
-            Row("connected prompt", Theme.ConnectedStatePromt(CosmosShellPrompt.PromptMarker));
-            Row("database name", Theme.DatabaseNamePromt("MyDb"));
-            Row("container name", Theme.ContainerNamePromt("MyContainer"));
-            Row("redirection", Theme.FormatRedirection(">>"));
-            Row("redirection target", Theme.FormatRedirectionDestination("out.json"));
-            Row("json property", Theme.FormatJsonProperty("\"id\""));
-            Row("json punctuation", Theme.FormatJsonBracket(":"));
-            Row("string literal", Theme.FormatStringLiteral("\"hello\""));
-            Row("string escape", Theme.FormatStringLiteral("\"line\\nbreak\""));
-            Row("number literal", Theme.FormatNumberLiteral("42"));
-            Row("boolean literal", Theme.FormatBooleanLiteral("true"));
-            Row("null literal", Theme.FormatJsonNull("null"));
-            Row("keyword", Theme.FormatKeyword("if"));
-            Row("operator", Theme.FormatOperator("+"));
-            Row("error", Theme.FormatError("not found"));
-            Row("warning", Theme.FormatWarning("retry?"));
-            Row("success", Theme.FormatSuccess("connected"));
-            Row("muted", Theme.FormatMuted("2026-05-11"));
-            Row("table value", Theme.FormatTableValue("West US"));
-            Row("directory", Theme.FormatDirectory("docs"));
-            Row("help header", Theme.FormatHelpHeader("Connection"));
-            Row("help name", Theme.FormatHelpName("--theme"));
-            Row("help description", Theme.FormatHelpDescription("Switches the active color theme."));
-            Row("brackets", string.Concat(Theme.FormatBracket("{", 0), Theme.FormatBracket("[", 1), Theme.FormatBracket("(", 2), Theme.FormatBracket(")", 2), Theme.FormatBracket("]", 1), Theme.FormatBracket("}", 0)));
+            Row(MessageService.GetString("command-theme-role-command"), Theme.FormatCommand("connect"));
+            Row(MessageService.GetString("command-theme-role-unknown-command"), Theme.FormatUnknownCommand("nope"));
+            Row(MessageService.GetString("command-theme-role-argument-name"), Theme.FormatArgumentName("--max"));
+            Row(MessageService.GetString("command-theme-role-connected-prompt"), Theme.ConnectedStatePromt(CosmosShellPrompt.PromptMarker));
+            Row(MessageService.GetString("command-theme-role-database-name"), Theme.DatabaseNamePromt("MyDb"));
+            Row(MessageService.GetString("command-theme-role-container-name"), Theme.ContainerNamePromt("MyContainer"));
+            Row(MessageService.GetString("command-theme-role-redirection"), Theme.FormatRedirection(">>"));
+            Row(MessageService.GetString("command-theme-role-redirection-target"), Theme.FormatRedirectionDestination("out.json"));
+            Row(MessageService.GetString("command-theme-role-json-property"), Theme.FormatJsonProperty("\"id\""));
+            Row(MessageService.GetString("command-theme-role-json-punctuation"), Theme.FormatJsonBracket(":"));
+            Row(MessageService.GetString("command-theme-role-string-literal"), Theme.FormatStringLiteral("\"hello\""));
+            Row(MessageService.GetString("command-theme-role-string-escape"), Theme.FormatStringLiteral("\"line\\nbreak\""));
+            Row(MessageService.GetString("command-theme-role-number-literal"), Theme.FormatNumberLiteral("42"));
+            Row(MessageService.GetString("command-theme-role-boolean-literal"), Theme.FormatBooleanLiteral("true"));
+            Row(MessageService.GetString("command-theme-role-null-literal"), Theme.FormatJsonNull("null"));
+            Row(MessageService.GetString("command-theme-role-keyword"), Theme.FormatKeyword("if"));
+            Row(MessageService.GetString("command-theme-role-operator"), Theme.FormatOperator("+"));
+            Row(MessageService.GetString("command-theme-role-error"), Theme.FormatError(MessageService.GetString("command-theme-sample-error")));
+            Row(MessageService.GetString("command-theme-role-warning"), Theme.FormatWarning(MessageService.GetString("command-theme-sample-warning")));
+            Row(MessageService.GetString("command-theme-role-success"), Theme.FormatSuccess(MessageService.GetString("command-theme-sample-success")));
+            Row(MessageService.GetString("command-theme-role-muted"), Theme.FormatMuted("2026-05-11"));
+            Row(MessageService.GetString("command-theme-role-table-value"), Theme.FormatTableValue(MessageService.GetString("command-theme-sample-region")));
+            Row(MessageService.GetString("command-theme-role-directory"), Theme.FormatDirectory("docs"));
+            Row(MessageService.GetString("command-theme-role-help-header"), Theme.FormatHelpHeader(MessageService.GetString("command-theme-sample-header")));
+            Row(MessageService.GetString("command-theme-role-help-name"), Theme.FormatHelpName("--theme"));
+            Row(MessageService.GetString("command-theme-role-help-description"), Theme.FormatHelpDescription(MessageService.GetString("command-theme-sample-description")));
+            Row(MessageService.GetString("command-theme-role-brackets"), string.Concat(Theme.FormatBracket("{", 0), Theme.FormatBracket("[", 1), Theme.FormatBracket("(", 2), Theme.FormatBracket(")", 2), Theme.FormatBracket("]", 1), Theme.FormatBracket("}", 0)));
 
             AnsiConsole.Write(table);
         }

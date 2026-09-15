@@ -102,6 +102,18 @@ does not rewrite an unchanged catalog, including files with different line endin
 Commit the source and updated catalog together. This runs during a build, not on
 each editor save; design-time builds do not update the catalog.
 
+Command examples use `DescriptionKey` rather than literal `Description` text:
+
+```csharp
+[CosmosExample("query \"SELECT * FROM c\"", DescriptionKey = "command-query-example-1")]
+```
+
+Define the key in `en.ftl`. Keep existing example keys stable when reordering
+examples; use a new unused key for a new example. Translate descriptions, not
+executable example text, command names, flags, or machine-readable identifiers.
+User-facing runtime errors and theme-preview labels also use `MessageService`.
+Localization audits check built-in example keys as well as literal message lookups.
+
 Welcome-screen labels are defined by `shell-welcome-*` keys in `en.ftl` and
 referenced as `{{shell-welcome-*}}` placeholders in `CosmosDBShell/cosmos_welcome.ans`.
 Keep the artwork, executable examples, and URLs outside translated strings.

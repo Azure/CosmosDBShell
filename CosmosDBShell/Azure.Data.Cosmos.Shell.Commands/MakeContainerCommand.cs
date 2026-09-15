@@ -12,11 +12,11 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
 [CosmosCommand("mkcon")]
-[CosmosExample("mkcon Products /categoryId", Description = "Create container with single partition key")]
-[CosmosExample("mkcon Orders /customerId,/orderId", Description = "Create container with hierarchical partition keys")]
-[CosmosExample("mkcon Users /userId -unique_key=/email -scale=auto -ru=4000", Description = "Create container with unique key constraint and autoscale throughput")]
-[CosmosExample("mkcon Items /pk --database=TestDB", Description = "Create container in specific database")]
-[CosmosExample("mkcon Logs /id --index_policy={\"indexingMode\":\"consistent\",\"includedPaths\":[{\"path\":\"/*\"}],\"excludedPaths\":[{\"path\":\"/\\\"_etag\\\"/?\"}]}", Description = "Create container with custom indexing policy")]
+[CosmosExample("mkcon Products /categoryId", DescriptionKey = "command-mkcon-example-1")]
+[CosmosExample("mkcon Orders /customerId,/orderId", DescriptionKey = "command-mkcon-example-2")]
+[CosmosExample("mkcon Users /userId -unique_key=/email -scale=auto -ru=4000", DescriptionKey = "command-mkcon-example-3")]
+[CosmosExample("mkcon Items /pk --database=TestDB", DescriptionKey = "command-mkcon-example-4")]
+[CosmosExample("mkcon Logs /id --index_policy={\"indexingMode\":\"consistent\",\"includedPaths\":[{\"path\":\"/*\"}],\"excludedPaths\":[{\"path\":\"/\\\"_etag\\\"/?\"}]}", DescriptionKey = "command-mkcon-example-5")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(Description = @"
 Supports hierarchical partition keys by specifying multiple partition key paths separated by commas.

@@ -32,13 +32,13 @@ internal enum ImportMode
 }
 
 [CosmosCommand("import")]
-[CosmosExample("import items.jsonl", Description = "Import items from a JSON Lines file (one JSON object per line)")]
-[CosmosExample("import items.json --format=array", Description = "Import items from a JSON array file")]
-[CosmosExample("import items.csv", Description = "Import items from a CSV file (the header row defines property names)")]
-[CosmosExample("import items.csv --partition-key=/address/city", Description = "Import CSV and nest the matching column under a nested partition key path")]
-[CosmosExample("import items.jsonl --mode=upsert", Description = "Insert new items and replace any existing items with the same id")]
-[CosmosExample("import items.jsonl --continue-on-error", Description = "Keep importing after individual item write failures")]
-[CosmosExample("import items.jsonl --dry-run", Description = "Validate the file without writing any items")]
+[CosmosExample("import items.jsonl", DescriptionKey = "command-import-example-1")]
+[CosmosExample("import items.json --format=array", DescriptionKey = "command-import-example-2")]
+[CosmosExample("import items.csv", DescriptionKey = "command-import-example-3")]
+[CosmosExample("import items.csv --partition-key=/address/city", DescriptionKey = "command-import-example-4")]
+[CosmosExample("import items.jsonl --mode=upsert", DescriptionKey = "command-import-example-5")]
+[CosmosExample("import items.jsonl --continue-on-error", DescriptionKey = "command-import-example-6")]
+[CosmosExample("import items.jsonl --dry-run", DescriptionKey = "command-import-example-7")]
 [McpAnnotation(
     Title = "Import Container Items",
     ReadOnly = false,

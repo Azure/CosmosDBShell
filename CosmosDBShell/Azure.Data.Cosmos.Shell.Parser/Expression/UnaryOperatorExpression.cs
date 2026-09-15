@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Parser;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal class UnaryOperatorExpression : Expression
 {
@@ -37,7 +38,7 @@ internal class UnaryOperatorExpression : Expression
                     var operandBoolObj = operandResult.ConvertShellObject(DataType.Boolean);
                     if (operandBoolObj == null)
                     {
-                        throw new InvalidOperationException("Operand evaluation returned null for NOT operation");
+                        throw new InvalidOperationException(MessageService.GetString("expression-error-null-not"));
                     }
 
                     var operandBool = (bool)operandBoolObj;
@@ -52,7 +53,7 @@ internal class UnaryOperatorExpression : Expression
                         var operandDecObj = operandResult.ConvertShellObject(DataType.Decimal);
                         if (operandDecObj == null)
                         {
-                            throw new InvalidOperationException("Operand evaluation returned null for decimal negation");
+                            throw new InvalidOperationException(MessageService.GetString("expression-error-null-decimal-negation"));
                         }
 
                         var operandDec = (double)operandDecObj;
@@ -63,7 +64,7 @@ internal class UnaryOperatorExpression : Expression
                     var operandNumObj = operandResult.ConvertShellObject(DataType.Number);
                     if (operandNumObj == null)
                     {
-                        throw new InvalidOperationException("Operand evaluation returned null for numeric negation");
+                        throw new InvalidOperationException(MessageService.GetString("expression-error-null-numeric-negation"));
                     }
 
                     var operandNum = (int)operandNumObj;
@@ -78,7 +79,7 @@ internal class UnaryOperatorExpression : Expression
                         var operandDecObj = operandResult.ConvertShellObject(DataType.Decimal);
                         if (operandDecObj == null)
                         {
-                            throw new InvalidOperationException("Operand evaluation returned null for unary plus on decimal");
+                            throw new InvalidOperationException(MessageService.GetString("expression-error-null-decimal-plus"));
                         }
 
                         var operandDec = (double)operandDecObj;
@@ -89,7 +90,7 @@ internal class UnaryOperatorExpression : Expression
                     var operandNumObj = operandResult.ConvertShellObject(DataType.Number);
                     if (operandNumObj == null)
                     {
-                        throw new InvalidOperationException("Operand evaluation returned null for unary plus");
+                        throw new InvalidOperationException(MessageService.GetString("expression-error-null-plus"));
                     }
 
                     var operandNum = (int)operandNumObj;
