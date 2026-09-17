@@ -6,6 +6,7 @@ namespace CosmosShell.Tests.Parser;
 
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
 
 /// <summary>
 /// Conversion tests for the <see cref="ShellObject"/> value types
@@ -41,6 +42,66 @@ public class ShellObjectConversionTests
     public void ShellDecimal_NonFiniteValues_CannotBecomeJsonNumbers(double value)
     {
         Assert.Throws<ArgumentException>(() => new ShellDecimal(value).ConvertShellObject(DataType.Json));
+    }
+
+    [Theory]
+    [InlineData((int)DataType.Boolean, "conversion-error-text-boolean", "conversion-error-identifier-boolean")]
+    [InlineData((int)DataType.Number, "conversion-error-text-number", "conversion-error-identifier-number")]
+    [InlineData((int)DataType.Decimal, "conversion-error-text-double", "conversion-error-identifier-double")]
+    public void InvalidStringConversions_UseLocalizedMessages(int targetType, string textKey, string identifierKey)
+    {
+        var target = (DataType)targetType;
+        const string value = "not-a-value";
+        var textError = Assert.Throws<InvalidOperationException>(() => new ShellText(value).ConvertShellObject(target));
+        var identifierError = Assert.Throws<InvalidOperationException>(() => new ShellIdentifier(value).ConvertShellObject(target));
+
+        Assert.Equal(MessageService.GetArgsString(textKey, "value", value), textError.Message);
+        Assert.Equal(MessageService.GetArgsString(identifierKey, "value", value), identifierError.Message);
+    }
+
+    [Theory]
+    [InlineData((int)DataType.Boolean, "conversion-error-json-boolean")]
+    [InlineData((int)DataType.Number, "conversion-error-json-number")]
+    [InlineData((int)DataType.Decimal, "conversion-error-json-decimal")]
+    public void InvalidJsonConversions_UseLocalizedMessages(int targetType, string key)
+    {
+        var target = (DataType)targetType;
+        var error = Assert.Throws<InvalidOperationException>(() => Json("{}").ConvertShellObject(target));
+
+        Assert.Equal(MessageService.GetArgsString(key, "kind", JsonValueKind.Object), error.Message);
+    }
+
+    [Fact]
+    public void InvalidJsonText_UsesLocalizedMessageAndPreservesParseDetails()
+    {
+        const string value = "{not json";
+        var parseError = Assert.ThrowsAny<JsonException>(() => JsonDocument.Parse(value));
+        var textError = Assert.Throws<InvalidOperationException>(() => new ShellText(value).ConvertShellObject(DataType.Json));
+        var identifierError = Assert.Throws<InvalidOperationException>(() => new ShellIdentifier(value).ConvertShellObject(DataType.Json));
+
+        Assert.Equal(MessageService.GetArgsString("conversion-error-text-json", "value", value, "error", parseError.Message), textError.Message);
+        Assert.Equal(MessageService.GetArgsString("conversion-error-identifier-json", "value", value, "error", parseError.Message), identifierError.Message);
+    }
+
+    [Fact]
+    public void UnsupportedTargets_UseLocalizedMessages()
+    {
+        var target = (DataType)int.MaxValue;
+        var values = new (ShellObject Value, string Key)[]
+        {
+            (new ShellBool(true), "conversion-error-boolean-type"),
+            (new ShellNumber(1), "conversion-error-number-type"),
+            (new ShellDecimal(1.5), "conversion-error-decimal-type"),
+            (new ShellText("value"), "conversion-error-text-type"),
+            (new ShellIdentifier("value"), "conversion-error-identifier-type"),
+            (Json("{}"), "conversion-error-json-type"),
+        };
+
+        foreach (var (value, key) in values)
+        {
+            var error = Assert.Throws<InvalidOperationException>(() => value.ConvertShellObject(target));
+            Assert.Equal(MessageService.GetArgsString(key, "type", target), error.Message);
+        }
     }
 
     private static ShellJson Json(string raw)

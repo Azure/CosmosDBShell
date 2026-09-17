@@ -101,6 +101,53 @@ Run the offline regression suite without a database:
 dotnet test CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --filter "Category!=Emulator"
 ```
 
+### Updating Localized Text
+
+Edit `CosmosDBShell/lang/en.ftl`, then build normally:
+
+```bash
+dotnet build CosmosDBShell/CosmosDBShell.csproj
+```
+
+Local shell builds automatically update `l10n/CosmosDBShell.json`. The exporter
+does not rewrite an unchanged catalog, including files with different line endings.
+Commit the source and updated catalog together. This runs during a build, not on
+each editor save; design-time builds do not update the catalog.
+
+Command examples use `DescriptionKey` rather than literal `Description` text:
+
+```csharp
+[CosmosExample("query \"SELECT * FROM c\"", DescriptionKey = "command-query-example-1")]
+```
+
+Define the key in `en.ftl`. Keep existing example keys stable when reordering
+examples; use a new unused key for a new example. Translate descriptions, not
+executable example text, command names, flags, or machine-readable identifiers.
+User-facing runtime errors and theme-preview labels also use `MessageService`.
+Localization audits check built-in example keys as well as literal message lookups.
+
+Welcome-screen labels are defined by `shell-welcome-*` keys in `en.ftl` and
+referenced as `{{shell-welcome-*}}` placeholders in `CosmosDBShell/cosmos_welcome.ans`.
+Keep the artwork, executable examples, and URLs outside translated strings.
+Packaging runs `tools/Localization/build-localized-resources.ps1` to generate
+locale-specific Fluent files from the OneLoc JSON catalogs. Missing translated
+keys use the English source until OneLoc delivers them; unexpected keys and
+invalid placeholders still fail validation. Do not commit generated Fluent files.
+
+CI builds only verify the committed catalog and fail if it is missing or stale;
+they never repair it. This applies when `CI`, `TF_BUILD`, `GITHUB_ACTIONS`, or
+`ContinuousIntegrationBuild` is `true`. To check locally without updating it:
+
+```bash
+dotnet build CosmosDBShell/CosmosDBShell.csproj -p:ContinuousIntegrationBuild=true
+```
+
+The independent **Localization Catalog** GitHub Actions check verifies the catalog
+without building the shell or generating translations. The **build-test-package**
+check also verifies it before building the shell and is already required on `main`.
+Repository administrators should keep that check required, or require
+**Localization Catalog** as a dedicated gate, on protected target branches.
+
 ### Running Against the Emulator
 
 You can develop and test without an Azure subscription by using the [Azure Cosmos DB Emulator](https://learn.microsoft.com/azure/cosmos-db/emulator):

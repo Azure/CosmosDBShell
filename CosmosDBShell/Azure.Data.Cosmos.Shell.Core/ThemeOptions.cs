@@ -92,6 +92,8 @@ internal sealed record ThemeOptions
 
     public string WarningColor { get; init; } = "yellow";
 
+    public string SuccessColor { get; init; } = "green";
+
     public string DirectoryColor { get; init; } = "blue";
 
     public string MutedColor { get; init; } = "grey";

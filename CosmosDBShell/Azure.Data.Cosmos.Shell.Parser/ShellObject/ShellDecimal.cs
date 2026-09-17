@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal class ShellDecimal : ShellObject
 {
@@ -41,7 +42,7 @@ internal class ShellDecimal : ShellObject
                 return JsonSerializer.SerializeToElement(this.Value, JsonSerializationOptions);
 
             default:
-                throw new InvalidOperationException($"Cannot convert decimal to {type}");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-decimal-type", "type", type));
         }
     }
 

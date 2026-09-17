@@ -23,13 +23,13 @@ internal enum MetricTarget
 }
 
 [CosmosCommand("query")]
-[CosmosExample("query \"SELECT * FROM c\"", Description = "Query all documents from container")]
-[CosmosExample("query \"SELECT * FROM c WHERE c.status = 'active'\"", Description = "Query with filter condition")]
-[CosmosExample("query \"SELECT c.id, c.name FROM c\" -max=10", Description = "Query specific fields with result limit")]
-[CosmosExample("query \"SELECT * FROM c\" -max=0", Description = "Query all matching documents without a limit")]
-[CosmosExample("query \"SELECT * FROM c\" -metrics=Display", Description = "Query with performance metrics displayed")]
-[CosmosExample("query \"SELECT * FROM c WHERE c.city = 'Seattle'\" --explain", Description = "Show the query execution plan and index usage without returning documents")]
-[CosmosExample("query \"SELECT * FROM c\" --database=MyDB --container=Products", Description = "Query specific database and container")]
+[CosmosExample("query \"SELECT * FROM c\"", DescriptionKey = "command-query-example-1")]
+[CosmosExample("query \"SELECT * FROM c WHERE c.status = 'active'\"", DescriptionKey = "command-query-example-2")]
+[CosmosExample("query \"SELECT c.id, c.name FROM c\" -max=10", DescriptionKey = "command-query-example-3")]
+[CosmosExample("query \"SELECT * FROM c\" -max=0", DescriptionKey = "command-query-example-4")]
+[CosmosExample("query \"SELECT * FROM c\" -metrics=Display", DescriptionKey = "command-query-example-5")]
+[CosmosExample("query \"SELECT * FROM c WHERE c.city = 'Seattle'\" --explain", DescriptionKey = "command-query-example-6")]
+[CosmosExample("query \"SELECT * FROM c\" --database=MyDB --container=Products", DescriptionKey = "command-query-example-7")]
 [McpAnnotation(
     Title = "Run Query",
     ReadOnly = true,

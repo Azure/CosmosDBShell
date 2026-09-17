@@ -6,21 +6,12 @@ namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Net;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
+using Newtonsoft.Json;
 
 internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : ICosmosResourceOperations
 {
-    private static readonly JsonSerializerOptions IndexingPolicyJsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() },
-    };
-
     public async IAsyncEnumerable<string> GetDatabaseNamesAsync([EnumeratorCancellation] CancellationToken token)
     {
         using var iterator = client.GetDatabaseQueryIterator<DatabaseProperties>();
@@ -237,7 +228,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         var properties = GetContainerPropertiesOrThrow(response);
         var policy = properties.IndexingPolicy
             ?? throw new IndexPolicyMissingException();
-        return JsonSerializer.Serialize(policy, IndexingPolicyJsonOptions);
+        return SerializeIndexingPolicy(policy);
     }
 
     public async Task<string> ReplaceIndexingPolicyAsync(string databaseName, string containerName, string indexPolicyJson, CancellationToken token)
@@ -250,7 +241,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         props.IndexingPolicy = policy;
         var replaced = await container.ReplaceContainerAsync(props, cancellationToken: token);
         RequestChargeContext.Record(replaced.RequestCharge);
-        return JsonSerializer.Serialize(replaced.Resource?.IndexingPolicy ?? policy, IndexingPolicyJsonOptions);
+        return SerializeIndexingPolicy(replaced.Resource?.IndexingPolicy ?? policy);
     }
 
     public async Task<ContainerTtlView> GetTimeToLiveAsync(string databaseName, string containerName, CancellationToken token)
@@ -411,18 +402,21 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         return response.Resource ?? throw new ShellException(MessageService.GetString("error-unable_to_read_container"));
     }
 
-    private static IndexingPolicy ParseIndexingPolicy(string indexPolicyJson)
+    internal static IndexingPolicy ParseIndexingPolicy(string indexPolicyJson)
     {
         try
         {
-            return JsonSerializer.Deserialize<IndexingPolicy>(indexPolicyJson, IndexingPolicyJsonOptions)
+            return JsonConvert.DeserializeObject<IndexingPolicy>(indexPolicyJson)
                 ?? throw new InvalidIndexingPolicyJsonException();
         }
-        catch (JsonException ex)
+        catch (Newtonsoft.Json.JsonException ex)
         {
             throw new InvalidIndexingPolicyJsonException(ex);
         }
     }
+
+    internal static string SerializeIndexingPolicy(IndexingPolicy policy) =>
+        JsonConvert.SerializeObject(policy, Formatting.Indented);
 
     private static ConflictResolutionView ToConflictResolutionView(ConflictResolutionPolicy? policy)
     {

@@ -13,7 +13,7 @@ using Azure.Data.Cosmos.Shell.Util;
 using Spectre.Console;
 
 [CosmosCommand("pwd")]
-[CosmosExample("pwd", Description = "Show the current shell location")]
+[CosmosExample("pwd", DescriptionKey = "command-pwd-example-1")]
 [McpAnnotation(
     Description = @"
 Shows the current shell location.

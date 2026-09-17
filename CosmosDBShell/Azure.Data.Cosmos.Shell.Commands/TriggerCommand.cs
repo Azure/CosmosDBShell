@@ -15,13 +15,13 @@ using Microsoft.Azure.Cosmos.Scripts;
 using Spectre.Console;
 
 [CosmosCommand("trigger")]
-[CosmosExample("trigger list", Description = "List the triggers in the current container")]
-[CosmosExample("trigger show myTrigger", Description = "Display the body of a trigger")]
-[CosmosExample("trigger exists myTrigger", Description = "Check whether a trigger exists (usable in if conditions)")]
-[CosmosExample("trigger create myTrigger ./myTrigger.js --type pre --operation create", Description = "Create a pre-trigger for create operations")]
-[CosmosExample("trigger create myTrigger ./myTrigger.js --type post --operation all --force", Description = "Create or replace a post-trigger for all operations")]
-[CosmosExample("trigger edit myTrigger", Description = "Edit a trigger body in an external editor")]
-[CosmosExample("trigger delete myTrigger", Description = "Delete a trigger")]
+[CosmosExample("trigger list", DescriptionKey = "command-trigger-example-1")]
+[CosmosExample("trigger show myTrigger", DescriptionKey = "command-trigger-example-2")]
+[CosmosExample("trigger exists myTrigger", DescriptionKey = "command-trigger-example-3")]
+[CosmosExample("trigger create myTrigger ./myTrigger.js --type pre --operation create", DescriptionKey = "command-trigger-example-4")]
+[CosmosExample("trigger create myTrigger ./myTrigger.js --type post --operation all --force", DescriptionKey = "command-trigger-example-5")]
+[CosmosExample("trigger edit myTrigger", DescriptionKey = "command-trigger-example-6")]
+[CosmosExample("trigger delete myTrigger", DescriptionKey = "command-trigger-example-7")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "Triggers",

@@ -8,6 +8,8 @@ using System.IO;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
+using Spectre.Console;
 
 /// <summary>
 /// Offline tests for <see cref="ThemeCommand"/>'s action dispatch. These cover the
@@ -27,6 +29,41 @@ public class ThemeCommandDispatchTests
         [colors]
         literal = "purple"
         """;
+
+    [Fact]
+    public async Task Show_RendersLocalizedLabelsAndPreservesSyntaxSamples()
+    {
+        var savedConsole = AnsiConsole.Console;
+        var savedTheme = Theme.Current;
+        using var writer = new StringWriter();
+        try
+        {
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(writer),
+            });
+            AnsiConsole.Console.Profile.Width = 200;
+            var state = await RunAsync(new ThemeCommand { Action = "show", Name = "default" });
+            Assert.NotNull(state.RenderUser);
+            state.RenderUser();
+
+            var output = writer.ToString();
+            Assert.Contains(MessageService.GetString("command-theme-role-unknown-command"), output, StringComparison.Ordinal);
+            Assert.Contains(MessageService.GetString("command-theme-role-help-description"), output, StringComparison.Ordinal);
+            Assert.Contains(MessageService.GetString("command-theme-sample-description"), output, StringComparison.Ordinal);
+            Assert.Contains("--max", output, StringComparison.Ordinal);
+            Assert.Contains("--theme", output, StringComparison.Ordinal);
+            Assert.Contains("true", output, StringComparison.Ordinal);
+            Assert.Same(savedTheme, Theme.Current);
+        }
+        finally
+        {
+            AnsiConsole.Console = savedConsole;
+            Theme.Apply(savedTheme);
+        }
+    }
 
     [Fact]
     public async Task NoAction_DefaultsToCurrent()

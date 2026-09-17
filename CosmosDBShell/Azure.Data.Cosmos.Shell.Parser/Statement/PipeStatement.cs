@@ -41,7 +41,7 @@ internal class PipeStatement : Statement
         this.Statements = statements ?? throw new ArgumentNullException(nameof(statements));
         if (statements.Count == 0)
         {
-            throw new ArgumentException("Pipe statement must contain at least one statement.", nameof(statements));
+            throw new ArgumentException(MessageService.GetString("statement-error-empty-pipe"), nameof(statements));
         }
     }
 

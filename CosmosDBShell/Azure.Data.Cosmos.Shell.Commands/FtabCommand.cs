@@ -12,13 +12,13 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using Spectre.Console;
 
 [CosmosCommand("ftab")]
-[CosmosExample("query \"SELECT c.id, c.name FROM c\" | ftab", Description = "Display query results in tabular format")]
-[CosmosExample("query \"SELECT c.id, c.name FROM c\" | ftab -f name,id -take 5", Description = "Select columns and limit rendered rows")]
-[CosmosExample("query \"SELECT c.id, c.name FROM c\" | ftab -sort name:desc", Description = "Sort rows by a field before rendering")]
-[CosmosExample("query \"SELECT c.type, c.name FROM c\" | ftab -colorize type:error:red", Description = "Colorize matching cells in terminal output")]
-[CosmosExample("query \"SELECT c.id, c.name FROM c\" | ftab -format markdown", Description = "Render table output as markdown")]
-[CosmosExample("query \"SELECT c.id, c.name FROM c\" | ftab -format html > table.html", Description = "Render table output as HTML")]
-[CosmosExample("ls | ftab", Description = "Display list results as a table")]
+[CosmosExample("query \"SELECT c.id, c.name FROM c\" | ftab", DescriptionKey = "command-ftab-example-1")]
+[CosmosExample("query \"SELECT c.id, c.name FROM c\" | ftab -f name,id -take 5", DescriptionKey = "command-ftab-example-2")]
+[CosmosExample("query \"SELECT c.id, c.name FROM c\" | ftab -sort name:desc", DescriptionKey = "command-ftab-example-3")]
+[CosmosExample("query \"SELECT c.type, c.name FROM c\" | ftab -colorize type:error:red", DescriptionKey = "command-ftab-example-4")]
+[CosmosExample("query \"SELECT c.id, c.name FROM c\" | ftab -format markdown", DescriptionKey = "command-ftab-example-5")]
+[CosmosExample("query \"SELECT c.id, c.name FROM c\" | ftab -format html > table.html", DescriptionKey = "command-ftab-example-6")]
+[CosmosExample("ls | ftab", DescriptionKey = "command-ftab-example-7")]
 internal class FtabCommand : CosmosCommand
 {
     private static readonly JsonSerializerOptions JsonSerializerOptionsIndented = new()

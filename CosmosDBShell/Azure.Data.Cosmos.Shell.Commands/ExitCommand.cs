@@ -11,7 +11,7 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
 [CosmosCommand("exit")]
-[CosmosExample("exit", Description = "Exit the Cosmos DB Shell")]
+[CosmosExample("exit", DescriptionKey = "command-exit-example-1")]
 [McpAnnotation(Title = "Exit Shell", Restricted = true)]
 internal class ExitCommand : CosmosCommand
 {

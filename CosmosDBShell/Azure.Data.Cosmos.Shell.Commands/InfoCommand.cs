@@ -16,10 +16,10 @@ using global::Azure.Data.Cosmos.Shell.States;
 using Spectre.Console;
 
 [CosmosCommand("info")]
-[CosmosExample("info", Description = "Display configuration and usage statistics for the current container, database, or account")]
-[CosmosExample("info --database=MyDB --container=Products", Description = "Display info for a specific database and container")]
-[CosmosExample("info --partitions", Description = "Add the per-physical-partition document distribution for a container")]
-[CosmosExample("info --detailed", Description = "Add a storage breakdown and top partition keys (performs a full scan)")]
+[CosmosExample("info", DescriptionKey = "command-info-example-1")]
+[CosmosExample("info --database=MyDB --container=Products", DescriptionKey = "command-info-example-2")]
+[CosmosExample("info --partitions", DescriptionKey = "command-info-example-3")]
+[CosmosExample("info --detailed", DescriptionKey = "command-info-example-4")]
 internal class InfoCommand : CosmosCommand
 {
     private const string ResourceUsageHeader = "x-ms-resource-usage";

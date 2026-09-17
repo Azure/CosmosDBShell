@@ -125,7 +125,7 @@ public class ParsedDocDBConnectionString
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uriResult) ||
             (uriResult.Scheme != Uri.UriSchemeHttp && uriResult.Scheme != Uri.UriSchemeHttps))
         {
-            throw new ArgumentException("Invalid endpoint URL format.", nameof(endpoint));
+            throw new ArgumentException(MessageService.GetString("connection-error-invalid-endpoint-url"), nameof(endpoint));
         }
 
         string sanitizedEndpoint = uriResult.GetComponents(UriComponents.HttpRequestUrl, UriFormat.Unescaped);
@@ -151,7 +151,7 @@ public class ParsedDocDBConnectionString
             return connectionStringOrUrl;
         }
 
-        throw new ArgumentException("Cannot determine endpoint from the provided connection string or URL.", nameof(connectionStringOrUrl));
+        throw new ArgumentException(MessageService.GetString("connection-error-undetermined-endpoint"), nameof(connectionStringOrUrl));
     }
 
     /// <summary>

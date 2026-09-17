@@ -409,6 +409,12 @@ internal static class Theme
         return Wrap(Current.WarningColor, Markup.Escape(value));
     }
 
+    /// <summary>Wraps text in the success/pass color.</summary>
+    internal static string FormatSuccess(string value)
+    {
+        return Wrap(Current.SuccessColor, Markup.Escape(value));
+    }
+
     /// <summary>Wraps text in the directory color (used by <c>dir</c> output).</summary>
     internal static string FormatDirectory(string value)
     {

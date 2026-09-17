@@ -15,14 +15,14 @@ using Microsoft.Azure.Cosmos.Scripts;
 using Spectre.Console;
 
 [CosmosCommand("sproc")]
-[CosmosExample("sproc list", Description = "List the stored procedures in the current container")]
-[CosmosExample("sproc show myProc", Description = "Display the body of a stored procedure")]
-[CosmosExample("sproc exists myProc", Description = "Check whether a stored procedure exists (usable in if conditions)")]
-[CosmosExample("sproc create myProc ./myProc.js", Description = "Create a stored procedure from a JavaScript file")]
-[CosmosExample("sproc create myProc ./myProc.js --force", Description = "Create or replace a stored procedure")]
-[CosmosExample("sproc edit myProc", Description = "Edit a stored procedure body in an external editor")]
-[CosmosExample("sproc exec myProc '[\"param1\", \"param2\"]' --partition-key pk1", Description = "Execute a stored procedure with parameters")]
-[CosmosExample("sproc delete myProc", Description = "Delete a stored procedure")]
+[CosmosExample("sproc list", DescriptionKey = "command-sproc-example-1")]
+[CosmosExample("sproc show myProc", DescriptionKey = "command-sproc-example-2")]
+[CosmosExample("sproc exists myProc", DescriptionKey = "command-sproc-example-3")]
+[CosmosExample("sproc create myProc ./myProc.js", DescriptionKey = "command-sproc-example-4")]
+[CosmosExample("sproc create myProc ./myProc.js --force", DescriptionKey = "command-sproc-example-5")]
+[CosmosExample("sproc edit myProc", DescriptionKey = "command-sproc-example-6")]
+[CosmosExample("sproc exec myProc '[\"param1\", \"param2\"]' --partition-key pk1", DescriptionKey = "command-sproc-example-7")]
+[CosmosExample("sproc delete myProc", DescriptionKey = "command-sproc-example-8")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "Stored Procedures",

@@ -10,6 +10,7 @@ using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
 
 using Xunit;
 
@@ -74,6 +75,26 @@ public class ForStatementTests : TestBase
         Assert.Equal(1, array[0].GetInt32());
         Assert.Equal(2, array[1].GetInt32());
         Assert.Equal(3, array[2].GetInt32());
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("\"text\"")]
+    [InlineData("42")]
+    [InlineData("true")]
+    [InlineData("false")]
+    [InlineData("null")]
+    public async Task ExecuteForStatement_NonArrayJson_ThrowsLocalizedError(string input)
+    {
+        using var document = JsonDocument.Parse(input);
+        SetVariable("collection", new ShellJson(document.RootElement));
+        SetVariable("executed", new ShellBool(false));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => RunScriptAsync("for $item in $collection { $executed = true }"));
+
+        Assert.Equal(MessageService.GetString("statement-error-for-collection"), error.Message);
+        Assert.False(Assert.IsType<ShellBool>(GetVariable("executed")).Value);
     }
 
     [Fact]

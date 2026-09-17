@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal class JsonArrayExpression : Expression
 {
@@ -71,7 +72,7 @@ internal class JsonArrayExpression : Expression
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Failed to convert {value.GetType().Name} to JsonElement");
+                        throw new InvalidOperationException(MessageService.GetArgsString("expression-error-convert-json", "type", value.GetType().Name));
                     }
 
                     break;
@@ -84,7 +85,7 @@ internal class JsonArrayExpression : Expression
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Failed to convert {value.GetType().Name} to integer");
+                        throw new InvalidOperationException(MessageService.GetArgsString("expression-error-convert-integer", "type", value.GetType().Name));
                     }
 
                     break;
@@ -97,7 +98,7 @@ internal class JsonArrayExpression : Expression
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Failed to convert {value.GetType().Name} to decimal");
+                        throw new InvalidOperationException(MessageService.GetArgsString("expression-error-convert-decimal", "type", value.GetType().Name));
                     }
 
                     break;
@@ -110,7 +111,7 @@ internal class JsonArrayExpression : Expression
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Failed to convert {value.GetType().Name} to boolean");
+                        throw new InvalidOperationException(MessageService.GetArgsString("expression-error-convert-boolean", "type", value.GetType().Name));
                     }
 
                     break;
@@ -123,7 +124,7 @@ internal class JsonArrayExpression : Expression
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Failed to convert {value.GetType().Name} to string");
+                        throw new InvalidOperationException(MessageService.GetArgsString("expression-error-convert-string", "type", value.GetType().Name));
                     }
 
                     break;
@@ -137,7 +138,7 @@ internal class JsonArrayExpression : Expression
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Failed to convert {value.GetType().Name} to string representation");
+                        throw new InvalidOperationException(MessageService.GetArgsString("expression-error-convert-string-representation", "type", value.GetType().Name));
                     }
 
                     break;

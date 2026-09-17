@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal class ShellIdentifier : ShellObject
 {
@@ -46,21 +47,21 @@ internal class ShellIdentifier : ShellObject
                     return false;
                 }
 
-                throw new InvalidOperationException($"Cannot convert identifier '{value}' to boolean");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-identifier-boolean", "value", value));
             case DataType.Number:
                 if (int.TryParse(value, out int intValue))
                 {
                     return intValue;
                 }
 
-                throw new InvalidOperationException($"Cannot convert identifier '{value}' to number");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-identifier-number", "value", value));
             case DataType.Decimal:
                 if (double.TryParse(value, out double decimalValue))
                 {
                     return decimalValue;
                 }
 
-                throw new InvalidOperationException($"Cannot convert identifier '{value}' to double");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-identifier-double", "value", value));
             case DataType.Json:
                 try
                 {
@@ -71,11 +72,11 @@ internal class ShellIdentifier : ShellObject
                 }
                 catch (JsonException ex)
                 {
-                    throw new InvalidOperationException($"Cannot convert identifier '{value}' to JSON: {ex.Message}");
+                    throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-identifier-json", "value", value, "error", ex.Message));
                 }
 
             default:
-                throw new InvalidOperationException($"Cannot convert identifier to {type}");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-identifier-type", "type", type));
         }
     }
 }

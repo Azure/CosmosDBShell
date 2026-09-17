@@ -9,6 +9,18 @@ namespace CosmosShell.Tests.UtilTest;
 public class ParseDocDBConnectionTests
 {
     [Fact]
+    public void InvalidEndpoints_UseLocalizedMessagesAndPreserveParameterNames()
+    {
+        var invalidUrl = Assert.Throws<ArgumentException>(() => ParsedDocDBConnectionString.BuildEmulatorConnectionString("not-an-endpoint"));
+        Assert.StartsWith(MessageService.GetString("connection-error-invalid-endpoint-url"), invalidUrl.Message, StringComparison.Ordinal);
+        Assert.Equal("endpoint", invalidUrl.ParamName);
+
+        var missingEndpoint = Assert.Throws<ArgumentException>(() => ParsedDocDBConnectionString.ExtractEndpoint("not-an-endpoint"));
+        Assert.StartsWith(MessageService.GetString("connection-error-undetermined-endpoint"), missingEndpoint.Message, StringComparison.Ordinal);
+        Assert.Equal("connectionStringOrUrl", missingEndpoint.ParamName);
+    }
+
+    [Fact]
     public void Test_EmptyDatabase()
     {
         ParsedDocDBConnectionString.TryParseDocDBConnectionString("AccountEndpoint=https://abcdef.documents.azure.com:443/;AccountKey=abcdef==", out var parsedCS);

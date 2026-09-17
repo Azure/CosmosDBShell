@@ -2155,7 +2155,7 @@ public partial class ShellInterpreter : IDisposable
     {
         var options = new CosmosClientOptions
         {
-            ApplicationName = "CosmosDBShell",
+            ApplicationName = $"CosmosDBShell/{GetDisplayVersion(typeof(VersionCommand).Assembly)}",
             ConnectionMode = requestedMode,
             CosmosClientTelemetryOptions = new CosmosClientTelemetryOptions
             {
@@ -2756,7 +2756,7 @@ public partial class ShellInterpreter : IDisposable
         var callTrace = frames.Skip(1).Select(frame => $"  at {frame.FileName}:{frame.Line}:{frame.Column}").ToArray();
         if (this.ErrOutRedirect != null)
         {
-            var errorMessage = $"[{Path.GetFileName(pe.FileName)}:{pe.Line}:{pe.Column}]: error: {pe.Message}";
+            var errorMessage = $"[{Path.GetFileName(pe.FileName)}:{pe.Line}:{pe.Column}]: {MessageService.GetString("runtime-error-prefix")}: {pe.Message}";
             if (pe.LineText != null)
             {
                 errorMessage += Environment.NewLine + pe.LineText;
@@ -2779,7 +2779,7 @@ public partial class ShellInterpreter : IDisposable
         }
         else
         {
-            AnsiConsole.MarkupLine($"{Markup.Escape($"{pe.FileName}:{pe.Line}:{pe.Column}:")} {Theme.FormatError("error:")} {Markup.Escape(pe.Message)}");
+            AnsiConsole.MarkupLine($"{Markup.Escape($"{pe.FileName}:{pe.Line}:{pe.Column}:")} {Theme.FormatError(MessageService.GetString("runtime-error-prefix") + ":")} {Markup.Escape(pe.Message)}");
             if (pe.LineText != null)
             {
                 AnsiConsole.MarkupLine("  " + Theme.FormatMuted(pe.LineText));

@@ -56,6 +56,23 @@ public class ShellProcessTests
         Assert.Empty(result.StdErr);
     }
 
+    [Theory]
+    [InlineData("doctor --no-update-check --format json", 0, "PASS")]
+    [InlineData("doctor --database missing --no-update-check --format json", 1, "FAIL")]
+    [InlineData("doctor --arm --no-update-check --format json", 1, "FAIL")]
+    public async Task Doctor_ReportsJsonAndRequiredCheckExitCode(string command, int exitCode, string status)
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--output", "json", "-c", command],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(exitCode, result.ExitCode);
+        using var report = JsonDocument.Parse(result.StdOut);
+        Assert.Equal(1, report.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(status, report.RootElement.GetProperty("status").GetString());
+    }
+
     [Fact]
     public async Task StdinPipedScript_VersionCommand_PrintsVersionLineAndExitsZero()
     {
