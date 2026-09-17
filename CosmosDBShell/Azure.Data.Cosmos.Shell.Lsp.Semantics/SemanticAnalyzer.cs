@@ -162,7 +162,8 @@ public sealed class SemanticAnalyzer
         var name = cmd.Name ?? string.Empty;
         if (name.Length > 0)
         {
-            if (this.functions.TryGetValue(name, out var function))
+            if (this.functions.TryGetValue(name, out var function)
+                && (function.Start <= cmd.Start || !ShellInterpreter.Instance.App.Commands.ContainsKey(name)))
             {
                 this.references.Add(new ReferenceInfo
                 {

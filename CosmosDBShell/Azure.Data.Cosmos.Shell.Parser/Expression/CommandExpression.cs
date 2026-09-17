@@ -86,7 +86,14 @@ internal class CommandExpression : Expression
 
         if (resultState.IsError)
         {
-            throw new CommandState.FailureException(resultState);
+            var failure = new CommandState.FailureException(resultState);
+            if (resultState is ErrorCommandState && interpreter.CurrentScriptFileName is { } sourceName && interpreter.CurrentScriptContent is { } sourceText)
+            {
+                var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(sourceText, this.Start);
+                throw new PositionalException(sourceName, failure, line, column, lineText);
+            }
+
+            throw failure;
         }
 
         // Return the result from the command state

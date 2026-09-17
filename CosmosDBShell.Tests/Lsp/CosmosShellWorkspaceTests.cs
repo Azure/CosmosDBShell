@@ -72,6 +72,22 @@ public class CosmosShellWorkspaceTests
     }
 
     [Theory]
+    [InlineData("ls --not_an_option_xyz")]
+    [InlineData("$value = (ls --not_an_option_xyz)")]
+    public void LaterFunctionCollision_DoesNotHideEarlierBuiltinDiagnostics(string call)
+    {
+        var source = $"{call}; def ls {{ return 1 }}; {call}";
+        this.workspace.OpenDocument(this.uri, source, 1);
+        var document = this.workspace.GetDocument(this.uri)!;
+        var diagnostic = Assert.Single(document.Diagnostics);
+        Assert.Contains("Unknown option '-not_an_option_xyz'", diagnostic.Message);
+        Assert.True(diagnostic.Range.Start.Character < call.Length);
+        var calls = document.SemanticModel!.References.Where(reference => !reference.IsDefinition && reference.Symbol is Azure.Data.Cosmos.Shell.Lsp.Semantics.FunctionSymbol).ToArray();
+        Assert.Single(calls);
+        Assert.True(calls[0].Start > source.IndexOf("def ls", System.StringComparison.Ordinal));
+    }
+
+    [Theory]
     [InlineData("def example { missing_command_xyz }")]
     [InlineData("if true { missing_command_xyz }")]
     [InlineData("if false {} else { missing_command_xyz }")]

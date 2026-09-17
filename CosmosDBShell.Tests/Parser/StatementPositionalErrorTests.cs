@@ -18,6 +18,23 @@ using Azure.Data.Cosmos.Shell.Parser;
 /// </summary>
 public class StatementPositionalErrorTests : TestBase
 {
+    [Theory]
+    [InlineData("$value = (help totallyunknowncmd999)")]
+    [InlineData("if (help totallyunknowncmd999) {}")]
+    [InlineData("for $item in (help totallyunknowncmd999) {}")]
+    public async Task ReturnedExpressionError_UsesCommandLocation(string source)
+    {
+        Shell.CurrentScriptFileName = "expression.csh";
+        Shell.CurrentScriptContent = source;
+        var statement = new StatementParser(source).ParseStatement()!;
+        var exception = await Assert.ThrowsAsync<PositionalException>(() => statement.RunAsync(Shell, new(), TestContext.Current.CancellationToken));
+        var frame = PositionalException.GetSourceTrace(exception)[0];
+        Assert.Equal("expression.csh", frame.FileName);
+        Assert.Equal(source.IndexOf("help", StringComparison.Ordinal) + 1, frame.Column);
+        var failure = Assert.IsType<CommandState.FailureException>(frame.InnerException);
+        Assert.IsType<ErrorCommandState>(failure.State);
+    }
+
     [Fact]
     public async Task InteractiveFunction_RetainsScriptModeWithoutBorrowingCallerOffsets()
     {
