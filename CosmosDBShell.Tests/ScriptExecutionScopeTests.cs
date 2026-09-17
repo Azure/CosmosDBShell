@@ -19,6 +19,36 @@ public class ScriptExecutionScopeTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task CancellationBetweenStatements_PropagatesAndRestoresScope(bool expression)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var cancellation = new CancellationTokenSource();
+        var trigger = new CancelOnConversion(cancellation, throwOnConversion: false);
+        var globals = new VariableContainer();
+        globals.Set("cancel", trigger);
+        shell.VariableContainers.Push(globals);
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(path, "$value = !$cancel\nreturn 123", TestContext.Current.CancellationToken);
+            var token = new Token(TokenType.Identifier, path, 0, path.Length);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => expression
+                ? new CommandExpression(token).EvaluateAsync(shell, new(), cancellation.Token)
+                : (Task)new CommandStatement(token).RunScriptAsync(shell, new(), cancellation.Token));
+            Assert.True(trigger.WasEvaluated);
+            Assert.Single(shell.VariableContainers);
+            Assert.Null(shell.CurrentScriptFileName);
+            Assert.Null(shell.CurrentScriptContent);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task BareReturn_BeforeBlockEnd_ExitsFileAndRestoresScope(bool expression)
     {
         using var shell = ShellInterpreter.CreateInstance();
@@ -257,7 +287,7 @@ public class ScriptExecutionScopeTests
 
         Assert.True(state.IsError);
     }
-    private sealed class CancelOnConversion(CancellationTokenSource cancellation) : ShellObject(DataType.Boolean)
+    private sealed class CancelOnConversion(CancellationTokenSource cancellation, bool throwOnConversion = true) : ShellObject(DataType.Boolean)
     {
         public bool WasEvaluated { get; private set; }
 
@@ -270,7 +300,12 @@ public class ScriptExecutionScopeTests
 
             this.WasEvaluated = true;
             cancellation.Cancel();
-            throw new OperationCanceledException(cancellation.Token);
+            if (throwOnConversion)
+            {
+                throw new OperationCanceledException(cancellation.Token);
+            }
+
+            return true;
         }
     }
 }

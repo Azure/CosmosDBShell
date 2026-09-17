@@ -419,10 +419,7 @@ internal class CommandStatement : Statement
 
             foreach (var statement in parser.Statements)
             {
-                if (token.IsCancellationRequested)
-                {
-                    break;
-                }
+                token.ThrowIfCancellationRequested();
 
                 try
                 {
@@ -464,6 +461,11 @@ internal class CommandStatement : Statement
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
                     var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(scriptContent, statement.Start);
+                    if (e is PositionalException positional && positional.FileName == fileName && positional.Line == line && positional.Column == column)
+                    {
+                        throw;
+                    }
+
                     throw new PositionalException(fileName, e, line, column, lineText);
                 }
             }

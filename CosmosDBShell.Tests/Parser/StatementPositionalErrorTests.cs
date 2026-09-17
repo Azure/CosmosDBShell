@@ -19,6 +19,37 @@ using Azure.Data.Cosmos.Shell.Parser;
 public class StatementPositionalErrorTests : TestBase
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ScriptFunctionFailure_RecordsEachCallerOnce(bool nestedScript)
+    {
+        var script = Path.GetTempFileName().Replace('\\', '/');
+        var caller = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(script, "def broken {\n totallyunknowncmd999\n}\nbroken", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(caller, $"exec \"{script.Replace('\\', '/')}\"", TestContext.Current.CancellationToken);
+            var path = nestedScript ? caller : script;
+            var command = new CommandStatement(new Token(TokenType.Identifier, path, 0, path.Length));
+            var exception = await Assert.ThrowsAsync<PositionalException>(() => command.RunScriptAsync(Shell, new(), TestContext.Current.CancellationToken));
+            var frames = PositionalException.GetSourceTrace(exception);
+            Assert.Single(frames, frame => frame.FileName == script && frame.Line == 2);
+            Assert.Single(frames, frame => frame.FileName == script && frame.Line == 4);
+            if (nestedScript)
+            {
+                Assert.Single(frames, frame => frame.FileName == caller && frame.Line == 1);
+            }
+
+            Assert.Equal(nestedScript ? 3 : 2, frames.Count);
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(caller);
+        }
+    }
+
+    [Theory]
     [InlineData("broken")]
     [InlineData("$result = (broken)")]
     public async Task FunctionFailure_PreservesDefinitionAndCallerSources(string invocation)
