@@ -348,6 +348,36 @@ public class ImportCommandTests
     }
 
     [Fact]
+    public void ReadCsvRecords_ReadsValidRowsBeforeReportingMalformedRecord()
+    {
+        using var reader = new StringReader("id,name\n1,Alice\n2,\"unterminated");
+        using var records = ImportCommand.ReadCsvRecords(reader, ',', TestContext.Current.CancellationToken).GetEnumerator();
+        Assert.True(records.MoveNext());
+        Assert.True(records.MoveNext());
+        Assert.Equal(new[] { "1", "Alice" }, records.Current.Fields);
+        var error = Assert.Throws<CommandException>(() => records.MoveNext());
+        Assert.Contains("3", error.Message);
+    }
+
+    [Fact]
+    public void ReadCsvRecords_CancellationStopsBetweenRecords()
+    {
+        using var reader = new StringReader("id,name\n1,Alice\n2,Bob");
+        using var cancellation = new CancellationTokenSource();
+        using var records = ImportCommand.ReadCsvRecords(reader, ',', cancellation.Token).GetEnumerator();
+        Assert.True(records.MoveNext());
+        cancellation.Cancel();
+        Assert.ThrowsAny<OperationCanceledException>(() => records.MoveNext());
+    }
+
+    [Fact]
+    public void ParseCsvWithLines_SkipsBlankLinesWithoutLosingPhysicalLineNumbers()
+    {
+        var records = ImportCommand.ParseCsvWithLines("id,name\n\n\n1,Alice\n", ',');
+        Assert.Equal(4, records[1].StartLine);
+    }
+
+    [Fact]
     public void BuildCsvObject_SingleSegmentPartitionKey_StaysTopLevel()
     {
         var element = ImportCommand.BuildCsvObject(

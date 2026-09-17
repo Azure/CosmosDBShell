@@ -12,7 +12,9 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Mcp;
+using Azure.Data.Cosmos.Shell.States;
 
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -144,6 +146,58 @@ public class ToolOperationsCallToolTests
             CancellationToken.None);
 
         Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_ContextChangesDuringConfirmation_RefusesExecution()
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalState = shell.State;
+        var command = new TrackingCommand();
+        try
+        {
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["rm"], command, "rm test-*",
+                (request, _) =>
+                {
+                    Assert.Contains("Account:", request.Message);
+                    Assert.Contains("Current location:", request.Message);
+                    shell.State = new DisconnectedState();
+                    shell.State = originalState;
+                    return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+                }, CancellationToken.None);
+
+            Assert.True(result.IsError);
+            Assert.False(command.Executed);
+            Assert.Contains("context changed", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        }
+        finally
+        {
+            shell.State = originalState;
+        }
+    }
+
+    private sealed class TrackingCommand : CosmosCommand
+    {
+        public bool Executed { get; private set; }
+
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            this.Executed = true;
+            return Task.FromResult(commandState);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteTool_UnchangedContextAfterConfirmation_ExecutesCommand()
+    {
+        var command = new TrackingCommand();
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            ShellInterpreter.Instance.App.Commands["rm"], command, "rm test-*",
+            (_, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            TestContext.Current.CancellationToken);
+        Assert.False(result.IsError == true);
+        Assert.True(command.Executed);
     }
 
     [Theory]
@@ -353,6 +407,8 @@ public class ToolOperationsCallToolTests
     public async Task CallTool_EchoCommand_ReturnsSuccessResult()
     {
         var tool = CreateToolOperations();
+        var history = ShellInterpreter.Instance.History.ToArray();
+        using var output = new StringWriter();
         var arguments = new Dictionary<string, JsonElement>
         {
             ["messages"] = Json("[\"hello\", \"world\"]"),
@@ -365,10 +421,13 @@ public class ToolOperationsCallToolTests
             {
                 Ansi = AnsiSupport.Yes,
                 ColorSystem = ColorSystemSupport.NoColors,
-                Out = new AnsiConsoleOutput(new StringWriter()),
+                Out = new AnsiConsoleOutput(output),
             });
 
             var result = await tool.CallToolHandler(CallContext("echo", arguments), CancellationToken.None);
+
+            Assert.Equal(history, ShellInterpreter.Instance.History);
+            Assert.Equal(string.Empty, output.ToString());
 
             var (isError, root, document) = ReadResult(result);
             using (document)

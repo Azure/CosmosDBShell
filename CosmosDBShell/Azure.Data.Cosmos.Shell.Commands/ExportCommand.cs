@@ -91,7 +91,7 @@ internal class ExportCommand : CosmosCommand
         var max = ResultLimit.ResolveMaxItemCount(this.Max, defaultMaxItemCount: null);
         var format = this.Format ?? ExportFormat.JsonLines;
 
-        var (count, charge) = await ExecuteExportAsync(container, query, max, format, filePath, token);
+        var (count, charge) = await ExecuteExportAsync(container, query, max, format, filePath, this.Force == true, token);
 
         ShellInterpreter.WriteLine(MessageService.GetArgsString(
             "command-export-success",
@@ -171,6 +171,11 @@ internal class ExportCommand : CosmosCommand
         await foreach (var item in items.WithCancellation(token))
         {
             item.WriteTo(writer);
+            if (writer.BytesPending >= 64 * 1024)
+            {
+                await writer.FlushAsync(token);
+            }
+
             count++;
         }
 
@@ -183,7 +188,7 @@ internal class ExportCommand : CosmosCommand
     /// Writes a sequence of items to <paramref name="writer"/> as CSV. The header row is the
     /// union of all top-level property names (in first-seen order); each subsequent row
     /// contains the corresponding values. Nested objects and arrays are written as compact
-    /// JSON. Items are buffered to compute the column set.
+    /// JSON. Items are spooled to disk to compute the column set.
     /// </summary>
     /// <param name="items">The items to write.</param>
     /// <param name="writer">The destination writer.</param>
@@ -192,16 +197,25 @@ internal class ExportCommand : CosmosCommand
     /// <returns>The number of data rows written.</returns>
     internal static async Task<int> WriteCsvAsync(IAsyncEnumerable<JsonElement> items, TextWriter writer, char separator, CancellationToken token)
     {
-        var buffered = new List<JsonElement>();
-        await foreach (var item in items.WithCancellation(token))
+        var spoolOptions = new FileStreamOptions
         {
-            buffered.Add(item);
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.ReadWrite,
+            Share = FileShare.None,
+            Options = FileOptions.Asynchronous | FileOptions.DeleteOnClose,
+        };
+        if (!OperatingSystem.IsWindows())
+        {
+            spoolOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         }
 
+        await using var spool = new FileStream(Path.Join(Path.GetTempPath(), $"cosmos-csv-{Guid.NewGuid():N}.tmp"), spoolOptions);
+        using var spoolWriter = new StreamWriter(spool, new UTF8Encoding(false), leaveOpen: true);
         var headers = new List<string>();
         var headerSet = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var item in buffered)
+        await foreach (var item in items.WithCancellation(token))
         {
+            await spoolWriter.WriteLineAsync(SerializeJsonLine(item).AsMemory(), token);
             if (item.ValueKind != JsonValueKind.Object)
             {
                 continue;
@@ -216,6 +230,9 @@ internal class ExportCommand : CosmosCommand
             }
         }
 
+        await spoolWriter.FlushAsync(token);
+        spool.Position = 0;
+        using var spoolReader = new StreamReader(spool, leaveOpen: true);
         var sb = new StringBuilder();
         if (headers.Count > 0)
         {
@@ -233,8 +250,10 @@ internal class ExportCommand : CosmosCommand
         }
 
         var count = 0;
-        foreach (var item in buffered)
+        while (await spoolReader.ReadLineAsync(token) is { } line)
         {
+            using var document = JsonDocument.Parse(line);
+            var item = document.RootElement;
             sb.Clear();
             for (var i = 0; i < headers.Count; i++)
             {
@@ -268,14 +287,9 @@ internal class ExportCommand : CosmosCommand
         int? max,
         ExportFormat format,
         string filePath,
+        bool overwrite,
         CancellationToken token)
     {
-        var directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
-        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
         var options = new QueryRequestOptions();
         if (max is int explicitMax && explicitMax > 0)
         {
@@ -285,30 +299,10 @@ internal class ExportCommand : CosmosCommand
         try
         {
             var totalCharge = 0.0;
-            var iterator = container.GetItemQueryIterator<JsonElement>(query, requestOptions: options);
-
-            if (format == ExportFormat.Array)
-            {
-                await using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
-                var count = await WriteArrayAsync(EnumerateAsync(iterator, max, charge => totalCharge += charge, token), stream, token);
-                return (count, totalCharge);
-            }
-            else if (format == ExportFormat.Csv)
-            {
-                await using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
-                using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.NewLine = "\n";
-                var count = await WriteCsvAsync(EnumerateAsync(iterator, max, charge => totalCharge += charge, token), writer, ShellInterpreter.CSVSeparator, token);
-                return (count, totalCharge);
-            }
-            else
-            {
-                await using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
-                using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.NewLine = "\n";
-                var count = await WriteJsonLinesAsync(EnumerateAsync(iterator, max, charge => totalCharge += charge, token), writer, token);
-                return (count, totalCharge);
-            }
+            using var iterator = container.GetItemQueryIterator<JsonElement>(query, requestOptions: options);
+            var count = await WriteFileAsync(
+                EnumerateAsync(iterator, max, charge => totalCharge += charge, token), format, filePath, overwrite, token);
+            return (count, totalCharge);
         }
         catch (CosmosException ce)
         {
@@ -324,14 +318,78 @@ internal class ExportCommand : CosmosCommand
         }
     }
 
-    private static async IAsyncEnumerable<JsonElement> EnumerateAsync(
+    internal static async Task<int> WriteFileAsync(
+        IAsyncEnumerable<JsonElement> items,
+        ExportFormat format,
+        string filePath,
+        bool overwrite,
+        CancellationToken token)
+    {
+        var destination = Path.GetFullPath(filePath);
+        var directory = Path.GetDirectoryName(destination)!;
+        Directory.CreateDirectory(directory);
+        var temporary = Path.Join(directory, $".cosmos-export-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            int count;
+            var fileOptions = new FileStreamOptions
+            {
+                Mode = FileMode.CreateNew,
+                Access = FileAccess.Write,
+                Share = FileShare.None,
+                Options = FileOptions.Asynchronous,
+            };
+            if (!OperatingSystem.IsWindows())
+            {
+                fileOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            }
+
+            await using (var stream = new FileStream(temporary, fileOptions))
+            {
+                if (format == ExportFormat.Array)
+                {
+                    count = await WriteArrayAsync(items, stream, token);
+                }
+                else
+                {
+                    using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                    writer.NewLine = "\n";
+                    count = format == ExportFormat.Csv
+                        ? await WriteCsvAsync(items, writer, ShellInterpreter.CSVSeparator, token)
+                        : await WriteJsonLinesAsync(items, writer, token);
+                }
+            }
+
+            token.ThrowIfCancellationRequested();
+            System.IO.File.Move(temporary, destination, overwrite);
+            return count;
+        }
+        finally
+        {
+            DeleteTemporaryFile(temporary);
+        }
+    }
+
+    internal static void DeleteTemporaryFile(string path)
+    {
+        try
+        {
+            System.IO.File.Delete(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Trace.TraceWarning("Export temporary-file cleanup failed ({0}).", exception.GetType().Name);
+        }
+    }
+
+    internal static async IAsyncEnumerable<JsonElement> EnumerateAsync(
         FeedIterator<JsonElement> iterator,
         int? max,
         Action<double> recordCharge,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)
     {
         var emitted = 0;
-        while (iterator.HasMoreResults)
+        while ((!max.HasValue || emitted < max.Value) && iterator.HasMoreResults)
         {
             FeedResponse<JsonElement> response;
             try
