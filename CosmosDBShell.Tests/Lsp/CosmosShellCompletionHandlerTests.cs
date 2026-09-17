@@ -99,6 +99,26 @@ public class CosmosShellCompletionHandlerTests
     }
 
     [Fact]
+    public async Task VariableCompletion_PreservesNamesThatDifferOnlyByCase()
+    {
+        var variables = new VariableContainer();
+        variables.Set("completionValue", new ShellText("lower"));
+        variables.Set("CompletionValue", new ShellText("upper"));
+        ShellInterpreter.Instance.VariableContainers.Push(variables);
+        try
+        {
+            var completions = await GetCompletionsAsync("echo $completion", 0, 16);
+
+            Assert.Single(completions.Items, item => item.Label == "$completionValue" && item.InsertText == "$completionValue");
+            Assert.Single(completions.Items, item => item.Label == "$CompletionValue" && item.InsertText == "$CompletionValue");
+        }
+        finally
+        {
+            ShellInterpreter.Instance.VariableContainers.Pop();
+        }
+    }
+
+    [Fact]
     public async Task VariableCompletion_IgnoresWhenNotVariableContext()
     {
         var completions = await GetCompletionsAsync("echo fo", 0, 7);

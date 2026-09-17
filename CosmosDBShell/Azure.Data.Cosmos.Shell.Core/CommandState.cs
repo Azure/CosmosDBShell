@@ -186,4 +186,17 @@ public partial class CommandState
                 throw new InvalidOperationException("OutputFormat invalid " + this.OutputFormat);
         }
     }
+
+    internal sealed class FailureException : Exception
+    {
+        public FailureException(CommandState state)
+            : base(
+                state is ParserErrorCommandState parserError ? string.Join("; ", parserError.Errors.Select(error => error.Message)) : (state as ErrorCommandState)?.Exception.Message ?? MessageService.GetString("script-error-expression-failed"),
+                (state as ErrorCommandState)?.Exception)
+        {
+            this.State = state;
+        }
+
+        public CommandState State { get; }
+    }
 }

@@ -34,4 +34,19 @@ internal class PositionalException : Exception
     /// Gets the text of the line where the exception occurred.
     /// </summary>
     public string? LineText { get; }
+
+    internal static IReadOnlyList<PositionalException> GetSourceTrace(Exception exception)
+    {
+        var frames = new List<PositionalException>();
+        for (Exception? current = exception; current != null; current = current.InnerException)
+        {
+            if (current is PositionalException frame)
+            {
+                frames.Add(frame);
+            }
+        }
+
+        frames.Reverse();
+        return frames;
+    }
 }

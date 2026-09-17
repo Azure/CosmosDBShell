@@ -17,10 +17,131 @@ using Azure.Data.Cosmos.Shell.Parser;
 /// </summary>
 public class StatementExecutionTests : TestBase
 {
+    public static System.Collections.Generic.IEnumerable<object[]> ValueOriginCases()
+    {
+        var operations = new (string Left, string Operator, string Right, string Type, string Expected)[]
+        {
+            ("\"2\"", "+", "\"2\"", "Text", "22"),
+            ("\"hello\"", "+", "\"world\"", "Text", "helloworld"),
+            ("\"\"", "+", "\"text\"", "Text", "text"),
+            ("\"value=\"", "+", "2", "Text", "value=2"),
+            ("2", "+", "\"px\"", "Text", "2px"),
+            ("3", "+", "2", "Number", "5"),
+            ("3.5", "+", "2", "Decimal", "5.5"),
+            ("3", "/", "2", "Number", "1"),
+            ("3.0", "/", "2", "Decimal", "1.5"),
+            ("[1]", "+", "[2]", "Json", "[1,2]"),
+            ("\"a\"", "==", "\"a\"", "Boolean", "true"),
+            ("true", "&&", "false", "Boolean", "false"),
+        };
+
+        foreach (var operation in operations)
+        {
+            var leftOrigins = new[] { operation.Left, "$source.left", "$leftItem", "(identity $source.left)" };
+            var rightOrigins = new[] { operation.Right, "$source.right", "$rightItem", "(identity $source.right)" };
+            foreach (var left in leftOrigins)
+            {
+                foreach (var right in rightOrigins)
+                {
+                    var script = $"def identity [value] {{ return $value }}; " +
+                        $"for $leftItem in $source.leftItems {{ for $rightItem in $source.rightItems {{ " +
+                        $"$actual = {left} {operation.Operator} {right} }} }}";
+                    var source = $"{{\"left\":{operation.Left},\"right\":{operation.Right}," +
+                        $"\"leftItems\":[{operation.Left}],\"rightItems\":[{operation.Right}]}}";
+                    yield return [source, script, operation.Type, operation.Expected];
+                    yield return [source, $"$source = {source}; " + script, operation.Type, operation.Expected];
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(ValueOriginCases))]
+    public async Task Operators_PreserveResultsAcrossValueOrigins(string source, string script, string expectedType, string expected)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(source);
+        SetVariable("source", new ShellJson(document.RootElement.Clone()));
+        var state = await Shell.RunCommandAsync(new(), script, TestContext.Current.CancellationToken);
+        Assert.False(state.IsError);
+        var actual = GetVariable("actual")!;
+        Assert.Equal(expectedType, actual.DataType.ToString());
+        Assert.Equal(expected, actual.ConvertShellObject(DataType.Text));
+    }
+
+    [Theory]
+    [InlineData("3.0", 1.5)]
+    [InlineData("-3.0", -1.5)]
+    [InlineData("0.0", 0.0)]
+    [InlineData("1.5 * 2", 1.5)]
+    [InlineData("3.5", 1.75)]
+    public async Task DecimalValues_SurviveRepeatedJsonConstruction(string expression, double expected)
+    {
+        var script = $"$initial = {expression}; $object = {{\"value\":$initial}}; " +
+            "$array = [$object.value]; for $item in $array { " +
+            "$rebuilt = {\"value\":$item}; $result = $rebuilt.value / 2 }";
+        var state = await Shell.RunCommandAsync(new(), script, TestContext.Current.CancellationToken);
+        Assert.False(state.IsError);
+        Assert.Equal(expected, Assert.IsType<ShellDecimal>(GetVariable("result")).Value);
+        var rebuilt = Assert.IsType<ShellJson>(GetVariable("rebuilt"));
+        Assert.IsType<ShellDecimal>(ShellNumber.FromJson(rebuilt.Value.GetProperty("value")));
+    }
+
+    [Fact]
+    public async Task SyntaxError_PreventsEarlierAssignment()
+    {
+        SetVariable("value", new ShellNumber(1));
+        var state = await Shell.RunCommandAsync(new(), "$value = 2; if true {", System.Threading.CancellationToken.None);
+
+        Assert.True(state.IsError);
+        Assert.Equal(1, GetInt("value"));
+    }
+
+    [Theory]
+    [InlineData("break")]
+    [InlineData("continue")]
+    [InlineData("return 1")]
+    [InlineData("if false { break }")]
+    [InlineData("def duplicate [value value] { return $value }")]
+    [InlineData("for $item in [1] { def invalid { break } }")]
+    public async Task SemanticError_PreventsEarlierAssignment(string invalid)
+    {
+        SetVariable("value", new ShellNumber(1));
+        var state = await Shell.RunCommandAsync(new(), $"$value = 2; {invalid}", System.Threading.CancellationToken.None);
+        Assert.True(state.IsError);
+        Assert.Equal(1, GetInt("value"));
+    }
+
     private int GetInt(string name)
     {
         var value = GetVariable(name);
         return (int)Assert.IsType<ShellNumber>(value).Value;
+    }
+
+    [Theory]
+    [InlineData("if true { return 1 }")]
+    [InlineData("while true { if true { return 1 } }")]
+    [InlineData("do { if true { return 1 } } while true")]
+    [InlineData("loop { if true { return 1 } }")]
+    [InlineData("for $item in [1,2] { if true { return 1 } }")]
+    public async Task NestedReturn_ExitsFunction(string body)
+    {
+        var state = await RunScriptAsync($"def probe {{ {body}; return 2 }}; $result = (probe)");
+        Assert.False(state.IsError);
+        Assert.Equal(1, GetInt("result"));
+        Assert.False(state.ReturnFunc);
+    }
+
+    [Theory]
+    [InlineData("for $item in [1,2] { if true { continue }; $count = $count + 1 }")]
+    [InlineData("while $index < 2 { $index = $index + 1; if true { continue }; $count = $count + 1 }")]
+    [InlineData("do { $index = $index + 1; if true { continue }; $count = $count + 1 } while $index < 2")]
+    [InlineData("loop { $index = $index + 1; if $index > 2 { break }; if true { continue }; $count = $count + 1 }")]
+    public async Task NestedContinue_SkipsRemainderOfIteration(string body)
+    {
+        var state = await RunScriptAsync($"$count = 0; $index = 0; {body}");
+        Assert.False(state.IsError);
+        Assert.Equal(0, GetInt("count"));
+        Assert.False(state.ContinueBlock);
     }
 
     [Fact]
@@ -29,6 +150,15 @@ public class StatementExecutionTests : TestBase
         var state = await RunScriptAsync("$x = 0\nif 1 < 2 { $x = 10 } else { $x = 20 }");
         Assert.False(state.IsError);
         Assert.Equal(10, GetInt("x"));
+    }
+
+    [Theory]
+    [InlineData("dir \"*.missing-regression-file\" --directory .")]
+    [InlineData("$files = (dir \"*.missing-regression-file\" --directory .)")]
+    public async Task ReusedCommand_BindsOptionsWithoutMutatingAst(string command)
+    {
+        var state = await RunScriptAsync($"def probe {{ {command} }}; probe; probe");
+        Assert.False(state.IsError);
     }
 
     [Fact]
@@ -160,6 +290,43 @@ public class StatementExecutionTests : TestBase
         Assert.Equal(19, GetInt("x"));
     }
 
+    [Theory]
+    [InlineData("+=", 9)]
+    [InlineData("-=", 3)]
+    [InlineData("*=", 18)]
+    [InlineData("/=", 2)]
+    public async Task CompoundAssignment_UsesArithmeticRules(string assignment, int expected)
+    {
+        var script = $"$value = 6; $value {assignment} 3";
+        var parser = new StatementParser(script);
+        var statements = parser.ParseStatements();
+        Assert.False(parser.Errors.HasErrors);
+        Assert.Equal($"$value {assignment} 3", statements[1].ToString());
+        var state = await RunScriptAsync(script);
+        Assert.False(state.IsError);
+        Assert.Equal(expected, GetInt("value"));
+    }
+
+    [Fact]
+    public async Task CompoundAssignment_InFunction_RemainsLocal()
+    {
+        var state = await RunScriptAsync("$value = 1; def increment { $value += 2; return $value }; $local = (increment)");
+        Assert.False(state.IsError);
+        Assert.Equal(1, GetInt("value"));
+        Assert.Equal(3, GetInt("local"));
+    }
+
+    [Theory]
+    [InlineData("while true {}")]
+    [InlineData("do {} while true")]
+    [InlineData("loop {}")]
+    [InlineData("for $value in [1] {}")]
+    public async Task PureLoop_ObservesCancellation(string script)
+    {
+        var statement = Assert.Single(new StatementParser(script).ParseStatements());
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => statement.RunAsync(Shell, new(), new System.Threading.CancellationToken(true)));
+    }
+
     [Fact]
     public async Task For_OverStrings_BindsTextElements()
     {
@@ -177,11 +344,27 @@ public class StatementExecutionTests : TestBase
     }
 
     [Fact]
-    public async Task For_OverNull_BindsNullAsText()
+    public async Task For_OverNull_PreservesNullThroughFunctionAndArray()
     {
-        var state = await RunScriptAsync("for $x in [null] { }");
+        var state = await RunScriptAsync("def identity [value] { return $value }; for $x in [null] { $result = [(identity $x)] }");
         Assert.False(state.IsError);
-        Assert.Equal("null", Assert.IsType<ShellText>(GetVariable("x")).Text);
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, Assert.IsType<ShellJson>(GetVariable("x")).Value.ValueKind);
+        Assert.Equal("[null]", Assert.IsType<ShellJson>(GetVariable("result")).Value.GetRawText());
+    }
+
+    [Theory]
+    [InlineData("1.5", true)]
+    [InlineData("-0.5", true)]
+    [InlineData("2147483648.0", true)]
+    [InlineData("0.0", false)]
+    public async Task NumericTruthiness_IsIndependentOfValueOrigin(string number, bool expected)
+    {
+        var state = await RunScriptAsync($"$direct = false; if {number} {{ $direct = true }}; $obj = {{value: {number}}}; $json = false; if $obj.value {{ $json = true }}; def truth [value] {{ if $value {{ return true }}; return false }}; $function = (truth $obj.value); for $item in [{number}] {{ $loop = (truth $item) }}");
+        Assert.False(state.IsError);
+        foreach (var name in new[] { "direct", "json", "function", "loop" })
+        {
+            Assert.Equal(expected, Assert.IsType<ShellBool>(GetVariable(name)).Value);
+        }
     }
 
     [Fact]
@@ -205,5 +388,15 @@ public class StatementExecutionTests : TestBase
     {
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => RunScriptAsync("for $x in 5 { }"));
+    }
+
+    [Theory]
+    [InlineData("[1.5,2.5]", 4.0)]
+    [InlineData("[2147483648.0,1]", 2147483649.0)]
+    public async Task For_OverDecimalAndLargeNumbers_PreservesValues(string values, double expected)
+    {
+        var state = await RunScriptAsync($"$sum = 0; for $value in {values} {{ $sum = $sum + $value }}");
+        Assert.False(state.IsError);
+        Assert.Equal(expected, Assert.IsType<ShellDecimal>(GetVariable("sum")).Value);
     }
 }
