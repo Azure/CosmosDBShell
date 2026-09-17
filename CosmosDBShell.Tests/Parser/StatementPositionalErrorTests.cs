@@ -18,6 +18,39 @@ using Azure.Data.Cosmos.Shell.Parser;
 /// </summary>
 public class StatementPositionalErrorTests : TestBase
 {
+    [Fact]
+    public async Task InteractiveFunction_RetainsScriptModeWithoutBorrowingCallerOffsets()
+    {
+        var definition = new DefStatement(new Token(TokenType.Identifier, "def", 0, 3), new Token(TokenType.Identifier, "probe", 4, 5), [], new ScriptContextProbe());
+        await definition.RunAsync(Shell, new(), TestContext.Current.CancellationToken);
+        Shell.CurrentScriptFileName = "caller.csh";
+        Shell.CurrentScriptContent = "\nprobe";
+
+        var exception = await Assert.ThrowsAsync<PositionalException>(() => definition.ExecuteCallAsync(Shell, new(), TestContext.Current.CancellationToken, 1));
+        var frame = Assert.Single(PositionalException.GetSourceTrace(exception));
+        Assert.Equal("caller.csh", frame.FileName);
+        Assert.Equal(2, frame.Line);
+        Assert.Equal("\nprobe", Shell.CurrentScriptContent);
+    }
+
+    private sealed class ScriptContextProbe : Statement
+    {
+        public override int Start => 100;
+
+        public override int Length => 1;
+
+        public override Task<CommandState> RunAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
+        {
+            Assert.Equal("caller.csh", shell.CurrentScriptFileName);
+            Assert.Null(shell.CurrentScriptContent);
+            throw new InvalidOperationException("probe failure");
+        }
+
+        internal override void Accept(IAstVisitor visitor)
+        {
+        }
+    }
+
     [Theory]
     [InlineData(false, "totallyunknowncmd999")]
     [InlineData(true, "totallyunknowncmd999")]

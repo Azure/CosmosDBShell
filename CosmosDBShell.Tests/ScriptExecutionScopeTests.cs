@@ -17,6 +17,40 @@ using Xunit;
 public class ScriptExecutionScopeTests
 {
     [Theory]
+    [InlineData("if $cancel {}")]
+    [InlineData("{ if $cancel {} }")]
+    [InlineData("while true { if $cancel {} }")]
+    [InlineData("do { if $cancel {} } while true")]
+    [InlineData("for $item in [1] { if $cancel {} }")]
+    [InlineData("loop { if $cancel {} }")]
+    [InlineData("def run { if $cancel {} }; run")]
+    [InlineData("def run { if $cancel {} }; $result = (run)")]
+    [InlineData("def run { if $cancel {} }; exec \"run\"")]
+    public async Task InternalCancellation_PreservesScriptSource(string body)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var cancellation = new CancellationTokenSource();
+        var globals = new VariableContainer();
+        globals.Set("cancel", new CancelOnConversion(cancellation, cancelToken: false));
+        shell.VariableContainers.Push(globals);
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(path, body, TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, path, 0, path.Length));
+            var exception = await Assert.ThrowsAsync<PositionalException>(() => command.RunScriptAsync(shell, new(), cancellation.Token));
+            Assert.Contains(PositionalException.GetSourceTrace(exception), frame => frame.FileName == path);
+            Assert.IsType<OperationCanceledException>(exception.GetBaseException());
+            Assert.False(cancellation.IsCancellationRequested);
+            Assert.Single(shell.VariableContainers);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task CancellationBetweenStatements_PropagatesAndRestoresScope(bool expression)
@@ -287,7 +321,7 @@ public class ScriptExecutionScopeTests
 
         Assert.True(state.IsError);
     }
-    private sealed class CancelOnConversion(CancellationTokenSource cancellation, bool throwOnConversion = true) : ShellObject(DataType.Boolean)
+    private sealed class CancelOnConversion(CancellationTokenSource cancellation, bool throwOnConversion = true, bool cancelToken = true) : ShellObject(DataType.Boolean)
     {
         public bool WasEvaluated { get; private set; }
 
@@ -299,7 +333,11 @@ public class ScriptExecutionScopeTests
             }
 
             this.WasEvaluated = true;
-            cancellation.Cancel();
+            if (cancelToken)
+            {
+                cancellation.Cancel();
+            }
+
             if (throwOnConversion)
             {
                 throw new OperationCanceledException(cancellation.Token);

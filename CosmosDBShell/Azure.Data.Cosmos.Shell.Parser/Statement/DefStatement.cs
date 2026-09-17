@@ -118,7 +118,7 @@ internal class DefStatement : Statement
         var callerText = shell.CurrentScriptContent;
         try
         {
-            shell.CurrentScriptFileName = this.sourceName;
+            shell.CurrentScriptFileName = this.sourceName ?? callerName;
             shell.CurrentScriptContent = this.sourceText;
             var result = await this.Statement.RunAsync(shell, commandState, token);
             if (result.ReturnFunc)
@@ -131,7 +131,7 @@ internal class DefStatement : Statement
 
             return result;
         }
-        catch (Exception exception) when (exception is not PositionalException && exception is not OperationCanceledException && this.sourceName != null && this.sourceText != null)
+        catch (Exception exception) when (exception is not PositionalException && (exception is not OperationCanceledException || !token.IsCancellationRequested) && this.sourceName != null && this.sourceText != null)
         {
             var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(this.sourceText, this.Statement.Start);
             throw new PositionalException(this.sourceName, exception, line, column, lineText);
@@ -150,7 +150,7 @@ internal class DefStatement : Statement
         {
             return await this.ExecuteFunctionAsync(shell, commandState, token, args);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException && shell.CurrentScriptFileName != null && shell.CurrentScriptContent != null)
+        catch (Exception exception) when ((exception is not OperationCanceledException || !token.IsCancellationRequested) && shell.CurrentScriptFileName != null && shell.CurrentScriptContent != null)
         {
             var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(shell.CurrentScriptContent, start);
             throw new PositionalException(shell.CurrentScriptFileName, exception, line, column, lineText);

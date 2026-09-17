@@ -465,7 +465,7 @@ internal class CommandStatement : Statement
                         shell.ErrOutRedirect = null;
                     }
                 }
-                catch (Exception e) when (e is not OperationCanceledException)
+                catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
                 {
                     var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(scriptContent, statement.Start);
                     if (e is PositionalException positional && positional.FileName == fileName && positional.Line == line && positional.Column == column)
