@@ -60,8 +60,6 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly SemaphoreSlim executionGate = new(1, 1);
 
-    private readonly AsyncLocal<bool> ownsExecutionGate = new();
-
     private long stateVersion;
 
     private int callDepth;
@@ -539,22 +537,18 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    /// <remarks>
+    /// Callers must not already hold the gate; nested work runs through the ungated core methods.
+    /// </remarks>
     internal async Task<T> RunSerializedAsync<T>(Func<Task<T>> operation, CancellationToken token)
     {
-        if (this.ownsExecutionGate.Value)
-        {
-            return await operation();
-        }
-
         await this.executionGate.WaitAsync(token);
         try
         {
-            this.ownsExecutionGate.Value = true;
             return await operation();
         }
         finally
         {
-            this.ownsExecutionGate.Value = false;
             this.executionGate.Release();
         }
     }
@@ -1053,7 +1047,7 @@ public partial class ShellInterpreter : IDisposable
         CommandState commandState,
         string commandText,
         CancellationToken token)
-        => this.RunSerializedAsync(() => this.ExecuteCosmosCommandCoreAsync(command, commandState, commandText, token), token);
+        => this.ExecuteCosmosCommandCoreAsync(command, commandState, commandText, token);
 
     private async Task<CommandState> ExecuteCosmosCommandCoreAsync(
         CosmosCommand command,

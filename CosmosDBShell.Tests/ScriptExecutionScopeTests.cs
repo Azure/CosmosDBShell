@@ -16,6 +16,30 @@ using Xunit;
 
 public class ScriptExecutionScopeTests
 {
+    [Fact]
+    public async Task ScriptFrame_ShadowsNearestScopeBeforeOuterScopes()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var globals = new VariableContainer();
+        globals.Set("value", new ShellText("global"));
+        shell.VariableContainers.Push(globals);
+        var caller = new VariableContainer();
+        caller.Set("value", new ShellText("caller"));
+        shell.VariableContainers.Push(caller);
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(path, "return $value", TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, path, 0, path.Length));
+            var state = await command.RunScriptAsync(shell, new(), TestContext.Current.CancellationToken);
+            Assert.Equal("caller", Assert.IsType<ShellText>(state.Result).Text);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Theory]
     [InlineData("if $cancel {}")]
     [InlineData("{ if $cancel {} }")]
