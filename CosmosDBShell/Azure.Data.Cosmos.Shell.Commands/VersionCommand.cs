@@ -10,7 +10,7 @@ using Azure.Data.Cosmos.Shell.Util;
 using Spectre.Console;
 
 [CosmosCommand("version")]
-[CosmosExample("version", Description = "Display the current Cosmos Shell version")]
+[CosmosExample("version", DescriptionKey = "command-version-example-1")]
 internal class VersionCommand : CosmosCommand
 {
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)

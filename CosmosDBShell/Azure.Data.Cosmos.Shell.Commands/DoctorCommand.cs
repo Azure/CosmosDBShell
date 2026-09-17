@@ -20,9 +20,9 @@ using Microsoft.Azure.Cosmos;
 using Spectre.Console;
 
 [CosmosCommand("doctor")]
-[CosmosExample("doctor", Description = "Check the local environment and current connection")]
-[CosmosExample("doctor who", Description = "Include the known identity and access context without acquiring a token")]
-[CosmosExample("doctor --database MyDb --container Items --query --format json", Description = "Check a container and run a bounded query probe")]
+[CosmosExample("doctor", DescriptionKey = "command-doctor-example-1")]
+[CosmosExample("doctor who", DescriptionKey = "command-doctor-example-2")]
+[CosmosExample("doctor --database MyDb --container Items --query --format json", DescriptionKey = "command-doctor-example-3")]
 [McpAnnotation(ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = true)]
 internal sealed class DoctorCommand : CosmosCommand
 {

@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System.Globalization;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal abstract class ShellObject
 {
@@ -23,7 +24,7 @@ internal abstract class ShellObject
 
         if (!tokens.MoveNext())
         {
-            throw new InvalidOperationException("No tokens to parse");
+            throw new InvalidOperationException(MessageService.GetString("expression-error-no-tokens"));
         }
 
         var token = tokens.Current;

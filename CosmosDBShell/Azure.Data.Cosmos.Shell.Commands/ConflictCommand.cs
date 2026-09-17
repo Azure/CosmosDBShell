@@ -13,9 +13,9 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
 [CosmosCommand("conflict", Aliases = ["conflictpolicy"])]
-[CosmosExample("conflict show", Description = "Display the current container's conflict resolution policy")]
-[CosmosExample("conflict set --mode lastWriterWins --path /_ts", Description = "Use last-writer-wins resolution based on the /_ts path")]
-[CosmosExample("conflict set --mode custom --procedure resolveConflicts", Description = "Use a stored procedure to resolve conflicts")]
+[CosmosExample("conflict show", DescriptionKey = "command-conflict-example-1")]
+[CosmosExample("conflict set --mode lastWriterWins --path /_ts", DescriptionKey = "command-conflict-example-2")]
+[CosmosExample("conflict set --mode custom --procedure resolveConflicts", DescriptionKey = "command-conflict-example-3")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "Conflict",

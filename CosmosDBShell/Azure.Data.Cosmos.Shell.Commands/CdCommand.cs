@@ -12,12 +12,12 @@ using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 
 [CosmosCommand("cd")]
-[CosmosExample("cd MyDatabase", Description = "Navigate into a database")]
-[CosmosExample("cd MyContainer", Description = "Navigate into a container within current database")]
-[CosmosExample("cd ..", Description = "Go back to parent level")]
-[CosmosExample("cd MyDatabase/MyContainer", Description = "Navigate to container using full path")]
-[CosmosExample("cd /MyDatabase/MyContainer", Description = "Navigate to container using absolute path")]
-[CosmosExample("cd --db=MyDatabase --con=MyContainer", Description = "Navigate using options")]
+[CosmosExample("cd MyDatabase", DescriptionKey = "command-cd-example-1")]
+[CosmosExample("cd MyContainer", DescriptionKey = "command-cd-example-2")]
+[CosmosExample("cd ..", DescriptionKey = "command-cd-example-3")]
+[CosmosExample("cd MyDatabase/MyContainer", DescriptionKey = "command-cd-example-4")]
+[CosmosExample("cd /MyDatabase/MyContainer", DescriptionKey = "command-cd-example-5")]
+[CosmosExample("cd --db=MyDatabase --con=MyContainer", DescriptionKey = "command-cd-example-6")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(Description = @"
 Changes to a database or container.

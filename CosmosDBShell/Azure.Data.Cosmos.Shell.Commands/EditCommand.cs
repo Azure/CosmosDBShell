@@ -17,7 +17,7 @@ using Spectre.Console;
 /// waits for the editor to close. The file is created when it does not yet exist.
 /// </summary>
 [CosmosCommand("edit")]
-[CosmosExample("edit deploy.csh", Description = "Open deploy.csh in $EDITOR, creating it if needed")]
+[CosmosExample("edit deploy.csh", DescriptionKey = "command-edit-example-1")]
 [McpAnnotation(Restricted = true)]
 internal class EditCommand : CosmosCommand
 {

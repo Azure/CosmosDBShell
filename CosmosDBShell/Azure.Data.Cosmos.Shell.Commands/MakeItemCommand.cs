@@ -11,10 +11,10 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
 [CosmosCommand("mkitem")]
-[CosmosExample("mkitem '{\"id\":\"1\",\"name\":\"Product\"}'", Description = "Create a single item from JSON string")]
-[CosmosExample("mkitem --force '{\"id\":\"1\",\"name\":\"Updated Product\"}'", Description = "Create or replace a single item")]
-[CosmosExample("echo '{\"id\":\"2\",\"price\":99.99}' | mkitem", Description = "Create item from piped input")]
-[CosmosExample("mkitem '{\"id\":\"3\",\"status\":\"active\"}' --database=MyDB --container=Items", Description = "Create item in specific database and container")]
+[CosmosExample("mkitem '{\"id\":\"1\",\"name\":\"Product\"}'", DescriptionKey = "command-mkitem-example-1")]
+[CosmosExample("mkitem --force '{\"id\":\"1\",\"name\":\"Updated Product\"}'", DescriptionKey = "command-mkitem-example-2")]
+[CosmosExample("echo '{\"id\":\"2\",\"price\":99.99}' | mkitem", DescriptionKey = "command-mkitem-example-3")]
+[CosmosExample("mkitem '{\"id\":\"3\",\"status\":\"active\"}' --database=MyDB --container=Items", DescriptionKey = "command-mkitem-example-4")]
 internal class MakeItemCommand : CosmosCommand
 {
     [CosmosParameter("data", IsRequired = false)]

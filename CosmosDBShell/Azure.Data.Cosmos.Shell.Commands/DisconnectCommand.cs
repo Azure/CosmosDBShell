@@ -12,7 +12,7 @@ using Azure.Data.Cosmos.Shell.Util;
 using Spectre.Console;
 
 [CosmosCommand("disconnect")]
-[CosmosExample("disconnect", Description = "Disconnect from the current Cosmos DB account")]
+[CosmosExample("disconnect", DescriptionKey = "command-disconnect-example-1")]
 internal class DisconnectCommand : CosmosCommand
 {
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)

@@ -16,10 +16,10 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
 [CosmosCommand("schema")]
-[CosmosExample("schema", Description = "Infer the schema of the current container from a small sample")]
-[CosmosExample("schema --sample=50", Description = "Sample up to 50 documents when inferring the schema")]
-[CosmosExample("schema --fields-only", Description = "Return only the inferred fields and sampled document count")]
-[CosmosExample("schema --database=MyDB --container=Products", Description = "Infer the schema for a specific database and container")]
+[CosmosExample("schema", DescriptionKey = "command-schema-example-1")]
+[CosmosExample("schema --sample=50", DescriptionKey = "command-schema-example-2")]
+[CosmosExample("schema --fields-only", DescriptionKey = "command-schema-example-3")]
+[CosmosExample("schema --database=MyDB --container=Products", DescriptionKey = "command-schema-example-4")]
 [McpAnnotation(
     Title = "Schema",
     ReadOnly = true,

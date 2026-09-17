@@ -16,12 +16,12 @@ using global::Azure.Data.Cosmos.Shell.States;
 using Spectre.Console;
 
 [CosmosCommand("throughput")]
-[CosmosExample("throughput show", Description = "Display the current provisioned throughput (RU/s)")]
-[CosmosExample("throughput set 4000", Description = "Set manual throughput to 4000 RU/s")]
-[CosmosExample("throughput manual 4000", Description = "Switch to manual provisioning at 4000 RU/s")]
-[CosmosExample("throughput autoscale 10000", Description = "Switch to autoscale with a maximum of 10000 RU/s")]
-[CosmosExample("throughput set 4000 --yes", Description = "Set throughput without the confirmation prompt")]
-[CosmosExample("throughput autoscale 10000 --dry-run", Description = "Preview the change without applying it")]
+[CosmosExample("throughput show", DescriptionKey = "command-throughput-example-1")]
+[CosmosExample("throughput set 4000", DescriptionKey = "command-throughput-example-2")]
+[CosmosExample("throughput manual 4000", DescriptionKey = "command-throughput-example-3")]
+[CosmosExample("throughput autoscale 10000", DescriptionKey = "command-throughput-example-4")]
+[CosmosExample("throughput set 4000 --yes", DescriptionKey = "command-throughput-example-5")]
+[CosmosExample("throughput autoscale 10000 --dry-run", DescriptionKey = "command-throughput-example-6")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "Throughput",

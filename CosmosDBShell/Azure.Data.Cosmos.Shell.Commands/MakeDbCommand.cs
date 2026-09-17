@@ -11,9 +11,9 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
 [CosmosCommand("mkdb")]
-[CosmosExample("mkdb MyDatabase", Description = "Create a new database with default settings")]
-[CosmosExample("mkdb TestDB -scale=auto -ru=4000", Description = "Create database with autoscale and 4000 RU/s maximum throughput")]
-[CosmosExample("mkdb ProdDB -scale=manual -ru=1000", Description = "Create database with manual throughput of 1000 RU/s")]
+[CosmosExample("mkdb MyDatabase", DescriptionKey = "command-mkdb-example-1")]
+[CosmosExample("mkdb TestDB -scale=auto -ru=4000", DescriptionKey = "command-mkdb-example-2")]
+[CosmosExample("mkdb ProdDB -scale=manual -ru=1000", DescriptionKey = "command-mkdb-example-3")]
 internal class MakeDbCommand : CosmosCommand, IStateVisitor<CommandState, ShellInterpreter>
 {
     [CosmosParameter("name")]

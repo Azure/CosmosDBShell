@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Parser;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 /// <summary>
 /// Represents a while loop statement that executes a statement repeatedly as long as a condition is true.
@@ -118,7 +119,7 @@ internal class WhileStatement : Statement
         var boolObj = conditionResult.ConvertShellObject(DataType.Boolean);
         if (boolObj == null)
         {
-            throw new InvalidOperationException("Condition evaluation returned null for while statement");
+            throw new InvalidOperationException(MessageService.GetString("statement-error-null-while-condition"));
         }
 
         return (bool)boolObj;

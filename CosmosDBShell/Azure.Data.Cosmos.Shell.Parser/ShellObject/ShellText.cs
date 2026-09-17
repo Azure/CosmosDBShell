@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal class ShellText : ShellObject
 {
@@ -55,21 +56,21 @@ internal class ShellText : ShellObject
                     return false;
                 }
 
-                throw new InvalidOperationException($"Cannot convert text '{value}' to boolean");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-text-boolean", "value", value));
             case DataType.Number:
                 if (int.TryParse(value, out int intValue))
                 {
                     return intValue;
                 }
 
-                throw new InvalidOperationException($"Cannot convert text '{value}' to number");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-text-number", "value", value));
             case DataType.Decimal:
                 if (double.TryParse(value, out double decimalValue))
                 {
                     return decimalValue;
                 }
 
-                throw new InvalidOperationException($"Cannot convert text '{value}' to double");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-text-double", "value", value));
             case DataType.Json:
                 try
                 {
@@ -77,11 +78,11 @@ internal class ShellText : ShellObject
                 }
                 catch (JsonException ex)
                 {
-                    throw new InvalidOperationException($"Cannot convert text '{value}' to JSON: {ex.Message}");
+                    throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-text-json", "value", value, "error", ex.Message));
                 }
 
             default:
-                throw new InvalidOperationException($"Cannot convert text to {type}");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-text-type", "type", type));
         }
     }
 }

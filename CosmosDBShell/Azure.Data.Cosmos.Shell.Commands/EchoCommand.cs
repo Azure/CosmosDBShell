@@ -10,10 +10,10 @@ using Azure.Data.Cosmos.Shell.Parser;
 using Spectre.Console;
 
 [CosmosCommand("echo")]
-[CosmosExample("echo \"Hello World\"", Description = "Print a simple text message")]
-[CosmosExample("echo \"Hello\" \"World\"", Description = "Print multiple arguments concatenated with spaces")]
-[CosmosExample("echo '{\"id\":1,\"name\":\"test\"}'", Description = "Output JSON data")]
-[CosmosExample("echo \"test\" | jq", Description = "Pipe text output to jq for processing")]
+[CosmosExample("echo \"Hello World\"", DescriptionKey = "command-echo-example-1")]
+[CosmosExample("echo \"Hello\" \"World\"", DescriptionKey = "command-echo-example-2")]
+[CosmosExample("echo '{\"id\":1,\"name\":\"test\"}'", DescriptionKey = "command-echo-example-3")]
+[CosmosExample("echo \"test\" | jq", DescriptionKey = "command-echo-example-4")]
 internal class EchoCommand : CosmosCommand
 {
     [CosmosParameter("messages", IsRequired = false)]
