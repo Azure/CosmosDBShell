@@ -19,15 +19,17 @@ using Azure.Data.Cosmos.Shell.Parser;
 public class StatementPositionalErrorTests : TestBase
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ScriptFunctionFailure_RecordsEachCallerOnce(bool nestedScript)
+    [InlineData(false, "totallyunknowncmd999")]
+    [InlineData(true, "totallyunknowncmd999")]
+    [InlineData(false, "help totallyunknowncmd999")]
+    [InlineData(true, "help totallyunknowncmd999")]
+    public async Task ScriptFunctionFailure_RecordsEachCallerOnce(bool nestedScript, string failure)
     {
         var script = Path.GetTempFileName().Replace('\\', '/');
         var caller = Path.GetTempFileName();
         try
         {
-            await File.WriteAllTextAsync(script, "def broken {\n totallyunknowncmd999\n}\nbroken", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(script, $"def broken {{\n {failure}\n}}\nbroken", TestContext.Current.CancellationToken);
             await File.WriteAllTextAsync(caller, $"exec \"{script.Replace('\\', '/')}\"", TestContext.Current.CancellationToken);
             var path = nestedScript ? caller : script;
             var command = new CommandStatement(new Token(TokenType.Identifier, path, 0, path.Length));
@@ -46,6 +48,27 @@ public class StatementPositionalErrorTests : TestBase
         {
             File.Delete(script);
             File.Delete(caller);
+        }
+    }
+
+    [Fact]
+    public async Task ReturnedScriptError_PreservesStatementLocationAndCause()
+    {
+        var script = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(script, "\nhelp totallyunknowncmd999", TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length));
+            var exception = await Assert.ThrowsAsync<PositionalException>(() => command.RunScriptAsync(Shell, new(), TestContext.Current.CancellationToken));
+            var frame = Assert.Single(PositionalException.GetSourceTrace(exception));
+            Assert.Equal(script, frame.FileName);
+            Assert.Equal(2, frame.Line);
+            Assert.IsType<CommandException>(frame.InnerException);
+            Assert.Equal(ShellExitCode.FromException(frame.InnerException!), ShellExitCode.FromException(exception));
+        }
+        finally
+        {
+            File.Delete(script);
         }
     }
 

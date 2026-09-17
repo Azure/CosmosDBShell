@@ -260,6 +260,10 @@ public class ExportCommandTests
             else
             {
                 await Assert.ThrowsAsync<IOException>(ExportAsync);
+                var items = Substitute.For<IAsyncEnumerable<JsonElement>>();
+                await Assert.ThrowsAsync<IOException>(() => ExportCommand.WriteFileAsync(
+                    items, ExportFormat.JsonLines, path, false, TestContext.Current.CancellationToken));
+                items.DidNotReceive().GetAsyncEnumerator(Arg.Any<CancellationToken>());
                 Assert.Equal("previous export", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
             }
 

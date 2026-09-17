@@ -186,7 +186,14 @@ internal class CommandStatement : Statement
             }
 
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
-            return await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token);
+            var result = await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token);
+            if (result is ErrorCommandState error && shell.CurrentScriptFileName is { } sourceName && shell.CurrentScriptContent is { } sourceText)
+            {
+                var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(sourceText, this.Start);
+                throw new PositionalException(sourceName, error.Exception, line, column, lineText);
+            }
+
+            return result;
         }
 
         if (File.Exists(this.Name))
