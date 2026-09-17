@@ -90,15 +90,18 @@ public class AdditionalCommandsTests : EmulatorFixtureTestBase
     }
 
     [Fact]
-    public async Task IndexPolicy_Write_UpdatesPolicy()
+    public async Task IndexPolicy_Write_PreservesPathsAfterReadback()
     {
         await ExecuteAsync($"cd {Fixture.ContainerName}");
 
         var policy = "{\"indexingMode\":\"consistent\",\"automatic\":true,\"includedPaths\":[{\"path\":\"/*\"}],\"excludedPaths\":[{\"path\":\"/\\\"_etag\\\"/?\"}]}";
-        var output = await ExecuteWithOutputAsync($"indexpolicy set '{policy}'");
+        await ExecuteWithOutputAsync($"indexpolicy set '{policy}'");
+        var output = await ExecuteWithOutputAsync("indexpolicy show");
 
         var json = JsonDocument.Parse(output).RootElement;
         Assert.Equal("Consistent", json.GetProperty("indexingMode").GetString());
+        Assert.Equal("/*", json.GetProperty("includedPaths")[0].GetProperty("path").GetString());
+        Assert.Equal("/\"_etag\"/?", json.GetProperty("excludedPaths")[0].GetProperty("path").GetString());
     }
 
     [Fact]
