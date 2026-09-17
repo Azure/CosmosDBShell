@@ -19,6 +19,22 @@ using Azure.Data.Cosmos.Shell.Parser;
 public class StatementPositionalErrorTests : TestBase
 {
     [Theory]
+    [InlineData("$value = (totallyunknowncmd999)")]
+    [InlineData("if (totallyunknowncmd999) {}")]
+    [InlineData("for $item in (totallyunknowncmd999) {}")]
+    public async Task ThrownExpressionError_UsesCommandLocation(string source)
+    {
+        Shell.CurrentScriptFileName = "expression.csh";
+        Shell.CurrentScriptContent = source;
+        var statement = new StatementParser(source).ParseStatement()!;
+        var exception = await Assert.ThrowsAsync<PositionalException>(() => statement.RunAsync(Shell, new(), TestContext.Current.CancellationToken));
+        var frame = PositionalException.GetSourceTrace(exception)[0];
+        Assert.Equal("expression.csh", frame.FileName);
+        Assert.Equal(source.IndexOf("totallyunknowncmd999", StringComparison.Ordinal) + 1, frame.Column);
+        Assert.IsType<CommandNotFoundException>(frame.InnerException);
+    }
+
+    [Theory]
     [InlineData("$value = (help totallyunknowncmd999)")]
     [InlineData("if (help totallyunknowncmd999) {}")]
     [InlineData("for $item in (help totallyunknowncmd999) {}")]

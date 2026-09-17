@@ -82,7 +82,18 @@ internal class CommandExpression : Expression
     public override async Task<ShellObject> EvaluateAsync(ShellInterpreter interpreter, CommandState currentState, CancellationToken cancellationToken)
     {
         // Execute the command asynchronously and return the result
-        var resultState = await this.ExecuteCommandAsync(interpreter, currentState, cancellationToken);
+        CommandState resultState;
+        try
+        {
+            resultState = await this.ExecuteCommandAsync(interpreter, currentState, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not PositionalException
+            && (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            && interpreter.CurrentScriptFileName != null && interpreter.CurrentScriptContent != null)
+        {
+            var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(interpreter.CurrentScriptContent, this.Start);
+            throw new PositionalException(interpreter.CurrentScriptFileName, exception, line, column, lineText);
+        }
 
         if (resultState.IsError)
         {

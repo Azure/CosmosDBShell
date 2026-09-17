@@ -43,7 +43,7 @@ internal static class FilterExpressionUtilities
             case ShellNumber shellNumber:
                 return JsonSerializer.SerializeToElement(shellNumber.Value);
             case ShellDecimal shellDecimal:
-                return JsonSerializer.SerializeToElement(shellDecimal.Value);
+                return JsonSerializer.SerializeToElement(shellDecimal.Value, ShellDecimal.JsonSerializationOptions);
             case ShellBool shellBool:
                 return JsonSerializer.SerializeToElement(shellBool.Value);
             case ShellSequence shellSequence:
