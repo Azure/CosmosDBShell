@@ -183,6 +183,30 @@ public class AdditionalCommandsTests : EmulatorFixtureTestBase
         Assert.True(state.IsError);
     }
 
+    [Theory]
+    [InlineData("mkcon")]
+    [InlineData("create container")]
+    public async Task Create_Container_WithIndexPolicy_PreservesPathsAfterReadback(string command)
+    {
+        var name = $"IndexPolicyCon_{Guid.NewGuid():N}";
+        createdContainers.Add(name);
+
+        const string policy = "{\"indexingMode\":\"consistent\",\"automatic\":true,\"includedPaths\":[{\"path\":\"/verification/*\"}],\"excludedPaths\":[{\"path\":\"/*\"}]}";
+        var state = await ExecuteAsync($"{command} {name} /id --index_policy='{policy}'");
+        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
+
+        var navigation = await ExecuteAsync($"cd {name}");
+        Assert.False(navigation.IsError, IntegrationTestBase.FormatError(navigation));
+        var output = await ExecuteWithOutputAsync("indexpolicy show");
+
+        using var document = JsonDocument.Parse(output);
+        var json = document.RootElement;
+        Assert.Equal("Consistent", json.GetProperty("indexingMode").GetString());
+        Assert.True(json.GetProperty("automatic").GetBoolean());
+        Assert.Contains(json.GetProperty("includedPaths").EnumerateArray(), path => path.GetProperty("path").GetString() == "/verification/*");
+        Assert.Contains(json.GetProperty("excludedPaths").EnumerateArray(), path => path.GetProperty("path").GetString() == "/*");
+    }
+
     [Fact]
     public async Task Delete_Item_RemovesItem()
     {
