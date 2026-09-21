@@ -391,11 +391,11 @@ internal class CommandStatement : Statement
 
         // Shadow variables from the current scope chain into the script frame.
         // (Copy values so the script can mutate its own bindings.)
-        foreach (var container in shell.VariableContainers.Reverse())
+        foreach (var container in shell.VariableContainers)
         {
             foreach (var kvp in container.Variables)
             {
-                frame.Variables[kvp.Key] = kvp.Value;
+                frame.Variables.TryAdd(kvp.Key, kvp.Value);
             }
         }
 
