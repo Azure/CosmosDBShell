@@ -278,4 +278,20 @@ public class ShellExitCodeTests
 
         Assert.Equal(expected, ShellExitCode.FromCommandState(state));
     }
+
+    [Fact]
+    public void FromCommandState_StructuredErrorReattachedToItsOwnFailure_ClassifiesOriginalCause()
+    {
+        var cause = new CommandException(
+            "batch",
+            "Batch failed.",
+            new RequestFailedException((int)HttpStatusCode.NotFound, "Batch failed."));
+        var state = new StructuredErrorCommandState(
+            cause,
+            new ShellJson(JsonSerializer.SerializeToElement(new { success = false })));
+        var failure = new CommandState.FailureException(state);
+        state.Exception = new PositionalException("script.csh", failure, 1, 1);
+
+        Assert.Equal(ShellExitCode.NotFound, ShellExitCode.FromCommandState(state));
+    }
 }

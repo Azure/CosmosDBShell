@@ -71,6 +71,13 @@ public static class ShellExitCode
         {
             if (ex is CommandState.FailureException failure)
             {
+                // A structured failure can be re-attached to the state it came from; asking that state
+                // for its ExitCode would recurse forever, so classify the original inner exception instead.
+                if (IsSelfReferential(failure))
+                {
+                    continue;
+                }
+
                 return failure.State.ExitCode;
             }
 
@@ -107,6 +114,24 @@ public static class ShellExitCode
         }
 
         return GeneralFailure;
+    }
+
+    private static bool IsSelfReferential(CommandState.FailureException failure)
+    {
+        if (failure.State is not ErrorCommandState errorState)
+        {
+            return false;
+        }
+
+        for (var ex = errorState.Exception; ex is not null; ex = ex.InnerException)
+        {
+            if (ReferenceEquals(ex, failure))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsUsage(Exception ex)

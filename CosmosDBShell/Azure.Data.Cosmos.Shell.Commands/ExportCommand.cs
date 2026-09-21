@@ -326,7 +326,9 @@ internal class ExportCommand : CosmosCommand
         CancellationToken token)
     {
         var destination = Path.GetFullPath(filePath);
-        if (!overwrite && (System.IO.File.Exists(destination) || Directory.Exists(destination)))
+
+        // A directory destination can never be overwritten by File.Move, so reject it before spending RU on the query.
+        if (Directory.Exists(destination) || (!overwrite && System.IO.File.Exists(destination)))
         {
             throw new IOException(MessageService.GetArgsString("command-export-error-file_exists", "file", destination));
         }

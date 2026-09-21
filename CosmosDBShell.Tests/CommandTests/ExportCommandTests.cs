@@ -275,8 +275,10 @@ public class ExportCommandTests
         }
     }
 
-    [Fact]
-    public async Task WriteFileAsync_ExistingDirectoryDoesNotEnumerateItems()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task WriteFileAsync_ExistingDirectoryDoesNotEnumerateItems(bool overwrite)
     {
         var directory = Directory.CreateTempSubdirectory("cosmos-export-test-");
         try
@@ -284,7 +286,7 @@ public class ExportCommandTests
             var items = Substitute.For<IAsyncEnumerable<JsonElement>>();
 
             await Assert.ThrowsAsync<IOException>(() => ExportCommand.WriteFileAsync(
-                items, ExportFormat.JsonLines, directory.FullName, false, TestContext.Current.CancellationToken));
+                items, ExportFormat.JsonLines, directory.FullName, overwrite, TestContext.Current.CancellationToken));
 
             items.DidNotReceive().GetAsyncEnumerator(Arg.Any<CancellationToken>());
         }
