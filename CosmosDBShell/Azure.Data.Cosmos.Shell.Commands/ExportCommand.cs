@@ -326,7 +326,7 @@ internal class ExportCommand : CosmosCommand
         CancellationToken token)
     {
         var destination = Path.GetFullPath(filePath);
-        if (!overwrite && System.IO.File.Exists(destination))
+        if (!overwrite && (System.IO.File.Exists(destination) || Directory.Exists(destination)))
         {
             throw new IOException(MessageService.GetArgsString("command-export-error-file_exists", "file", destination));
         }

@@ -610,6 +610,17 @@ public partial class ShellInterpreter : IDisposable
             }
             catch (Exception e)
             {
+                if (FindException<CommandState.FailureException>(e)?.State is StructuredErrorCommandState structuredError)
+                {
+                    if (e is PositionalException)
+                    {
+                        structuredError.Exception = e;
+                    }
+
+                    result = this.PrintState(structuredError);
+                    return result;
+                }
+
                 this.ReportExecutionError(e, command);
                 this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 result = new ErrorCommandState(e)

@@ -6,6 +6,7 @@ namespace CosmosShell.Tests.Parser;
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -159,6 +160,36 @@ public class CommandStatementTests
         var positional = Assert.IsType<PositionalException>(structured.Exception);
         Assert.Equal("test.csh", positional.FileName);
         Assert.IsType<CommandException>(positional.InnerException);
+    }
+
+    [Fact]
+    public async Task StructuredError_InScriptExpression_PreservesMachinePayload()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StructuredErrorTestCommand), out var factory));
+        shell.App.Commands["structured-error-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var script = Path.GetTempFileName();
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            await File.WriteAllTextAsync(script, "$value = (structured-error-test)", TestContext.Current.CancellationToken);
+
+            var result = await shell.ExecuteCommandAsync($"exec {ShellLiteral.Quote(script)}", TestContext.Current.CancellationToken);
+
+            var structured = Assert.IsType<StructuredErrorCommandState>(result);
+            Assert.False(Assert.IsType<ShellJson>(structured.Result).Value.GetProperty("success").GetBoolean());
+            Assert.Contains(PositionalException.GetSourceTrace(structured.Exception), frame => frame.FileName == script);
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+            Assert.False(document.RootElement.GetProperty("result").GetProperty("success").GetBoolean());
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(script);
+            File.Delete(stderr);
+        }
     }
 
     [Fact]
