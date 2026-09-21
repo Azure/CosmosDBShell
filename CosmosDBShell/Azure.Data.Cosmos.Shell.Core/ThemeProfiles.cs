@@ -90,6 +90,7 @@ internal static class ThemeProfiles
         OperatorColor = string.Empty,
         TableValueColor = string.Empty,
         WarningColor = string.Empty,
+        SuccessColor = string.Empty,
         DirectoryColor = string.Empty,
         MutedColor = "dim",
         HelpAccentColor = string.Empty,

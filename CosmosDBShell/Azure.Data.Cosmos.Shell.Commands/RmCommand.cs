@@ -13,11 +13,11 @@ using global::Azure.Data.Cosmos.Shell.States;
 using Spectre.Console;
 
 [CosmosCommand("rm")]
-[CosmosExample("rm test-*", Description = "Delete all items where partition key matches pattern starting with 'test-'")]
-[CosmosExample("rm *-temp", Description = "Delete all items where partition key matches pattern ending with '-temp'")]
-[CosmosExample("rm old-item-* --key=id", Description = "Delete items where 'id' field matches pattern")]
-[CosmosExample("rm test-* --database=MyDB --container=Items", Description = "Delete items from specific database and container")]
-[CosmosExample("rm test-* --dry-run", Description = "Preview how many items would be deleted without deleting them")]
+[CosmosExample("rm test-*", DescriptionKey = "command-rm-example-1")]
+[CosmosExample("rm *-temp", DescriptionKey = "command-rm-example-2")]
+[CosmosExample("rm old-item-* --key=id", DescriptionKey = "command-rm-example-3")]
+[CosmosExample("rm test-* --database=MyDB --container=Items", DescriptionKey = "command-rm-example-4")]
+[CosmosExample("rm test-* --dry-run", DescriptionKey = "command-rm-example-5")]
 [McpAnnotation(Title = "Remove Items", Restricted = true, Destructive = true, Confirmable = true)]
 internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 {

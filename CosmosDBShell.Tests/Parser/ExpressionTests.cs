@@ -9,11 +9,23 @@ using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
 
 namespace CosmosShell.Tests.Parser;
 
 public class ExpressionTests
 {
+    [Theory]
+    [InlineData("1 / 0", "expression_error_divide_by_zero")]
+    [InlineData("1.5 / 0.0", "expression_error_divide_by_zero")]
+    [InlineData("1 % 0", "expression_error_modulo_by_zero")]
+    [InlineData("1.5 % 0.0", "expression_error_modulo_by_zero")]
+    public async Task ArithmeticErrors_UseLocalizedMessages(string input, string key)
+    {
+        var exception = await Assert.ThrowsAsync<DivideByZeroException>(() => EvaluateExpressionAsync(input));
+        Assert.Equal(MessageService.GetString(key), exception.Message);
+    }
+
     private Expression ParseExpression(string input)
     {
         var lexer = new Lexer(input);

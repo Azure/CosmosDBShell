@@ -14,11 +14,11 @@ using global::Azure.Data.Cosmos.Shell.States;
 using Spectre.Console;
 
 [CosmosCommand("watch", Aliases = ["tail"])]
-[CosmosExample("watch", Description = "Tail new changes in the current container as they arrive")]
-[CosmosExample("watch --from-beginning", Description = "Replay the change feed from the beginning of the container")]
-[CosmosExample("watch --partition-key=myKey --max=100", Description = "Watch a single partition key and stop after 100 changes")]
-[CosmosExample("watch --interval=5", Description = "Poll the change feed every 5 seconds instead of the 1 second default")]
-[CosmosExample("watch --database=MyDB --container=Products", Description = "Watch a specific database and container")]
+[CosmosExample("watch", DescriptionKey = "command-watch-example-1")]
+[CosmosExample("watch --from-beginning", DescriptionKey = "command-watch-example-2")]
+[CosmosExample("watch --partition-key=myKey --max=100", DescriptionKey = "command-watch-example-3")]
+[CosmosExample("watch --interval=5", DescriptionKey = "command-watch-example-4")]
+[CosmosExample("watch --database=MyDB --container=Products", DescriptionKey = "command-watch-example-5")]
 [McpAnnotation(Restricted = true, ReadOnly = true)]
 internal class WatchCommand : CosmosCommand
 {

@@ -15,14 +15,14 @@ using global::Azure.Data.Cosmos.Shell.States;
 using Spectre.Console;
 
 [CosmosCommand("batch")]
-[CosmosExample("batch run '[{\"op\":\"create\",\"item\":{\"id\":\"1\",\"pk\":\"a\"}},{\"op\":\"delete\",\"id\":\"2\"}]' --partition-key a", Description = "Atomically apply multiple operations in a single transaction")]
-[CosmosExample("batch begin --partition-key a", Description = "Start a stateful batch for partition key 'a'")]
-[CosmosExample("batch add '{\"op\":\"upsert\",\"item\":{\"id\":\"3\",\"pk\":\"a\"}}'", Description = "Queue an operation onto the active batch")]
-[CosmosExample("batch add '{\"op\":\"patch\",\"id\":\"3\",\"operations\":[{\"op\":\"set\",\"path\":\"/status\",\"value\":\"done\"}]}'", Description = "Queue a patch operation onto the active batch")]
-[CosmosExample("batch execute", Description = "Execute the queued operations atomically")]
-[CosmosExample("batch status", Description = "Show the active batch and its queued operations")]
-[CosmosExample("batch show", Description = "Print the queued operations as a JSON array")]
-[CosmosExample("batch cancel", Description = "Discard the active batch")]
+[CosmosExample("batch run '[{\"op\":\"create\",\"item\":{\"id\":\"1\",\"pk\":\"a\"}},{\"op\":\"delete\",\"id\":\"2\"}]' --partition-key a", DescriptionKey = "command-batch-example-1")]
+[CosmosExample("batch begin --partition-key a", DescriptionKey = "command-batch-example-2")]
+[CosmosExample("batch add '{\"op\":\"upsert\",\"item\":{\"id\":\"3\",\"pk\":\"a\"}}'", DescriptionKey = "command-batch-example-3")]
+[CosmosExample("batch add '{\"op\":\"patch\",\"id\":\"3\",\"operations\":[{\"op\":\"set\",\"path\":\"/status\",\"value\":\"done\"}]}'", DescriptionKey = "command-batch-example-4")]
+[CosmosExample("batch execute", DescriptionKey = "command-batch-example-5")]
+[CosmosExample("batch status", DescriptionKey = "command-batch-example-6")]
+[CosmosExample("batch show", DescriptionKey = "command-batch-example-7")]
+[CosmosExample("batch cancel", DescriptionKey = "command-batch-example-8")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "Batch",

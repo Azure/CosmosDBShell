@@ -16,13 +16,13 @@ using Spectre.Console;
 /// Lists files and directories in the local file system.
 /// </summary>
 [CosmosCommand("dir")]
-[CosmosExample("dir", Description = "List files in the current directory")]
-[CosmosExample("dir C:\\temp", Description = "List files in a specific directory")]
-[CosmosExample("dir --directory=C:\\temp", Description = "List files using the directory option")]
-[CosmosExample("dir *.json", Description = "List only JSON files in current directory")]
-[CosmosExample("dir *.cs --directory=src", Description = "List C# files in the src directory")]
-[CosmosExample("dir -r", Description = "List files recursively")]
-[CosmosExample("dir -l", Description = "List file names only")]
+[CosmosExample("dir", DescriptionKey = "command-dir-example-1")]
+[CosmosExample("dir C:\\temp", DescriptionKey = "command-dir-example-2")]
+[CosmosExample("dir --directory=C:\\temp", DescriptionKey = "command-dir-example-3")]
+[CosmosExample("dir *.json", DescriptionKey = "command-dir-example-4")]
+[CosmosExample("dir *.cs --directory=src", DescriptionKey = "command-dir-example-5")]
+[CosmosExample("dir -r", DescriptionKey = "command-dir-example-6")]
+[CosmosExample("dir -l", DescriptionKey = "command-dir-example-7")]
 internal class DirCommand : CosmosCommand
 {
     [CosmosParameter("filter", IsRequired = false)]

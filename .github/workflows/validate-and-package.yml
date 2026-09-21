@@ -25,6 +25,23 @@ env:
   BUILD_CONFIGURATION: Release
 
 jobs:
+  localization-catalog:
+    name: Localization Catalog
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Verify committed localization catalog
+        run: dotnet run --project tools/Localization/CosmosDBShell.Localization.csproj --configuration Release -- verify CosmosDBShell/lang/en.ftl l10n/CosmosDBShell.json
+
   build-test-package:
     runs-on: windows-latest
 
@@ -131,6 +148,10 @@ jobs:
 
       - name: Restore
         run: dotnet restore CosmosDBShell.sln
+
+      - name: Validate and generate localized resources
+        shell: pwsh
+        run: ./tools/Localization/build-localized-resources.ps1
 
       - name: Build solution
         shell: pwsh

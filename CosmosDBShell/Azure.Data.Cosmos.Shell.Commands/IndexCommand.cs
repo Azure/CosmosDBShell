@@ -13,10 +13,10 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
 [CosmosCommand("index", Aliases = ["indexpolicy"])]
-[CosmosExample("index show", Description = "Display the current container's indexing policy")]
-[CosmosExample("index add /address/*", Description = "Add a path to the included paths of the indexing policy")]
-[CosmosExample("index remove /address/*", Description = "Remove a path from the indexing policy")]
-[CosmosExample("index set --mode=consistent --automatic=true", Description = "Update the indexing mode and automatic flag")]
+[CosmosExample("index show", DescriptionKey = "command-index-example-1")]
+[CosmosExample("index add /address/*", DescriptionKey = "command-index-example-2")]
+[CosmosExample("index remove /address/*", DescriptionKey = "command-index-example-3")]
+[CosmosExample("index set --mode=consistent --automatic=true", DescriptionKey = "command-index-example-4")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "Index",

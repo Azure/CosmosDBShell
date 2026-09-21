@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal class ShellJson : ShellObject
 {
@@ -69,7 +70,7 @@ internal class ShellJson : ShellObject
                     return this.Value.GetInt32() != 0;
                 }
 
-                throw new InvalidOperationException($"Cannot convert JSON {this.Value.ValueKind} to boolean");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-json-boolean", "kind", this.Value.ValueKind));
             case DataType.Number:
                 if (this.Value.ValueKind == JsonValueKind.Number)
                 {
@@ -85,7 +86,7 @@ internal class ShellJson : ShellObject
                     }
                 }
 
-                throw new InvalidOperationException($"Cannot convert JSON {this.Value.ValueKind} to number");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-json-number", "kind", this.Value.ValueKind));
             case DataType.Decimal:
                 if (this.Value.ValueKind == JsonValueKind.Number)
                 {
@@ -101,9 +102,9 @@ internal class ShellJson : ShellObject
                     }
                 }
 
-                throw new InvalidOperationException($"Cannot convert JSON {this.Value.ValueKind} to decimal");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-json-decimal", "kind", this.Value.ValueKind));
             default:
-                throw new InvalidOperationException($"Cannot convert JSON to {type}");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-json-type", "type", type));
         }
     }
 }

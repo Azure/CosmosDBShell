@@ -16,12 +16,12 @@ using Azure.Data.Cosmos.Shell.Util;
 using Spectre.Console;
 
 [CosmosCommand("bucket")]
-[CosmosExample("bucket", Description = "Display the current client-side throughput bucket selection")]
-[CosmosExample("bucket 3", Description = "Tag this client's requests with throughput bucket 3")]
-[CosmosExample("bucket 0", Description = "Clear the client-side throughput bucket selection")]
-[CosmosExample("bucket show", Description = "Show the current container's throughput bucket limits")]
-[CosmosExample("bucket set 3 50", Description = "Limit bucket 3 to 50% of the container's throughput")]
-[CosmosExample("bucket clear 3", Description = "Remove the limit configured for bucket 3")]
+[CosmosExample("bucket", DescriptionKey = "command-bucket-example-1")]
+[CosmosExample("bucket 3", DescriptionKey = "command-bucket-example-2")]
+[CosmosExample("bucket 0", DescriptionKey = "command-bucket-example-3")]
+[CosmosExample("bucket show", DescriptionKey = "command-bucket-example-4")]
+[CosmosExample("bucket set 3 50", DescriptionKey = "command-bucket-example-5")]
+[CosmosExample("bucket clear 3", DescriptionKey = "command-bucket-example-6")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "Bucket",

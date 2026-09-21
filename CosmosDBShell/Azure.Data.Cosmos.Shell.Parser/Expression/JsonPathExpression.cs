@@ -6,6 +6,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 
 using Azure.Data.Cosmos.Shell.ArgumentParser;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal class JSonPathExpression : Expression
 {
@@ -55,7 +56,7 @@ internal class JSonPathExpression : Expression
         var jsonBase = baseValue.ConvertShellObject(DataType.Json);
         if (jsonBase is not System.Text.Json.JsonElement je)
         {
-            throw new InvalidOperationException("Cannot apply JSON path to non-JSON value. Expected JSON but got: " + (baseValue?.GetType().Name ?? "null"));
+            throw new InvalidOperationException(MessageService.GetArgsString("expression-error-json-path-type", "type", baseValue?.GetType().Name ?? "null"));
         }
 
         var tempState = new CommandState { Result = new ShellJson(je) };

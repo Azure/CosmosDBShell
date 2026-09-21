@@ -16,9 +16,9 @@ using static System.Net.Mime.MediaTypeNames;
 using static Azure.Data.Cosmos.Shell.Core.ShellInterpreter;
 
 [CosmosCommand("help")]
-[CosmosExample("help", Description = "Display list of all available commands")]
-[CosmosExample("help query", Description = "Show detailed help for the query command")]
-[CosmosExample("help --details", Description = "Show detailed help for all commands")]
+[CosmosExample("help", DescriptionKey = "command-help-example-1")]
+[CosmosExample("help query", DescriptionKey = "command-help-example-2")]
+[CosmosExample("help --details", DescriptionKey = "command-help-example-3")]
 internal class HelpCommand : CosmosCommand
 {
     private const int ARGPADDING = 20;

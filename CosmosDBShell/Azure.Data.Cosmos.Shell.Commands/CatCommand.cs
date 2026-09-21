@@ -10,8 +10,8 @@ using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 
 [CosmosCommand("cat")]
-[CosmosExample("cat config.json", Description = "Display contents of a JSON configuration file")]
-[CosmosExample("cat data.txt", Description = "Display contents of a text file")]
+[CosmosExample("cat config.json", DescriptionKey = "command-cat-example-1")]
+[CosmosExample("cat data.txt", DescriptionKey = "command-cat-example-2")]
 internal class CatCommand : CosmosCommand, IStateVisitor<int, string>
 {
     [CosmosParameter("path", IsRequired = false, ParameterType = ParameterType.File)]

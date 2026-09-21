@@ -13,14 +13,14 @@ using Azure.Data.Cosmos.Shell.Util;
 using Spectre.Console;
 
 [CosmosCommand("connect")]
-[CosmosExample("connect", Description = "Show current connection information and mode")]
-[CosmosExample("connect \"AccountEndpoint=https://myaccount.documents.azure.com:443/;AccountKey=mykey;\"", Description = "Connect using connection string with account key")]
-[CosmosExample("connect https://localhost:8081", Description = "Connect to the local Cosmos DB Emulator (uses well-known key and gateway mode)")]
-[CosmosExample("connect https://myaccount.documents.azure.com:443/ -hint=user@contoso.com", Description = "Connect using Entra ID authentication with login hint")]
-[CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -mode=gateway", Description = "Connect using Entra ID with gateway connection mode")]
-[CosmosExample("connect https://myaccount.documents.azure.com:443/ -managed-identity=<client-id>", Description = "Connect using a user-assigned managed identity")]
-[CosmosExample("connect https://myaccount.documents.azure.com:443/ -azure-cli", Description = "Connect using the signed-in Azure CLI (az login) identity, bypassing managed identity")]
-[CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -subscription=<subscription-id> -resource-group=<resource-group>", Description = "Connect using Entra ID with an explicit Azure Resource Manager subscription and resource group (skips ARM auto-discovery)")]
+[CosmosExample("connect", DescriptionKey = "command-connect-example-1")]
+[CosmosExample("connect \"AccountEndpoint=https://myaccount.documents.azure.com:443/;AccountKey=mykey;\"", DescriptionKey = "command-connect-example-2")]
+[CosmosExample("connect https://localhost:8081", DescriptionKey = "command-connect-example-3")]
+[CosmosExample("connect https://myaccount.documents.azure.com:443/ -hint=user@contoso.com", DescriptionKey = "command-connect-example-4")]
+[CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -mode=gateway", DescriptionKey = "command-connect-example-5")]
+[CosmosExample("connect https://myaccount.documents.azure.com:443/ -managed-identity=<client-id>", DescriptionKey = "command-connect-example-6")]
+[CosmosExample("connect https://myaccount.documents.azure.com:443/ -azure-cli", DescriptionKey = "command-connect-example-7")]
+[CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -subscription=<subscription-id> -resource-group=<resource-group>", DescriptionKey = "command-connect-example-8")]
 internal partial class ConnectCommand : CosmosCommand
 {
     // internal static readonly string EntraRedirectUrl = "https://login.microsoftonline.com/common/oauth2/nativeclient";

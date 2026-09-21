@@ -23,11 +23,11 @@ internal enum ExportFormat
 }
 
 [CosmosCommand("export")]
-[CosmosExample("export items.jsonl", Description = "Export every item in the current container as JSON Lines")]
-[CosmosExample("export items.jsonl --query=\"SELECT * FROM c WHERE c.status = 'active'\"", Description = "Export the results of a query")]
-[CosmosExample("export items.json --format=array --force", Description = "Export as a JSON array, overwriting an existing file")]
-[CosmosExample("export items.csv --format=csv", Description = "Export items as CSV (one column per top-level property)")]
-[CosmosExample("export items.jsonl --db=MyDB --con=Products --max=1000", Description = "Export up to 1000 items from a specific database and container")]
+[CosmosExample("export items.jsonl", DescriptionKey = "command-export-example-1")]
+[CosmosExample("export items.jsonl --query=\"SELECT * FROM c WHERE c.status = 'active'\"", DescriptionKey = "command-export-example-2")]
+[CosmosExample("export items.json --format=array --force", DescriptionKey = "command-export-example-3")]
+[CosmosExample("export items.csv --format=csv", DescriptionKey = "command-export-example-4")]
+[CosmosExample("export items.jsonl --db=MyDB --con=Products --max=1000", DescriptionKey = "command-export-example-5")]
 [McpAnnotation(
     Title = "Export Container Items",
     ReadOnly = false,

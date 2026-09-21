@@ -13,9 +13,9 @@ using global::Azure.Data.Cosmos.Shell.States;
 using Spectre.Console;
 
 [CosmosCommand("rmdb")]
-[CosmosExample("rmdb TestDatabase", Description = "Delete database with confirmation prompt")]
-[CosmosExample("rmdb OldDB true", Description = "Delete database skipping the interactive confirmation prompt (over MCP, confirmation is still required)")]
-[CosmosExample("rmdb TestDatabase --dry-run", Description = "Preview the deletion without deleting the database")]
+[CosmosExample("rmdb TestDatabase", DescriptionKey = "command-rmdb-example-1")]
+[CosmosExample("rmdb OldDB true", DescriptionKey = "command-rmdb-example-2")]
+[CosmosExample("rmdb TestDatabase --dry-run", DescriptionKey = "command-rmdb-example-3")]
 [McpAnnotation(Title = "Remove Database", Restricted = true, Destructive = true, Confirmable = true)]
 internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpreter>
 {
