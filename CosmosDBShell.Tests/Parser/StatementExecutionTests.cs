@@ -283,6 +283,25 @@ public class StatementExecutionTests : TestBase
     }
 
     [Fact]
+    public async Task Pipe_FinalReturn_DoesNotRenderPreviousResult()
+    {
+        var output = Path.GetTempFileName();
+        Shell.StdOutRedirect = output;
+        try
+        {
+            var state = await RunScriptAsync("def run { echo value | return }; run");
+
+            Assert.False(state.IsError);
+            Assert.Empty(await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            Shell.StdOutRedirect = null;
+            File.Delete(output);
+        }
+    }
+
+    [Fact]
     public async Task Assignment_ChainedArithmetic_ComputesExpected()
     {
         var state = await RunScriptAsync("$x = ((2 + 3) * 4 - 1)");

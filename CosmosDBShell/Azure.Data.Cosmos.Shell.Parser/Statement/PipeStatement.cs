@@ -93,6 +93,11 @@ internal class PipeStatement : Statement
             commandState = await statement.RunAsync(shell, commandState, token);
         }
 
+        if (commandState.IsError || commandState.BreakBlock || commandState.ContinueBlock || commandState.ReturnFunc)
+        {
+            return commandState;
+        }
+
         commandState = shell.PrintState(commandState, markAsRendered: true);
         return commandState;
     }
