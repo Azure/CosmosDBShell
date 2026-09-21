@@ -190,7 +190,14 @@ internal class CommandStatement : Statement
             if (result is ErrorCommandState error && shell.CurrentScriptFileName is { } sourceName && shell.CurrentScriptContent is { } sourceText)
             {
                 var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(sourceText, this.Start);
-                throw new PositionalException(sourceName, error.Exception, line, column, lineText);
+                var positionalException = new PositionalException(sourceName, error.Exception, line, column, lineText);
+                if (result is StructuredErrorCommandState structuredError)
+                {
+                    structuredError.Exception = positionalException;
+                    return structuredError;
+                }
+
+                throw positionalException;
             }
 
             return result;

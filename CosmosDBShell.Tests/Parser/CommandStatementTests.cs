@@ -7,8 +7,10 @@ namespace CosmosShell.Tests.Parser;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 
+using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
@@ -17,6 +19,22 @@ using Xunit;
 
 public class CommandStatementTests
 {
+    [CosmosCommand("structured-error-test")]
+    internal sealed class StructuredErrorTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            var state = new StructuredErrorCommandState(
+                new CommandException("structured-error-test", "failed"),
+                new ShellJson(JsonSerializer.SerializeToElement(new { success = false })))
+            {
+                RequestCharge = 2.5,
+                RenderUser = () => { },
+            };
+            return Task.FromResult<CommandState>(state);
+        }
+    }
+
     private static Statement ParseStatement(string input)
     {
         var parser = new StatementParser(input);
@@ -121,6 +139,26 @@ public class CommandStatementTests
             async () => await statement.RunAsync(shell, commandState, CancellationToken.None));
 
         Assert.Contains("unknowncommand", ex.Message);
+    }
+
+    [Fact]
+    public async Task StructuredError_InScript_PreservesStateAndAddsPosition()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StructuredErrorTestCommand), out var factory));
+        shell.App.Commands["structured-error-test"] = factory;
+        shell.CurrentScriptFileName = "test.csh";
+        shell.CurrentScriptContent = "structured-error-test";
+
+        var result = await ParseStatement("structured-error-test").RunAsync(shell, new CommandState(), CancellationToken.None);
+
+        var structured = Assert.IsType<StructuredErrorCommandState>(result);
+        Assert.False(Assert.IsType<ShellJson>(structured.Result).Value.GetProperty("success").GetBoolean());
+        Assert.NotNull(structured.RenderUser);
+        Assert.Equal(2.5, structured.RequestCharge);
+        var positional = Assert.IsType<PositionalException>(structured.Exception);
+        Assert.Equal("test.csh", positional.FileName);
+        Assert.IsType<CommandException>(positional.InnerException);
     }
 
     [Fact]
