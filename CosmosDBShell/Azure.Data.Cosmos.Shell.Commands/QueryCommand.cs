@@ -35,7 +35,7 @@ internal enum MetricTarget
     ReadOnly = true,
     Idempotent = true,
     OpenWorld = true,
-    Description = "Executes a Cosmos DB NoSQL query against the current container and returns one bounded page of matching documents. Pass the returned continuationToken as continuation to retrieve the next page. Vector ORDER BY, ORDER BY RANK, and DISTINCT queries without a matching ORDER BY cannot be paged: they return a null continuationToken, and a result truncated by max is reported with resultIncomplete set to true, which means the result set is not exhausted and must be retried with a larger max or a narrower query. Pass explain=true to return the query execution plan (utilized/potential indexes and a plain-language evaluation) instead of documents. Use the cosmos://docs/nosql-query-language resource for query syntax reference.")]
+    Description = "Executes a Cosmos DB NoSQL query against the current container and returns one bounded page of matching documents. Pass the returned continuationToken as continuation to retrieve the next page. Some plans cannot be paged at all, including vector ORDER BY, ORDER BY RANK, and DISTINCT projections such as SELECT DISTINCT c.category FROM c ORDER BY c.category; adding an ORDER BY clause does not make a DISTINCT query resumable. Those queries return a null continuationToken, and a result truncated by max is reported with resultIncomplete set to true, which means the result set is not exhausted and must be retried with a larger max or a narrower query. Pass explain=true to return the query execution plan (utilized/potential indexes and a plain-language evaluation) instead of documents. Use the cosmos://docs/nosql-query-language resource for query syntax reference.")]
 internal class QueryCommand : CosmosCommand, IPagedCommand
 {
     [CosmosParameter("query")]
@@ -137,10 +137,11 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
 
     /// <summary>
     /// Reads the continuation token of a successful query response. Pipelines such as
-    /// non-streaming ORDER BY, hybrid search, and unordered DISTINCT execute normally but
-    /// refuse to export a resumable token, which the SDK reports by throwing from the
-    /// property getter rather than by failing the request. Executing a query and being able
-    /// to resume it are therefore reported separately.
+    /// non-streaming ORDER BY, hybrid search, and DISTINCT execute normally but refuse to
+    /// export a resumable token, which the SDK reports by throwing from the property getter
+    /// rather than by failing the request. Whether a token is available is decided by the
+    /// query plan at runtime, so executing a query and being able to resume it are reported
+    /// separately instead of being inferred from the query text.
     /// </summary>
     /// <param name="response">The successful query response.</param>
     /// <param name="continuationToken">The exported token, or <see langword="null"/> when none is available.</param>

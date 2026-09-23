@@ -9,7 +9,7 @@
 
 ### Fixes
 
-- Vector `ORDER BY`, `ORDER BY RANK` relevance ranking, and `DISTINCT` projections without a matching `ORDER BY` no longer fail with a continuation-token error. These query pipelines execute successfully but cannot export a resumable token, which was previously reported as a command failure. Such queries now return their documents; through MCP they keep reading until the requested limit instead of stopping after one page, and a truncated result is reported as `resultIncomplete` rather than as an exhausted result set. ([#219](https://github.com/Azure/CosmosDBShell/issues/219))
+- Vector `ORDER BY`, `ORDER BY RANK` relevance ranking, and object-shaped `DISTINCT` projections no longer fail with a continuation-token error. These query pipelines execute successfully but cannot export a resumable token, which was previously reported as a command failure. Such queries now return their documents; through MCP they keep reading until the requested limit instead of stopping after one page, and a truncated result is reported as `resultIncomplete` rather than as an exhausted result set. ([#219](https://github.com/Azure/CosmosDBShell/issues/219))
 - Local emulator outages are now detected across Cosmos DB commands. Requests fail promptly with an error and return the shell to its disconnected state instead of leaving an unresponsive session labeled as connected.
 
 ## 1.1.209-preview — 2026-08-26

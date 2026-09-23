@@ -655,6 +655,27 @@ public class QueryCommandTests
     }
 
     [Fact]
+    public async Task ExecuteQueryAsync_ObjectShapedDistinctWithOrderBy_ReturnsDocumentsWithoutToken()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var iterator = new FakeFeedIterator(
+            NonResumableDocumentPage(
+                "DISTINCT queries only return continuation tokens when there is a matching ORDER BY clause.",
+                1,
+                "{\"category\":\"A\"}",
+                "{\"category\":\"B\"}",
+                "{\"category\":\"C\"}"));
+        var container = CreateContainer(iterator);
+        var command = new QueryCommand { Query = "SELECT DISTINCT c.category FROM c ORDER BY c.category", Max = 10, IsMcpRequest = true };
+
+        var result = await command.ExecuteQueryAsync(container, shell, CancellationToken.None);
+
+        Assert.Equal(["A", "B", "C"], ReadValues(result, "category"));
+        Assert.Null(result.ContinuationToken);
+        Assert.False(result.IncompleteWithoutContinuation);
+    }
+
+    [Fact]
     public async Task ExecuteQueryAsync_ResumablePage_KeepsSingleMcpPageAndToken()
     {
         using var shell = ShellInterpreter.CreateInstance();
@@ -698,26 +719,35 @@ public class QueryCommandTests
 
     private static ResponseMessage NonResumablePage(string message, double requestCharge, params string[] ids)
     {
-        return CreatePage(requestCharge, () => throw new ArgumentException(message), ids);
+        return NonResumableDocumentPage(message, requestCharge, [.. ids.Select(id => $"{{\"id\":\"{id}\"}}")]);
+    }
+
+    private static ResponseMessage NonResumableDocumentPage(string message, double requestCharge, params string[] documents)
+    {
+        return CreatePage(requestCharge, () => throw new ArgumentException(message), documents);
     }
 
     private static ResponseMessage ResumablePage(string? continuationToken, double requestCharge, params string[] ids)
     {
-        return CreatePage(requestCharge, () => continuationToken, ids);
+        return CreatePage(requestCharge, () => continuationToken, [.. ids.Select(id => $"{{\"id\":\"{id}\"}}")]);
     }
 
-    private static ResponseMessage CreatePage(double requestCharge, Func<string?> continuationToken, string[] ids)
+    private static ResponseMessage CreatePage(double requestCharge, Func<string?> continuationToken, string[] documents)
     {
-        var documents = string.Join(",", ids.Select(id => $"{{\"id\":\"{id}\"}}"));
-        var response = new PageResponse($"{{\"_count\":{ids.Length},\"Documents\":[{documents}]}}", continuationToken);
+        var response = new PageResponse($"{{\"_count\":{documents.Length},\"Documents\":[{string.Join(",", documents)}]}}", continuationToken);
         response.Headers.Add("x-ms-request-charge", requestCharge.ToString(CultureInfo.InvariantCulture));
         return response;
     }
 
     private static string[] ReadIds(CommandState state)
     {
+        return ReadValues(state, "id");
+    }
+
+    private static string[] ReadValues(CommandState state, string property)
+    {
         using var document = JsonDocument.Parse(state.GenerateOutputText());
-        return [.. document.RootElement.GetProperty("values").EnumerateArray().Select(value => value.GetProperty("id").GetString()!)];
+        return [.. document.RootElement.GetProperty("values").EnumerateArray().Select(value => value.GetProperty(property).GetString()!)];
     }
 
     private static async Task<(CommandState Result, string Text)> CaptureConsoleAsync(Func<Task<CommandState>> action)
