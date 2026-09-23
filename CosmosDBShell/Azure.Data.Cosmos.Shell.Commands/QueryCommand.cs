@@ -942,7 +942,9 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                 }
             }
 
-            returnState.IncompleteWithoutContinuation = limitReached && !continuationSupported;
+            // Stopping early without a token leaves results the caller can never retrieve,
+            // whether the limit or cancellation ended the loop.
+            returnState.IncompleteWithoutContinuation = !continuationSupported && (limitReached || feedIterator.HasMoreResults);
 
             if (limitReached && effectiveMaxItemCount.HasValue)
             {

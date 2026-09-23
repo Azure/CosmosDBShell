@@ -635,6 +635,26 @@ public class QueryCommandTests
     }
 
     [Fact]
+    public async Task ExecuteQueryAsync_PipelineWithoutTokenSupport_CancelledBetweenPages_ReportsIncompleteResult()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var cancellation = new CancellationTokenSource();
+        using var iterator = new FakeFeedIterator(
+            NonResumablePage("Continuation tokens are not supported by hybrid search.", 1, "1"),
+            NonResumablePage("Continuation tokens are not supported by hybrid search.", 1, "2"));
+        iterator.AfterRead = cancellation.Cancel;
+        var container = CreateContainer(iterator);
+        var command = new QueryCommand { Query = "SELECT c.id FROM c ORDER BY RANK FullTextScore(c.text, \"cosmos\")", Max = 10, IsMcpRequest = true };
+
+        var result = await command.ExecuteQueryAsync(container, shell, cancellation.Token);
+
+        Assert.Equal(["1"], ReadIds(result));
+        Assert.Equal(1, iterator.ReadCount);
+        Assert.Null(result.ContinuationToken);
+        Assert.True(result.IncompleteWithoutContinuation);
+    }
+
+    [Fact]
     public async Task ExecuteQueryAsync_ResumablePage_KeepsSingleMcpPageAndToken()
     {
         using var shell = ShellInterpreter.CreateInstance();
@@ -748,12 +768,16 @@ public class QueryCommandTests
 
         public int ReadCount { get; private set; }
 
+        public Action? AfterRead { get; set; }
+
         public override bool HasMoreResults => this.pages.Count > 0;
 
         public override Task<ResponseMessage> ReadNextAsync(CancellationToken cancellationToken = default)
         {
             this.ReadCount++;
-            return Task.FromResult(this.pages.Dequeue());
+            var page = this.pages.Dequeue();
+            this.AfterRead?.Invoke();
+            return Task.FromResult(page);
         }
     }
 }
