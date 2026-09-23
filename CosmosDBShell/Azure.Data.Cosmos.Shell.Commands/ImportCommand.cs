@@ -264,12 +264,7 @@ internal class ImportCommand : CosmosCommand
 
     internal static IEnumerable<(int StartLine, List<string> Fields)> ReadCsvRecords(TextReader reader, char separator, CancellationToken token)
     {
-        using var parser = new CsvParser(reader, new CsvConfiguration(CultureInfo.InvariantCulture)
-        {
-            Delimiter = separator.ToString(),
-            IgnoreBlankLines = false,
-            ExceptionMessagesContainRawData = false,
-        });
+        using var parser = CreateCsvParser(reader, separator);
         while (true)
         {
             token.ThrowIfCancellationRequested();
@@ -295,6 +290,46 @@ internal class ImportCommand : CosmosCommand
             }
         }
     }
+
+    internal static async IAsyncEnumerable<(int StartLine, List<string> Fields)> ReadCsvRecordsAsync(
+        TextReader reader,
+        char separator,
+        [EnumeratorCancellation] CancellationToken token)
+    {
+        using var parser = CreateCsvParser(reader, separator);
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            var startLine = parser.RawRow + 1;
+            string[]? fields;
+            try
+            {
+                if (!await parser.ReadAsync())
+                {
+                    yield break;
+                }
+
+                fields = parser.Record;
+            }
+            catch (CsvHelperException ex)
+            {
+                throw new CommandException("import", MessageService.GetArgsString("command-import-error-invalid_csv", "line", startLine), ex);
+            }
+
+            if (fields is not null && parser.RawRecord.TrimEnd('\r', '\n').Length > 0)
+            {
+                yield return (startLine, fields.ToList());
+            }
+        }
+    }
+
+    private static CsvParser CreateCsvParser(TextReader reader, char separator)
+        => new(reader, new CsvConfiguration(CultureInfo.InvariantCulture)
+        {
+            Delimiter = separator.ToString(),
+            IgnoreBlankLines = false,
+            ExceptionMessagesContainRawData = false,
+        });
 
     /// <summary>
     /// Builds a JSON object from a CSV header row and a value row. Every column becomes a
@@ -381,7 +416,7 @@ internal class ImportCommand : CosmosCommand
         await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
         using var reader = new StreamReader(stream);
         List<string>? headers = null;
-        foreach (var (startLine, fields) in ReadCsvRecords(reader, ShellInterpreter.CSVSeparator, token))
+        await foreach (var (startLine, fields) in ReadCsvRecordsAsync(reader, ShellInterpreter.CSVSeparator, token))
         {
             if (headers is null)
             {

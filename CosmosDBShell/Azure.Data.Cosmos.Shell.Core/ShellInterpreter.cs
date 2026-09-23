@@ -56,6 +56,8 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly object sessionRequestChargeLock = new();
 
+    private readonly object historyLock = new();
+
     private readonly SemaphoreSlim executionGate = new(1, 1);
 
     private readonly AsyncLocal<bool> ownsExecutionGate = new();
@@ -112,8 +114,7 @@ public partial class ShellInterpreter : IDisposable
             foreach (var line in File.ReadAllLines(this.HistoryFile))
             {
                 var decoded = DecodeHistoryLine(line);
-                this.history.Remove(decoded);
-                this.history.Add(decoded);
+                this.RecordHistoryEntry(decoded);
             }
         }
 
@@ -239,7 +240,17 @@ public partial class ShellInterpreter : IDisposable
     internal Func<bool> IsInteractiveSession { get; set; } =
         static () => !Console.IsInputRedirected && !Console.IsOutputRedirected;
 
-    internal IReadOnlyList<string> History => this.history;
+    internal IReadOnlyList<string> History
+    {
+        get
+        {
+            // Snapshot: interactive readers must not enumerate the list while an MCP echo mutates it.
+            lock (this.historyLock)
+            {
+                return this.history.ToArray();
+            }
+        }
+    }
 
     internal string? LastBuffer { get; set; }
 
@@ -939,8 +950,7 @@ public partial class ShellInterpreter : IDisposable
 
                 if (!string.IsNullOrWhiteSpace(command))
                 {
-                    this.history.Remove(command);
-                    this.history.Add(command);
+                    this.RecordHistoryEntry(command);
                     this.SaveHistory();
                     CancellationToken token = UserCancellationTokenSource.Token;
                     await this.ExecuteCommandAsync(command, token);
@@ -1814,8 +1824,7 @@ public partial class ShellInterpreter : IDisposable
         // Print the shell prompt similar to how it appears when typing command
         //        AnsiConsole.Markup(new CosmosShellPrompt(this).GetPromptString());
         //        AnsiConsole.Write(" ");
-        this.history.Remove(cmdString);
-        this.history.Add(cmdString);
+        this.RecordHistoryEntry(cmdString);
 
         // Echoing and the line editor both need an ANSI terminal, which an MCP host may not
         // provide. Neither may fail the command being announced.
@@ -2198,7 +2207,7 @@ public partial class ShellInterpreter : IDisposable
             lineEditor.KeyBindings.Add(ConsoleKey.S, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this, startsForward: true));
             lineEditor.KeyBindings.Add(ConsoleKey.Tab, () => new CosmosCompleteCommand(this, AutoComplete.Next));
             lineEditor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Control, () => new CosmosCompleteCommand(this, AutoComplete.Previous));
-            foreach (var line in this.history)
+            foreach (var line in this.History)
             {
                 lineEditor.History.Add(line);
             }
@@ -2241,12 +2250,27 @@ public partial class ShellInterpreter : IDisposable
 
     private void SaveHistory()
     {
-        if (this.history.Count > MAXHISTORYITEMS)
+        string[] snapshot;
+        lock (this.historyLock)
         {
-            this.history = [.. this.history.Skip(this.history.Count - MAXHISTORYITEMS)];
+            if (this.history.Count > MAXHISTORYITEMS)
+            {
+                this.history = [.. this.history.Skip(this.history.Count - MAXHISTORYITEMS)];
+            }
+
+            snapshot = [.. this.history.Select(EncodeHistoryLine)];
         }
 
-        File.WriteAllLines(this.HistoryFile, this.history.Select(EncodeHistoryLine));
+        File.WriteAllLines(this.HistoryFile, snapshot);
+    }
+
+    private void RecordHistoryEntry(string entry)
+    {
+        lock (this.historyLock)
+        {
+            this.history.Remove(entry);
+            this.history.Add(entry);
+        }
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]

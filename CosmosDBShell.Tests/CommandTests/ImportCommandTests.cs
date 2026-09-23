@@ -371,6 +371,46 @@ public class ImportCommandTests
     }
 
     [Fact]
+    public async Task ReadCsvRecordsAsync_MatchesSynchronousRecordsAndStartLines()
+    {
+        const string content = "id,name\n1,\"multi\nline\"\n2,Bob\n";
+        using var reader = new StringReader(content);
+        var actual = new List<(int StartLine, List<string> Fields)>();
+        await foreach (var record in ImportCommand.ReadCsvRecordsAsync(reader, ',', TestContext.Current.CancellationToken))
+        {
+            actual.Add(record);
+        }
+
+        var expected = ImportCommand.ParseCsvWithLines(content, ',');
+        Assert.Equal(expected.Select(r => r.StartLine), actual.Select(r => r.StartLine));
+        Assert.Equal(expected.Select(r => r.Fields), actual.Select(r => r.Fields));
+    }
+
+    [Fact]
+    public async Task ReadCsvRecordsAsync_ReportsMalformedRecordWithPhysicalLine()
+    {
+        using var reader = new StringReader("id,name\n1,Alice\n2,\"unterminated");
+        var error = await Assert.ThrowsAsync<CommandException>(async () =>
+        {
+            await foreach (var _ in ImportCommand.ReadCsvRecordsAsync(reader, ',', TestContext.Current.CancellationToken))
+            {
+            }
+        });
+        Assert.Contains("3", error.Message);
+    }
+
+    [Fact]
+    public async Task ReadCsvRecordsAsync_CancellationStopsBetweenRecords()
+    {
+        using var reader = new StringReader("id,name\n1,Alice\n2,Bob");
+        using var cancellation = new CancellationTokenSource();
+        await using var records = ImportCommand.ReadCsvRecordsAsync(reader, ',', cancellation.Token).GetAsyncEnumerator(TestContext.Current.CancellationToken);
+        Assert.True(await records.MoveNextAsync());
+        await cancellation.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await records.MoveNextAsync());
+    }
+
+    [Fact]
     public void ParseCsvWithLines_SkipsBlankLinesWithoutLosingPhysicalLineNumbers()
     {
         var records = ImportCommand.ParseCsvWithLines("id,name\n\n\n1,Alice\n", ',');

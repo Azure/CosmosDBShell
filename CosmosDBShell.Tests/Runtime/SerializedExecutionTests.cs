@@ -5,6 +5,39 @@ using Azure.Data.Cosmos.Shell.Core;
 public class SerializedExecutionTests
 {
     [Fact]
+    public async Task PrintCommand_ConcurrentWithHistorySnapshots_DoesNotCorruptHistory()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        var writer = Task.Run(
+            () =>
+            {
+                for (var i = 0; i < 500; i++)
+                {
+                    shell.PrintCommand($"echo {i}");
+                }
+            },
+            cancellation.Token);
+
+        var reader = Task.Run(
+            () =>
+            {
+                while (!writer.IsCompleted)
+                {
+                    foreach (var entry in shell.History)
+                    {
+                        Assert.NotNull(entry);
+                    }
+                }
+            },
+            cancellation.Token);
+
+        await Task.WhenAll(writer, reader);
+        Assert.Equal("echo 499", shell.History[^1]);
+    }
+
+    [Fact]
     public async Task Dispose_ReleasesExecutionGateAndIsIdempotent()
     {
         var shell = ShellInterpreter.CreateInstance();
