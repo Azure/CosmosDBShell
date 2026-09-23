@@ -601,6 +601,7 @@ internal class ToolOperations
                             "The shell context changed while awaiting confirmation. Nothing was executed. Retry the command and confirm its current target.", shell.State);
                     }
 
+                    shell.PrintCommand(commandLine);
                     var response = await shell.ExecuteCosmosCommandAsync(cmd, new CommandState(), command.CommandName, cancellationToken);
                     shell.CancelPrompt();
                     return McpResponseFactory.CreateSuccess(response, shell.State);
