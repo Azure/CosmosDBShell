@@ -676,6 +676,24 @@ public class QueryCommandTests
     }
 
     [Fact]
+    public async Task ExecuteQueryAsync_TokenExportRefusedOnLaterPage_DiscardsEarlierToken()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var iterator = new FakeFeedIterator(
+            ResumablePage("stale-token", 1, "1"),
+            NonResumablePage("Continuation tokens are not supported by hybrid search.", 1, "2"));
+        var container = CreateContainer(iterator);
+        var command = new QueryCommand { Query = "SELECT c.id FROM c", Max = 10 };
+
+        var result = await command.ExecuteQueryAsync(container, shell, CancellationToken.None);
+
+        Assert.Equal(["1", "2"], ReadIds(result));
+        Assert.Equal(2, iterator.ReadCount);
+        Assert.Null(result.ContinuationToken);
+        Assert.False(result.IncompleteWithoutContinuation);
+    }
+
+    [Fact]
     public async Task ExecuteQueryAsync_ResumablePage_KeepsSingleMcpPageAndToken()
     {
         using var shell = ShellInterpreter.CreateInstance();
