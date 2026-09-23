@@ -93,7 +93,7 @@ For deterministic ARM routing in multi-subscription environments, start the shel
 
 ### Data Exposure
 
-MCP tool invocations are not echoed as command lines and are not added to the interactive shell history. Interactive commands retain their complete history entries for replay, including any supplied connection strings. Protect the history file accordingly. Tool results and command-generated output remain available as before.
+MCP tool invocations are echoed as command lines in the shell window, so anyone watching the terminal can see what a connected client is doing. They are also recorded in the shell history. History entries are complete and replayable, including any supplied connection strings. Protect the history file accordingly.
 
 Your MCP client may use a remote LLM. Command outputs, query results, and file contents could be transmitted to external services. **Treat all shell output as potentially shared.**
 

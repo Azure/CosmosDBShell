@@ -1814,13 +1814,22 @@ public partial class ShellInterpreter : IDisposable
         // Print the shell prompt similar to how it appears when typing command
         //        AnsiConsole.Markup(new CosmosShellPrompt(this).GetPromptString());
         //        AnsiConsole.Write(" ");
-        var txt = ((IHighlighter)Instance).BuildHighlightedText(cmdString);
-        AnsiConsole.Write(txt);
-        AnsiConsole.WriteLine(); // Ensure the next output starts on a new line
-
         this.history.Remove(cmdString);
         this.history.Add(cmdString);
-        this.Editor?.History.Add(cmdString);
+
+        // Echoing and the line editor both need an ANSI terminal, which an MCP host may not
+        // provide. Neither may fail the command being announced.
+        try
+        {
+            var txt = ((IHighlighter)Instance).BuildHighlightedText(cmdString);
+            AnsiConsole.Write(txt);
+            AnsiConsole.WriteLine(); // Ensure the next output starts on a new line
+            this.Editor?.History.Add(cmdString);
+        }
+        catch (NotSupportedException)
+        {
+            Console.Out.WriteLine(cmdString);
+        }
     }
 
     internal CommandState PrintState(CommandState state, bool markAsRendered = false)

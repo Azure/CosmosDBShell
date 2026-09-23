@@ -200,6 +200,42 @@ public class ToolOperationsCallToolTests
         Assert.True(command.Executed);
     }
 
+    [Fact]
+    public async Task ExecuteTool_WithoutAnsiTerminal_EchoesPlainlyAndStillExecutes()
+    {
+        var command = new TrackingCommand();
+        using var plain = new StringWriter();
+
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        try
+        {
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(plain),
+            });
+            Console.SetOut(plain);
+
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                ShellInterpreter.Instance.App.Commands["rm"], command, "rm test-*",
+                (_, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError == true);
+            Assert.True(command.Executed);
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            AnsiConsole.Console = savedConsole;
+        }
+
+        Assert.Contains("rm test-*", plain.ToString(), StringComparison.Ordinal);
+        Assert.Equal("rm test-*", ShellInterpreter.Instance.History.ToArray()[^1]);
+    }
+
     [Theory]
     [InlineData("decline")]
     [InlineData("cancel")]
@@ -426,8 +462,10 @@ public class ToolOperationsCallToolTests
 
             var result = await tool.CallToolHandler(CallContext("echo", arguments), CancellationToken.None);
 
-            Assert.Equal(history, ShellInterpreter.Instance.History);
-            Assert.Equal(string.Empty, output.ToString());
+            Assert.Contains("echo", output.ToString(), StringComparison.Ordinal);
+            var recorded = ShellInterpreter.Instance.History.ToArray();
+            Assert.Equal(history.Length + 1, recorded.Length);
+            Assert.StartsWith("echo", recorded[^1], StringComparison.Ordinal);
 
             var (isError, root, document) = ReadResult(result);
             using (document)
