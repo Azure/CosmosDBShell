@@ -80,6 +80,13 @@ public partial class CommandState
     internal string? ContinuationToken { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether the result stops short of the full result set and
+    /// cannot be resumed. Some Cosmos query pipelines complete successfully but never export a
+    /// continuation token, so a missing token alone must not be read as an exhausted result set.
+    /// </summary>
+    internal bool IncompleteWithoutContinuation { get; set; }
+
+    /// <summary>
     /// Gets or sets the Cosmos DB request charge (in RUs) consumed by the command, when applicable.
     /// Data-plane commands set this so consumers such as the MCP structured payload can report cost uniformly.
     /// </summary>

@@ -394,6 +394,8 @@ Options:
 
 When called through MCP, `query` and container-item `ls` return one page at a time. `max` must be positive; omitted or non-positive values use the safe default of `100` items. The MCP result includes `continuationToken`; pass a non-null value back as the tool's `continuation` argument, with the same query and options, to retrieve the next page. A null token means there are no more pages. `continuation` is an MCP-only argument and is deliberately not a shell option, so interactive and scripted commands are unaffected and retain their existing multi-page behavior.
 
+Some query shapes execute normally but cannot be resumed: vector `ORDER BY`, `ORDER BY RANK` relevance ranking, and `DISTINCT` projections without a matching `ORDER BY` never produce a continuation token. Such queries run to completion within the requested limit instead of failing. Because they cannot be paged, MCP calls keep reading the same query until the limit is reached rather than returning after one page. If the limit truncates the results, the shell reports that they cannot be resumed and the MCP result sets `resultIncomplete` to `true`; raise `--max`, use `--max 0` for no limit, or narrow the query to get the full result set.
+
 #### Explain a query
 
 `query "<sql>" --explain` reports how the query engine resolved the query rather than returning documents. When Cosmos DB returns index metrics, it shows whether the query performed a full scan or an index seek, lists the utilized and potential indexes, the index hit ratio, and the request charge. If index metrics are unavailable or unrecognized, the scan type is reported as unknown instead of assuming a full scan. A plain-language summary highlights confirmed full scans and recommends indexes to add.

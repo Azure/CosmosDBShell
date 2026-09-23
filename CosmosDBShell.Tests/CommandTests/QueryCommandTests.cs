@@ -5,10 +5,14 @@
 namespace CosmosShell.Tests.CommandTests;
 
 using System.Globalization;
+using System.Net;
+using System.Text;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Microsoft.Azure.Cosmos;
+using NSubstitute;
+using Spectre.Console;
 
 public class QueryCommandTests
 {
@@ -543,5 +547,213 @@ public class QueryCommandTests
         Assert.True(available);
         Assert.Empty(utilized);
         Assert.Empty(potential);
+    }
+
+    [Fact]
+    public void TryReadContinuationToken_ResponseWithoutToken_ReportsSupported()
+    {
+        using var response = new ResponseMessage(HttpStatusCode.OK);
+
+        Assert.True(QueryCommand.TryReadContinuationToken(response, out var continuationToken));
+        Assert.Null(continuationToken);
+    }
+
+    [Fact]
+    public void TryReadContinuationToken_ResponseWithToken_ReturnsToken()
+    {
+        using var response = new PageResponse("{\"_count\":0,\"Documents\":[]}", () => "next-page");
+
+        Assert.True(QueryCommand.TryReadContinuationToken(response, out var continuationToken));
+        Assert.Equal("next-page", continuationToken);
+    }
+
+    [Theory]
+    [InlineData("Continuation tokens are not supported for the non streaming order by pipeline.")]
+    [InlineData("Continuation tokens are not supported by hybrid search.")]
+    [InlineData("DISTINCT queries only return continuation tokens when there is a matching ORDER BY clause.")]
+    public void TryReadContinuationToken_PipelineWithoutTokenSupport_ReportsUnsupported(string message)
+    {
+        using var response = new PageResponse("{\"_count\":0,\"Documents\":[]}", () => throw new ArgumentException(message));
+
+        Assert.False(QueryCommand.TryReadContinuationToken(response, out var continuationToken));
+        Assert.Null(continuationToken);
+    }
+
+    [Fact]
+    public async Task ExecuteQueryAsync_PipelineWithoutTokenSupport_ReturnsDocuments()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var iterator = new FakeFeedIterator(
+            NonResumablePage("Continuation tokens are not supported for the non streaming order by pipeline.", 1.5, "1", "2", "6"));
+        var container = CreateContainer(iterator);
+        var command = new QueryCommand { Query = "SELECT TOP 3 c.id FROM c ORDER BY VectorDistance(c.embedding, [1,0,0])", Max = 10 };
+
+        var result = await command.ExecuteQueryAsync(container, shell, CancellationToken.None);
+
+        Assert.Equal(["1", "2", "6"], ReadIds(result));
+        Assert.Null(result.ContinuationToken);
+        Assert.False(result.IncompleteWithoutContinuation);
+        Assert.Equal(1.5, result.RequestCharge);
+    }
+
+    [Fact]
+    public async Task ExecuteQueryAsync_PipelineWithoutTokenSupport_AdvancesThroughEmptyPages()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var iterator = new FakeFeedIterator(
+            NonResumablePage("Continuation tokens are not supported by hybrid search.", 1, "1"),
+            NonResumablePage("Continuation tokens are not supported by hybrid search.", 2),
+            NonResumablePage("Continuation tokens are not supported by hybrid search.", 3, "2", "6"));
+        var container = CreateContainer(iterator);
+        var command = new QueryCommand { Query = "SELECT TOP 3 c.id FROM c ORDER BY RANK FullTextScore(c.text, \"cosmos\")", Max = 10, IsMcpRequest = true };
+
+        var result = await command.ExecuteQueryAsync(container, shell, CancellationToken.None);
+
+        Assert.Equal(["1", "2", "6"], ReadIds(result));
+        Assert.Equal(3, iterator.ReadCount);
+        Assert.Null(result.ContinuationToken);
+        Assert.False(result.IncompleteWithoutContinuation);
+        Assert.Equal(6, result.RequestCharge);
+    }
+
+    [Fact]
+    public async Task ExecuteQueryAsync_PipelineWithoutTokenSupport_ReportsIncompleteResultAtLimit()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var iterator = new FakeFeedIterator(
+            NonResumablePage("Continuation tokens are not supported by hybrid search.", 1, "1", "2"),
+            NonResumablePage("Continuation tokens are not supported by hybrid search.", 1, "6"));
+        var container = CreateContainer(iterator);
+        var command = new QueryCommand { Query = "SELECT c.id FROM c ORDER BY RANK FullTextScore(c.text, \"cosmos\")", Max = 2, IsMcpRequest = true };
+
+        var output = await CaptureConsoleAsync(() => command.ExecuteQueryAsync(container, shell, CancellationToken.None));
+
+        Assert.Equal(["1", "2"], ReadIds(output.Result));
+        Assert.Null(output.Result.ContinuationToken);
+        Assert.True(output.Result.IncompleteWithoutContinuation);
+        Assert.Contains("cannot be resumed", output.Text);
+    }
+
+    [Fact]
+    public async Task ExecuteQueryAsync_ResumablePage_KeepsSingleMcpPageAndToken()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var iterator = new FakeFeedIterator(
+            ResumablePage("next-page", 1, "A", "B"),
+            ResumablePage(null, 1, "C"));
+        var container = CreateContainer(iterator);
+        var command = new QueryCommand { Query = "SELECT DISTINCT VALUE c.category FROM c ORDER BY c.category", Max = 10, IsMcpRequest = true };
+
+        var result = await command.ExecuteQueryAsync(container, shell, CancellationToken.None);
+
+        Assert.Equal(1, iterator.ReadCount);
+        Assert.Equal("next-page", result.ContinuationToken);
+        Assert.False(result.IncompleteWithoutContinuation);
+    }
+
+    [Fact]
+    public async Task ExecuteQueryAsync_ResumableQueryAtLimit_ReportsLimitWithoutResumeWarning()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var iterator = new FakeFeedIterator(
+            ResumablePage("next-page", 1, "1", "2", "3"));
+        var container = CreateContainer(iterator);
+        var command = new QueryCommand { Query = "SELECT * FROM c", Max = 2 };
+
+        var output = await CaptureConsoleAsync(() => command.ExecuteQueryAsync(container, shell, CancellationToken.None));
+
+        Assert.Equal(["1", "2"], ReadIds(output.Result));
+        Assert.Equal("next-page", output.Result.ContinuationToken);
+        Assert.False(output.Result.IncompleteWithoutContinuation);
+        Assert.Contains("Results limited to 2 items", output.Text);
+        Assert.DoesNotContain("cannot be resumed", output.Text);
+    }
+
+    private static Container CreateContainer(FeedIterator iterator)
+    {
+        var container = Substitute.For<Container>();
+        container.GetItemQueryStreamIterator(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<QueryRequestOptions>()).Returns(iterator);
+        return container;
+    }
+
+    private static ResponseMessage NonResumablePage(string message, double requestCharge, params string[] ids)
+    {
+        return CreatePage(requestCharge, () => throw new ArgumentException(message), ids);
+    }
+
+    private static ResponseMessage ResumablePage(string? continuationToken, double requestCharge, params string[] ids)
+    {
+        return CreatePage(requestCharge, () => continuationToken, ids);
+    }
+
+    private static ResponseMessage CreatePage(double requestCharge, Func<string?> continuationToken, string[] ids)
+    {
+        var documents = string.Join(",", ids.Select(id => $"{{\"id\":\"{id}\"}}"));
+        var response = new PageResponse($"{{\"_count\":{ids.Length},\"Documents\":[{documents}]}}", continuationToken);
+        response.Headers.Add("x-ms-request-charge", requestCharge.ToString(CultureInfo.InvariantCulture));
+        return response;
+    }
+
+    private static string[] ReadIds(CommandState state)
+    {
+        using var document = JsonDocument.Parse(state.GenerateOutputText());
+        return [.. document.RootElement.GetProperty("values").EnumerateArray().Select(value => value.GetProperty("id").GetString()!)];
+    }
+
+    private static async Task<(CommandState Result, string Text)> CaptureConsoleAsync(Func<Task<CommandState>> action)
+    {
+        var saved = AnsiConsole.Console;
+        using var writer = new StringWriter();
+        try
+        {
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(writer),
+            });
+            AnsiConsole.Console.Profile.Width = 200;
+
+            var result = await action();
+            return (result, writer.ToString());
+        }
+        finally
+        {
+            AnsiConsole.Console = saved;
+        }
+    }
+
+    private sealed class PageResponse : ResponseMessage
+    {
+        private readonly Func<string?> continuationToken;
+
+        public PageResponse(string content, Func<string?> continuationToken)
+            : base(HttpStatusCode.OK)
+        {
+            this.continuationToken = continuationToken;
+            this.Content = new MemoryStream(Encoding.UTF8.GetBytes(content));
+        }
+
+        public override string ContinuationToken => this.continuationToken()!;
+    }
+
+    private sealed class FakeFeedIterator : FeedIterator
+    {
+        private readonly Queue<ResponseMessage> pages;
+
+        public FakeFeedIterator(params ResponseMessage[] pages)
+        {
+            this.pages = new Queue<ResponseMessage>(pages);
+        }
+
+        public int ReadCount { get; private set; }
+
+        public override bool HasMoreResults => this.pages.Count > 0;
+
+        public override Task<ResponseMessage> ReadNextAsync(CancellationToken cancellationToken = default)
+        {
+            this.ReadCount++;
+            return Task.FromResult(this.pages.Dequeue());
+        }
     }
 }

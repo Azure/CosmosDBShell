@@ -128,6 +128,7 @@ Both representations are always byte-for-byte equivalent.
 | `result` | Commands that produce output | The command result as JSON (objects, arrays, or a scalar). Text-only results are represented as a JSON string. Failed transactional batches include their per-operation summary here alongside `error`. |
 | `outputText` | CSV output commands with non-empty text | The CSV rendering of the result. Omitted when the CSV output is empty or whitespace. |
 | `continuationToken` | Paged `query` and container-item `ls` results | Opaque token for the next page, or `null` when no more results are available. Omitted for `query --explain` and database/container name listings, which are not paged. |
+| `resultIncomplete` | Truncated results that cannot be resumed | `true` when the result stops at the requested limit and the query cannot produce a continuation token. Omitted otherwise. |
 | `requestCharge` | Charged data-plane command results | The Cosmos DB request charge (in RUs) consumed by the command, as a number. This is omitted for commands that do not issue a billable request. |
 | `error` | Failed commands | The error message. |
 | `currentLocation` | Always | The shell's current navigation path (for example `/MyDatabase/MyContainer`), or `null` when disconnected. |
@@ -154,6 +155,8 @@ MCP calls to `query` and container-item `ls` return one Cosmos DB page per call.
 `continuation` is exposed only to MCP callers — there is no corresponding shell option, and the token is never echoed into the shell's command output.
 
 Because `max` bounds a single page, a call can return fewer items than requested and still have more available; treat a non-null `continuationToken` as the only signal that more results exist. For `ls`, the `result.limitReached` flag reports that same condition and is kept for parity with shell and script output.
+
+Some queries cannot be paged at all. Vector `ORDER BY`, `ORDER BY RANK` relevance ranking, and `DISTINCT` projections without a matching `ORDER BY` execute normally but never return a continuation token. For those queries the server keeps reading until `max` is reached and returns a `null` token. If the limit truncated the results, the response also sets `resultIncomplete` to `true`; a `null` token combined with `resultIncomplete` means the result set was **not** exhausted and cannot be resumed. Retry with a larger `max` or a narrower query instead of sending a `continuation`.
 
 ```json
 {
