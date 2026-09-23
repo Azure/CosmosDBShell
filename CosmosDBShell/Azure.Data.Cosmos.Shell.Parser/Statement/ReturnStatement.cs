@@ -82,6 +82,11 @@ internal class ReturnStatement : Statement
         commandState.ReturnValue = value;
         commandState.ReturnFunc = true;
 
+        // The caller replaces Result with the return value, so renderers from earlier statements must not survive.
+        commandState.RenderUser = null;
+        commandState.RenderTabular = null;
+        commandState.ResetOutputFormat();
+
         return commandState;
     }
 
