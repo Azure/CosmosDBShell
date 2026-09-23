@@ -136,9 +136,12 @@ public sealed class SemanticAnalyzer
                 this.VisitExpression(whileLoop.Condition);
                 break;
             case DoWhileStatement doLoop:
+                // The body runs before the condition, so visit it first to keep definitions in execution order.
+                this.VisitStatement(doLoop.Statement);
                 this.VisitExpression(doLoop.Condition);
-                break;
+                return;
             case ForStatement forLoop:
+                this.RecordVariableReference(new VariableExpression(forLoop.VariableToken, forLoop.VariableName));
                 this.VisitExpression(forLoop.Collection);
                 break;
             case ExecStatement executed:

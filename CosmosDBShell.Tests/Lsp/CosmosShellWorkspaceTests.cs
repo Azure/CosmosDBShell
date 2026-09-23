@@ -145,6 +145,36 @@ public class CosmosShellWorkspaceTests
         Assert.Equal("Unknown command 'LOWER_FUNCTION_XYZ'.", Assert.Single(this.workspace.GetDocument(this.uri)!.Diagnostics).Message);
     }
 
+    [Fact]
+    public void DoLoop_DefinesVariableInBodyBeforeCondition()
+    {
+        var source = "do { $value_xyz = 1 } while $value_xyz";
+        this.workspace.OpenDocument(this.uri, source, 1);
+        var model = this.workspace.GetDocument(this.uri)!.SemanticModel!;
+        var symbol = Assert.Single(model.Symbols.OfType<Azure.Data.Cosmos.Shell.Lsp.Semantics.VariableSymbol>());
+        var references = model.FindReferences(symbol).OrderBy(reference => reference.Start).ToArray();
+        Assert.Equal(2, references.Length);
+        Assert.Equal(source.IndexOf("$value_xyz", System.StringComparison.Ordinal), references[0].Start);
+        Assert.True(references[0].IsDefinition);
+        Assert.Equal(source.LastIndexOf("$value_xyz", System.StringComparison.Ordinal), references[1].Start);
+        Assert.False(references[1].IsDefinition);
+    }
+
+    [Fact]
+    public void ForLoop_RecordsBinderAsVariableDefinition()
+    {
+        var source = "for $item_xyz in [1] { echo $item_xyz }";
+        this.workspace.OpenDocument(this.uri, source, 1);
+        var model = this.workspace.GetDocument(this.uri)!.SemanticModel!;
+        var symbol = Assert.Single(model.Symbols.OfType<Azure.Data.Cosmos.Shell.Lsp.Semantics.VariableSymbol>());
+        var references = model.FindReferences(symbol).OrderBy(reference => reference.Start).ToArray();
+        Assert.Equal(2, references.Length);
+        Assert.Equal(source.IndexOf("$item_xyz", System.StringComparison.Ordinal), references[0].Start);
+        Assert.True(references[0].IsDefinition);
+        Assert.False(references[1].IsDefinition);
+        Assert.Same(symbol, model.GetSymbolAt(references[0].Start + 1));
+    }
+
     [Theory]
     [InlineData("value", "Value")]
     [InlineData("VALUE", "value")]

@@ -183,6 +183,7 @@ public class CommandStatementTests
             Assert.Contains(PositionalException.GetSourceTrace(structured.Exception), frame => frame.FileName == script);
             using var document = JsonDocument.Parse(await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
             Assert.False(document.RootElement.GetProperty("result").GetProperty("success").GetBoolean());
+            Assert.StartsWith($"{script}:1:11: ", document.RootElement.GetProperty("error").GetString());
         }
         finally
         {

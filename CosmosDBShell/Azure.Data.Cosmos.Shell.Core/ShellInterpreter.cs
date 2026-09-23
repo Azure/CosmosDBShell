@@ -1877,7 +1877,14 @@ public partial class ShellInterpreter : IDisposable
 
             if (inMachineMode && state is StructuredErrorCommandState structuredError)
             {
-                this.WriteMachineError(structuredError.Exception.Message, structuredError.Result);
+                // PositionalException.Message carries only the inner message, so prepend the
+                // location here the same way ReportExecutionError does for ordinary failures.
+                var errorLocation = PositionalException.GetSourceTrace(structuredError.Exception).FirstOrDefault();
+                this.WriteMachineError(
+                    errorLocation == null
+                        ? structuredError.Exception.Message
+                        : $"{errorLocation.FileName}:{errorLocation.Line}:{errorLocation.Column}: {structuredError.Exception.Message}",
+                    structuredError.Result);
                 return state;
             }
 
