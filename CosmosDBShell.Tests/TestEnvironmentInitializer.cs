@@ -8,15 +8,12 @@ using System.Runtime.CompilerServices;
 
 internal static class TestEnvironmentInitializer
 {
-    // Shells created by tests persist command history; keep it out of the developer's real config directory.
+    // Shells created by tests persist command history; always override, since a pre-set value may be the developer's real config.
     [ModuleInitializer]
     internal static void IsolateShellConfigDirectory()
     {
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("COSMOSDB_SHELL_CONFIG_DIR")))
-        {
-            Environment.SetEnvironmentVariable(
-                "COSMOSDB_SHELL_CONFIG_DIR",
-                Path.Join(Path.GetTempPath(), $"cosmosshell-tests-{Environment.ProcessId}"));
-        }
+        Environment.SetEnvironmentVariable(
+            "COSMOSDB_SHELL_CONFIG_DIR",
+            Path.Join(Path.GetTempPath(), $"cosmosshell-tests-{Guid.NewGuid():N}"));
     }
 }

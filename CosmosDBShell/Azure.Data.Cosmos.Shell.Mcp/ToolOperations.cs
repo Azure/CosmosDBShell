@@ -209,22 +209,36 @@ internal class ToolOperations
         return $" --{option.Name[0]} {ShellLiteral.Quote(value?.ToString())}";
     }
 
-    internal static string FormatPositionalsForHistory(IReadOnlyList<Parameter> parameters, IReadOnlyDictionary<Parameter, object?> values)
+    // Shell syntax cannot skip a positional, so a later value would bind to the omitted slot on replay.
+    internal static string? FindPositionalGap(IReadOnlyList<Parameter> parameters, IReadOnlyDictionary<Parameter, object?> values)
     {
-        var lastSupplied = -1;
-        for (var i = 0; i < parameters.Count; i++)
+        Parameter? firstOmitted = null;
+        foreach (var parameter in parameters)
         {
-            if (values.ContainsKey(parameters[i]))
+            if (!IsPositionalSupplied(values, parameter))
             {
-                lastSupplied = i;
+                firstOmitted ??= parameter;
+            }
+            else if (firstOmitted != null)
+            {
+                return $"Parameter '{parameter.Name[0]}' requires the preceding positional parameter '{firstOmitted.Name[0]}'. Supply '{firstOmitted.Name[0]}' as well.";
             }
         }
 
+        return null;
+    }
+
+    internal static string FormatPositionalsForHistory(IReadOnlyList<Parameter> parameters, IReadOnlyDictionary<Parameter, object?> values)
+    {
         var sb = new StringBuilder();
-        for (var i = 0; i <= lastSupplied; i++)
+        foreach (var parameter in parameters)
         {
-            // An empty placeholder keeps later positionals in their bound slot.
-            values.TryGetValue(parameters[i], out var value);
+            if (!IsPositionalSupplied(values, parameter))
+            {
+                break;
+            }
+
+            var value = values[parameter];
             if (value is Array array)
             {
                 foreach (var element in array)
@@ -239,6 +253,13 @@ internal class ToolOperations
         }
 
         return sb.ToString();
+    }
+
+    private static bool IsPositionalSupplied(IReadOnlyDictionary<Parameter, object?> values, Parameter parameter)
+    {
+        return values.TryGetValue(parameter, out var value)
+            && value != null
+            && (value is not Array array || array.Length > 0);
     }
 
     internal static void ConfigurePaging(object command)
@@ -582,6 +603,14 @@ internal class ToolOperations
             var missingMessage = $"Missing required parameter(s) for command '{command.CommandName}': {string.Join("; ", missingDetails)}.";
             this.logger?.LogWarning("Missing required parameter(s) for command {CommandName}.", command.CommandName);
             return McpResponseFactory.CreateError(missingMessage, ShellInterpreter.Instance.State);
+        }
+
+        var positionalGap = FindPositionalGap(command.Parameters, positionalValues);
+        if (positionalGap != null)
+        {
+            var gapMessage = $"Invalid positional arguments for command '{command.CommandName}': {positionalGap}";
+            this.logger?.LogWarning("{Message}", gapMessage);
+            return McpResponseFactory.CreateError(gapMessage, ShellInterpreter.Instance.State);
         }
 
         var batchSubcommand = (cmd as BatchCommand)?.Subcommand?.Trim();
