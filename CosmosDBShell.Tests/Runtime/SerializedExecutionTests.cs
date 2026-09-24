@@ -68,6 +68,47 @@ public class SerializedExecutionTests
     }
 
     [Fact]
+    public void PrintCommand_RestrictsHistoryFileToOwnerOnUnix()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Unix file modes do not apply on Windows.");
+            return;
+        }
+
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(configPath);
+            var historyFile = Path.Join(configPath, "cmd_history");
+            File.WriteAllText(historyFile, string.Empty);
+            File.SetUnixFileMode(historyFile, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+            using (var shell = new ShellInterpreter(configPath))
+            {
+                shell.PrintCommand("echo 1");
+            }
+
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(historyFile));
+
+            File.Delete(historyFile);
+            using (var shell = new ShellInterpreter(configPath))
+            {
+                shell.PrintCommand("echo 2");
+            }
+
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(historyFile));
+        }
+        finally
+        {
+            if (Directory.Exists(configPath))
+            {
+                Directory.Delete(configPath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task Dispose_ReleasesExecutionGateAndIsIdempotent()
     {
         var shell = ShellInterpreter.CreateInstance();

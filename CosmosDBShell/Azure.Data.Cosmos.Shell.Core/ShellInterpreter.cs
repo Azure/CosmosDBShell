@@ -2280,7 +2280,22 @@ public partial class ShellInterpreter : IDisposable
             // sharing the history file, cannot interleave.
             lock (HistoryFileLock)
             {
-                File.WriteAllLines(this.HistoryFile, this.history.Select(EncodeHistoryLine));
+                var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.Read };
+                if (!OperatingSystem.IsWindows())
+                {
+                    // History can contain connection secrets; UnixCreateMode covers only new files.
+                    options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+                    if (File.Exists(this.HistoryFile))
+                    {
+                        File.SetUnixFileMode(this.HistoryFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                    }
+                }
+
+                using var writer = new StreamWriter(this.HistoryFile, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), options);
+                foreach (var line in this.history)
+                {
+                    writer.WriteLine(EncodeHistoryLine(line));
+                }
             }
         }
     }
