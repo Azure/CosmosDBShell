@@ -31,6 +31,9 @@ public partial class ShellInterpreter : IDisposable
 
     private const string SessionRequestChargeWarningThresholdVariable = "sessionRequestChargeWarningThreshold";
 
+    // Declared before Instance: static initializers run in order and the constructor reads history.
+    private static readonly object HistoryFileLock = new();
+
     internal static readonly ShellInterpreter Instance = new();
 
     private const int MAXHISTORYITEMS = 60;
@@ -111,7 +114,13 @@ public partial class ShellInterpreter : IDisposable
 
         if (File.Exists(this.HistoryFile))
         {
-            foreach (var line in File.ReadAllLines(this.HistoryFile))
+            string[] lines;
+            lock (HistoryFileLock)
+            {
+                lines = File.ReadAllLines(this.HistoryFile);
+            }
+
+            foreach (var line in lines)
             {
                 var decoded = DecodeHistoryLine(line);
                 this.RecordHistoryEntry(decoded);
@@ -1826,6 +1835,16 @@ public partial class ShellInterpreter : IDisposable
         //        AnsiConsole.Write(" ");
         this.RecordHistoryEntry(cmdString);
 
+        try
+        {
+            this.SaveHistory();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // History is best-effort; an unwritable history file must not fail the command.
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
+
         // Echoing and the line editor both need an ANSI terminal, which an MCP host may not
         // provide. Neither may fail the command being announced.
         try
@@ -2250,7 +2269,6 @@ public partial class ShellInterpreter : IDisposable
 
     private void SaveHistory()
     {
-        string[] snapshot;
         lock (this.historyLock)
         {
             if (this.history.Count > MAXHISTORYITEMS)
@@ -2258,10 +2276,13 @@ public partial class ShellInterpreter : IDisposable
                 this.history = [.. this.history.Skip(this.history.Count - MAXHISTORYITEMS)];
             }
 
-            snapshot = [.. this.history.Select(EncodeHistoryLine)];
+            // Written under the locks so concurrent interactive and MCP saves, and shells
+            // sharing the history file, cannot interleave.
+            lock (HistoryFileLock)
+            {
+                File.WriteAllLines(this.HistoryFile, this.history.Select(EncodeHistoryLine));
+            }
         }
-
-        File.WriteAllLines(this.HistoryFile, snapshot);
     }
 
     private void RecordHistoryEntry(string entry)

@@ -284,6 +284,38 @@ public class ToolOperationsCallToolTests
     }
 
     [Fact]
+    public async Task CallTool_PositionalArgumentsOutOfOrder_DisplaysDeclarationOrder()
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["force"] = Json("true"),
+            ["name"] = Json("\"OldDb\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("rmdb", arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Contains("rmdb \"OldDb\" \"True\"", root.GetProperty("error").GetString(), StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void FormatPositionalsForHistory_FillsGapsAndExpandsArrays()
+    {
+        var parameters = ShellInterpreter.Instance.App.Commands["theme"].Parameters;
+        var values = new Dictionary<Parameter, object?> { [parameters[2]] = "dark.json" };
+        Assert.Equal(" \"\" \"\" \"dark.json\"", ToolOperations.FormatPositionalsForHistory(parameters, values));
+
+        var echoParameters = ShellInterpreter.Instance.App.Commands["echo"].Parameters;
+        var echoValues = new Dictionary<Parameter, object?> { [echoParameters[0]] = new[] { "hello", "world" } };
+        Assert.Equal(" \"hello\" \"world\"", ToolOperations.FormatPositionalsForHistory(echoParameters, echoValues));
+    }
+
+    [Fact]
     public async Task CallTool_UnknownArgument_ReturnsErrorListingKnownArguments()
     {
         var tool = CreateToolOperations();
@@ -443,7 +475,6 @@ public class ToolOperationsCallToolTests
     public async Task CallTool_EchoCommand_ReturnsSuccessResult()
     {
         var tool = CreateToolOperations();
-        var history = ShellInterpreter.Instance.History.ToArray();
         using var output = new StringWriter();
         var arguments = new Dictionary<string, JsonElement>
         {
@@ -464,8 +495,8 @@ public class ToolOperationsCallToolTests
 
             Assert.Contains("echo", output.ToString(), StringComparison.Ordinal);
             var recorded = ShellInterpreter.Instance.History.ToArray();
-            Assert.Equal(history.Length + 1, recorded.Length);
-            Assert.StartsWith("echo", recorded[^1], StringComparison.Ordinal);
+            Assert.Equal("echo \"hello\" \"world\"", recorded[^1]);
+            Assert.Single(recorded, entry => entry == recorded[^1]);
 
             var (isError, root, document) = ReadResult(result);
             using (document)

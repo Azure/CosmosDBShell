@@ -38,6 +38,36 @@ public class SerializedExecutionTests
     }
 
     [Fact]
+    public void PrintCommand_PersistsBoundedHistory()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            using (var shell = new ShellInterpreter(configPath))
+            {
+                for (var i = 0; i < 70; i++)
+                {
+                    shell.PrintCommand($"echo {i}");
+                }
+            }
+
+            var persisted = File.ReadAllLines(Path.Join(configPath, "cmd_history"));
+            Assert.Equal(60, persisted.Length);
+            Assert.Equal("echo 69", persisted[^1]);
+
+            using var restarted = new ShellInterpreter(configPath);
+            Assert.Equal("echo 69", restarted.History[^1]);
+        }
+        finally
+        {
+            if (Directory.Exists(configPath))
+            {
+                Directory.Delete(configPath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task Dispose_ReleasesExecutionGateAndIsIdempotent()
     {
         var shell = ShellInterpreter.CreateInstance();

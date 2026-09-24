@@ -264,7 +264,7 @@ internal class ImportCommand : CosmosCommand
 
     internal static IEnumerable<(int StartLine, List<string> Fields)> ReadCsvRecords(TextReader reader, char separator, CancellationToken token)
     {
-        using var parser = CreateCsvParser(reader, separator);
+        using var parser = CreateCsvParser(reader, separator, token);
         while (true)
         {
             token.ThrowIfCancellationRequested();
@@ -296,7 +296,7 @@ internal class ImportCommand : CosmosCommand
         char separator,
         [EnumeratorCancellation] CancellationToken token)
     {
-        using var parser = CreateCsvParser(reader, separator);
+        using var parser = CreateCsvParser(reader, separator, token);
         while (true)
         {
             token.ThrowIfCancellationRequested();
@@ -323,8 +323,10 @@ internal class ImportCommand : CosmosCommand
         }
     }
 
-    private static CsvParser CreateCsvParser(TextReader reader, char separator)
-        => new(reader, new CsvConfiguration(CultureInfo.InvariantCulture)
+    // CsvParser.ReadAsync accepts no token, so cancellation is enforced at the reader to
+    // interrupt a large or unterminated record while it is still being read.
+    private static CsvParser CreateCsvParser(TextReader reader, char separator, CancellationToken token)
+        => new(new CancellationAwareTextReader(reader, token), new CsvConfiguration(CultureInfo.InvariantCulture)
         {
             Delimiter = separator.ToString(),
             IgnoreBlankLines = false,
@@ -655,5 +657,57 @@ internal class ImportCommand : CosmosCommand
         }
 
         return (success, failed, charge);
+    }
+
+    private sealed class CancellationAwareTextReader(TextReader inner, CancellationToken token) : TextReader
+    {
+        public override int Peek()
+        {
+            token.ThrowIfCancellationRequested();
+            return inner.Peek();
+        }
+
+        public override int Read()
+        {
+            token.ThrowIfCancellationRequested();
+            return inner.Read();
+        }
+
+        public override int Read(char[] buffer, int index, int count)
+        {
+            token.ThrowIfCancellationRequested();
+            return inner.Read(buffer, index, count);
+        }
+
+        public override int Read(Span<char> buffer)
+        {
+            token.ThrowIfCancellationRequested();
+            return inner.Read(buffer);
+        }
+
+        public override Task<int> ReadAsync(char[] buffer, int index, int count)
+            => this.ReadAsync(buffer.AsMemory(index, count), CancellationToken.None).AsTask();
+
+        public override async ValueTask<int> ReadAsync(Memory<char> buffer, CancellationToken cancellationToken = default)
+        {
+            token.ThrowIfCancellationRequested();
+            if (!cancellationToken.CanBeCanceled)
+            {
+                return await inner.ReadAsync(buffer, token).ConfigureAwait(false);
+            }
+
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, cancellationToken);
+            return await inner.ReadAsync(buffer, linked.Token).ConfigureAwait(false);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                inner.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
     }
 }

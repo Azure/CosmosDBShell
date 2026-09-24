@@ -209,6 +209,38 @@ internal class ToolOperations
         return $" --{option.Name[0]} {ShellLiteral.Quote(value?.ToString())}";
     }
 
+    internal static string FormatPositionalsForHistory(IReadOnlyList<Parameter> parameters, IReadOnlyDictionary<Parameter, object?> values)
+    {
+        var lastSupplied = -1;
+        for (var i = 0; i < parameters.Count; i++)
+        {
+            if (values.ContainsKey(parameters[i]))
+            {
+                lastSupplied = i;
+            }
+        }
+
+        var sb = new StringBuilder();
+        for (var i = 0; i <= lastSupplied; i++)
+        {
+            // An empty placeholder keeps later positionals in their bound slot.
+            values.TryGetValue(parameters[i], out var value);
+            if (value is Array array)
+            {
+                foreach (var element in array)
+                {
+                    sb.Append(' ').Append(ShellLiteral.Quote(element?.ToString()));
+                }
+            }
+            else
+            {
+                sb.Append(' ').Append(ShellLiteral.Quote(value?.ToString()));
+            }
+        }
+
+        return sb.ToString();
+    }
+
     internal static void ConfigurePaging(object command)
     {
         if (command is IPagedCommand paged)
@@ -458,6 +490,8 @@ internal class ToolOperations
         var cmd = command.CreateCommand();
         ConfigurePaging(cmd);
         var suppliedParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var positionalValues = new Dictionary<Parameter, object?>();
+        var optionText = new StringBuilder();
 
         if (parameters.Params.Arguments != null)
         {
@@ -478,7 +512,7 @@ internal class ToolOperations
                         memberKind: "option",
                         memberDisplay: $"--{option.Name[0]}",
                         commandName: command.CommandName,
-                        appendToHistory: value => sb.Append(FormatOptionForHistory(option, value)));
+                        appendToHistory: value => optionText.Append(FormatOptionForHistory(option, value)));
                     if (bindError != null)
                     {
                         return bindError;
@@ -497,7 +531,7 @@ internal class ToolOperations
                         memberKind: "parameter",
                         memberDisplay: parameter.Name[0],
                         commandName: command.CommandName,
-                        appendToHistory: value => sb.Append(' ').Append(ShellLiteral.Quote(value?.ToString())));
+                        appendToHistory: value => positionalValues[parameter] = value);
                     if (bindError != null)
                     {
                         return bindError;
@@ -558,6 +592,10 @@ internal class ToolOperations
             this.logger?.LogWarning(errorMessage);
             return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
         }
+
+        // MCP argument order is not semantic, so render positionals in the order the shell binds them.
+        sb.Append(FormatPositionalsForHistory(command.Parameters, positionalValues));
+        sb.Append(optionText);
 
         var server = parameters.Server;
         Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit =

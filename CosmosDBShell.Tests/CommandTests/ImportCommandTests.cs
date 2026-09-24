@@ -394,6 +394,7 @@ public class ImportCommandTests
         {
             await foreach (var _ in ImportCommand.ReadCsvRecordsAsync(reader, ',', TestContext.Current.CancellationToken))
             {
+                // Enumerate only to drive parsing until the malformed record throws.
             }
         });
         Assert.Contains("3", error.Message);
@@ -408,6 +409,46 @@ public class ImportCommandTests
         Assert.True(await records.MoveNextAsync());
         await cancellation.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await records.MoveNextAsync());
+    }
+
+    [Fact]
+    public async Task ReadCsvRecordsAsync_CancellationInterruptsBlockedRecordRead()
+    {
+        using var reader = new BlockingAfterPrefixReader("id,name\n1,\"multi");
+        using var cancellation = new CancellationTokenSource();
+        await using var records = ImportCommand.ReadCsvRecordsAsync(reader, ',', cancellation.Token).GetAsyncEnumerator(TestContext.Current.CancellationToken);
+        Assert.True(await records.MoveNextAsync());
+        var move = records.MoveNextAsync().AsTask();
+        await reader.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.False(move.IsCompleted);
+
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => move.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+    }
+
+    private sealed class BlockingAfterPrefixReader(string prefix) : TextReader
+    {
+        private bool prefixReturned;
+
+        public TaskCompletionSource Blocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async ValueTask<int> ReadAsync(Memory<char> buffer, CancellationToken cancellationToken = default)
+        {
+            if (!this.prefixReturned)
+            {
+                this.prefixReturned = true;
+                prefix.AsSpan().CopyTo(buffer.Span);
+                return prefix.Length;
+            }
+
+            this.Blocked.TrySetResult();
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return 0;
+        }
+
+        public override Task<int> ReadAsync(char[] buffer, int index, int count)
+            => this.ReadAsync(buffer.AsMemory(index, count)).AsTask();
     }
 
     [Fact]
