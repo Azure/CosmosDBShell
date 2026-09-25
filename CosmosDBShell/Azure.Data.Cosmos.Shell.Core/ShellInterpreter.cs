@@ -1872,6 +1872,16 @@ public partial class ShellInterpreter : IDisposable
             var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
             var inMachineMode = this.IsMachineMode;
 
+            // Structured failures bypass ReportExecutionError, so the script location the
+            // statement attached would otherwise be dropped from the human-readable output.
+            // Emit it here and let the structured result render itself below.
+            if (!inMachineMode
+                && state is StructuredErrorCommandState humanStructuredError
+                && humanStructuredError.Exception is PositionalException positionalError)
+            {
+                this.ReportPositionalError(positionalError);
+            }
+
             // Interactive, user-facing view: when the command supplied a custom renderer and
             // the effective format is User, let it draw. Redirection, piping, and machine
             // mode always fall through to the structured (JSON/CSV/Table) path below.

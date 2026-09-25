@@ -142,6 +142,36 @@ public class ExecuteCommandExceptionTests
     }
 
     [Fact]
+    public void PrintState_StructuredErrorWithScriptLocationInUserMode_ReportsLocationAndKeepsRenderer()
+    {
+        using var interpreter = CreateInterpreter();
+        var stderrFile = Path.GetTempFileName();
+        interpreter.ErrOutRedirect = stderrFile;
+        try
+        {
+            var rendered = false;
+            var state = new StructuredErrorCommandState(
+                new PositionalException("script.csh", new CommandException("batch", "Batch failed."), 4, 7, "batch items.json"),
+                new ShellJson(JsonSerializer.SerializeToElement(new { success = false })))
+            {
+                RenderUser = () => rendered = true,
+            };
+
+            interpreter.PrintState(state);
+
+            Assert.True(rendered);
+            var content = File.ReadAllText(stderrFile);
+            Assert.Contains("script.csh:4:7", content);
+            Assert.Contains("Batch failed.", content);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(stderrFile);
+        }
+    }
+
+    [Fact]
     public async Task ExecuteCommandAsync_ShellException_ReturnsErrorState()
     {
         using var interpreter = CreateInterpreter();
