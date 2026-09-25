@@ -77,7 +77,7 @@ public class ServerlessCreationThroughputTests
 
         await Assert.ThrowsAsync<ServerlessThroughputNotSupportedException>(
             () => CosmosArmResourceProvider.CreateDatabaseAsync(context, "db", "manual", 400, TestContext.Current.CancellationToken));
-        await databases.DidNotReceiveWithAnyArgs().CreateOrUpdateAsync(default, default!, default!, default);
+        await databases.DidNotReceiveWithAnyArgs().CreateOrUpdateAsync(default, default!, default!, TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -92,6 +92,37 @@ public class ServerlessCreationThroughputTests
 
         Assert.Equal(1000, sent!.Options.AutoscaleMaxThroughput);
         Assert.Contains("autoscaleSettings", CosmosArmResourceProvider.WriteArmModel(sent), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ArmCreateContainer_Serverless_SendsPayloadWithoutThroughput()
+    {
+        var (context, containers) = CreateArmContainerContext(ServerlessByCapacityMode());
+        CosmosDBSqlContainerCreateOrUpdateContent? sent = null;
+        containers.CreateOrUpdateAsync(WaitUntil.Completed, "Items", Arg.Do<CosmosDBSqlContainerCreateOrUpdateContent>(c => sent = c), Arg.Any<CancellationToken>())
+            .Returns(Substitute.For<ArmOperation<CosmosDBSqlContainerResource>>());
+
+        await CosmosArmResourceProvider.CreateContainerAsync(
+            context, "db", "Items", ["/tenantId", "/userId"], "/email", null, null, null, TestContext.Current.CancellationToken);
+
+        var json = CosmosArmResourceProvider.WriteArmModel(Assert.IsType<CosmosDBSqlContainerCreateOrUpdateContent>(sent));
+        Assert.DoesNotContain("throughput", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("autoscaleSettings", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("/tenantId", json);
+        Assert.Contains("/userId", json);
+        Assert.Contains("/email", json);
+    }
+
+    [Fact]
+    public async Task ArmCreateContainer_ServerlessWithOptions_ThrowsBeforeSending()
+    {
+        var (context, containers) = CreateArmContainerContext(ServerlessByCapability());
+
+        await Assert.ThrowsAsync<ServerlessThroughputNotSupportedException>(
+            () => CosmosArmResourceProvider.CreateContainerAsync(
+                context, "db", "Items", ["/pk"], null, null, "auto", 1000, TestContext.Current.CancellationToken));
+
+        await containers.DidNotReceiveWithAnyArgs().CreateOrUpdateAsync(default, default!, default!, TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -225,7 +256,7 @@ public class ServerlessCreationThroughputTests
             .ExecuteAsync(shell, new CommandState(), "create container", TestContext.Current.CancellationToken));
 
         Assert.Equal(MessageService.GetString("error-serverless_throughput_not_supported"), ex.Message);
-        await database.ReceivedWithAnyArgs(1).CreateContainerIfNotExistsAsync(default(ContainerProperties)!, default(ThroughputProperties?), default, default);
+        await database.ReceivedWithAnyArgs(1).CreateContainerIfNotExistsAsync(default(ContainerProperties)!, default(ThroughputProperties?), default, TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -285,6 +316,18 @@ public class ServerlessCreationThroughputTests
         account.GetCosmosDBSqlDatabases().Returns(databases);
         var id = new ResourceIdentifier("/subscriptions/s/resourceGroups/rg/providers/Microsoft.DocumentDB/databaseAccounts/a");
         return (new ArmCosmosContext(Substitute.For<ArmClient>(), id, "s", "rg", "a", new Uri("https://a.documents.azure.com"), account), databases);
+    }
+
+    private static (ArmCosmosContext Context, CosmosDBSqlContainerCollection Containers) CreateArmContainerContext(CosmosDBAccountData data)
+    {
+        var (context, databases) = CreateArmContext(data);
+        var database = Substitute.For<CosmosDBSqlDatabaseResource>();
+        databases.GetIfExistsAsync("db", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<NullableResponse<CosmosDBSqlDatabaseResource>>(
+                Response.FromValue(database, Substitute.For<Response>())));
+        var containers = Substitute.For<CosmosDBSqlContainerCollection>();
+        database.GetCosmosDBSqlContainers().Returns(containers);
+        return (context, containers);
     }
 
     private static CosmosDBAccountData ServerlessByCapability() => ArmCosmosDBModelFactory.CosmosDBAccountData(
