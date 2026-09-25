@@ -471,6 +471,17 @@ internal class CommandStatement : Statement
                         shell.StdOutRedirect = null;
                         shell.ErrOutRedirect = null;
                     }
+
+                    if (currentState.IsError)
+                    {
+                        if (currentState is ErrorCommandState renderError && renderError.Exception is not PositionalException)
+                        {
+                            var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(scriptContent, statement.Start);
+                            renderError.Exception = new PositionalException(fileName, renderError.Exception, line, column, lineText);
+                        }
+
+                        break;
+                    }
                 }
                 catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
                 {
@@ -537,6 +548,12 @@ internal class CommandStatement : Statement
                 break;
             }
         }*/
+
+        if (currentState is ErrorCommandState error && priorFileName is not null && priorContent is not null)
+        {
+            var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(priorContent, this.Start);
+            error.Exception = new PositionalException(priorFileName, error.Exception, line, column, lineText);
+        }
 
         return currentState;
     }

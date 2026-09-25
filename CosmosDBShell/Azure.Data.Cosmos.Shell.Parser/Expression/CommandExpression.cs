@@ -98,9 +98,17 @@ internal class CommandExpression : Expression
         if (resultState.IsError)
         {
             var failure = new CommandState.FailureException(resultState);
-            if (resultState is ErrorCommandState && interpreter.CurrentScriptFileName is { } sourceName && interpreter.CurrentScriptContent is { } sourceText)
+            if (resultState is ErrorCommandState error && interpreter.CurrentScriptFileName is { } sourceName && interpreter.CurrentScriptContent is { } sourceText)
             {
                 var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(sourceText, this.Start);
+                if (error.Exception is PositionalException positional
+                    && positional.FileName == sourceName
+                    && positional.Line == line
+                    && positional.Column == column)
+                {
+                    throw failure;
+                }
+
                 throw new PositionalException(sourceName, failure, line, column, lineText);
             }
 

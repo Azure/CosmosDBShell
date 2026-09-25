@@ -36,6 +36,31 @@ public class CommandStatementTests
         }
     }
 
+    [CosmosCommand("render-failure-test")]
+    internal sealed class RenderFailureTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            return Task.FromResult(new CommandState
+            {
+                RenderUser = () => throw new IOException("render failure"),
+            });
+        }
+    }
+
+    [CosmosCommand("touch-marker-test")]
+    internal sealed class TouchMarkerTestCommand : CosmosCommand
+    {
+        [CosmosParameter("file")]
+        public string? File { get; init; }
+
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            System.IO.File.WriteAllText(this.File!, "executed");
+            return Task.FromResult(new CommandState());
+        }
+    }
+
     private static Statement ParseStatement(string input)
     {
         var parser = new StatementParser(input);
@@ -160,6 +185,117 @@ public class CommandStatementTests
         var positional = Assert.IsType<PositionalException>(structured.Exception);
         Assert.Equal("test.csh", positional.FileName);
         Assert.IsType<CommandException>(positional.InnerException);
+    }
+
+    [Fact]
+    public async Task StructuredError_InBlock_IsNotRenderedBeforeCallerCanAddSource()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StructuredErrorTestCommand), out var factory));
+        shell.App.Commands["structured-error-test"] = factory;
+        shell.CurrentScriptFileName = "script.csh";
+        shell.CurrentScriptContent = "{ structured-error-test }";
+
+        var result = await ParseStatement(shell.CurrentScriptContent).RunAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<StructuredErrorCommandState>(result);
+        Assert.False(error.OutputRendered);
+        Assert.Single(PositionalException.GetSourceTrace(error.Exception));
+    }
+
+    [Theory]
+    [InlineData("broken")]
+    [InlineData("$result = (broken)")]
+    public async Task StructuredError_InFunction_RetainsDefinitionAndCallerFramesOnce(string invocation)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StructuredErrorTestCommand), out var factory));
+        shell.App.Commands["structured-error-test"] = factory;
+        const string definition = "def broken { structured-error-test }";
+        shell.CurrentScriptFileName = "definition.csh";
+        shell.CurrentScriptContent = definition;
+        await ParseStatement(definition).RunAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+        shell.CurrentScriptFileName = "caller.csh";
+        shell.CurrentScriptContent = invocation;
+
+        if (invocation == "broken")
+        {
+            var result = await ParseStatement(invocation).RunAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+            var error = Assert.IsType<StructuredErrorCommandState>(result);
+            Assert.False(error.OutputRendered);
+            var frames = PositionalException.GetSourceTrace(error.Exception);
+            Assert.Equal(2, frames.Count);
+            Assert.Equal("definition.csh", frames[0].FileName);
+            Assert.Equal("caller.csh", frames[1].FileName);
+        }
+        else
+        {
+            var exception = await Assert.ThrowsAsync<CommandState.FailureException>(
+                () => ParseStatement(invocation).RunAsync(shell, new CommandState(), TestContext.Current.CancellationToken));
+            var frames = PositionalException.GetSourceTrace(exception);
+            Assert.Equal(2, frames.Count);
+            Assert.Equal("definition.csh", frames[0].FileName);
+            Assert.Equal("caller.csh", frames[1].FileName);
+            Assert.IsType<StructuredErrorCommandState>(exception.State);
+        }
+    }
+
+    [Fact]
+    public async Task StructuredError_InNestedScript_RetainsChildAndParentFrames()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StructuredErrorTestCommand), out var factory));
+        shell.App.Commands["structured-error-test"] = factory;
+        var child = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(child, "structured-error-test", TestContext.Current.CancellationToken);
+            shell.CurrentScriptFileName = "parent.csh";
+            shell.CurrentScriptContent = child;
+            var command = new CommandStatement(new Token(TokenType.Identifier, child, 0, child.Length));
+
+            var result = await command.RunScriptAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            var error = Assert.IsType<StructuredErrorCommandState>(result);
+            var frames = PositionalException.GetSourceTrace(error.Exception);
+            Assert.Equal(2, frames.Count);
+            Assert.Equal(child, frames[0].FileName);
+            Assert.Equal("parent.csh", frames[1].FileName);
+        }
+        finally
+        {
+            File.Delete(child);
+        }
+    }
+
+    [Fact]
+    public async Task Script_PrintFailure_DoesNotExecuteNextStatement()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(RenderFailureTestCommand), out var renderFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(TouchMarkerTestCommand), out var markerFactory));
+        shell.App.Commands["render-failure-test"] = renderFactory;
+        shell.App.Commands["touch-marker-test"] = markerFactory;
+        var script = Path.GetTempFileName();
+        var marker = Path.Join(Path.GetTempPath(), $"script-marker-{Guid.NewGuid():N}.txt");
+        try
+        {
+            await File.WriteAllTextAsync(
+                script,
+                $"render-failure-test\ntouch-marker-test {ShellLiteral.Quote(marker.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length));
+
+            var result = await command.RunScriptAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            Assert.False(File.Exists(marker));
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(marker);
+        }
     }
 
     [Fact]

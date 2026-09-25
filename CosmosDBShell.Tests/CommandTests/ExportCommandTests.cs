@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 using NSubstitute;
 
@@ -259,7 +260,10 @@ public class ExportCommandTests
             }
             else
             {
-                await Assert.ThrowsAsync<IOException>(ExportAsync);
+                var exception = await Assert.ThrowsAsync<IOException>(ExportAsync);
+                Assert.Equal(
+                    MessageService.GetArgsString("command-export-error-file_exists", "file", Path.GetFullPath(path)),
+                    exception.Message);
                 var items = Substitute.For<IAsyncEnumerable<JsonElement>>();
                 await Assert.ThrowsAsync<IOException>(() => ExportCommand.WriteFileAsync(
                     items, ExportFormat.JsonLines, path, false, TestContext.Current.CancellationToken));
@@ -285,9 +289,14 @@ public class ExportCommandTests
         {
             var items = Substitute.For<IAsyncEnumerable<JsonElement>>();
 
-            await Assert.ThrowsAsync<IOException>(() => ExportCommand.WriteFileAsync(
+            var exception = await Assert.ThrowsAsync<IOException>(() => ExportCommand.WriteFileAsync(
                 items, ExportFormat.JsonLines, directory.FullName, overwrite, TestContext.Current.CancellationToken));
 
+            Assert.Equal(
+                MessageService.GetArgsString("command-export-error-destination_directory", "file", Path.GetFullPath(directory.FullName)),
+                exception.Message);
+            Assert.Contains("Specify a file path instead", exception.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("--force", exception.Message, StringComparison.Ordinal);
             items.DidNotReceive().GetAsyncEnumerator(Arg.Any<CancellationToken>());
         }
         finally

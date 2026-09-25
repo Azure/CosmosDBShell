@@ -451,6 +451,7 @@ command-export-success = Exported { $count } { $count ->
 } to { $file } (RU charge: { $charge })
 command-export-error-missing_file = A destination file path is required.
 command-export-error-file_exists = File '{ $file }' already exists. Use --force to overwrite.
+command-export-error-destination_directory = Destination '{ $file }' is a directory. Specify a file path instead.
 command-export-error-query_failed = Export query failed: { $status } - { $message }
 
 command-import-description = Imports items into a container from a JSON Lines, JSON array, or CSV file.

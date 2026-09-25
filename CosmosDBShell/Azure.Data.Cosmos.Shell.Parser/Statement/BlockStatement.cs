@@ -111,6 +111,11 @@ internal class BlockStatement : Statement
                 return commandState;
             }
 
+            if (commandState.IsError)
+            {
+                return commandState;
+            }
+
             commandState = shell.PrintState(commandState, markAsRendered: true);
             if (commandState.IsError)
             {

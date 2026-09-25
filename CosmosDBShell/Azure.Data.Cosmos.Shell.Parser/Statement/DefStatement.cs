@@ -148,7 +148,14 @@ internal class DefStatement : Statement
     {
         try
         {
-            return await this.ExecuteFunctionAsync(shell, commandState, token, args);
+            var result = await this.ExecuteFunctionAsync(shell, commandState, token, args);
+            if (result is ErrorCommandState error && shell.CurrentScriptFileName is { } sourceName && shell.CurrentScriptContent is { } sourceText)
+            {
+                var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(sourceText, start);
+                error.Exception = new PositionalException(sourceName, error.Exception, line, column, lineText);
+            }
+
+            return result;
         }
         catch (Exception exception) when ((exception is not OperationCanceledException || !token.IsCancellationRequested) && shell.CurrentScriptFileName != null && shell.CurrentScriptContent != null)
         {
