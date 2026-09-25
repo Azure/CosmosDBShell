@@ -15,6 +15,7 @@
 
 ### Fixes
 
+- `mkdb`, `mkcon`, `create database`, and `create container` now work on serverless accounts. They previously requested autoscale throughput even when `--scale` and `--ru` were omitted, which serverless accounts reject. Omitting both options now creates the resource without throughput settings; supplying either option on a serverless account fails with an explanation. Provisioned accounts keep the existing autoscale default of 1000 RU/s. ([#218](https://github.com/Azure/CosmosDBShell/issues/218))
 - Local emulator outages are now detected across Cosmos DB commands. Requests fail promptly with an error and return the shell to its disconnected state instead of leaving an unresponsive session labeled as connected.
 - A failed or cancelled export no longer destroys its destination file. Exports are written to a temporary file in the destination directory and moved into place only after they complete, so an existing file survives query failures, write failures, and cancellation. An abrupt process termination can leave an unfinished `.cosmos-export-*.tmp` file behind. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
 - `export --max` no longer requests a further query page once the limit is reached, so the reported request charge no longer includes a page whose items were discarded. Query iterators are now disposed. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))

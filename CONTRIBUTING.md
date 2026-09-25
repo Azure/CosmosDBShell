@@ -144,6 +144,14 @@ You can develop and test without an Azure subscription by using the [Azure Cosmo
 dotnet run --project CosmosDBShell/CosmosDBShell.csproj -- --connect "https://localhost:8081"
 ```
 
+### Live Serverless Smoke Test
+
+The emulator cannot reproduce serverless behavior. To verify database and container creation against a real serverless account, set `COSMOSDB_SHELL_SERVERLESS_TEST_CONNECTION_STRING` to that account's connection string and run the `LiveServerless` test category. The test creates and then deletes a uniquely named database; without the variable, it is skipped.
+
+```bash
+dotnet test CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --filter "Category=LiveServerless"
+```
+
 ## Submitting a Pull Request
 
 1. Fork the repository and create a feature branch from `main`.

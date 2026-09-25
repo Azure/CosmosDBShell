@@ -73,8 +73,10 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
 
     public async Task<string> CreateDatabaseAsync(string databaseName, string? scale, int? maxRu, CancellationToken token)
     {
-        var throughput = CreateThroughputProperties(scale, maxRu);
-        var response = await client.CreateDatabaseIfNotExistsAsync(databaseName, throughput, cancellationToken: token);
+        var response = await CreateWithServerlessFallbackAsync(
+            scale,
+            maxRu,
+            throughput => client.CreateDatabaseIfNotExistsAsync(databaseName, throughput, cancellationToken: token));
         RequestChargeContext.Record(response.RequestCharge);
         return response.Database.Id;
     }
@@ -109,9 +111,11 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
             props.IndexingPolicy = ParseIndexingPolicy(indexPolicyJson);
         }
 
-        var throughput = CreateThroughputProperties(scale, maxRu);
         var database = client.GetDatabase(databaseName);
-        var response = await database.CreateContainerIfNotExistsAsync(props, throughput, cancellationToken: token);
+        var response = await CreateWithServerlessFallbackAsync(
+            scale,
+            maxRu,
+            throughput => database.CreateContainerIfNotExistsAsync(props, throughput, cancellationToken: token));
         RequestChargeContext.Record(response.RequestCharge);
         return response.Container.Id;
     }
@@ -452,15 +456,22 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
-    private static ThroughputProperties CreateThroughputProperties(string? scale, int? maxRu)
+    // The data plane cannot read the capacity mode, so serverless is detected from the service's rejection.
+    internal static async Task<T> CreateWithServerlessFallbackAsync<T>(string? scale, int? maxRu, Func<ThroughputProperties?, Task<T>> create)
     {
-        var ru = maxRu ?? 1000;
-        if (string.Equals(scale, "manual", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(scale, "m", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            return ThroughputProperties.CreateManualThroughput(ru);
+            return await create(CreationThroughput.CreateProperties(scale, maxRu));
         }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.BadRequest && ThroughputErrors.IsServerlessThroughputError(ex.Message))
+        {
+            if (CreationThroughput.IsSpecified(scale, maxRu))
+            {
+                throw new ServerlessThroughputNotSupportedException(ex);
+            }
 
-        return ThroughputProperties.CreateAutoscaleThroughput(ru);
+            RequestChargeContext.Record(ex.RequestCharge);
+            return await create(null);
+        }
     }
 }

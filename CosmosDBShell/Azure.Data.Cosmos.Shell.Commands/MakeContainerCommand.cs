@@ -167,6 +167,10 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         {
             throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_invalid_index_policy"), ex);
         }
+        catch (ServerlessThroughputNotSupportedException ex)
+        {
+            throw new CommandException("mkcon", MessageService.GetString("error-serverless_throughput_not_supported"), ex);
+        }
 
         CosmosCompleteCommand.ClearContainers();
         var commandState = new CommandState();

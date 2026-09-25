@@ -27,13 +27,7 @@ internal class MakeDbCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
 
     public static ThroughputProperties CreateThroughputProperties(string? scale, int? maxru)
     {
-        var ru = maxru ?? 1000;
-        if (string.Equals(scale, "manual", StringComparison.InvariantCultureIgnoreCase) || string.Equals(scale, "m", StringComparison.InvariantCultureIgnoreCase))
-        {
-            return ThroughputProperties.CreateManualThroughput(ru);
-        }
-
-        return ThroughputProperties.CreateAutoscaleThroughput(ru);
+        return CreationThroughput.CreateProperties(scale, maxru);
     }
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
@@ -48,7 +42,16 @@ internal class MakeDbCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitConnectedStateAsync(ConnectedState state, ShellInterpreter shell, CancellationToken token)
     {
-        var databaseName = await CosmosResourceFacade.CreateDatabaseAsync(state, this.Name ?? string.Empty, this.Scale, this.MaxRU, token);
+        string databaseName;
+        try
+        {
+            databaseName = await CosmosResourceFacade.CreateDatabaseAsync(state, this.Name ?? string.Empty, this.Scale, this.MaxRU, token);
+        }
+        catch (ServerlessThroughputNotSupportedException ex)
+        {
+            throw new CommandException("mkdb", MessageService.GetString("error-serverless_throughput_not_supported"), ex);
+        }
+
         CosmosCompleteCommand.ClearDatabases();
 
         var commandState = new CommandState();
