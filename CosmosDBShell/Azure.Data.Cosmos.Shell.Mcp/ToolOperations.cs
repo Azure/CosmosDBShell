@@ -301,7 +301,7 @@ internal class ToolOperations
     {
         var description = option.GetDescription(command.CommandName);
         return IsPagedMaxOption(command, option)
-            ? $"{description} Through MCP this must be positive and bounds a single page rather than the whole result set. Omitted or non-positive values use the default of {DefaultPageSize}. A call can return fewer items and still have more available; use continuationToken to detect the end."
+            ? $"{description} Through MCP this must be positive and bounds a single page rather than the whole result set. Omitted or non-positive values use the default of {DefaultPageSize}. A call can return fewer items and still have more available; a null continuationToken marks the end of the results unless the response sets resultIncomplete, which reports results that were cut off and cannot be resumed."
             : description;
     }
 

@@ -115,6 +115,11 @@ internal static class McpResponseFactory
             payload["continuationToken"] = commandState.ContinuationToken;
         }
 
+        if (commandState.IncompleteWithoutContinuation)
+        {
+            payload["resultIncomplete"] = true;
+        }
+
         if (commandState.OutputFormat == OutputFormat.CSV)
         {
             var outputText = commandState.GenerateOutputText();

@@ -647,6 +647,7 @@
   "command-query-index_metrics": "Index Utilization Metric",
   "command-query-index_score": "Index Impact Score",
   "command-query-index_spec": "Index Spec",
+  "command-query-no_continuation": "This query cannot be resumed: its execution plan does not return a continuation token, so the remaining results were not retrieved. Raise the limit with --max, use --max 0 for no limit, or narrow the query.",
   "command-query-output": "Output",
   "command-query-query_preparation": "Query preparation",
   "command-query-request_charge": "Request Charge: {0} RUs",

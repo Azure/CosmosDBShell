@@ -249,4 +249,37 @@ public class McpResponseFactoryTests
         Assert.NotNull(result.StructuredContent);
         Assert.False(result.StructuredContent!.Value.TryGetProperty("requestCharge", out _));
     }
+
+    [Fact]
+    public void CreateSuccess_IncompletePage_MarksResultIncomplete()
+    {
+        var commandState = new CommandState
+        {
+            IsPage = true,
+            IncompleteWithoutContinuation = true,
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { result = "success" })),
+        };
+
+        var result = McpResponseFactory.CreateSuccess(commandState, new ConnectedState(null!));
+
+        Assert.NotNull(result.StructuredContent);
+        var structured = result.StructuredContent!.Value;
+        Assert.Equal(JsonValueKind.Null, structured.GetProperty("continuationToken").ValueKind);
+        Assert.True(structured.GetProperty("resultIncomplete").GetBoolean());
+    }
+
+    [Fact]
+    public void CreateSuccess_CompletePage_OmitsResultIncomplete()
+    {
+        var commandState = new CommandState
+        {
+            IsPage = true,
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { result = "success" })),
+        };
+
+        var result = McpResponseFactory.CreateSuccess(commandState, new ConnectedState(null!));
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.False(result.StructuredContent!.Value.TryGetProperty("resultIncomplete", out _));
+    }
 }

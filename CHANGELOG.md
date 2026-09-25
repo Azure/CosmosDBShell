@@ -15,6 +15,7 @@
 
 ### Fixes
 
+- Vector `ORDER BY`, `ORDER BY RANK` relevance ranking, and object-shaped `DISTINCT` projections no longer fail with a continuation-token error. These query pipelines execute successfully but cannot export a resumable token, which was previously reported as a command failure. Such queries now return their documents; through MCP they keep reading until the requested limit instead of stopping after one page, and a truncated result is reported as `resultIncomplete` rather than as an exhausted result set. ([#219](https://github.com/Azure/CosmosDBShell/issues/219))
 - Local emulator outages are now detected across Cosmos DB commands. Requests fail promptly with an error and return the shell to its disconnected state instead of leaving an unresponsive session labeled as connected.
 - A failed or cancelled export no longer destroys its destination file. Exports are written to a temporary file in the destination directory and moved into place only after they complete, so an existing file survives query failures, write failures, and cancellation. An abrupt process termination can leave an unfinished `.cosmos-export-*.tmp` file behind. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
 - `export --max` no longer requests a further query page once the limit is reached, so the reported request charge no longer includes a page whose items were discarded. Query iterators are now disposed. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
