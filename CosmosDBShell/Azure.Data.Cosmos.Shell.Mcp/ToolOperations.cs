@@ -209,6 +209,59 @@ internal class ToolOperations
         return $" --{option.Name[0]} {ShellLiteral.Quote(value?.ToString())}";
     }
 
+    // Shell syntax cannot skip a positional, so a later value would bind to the omitted slot on replay.
+    internal static string? FindPositionalGap(IReadOnlyList<Parameter> parameters, IReadOnlyDictionary<Parameter, object?> values)
+    {
+        Parameter? firstOmitted = null;
+        foreach (var parameter in parameters)
+        {
+            if (!IsPositionalSupplied(values, parameter))
+            {
+                firstOmitted ??= parameter;
+            }
+            else if (firstOmitted != null)
+            {
+                return $"Parameter '{parameter.Name[0]}' requires the preceding positional parameter '{firstOmitted.Name[0]}'. Supply '{firstOmitted.Name[0]}' as well.";
+            }
+        }
+
+        return null;
+    }
+
+    internal static string FormatPositionalsForHistory(IReadOnlyList<Parameter> parameters, IReadOnlyDictionary<Parameter, object?> values)
+    {
+        var sb = new StringBuilder();
+        foreach (var parameter in parameters)
+        {
+            if (!IsPositionalSupplied(values, parameter))
+            {
+                break;
+            }
+
+            var value = values[parameter];
+            if (value is Array array)
+            {
+                foreach (var element in array)
+                {
+                    sb.Append(' ').Append(ShellLiteral.Quote(element?.ToString()));
+                }
+            }
+            else
+            {
+                sb.Append(' ').Append(ShellLiteral.Quote(value?.ToString()));
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static bool IsPositionalSupplied(IReadOnlyDictionary<Parameter, object?> values, Parameter parameter)
+    {
+        return values.TryGetValue(parameter, out var value)
+            && value != null
+            && (value is not Array array || array.Length > 0);
+    }
+
     internal static void ConfigurePaging(object command)
     {
         if (command is IPagedCommand paged)
@@ -458,6 +511,8 @@ internal class ToolOperations
         var cmd = command.CreateCommand();
         ConfigurePaging(cmd);
         var suppliedParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var positionalValues = new Dictionary<Parameter, object?>();
+        var optionText = new StringBuilder();
 
         if (parameters.Params.Arguments != null)
         {
@@ -478,7 +533,7 @@ internal class ToolOperations
                         memberKind: "option",
                         memberDisplay: $"--{option.Name[0]}",
                         commandName: command.CommandName,
-                        appendToHistory: value => sb.Append(FormatOptionForHistory(option, value)));
+                        appendToHistory: value => optionText.Append(FormatOptionForHistory(option, value)));
                     if (bindError != null)
                     {
                         return bindError;
@@ -497,7 +552,7 @@ internal class ToolOperations
                         memberKind: "parameter",
                         memberDisplay: parameter.Name[0],
                         commandName: command.CommandName,
-                        appendToHistory: value => sb.Append(' ').Append(ShellLiteral.Quote(value?.ToString())));
+                        appendToHistory: value => positionalValues[parameter] = value);
                     if (bindError != null)
                     {
                         return bindError;
@@ -550,6 +605,14 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(missingMessage, ShellInterpreter.Instance.State);
         }
 
+        var positionalGap = FindPositionalGap(command.Parameters, positionalValues);
+        if (positionalGap != null)
+        {
+            var gapMessage = $"Invalid positional arguments for command '{command.CommandName}': {positionalGap}";
+            this.logger?.LogWarning("{Message}", gapMessage);
+            return McpResponseFactory.CreateError(gapMessage, ShellInterpreter.Instance.State);
+        }
+
         var batchSubcommand = (cmd as BatchCommand)?.Subcommand?.Trim();
         if (!string.IsNullOrEmpty(batchSubcommand)
             && !string.Equals(batchSubcommand, "run", StringComparison.OrdinalIgnoreCase))
@@ -559,6 +622,9 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
         }
 
+        // MCP argument order is not semantic, so render positionals in the order the shell binds them.
+        sb.Append(FormatPositionalsForHistory(command.Parameters, positionalValues));
+        sb.Append(optionText);
         var server = parameters.Server;
         Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit =
             server?.ClientCapabilities?.Elicitation != null ? server.ElicitAsync : null;

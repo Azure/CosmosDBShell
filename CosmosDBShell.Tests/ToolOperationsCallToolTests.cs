@@ -284,6 +284,69 @@ public class ToolOperationsCallToolTests
     }
 
     [Fact]
+    public async Task CallTool_PositionalArgumentsOutOfOrder_DisplaysDeclarationOrder()
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["force"] = Json("true"),
+            ["name"] = Json("\"OldDb\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("rmdb", arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Contains("rmdb \"OldDb\" \"True\"", root.GetProperty("error").GetString(), StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task CallTool_PositionalGap_ReturnsErrorWithoutExecuting()
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["path"] = Json("\"dark.json\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("theme", arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            var error = root.GetProperty("error").GetString();
+            Assert.Contains("'path'", error, StringComparison.Ordinal);
+            Assert.Contains("'action'", error, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void FindPositionalGap_DetectsOmittedAndNullPredecessors()
+    {
+        var parameters = ShellInterpreter.Instance.App.Commands["theme"].Parameters;
+
+        Assert.NotNull(ToolOperations.FindPositionalGap(parameters, new Dictionary<Parameter, object?> { [parameters[2]] = "dark.json" }));
+        Assert.NotNull(ToolOperations.FindPositionalGap(parameters, new Dictionary<Parameter, object?> { [parameters[0]] = null, [parameters[1]] = "dark" }));
+        Assert.Null(ToolOperations.FindPositionalGap(parameters, new Dictionary<Parameter, object?> { [parameters[0]] = "show", [parameters[1]] = "dark" }));
+    }
+
+    [Fact]
+    public void FormatPositionalsForHistory_RendersContiguousValuesAndExpandsArrays()
+    {
+        var parameters = ShellInterpreter.Instance.App.Commands["theme"].Parameters;
+        var values = new Dictionary<Parameter, object?> { [parameters[0]] = "show", [parameters[1]] = "dark" };
+        Assert.Equal(" \"show\" \"dark\"", ToolOperations.FormatPositionalsForHistory(parameters, values));
+
+        var echoParameters = ShellInterpreter.Instance.App.Commands["echo"].Parameters;
+        var echoValues = new Dictionary<Parameter, object?> { [echoParameters[0]] = new[] { "hello", "world" } };
+        Assert.Equal(" \"hello\" \"world\"", ToolOperations.FormatPositionalsForHistory(echoParameters, echoValues));
+    }
+
+    [Fact]
     public async Task CallTool_UnknownArgument_ReturnsErrorListingKnownArguments()
     {
         var tool = CreateToolOperations();
@@ -465,7 +528,8 @@ public class ToolOperationsCallToolTests
             Assert.Contains("echo", output.ToString(), StringComparison.Ordinal);
             var recorded = ShellInterpreter.Instance.History.ToArray();
             Assert.Equal(history.Length + 1, recorded.Length);
-            Assert.StartsWith("echo", recorded[^1], StringComparison.Ordinal);
+            Assert.Equal("echo \"hello\" \"world\"", recorded[^1]);
+            Assert.Single(recorded, entry => entry == recorded[^1]);
 
             var (isError, root, document) = ReadResult(result);
             using (document)

@@ -5,6 +5,110 @@ using Azure.Data.Cosmos.Shell.Core;
 public class SerializedExecutionTests
 {
     [Fact]
+    public async Task PrintCommand_ConcurrentWithHistorySnapshots_DoesNotCorruptHistory()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        var writer = Task.Run(
+            () =>
+            {
+                for (var i = 0; i < 500; i++)
+                {
+                    shell.PrintCommand($"echo {i}");
+                }
+            },
+            cancellation.Token);
+
+        var reader = Task.Run(
+            () =>
+            {
+                while (!writer.IsCompleted)
+                {
+                    foreach (var entry in shell.History)
+                    {
+                        Assert.NotNull(entry);
+                    }
+                }
+            },
+            cancellation.Token);
+
+        await Task.WhenAll(writer, reader);
+        Assert.Equal("echo 499", shell.History[^1]);
+    }
+
+    [Fact]
+    public void PrintCommand_PersistsBoundedHistory()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            using (var shell = new ShellInterpreter(configPath))
+            {
+                for (var i = 0; i < 70; i++)
+                {
+                    shell.PrintCommand($"echo {i}");
+                }
+            }
+
+            var persisted = File.ReadAllLines(Path.Join(configPath, "cmd_history"));
+            Assert.Equal(60, persisted.Length);
+            Assert.Equal("echo 69", persisted[^1]);
+
+            using var restarted = new ShellInterpreter(configPath);
+            Assert.Equal("echo 69", restarted.History[^1]);
+        }
+        finally
+        {
+            if (Directory.Exists(configPath))
+            {
+                Directory.Delete(configPath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void PrintCommand_RestrictsHistoryFileToOwnerOnUnix()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Unix file modes do not apply on Windows.");
+            return;
+        }
+
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(configPath);
+            var historyFile = Path.Join(configPath, "cmd_history");
+            File.WriteAllText(historyFile, string.Empty);
+            File.SetUnixFileMode(historyFile, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+            using (var shell = new ShellInterpreter(configPath))
+            {
+                shell.PrintCommand("echo 1");
+            }
+
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(historyFile));
+
+            File.Delete(historyFile);
+            using (var shell = new ShellInterpreter(configPath))
+            {
+                shell.PrintCommand("echo 2");
+            }
+
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(historyFile));
+        }
+        finally
+        {
+            if (Directory.Exists(configPath))
+            {
+                Directory.Delete(configPath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task Dispose_ReleasesExecutionGateAndIsIdempotent()
     {
         var shell = ShellInterpreter.CreateInstance();

@@ -371,6 +371,87 @@ public class ImportCommandTests
     }
 
     [Fact]
+    public async Task ReadCsvRecordsAsync_MatchesSynchronousRecordsAndStartLines()
+    {
+        const string content = "id,name\n1,\"multi\nline\"\n2,Bob\n";
+        using var reader = new StringReader(content);
+        var actual = new List<(int StartLine, List<string> Fields)>();
+        await foreach (var record in ImportCommand.ReadCsvRecordsAsync(reader, ',', TestContext.Current.CancellationToken))
+        {
+            actual.Add(record);
+        }
+
+        var expected = ImportCommand.ParseCsvWithLines(content, ',');
+        Assert.Equal(expected.Select(r => r.StartLine), actual.Select(r => r.StartLine));
+        Assert.Equal(expected.Select(r => r.Fields), actual.Select(r => r.Fields));
+    }
+
+    [Fact]
+    public async Task ReadCsvRecordsAsync_ReportsMalformedRecordWithPhysicalLine()
+    {
+        using var reader = new StringReader("id,name\n1,Alice\n2,\"unterminated");
+        var error = await Assert.ThrowsAsync<CommandException>(async () =>
+        {
+            await foreach (var _ in ImportCommand.ReadCsvRecordsAsync(reader, ',', TestContext.Current.CancellationToken))
+            {
+                // Enumerate only to drive parsing until the malformed record throws.
+            }
+        });
+        Assert.Contains("3", error.Message);
+    }
+
+    [Fact]
+    public async Task ReadCsvRecordsAsync_CancellationStopsBetweenRecords()
+    {
+        using var reader = new StringReader("id,name\n1,Alice\n2,Bob");
+        using var cancellation = new CancellationTokenSource();
+        await using var records = ImportCommand.ReadCsvRecordsAsync(reader, ',', cancellation.Token).GetAsyncEnumerator(TestContext.Current.CancellationToken);
+        Assert.True(await records.MoveNextAsync());
+        await cancellation.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await records.MoveNextAsync());
+    }
+
+    [Fact]
+    public async Task ReadCsvRecordsAsync_CancellationInterruptsBlockedRecordRead()
+    {
+        using var reader = new BlockingAfterPrefixReader("id,name\n1,\"multi");
+        using var cancellation = new CancellationTokenSource();
+        await using var records = ImportCommand.ReadCsvRecordsAsync(reader, ',', cancellation.Token).GetAsyncEnumerator(TestContext.Current.CancellationToken);
+        Assert.True(await records.MoveNextAsync());
+        var move = records.MoveNextAsync().AsTask();
+        await reader.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.False(move.IsCompleted);
+
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => move.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+    }
+
+    private sealed class BlockingAfterPrefixReader(string prefix) : TextReader
+    {
+        private bool prefixReturned;
+
+        public TaskCompletionSource Blocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async ValueTask<int> ReadAsync(Memory<char> buffer, CancellationToken cancellationToken = default)
+        {
+            if (!this.prefixReturned)
+            {
+                this.prefixReturned = true;
+                prefix.AsSpan().CopyTo(buffer.Span);
+                return prefix.Length;
+            }
+
+            this.Blocked.TrySetResult();
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return 0;
+        }
+
+        public override Task<int> ReadAsync(char[] buffer, int index, int count)
+            => this.ReadAsync(buffer.AsMemory(index, count)).AsTask();
+    }
+
+    [Fact]
     public void ParseCsvWithLines_SkipsBlankLinesWithoutLosingPhysicalLineNumbers()
     {
         var records = ImportCommand.ParseCsvWithLines("id,name\n\n\n1,Alice\n", ',');
