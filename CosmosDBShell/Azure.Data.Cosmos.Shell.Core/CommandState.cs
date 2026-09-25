@@ -75,7 +75,9 @@ public partial class CommandState
     internal bool IsPage { get; set; }
 
     /// <summary>
-    /// Gets or sets the token for retrieving the next page, or <see langword="null"/> when the result is exhausted.
+    /// Gets or sets the token for retrieving the next page. A <see langword="null"/> token
+    /// indicates exhaustion only when <see cref="IncompleteWithoutContinuation"/> is false;
+    /// otherwise the result is truncated and cannot be resumed.
     /// </summary>
     internal string? ContinuationToken { get; set; }
 
