@@ -14,6 +14,7 @@ using Microsoft.Azure.Cosmos;
 using NSubstitute;
 using Spectre.Console;
 
+[Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class QueryCommandTests
 {
     private class TestServerSideMetrics : ServerSideMetrics
