@@ -6,11 +6,28 @@
 
 - Cosmos DB data-plane commands now consistently expose their aggregate observed request charge in structured output and connection-scoped `info` telemetry, including metadata/configuration operations, scripts, change feed reads, paginated operations, handled probes, and charged failures. Azure Resource Manager control-plane operations remain uncharged.
 - Added `$sessionRequestCharge` and `$sessionChargedOperationCount` as read-only shell variables. Set `$sessionRequestChargeWarningThreshold` to a positive RU threshold to print one warning when the current connection reaches it; `info` reports it as `session.requestChargeWarningThreshold`.
+- Destructive MCP confirmations now identify their target. The elicitation prompt adds the connected account endpoint and the current database/container location, and notes that explicit `--db`/`--con` arguments override that location. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- Import and export no longer hold entire files in memory. CSV imports are parsed incrementally, and CSV exports spool documents to a private temporary file to determine the complete column set, so transfers no longer scale with document count. Allow temporary disk space for the CSV export spool in addition to the destination file. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+
+### Breaking changes
+
+- Malformed CSV files are now rejected instead of being silently misread. An unterminated or misplaced quote previously caused the remainder of the file to be absorbed into a single field, so the import reported success while writing corrupted items. Such files now abort with `Invalid CSV record at line <n>`. Imports that previously appeared to succeed may now fail and require the source file to be corrected. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
 
 ### Fixes
 
 - Vector `ORDER BY`, `ORDER BY RANK` relevance ranking, and object-shaped `DISTINCT` projections no longer fail with a continuation-token error. These query pipelines execute successfully but cannot export a resumable token, which was previously reported as a command failure. Such queries now return their documents; through MCP they keep reading until the requested limit instead of stopping after one page, and a truncated result is reported as `resultIncomplete` rather than as an exhausted result set. ([#219](https://github.com/Azure/CosmosDBShell/issues/219))
 - Local emulator outages are now detected across Cosmos DB commands. Requests fail promptly with an error and return the shell to its disconnected state instead of leaving an unresponsive session labeled as connected.
+- A failed or cancelled export no longer destroys its destination file. Exports are written to a temporary file in the destination directory and moved into place only after they complete, so an existing file survives query failures, write failures, and cancellation. An abrupt process termination can leave an unfinished `.cosmos-export-*.tmp` file behind. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- `export --max` no longer requests a further query page once the limit is reached, so the reported request charge no longer includes a page whose items were discarded. Query iterators are now disposed. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- Shell and MCP command execution is serialized, including nested shell calls, so concurrent requests can no longer interleave and corrupt the shared connection and navigation state. Waiting for a destructive confirmation does not hold the execution lock. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- A destructive MCP command is refused when the connection or navigation context changes while its confirmation is pending, including navigating away and back. It previously ran against the changed context. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- Echoing an MCP command line no longer fails the command it announces on hosts without an ANSI terminal, which previously reported `Terminal does not support ANSI` instead of running it. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- MCP command lines now list positional arguments in the order the command binds them. A destructive confirmation and the recorded history entry previously followed the client's argument order, so `rmdb` could display its `force` flag in place of the database name. A call that supplies a positional argument while omitting an earlier one is now rejected, because the shell cannot express that call and the recorded command would bind differently on replay. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- MCP invocations are now saved to the history file as they run and are bounded by the history size limit. They were previously saved only when a later interactive command was entered. On Linux and macOS, the history file is now restricted to its owner, including an existing file that was previously readable by other users. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+
+### Build & pipeline
+
+- Added a dependency on CsvHelper 33.1.0 for CSV parsing. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
 
 ## 1.1.209-preview — 2026-08-26
 

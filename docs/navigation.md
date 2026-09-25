@@ -236,6 +236,8 @@ There is no separate "enter multi-line mode" command — the shell enters and le
 
 Multi-line commands are saved to history as a single entry. When you recall one with `Up` / `Ctrl+P` or reverse-search (`Ctrl+R`), the full multi-line text is restored. History files written by older versions of the shell continue to load unchanged.
 
+Commands are stored in full so they can be executed again, including connection strings containing account keys. Treat the `cmd_history` file in the shell configuration directory as sensitive: protect it with your user account's file permissions and do not share it. Use Entra ID to avoid storing account keys, or `--clear-history` to clear the saved history. MCP tool invocations are echoed as command lines and recorded in the same history.
+
 ## Keyboard Shortcuts
 
 Available at the interactive prompt:
