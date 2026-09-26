@@ -8,7 +8,7 @@ using Azure.Data.Cosmos.Shell.Util;
 
 internal class ErrorCommandState(Exception exception) : CommandState
 {
-    public Exception Exception { get; init; } = exception;
+    public Exception Exception { get; internal set; } = exception;
 
     public override bool IsError => true;
 

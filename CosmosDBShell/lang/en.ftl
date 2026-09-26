@@ -451,6 +451,7 @@ command-export-success = Exported { $count } { $count ->
 } to { $file } (RU charge: { $charge })
 command-export-error-missing_file = A destination file path is required.
 command-export-error-file_exists = File '{ $file }' already exists. Use --force to overwrite.
+command-export-error-destination_directory = Destination '{ $file }' is a directory. Specify a file path instead.
 command-export-error-query_failed = Export query failed: { $status } - { $message }
 
 command-import-description = Imports items into a container from a JSON Lines, JSON array, or CSV file.
@@ -477,6 +478,18 @@ command-import-dry-run-success = Dry run: { $count } valid { $count ->
 }
 command-import-error-missing_file = A source file path is required.
 command-import-error-invalid_csv = Invalid CSV record at line { $line }.
+script-error-argument-count = Function '{ $name }' expects { $expected } { $expected ->
+    [one] argument
+   *[other] arguments
+    }, got { $actual }.
+script-error-loop-control = break and continue require an enclosing loop in the same function or script.
+script-error-return-context = return requires an enclosing function or script file.
+script-error-duplicate-parameter = Duplicate function parameter '{ $name }'.
+script-error-command-failed = Command expression '{ $name }' failed.
+script-error-expression-failed = Command expression failed.
+script-error-call-depth = Maximum function/script call depth of { $limit } exceeded.
+script-error-parse-depth = Maximum parser nesting budget of { $limit } exceeded. Simplify the expression or split the script.
+script-error-expression-depth = Maximum expression tree depth of { $limit } exceeded. Simplify the expression or split the script.
 command-import-error-file_not_found = File '{ $file }' was not found.
 command-import-error-blank_line = Line { $line } is blank.
 command-import-error-not_object = Line { $line } is not a JSON object.

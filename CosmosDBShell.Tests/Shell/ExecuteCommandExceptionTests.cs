@@ -10,6 +10,99 @@ using Azure.Data.Cosmos.Shell.Parser;
 
 public class ExecuteCommandExceptionTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task FileParserError_ReportsItsOwnSource(bool expression, bool machineMode)
+    {
+        using var interpreter = CreateInterpreter();
+        var script = Path.GetTempFileName().Replace('\\', '/');
+        var output = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(script, "\n}", TestContext.Current.CancellationToken);
+            interpreter.ErrOutRedirect = output;
+            if (machineMode)
+            {
+                interpreter.Options = new Program.CosmosShellOptions { Output = "json" };
+            }
+
+            var command = expression ? $"def invoke {{ exec \"{script}\" }}; $value = (invoke)" : $"exec \"{script}\"";
+            var state = await interpreter.ExecuteCommandAsync(command, CancellationToken.None);
+            Assert.Equal(ShellExitCode.UsageError, state.ExitCode);
+            var content = File.ReadAllText(output);
+            if (machineMode)
+            {
+                using var json = JsonDocument.Parse(content);
+                content = json.RootElement.GetProperty("error").GetString()!;
+                Assert.Contains(":2:1:", content);
+            }
+            else
+            {
+                Assert.Contains(":2:1:", content);
+                Assert.Contains("}", content);
+            }
+
+            Assert.Contains(Path.GetFileName(script), content);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(script);
+            File.Delete(output);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NestedScriptError_ReportsOriginAndRetainsCaller(bool machineMode)
+    {
+        using var interpreter = CreateInterpreter();
+        var child = Path.GetTempFileName().Replace('\\', '/');
+        var parent = Path.GetTempFileName().Replace('\\', '/');
+        var output = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(child, "\n$invalid = 1 / 0", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(parent, $"exec \"{child}\"", TestContext.Current.CancellationToken);
+            interpreter.ErrOutRedirect = output;
+            if (machineMode)
+            {
+                interpreter.Options = new Program.CosmosShellOptions { Output = "json" };
+            }
+
+            var state = Assert.IsType<ErrorCommandState>(await interpreter.ExecuteCommandAsync($"exec \"{parent}\"", CancellationToken.None));
+            Assert.Equal(ShellExitCode.GeneralFailure, state.ExitCode);
+            var frames = PositionalException.GetSourceTrace(state.Exception);
+            Assert.Equal(child, frames[0].FileName);
+            Assert.Equal(2, frames[0].Line);
+            Assert.Contains(frames, frame => frame.FileName == parent);
+            var content = File.ReadAllText(output);
+            if (machineMode)
+            {
+                using var json = JsonDocument.Parse(content);
+                content = json.RootElement.GetProperty("error").GetString()!;
+            }
+            else
+            {
+                Assert.Contains($"at {parent}:1:1", content);
+            }
+
+            Assert.Contains($"{Path.GetFileName(child)}:2:1", content);
+            Assert.Null(interpreter.CurrentScriptFileName);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(child);
+            File.Delete(parent);
+            File.Delete(output);
+        }
+    }
+
     private ShellInterpreter CreateInterpreter()
     {
         return new ShellInterpreter();
@@ -44,6 +137,36 @@ public class ExecuteCommandExceptionTests
             interpreter.StdOutRedirect = null;
             interpreter.ErrOutRedirect = null;
             File.Delete(stdoutFile);
+            File.Delete(stderrFile);
+        }
+    }
+
+    [Fact]
+    public void PrintState_StructuredErrorWithScriptLocationInUserMode_ReportsLocationAndKeepsRenderer()
+    {
+        using var interpreter = CreateInterpreter();
+        var stderrFile = Path.GetTempFileName();
+        interpreter.ErrOutRedirect = stderrFile;
+        try
+        {
+            var rendered = false;
+            var state = new StructuredErrorCommandState(
+                new PositionalException("script.csh", new CommandException("batch", "Batch failed."), 4, 7, "batch items.json"),
+                new ShellJson(JsonSerializer.SerializeToElement(new { success = false })))
+            {
+                RenderUser = () => rendered = true,
+            };
+
+            interpreter.PrintState(state);
+
+            Assert.True(rendered);
+            var content = File.ReadAllText(stderrFile);
+            Assert.Contains("script.csh:4:7", content);
+            Assert.Contains("Batch failed.", content);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
             File.Delete(stderrFile);
         }
     }

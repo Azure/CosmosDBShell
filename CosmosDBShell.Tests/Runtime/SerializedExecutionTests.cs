@@ -125,7 +125,45 @@ public class SerializedExecutionTests
     }
 
     [Fact]
-    public async Task RunSerializedAsync_WaitsForOtherExecutionButAllowsNestedCalls()
+    public async Task RunSerializedAsync_SerializesWorkStartedInsideAnOwnedOperation()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var childEntered = false;
+        Task<int> child = Task.FromResult(0);
+        var first = shell.RunSerializedAsync(
+            async () =>
+            {
+                child = Task.Run(() => shell.RunSerializedAsync(
+                    () =>
+                    {
+                        childEntered = true;
+                        return Task.FromResult(7);
+                    },
+                    CancellationToken.None));
+                entered.SetResult();
+                await release.Task;
+                return 42;
+            },
+            CancellationToken.None);
+        await entered.Task;
+        try
+        {
+            Assert.False(childEntered);
+            Assert.False(child.IsCompleted);
+        }
+        finally
+        {
+            release.SetResult();
+        }
+
+        Assert.Equal(42, await first.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.Equal(7, await child.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task RunSerializedAsync_WaitsForOtherExecution()
     {
         using var shell = ShellInterpreter.CreateInstance();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -134,7 +172,7 @@ public class SerializedExecutionTests
         {
             entered.SetResult();
             await release.Task;
-            return await shell.RunSerializedAsync(() => Task.FromResult(42), CancellationToken.None);
+            return 42;
         }, CancellationToken.None);
         await entered.Task;
         var secondEntered = false;

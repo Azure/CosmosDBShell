@@ -69,8 +69,20 @@ public static class ShellExitCode
     {
         for (var ex = exception; ex is not null; ex = ex.InnerException)
         {
+            if (ex is CommandState.FailureException failure)
+            {
+                // A structured failure can be re-attached to the state it came from; asking that state
+                // for its ExitCode would recurse forever, so classify the original inner exception instead.
+                if (IsSelfReferential(failure))
+                {
+                    continue;
+                }
+
+                return failure.State.ExitCode;
+            }
+
             // Peel our own wrappers so the underlying SDK/identity failure classifies.
-            if ((ex is CommandException || ex is ShellException) && ex.InnerException is not null)
+            if ((ex is CommandException || ex is ShellException || ex is PositionalException) && ex.InnerException is not null)
             {
                 continue;
             }
@@ -104,10 +116,27 @@ public static class ShellExitCode
         return GeneralFailure;
     }
 
+    private static bool IsSelfReferential(CommandState.FailureException failure)
+    {
+        if (failure.State is not ErrorCommandState errorState)
+        {
+            return false;
+        }
+
+        for (var ex = errorState.Exception; ex is not null; ex = ex.InnerException)
+        {
+            if (ReferenceEquals(ex, failure))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsUsage(Exception ex)
     {
         return ex is CommandNotFoundException
-            or PositionalException
             or JsonException
             or ArgumentException;
     }

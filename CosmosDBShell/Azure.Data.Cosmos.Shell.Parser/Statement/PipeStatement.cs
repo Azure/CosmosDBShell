@@ -84,12 +84,18 @@ internal class PipeStatement : Statement
     {
         foreach (var statement in this.Statements)
         {
-            if (commandState.IsError)
+            token.ThrowIfCancellationRequested();
+            if (commandState.IsError || commandState.BreakBlock || commandState.ContinueBlock || commandState.ReturnFunc)
             {
                 return commandState;
             }
 
             commandState = await statement.RunAsync(shell, commandState, token);
+        }
+
+        if (commandState.IsError || commandState.BreakBlock || commandState.ContinueBlock || commandState.ReturnFunc)
+        {
+            return commandState;
         }
 
         commandState = shell.PrintState(commandState, markAsRendered: true);

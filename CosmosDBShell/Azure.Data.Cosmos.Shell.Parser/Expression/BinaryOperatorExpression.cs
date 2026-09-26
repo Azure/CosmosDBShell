@@ -72,14 +72,8 @@ internal class BinaryOperatorExpression : Expression
         var leftResult = await this.Left.EvaluateAsync(interpreter, currentState, cancellationToken);
         var rightResult = await this.Right.EvaluateAsync(interpreter, currentState, cancellationToken);
 
-        // JSON numbers carry DataType.Json, so without normalization the numeric
-        // operator paths below fall through to the Int32 branch and throw or
-        // truncate for decimals and values outside the Int32 range. Promote JSON
-        // number operands to double-backed decimals (via GetDouble so large
-        // magnitudes such as 1e308 do not overflow GetDecimal) so comparisons and
-        // arithmetic operate on the JSON number model.
-        leftResult = NormalizeJsonNumber(leftResult);
-        rightResult = NormalizeJsonNumber(rightResult);
+        leftResult = ShellNumber.Normalize(leftResult);
+        rightResult = ShellNumber.Normalize(rightResult);
 
         // Handle arithmetic operators
         // Handle arithmetic operators
@@ -127,7 +121,9 @@ internal class BinaryOperatorExpression : Expression
                 }
 
                 // For strings, concatenate
-                if (leftResult.DataType == DataType.Text || rightResult.DataType == DataType.Text)
+                if (leftResult.DataType == DataType.Text || rightResult.DataType == DataType.Text ||
+                    leftResult is ShellJson { Value.ValueKind: JsonValueKind.String } ||
+                    rightResult is ShellJson { Value.ValueKind: JsonValueKind.String })
                 {
                     var leftStrObj = leftResult.ConvertShellObject(DataType.Text);
                     var rightStrObj = rightResult.ConvertShellObject(DataType.Text);
@@ -157,7 +153,7 @@ internal class BinaryOperatorExpression : Expression
                     throw new InvalidOperationException(MessageService.GetString("expression_error_null_numeric_add"));
                 }
 
-                return new ShellNumber((int)leftNumObj1 + (int)rightNumObj1);
+                return new ShellNumber(checked((int)leftNumObj1 + (int)rightNumObj1));
 
             case TokenType.Minus:
                 // Check if either operand is decimal
@@ -180,7 +176,7 @@ internal class BinaryOperatorExpression : Expression
                     throw new InvalidOperationException(MessageService.GetString("expression_error_null_numeric_subtract"));
                 }
 
-                return new ShellNumber((int)leftNumObj2 - (int)rightNumObj2);
+                return new ShellNumber(checked((int)leftNumObj2 - (int)rightNumObj2));
 
             case TokenType.Multiply:
                 // Check if either operand is decimal
@@ -203,7 +199,7 @@ internal class BinaryOperatorExpression : Expression
                     throw new InvalidOperationException(MessageService.GetString("expression_error_null_numeric_multiply"));
                 }
 
-                return new ShellNumber((int)leftNumObj3 * (int)rightNumObj3);
+                return new ShellNumber(checked((int)leftNumObj3 * (int)rightNumObj3));
 
             case TokenType.Divide:
                 // Check if either operand is decimal
@@ -302,7 +298,7 @@ internal class BinaryOperatorExpression : Expression
                     throw new NotSupportedException(MessageService.GetString("expression_error_negative_exponent_integer"));
                 }
 
-                return new ShellNumber((int)Math.Pow((int)leftNumObj6, rightNum6));
+                return new ShellNumber(checked((int)Math.Pow((int)leftNumObj6, rightNum6)));
 
             // Comparison operators
             case TokenType.Equal:
@@ -359,7 +355,10 @@ internal class BinaryOperatorExpression : Expression
             case TokenType.NotEqual:
                 // Evaluate equality and negate
                 var equalToken = new Token(TokenType.Equal, "==", this.OperatorToken.Start, this.OperatorToken.Length);
-                var equalResult = await new BinaryOperatorExpression(this.Left, equalToken, this.Right)
+                var equalResult = await new BinaryOperatorExpression(
+                    new ConstantExpression(this.OperatorToken, leftResult),
+                    equalToken,
+                    new ConstantExpression(this.OperatorToken, rightResult))
                     .EvaluateAsync(interpreter, currentState, cancellationToken);
                 var isEqualObj = equalResult.ConvertShellObject(DataType.Boolean);
                 if (isEqualObj == null)
@@ -485,15 +484,5 @@ internal class BinaryOperatorExpression : Expression
     public override string ToString()
     {
         return $"({this.Left} {this.OperatorToken.Value} {this.Right})";
-    }
-
-    private static ShellObject NormalizeJsonNumber(ShellObject value)
-    {
-        if (value is ShellJson json && json.Value.ValueKind == JsonValueKind.Number)
-        {
-            return new ShellDecimal(json.Value.GetDouble());
-        }
-
-        return value;
     }
 }

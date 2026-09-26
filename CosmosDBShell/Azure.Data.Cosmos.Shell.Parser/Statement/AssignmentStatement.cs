@@ -35,7 +35,22 @@ internal class AssignmentStatement : Statement
 
     public override async Task<CommandState> RunAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
-        var value = await this.Value.EvaluateAsync(shell, commandState, token);
+        Expression expression = this.Value;
+        if (this.AssignmentToken.Value != "=")
+        {
+            var operatorType = this.AssignmentToken.Value switch
+            {
+                "+=" => TokenType.Plus,
+                "-=" => TokenType.Minus,
+                "*=" => TokenType.Multiply,
+                "/=" => TokenType.Divide,
+                _ => throw new InvalidOperationException($"Unsupported assignment operator '{this.AssignmentToken.Value}'."),
+            };
+            var operatorToken = new Token(operatorType, this.AssignmentToken.Value[..1], this.AssignmentToken.Start, 1);
+            expression = new BinaryOperatorExpression(this.Variable, operatorToken, this.Value);
+        }
+
+        var value = await expression.EvaluateAsync(shell, commandState, token);
         shell.SetVariable(this.Variable.Name, value);
         commandState.Result = null;
         commandState.RenderUser = null;
@@ -47,7 +62,7 @@ internal class AssignmentStatement : Statement
 
     public override string ToString()
     {
-        return $"{this.Variable} = {this.Value}";
+        return $"{this.Variable} {this.AssignmentToken.Value} {this.Value}";
     }
 
     internal override void Accept(IAstVisitor visitor)
