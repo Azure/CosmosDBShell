@@ -298,6 +298,59 @@ public class CommandStatementTests
         }
     }
 
+    [Theory]
+    [InlineData(">", "value")]
+    [InlineData(">>", "before" + "value")]
+    public async Task ScriptExpression_PreservesEnclosingOutputRedirection(string redirect, string expected)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var script = Path.Join(Environment.CurrentDirectory, $"script{Guid.NewGuid():N}.csh");
+        var output = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(script, "echo value", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(output, "before", TestContext.Current.CancellationToken);
+
+            var result = await shell.ExecuteCommandAsync(
+                $"echo ({Path.GetFileName(script)}) {redirect} {ShellLiteral.Quote(output.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal(expected + Environment.NewLine, await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(output);
+        }
+    }
+
+    [Fact]
+    public async Task Script_RespectsStatementOutputRedirection()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var script = Path.GetTempFileName();
+        var output = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(
+                script,
+                $"echo value > {ShellLiteral.Quote(output.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length));
+
+            var result = await command.RunScriptAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal("value" + Environment.NewLine, await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(output);
+        }
+    }
+
     [Fact]
     public async Task StructuredError_InScriptExpression_PreservesMachinePayload()
     {

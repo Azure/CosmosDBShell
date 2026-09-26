@@ -434,6 +434,10 @@ internal class CommandStatement : Statement
             foreach (var statement in parser.Statements)
             {
                 token.ThrowIfCancellationRequested();
+                var savedStdOut = shell.StdOutRedirect;
+                var savedAppendOut = shell.AppendOutRedirection;
+                var savedErrOut = shell.ErrOutRedirect;
+                var savedAppendErr = shell.AppendErrRedirection;
 
                 try
                 {
@@ -453,23 +457,21 @@ internal class CommandStatement : Statement
                         return currentState;
                     }
 
-                    shell.StdOutRedirect = this.OutputRedirect;
-                    shell.AppendOutRedirection = this.AppendOutput;
-
-                    shell.ErrOutRedirect = this.ErrorRedirect;
-                    shell.AppendErrRedirection = this.AppendError;
-
-                    try
+                    if (renderOutput)
                     {
-                        if (renderOutput)
+                        if (this.OutRedirectToken != null)
                         {
-                            currentState = shell.PrintState(currentState, markAsRendered: true);
+                            shell.StdOutRedirect = this.OutputRedirect;
+                            shell.AppendOutRedirection = this.AppendOutput;
                         }
-                    }
-                    finally
-                    {
-                        shell.StdOutRedirect = null;
-                        shell.ErrOutRedirect = null;
+
+                        if (this.ErrRedirectToken != null)
+                        {
+                            shell.ErrOutRedirect = this.ErrorRedirect;
+                            shell.AppendErrRedirection = this.AppendError;
+                        }
+
+                        currentState = shell.PrintState(currentState, markAsRendered: true);
                     }
 
                     if (currentState.IsError)
@@ -492,6 +494,13 @@ internal class CommandStatement : Statement
                     }
 
                     throw new PositionalException(fileName, e, line, column, lineText);
+                }
+                finally
+                {
+                    shell.StdOutRedirect = savedStdOut;
+                    shell.AppendOutRedirection = savedAppendOut;
+                    shell.ErrOutRedirect = savedErrOut;
+                    shell.AppendErrRedirection = savedAppendErr;
                 }
             }
         }
