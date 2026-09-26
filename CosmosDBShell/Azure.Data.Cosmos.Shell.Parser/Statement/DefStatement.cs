@@ -149,10 +149,10 @@ internal class DefStatement : Statement
         try
         {
             var result = await this.ExecuteFunctionAsync(shell, commandState, token, args);
-            if (result is ErrorCommandState error && shell.CurrentScriptFileName is { } sourceName && shell.CurrentScriptContent is { } sourceText)
+            if (result is ErrorCommandState error && shell.CurrentScriptFileName is { } currentSourceName && shell.CurrentScriptContent is { } currentScriptContent)
             {
-                var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(sourceText, start);
-                error.Exception = new PositionalException(sourceName, error.Exception, line, column, lineText);
+                var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(currentScriptContent, start);
+                error.Exception = new PositionalException(currentSourceName, error.Exception, line, column, lineText);
             }
 
             return result;
