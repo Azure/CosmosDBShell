@@ -164,6 +164,7 @@ public class ServerlessCreationThroughputTests
     public static TheoryData<Exception> UnrelatedFailures => new()
     {
         new CosmosException("Request rate is large", HttpStatusCode.BadRequest, 0, "a", 0),
+        new CosmosException("The serverless account policy rejected the request.", HttpStatusCode.BadRequest, 0, "a", 0),
         new CosmosException("serverless principal is not authorized", HttpStatusCode.Forbidden, 0, "a", 0),
         new CosmosException("serverless token invalid", HttpStatusCode.Unauthorized, 0, "a", 0),
         new OperationCanceledException(),

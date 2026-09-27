@@ -463,7 +463,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         {
             return await create(CreationThroughput.CreateProperties(scale, maxRu));
         }
-        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.BadRequest && ThroughputErrors.IsServerlessThroughputError(ex.Message))
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.BadRequest && ThroughputErrors.IsServerlessCreationThroughputError(ex.Message))
         {
             if (CreationThroughput.IsSpecified(scale, maxRu))
             {
