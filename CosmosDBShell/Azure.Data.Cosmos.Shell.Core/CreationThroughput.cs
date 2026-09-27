@@ -13,7 +13,7 @@ internal static class CreationThroughput
 {
     internal const int DefaultMaxRu = 1000;
 
-    internal static bool IsSpecified(string? scale, int? maxRu) => !string.IsNullOrWhiteSpace(scale) || maxRu.HasValue;
+    internal static bool IsSpecified(string? scale, int? maxRu) => scale is not null || maxRu.HasValue;
 
     internal static bool IsManual(string? scale) =>
         string.Equals(scale, "manual", StringComparison.OrdinalIgnoreCase) ||

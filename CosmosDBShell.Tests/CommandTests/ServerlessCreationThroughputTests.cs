@@ -33,6 +33,8 @@ public class ServerlessCreationThroughputTests
     [Theory]
     [InlineData("manual", null)]
     [InlineData("auto", null)]
+    [InlineData(" ", null)]
+    [InlineData("", null)]
     [InlineData(null, 400)]
     [InlineData("m", 1000)]
     public void CreateUpdateConfig_ServerlessWithOptions_Throws(string? scale, int? ru)
@@ -145,6 +147,7 @@ public class ServerlessCreationThroughputTests
     [Theory]
     [InlineData("manual", 400)]
     [InlineData("auto", null)]
+    [InlineData(" ", null)]
     [InlineData(null, 1000)]
     public async Task Fallback_ServerlessRejectionWithOptions_ThrowsWithoutRetrying(string? scale, int? ru)
     {

@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests.Integration;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 // Opt-in: the emulator cannot establish serverless behavior, so this needs a real serverless account.
 [Trait("Category", "LiveServerless")]
@@ -29,7 +30,7 @@ public class ServerlessCreationSmokeTests : IntegrationTestBase
             Assert.False(container is ErrorCommandState, FormatError(container));
 
             var rejected = await RunScriptAsync($"mkcon Rejected /pk --database {databaseName} --ru 400");
-            Assert.IsType<ErrorCommandState>(rejected);
+            Assert.Equal(MessageService.GetString("error-serverless_throughput_not_supported"), GetErrorMessage(rejected));
         }
         finally
         {
