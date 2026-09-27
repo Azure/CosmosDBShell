@@ -415,6 +415,7 @@
   "command-import-error-blank_line": "Line {0} is blank.",
   "command-import-error-csv_pk_conflict": "CSV column \u0027{0}\u0027 conflicts with the partition key path \u0027{1}\u0027: the column holds a scalar value but the path requires it to be a nested object. Rename the column or choose a different partition key path.",
   "command-import-error-file_not_found": "File \u0027{0}\u0027 was not found.",
+  "command-import-error-invalid_csv": "Invalid CSV record at line {0}.",
   "command-import-error-invalid_line_json": "Line {0} is not valid JSON: {1}",
   "command-import-error-item_failed": "Line {0}: {1} - {2}",
   "command-import-error-item_status": "Line {0}: item returned status {1}.",

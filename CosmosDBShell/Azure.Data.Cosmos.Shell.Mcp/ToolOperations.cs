@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.Extensions.Logging;
@@ -206,6 +207,59 @@ internal class ToolOperations
     internal static string FormatOptionForHistory(Option option, object? value)
     {
         return $" --{option.Name[0]} {ShellLiteral.Quote(value?.ToString())}";
+    }
+
+    // Shell syntax cannot skip a positional, so a later value would bind to the omitted slot on replay.
+    internal static string? FindPositionalGap(IReadOnlyList<Parameter> parameters, IReadOnlyDictionary<Parameter, object?> values)
+    {
+        Parameter? firstOmitted = null;
+        foreach (var parameter in parameters)
+        {
+            if (!IsPositionalSupplied(values, parameter))
+            {
+                firstOmitted ??= parameter;
+            }
+            else if (firstOmitted != null)
+            {
+                return $"Parameter '{parameter.Name[0]}' requires the preceding positional parameter '{firstOmitted.Name[0]}'. Supply '{firstOmitted.Name[0]}' as well.";
+            }
+        }
+
+        return null;
+    }
+
+    internal static string FormatPositionalsForHistory(IReadOnlyList<Parameter> parameters, IReadOnlyDictionary<Parameter, object?> values)
+    {
+        var sb = new StringBuilder();
+        foreach (var parameter in parameters)
+        {
+            if (!IsPositionalSupplied(values, parameter))
+            {
+                break;
+            }
+
+            var value = values[parameter];
+            if (value is Array array)
+            {
+                foreach (var element in array)
+                {
+                    sb.Append(' ').Append(ShellLiteral.Quote(element?.ToString()));
+                }
+            }
+            else
+            {
+                sb.Append(' ').Append(ShellLiteral.Quote(value?.ToString()));
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static bool IsPositionalSupplied(IReadOnlyDictionary<Parameter, object?> values, Parameter parameter)
+    {
+        return values.TryGetValue(parameter, out var value)
+            && value != null
+            && (value is not Array array || array.Length > 0);
     }
 
     internal static void ConfigurePaging(object command)
@@ -457,6 +511,8 @@ internal class ToolOperations
         var cmd = command.CreateCommand();
         ConfigurePaging(cmd);
         var suppliedParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var positionalValues = new Dictionary<Parameter, object?>();
+        var optionText = new StringBuilder();
 
         if (parameters.Params.Arguments != null)
         {
@@ -477,7 +533,7 @@ internal class ToolOperations
                         memberKind: "option",
                         memberDisplay: $"--{option.Name[0]}",
                         commandName: command.CommandName,
-                        appendToHistory: value => sb.Append(FormatOptionForHistory(option, value)));
+                        appendToHistory: value => optionText.Append(FormatOptionForHistory(option, value)));
                     if (bindError != null)
                     {
                         return bindError;
@@ -496,7 +552,7 @@ internal class ToolOperations
                         memberKind: "parameter",
                         memberDisplay: parameter.Name[0],
                         commandName: command.CommandName,
-                        appendToHistory: value => sb.Append(' ').Append(ShellLiteral.Quote(value?.ToString())));
+                        appendToHistory: value => positionalValues[parameter] = value);
                     if (bindError != null)
                     {
                         return bindError;
@@ -549,6 +605,14 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(missingMessage, ShellInterpreter.Instance.State);
         }
 
+        var positionalGap = FindPositionalGap(command.Parameters, positionalValues);
+        if (positionalGap != null)
+        {
+            var gapMessage = $"Invalid positional arguments for command '{command.CommandName}': {positionalGap}";
+            this.logger?.LogWarning("{Message}", gapMessage);
+            return McpResponseFactory.CreateError(gapMessage, ShellInterpreter.Instance.State);
+        }
+
         var batchSubcommand = (cmd as BatchCommand)?.Subcommand?.Trim();
         if (!string.IsNullOrEmpty(batchSubcommand)
             && !string.Equals(batchSubcommand, "run", StringComparison.OrdinalIgnoreCase))
@@ -558,27 +622,58 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
         }
 
+        // MCP argument order is not semantic, so render positionals in the order the shell binds them.
+        sb.Append(FormatPositionalsForHistory(command.Parameters, positionalValues));
+        sb.Append(optionText);
+
+        var server = parameters.Server;
+        Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit =
+            server?.ClientCapabilities?.Elicitation != null ? server.ElicitAsync : null;
+        return await this.ExecuteToolAsync(command, cmd, sb.ToString(), elicit, cancellationToken);
+    }
+
+    internal async Task<CallToolResult> ExecuteToolAsync(
+        CommandFactory command,
+        CosmosCommand cmd,
+        string commandLine,
+        Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit,
+        CancellationToken cancellationToken)
+    {
+        var shell = ShellInterpreter.Instance;
+        long? confirmedVersion = null;
         if (RequiresConfirmation(command))
         {
-            var server = parameters.Server;
-            Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit =
-                server?.ClientCapabilities?.Elicitation != null ? server.ElicitAsync : null;
-
-            var confirmation = await this.ConfirmDestructiveAsync(elicit, command.CommandName, sb.ToString(), cancellationToken);
+            var snapshot = await shell.RunSerializedAsync(
+                () => Task.FromResult((Version: shell.StateVersion, Context: DescribeContext(shell.State))), cancellationToken);
+            var confirmation = await this.ConfirmDestructiveAsync(
+                elicit, command.CommandName, commandLine, cancellationToken, snapshot.Context);
             if (confirmation != null)
             {
                 return confirmation;
             }
+
+            confirmedVersion = snapshot.Version;
         }
 
-        this.logger?.LogTrace($"Invoking '{command.CommandName}'.");
+        this.logger?.LogTrace($"Requested '{command.CommandName}'.");
 
         try
         {
-            ShellInterpreter.Instance.PrintCommand(sb.ToString());
-            var response = await ShellInterpreter.Instance.ExecuteCosmosCommandAsync(cmd, new CommandState(), command.CommandName, cancellationToken);
-            ShellInterpreter.Instance.CancelPrompt();
-            return McpResponseFactory.CreateSuccess(response, ShellInterpreter.Instance.State);
+            return await shell.RunSerializedAsync(
+                async () =>
+                {
+                    if (confirmedVersion.HasValue && confirmedVersion.Value != shell.StateVersion)
+                    {
+                        return McpResponseFactory.CreateError(
+                            "The shell context changed while awaiting confirmation. Nothing was executed. Retry the command and confirm its current target.", shell.State);
+                    }
+
+                    shell.PrintCommand(commandLine);
+                    var response = await shell.ExecuteCosmosCommandAsync(cmd, new CommandState(), command.CommandName, cancellationToken);
+                    shell.CancelPrompt();
+                    return McpResponseFactory.CreateSuccess(response, shell.State);
+                },
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -591,8 +686,14 @@ internal class ToolOperations
         }
         finally
         {
-            this.logger?.LogTrace($"Finished executing '{command.CommandName}'.");
+            this.logger?.LogTrace($"Finished handling request for '{command.CommandName}'.");
         }
+    }
+
+    private static string DescribeContext(State state)
+    {
+        var endpoint = state is ConnectedState connected ? connected.Client.Endpoint.ToString() : "(disconnected)";
+        return $"Account: {endpoint}\nCurrent location: {McpResponseFactory.GetCurrentLocation(state) ?? "(none)"}\nExplicit database/container arguments in the command override this location.";
     }
 
     // Gates a destructive command behind an MCP elicitation confirmation. Returns
@@ -604,7 +705,8 @@ internal class ToolOperations
         Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit,
         string commandName,
         string commandLine,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? context = null)
     {
         if (elicit == null)
         {
@@ -620,6 +722,7 @@ internal class ToolOperations
         {
             Message =
                 $"Confirm destructive operation. The agent wants to run: {commandLine}\n" +
+                (context is null ? string.Empty : context + "\n") +
                 "This can permanently change or delete data in the connected Azure Cosmos DB account and cannot be undone. Approve this operation?",
             RequestedSchema = new ElicitRequestParams.RequestSchema(),
         };

@@ -31,6 +31,9 @@ public partial class ShellInterpreter : IDisposable
 
     private const string SessionRequestChargeWarningThresholdVariable = "sessionRequestChargeWarningThreshold";
 
+    // Declared before Instance: static initializers run in order and the constructor reads history.
+    private static readonly object HistoryFileLock = new();
+
     internal static readonly ShellInterpreter Instance = new();
 
     private const int MAXHISTORYITEMS = 60;
@@ -55,6 +58,14 @@ public partial class ShellInterpreter : IDisposable
     private readonly HashSet<string> diagnosticSecrets = new(StringComparer.Ordinal);
 
     private readonly object sessionRequestChargeLock = new();
+
+    private readonly object historyLock = new();
+
+    private readonly SemaphoreSlim executionGate = new(1, 1);
+
+    private readonly AsyncLocal<bool> ownsExecutionGate = new();
+
+    private long stateVersion;
 
     private TokenCredential? activeCredential;
 
@@ -103,11 +114,16 @@ public partial class ShellInterpreter : IDisposable
 
         if (File.Exists(this.HistoryFile))
         {
-            foreach (var line in File.ReadAllLines(this.HistoryFile))
+            string[] lines;
+            lock (HistoryFileLock)
+            {
+                lines = File.ReadAllLines(this.HistoryFile);
+            }
+
+            foreach (var line in lines)
             {
                 var decoded = DecodeHistoryLine(line);
-                this.history.Remove(decoded);
-                this.history.Add(decoded);
+                this.RecordHistoryEntry(decoded);
             }
         }
 
@@ -233,7 +249,17 @@ public partial class ShellInterpreter : IDisposable
     internal Func<bool> IsInteractiveSession { get; set; } =
         static () => !Console.IsInputRedirected && !Console.IsOutputRedirected;
 
-    internal IReadOnlyList<string> History => this.history;
+    internal IReadOnlyList<string> History
+    {
+        get
+        {
+            // Snapshot: interactive readers must not enumerate the list while an MCP echo mutates it.
+            lock (this.historyLock)
+            {
+                return this.history.ToArray();
+            }
+        }
+    }
 
     internal string? LastBuffer { get; set; }
 
@@ -253,7 +279,17 @@ public partial class ShellInterpreter : IDisposable
 
     internal bool AppendErrRedirection { get; set; }
 
-    internal State State { get; set; }
+    internal long StateVersion => Interlocked.Read(ref this.stateVersion);
+
+    internal State State
+    {
+        get;
+        set
+        {
+            field = value;
+            Interlocked.Increment(ref this.stateVersion);
+        }
+    }
 
     internal Program.CosmosShellOptions? Options { get; set; }
 
@@ -507,6 +543,39 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="token">A cancellation token to observe while waiting for the task to complete.</param>
     /// <returns>A <see cref="CommandState"/> representing the result of the command execution.</returns>
     public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token)
+    {
+        try
+        {
+            return await this.RunSerializedAsync(() => this.ExecuteCommandCoreAsync(command, token), token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            this.Diagnostics?.LogCancelled(0, command);
+            return new CommandState();
+        }
+    }
+
+    internal async Task<T> RunSerializedAsync<T>(Func<Task<T>> operation, CancellationToken token)
+    {
+        if (this.ownsExecutionGate.Value)
+        {
+            return await operation();
+        }
+
+        await this.executionGate.WaitAsync(token);
+        try
+        {
+            this.ownsExecutionGate.Value = true;
+            return await operation();
+        }
+        finally
+        {
+            this.ownsExecutionGate.Value = false;
+            this.executionGate.Release();
+        }
+    }
+
+    private async Task<CommandState> ExecuteCommandCoreAsync(string command, CancellationToken token)
     {
         using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
         var isLocalEmulatorOperation = this.State is ConnectedState connectedState
@@ -890,8 +959,7 @@ public partial class ShellInterpreter : IDisposable
 
                 if (!string.IsNullOrWhiteSpace(command))
                 {
-                    this.history.Remove(command);
-                    this.history.Add(command);
+                    this.RecordHistoryEntry(command);
                     this.SaveHistory();
                     CancellationToken token = UserCancellationTokenSource.Token;
                     await this.ExecuteCommandAsync(command, token);
@@ -988,7 +1056,14 @@ public partial class ShellInterpreter : IDisposable
     internal void RecordRequestCharge(CommandState commandState)
         => this.RecordRequestCharge(commandState, this.SessionRequestChargeGeneration);
 
-    internal async Task<CommandState> ExecuteCosmosCommandAsync(
+    internal Task<CommandState> ExecuteCosmosCommandAsync(
+        CosmosCommand command,
+        CommandState commandState,
+        string commandText,
+        CancellationToken token)
+        => this.RunSerializedAsync(() => this.ExecuteCosmosCommandCoreAsync(command, commandState, commandText, token), token);
+
+    private async Task<CommandState> ExecuteCosmosCommandCoreAsync(
         CosmosCommand command,
         CommandState commandState,
         string commandText,
@@ -1758,13 +1833,31 @@ public partial class ShellInterpreter : IDisposable
         // Print the shell prompt similar to how it appears when typing command
         //        AnsiConsole.Markup(new CosmosShellPrompt(this).GetPromptString());
         //        AnsiConsole.Write(" ");
-        var txt = ((IHighlighter)Instance).BuildHighlightedText(cmdString);
-        AnsiConsole.Write(txt);
-        AnsiConsole.WriteLine(); // Ensure the next output starts on a new line
+        this.RecordHistoryEntry(cmdString);
 
-        this.history.Remove(cmdString);
-        this.history.Add(cmdString);
-        this.Editor?.History.Add(cmdString);
+        try
+        {
+            this.SaveHistory();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // History is best-effort; an unwritable history file must not fail the command.
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
+
+        // Echoing and the line editor both need an ANSI terminal, which an MCP host may not
+        // provide. Neither may fail the command being announced.
+        try
+        {
+            var txt = ((IHighlighter)Instance).BuildHighlightedText(cmdString);
+            AnsiConsole.Write(txt);
+            AnsiConsole.WriteLine(); // Ensure the next output starts on a new line
+            this.Editor?.History.Add(cmdString);
+        }
+        catch (NotSupportedException)
+        {
+            Console.Out.WriteLine(cmdString);
+        }
     }
 
     internal CommandState PrintState(CommandState state, bool markAsRendered = false)
@@ -2066,6 +2159,7 @@ public partial class ShellInterpreter : IDisposable
                 this.editorCancelTokenSource?.Dispose();
                 this.State?.Dispose();
                 this.Diagnostics?.Dispose();
+                this.executionGate.Dispose();
             }
 
             this.disposedValue = true;
@@ -2132,7 +2226,7 @@ public partial class ShellInterpreter : IDisposable
             lineEditor.KeyBindings.Add(ConsoleKey.S, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this, startsForward: true));
             lineEditor.KeyBindings.Add(ConsoleKey.Tab, () => new CosmosCompleteCommand(this, AutoComplete.Next));
             lineEditor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Control, () => new CosmosCompleteCommand(this, AutoComplete.Previous));
-            foreach (var line in this.history)
+            foreach (var line in this.History)
             {
                 lineEditor.History.Add(line);
             }
@@ -2175,12 +2269,44 @@ public partial class ShellInterpreter : IDisposable
 
     private void SaveHistory()
     {
-        if (this.history.Count > MAXHISTORYITEMS)
+        lock (this.historyLock)
         {
-            this.history = [.. this.history.Skip(this.history.Count - MAXHISTORYITEMS)];
-        }
+            if (this.history.Count > MAXHISTORYITEMS)
+            {
+                this.history = [.. this.history.Skip(this.history.Count - MAXHISTORYITEMS)];
+            }
 
-        File.WriteAllLines(this.HistoryFile, this.history.Select(EncodeHistoryLine));
+            // Written under the locks so concurrent interactive and MCP saves, and shells
+            // sharing the history file, cannot interleave.
+            lock (HistoryFileLock)
+            {
+                var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.Read };
+                if (!OperatingSystem.IsWindows())
+                {
+                    // History can contain connection secrets; UnixCreateMode covers only new files.
+                    options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+                    if (File.Exists(this.HistoryFile))
+                    {
+                        File.SetUnixFileMode(this.HistoryFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                    }
+                }
+
+                using var writer = new StreamWriter(this.HistoryFile, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), options);
+                foreach (var line in this.history)
+                {
+                    writer.WriteLine(EncodeHistoryLine(line));
+                }
+            }
+        }
+    }
+
+    private void RecordHistoryEntry(string entry)
+    {
+        lock (this.historyLock)
+        {
+            this.history.Remove(entry);
+            this.history.Add(entry);
+        }
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]

@@ -12,7 +12,9 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Mcp;
+using Azure.Data.Cosmos.Shell.States;
 
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -146,6 +148,94 @@ public class ToolOperationsCallToolTests
         Assert.Null(result);
     }
 
+    [Fact]
+    public async Task ExecuteTool_ContextChangesDuringConfirmation_RefusesExecution()
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalState = shell.State;
+        var command = new TrackingCommand();
+        try
+        {
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["rm"], command, "rm test-*",
+                (request, _) =>
+                {
+                    Assert.Contains("Account:", request.Message);
+                    Assert.Contains("Current location:", request.Message);
+                    shell.State = new DisconnectedState();
+                    shell.State = originalState;
+                    return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+                }, CancellationToken.None);
+
+            Assert.True(result.IsError);
+            Assert.False(command.Executed);
+            Assert.Contains("context changed", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        }
+        finally
+        {
+            shell.State = originalState;
+        }
+    }
+
+    private sealed class TrackingCommand : CosmosCommand
+    {
+        public bool Executed { get; private set; }
+
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            this.Executed = true;
+            return Task.FromResult(commandState);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteTool_UnchangedContextAfterConfirmation_ExecutesCommand()
+    {
+        var command = new TrackingCommand();
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            ShellInterpreter.Instance.App.Commands["rm"], command, "rm test-*",
+            (_, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            TestContext.Current.CancellationToken);
+        Assert.False(result.IsError == true);
+        Assert.True(command.Executed);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_WithoutAnsiTerminal_EchoesPlainlyAndStillExecutes()
+    {
+        var command = new TrackingCommand();
+        using var plain = new StringWriter();
+
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        try
+        {
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(plain),
+            });
+            Console.SetOut(plain);
+
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                ShellInterpreter.Instance.App.Commands["rm"], command, "rm test-*",
+                (_, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError == true);
+            Assert.True(command.Executed);
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            AnsiConsole.Console = savedConsole;
+        }
+
+        Assert.Contains("rm test-*", plain.ToString(), StringComparison.Ordinal);
+        Assert.Equal("rm test-*", ShellInterpreter.Instance.History.ToArray()[^1]);
+    }
+
     [Theory]
     [InlineData("decline")]
     [InlineData("cancel")]
@@ -191,6 +281,69 @@ public class ToolOperationsCallToolTests
             Assert.Contains("InvalidOperationException", error);
             Assert.DoesNotContain("boom", error);
         }
+    }
+
+    [Fact]
+    public async Task CallTool_PositionalArgumentsOutOfOrder_DisplaysDeclarationOrder()
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["force"] = Json("true"),
+            ["name"] = Json("\"OldDb\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("rmdb", arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Contains("rmdb \"OldDb\" \"True\"", root.GetProperty("error").GetString(), StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task CallTool_PositionalGap_ReturnsErrorWithoutExecuting()
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["path"] = Json("\"dark.json\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("theme", arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            var error = root.GetProperty("error").GetString();
+            Assert.Contains("'path'", error, StringComparison.Ordinal);
+            Assert.Contains("'action'", error, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void FindPositionalGap_DetectsOmittedAndNullPredecessors()
+    {
+        var parameters = ShellInterpreter.Instance.App.Commands["theme"].Parameters;
+
+        Assert.NotNull(ToolOperations.FindPositionalGap(parameters, new Dictionary<Parameter, object?> { [parameters[2]] = "dark.json" }));
+        Assert.NotNull(ToolOperations.FindPositionalGap(parameters, new Dictionary<Parameter, object?> { [parameters[0]] = null, [parameters[1]] = "dark" }));
+        Assert.Null(ToolOperations.FindPositionalGap(parameters, new Dictionary<Parameter, object?> { [parameters[0]] = "show", [parameters[1]] = "dark" }));
+    }
+
+    [Fact]
+    public void FormatPositionalsForHistory_RendersContiguousValuesAndExpandsArrays()
+    {
+        var parameters = ShellInterpreter.Instance.App.Commands["theme"].Parameters;
+        var values = new Dictionary<Parameter, object?> { [parameters[0]] = "show", [parameters[1]] = "dark" };
+        Assert.Equal(" \"show\" \"dark\"", ToolOperations.FormatPositionalsForHistory(parameters, values));
+
+        var echoParameters = ShellInterpreter.Instance.App.Commands["echo"].Parameters;
+        var echoValues = new Dictionary<Parameter, object?> { [echoParameters[0]] = new[] { "hello", "world" } };
+        Assert.Equal(" \"hello\" \"world\"", ToolOperations.FormatPositionalsForHistory(echoParameters, echoValues));
     }
 
     [Fact]
@@ -353,6 +506,7 @@ public class ToolOperationsCallToolTests
     public async Task CallTool_EchoCommand_ReturnsSuccessResult()
     {
         var tool = CreateToolOperations();
+        using var output = new StringWriter();
         var arguments = new Dictionary<string, JsonElement>
         {
             ["messages"] = Json("[\"hello\", \"world\"]"),
@@ -365,10 +519,15 @@ public class ToolOperationsCallToolTests
             {
                 Ansi = AnsiSupport.Yes,
                 ColorSystem = ColorSystemSupport.NoColors,
-                Out = new AnsiConsoleOutput(new StringWriter()),
+                Out = new AnsiConsoleOutput(output),
             });
 
             var result = await tool.CallToolHandler(CallContext("echo", arguments), CancellationToken.None);
+
+            Assert.Contains("echo", output.ToString(), StringComparison.Ordinal);
+            var recorded = ShellInterpreter.Instance.History.ToArray();
+            Assert.Equal("echo \"hello\" \"world\"", recorded[^1]);
+            Assert.Single(recorded, entry => entry == recorded[^1]);
 
             var (isError, root, document) = ReadResult(result);
             using (document)
