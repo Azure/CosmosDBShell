@@ -18,7 +18,6 @@ internal static class ThroughputErrors
     {
         return IsServerlessThroughputError(message)
             && (message!.Contains("throughput", StringComparison.OrdinalIgnoreCase)
-                || message.Contains("autopilot", StringComparison.OrdinalIgnoreCase)
-                || message.Contains("offer", StringComparison.OrdinalIgnoreCase));
+                || message.Contains("autopilot", StringComparison.OrdinalIgnoreCase));
     }
 }

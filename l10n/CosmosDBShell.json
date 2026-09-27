@@ -206,7 +206,7 @@
   "command-create-description-name": "The container or database name to create.",
   "command-create-description-partition_key": "{0}",
   "command-create-description-ru": "Database or container max RU/s (default: 1000; omitted on serverless accounts)",
-  "command-create-description-scale": "{0}",
+  "command-create-description-scale": "Database or container throughput mode (manual or auto). Not supported on serverless accounts.",
   "command-create-description-unique_key": "{0}",
   "command-create-error-container_name_required": "Create container requires a container name.",
   "command-create-error-database_name_required": "Create database requires a database name.",

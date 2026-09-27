@@ -44,6 +44,7 @@ public class ThroughputErrorsTests
 
     [Theory]
     [InlineData("The serverless account policy rejected the request.")]
+    [InlineData("Reading or replacing offers is not supported for serverless accounts.")]
     [InlineData("Setting throughput is not supported for this account.")]
     [InlineData(null)]
     public void UnrelatedCreationFailure_IsNotDetected(string? message)
