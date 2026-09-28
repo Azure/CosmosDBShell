@@ -625,7 +625,6 @@ internal class ToolOperations
         // MCP argument order is not semantic, so render positionals in the order the shell binds them.
         sb.Append(FormatPositionalsForHistory(command.Parameters, positionalValues));
         sb.Append(optionText);
-
         var server = parameters.Server;
         Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit =
             server?.ClientCapabilities?.Elicitation != null ? server.ElicitAsync : null;

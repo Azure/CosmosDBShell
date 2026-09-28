@@ -73,6 +73,18 @@ public class CosmosCommandTests
     }
 
     [Fact]
+    public async Task ExecuteCosmosCommandAsync_RunsInsideSerializedOperation()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+
+        var state = await shell.RunSerializedAsync(
+            () => shell.ExecuteCosmosCommandAsync(new TestCosmosCommand(2.5), new CommandState(), string.Empty, CancellationToken.None),
+            CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Equal(2.5, state.RequestCharge);
+    }
+
+    [Fact]
     public void CreatePartitionKey_WithHierarchicalIntegerComponents_PreservesIntegerTypes()
     {
         using var document = JsonDocument.Parse("""

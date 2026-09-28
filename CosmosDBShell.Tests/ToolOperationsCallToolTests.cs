@@ -506,6 +506,7 @@ public class ToolOperationsCallToolTests
     public async Task CallTool_EchoCommand_ReturnsSuccessResult()
     {
         var tool = CreateToolOperations();
+        var history = ShellInterpreter.Instance.History.ToArray();
         using var output = new StringWriter();
         var arguments = new Dictionary<string, JsonElement>
         {
@@ -526,6 +527,7 @@ public class ToolOperationsCallToolTests
 
             Assert.Contains("echo", output.ToString(), StringComparison.Ordinal);
             var recorded = ShellInterpreter.Instance.History.ToArray();
+            Assert.Equal(history.Length + 1, recorded.Length);
             Assert.Equal("echo \"hello\" \"world\"", recorded[^1]);
             Assert.Single(recorded, entry => entry == recorded[^1]);
 

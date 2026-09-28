@@ -133,6 +133,34 @@ public class CosmosShellHoverHandlerTests : IDisposable
         Assert.NotNull(result);
         var markup = Assert.IsType<MarkupContent>(result.Contents.MarkupContent);
         Assert.Contains("myVar", markup.Value);
+        Assert.Equal(new Position(1, 5), result.Range!.Start);
+        Assert.Equal(new Position(1, 11), result.Range.End);
+    }
+
+    [Theory]
+    [InlineData("value", 2, 0)]
+    [InlineData("Value", 3, 1)]
+    public async Task Handle_VariableHover_UsesCaseSensitiveDefinition(string name, int usageLine, int definitionLine)
+    {
+        const string content = "$value = 1\n$Value = 2\necho $value\necho $Value";
+        this.workspace.OpenDocument(testUri, content, 1);
+        var document = this.workspace.GetDocument(testUri)!;
+        var symbol = document.SemanticModel!.GetSymbolAt(content.LastIndexOf("$" + name, StringComparison.Ordinal) + 1)!;
+        Assert.Equal(name, symbol.Name);
+        var definition = Assert.Single(document.SemanticModel.FindReferences(symbol), reference => reference.IsDefinition);
+        Assert.Equal(definitionLine == 0 ? 0 : content.IndexOf('\n') + 1, definition.Start);
+
+        var result = await this.handler.Handle(new HoverParams
+        {
+            TextDocument = new TextDocumentIdentifier { Uri = testUri },
+            Position = new Position(usageLine, 6),
+        }, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        var markup = Assert.IsType<MarkupContent>(result.Contents.MarkupContent);
+        Assert.Contains(name, markup.Value);
+        Assert.Equal(new Position(usageLine, 5), result.Range!.Start);
+        Assert.Equal(new Position(usageLine, 11), result.Range.End);
     }
 
     [Fact]
@@ -451,6 +479,8 @@ public class CosmosShellHoverHandlerTests : IDisposable
         Assert.NotNull(result);
         var markup = Assert.IsType<MarkupContent>(result.Contents.MarkupContent);
         Assert.Contains("myFunc", markup.Value);
+        Assert.Equal(new Position(3, 0), result.Range!.Start);
+        Assert.Equal(new Position(3, 6), result.Range.End);
     }
 
     [Fact]

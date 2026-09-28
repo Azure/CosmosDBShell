@@ -102,13 +102,14 @@ internal class ForStatement : Statement
 
         foreach (var arr in collection.EnumerateArray())
         {
+            token.ThrowIfCancellationRequested();
             ShellObject elementValue = arr.ValueKind switch
             {
-                JsonValueKind.Number => new ShellNumber(arr.GetInt32()),
+                JsonValueKind.Number => ShellNumber.FromJson(arr),
                 JsonValueKind.String => new ShellText(arr.GetString() ?? string.Empty),
                 JsonValueKind.True => new ShellBool(true),
                 JsonValueKind.False => new ShellBool(false),
-                JsonValueKind.Null => new ShellText("null"),
+                JsonValueKind.Null => new ShellJson(arr),
                 JsonValueKind.Object or JsonValueKind.Array => new ShellJson(arr),
                 _ => new ShellText(arr.ToString()),
             };
@@ -122,7 +123,7 @@ internal class ForStatement : Statement
             {
                 throw;
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
                 var content = shell.CurrentScriptContent;
                 var fileName = shell.CurrentScriptFileName;
@@ -135,6 +136,12 @@ internal class ForStatement : Statement
                 throw;
             }
 
+            if (commandState.IsError || commandState.ReturnFunc)
+            {
+                return commandState;
+            }
+
+            commandState.ContinueBlock = false;
             if (commandState.BreakBlock)
             {
                 commandState.BreakBlock = false; // Reset break state

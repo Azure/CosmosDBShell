@@ -141,7 +141,7 @@ internal class CosmosShellCompletionHandler : ICompletionHandler
             return;
         }
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var name in ShellInterpreter.SessionVariableNames)
         {
             string variableName = "$" + name;
@@ -157,7 +157,7 @@ internal class CosmosShellCompletionHandler : ICompletionHandler
             }
         }
 
-        foreach (var container in ShellInterpreter.Instance.VariableContainers.Reverse())
+        foreach (var container in ShellInterpreter.Instance.VariableContainers)
         {
             foreach (var name in container.Variables.Keys)
             {

@@ -170,4 +170,3 @@ Because `max` bounds a single page, a call can return fewer items than requested
 	"continuation": "<token from the previous result>"
 }
 ```
-

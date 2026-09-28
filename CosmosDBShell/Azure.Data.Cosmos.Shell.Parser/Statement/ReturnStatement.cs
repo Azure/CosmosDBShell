@@ -78,11 +78,14 @@ internal class ReturnStatement : Statement
     /// </remarks>
     public override async Task<CommandState> RunAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
+        var value = this.Value != null ? await this.Value.EvaluateAsync(shell, commandState, token) : null;
+        commandState.ReturnValue = value;
         commandState.ReturnFunc = true;
-        if (this.Value != null)
-        {
-            commandState.ReturnValue = await this.Value.EvaluateAsync(shell, commandState, token);
-        }
+
+        // The caller replaces Result with the return value, so renderers from earlier statements must not survive.
+        commandState.RenderUser = null;
+        commandState.RenderTabular = null;
+        commandState.ResetOutputFormat();
 
         return commandState;
     }
