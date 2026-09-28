@@ -268,6 +268,7 @@ command-query-description-database = The database to query against
 command-query-description-container = The container to query against
 command-query-description-explain = Show the query execution plan (index usage and a plain-language evaluation) instead of returning documents
 command-query-fetched = Fetched { $count } documents.
+command-query-no_continuation = This query cannot be resumed: its execution plan does not return a continuation token, so the remaining results were not retrieved. Raise the limit with --max, use --max 0 for no limit, or narrow the query.
 command-query-request_charge = Request Charge: { $charge } RUs
 command-query-document_header = Document
 command-query-count_header = Count

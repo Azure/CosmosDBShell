@@ -35,7 +35,7 @@ internal enum MetricTarget
     ReadOnly = true,
     Idempotent = true,
     OpenWorld = true,
-    Description = "Executes a Cosmos DB NoSQL query against the current container and returns one bounded page of matching documents. Pass the returned continuationToken as continuation to retrieve the next page. Pass explain=true to return the query execution plan (utilized/potential indexes and a plain-language evaluation) instead of documents. Use the cosmos://docs/nosql-query-language resource for query syntax reference.")]
+    Description = "Executes a Cosmos DB NoSQL query against the current container and returns one bounded page of matching documents. Pass the returned continuationToken as continuation to retrieve the next page. Some plans cannot be paged at all, including vector ORDER BY, ORDER BY RANK, and DISTINCT projections such as SELECT DISTINCT c.category FROM c ORDER BY c.category; adding an ORDER BY clause does not make a DISTINCT query resumable. Those queries return a null continuationToken, and a result truncated by max is reported with resultIncomplete set to true, which means the result set is not exhausted and must be retried with a larger max or a narrower query. Pass explain=true to return the query execution plan (utilized/potential indexes and a plain-language evaluation) instead of documents. Use the cosmos://docs/nosql-query-language resource for query syntax reference.")]
 internal class QueryCommand : CosmosCommand, IPagedCommand
 {
     [CosmosParameter("query")]
@@ -133,6 +133,31 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
         }
 
         return pageDocuments.GetArrayLength() > remainingCapacity;
+    }
+
+    /// <summary>
+    /// Reads the continuation token of a successful query response. Pipelines such as
+    /// non-streaming ORDER BY, hybrid search, and DISTINCT execute normally but refuse to
+    /// export a resumable token, which the SDK reports by throwing from the property getter
+    /// rather than by failing the request. Whether a token is available is decided by the
+    /// query plan at runtime, so executing a query and being able to resume it are reported
+    /// separately instead of being inferred from the query text.
+    /// </summary>
+    /// <param name="response">The successful query response.</param>
+    /// <param name="continuationToken">The exported token, or <see langword="null"/> when none is available.</param>
+    /// <returns><see langword="true"/> when the response can export a token; otherwise <see langword="false"/>.</returns>
+    internal static bool TryReadContinuationToken(ResponseMessage response, out string? continuationToken)
+    {
+        try
+        {
+            continuationToken = response.ContinuationToken;
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            continuationToken = null;
+            return false;
+        }
     }
 
     internal static CommandState CreateCommandState(string? outputFormat)
@@ -677,7 +702,7 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
         }
     }
 
-    private async Task<CommandState> ExecuteQueryAsync(Container container, ShellInterpreter shell, CancellationToken token)
+    internal async Task<CommandState> ExecuteQueryAsync(Container container, ShellInterpreter shell, CancellationToken token)
     {
         try
         {
@@ -711,6 +736,7 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
 
             using var feedIterator = container.GetItemQueryStreamIterator(this.Query, this.Continuation, options);
             var limitReached = false;
+            var continuationSupported = true;
 
             while (feedIterator.HasMoreResults)
             {
@@ -750,7 +776,17 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                 totalRequestCharge += pageRequestCharge;
                 AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", pageRequestCharge.ToString("F2", CultureInfo.InvariantCulture) } }));
 
-                returnState.ContinuationToken = response.ContinuationToken;
+                if (TryReadContinuationToken(response, out var pageContinuationToken))
+                {
+                    returnState.ContinuationToken = pageContinuationToken;
+                }
+                else
+                {
+                    // The pipeline cannot be resumed. Drop any token collected from an earlier
+                    // page so the caller never receives one the service would reject.
+                    continuationSupported = false;
+                    returnState.ContinuationToken = null;
+                }
 
                 var pageDocuments = queryDocument.RootElement.GetProperty("Documents");
                 var pageExceedsLimit = PageExceedsLimit(aggregatedDocuments.Count, pageDocuments, effectiveMaxItemCount);
@@ -895,7 +931,7 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                     GeneratePlainResultDocument(returnState, aggregatedDocuments);
                 }
 
-                if (this.IsMcpRequest)
+                if (this.IsMcpRequest && continuationSupported)
                 {
                     break;
                 }
@@ -907,9 +943,17 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                 }
             }
 
+            // Stopping early without a token leaves results the caller can never retrieve,
+            // whether the limit or cancellation ended the loop.
+            returnState.IncompleteWithoutContinuation = !continuationSupported && (limitReached || feedIterator.HasMoreResults);
+
             if (limitReached && effectiveMaxItemCount.HasValue)
             {
                 AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
+                if (!continuationSupported)
+                {
+                    AnsiConsole.MarkupLine(MessageService.GetString("command-query-no_continuation"));
+                }
             }
 
             returnState.RequestCharge = totalRequestCharge;

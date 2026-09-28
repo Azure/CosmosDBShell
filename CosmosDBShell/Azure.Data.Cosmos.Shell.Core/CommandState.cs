@@ -75,9 +75,18 @@ public partial class CommandState
     internal bool IsPage { get; set; }
 
     /// <summary>
-    /// Gets or sets the token for retrieving the next page, or <see langword="null"/> when the result is exhausted.
+    /// Gets or sets the token for retrieving the next page. A <see langword="null"/> token
+    /// indicates exhaustion only when <see cref="IncompleteWithoutContinuation"/> is false;
+    /// otherwise the result is truncated and cannot be resumed.
     /// </summary>
     internal string? ContinuationToken { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the result stops short of the full result set and
+    /// cannot be resumed. Some Cosmos query pipelines complete successfully but never export a
+    /// continuation token, so a missing token alone must not be read as an exhausted result set.
+    /// </summary>
+    internal bool IncompleteWithoutContinuation { get; set; }
 
     /// <summary>
     /// Gets or sets the Cosmos DB request charge (in RUs) consumed by the command, when applicable.
