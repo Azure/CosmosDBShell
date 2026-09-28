@@ -25,6 +25,40 @@ public class ShellProcessTests
     private static readonly Regex AnsiEscape = new("\x1b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
 
     [Theory]
+    [InlineData("value", "identity", "1 argument, got 0")]
+    [InlineData("value", "identity 1 2", "1 argument, got 2")]
+    [InlineData("value", "$result = (identity)", "1 argument, got 0")]
+    [InlineData("", "identity 1", "0 arguments, got 1")]
+    [InlineData("first second", "identity", "2 arguments, got 0")]
+    public async Task WrongFunctionArgumentCount_ReturnsUsageExitCode(string parameters, string invocation, string expectedMessage)
+    {
+        var result = await RunShellAsync($"def identity [{parameters}] {{ return }}; {invocation}", cancellationToken: TestContext.Current.CancellationToken, extraArgs: ["--quiet"]);
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("expects " + expectedMessage, result.StdErr);
+    }
+
+    [Fact]
+    public async Task DeepExpression_FailsBeforeExecution_WithoutCrashingProcess()
+    {
+        var script = "echo BEFORE_DEPTH_ERROR; $value = " + string.Join(" + ", Enumerable.Repeat("1", 10001));
+        var result = await RunShellAsync(script, cancellationToken: TestContext.Current.CancellationToken, extraArgs: ["--quiet"]);
+        Assert.Equal(2, result.ExitCode);
+        Assert.DoesNotContain("BEFORE_DEPTH_ERROR", result.StdOut);
+        Assert.Contains("expression tree depth", result.StdErr);
+        Assert.DoesNotContain("Stack overflow", result.StdErr);
+    }
+
+    [Fact]
+    public async Task ExpressionAtDepthLimit_EvaluatesSuccessfully()
+    {
+        var script = "$value = " + string.Join(" + ", Enumerable.Repeat("1", 128)) + "; echo $value";
+        var result = await RunShellAsync(script, cancellationToken: TestContext.Current.CancellationToken, extraArgs: ["--quiet"]);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("128", result.StdOut);
+        Assert.Empty(result.StdErr);
+    }
+
+    [Theory]
     [InlineData("doctor --no-update-check --format json", 0, "PASS")]
     [InlineData("doctor --database missing --no-update-check --format json", 1, "FAIL")]
     [InlineData("doctor --arm --no-update-check --format json", 1, "FAIL")]

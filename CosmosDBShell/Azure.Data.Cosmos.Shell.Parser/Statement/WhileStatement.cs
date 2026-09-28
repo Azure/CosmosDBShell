@@ -66,6 +66,7 @@ internal class WhileStatement : Statement
     {
         while (!commandState.IsError && await this.EvaluateConditionAsync(shell, commandState, token))
         {
+            token.ThrowIfCancellationRequested();
             try
             {
                 commandState = await this.Statement.RunAsync(shell, commandState, token);
@@ -74,7 +75,7 @@ internal class WhileStatement : Statement
             {
                 throw;
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
                 var content = shell.CurrentScriptContent;
                 var fileName = shell.CurrentScriptFileName;
@@ -87,6 +88,12 @@ internal class WhileStatement : Statement
                 throw;
             }
 
+            if (commandState.IsError || commandState.ReturnFunc)
+            {
+                return commandState;
+            }
+
+            commandState.ContinueBlock = false;
             if (commandState.BreakBlock)
             {
                 commandState.BreakBlock = false; // Reset break state

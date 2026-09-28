@@ -48,6 +48,7 @@ public class ToolOperationsTests
         var maxDescription = schema.GetProperty("properties").GetProperty("max").GetProperty("description").GetString();
 
         Assert.Contains("continuationToken", maxDescription);
+        Assert.Contains("resultIncomplete", maxDescription);
 
         var shellDescription = factory.Options.Single(option => option.Name[0] == "max").GetDescription(commandName);
         Assert.DoesNotContain("continuationToken", shellDescription);

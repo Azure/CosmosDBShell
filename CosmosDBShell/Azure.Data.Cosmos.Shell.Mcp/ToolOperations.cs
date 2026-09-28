@@ -301,7 +301,7 @@ internal class ToolOperations
     {
         var description = option.GetDescription(command.CommandName);
         return IsPagedMaxOption(command, option)
-            ? $"{description} Through MCP this must be positive and bounds a single page rather than the whole result set. Omitted or non-positive values use the default of {DefaultPageSize}. A call can return fewer items and still have more available; use continuationToken to detect the end."
+            ? $"{description} Through MCP this must be positive and bounds a single page rather than the whole result set. Omitted or non-positive values use the default of {DefaultPageSize}. A call can return fewer items and still have more available; a null continuationToken marks the end of the results unless the response sets resultIncomplete, which reports results that were cut off and cannot be resumed."
             : description;
     }
 
@@ -625,7 +625,6 @@ internal class ToolOperations
         // MCP argument order is not semantic, so render positionals in the order the shell binds them.
         sb.Append(FormatPositionalsForHistory(command.Parameters, positionalValues));
         sb.Append(optionText);
-
         var server = parameters.Server;
         Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit =
             server?.ClientCapabilities?.Elicitation != null ? server.ElicitAsync : null;

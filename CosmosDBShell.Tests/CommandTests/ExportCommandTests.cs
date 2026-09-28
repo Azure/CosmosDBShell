@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 using NSubstitute;
 
@@ -259,7 +260,14 @@ public class ExportCommandTests
             }
             else
             {
-                await Assert.ThrowsAsync<IOException>(ExportAsync);
+                var exception = await Assert.ThrowsAsync<IOException>(ExportAsync);
+                Assert.Equal(
+                    MessageService.GetArgsString("command-export-error-file_exists", "file", Path.GetFullPath(path)),
+                    exception.Message);
+                var items = Substitute.For<IAsyncEnumerable<JsonElement>>();
+                await Assert.ThrowsAsync<IOException>(() => ExportCommand.WriteFileAsync(
+                    items, ExportFormat.JsonLines, path, false, TestContext.Current.CancellationToken));
+                items.DidNotReceive().GetAsyncEnumerator(Arg.Any<CancellationToken>());
                 Assert.Equal("previous export", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
             }
 
@@ -268,6 +276,32 @@ public class ExportCommandTests
         finally
         {
             Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task WriteFileAsync_ExistingDirectoryDoesNotEnumerateItems(bool overwrite)
+    {
+        var directory = Directory.CreateTempSubdirectory("cosmos-export-test-");
+        try
+        {
+            var items = Substitute.For<IAsyncEnumerable<JsonElement>>();
+
+            var exception = await Assert.ThrowsAsync<IOException>(() => ExportCommand.WriteFileAsync(
+                items, ExportFormat.JsonLines, directory.FullName, overwrite, TestContext.Current.CancellationToken));
+
+            Assert.Equal(
+                MessageService.GetArgsString("command-export-error-destination_directory", "file", Path.GetFullPath(directory.FullName)),
+                exception.Message);
+            Assert.Contains("Specify a file path instead", exception.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("--force", exception.Message, StringComparison.Ordinal);
+            items.DidNotReceive().GetAsyncEnumerator(Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            directory.Delete();
         }
     }
 

@@ -40,6 +40,8 @@ public partial class ShellInterpreter : IDisposable
 
     private const int OptionalArmDiscoveryTimeoutSeconds = 3;
 
+    internal const int MaximumCallDepth = 64;
+
     private const string EncodedHistoryLinePrefix = "CosmosDBShellHistoryV1:";
 
     // Sentinel written immediately after the prefix by EncodeHistoryLine so that
@@ -63,9 +65,9 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly SemaphoreSlim executionGate = new(1, 1);
 
-    private readonly AsyncLocal<bool> ownsExecutionGate = new();
-
     private long stateVersion;
+
+    private int callDepth;
 
     private TokenCredential? activeCredential;
 
@@ -299,7 +301,7 @@ public partial class ShellInterpreter : IDisposable
 
     internal PendingBatchState? CurrentBatch { get; set; }
 
-    internal Queue<VariableContainer> VariableContainers { get; } = new();
+    internal Stack<VariableContainer> VariableContainers { get; } = new();
 
     /// <summary>
     /// Gets a value indicating whether the shell is running in machine mode, where
@@ -555,22 +557,18 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    /// <remarks>
+    /// Callers must not already hold the gate; nested work runs through the ungated core methods.
+    /// </remarks>
     internal async Task<T> RunSerializedAsync<T>(Func<Task<T>> operation, CancellationToken token)
     {
-        if (this.ownsExecutionGate.Value)
-        {
-            return await operation();
-        }
-
         await this.executionGate.WaitAsync(token);
         try
         {
-            this.ownsExecutionGate.Value = true;
             return await operation();
         }
         finally
         {
-            this.ownsExecutionGate.Value = false;
             this.executionGate.Release();
         }
     }
@@ -632,10 +630,20 @@ public partial class ShellInterpreter : IDisposable
             }
             catch (Exception e)
             {
+                if (FindException<CommandState.FailureException>(e)?.State is StructuredErrorCommandState structuredError)
+                {
+                    if (e is PositionalException)
+                    {
+                        structuredError.Exception = e;
+                    }
+
+                    result = this.PrintState(structuredError);
+                    return result;
+                }
+
                 this.ReportExecutionError(e, command);
                 this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
-                var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
-                result = new ErrorCommandState(inner)
+                result = new ErrorCommandState(e)
                 {
                     RequestCharge = RequestChargeContext.GetExceptionCharge(e),
                 };
@@ -651,7 +659,7 @@ public partial class ShellInterpreter : IDisposable
 
             if (state is ParserErrorCommandState parserErrorState)
             {
-                this.ReportParserErrors(parserErrorState.Errors, command);
+                this.ReportParserErrors(parserErrorState.Errors, parserErrorState.SourceText ?? command, parserErrorState.SourceName);
                 result = state;
                 return result;
             }
@@ -684,7 +692,7 @@ public partial class ShellInterpreter : IDisposable
                         }
                         else if (result is ParserErrorCommandState parserErrorResult)
                         {
-                            diagnostics.LogParserErrors(command, parserErrorResult.Errors);
+                            diagnostics.LogParserErrors(command, parserErrorResult.Errors, parserErrorResult.SourceName, parserErrorResult.SourceText);
                         }
                     }
 
@@ -981,10 +989,18 @@ public partial class ShellInterpreter : IDisposable
 
     internal async Task<CommandState> RunCommandAsync(CommandState currentState, string commandText, CancellationToken token)
     {
-        var lexer = new Lexer(commandText);
-        var parser = new StatementParser(lexer);
+        var parser = StatementParser.ScriptParseResult.Parse(commandText);
+        if (parser.Errors.HasErrors)
+        {
+            if (LooksLikeConnectionStringLine(commandText))
+            {
+                parser.Errors.Add(new ParseError(0, 1, MessageService.GetString("error-command-not-found-connection-string"), ErrorLevel.Warning));
+            }
 
-        foreach (var statements in parser.ParseStatements())
+            return new ParserErrorCommandState(parser.Errors);
+        }
+
+        foreach (var statements in parser.Statements)
         {
             if (token.IsCancellationRequested)
             {
@@ -1061,7 +1077,7 @@ public partial class ShellInterpreter : IDisposable
         CommandState commandState,
         string commandText,
         CancellationToken token)
-        => this.RunSerializedAsync(() => this.ExecuteCosmosCommandCoreAsync(command, commandState, commandText, token), token);
+        => this.ExecuteCosmosCommandCoreAsync(command, commandState, commandText, token);
 
     private async Task<CommandState> ExecuteCosmosCommandCoreAsync(
         CosmosCommand command,
@@ -1884,6 +1900,16 @@ public partial class ShellInterpreter : IDisposable
             var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
             var inMachineMode = this.IsMachineMode;
 
+            // Structured failures bypass ReportExecutionError, so the script location the
+            // statement attached would otherwise be dropped from the human-readable output.
+            // Emit it here and let the structured result render itself below.
+            if (!inMachineMode
+                && state is StructuredErrorCommandState humanStructuredError
+                && humanStructuredError.Exception is PositionalException positionalError)
+            {
+                this.ReportPositionalError(positionalError);
+            }
+
             // Interactive, user-facing view: when the command supplied a custom renderer and
             // the effective format is User, let it draw. Redirection, piping, and machine
             // mode always fall through to the structured (JSON/CSV/Table) path below.
@@ -1898,7 +1924,14 @@ public partial class ShellInterpreter : IDisposable
 
             if (inMachineMode && state is StructuredErrorCommandState structuredError)
             {
-                this.WriteMachineError(structuredError.Exception.Message, structuredError.Result);
+                // PositionalException.Message carries only the inner message, so prepend the
+                // location here the same way ReportExecutionError does for ordinary failures.
+                var errorLocation = PositionalException.GetSourceTrace(structuredError.Exception).FirstOrDefault();
+                this.WriteMachineError(
+                    errorLocation == null
+                        ? structuredError.Exception.Message
+                        : $"{errorLocation.FileName}:{errorLocation.Line}:{errorLocation.Column}: {structuredError.Exception.Message}",
+                    structuredError.Result);
                 return state;
             }
 
@@ -2022,6 +2055,24 @@ public partial class ShellInterpreter : IDisposable
         this.Functions[defStatement.Name] = defStatement;
     }
 
+    internal void PushCallScope(VariableContainer frame, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (this.callDepth >= MaximumCallDepth)
+        {
+            throw new ShellException(MessageService.GetArgsString("script-error-call-depth", "limit", MaximumCallDepth));
+        }
+
+        this.VariableContainers.Push(frame);
+        this.callDepth++;
+    }
+
+    internal void PopCallScope()
+    {
+        this.VariableContainers.Pop();
+        this.callDepth--;
+    }
+
     internal void SetVariable(string variableName, ShellObject value)
     {
         if (string.Equals(variableName, SessionRequestChargeVariable, StringComparison.OrdinalIgnoreCase)
@@ -2039,23 +2090,10 @@ public partial class ShellInterpreter : IDisposable
         // Ensure we have at least one variable container (global scope)
         if (this.VariableContainers.Count == 0)
         {
-            this.VariableContainers.Enqueue(new VariableContainer());
+            this.VariableContainers.Push(new VariableContainer());
         }
 
-        // When running inside a script, always write to the current (script) frame.
-        // This ensures script-local assignments don't modify variables in caller scopes.
-        // Outside of scripts, search for existing variable to maintain back-compat.
-        VariableContainer currentScope;
-        if (!string.IsNullOrEmpty(this.CurrentScriptFileName))
-        {
-            // Script execution: always use current frame (script-local by default)
-            currentScope = this.VariableContainers.Last();
-        }
-        else
-        {
-            // Interactive/global: update existing variable if found, else use current frame
-            currentScope = this.GetScope(variableName) ?? this.VariableContainers.Last();
-        }
+        var currentScope = this.VariableContainers.Peek();
 
         var targetType = value.DataType;
 
@@ -2242,7 +2280,7 @@ public partial class ShellInterpreter : IDisposable
 
     private VariableContainer? GetScope(string name)
     {
-        foreach (var container in this.VariableContainers.Reverse())
+        foreach (var container in this.VariableContainers)
         {
             if (container.Variables.ContainsKey(name))
             {
@@ -2641,9 +2679,17 @@ public partial class ShellInterpreter : IDisposable
             return;
         }
 
+        if (FindException<CommandState.FailureException>(e)?.State is ParserErrorCommandState parserError)
+        {
+            this.ReportParserErrors(parserError.Errors, parserError.SourceText ?? sourceText ?? string.Empty, parserError.SourceName);
+            return;
+        }
+
         if (this.IsMachineMode)
         {
-            this.WriteMachineError(e.Message);
+            var sourceTrace = PositionalException.GetSourceTrace(e);
+            var location = sourceTrace.FirstOrDefault();
+            this.WriteMachineError(location == null ? e.Message : $"{location.FileName}:{location.Line}:{location.Column}: {e.Message}");
             return;
         }
 
@@ -2796,6 +2842,9 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportPositionalError(PositionalException pe)
     {
+        var frames = PositionalException.GetSourceTrace(pe);
+        pe = frames[0];
+        var callTrace = frames.Skip(1).Select(frame => $"  at {frame.FileName}:{frame.Line}:{frame.Column}").ToArray();
         if (this.ErrOutRedirect != null)
         {
             var errorMessage = $"[{Path.GetFileName(pe.FileName)}:{pe.Line}:{pe.Column}]: {MessageService.GetString("runtime-error-prefix")}: {pe.Message}";
@@ -2803,6 +2852,11 @@ public partial class ShellInterpreter : IDisposable
             {
                 errorMessage += Environment.NewLine + pe.LineText;
                 errorMessage += Environment.NewLine + new string(' ', Math.Max(0, pe.Column - 1)) + "^";
+            }
+
+            if (callTrace.Length > 0)
+            {
+                errorMessage += Environment.NewLine + string.Join(Environment.NewLine, callTrace);
             }
 
             if (this.AppendErrRedirection)
@@ -2821,6 +2875,11 @@ public partial class ShellInterpreter : IDisposable
             {
                 AnsiConsole.MarkupLine("  " + Theme.FormatMuted(pe.LineText));
                 AnsiConsole.MarkupLine("  " + Theme.FormatError(new string(' ', Math.Max(0, pe.Column - 1)) + "^"));
+            }
+
+            foreach (var frame in callTrace)
+            {
+                AnsiConsole.MarkupLine(Theme.FormatMuted(frame));
             }
         }
     }
@@ -2869,7 +2928,7 @@ public partial class ShellInterpreter : IDisposable
         return (line, column);
     }
 
-    private void ReportParserErrors(ErrorList errors, string commandText)
+    private void ReportParserErrors(ErrorList errors, string commandText, string? sourceName = null)
     {
         if (this.IsMachineMode
             && errors != null && errors.Count > 0)
@@ -2879,7 +2938,8 @@ public partial class ShellInterpreter : IDisposable
             {
                 if (err != null && err.ErrorLevel == ErrorLevel.Error)
                 {
-                    errorStrings.Add(err.Message ?? "Parser error");
+                    var (line, column) = this.OffsetToLineColumn(commandText, err.Start);
+                    errorStrings.Add(sourceName == null ? err.Message : $"{sourceName}:{line + 1}:{column + 1}: {err.Message}");
                 }
             }
 
@@ -2935,7 +2995,7 @@ public partial class ShellInterpreter : IDisposable
                 error.Message,
                 lineNumber,
                 rendered,
-                origin: this.GetDiagnosticOrigin(this.CurrentScriptFileName));
+                origin: this.GetDiagnosticOrigin(sourceName ?? this.CurrentScriptFileName));
         }
 
         if (redirected && fileBuffer != null)

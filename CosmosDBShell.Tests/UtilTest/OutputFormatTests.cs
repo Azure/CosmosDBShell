@@ -233,6 +233,28 @@ public class OutputFormatTests
         Assert.False(state.OutputFormatExplicitlySet);
     }
 
+    [Fact]
+    async Task ReturnStatement_ClearsRenderersFromPriorStatement()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var lexer = new Lexer("return 1");
+        var parser = new StatementParser(lexer);
+        var statements = parser.ParseStatements();
+
+        var state = new CommandState
+        {
+            RenderTabular = () => new TabularData("Leaked"),
+            RenderUser = () => { },
+            OutputFormat = OutputFormat.CSV,
+        };
+
+        state = await statements[0].RunAsync(shell, state, TestContext.Current.CancellationToken);
+
+        Assert.Null(state.RenderTabular);
+        Assert.Null(state.RenderUser);
+        Assert.False(state.OutputFormatExplicitlySet);
+    }
+
     private string StripWS(string input)
     {
         var sb = new StringBuilder();

@@ -29,6 +29,7 @@ internal class UnaryOperatorExpression : Expression
     {
         // Evaluate the operand expression
         var operandResult = await this.Expression.EvaluateAsync(interpreter, currentState, cancellationToken);
+        operandResult = ShellNumber.Normalize(operandResult);
 
         switch (this.Operator)
         {
@@ -68,7 +69,7 @@ internal class UnaryOperatorExpression : Expression
                     }
 
                     var operandNum = (int)operandNumObj;
-                    return new ShellNumber(-operandNum);
+                    return new ShellNumber(checked(-operandNum));
                 }
 
             case TokenType.Plus:

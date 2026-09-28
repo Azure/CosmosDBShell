@@ -90,6 +90,16 @@ internal class CosmosShellHoverHandler : IHoverHandler
                     var hover = CreateSymbolHover(symbol, doc);
                     if (hover != null)
                     {
+                        var occurrence = sem.FindReferences(symbol).FirstOrDefault(reference => offset >= reference.Start && offset < reference.Start + reference.Length);
+                        if (occurrence != null)
+                        {
+                            hover = new Hover
+                            {
+                                Contents = hover.Contents,
+                                Range = ToRange(doc.Content, occurrence.Start, occurrence.Start + occurrence.Length),
+                            };
+                        }
+
                         return Task.FromResult<Hover?>(hover);
                     }
                 }

@@ -17,6 +17,34 @@ using Azure.Data.Cosmos.Shell.Util;
 public class ShellObjectConversionTests
 {
     [Theory]
+    [InlineData("3.0")]
+    [InlineData("-3.0")]
+    [InlineData("0.0")]
+    [InlineData("-0.0")]
+    [InlineData("3.5")]
+    [InlineData("2147483647.0")]
+    [InlineData("1e20")]
+    [InlineData("1e-20")]
+    [InlineData("5e-324")]
+    [InlineData("1.7976931348623157e308")]
+    public void ShellDecimal_JsonRoundTrip_PreservesDecimalTypeAndValue(string source)
+    {
+        var value = double.Parse(source, System.Globalization.CultureInfo.InvariantCulture);
+        var json = Assert.IsType<JsonElement>(new ShellDecimal(value).ConvertShellObject(DataType.Json));
+        var restored = Assert.IsType<ShellDecimal>(ShellNumber.FromJson(json));
+        Assert.Equal(BitConverter.DoubleToInt64Bits(value), BitConverter.DoubleToInt64Bits(restored.Value));
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void ShellDecimal_NonFiniteValues_CannotBecomeJsonNumbers(double value)
+    {
+        Assert.Throws<ArgumentException>(() => new ShellDecimal(value).ConvertShellObject(DataType.Json));
+    }
+
+    [Theory]
     [InlineData((int)DataType.Boolean, "conversion-error-text-boolean", "conversion-error-identifier-boolean")]
     [InlineData((int)DataType.Number, "conversion-error-text-number", "conversion-error-identifier-number")]
     [InlineData((int)DataType.Decimal, "conversion-error-text-double", "conversion-error-identifier-double")]
@@ -96,6 +124,20 @@ public class ShellObjectConversionTests
     public void ShellJson_ZeroNumber_IsFalse()
     {
         Assert.Equal(false, Json("0").ConvertShellObject(DataType.Boolean));
+    }
+
+    [Theory]
+    [InlineData("1.5", true)]
+    [InlineData("-0.5", true)]
+    [InlineData("2147483648", true)]
+    [InlineData("9007199254740993", true)]
+    [InlineData("0.0", false)]
+    [InlineData("-0.0", false)]
+    public void ShellJson_NumericBooleanConversion_MatchesShellDecimal(string source, bool expected)
+    {
+        var json = Json(source);
+        Assert.Equal(expected, json.ConvertShellObject(DataType.Boolean));
+        Assert.Equal(new ShellDecimal(json.Value.GetDouble()).ConvertShellObject(DataType.Boolean), json.ConvertShellObject(DataType.Boolean));
     }
 
     [Fact]
