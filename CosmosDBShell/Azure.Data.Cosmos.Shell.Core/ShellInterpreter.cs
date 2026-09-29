@@ -73,6 +73,8 @@ public partial class ShellInterpreter : IDisposable
 
     private LineEditor? lineEditor;
 
+    private bool lineEditorCreationAttempted;
+
     private CosmosShellPrompt? cosmosShellPrompt;
 
     private System.Text.StringBuilder? pendingMultiLineBuffer;
@@ -136,7 +138,19 @@ public partial class ShellInterpreter : IDisposable
     /// <summary>
     /// Gets the line editor instance used by the shell, or <c>null</c> if not available.
     /// </summary>
-    public LineEditor? Editor { get => this.lineEditor ??= this.CreateLineEditor(); }
+    public LineEditor? Editor
+    {
+        get
+        {
+            if (!this.lineEditorCreationAttempted)
+            {
+                this.lineEditorCreationAttempted = true;
+                this.lineEditor = this.CreateLineEditor();
+            }
+
+            return this.lineEditor;
+        }
+    }
 
     /// <summary>
     /// Gets or sets a value indicating whether the shell is currently running.
@@ -954,7 +968,14 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 this.ClearHighlightStatements();
-                var input = this.Editor != null ? await this.Editor.ReadLine(this.editorCancelTokenSource.Token) : PromptFallback();
+                var editor = this.Editor;
+                var input = editor != null ? await editor.ReadLine(this.editorCancelTokenSource.Token) : PromptFallback();
+                if (editor == null && input == null)
+                {
+                    this.IsRunning = false;
+                    break;
+                }
+
                 var command = ProcessInteractiveLine(
                     input,
                     ref this.pendingMultiLineBuffer,
@@ -2234,7 +2255,7 @@ public partial class ShellInterpreter : IDisposable
         return options;
     }
 
-    private LineEditor CreateLineEditor()
+    private LineEditor? CreateLineEditor()
     {
         try
         {
@@ -2274,7 +2295,7 @@ public partial class ShellInterpreter : IDisposable
         catch (Exception e)
         {
             Console.Error.WriteLine(e.Message);
-            return new LineEditor();
+            return null;
         }
     }
 
