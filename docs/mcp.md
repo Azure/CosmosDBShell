@@ -97,6 +97,8 @@ MCP tool invocations are echoed as command lines in the shell window, so anyone 
 
 Positional arguments must be supplied without gaps: a call that provides a positional parameter while omitting an earlier one is rejected, because the equivalent shell command line would bind the value to the omitted slot.
 
+Explicit `null` argument values are treated as omitted and are not echoed into shell history. The paging `continuation` argument is the exception: a `null` token means the result set is exhausted, so passing it back is rejected.
+
 Your MCP client may use a remote LLM. Command outputs, query results, and file contents could be transmitted to external services. **Treat all shell output as potentially shared.**
 
 ### Best Practices

@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Mcp;
 
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -206,7 +207,7 @@ internal class ToolOperations
 
     internal static string FormatOptionForHistory(Option option, object? value)
     {
-        return $" --{option.Name[0]} {ShellLiteral.Quote(value?.ToString())}";
+        return $" --{option.Name[0]} {ShellLiteral.Quote(FormatValueForHistory(value))}";
     }
 
     // Shell syntax cannot skip a positional, so a later value would bind to the omitted slot on replay.
@@ -243,16 +244,21 @@ internal class ToolOperations
             {
                 foreach (var element in array)
                 {
-                    sb.Append(' ').Append(ShellLiteral.Quote(element?.ToString()));
+                    sb.Append(' ').Append(ShellLiteral.Quote(FormatValueForHistory(element)));
                 }
             }
             else
             {
-                sb.Append(' ').Append(ShellLiteral.Quote(value?.ToString()));
+                sb.Append(' ').Append(ShellLiteral.Quote(FormatValueForHistory(value)));
             }
         }
 
         return sb.ToString();
+    }
+
+    private static string? FormatValueForHistory(object? value)
+    {
+        return Convert.ToString(value, CultureInfo.InvariantCulture);
     }
 
     private static bool IsPositionalSupplied(IReadOnlyDictionary<Parameter, object?> values, Parameter parameter)
@@ -406,6 +412,11 @@ internal class ToolOperations
             && annotation.Destructive;
     }
 
+    private static bool IsExplicitJsonNull(JsonElement value)
+    {
+        return value.ValueKind is JsonValueKind.Null;
+    }
+
     private CallToolResult? BindMember(
         object cmd,
         PropertyInfo property,
@@ -426,7 +437,7 @@ internal class ToolOperations
         {
             convertedValue = rawValue is JsonElement jsonElement
                 ? ConvertJsonElement(jsonElement, targetType)
-                : Convert.ChangeType(rawValue, targetType);
+                : Convert.ChangeType(rawValue, targetType, CultureInfo.InvariantCulture);
         }
         catch (Exception ex)
         {
@@ -526,6 +537,11 @@ internal class ToolOperations
                 var option = command.Options.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (option != null)
                 {
+                    if (IsExplicitJsonNull(par.Value))
+                    {
+                        continue;
+                    }
+
                     var bindError = this.BindMember(
                         cmd,
                         option.PropertyInfo,
@@ -545,6 +561,11 @@ internal class ToolOperations
                 var parameter = command.Parameters.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (parameter != null)
                 {
+                    if (IsExplicitJsonNull(par.Value))
+                    {
+                        continue;
+                    }
+
                     var bindError = this.BindMember(
                         cmd,
                         parameter.PropertyInfo,

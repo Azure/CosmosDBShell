@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests;
 
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -347,6 +348,93 @@ public class ToolOperationsCallToolTests
     }
 
     [Fact]
+    public void HistoryFormatting_UsesInvariantCultureForOptionsAndPositionals()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+
+            var intervalOption = ShellInterpreter.Instance.App.Commands["watch"].Options.Single(o => o.Name[0] == "interval");
+            Assert.Equal(" --interval \"1.5\"", ToolOperations.FormatOptionForHistory(intervalOption, 1.5d));
+
+            var echoParameters = ShellInterpreter.Instance.App.Commands["echo"].Parameters;
+            var echoValues = new Dictionary<Parameter, object?> { [echoParameters[0]] = new object?[] { 1.5d, 2.5d } };
+            Assert.Equal(" \"1.5\" \"2.5\"", ToolOperations.FormatPositionalsForHistory(echoParameters, echoValues));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    [Fact]
+    public async Task CallTool_NullNullableValueOption_IsOmitted()
+    {
+        var tool = CreateToolOperations();
+        var shell = ShellInterpreter.Instance;
+        var originalState = shell.State;
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["query"] = Json("\"SELECT * FROM c\""),
+            ["max"] = Json("null"),
+        };
+
+        try
+        {
+            shell.State = new DisconnectedState();
+
+            var result = await tool.CallToolHandler(CallContext("query", arguments), CancellationToken.None);
+
+            var (isError, root, document) = ReadResult(result);
+            using (document)
+            {
+                Assert.True(isError);
+                Assert.DoesNotContain("Invalid value", root.GetProperty("error").GetString(), StringComparison.Ordinal);
+            }
+
+            Assert.Equal("query \"SELECT * FROM c\"", shell.History.ToArray()[^1]);
+        }
+        finally
+        {
+            shell.State = originalState;
+        }
+    }
+
+    [Fact]
+    public async Task CallTool_NullStringOption_IsOmitted()
+    {
+        var tool = CreateToolOperations();
+        var shell = ShellInterpreter.Instance;
+        var originalState = shell.State;
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["query"] = Json("\"SELECT * FROM c\""),
+            ["database"] = Json("null"),
+        };
+
+        try
+        {
+            shell.State = new DisconnectedState();
+
+            var result = await tool.CallToolHandler(CallContext("query", arguments), CancellationToken.None);
+
+            var (isError, root, document) = ReadResult(result);
+            using (document)
+            {
+                Assert.True(isError);
+                Assert.DoesNotContain("Invalid value", root.GetProperty("error").GetString(), StringComparison.Ordinal);
+            }
+
+            Assert.Equal("query \"SELECT * FROM c\"", shell.History.ToArray()[^1]);
+        }
+        finally
+        {
+            shell.State = originalState;
+        }
+    }
+
+    [Fact]
     public async Task CallTool_UnknownArgument_ReturnsErrorListingKnownArguments()
     {
         var tool = CreateToolOperations();
@@ -508,9 +596,10 @@ public class ToolOperationsCallToolTests
         var tool = CreateToolOperations();
         var history = ShellInterpreter.Instance.History.ToArray();
         using var output = new StringWriter();
+        var message = "hello-" + Guid.NewGuid().ToString("N");
         var arguments = new Dictionary<string, JsonElement>
         {
-            ["messages"] = Json("[\"hello\", \"world\"]"),
+            ["messages"] = Json($"[\"{message}\", \"world\"]"),
         };
 
         var saved = AnsiConsole.Console;
@@ -528,14 +617,14 @@ public class ToolOperationsCallToolTests
             Assert.Contains("echo", output.ToString(), StringComparison.Ordinal);
             var recorded = ShellInterpreter.Instance.History.ToArray();
             Assert.Equal(history.Length + 1, recorded.Length);
-            Assert.Equal("echo \"hello\" \"world\"", recorded[^1]);
+            Assert.Equal($"echo \"{message}\" \"world\"", recorded[^1]);
             Assert.Single(recorded, entry => entry == recorded[^1]);
 
             var (isError, root, document) = ReadResult(result);
             using (document)
             {
                 Assert.False(isError);
-                Assert.Equal("hello world", root.GetProperty("result").GetString());
+                Assert.Equal($"{message} world", root.GetProperty("result").GetString());
                 Assert.True(root.TryGetProperty("currentLocation", out _));
             }
         }
