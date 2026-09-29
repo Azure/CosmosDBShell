@@ -4,6 +4,8 @@
 
 namespace Azure.Data.Cosmos.Shell.Parser;
 
+using System.Globalization;
+
 using Azure.Data.Cosmos.Shell.ArgumentParser;
 using Azure.Data.Cosmos.Shell.Util;
 
@@ -673,7 +675,7 @@ internal class ExpressionParser
 
             this.Advance();
 
-            if (int.TryParse(token.Value, out int intValue))
+            if (int.TryParse(token.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
             {
                 return new ConstantExpression(token, new ShellNumber(intValue));
             }
@@ -693,7 +695,7 @@ internal class ExpressionParser
 
             this.Advance();
 
-            if (double.TryParse(token.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double doubleValue))
+            if (double.TryParse(token.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double doubleValue))
             {
                 return new ConstantExpression(token, new ShellDecimal(doubleValue));
             }
@@ -1641,7 +1643,7 @@ internal class ExpressionParser
                 }
 
                 var indexToken = this.Consume(TokenType.Number, MessageService.GetString("expression_error_expected_array_index"));
-                int index = int.TryParse(indexToken.Value, out var parsedIndex) ? parsedIndex : 0;
+                int index = int.TryParse(indexToken.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedIndex) ? parsedIndex : 0;
                 var indexedCloseBracket = this.Consume(TokenType.CloseBracket, MessageService.GetString("expression_error_expected_close_bracket"));
                 var indexQuestionToken = this.TryConsumeQuestion();
                 end = indexedCloseBracket.Start + indexedCloseBracket.Length;
