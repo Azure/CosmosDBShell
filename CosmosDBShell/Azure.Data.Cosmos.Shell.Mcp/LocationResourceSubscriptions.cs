@@ -79,7 +79,7 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
                 {
                     return;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
                 {
                     this.logger.LogWarning(ex, "Could not notify an MCP client about the shell location change.");
                     lock (this.sync)
