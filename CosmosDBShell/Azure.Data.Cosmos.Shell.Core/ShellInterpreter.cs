@@ -133,6 +133,8 @@ public partial class ShellInterpreter : IDisposable
         this.editorCancelTokenSource = new CancellationTokenSource();
     }
 
+    internal event Action? LocationChanged;
+
     /// <summary>
     /// Gets the line editor instance used by the shell, or <c>null</c> if not available.
     /// </summary>
@@ -288,8 +290,15 @@ public partial class ShellInterpreter : IDisposable
         get;
         set
         {
+            var oldState = field;
             field = value;
             Interlocked.Increment(ref this.stateVersion);
+            if (oldState != null
+                && (ShellLocation.GetCurrentLocation(oldState) != ShellLocation.GetCurrentLocation(value)
+                    || (oldState as ConnectedState)?.Client != (value as ConnectedState)?.Client))
+            {
+                this.LocationChanged?.Invoke();
+            }
         }
     }
 

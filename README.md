@@ -37,6 +37,8 @@ Exports replace their destination only after successful completion, preserving a
 
 MCP command execution is serialized with the shell, and destructive confirmations are invalidated by connection or navigation changes. MCP invocations are echoed in the shell so their activity stays visible, and they are recorded in history alongside interactive commands. History remains fully replayable, including connection strings; treat its file as sensitive. See [MCP security](docs/mcp.md#security) and [history](docs/navigation.md#history).
 
+MCP clients supporting resource subscriptions can watch `cosmos://shell/current-location` for interactive navigation and connection changes; see [MCP location updates](docs/mcp.md#shell-location-updates).
+
 ## Quick Start
 
 **Requirements:** .NET SDK 10.0+.

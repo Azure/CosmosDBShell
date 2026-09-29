@@ -91,6 +91,14 @@ Database and container resource actions are executed through Azure Resource Mana
 
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.
 
+### Shell Location Updates
+
+Clients can read the `cosmos://shell/current-location` MCP resource. Its JSON content has a `currentLocation` field (`null` when disconnected, `/` at the account root, or `/database[/container]`). Clients that support resource subscriptions can subscribe to this URI with `resources/subscribe` and receive `notifications/resources/updated` when the shared shell location or connection changes, including changes made interactively. On notification, read the resource again for the new value; the notification itself contains only the URI. Rapid consecutive changes may be coalesced into a single notification. Unsubscribe with `resources/unsubscribe` when no longer needed.
+
+Only `cosmos://shell/current-location` supports subscriptions; subscribing to any other URI, including the documentation resources, returns an invalid-params error.
+
+This server uses the subscription protocol supported by its MCP SDK; clients must support subscriptions and server-to-client notifications over the HTTP connection. A notification does not guarantee that a client refreshes the model's context. Every tool response also includes `currentLocation`, and explicit `database` / `container` arguments remain the reliable way to target independent operations.
+
 ### Data Exposure
 
 MCP tool invocations are echoed as command lines in the shell window, so anyone watching the terminal can see what a connected client is doing. They are also recorded in the shell history. History entries are complete and replayable, including any supplied connection strings. Protect the history file accordingly. On Linux and macOS, the shell restricts the history file to its owner.

@@ -6,6 +6,10 @@ namespace Azure.Data.Cosmos.Shell.Mcp;
 
 using System.ComponentModel;
 using System.Reflection;
+using System.Text.Json;
+using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.States;
+using Azure.Data.Cosmos.Shell.Util;
 
 using ModelContextProtocol.Server;
 
@@ -15,8 +19,28 @@ using ModelContextProtocol.Server;
 [McpServerResourceType]
 internal class ResourceOperations
 {
+    internal const string CurrentLocationUri = "cosmos://shell/current-location";
     private const string ScriptingUri = "cosmos://docs/scripting";
     private const string QueryLanguageUri = "cosmos://docs/nosql-query-language";
+
+    [McpServerResource(
+        UriTemplate = CurrentLocationUri,
+        Name = "cosmos-shell-current-location",
+        Title = "Current Cosmos Shell Location",
+        MimeType = "application/json")]
+    [Description("Current shared shell navigation location. Subscribe to this resource for changes made in the interactive shell or by MCP clients. Read it again after an update notification.")]
+    public static string GetCurrentLocation()
+    {
+        return GetCurrentLocation(ShellInterpreter.Instance.State);
+    }
+
+    internal static string GetCurrentLocation(State state)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            currentLocation = ShellLocation.GetCurrentLocation(state),
+        });
+    }
 
     /// <summary>
     /// Returns the Cosmos Shell scripting / programming guide so the LLM can
