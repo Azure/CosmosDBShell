@@ -164,7 +164,7 @@ internal static class MessageService
             }
 
             using var sr = new StreamReader(stream);
-            var mc = new MessageContext(resourceName, options);
+            var mc = CreateMessageContext(resourceName, options);
             var errors = mc.AddMessages(sr);
             if (errors.Any())
             {
@@ -180,5 +180,22 @@ internal static class MessageService
         }
 
         return null;
+    }
+
+    internal static MessageContext CreateMessageContext(
+        string locale,
+        MessageContextOptions options,
+        Func<string, MessageContext>? factory = null)
+    {
+        factory ??= name => new MessageContext(name, options);
+
+        try
+        {
+            return factory(locale);
+        }
+        catch (CultureNotFoundException) when (!string.IsNullOrEmpty(locale))
+        {
+            return factory(CultureInfo.InvariantCulture.Name);
+        }
     }
 }

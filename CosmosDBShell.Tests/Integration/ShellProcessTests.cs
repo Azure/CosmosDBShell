@@ -94,6 +94,23 @@ public class ShellProcessTests
     }
 
     [Fact]
+    public async Task InvariantGlobalization_ExecuteCommand_LoadsEnglishCatalog()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--quiet", "-c", "echo hi"],
+            cancellationToken: TestContext.Current.CancellationToken,
+            environment: new Dictionary<string, string?>
+            {
+                ["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1",
+            });
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("hi", result.StdOut.Trim());
+        Assert.Empty(result.StdErr);
+    }
+
+    [Fact]
     public async Task StdinPipedScript_MultipleCommands_AllRunAndLastOutputVisible()
     {
         // Pipe several commands in one stdin script. The final command's stdout must
@@ -432,7 +449,8 @@ public class ShellProcessTests
     private static async Task<ShellProcessResult> RunShellAsync(
         string? stdinScript,
         IEnumerable<string>? extraArgs,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string?>? environment = null)
     {
         var argsList = extraArgs?.ToList();
         var requiresOwnedStdin = stdinScript != null
@@ -481,6 +499,20 @@ public class ShellProcessTests
             startInfo.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
             startInfo.Environment.Remove("COSMOSDB_SHELL_FORMAT");
             startInfo.Environment["COSMOSDB_SHELL_CONFIG_DIR"] = isolatedConfigDir;
+            if (environment != null)
+            {
+                foreach (var (key, value) in environment)
+                {
+                    if (value == null)
+                    {
+                        startInfo.Environment.Remove(key);
+                    }
+                    else
+                    {
+                        startInfo.Environment[key] = value;
+                    }
+                }
+            }
 
             using var process = new Process { StartInfo = startInfo };
             var stdOut = new StringBuilder();
