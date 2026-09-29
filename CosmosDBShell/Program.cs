@@ -256,10 +256,7 @@ internal class Program
 
             if (o.ClearHistory)
             {
-                if (File.Exists(ShellInterpreter.Instance.HistoryFile))
-                {
-                    File.Delete(ShellInterpreter.Instance.HistoryFile);
-                }
+                ShellInterpreter.Instance.ClearHistory();
 
                 if (!startupMachineMode)
                 {

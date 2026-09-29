@@ -38,6 +38,8 @@ public partial class ShellInterpreter : IDisposable
 
     private const int MAXHISTORYITEMS = 60;
 
+    private const int HistoryFileOpenRetryCount = 10;
+
     private const int OptionalArmDiscoveryTimeoutSeconds = 3;
 
     internal const int MaximumCallDepth = 64;
@@ -48,6 +50,8 @@ public partial class ShellInterpreter : IDisposable
     // DecodeHistoryLine can unambiguously tell a value it produced apart from a
     // user command that just happens to start with the prefix string.
     private const string EncodedHistoryLineMarker = "E:";
+
+    private static readonly TimeSpan HistoryFileOpenRetryDelay = TimeSpan.FromMilliseconds(25);
 
     private static readonly TimeSpan LocalEmulatorOperationTimeout = TimeSpan.FromSeconds(10);
 
@@ -62,6 +66,8 @@ public partial class ShellInterpreter : IDisposable
     private readonly object sessionRequestChargeLock = new();
 
     private readonly object historyLock = new();
+
+    private readonly List<string> pendingHistoryEntries = [];
 
     private readonly SemaphoreSlim executionGate = new(1, 1);
 
@@ -125,7 +131,7 @@ public partial class ShellInterpreter : IDisposable
             foreach (var line in lines)
             {
                 var decoded = DecodeHistoryLine(line);
-                this.RecordHistoryEntry(decoded);
+                this.RecordHistoryEntry(decoded, persist: false);
             }
         }
 
@@ -2307,43 +2313,152 @@ public partial class ShellInterpreter : IDisposable
 
     private void SaveHistory()
     {
+        try
+        {
+            this.SaveHistoryCore();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
+    }
+
+    internal void ClearHistory()
+    {
+        try
+        {
+            lock (this.historyLock)
+            {
+                this.history.Clear();
+                this.pendingHistoryEntries.Clear();
+
+                lock (HistoryFileLock)
+                {
+                    using var stream = this.OpenHistoryFileWithExclusiveLock();
+                    stream.SetLength(0);
+                    RestrictHistoryFileToOwner(this.HistoryFile);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
+    }
+
+    private void SaveHistoryCore()
+    {
         lock (this.historyLock)
         {
-            if (this.history.Count > MAXHISTORYITEMS)
+            TrimHistoryEntries(this.history);
+
+            if (this.pendingHistoryEntries.Count == 0)
             {
-                this.history = [.. this.history.Skip(this.history.Count - MAXHISTORYITEMS)];
+                return;
             }
 
             // Written under the locks so concurrent interactive and MCP saves, and shells
             // sharing the history file, cannot interleave.
             lock (HistoryFileLock)
             {
-                var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.Read };
-                if (!OperatingSystem.IsWindows())
+                using var stream = this.OpenHistoryFileWithExclusiveLock();
+                RestrictHistoryFileToOwner(this.HistoryFile);
+
+                var mergedHistory = ReadHistoryEntries(stream);
+                foreach (var entry in this.pendingHistoryEntries)
                 {
-                    // History can contain connection secrets; UnixCreateMode covers only new files.
-                    options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-                    if (File.Exists(this.HistoryFile))
+                    mergedHistory.Remove(entry);
+                    mergedHistory.Add(entry);
+                }
+
+                TrimHistoryEntries(mergedHistory);
+
+                stream.SetLength(0);
+                stream.Position = 0;
+
+                using (var writer = new StreamWriter(
+                           stream,
+                           new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                           bufferSize: 1024,
+                           leaveOpen: true))
+                {
+                    foreach (var line in mergedHistory)
                     {
-                        File.SetUnixFileMode(this.HistoryFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                        writer.WriteLine(EncodeHistoryLine(line));
                     }
                 }
 
-                using var writer = new StreamWriter(this.HistoryFile, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), options);
-                foreach (var line in this.history)
-                {
-                    writer.WriteLine(EncodeHistoryLine(line));
-                }
+                this.pendingHistoryEntries.Clear();
             }
         }
     }
 
-    private void RecordHistoryEntry(string entry)
+    private FileStream OpenHistoryFileWithExclusiveLock()
+    {
+        var options = new FileStreamOptions { Mode = FileMode.OpenOrCreate, Access = FileAccess.ReadWrite, Share = FileShare.None };
+        if (!OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return new FileStream(this.HistoryFile, options);
+            }
+            catch (IOException) when (attempt < HistoryFileOpenRetryCount)
+            {
+                Thread.Sleep(HistoryFileOpenRetryDelay);
+            }
+        }
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    private static List<string> ReadHistoryEntries(Stream stream)
+    {
+        stream.Position = 0;
+        using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+        var entries = new List<string>();
+        while (reader.ReadLine() is { } line)
+        {
+            var decoded = DecodeHistoryLine(line);
+            entries.Remove(decoded);
+            entries.Add(decoded);
+        }
+
+        return entries;
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    private static void RestrictHistoryFileToOwner(string historyFile)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(historyFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    private static void TrimHistoryEntries(List<string> entries)
+    {
+        if (entries.Count > MAXHISTORYITEMS)
+        {
+            entries.RemoveRange(0, entries.Count - MAXHISTORYITEMS);
+        }
+    }
+
+    private void RecordHistoryEntry(string entry, bool persist = true)
     {
         lock (this.historyLock)
         {
             this.history.Remove(entry);
             this.history.Add(entry);
+            if (persist)
+            {
+                this.pendingHistoryEntries.Remove(entry);
+                this.pendingHistoryEntries.Add(entry);
+            }
         }
     }
 

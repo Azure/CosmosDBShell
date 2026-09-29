@@ -68,6 +68,156 @@ public class SerializedExecutionTests
     }
 
     [Fact]
+    public void PrintCommand_MergesHistorySavedByMultipleInterpreters()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            using var first = new ShellInterpreter(configPath);
+            using var second = new ShellInterpreter(configPath);
+
+            first.PrintCommand("echo from-first");
+            second.PrintCommand("echo from-second");
+
+            var persisted = File.ReadAllLines(Path.Join(configPath, "cmd_history"));
+            Assert.Equal(["echo from-first", "echo from-second"], persisted);
+
+            using var restarted = new ShellInterpreter(configPath);
+            Assert.Equal(["echo from-first", "echo from-second"], restarted.History);
+        }
+        finally
+        {
+            if (Directory.Exists(configPath))
+            {
+                Directory.Delete(configPath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void PrintCommand_DeduplicatesMergedHistoryAcrossInterpreters()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            using var first = new ShellInterpreter(configPath);
+            using var second = new ShellInterpreter(configPath);
+
+            first.PrintCommand("echo first-only");
+            second.PrintCommand("echo second-only");
+            first.PrintCommand("echo shared");
+            second.PrintCommand("echo shared");
+
+            using var restarted = new ShellInterpreter(configPath);
+            Assert.Equal(["echo first-only", "echo second-only", "echo shared"], restarted.History);
+        }
+        finally
+        {
+            if (Directory.Exists(configPath))
+            {
+                Directory.Delete(configPath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void PrintCommand_TrimsMergedHistoryToNewestEntries()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            using var first = new ShellInterpreter(configPath);
+            using var second = new ShellInterpreter(configPath);
+
+            for (var i = 0; i < 30; i++)
+            {
+                first.PrintCommand($"echo first-{i}");
+            }
+
+            for (var i = 0; i < 40; i++)
+            {
+                second.PrintCommand($"echo second-{i}");
+            }
+
+            using var restarted = new ShellInterpreter(configPath);
+            Assert.Equal(60, restarted.History.Count);
+            Assert.Equal("echo first-10", restarted.History[0]);
+            Assert.Equal("echo first-29", restarted.History[19]);
+            Assert.Equal("echo second-0", restarted.History[20]);
+            Assert.Equal("echo second-39", restarted.History[^1]);
+            Assert.DoesNotContain("echo first-0", restarted.History);
+        }
+        finally
+        {
+            if (Directory.Exists(configPath))
+            {
+                Directory.Delete(configPath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void PrintCommand_DoesNotResurrectSavedHistoryAfterClear()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            using var shell = new ShellInterpreter(configPath);
+            var historyFile = Path.Join(configPath, "cmd_history");
+
+            shell.PrintCommand("echo before-clear");
+            shell.ClearHistory();
+            Assert.Empty(File.ReadAllLines(historyFile));
+
+            using (var restartedAfterClear = new ShellInterpreter(configPath))
+            {
+                Assert.Empty(restartedAfterClear.History);
+            }
+
+            shell.PrintCommand("echo after-clear");
+
+            using var restartedAfterSave = new ShellInterpreter(configPath);
+            Assert.Equal(["echo after-clear"], restartedAfterSave.History);
+        }
+        finally
+        {
+            if (Directory.Exists(configPath))
+            {
+                Directory.Delete(configPath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void PrintCommand_PreservesMultilineHistoryWhenMergingInterpreters()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            using var first = new ShellInterpreter(configPath);
+            using var second = new ShellInterpreter(configPath);
+            var multiline = "query\nselect * from c";
+
+            first.PrintCommand(multiline);
+            second.PrintCommand("echo after-multiline");
+
+            var persisted = File.ReadAllLines(Path.Join(configPath, "cmd_history"));
+            Assert.Equal(2, persisted.Length);
+            Assert.Equal(multiline, ShellInterpreter.DecodeHistoryLine(persisted[0]));
+
+            using var restarted = new ShellInterpreter(configPath);
+            Assert.Equal([multiline, "echo after-multiline"], restarted.History);
+        }
+        finally
+        {
+            if (Directory.Exists(configPath))
+            {
+                Directory.Delete(configPath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void PrintCommand_RestrictsHistoryFileToOwnerOnUnix()
     {
         if (OperatingSystem.IsWindows())
