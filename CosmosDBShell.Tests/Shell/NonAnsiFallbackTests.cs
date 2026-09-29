@@ -23,12 +23,8 @@ public class NonAnsiFallbackTests
         using var error = new StringWriter();
         try
         {
-            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
-            {
-                Ansi = AnsiSupport.No,
-                ColorSystem = ColorSystemSupport.NoColors,
-                Out = new AnsiConsoleOutput(output),
-            });
+            var nonAnsiConsole = CreateNonAnsiConsole(output);
+            AnsiConsole.Console = nonAnsiConsole;
             Console.SetIn(input);
             Console.SetOut(output);
             Console.SetError(error);
@@ -36,6 +32,7 @@ public class NonAnsiFallbackTests
             using var shell = new ShellInterpreter(configPath)
             {
                 IsInteractiveSession = static () => false,
+                LineEditorTerminal = nonAnsiConsole,
             };
 
             await shell.RunAsync().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
@@ -58,21 +55,17 @@ public class NonAnsiFallbackTests
     public void Editor_WhenLineEditorCannotBeCreated_CachesFailure()
     {
         var configPath = CreateConfigPath();
-        var savedConsole = AnsiConsole.Console;
         var savedError = Console.Error;
         using var output = new StringWriter();
         using var error = new StringWriter();
         try
         {
-            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
-            {
-                Ansi = AnsiSupport.No,
-                ColorSystem = ColorSystemSupport.NoColors,
-                Out = new AnsiConsoleOutput(output),
-            });
             Console.SetError(error);
 
-            using var shell = new ShellInterpreter(configPath);
+            using var shell = new ShellInterpreter(configPath)
+            {
+                LineEditorTerminal = CreateNonAnsiConsole(output),
+            };
 
             Assert.Null(shell.Editor);
             var errorAfterFirstAccess = error.ToString();
@@ -85,9 +78,21 @@ public class NonAnsiFallbackTests
         finally
         {
             Console.SetError(savedError);
-            AnsiConsole.Console = savedConsole;
             DeleteConfigPath(configPath);
         }
+    }
+
+    private static IAnsiConsole CreateNonAnsiConsole(TextWriter output)
+    {
+        return AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out = new AnsiConsoleOutput(output),
+
+            // Default enrichers force ANSI on in CI environments such as GitHub Actions.
+            Enrichment = new ProfileEnrichment { UseDefaultEnrichers = false },
+        });
     }
 
     private static string CreateConfigPath()

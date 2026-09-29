@@ -265,6 +265,9 @@ public partial class ShellInterpreter : IDisposable
     internal Func<bool> IsInteractiveSession { get; set; } =
         static () => !Console.IsInputRedirected && !Console.IsOutputRedirected;
 
+    // RadLine detects terminal capabilities itself when no console is supplied.
+    internal IAnsiConsole? LineEditorTerminal { get; set; }
+
     internal IReadOnlyList<string> History
     {
         get
@@ -2260,7 +2263,7 @@ public partial class ShellInterpreter : IDisposable
         try
         {
             this.cosmosShellPrompt = new CosmosShellPrompt(this);
-            var lineEditor = new LineEditor()
+            var lineEditor = new LineEditor(this.LineEditorTerminal)
             {
                 Prompt = this.cosmosShellPrompt,
                 LineDecorationRenderer = new CosmosCompletionRenderer(this),
