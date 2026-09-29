@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Parser;
 
 using System.Globalization;
+using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.ArgumentParser;
 using Azure.Data.Cosmos.Shell.Util;
@@ -1235,7 +1236,7 @@ internal class ExpressionParser
             }
 
             // Parse property value as a full expression
-            var value = this.ParsePipeExpression();
+            var value = this.ParseJsonValueExpression();
 
             // Add to properties if key valid
             JsonProperty? propertyNode = null;
@@ -1364,7 +1365,7 @@ internal class ExpressionParser
             }
 
             // Parse next element as a full expression
-            var expr = this.ParsePipeExpression();
+            var expr = this.ParseJsonValueExpression();
             elements.Add(expr);
 
             this.SkipWhitespace();
@@ -1430,6 +1431,84 @@ internal class ExpressionParser
         this.ReportError(MessageService.GetString("expression_error_unmatched_brackets"), lbracket);
         var synthetic = this.CreateMissingToken(TokenType.CloseBracket, lbracket.Start + lbracket.Length);
         return new JsonArrayExpression(lbracket, synthetic, elements, commaTokens);
+    }
+
+    private Expression ParseJsonValueExpression()
+    {
+        if (this.TryParseLargeJsonIntegerLiteral(out var expression))
+        {
+            return expression!;
+        }
+
+        return this.ParsePipeExpression();
+    }
+
+    private bool TryParseLargeJsonIntegerLiteral(out Expression? expression)
+    {
+        expression = null;
+        if (this.aborted)
+        {
+            return false;
+        }
+
+        if (this.Check(TokenType.Number))
+        {
+            var token = this.Current;
+            if (token == null || int.TryParse(token.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return false;
+            }
+
+            expression = this.TryCreateJsonIntegerConstant(token, token.Value);
+            if (expression == null)
+            {
+                return false;
+            }
+
+            this.Advance();
+            return true;
+        }
+
+        if (this.Check(TokenType.Minus))
+        {
+            var minusToken = this.Current;
+            var numberToken = this.Peek();
+            if (minusToken == null ||
+                numberToken?.Type != TokenType.Number ||
+                int.TryParse(numberToken.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return false;
+            }
+
+            var value = "-" + numberToken.Value;
+            var token = new Token(TokenType.Number, value, minusToken.Start, numberToken.End - minusToken.Start);
+            expression = this.TryCreateJsonIntegerConstant(token, value);
+            if (expression == null)
+            {
+                return false;
+            }
+
+            this.Advance();
+            this.Advance();
+            return true;
+        }
+
+        return false;
+    }
+
+    private Expression? TryCreateJsonIntegerConstant(Token token, string value)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(value);
+            return document.RootElement.ValueKind == JsonValueKind.Number
+                ? new ConstantExpression(token, new ShellJson(document.RootElement.Clone()))
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private void ReportError(string message, Token? token, TokenType? expected = null, int? position = null, ParseErrorKind kind = ParseErrorKind.Generic)

@@ -34,6 +34,8 @@ JSON numbers use the same rules in expressions and `for` loops: integer-form val
 
 JSON construction preserves the distinction between integers and shell decimals. Integral decimal values retain a fractional suffix or exponent, so `$object = {"value":3.0}` stores JSON `3.0` and `$object.value / 2` produces `1.5`. This also applies to arrays, computed decimal values, and repeated reconstruction after loop or function calls. Integer values remain JSON integers. The original spelling and number of trailing zeros are not preserved; values still use IEEE 754 `double` precision.
 
+JSON object and array literals accept larger integer-form values and preserve them as JSON integers.
+
 Numeric Boolean conversion uses zero versus nonzero, including for fractional and large JSON numbers. JSON numbers use the same `double` conversion as decimal shell values for this check, so `if 1.5` and `if $object.value` behave alike when the property contains `1.5`.
 
 JSON `null` remains JSON `null` when bound by a `for` loop or passed through a function. Rebuilding an array from that value produces `[null]`, not `["null"]`. Text conversion remains explicit and separate from JSON type preservation.
