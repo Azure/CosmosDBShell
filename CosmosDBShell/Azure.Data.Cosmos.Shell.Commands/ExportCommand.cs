@@ -37,6 +37,7 @@ internal enum ExportFormat
 internal class ExportCommand : CosmosCommand
 {
     private const string DefaultQuery = "SELECT * FROM c";
+    private const string ValueColumnName = "value";
 
     [CosmosParameter("file", RequiredErrorKey = "command-export-error-missing_file")]
     public string? File { get; init; }
@@ -187,8 +188,9 @@ internal class ExportCommand : CosmosCommand
     /// <summary>
     /// Writes a sequence of items to <paramref name="writer"/> as CSV. The header row is the
     /// union of all top-level property names (in first-seen order); each subsequent row
-    /// contains the corresponding values. Nested objects and arrays are written as compact
-    /// JSON. Items are spooled to disk to compute the column set.
+    /// contains the corresponding values. Non-object rows are written in a <c>value</c>
+    /// column. Nested objects and arrays are written as compact JSON. Items are spooled to
+    /// disk to compute the column set.
     /// </summary>
     /// <param name="items">The items to write.</param>
     /// <param name="writer">The destination writer.</param>
@@ -218,6 +220,11 @@ internal class ExportCommand : CosmosCommand
             await spoolWriter.WriteLineAsync(SerializeJsonLine(item).AsMemory(), token);
             if (item.ValueKind != JsonValueKind.Object)
             {
+                if (headerSet.Add(ValueColumnName))
+                {
+                    headers.Add(ValueColumnName);
+                }
+
                 continue;
             }
 
@@ -267,6 +274,10 @@ internal class ExportCommand : CosmosCommand
                     var text = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
                     sb.Append(CommandState.EscapeCSV(text));
                 }
+                else if (item.ValueKind != JsonValueKind.Object && headers[i] == ValueColumnName)
+                {
+                    sb.Append(CommandState.EscapeCSV(GetScalarCsvValue(item)));
+                }
                 else
                 {
                     sb.Append(CommandState.EscapeCSV(string.Empty));
@@ -279,6 +290,11 @@ internal class ExportCommand : CosmosCommand
 
         await writer.FlushAsync(token);
         return count;
+    }
+
+    private static string GetScalarCsvValue(JsonElement item)
+    {
+        return item.ToString();
     }
 
     private static async Task<(int Count, double Charge)> ExecuteExportAsync(

@@ -654,7 +654,7 @@ Examples:
 
 ### export
 
-Stream items from a container to a local file. Default format is JSON Lines (one compact JSON object per line); pass `--format=array` for a single JSON array, or `--format=csv` for CSV. JSON formats stream incrementally. CSV spools documents to a private temporary file to compute the complete column set, keeping only the column names and current record in memory. Allow enough temporary disk space for the JSON spool as well as the destination export. The CSV separator follows the `COSMOSDB_SHELL_CSVSEP` environment variable (default `;`).
+Stream items from a container to a local file. Default format is JSON Lines (one compact JSON object per line); pass `--format=array` for a single JSON array, or `--format=csv` for CSV. JSON formats stream incrementally. CSV spools documents to a private temporary file to compute the complete column set, keeping only the column names and current record in memory. Allow enough temporary disk space for the JSON spool as well as the destination export. The CSV separator follows the `COSMOSDB_SHELL_CSVSEP` environment variable (default `;`). Non-object query results are written to a CSV `value` column; mixed object and non-object results include both object property columns and the `value` column.
 
 All formats write to a temporary file in the destination directory and move it into place only after successful completion. An existing destination requires `--force` and is preserved if reading, writing, or cancellation interrupts the export. Temporary files are removed on normal completion and handled failures; an abrupt process termination can leave an unfinished destination-directory temporary file. Once `--max` items have been emitted, no further query pages are requested.
 

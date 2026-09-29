@@ -205,6 +205,88 @@ public class ExportCommandTests
     }
 
     [Fact]
+    public async Task WriteCsvAsync_ObjectRowsKeepRawJsonValues()
+    {
+        var items = ToAsyncEnumerableAsync(
+            JsonSerializer.SerializeToElement(new { id = "1", flag = true, missing = (object?)null }));
+
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
+
+        Assert.Equal(1, count);
+        var lines = writer.ToString().TrimEnd('\n').Split('\n');
+        Assert.Equal("\"id\",\"flag\",\"missing\"", lines[0]);
+        Assert.Equal("\"1\",\"true\",\"null\"", lines[1]);
+    }
+
+    [Fact]
+    public async Task WriteCsvAsync_ScalarStringsUseValueColumnAndEscapeCsv()
+    {
+        var items = ToAsyncEnumerableAsync(
+            JsonSerializer.SerializeToElement("a,\"b"));
+
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
+
+        Assert.Equal(1, count);
+        Assert.Equal("\"value\"\n\"a,\"\"b\"\n", writer.ToString());
+    }
+
+    [Fact]
+    public async Task WriteCsvAsync_ScalarNumbersBoolsAndNullUseValueColumn()
+    {
+        var items = ToAsyncEnumerableAsync(
+            JsonSerializer.SerializeToElement(42),
+            JsonSerializer.SerializeToElement(true),
+            JsonSerializer.SerializeToElement(false),
+            JsonSerializer.SerializeToElement((object?)null));
+
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
+
+        Assert.Equal(4, count);
+        Assert.Equal("\"value\"\n\"42\"\n\"True\"\n\"False\"\n\"\"\n", writer.ToString());
+    }
+
+    [Fact]
+    public async Task WriteCsvAsync_ArrayRowsUseValueColumn()
+    {
+        var items = ToAsyncEnumerableAsync(
+            JsonSerializer.SerializeToElement(new[] { 1, 2 }));
+
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
+
+        Assert.Equal(1, count);
+        Assert.Equal("\"value\"\n\"[1,2]\"\n", writer.ToString());
+    }
+
+    [Fact]
+    public async Task WriteCsvAsync_MixedObjectAndScalarRowsPreserveScalarValue()
+    {
+        var items = ToAsyncEnumerableAsync(
+            JsonSerializer.SerializeToElement(new { id = "1" }),
+            JsonSerializer.SerializeToElement("a,b"),
+            JsonSerializer.SerializeToElement(new { id = "2", value = 99 }));
+
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
+
+        Assert.Equal(3, count);
+        Assert.Equal("\"id\",\"value\"\n\"1\",\"\"\n\"\",\"a,b\"\n\"2\",\"99\"\n", writer.ToString());
+    }
+
+    [Fact]
     public async Task WriteCsvAsync_WithNoItems_ProducesEmptyOutput()
     {
         var items = ToAsyncEnumerableAsync();
