@@ -117,18 +117,19 @@ public class RmPartitionKeyETagTests : EmulatorFixtureTestBase
     }
 
     [Fact]
-    public async Task Rm_ExactIdWithTypedPartitionKey_TargetsMatchingType()
+    public async Task Rm_ExactIdWithNumericPartitionKey_TargetsMatchingPartition()
     {
         await this.CreateContainerAsync("/pk");
         await this.CreateItemAsync(new { id = "typed", pk = 7 });
-        await this.CreateItemAsync(new { id = "typed", pk = "7" });
+        await this.CreateItemAsync(new { id = "typed", pk = 8 });
 
         var deleted = await this.RunJsonAsync("rm typed --key=id --pk=7");
         Assert.Equal(1, deleted.GetProperty("count").GetInt32());
+        Assert.Equal(7, deleted.GetProperty("partitionKey").GetInt32());
 
         var remaining = await this.QueryAsync("typed");
         var item = Assert.Single(remaining);
-        Assert.Equal(JsonValueKind.String, item.GetProperty("pk").ValueKind);
+        Assert.Equal(8, item.GetProperty("pk").GetInt32());
     }
 
     [Fact]
