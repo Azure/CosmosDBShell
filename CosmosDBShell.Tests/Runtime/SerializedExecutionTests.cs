@@ -1,5 +1,6 @@
 namespace CosmosShell.Tests.Runtime;
 
+using System.Diagnostics;
 using Azure.Data.Cosmos.Shell.Core;
 
 public class SerializedExecutionTests
@@ -91,6 +92,66 @@ public class SerializedExecutionTests
             {
                 Directory.Delete(configPath, recursive: true);
             }
+        }
+    }
+
+    [Fact]
+    public async Task PrintCommand_MergesHistorySavedByConcurrentProcesses()
+    {
+        var childConfigPath = Environment.GetEnvironmentVariable("COSMOSDBSHELL_TEST_HISTORY_CONFIG");
+        var childPrefix = Environment.GetEnvironmentVariable("COSMOSDBSHELL_TEST_HISTORY_PREFIX");
+        if (!string.IsNullOrEmpty(childConfigPath) && !string.IsNullOrEmpty(childPrefix))
+        {
+            using var shell = new ShellInterpreter(childConfigPath);
+            for (var index = 0; index < 20; index++)
+            {
+                shell.PrintCommand($"echo {childPrefix}-{index}");
+            }
+
+            return;
+        }
+
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-process-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(configPath);
+        using var first = CreateHistoryWriterProcess(configPath, "first");
+        using var second = CreateHistoryWriterProcess(configPath, "second");
+        var firstStarted = false;
+        var secondStarted = false;
+        try
+        {
+            firstStarted = first.Start();
+            secondStarted = second.Start();
+            Assert.True(firstStarted);
+            Assert.True(secondStarted);
+
+            var firstOutput = first.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+            var firstError = first.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+            var secondOutput = second.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+            var secondError = second.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(45));
+            await Task.WhenAll(
+                first.WaitForExitAsync(timeout.Token),
+                second.WaitForExitAsync(timeout.Token));
+
+            var output = await Task.WhenAll(firstOutput, firstError, secondOutput, secondError);
+            Assert.True(first.ExitCode == 0, $"First process exited with {first.ExitCode}: {output[0]} {output[1]}");
+            Assert.True(second.ExitCode == 0, $"Second process exited with {second.ExitCode}: {output[2]} {output[3]}");
+
+            using var restarted = new ShellInterpreter(configPath);
+            Assert.Equal(40, restarted.History.Count);
+            for (var index = 0; index < 20; index++)
+            {
+                Assert.Contains($"echo first-{index}", restarted.History);
+                Assert.Contains($"echo second-{index}", restarted.History);
+            }
+        }
+        finally
+        {
+            StopProcess(first, firstStarted);
+            StopProcess(second, secondStarted);
+            Directory.Delete(configPath, recursive: true);
         }
     }
 
@@ -394,5 +455,43 @@ public class SerializedExecutionTests
         }
 
         Assert.Equal(3, await shell.RunSerializedAsync(() => Task.FromResult(3), TestContext.Current.CancellationToken));
+    }
+
+    private static Process CreateHistoryWriterProcess(string configPath, string prefix)
+    {
+        var testAssembly = typeof(SerializedExecutionTests).Assembly.Location;
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = GetDotnetPath(),
+            WorkingDirectory = AppContext.BaseDirectory,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add("test");
+        startInfo.ArgumentList.Add(testAssembly);
+        startInfo.ArgumentList.Add("--filter");
+        startInfo.ArgumentList.Add($"FullyQualifiedName={typeof(SerializedExecutionTests).FullName}.PrintCommand_MergesHistorySavedByConcurrentProcesses");
+        startInfo.Environment["COSMOSDBSHELL_TEST_HISTORY_CONFIG"] = configPath;
+        startInfo.Environment["COSMOSDBSHELL_TEST_HISTORY_PREFIX"] = prefix;
+        return new Process { StartInfo = startInfo };
+    }
+
+    private static string GetDotnetPath()
+    {
+        var dotnet = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+        return !string.IsNullOrEmpty(dotnet) && File.Exists(dotnet)
+            ? dotnet
+            : OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+    }
+
+    private static void StopProcess(Process process, bool started)
+    {
+        if (started && !process.HasExited)
+        {
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit();
+        }
     }
 }
