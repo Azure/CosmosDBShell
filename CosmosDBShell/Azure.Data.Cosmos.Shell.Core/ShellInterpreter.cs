@@ -63,6 +63,8 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly object historyLock = new();
 
+    private readonly object lineEditorLock = new();
+
     private readonly SemaphoreSlim executionGate = new(1, 1);
 
     private long stateVersion;
@@ -142,13 +144,16 @@ public partial class ShellInterpreter : IDisposable
     {
         get
         {
-            if (!this.lineEditorCreationAttempted)
+            lock (this.lineEditorLock)
             {
-                this.lineEditorCreationAttempted = true;
-                this.lineEditor = this.CreateLineEditor();
-            }
+                if (!this.lineEditorCreationAttempted)
+                {
+                    this.lineEditorCreationAttempted = true;
+                    this.lineEditor = this.CreateLineEditor();
+                }
 
-            return this.lineEditor;
+                return this.lineEditor;
+            }
         }
     }
 
@@ -2263,37 +2268,37 @@ public partial class ShellInterpreter : IDisposable
         try
         {
             this.cosmosShellPrompt = new CosmosShellPrompt(this);
-            var lineEditor = new LineEditor(this.LineEditorTerminal)
+            var editor = new LineEditor(this.LineEditorTerminal)
             {
                 Prompt = this.cosmosShellPrompt,
                 LineDecorationRenderer = new CosmosCompletionRenderer(this),
                 Highlighter = this,
             };
-            lineEditor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.UpArrow);
-            lineEditor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.DownArrow);
+            editor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.UpArrow);
+            editor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.DownArrow);
 
-            lineEditor.KeyBindings.Add<ClearCurrentLineCommand>(ConsoleKey.Escape);
-            lineEditor.KeyBindings.Add<ClearScreenCommand>(ConsoleKey.L, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<MoveToStartOfLineCommand>(ConsoleKey.A, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<MoveToEndOfLineCommand>(ConsoleKey.E, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<DeleteToStartOfLineCommand>(ConsoleKey.U, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<DeleteToEndOfLineCommand>(ConsoleKey.K, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<DeletePreviousWordCommand>(ConsoleKey.W, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.P, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.N, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<MoveCursorLeftCommand>(ConsoleKey.B, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<MoveCursorRightCommand>(ConsoleKey.F, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add(ConsoleKey.D, ConsoleModifiers.Control, () => new ExitShellCommand(this));
-            lineEditor.KeyBindings.Add(ConsoleKey.R, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this));
-            lineEditor.KeyBindings.Add(ConsoleKey.S, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this, startsForward: true));
-            lineEditor.KeyBindings.Add(ConsoleKey.Tab, () => new CosmosCompleteCommand(this, AutoComplete.Next));
-            lineEditor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Control, () => new CosmosCompleteCommand(this, AutoComplete.Previous));
+            editor.KeyBindings.Add<ClearCurrentLineCommand>(ConsoleKey.Escape);
+            editor.KeyBindings.Add<ClearScreenCommand>(ConsoleKey.L, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<MoveToStartOfLineCommand>(ConsoleKey.A, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<MoveToEndOfLineCommand>(ConsoleKey.E, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<DeleteToStartOfLineCommand>(ConsoleKey.U, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<DeleteToEndOfLineCommand>(ConsoleKey.K, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<DeletePreviousWordCommand>(ConsoleKey.W, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.P, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.N, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<MoveCursorLeftCommand>(ConsoleKey.B, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<MoveCursorRightCommand>(ConsoleKey.F, ConsoleModifiers.Control);
+            editor.KeyBindings.Add(ConsoleKey.D, ConsoleModifiers.Control, () => new ExitShellCommand(this));
+            editor.KeyBindings.Add(ConsoleKey.R, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this));
+            editor.KeyBindings.Add(ConsoleKey.S, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this, startsForward: true));
+            editor.KeyBindings.Add(ConsoleKey.Tab, () => new CosmosCompleteCommand(this, AutoComplete.Next));
+            editor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Control, () => new CosmosCompleteCommand(this, AutoComplete.Previous));
             foreach (var line in this.History)
             {
-                lineEditor.History.Add(line);
+                editor.History.Add(line);
             }
 
-            return lineEditor;
+            return editor;
         }
         catch (Exception e)
         {

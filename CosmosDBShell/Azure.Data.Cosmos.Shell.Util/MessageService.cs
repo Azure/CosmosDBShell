@@ -185,17 +185,17 @@ internal static class MessageService
     internal static MessageContext CreateMessageContext(
         string locale,
         MessageContextOptions options,
-        Func<string, MessageContext>? factory = null)
+        Func<IEnumerable<string>, MessageContext>? factory = null)
     {
-        factory ??= name => new MessageContext(name, options);
+        factory ??= locales => new MessageContext(locales, options);
 
         try
         {
-            return factory(locale);
+            return factory([locale]);
         }
         catch (CultureNotFoundException) when (!string.IsNullOrEmpty(locale))
         {
-            return factory(CultureInfo.InvariantCulture.Name);
+            return factory([CultureInfo.InvariantCulture.Name, locale]);
         }
     }
 }

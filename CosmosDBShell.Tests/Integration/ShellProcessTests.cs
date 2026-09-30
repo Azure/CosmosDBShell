@@ -98,16 +98,16 @@ public class ShellProcessTests
     {
         var result = await RunShellAsync(
             stdinScript: null,
-            extraArgs: ["--quiet", "-c", "echo hi"],
+            extraArgs: ["--quiet", "-c", "def identity [value] { return }; identity"],
             cancellationToken: TestContext.Current.CancellationToken,
             environment: new Dictionary<string, string?>
             {
                 ["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1",
             });
 
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal("hi", result.StdOut.Trim());
-        Assert.Empty(result.StdErr);
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("expects 1 argument, got 0", result.StdErr);
+        Assert.DoesNotContain("1 arguments", result.StdErr);
     }
 
     [Fact]

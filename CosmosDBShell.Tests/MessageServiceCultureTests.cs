@@ -33,23 +33,29 @@ public class MessageServiceCultureTests
     public void CreateMessageContext_FallsBackToInvariantCulture_WhenLocaleIsNotSupported()
     {
         var options = new MessageContextOptions { UseIsolating = false };
-        var attempts = new List<string>();
+        var attempts = new List<string[]>();
 
         var context = MessageService.CreateMessageContext(
             "en",
             options,
-            locale =>
+            locales =>
             {
-                attempts.Add(locale);
-                if (locale == "en")
+                var localeList = locales.ToArray();
+                attempts.Add(localeList);
+                if (localeList.SequenceEqual(["en"]))
                 {
-                    throw new CultureNotFoundException("name", locale, "unsupported");
+                    throw new CultureNotFoundException("name", "en", "unsupported");
                 }
 
-                return new MessageContext(locale, options);
+                return new MessageContext(localeList, options);
             });
 
-        Assert.Equal(["en", CultureInfo.InvariantCulture.Name], attempts);
+        Assert.Equal(
+            [
+                ["en"],
+                [CultureInfo.InvariantCulture.Name, "en"],
+            ],
+            attempts);
         Assert.NotNull(context);
     }
 }
