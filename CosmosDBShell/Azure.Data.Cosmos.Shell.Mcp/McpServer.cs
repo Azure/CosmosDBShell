@@ -10,6 +10,7 @@ using System.Reflection;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -26,6 +27,8 @@ using static Program;
 /// </summary>
 internal class McpServer
 {
+    private const string McpSessionIdHeaderName = "Mcp-Session-Id";
+
     public static IHost CreateHost(CosmosShellOptions serverArguments)
     {
         var builder = WebApplication.CreateBuilder([]);
@@ -43,8 +46,29 @@ internal class McpServer
             });
         var application = builder.Build();
         application.UseOriginValidation();
+        application.Use(RemoveLocationSubscriptionsWhenNotificationStreamEndsAsync);
         application.MapMcp();
         return application;
+    }
+
+    // The SDK accepts one notification stream (GET) per session and swallows write failures on it,
+    // so once that request ends the session can no longer receive location updates.
+    private static async Task RemoveLocationSubscriptionsWhenNotificationStreamEndsAsync(HttpContext context, RequestDelegate next)
+    {
+        var sessionId = HttpMethods.IsGet(context.Request.Method)
+            ? context.Request.Headers[McpSessionIdHeaderName].ToString()
+            : string.Empty;
+        try
+        {
+            await next(context);
+        }
+        finally
+        {
+            if (!string.IsNullOrEmpty(sessionId))
+            {
+                context.RequestServices.GetRequiredService<LocationResourceSubscriptions>().RemoveSession(sessionId);
+            }
+        }
     }
 
     private static void ConfigureMcpServer(IServiceCollection services)
