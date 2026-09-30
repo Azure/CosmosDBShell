@@ -30,18 +30,6 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
         ShellInterpreter.Instance.LocationChanged += this.OnLocationChanged;
     }
 
-    internal int SubscriberCount
-    {
-        get
-        {
-            lock (this.sync)
-            {
-                this.PruneSubscribers();
-                return this.subscribers.Count;
-            }
-        }
-    }
-
     public void Subscribe(ModelContextProtocol.Server.McpServer server, string uri)
     {
         ValidateUri(uri);
@@ -61,15 +49,6 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
         lock (this.sync)
         {
             this.subscribers.RemoveAll(reference => !reference.TryGetTarget(out var target) || ReferenceEquals(target, server));
-        }
-    }
-
-    public void RemoveSession(string sessionId)
-    {
-        lock (this.sync)
-        {
-            this.subscribers.RemoveAll(reference =>
-                !reference.TryGetTarget(out var target) || string.Equals(target.SessionId, sessionId, StringComparison.Ordinal));
         }
     }
 
