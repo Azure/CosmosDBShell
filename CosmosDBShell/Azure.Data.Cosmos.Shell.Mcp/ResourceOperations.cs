@@ -28,7 +28,7 @@ internal class ResourceOperations
         Name = "cosmos-shell-current-location",
         Title = "Current Cosmos Shell Location",
         MimeType = "application/json")]
-    [Description("Current shared shell navigation location. Subscribe to this resource for changes made in the interactive shell or by MCP clients. Read it again after an update notification.")]
+    [Description("Current shared shell navigation location and account endpoint. Subscribe to this resource for changes made in the interactive shell or by MCP clients. Read it again after an update notification.")]
     public static string GetCurrentLocation()
     {
         return GetCurrentLocation(ShellInterpreter.Instance.State);
@@ -39,6 +39,7 @@ internal class ResourceOperations
         return JsonSerializer.Serialize(new
         {
             currentLocation = ShellLocation.GetCurrentLocation(state),
+            currentAccountEndpoint = state is ConnectedState connected ? connected.Client.Endpoint.ToString() : null,
         });
     }
 

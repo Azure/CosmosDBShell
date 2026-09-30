@@ -10,6 +10,7 @@ using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.States;
+using Microsoft.Azure.Cosmos;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
 
@@ -54,15 +55,20 @@ public class McpLocationSubscriptionTests
                 cancellationToken: timeout.Token);
 
             var originalState = ShellInterpreter.Instance.State;
+            using var cosmosClient = new CosmosClient(
+                "https://localhost:8081",
+                Convert.ToBase64String(new byte[64]),
+                new CosmosClientOptions { ConnectionMode = ConnectionMode.Gateway });
             try
             {
-                ShellInterpreter.Instance.State = new DatabaseState("McpNotificationTest", null!);
+                ShellInterpreter.Instance.State = new DatabaseState("McpNotificationTest", cosmosClient);
                 Assert.Equal(ResourceOperations.CurrentLocationUri, await updated.Task.WaitAsync(timeout.Token));
 
                 var resource = await client.ReadResourceAsync(ResourceOperations.CurrentLocationUri, cancellationToken: timeout.Token);
                 var content = Assert.Single(resource.Contents);
                 using var json = JsonDocument.Parse(Assert.IsType<ModelContextProtocol.Protocol.TextResourceContents>(content).Text);
                 Assert.Equal("/McpNotificationTest", json.RootElement.GetProperty("currentLocation").GetString());
+                Assert.Equal(cosmosClient.Endpoint.ToString(), json.RootElement.GetProperty("currentAccountEndpoint").GetString());
             }
             finally
             {
