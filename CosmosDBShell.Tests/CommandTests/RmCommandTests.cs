@@ -258,6 +258,17 @@ public class RmCommandTests
         Assert.Equal("[\"tenant-1\",7.5]", RmCommand.ToPartitionKeyJson(partitionKey).GetRawText());
     }
 
+    [Fact]
+    public void ToPartitionKeyJson_DoesNotOverflowIntegralValuesOutsideInt64Range()
+    {
+        var partitionKey = RmCommand.ParsePartitionKey("1e19");
+
+        var json = RmCommand.ToPartitionKeyJson(partitionKey);
+
+        Assert.Equal(JsonValueKind.Number, json.ValueKind);
+        Assert.Equal(1e19, json.GetDouble());
+    }
+
     [Theory]
     [InlineData("customer-42", """{"pk":"customer-42"}""", true)]
     [InlineData("customer-42", """{"pk":"customer-43"}""", false)]

@@ -159,9 +159,9 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         bool dryRun = this.DryRun == true;
 
         // In dry-run mode, count what would be deleted without issuing any delete.
-        async Task<(bool Counted, double RequestCharge)> TryDeleteAsync(string id, PartitionKey partitionKey)
+        async Task<(bool Counted, double RequestCharge)> TryDeleteAsync(string id, PartitionKey itemPartitionKey)
         {
-            if (this.partitionKey is PartitionKey scope && !scope.Equals(partitionKey))
+            if (this.partitionKey is PartitionKey scope && !scope.Equals(itemPartitionKey))
             {
                 return (false, 0);
             }
@@ -173,7 +173,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
             try
             {
-                var deleteResponse = await container.DeleteItemAsync<object>(id, partitionKey, cancellationToken: token);
+                var deleteResponse = await container.DeleteItemAsync<object>(id, itemPartitionKey, cancellationToken: token);
                 return (true, deleteResponse.RequestCharge);
             }
             catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -397,8 +397,8 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
                 writer.WriteEndArray();
                 break;
-            case JsonValueKind.Number when value.TryGetDouble(out var number)
-                && Math.Floor(number) == number
+            case JsonValueKind.Number when value.TryGetDecimal(out var number)
+                && number == decimal.Truncate(number)
                 && number >= long.MinValue
                 && number <= long.MaxValue:
                 writer.WriteNumberValue((long)number);
@@ -475,7 +475,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         return this.PartitionKeyArgument == null ? null : ParsePartitionKey(this.PartitionKeyArgument);
     }
 
-    private async Task<ExitCode> RemoveExactItemAsync(Container container, PartitionKey partitionKey, CommandState commandState, CancellationToken token)
+    private async Task<ExitCode> RemoveExactItemAsync(Container container, PartitionKey targetPartitionKey, CommandState commandState, CancellationToken token)
     {
         var id = this.Pattern!;
         var dryRun = this.DryRun == true;
@@ -485,7 +485,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
         if (dryRun)
         {
-            using var response = await container.ReadItemStreamAsync(id, partitionKey, cancellationToken: token);
+            using var response = await container.ReadItemStreamAsync(id, targetPartitionKey, cancellationToken: token);
             requestCharge = response.Headers.RequestCharge;
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
@@ -508,7 +508,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             var requestOptions = this.ETag == null ? null : new ItemRequestOptions { IfMatchEtag = this.ETag };
             try
             {
-                var response = await container.DeleteItemAsync<object>(id, partitionKey, requestOptions, token);
+                var response = await container.DeleteItemAsync<object>(id, targetPartitionKey, requestOptions, token);
                 requestCharge = response.RequestCharge;
                 count = 1;
             }
@@ -523,7 +523,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             }
         }
 
-        var partitionKeyJson = ToPartitionKeyJson(partitionKey);
+        var partitionKeyJson = ToPartitionKeyJson(targetPartitionKey);
         var result = this.CreateResult(count, dryRun);
         result["id"] = id;
         if (currentETag != null)
