@@ -135,6 +135,34 @@ public class ToolOperationsCallToolTests
     }
 
     [Fact]
+    public async Task CallTool_RmWithPartitionKeyAndETag_ConfirmationShowsTargetConditions()
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["pattern"] = Json("\"order-123\""),
+            ["key"] = Json("\"id\""),
+            ["pk"] = Json("\"customer-42\""),
+            ["etag"] = Json("\"\\\"etag-1\\\"\""),
+            ["database"] = Json("\"MyDb\""),
+            ["container"] = Json("\"Orders\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("rm", arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            var error = root.GetProperty("error").GetString();
+            Assert.Contains("does not support confirmation prompts", error);
+            Assert.Contains("rm \"order-123\"", error);
+            Assert.Contains("--partition-key \"customer-42\"", error);
+            Assert.Contains("--etag \"\\\"etag-1\\\"\"", error);
+        }
+    }
+
+    [Fact]
     public async Task ConfirmDestructive_UserAccepts_ReturnsNull()
     {
         var tool = CreateToolOperations();

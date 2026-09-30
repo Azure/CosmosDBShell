@@ -336,6 +336,24 @@ public class ToolOperationsTests
     }
 
     [Fact]
+    public void GetTool_RmExposesPartitionKeyAndETagOptions()
+    {
+        var factory = new CommandRunner().Commands["rm"];
+
+        var tool = ToolOperations.GetTool(factory);
+        var properties = tool.InputSchema.GetProperty("properties");
+
+        var partitionKey = properties.GetProperty("partition-key");
+        Assert.Equal("string", partitionKey.GetProperty("type").GetString());
+        Assert.Contains("Aliases: pk", partitionKey.GetProperty("description").GetString());
+        Assert.Contains("logical partition key", partitionKey.GetProperty("description").GetString());
+
+        var etag = properties.GetProperty("etag");
+        Assert.Equal("string", etag.GetProperty("type").GetString());
+        Assert.Contains("--partition-key", etag.GetProperty("description").GetString());
+    }
+
+    [Fact]
     public void GetTool_RendersEnumOptionAsStringSchemaWithValues()
     {
         var factory = new CommandRunner().Commands["query"];

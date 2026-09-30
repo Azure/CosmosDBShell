@@ -18,11 +18,16 @@ using Spectre.Console;
 [CosmosExample("rm old-item-* --key=id", DescriptionKey = "command-rm-example-3")]
 [CosmosExample("rm test-* --database=MyDB --container=Items", DescriptionKey = "command-rm-example-4")]
 [CosmosExample("rm test-* --dry-run", DescriptionKey = "command-rm-example-5")]
+[CosmosExample("rm order-123 --key=id --partition-key=customer-42 --dry-run", DescriptionKey = "command-rm-example-6")]
+[CosmosExample("rm order-123 --key=id --partition-key=customer-42 --etag '\"<etag-from-dry-run>\"'", DescriptionKey = "command-rm-example-7")]
 [McpAnnotation(Title = "Remove Items", Restricted = true, Destructive = true, Confirmable = true)]
 internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 {
+    private const string IdPropertyName = "id";
+
     private PatternMatcher? matcher;
     private ShellInterpreter? shell;
+    private PartitionKey? partitionKey;
 
     [CosmosParameter("pattern")]
     public string? Pattern { get; init; }
@@ -39,15 +44,25 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
     [CosmosOption("dry-run")]
     public bool? DryRun { get; init; }
 
+    [CosmosOption("partition-key", "pk")]
+    public string? PartitionKeyArgument { get; init; }
+
+    [CosmosOption("etag")]
+    public string? ETag { get; init; }
+
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
-        if (commandState.Result == null)
+        bool hasPipeInput = commandState.Result != null;
+        if (!hasPipeInput)
         {
             if (string.IsNullOrEmpty(this.Pattern))
             {
                 throw new CommandException("rm", MessageService.GetString("command-rm-error-no_filter"));
             }
         }
+
+        this.ValidateETagOptions(hasPipeInput);
+        this.partitionKey = this.ParsePartitionKeyArgument();
 
         this.shell = shell;
         this.matcher = string.IsNullOrEmpty(this.Pattern) ? null : new PatternMatcher(this.Pattern);
@@ -114,6 +129,28 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         var partitionKeyPaths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(state, databaseName, containerName, token);
         var partitionKeyPropertyNames = GetPartitionKeyPropertyNames(partitionKeyPaths);
 
+        if (this.partitionKey is PartitionKey scopedPartitionKey)
+        {
+            var componentCount = GetPartitionKeyComponentCount(scopedPartitionKey);
+            if (componentCount != partitionKeyPropertyNames.Length)
+            {
+                throw new CommandException(
+                    "rm",
+                    MessageService.GetString(
+                        "command-rm-error-partition_key_components",
+                        new Dictionary<string, object>
+                        {
+                            { "expected", partitionKeyPropertyNames.Length },
+                            { "actual", componentCount },
+                        }));
+            }
+
+            if (!hasPipeInput && this.IsExactIdTarget())
+            {
+                return await this.RemoveExactItemAsync(container, scopedPartitionKey, commandState, token);
+            }
+        }
+
         // Determine which key to match against (partition key by default, or custom key if specified)
         var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
 
@@ -124,6 +161,11 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         // In dry-run mode, count what would be deleted without issuing any delete.
         async Task<(bool Counted, double RequestCharge)> TryDeleteAsync(string id, PartitionKey partitionKey)
         {
+            if (this.partitionKey is PartitionKey scope && !scope.Equals(partitionKey))
+            {
+                return (false, 0);
+            }
+
             if (dryRun)
             {
                 return (true, 0);
@@ -184,7 +226,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
                         if (id != null && shouldDelete)
                         {
-                            var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
+                            var deleteResult = await TryDeleteAsync(id, CreateItemPartitionKey(pkElements));
                             totalCharge += deleteResult.RequestCharge;
                             if (deleteResult.Counted)
                             {
@@ -217,7 +259,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         var id = idElement.GetString();
                         if (id != null)
                         {
-                            var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
+                            var deleteResult = await TryDeleteAsync(id, CreateItemPartitionKey(pkElements));
                             totalCharge += deleteResult.RequestCharge;
                             if (deleteResult.Counted)
                             {
@@ -231,8 +273,11 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         else if (this.matcher != null)
         {
             string query = $"SELECT * FROM c";
+            var queryOptions = this.partitionKey is PartitionKey scope
+                ? new QueryRequestOptions { PartitionKey = scope }
+                : null;
 
-            using var feedIterator = container.GetItemQueryStreamIterator(query);
+            using var feedIterator = container.GetItemQueryStreamIterator(query, requestOptions: queryOptions);
 
             while (feedIterator.HasMoreResults)
             {
@@ -283,7 +328,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
                     if (shouldDelete)
                     {
-                        var deleteResult = await TryDeleteAsync(id, CreatePartitionKey(pkElements));
+                        var deleteResult = await TryDeleteAsync(id, CreateItemPartitionKey(pkElements));
                         totalCharge += deleteResult.RequestCharge;
                         if (deleteResult.Counted)
                         {
@@ -306,11 +351,74 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                     { "key", string.Join(',', matchKeyPropertyNames) },
                 });
 
-        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "item", count = totalCount, dryRun }));
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(this.CreateResult(totalCount, dryRun)));
         commandState.RenderUser = () => AnsiConsole.MarkupLine(renderMessage);
 
         commandState.RequestCharge = totalCharge > 0 ? totalCharge : null;
         return new ExitCode(0);
+    }
+
+    internal static PartitionKey CreateItemPartitionKey(IReadOnlyList<JsonElement> elements) => CreatePartitionKey(elements);
+
+    internal static int GetPartitionKeyComponentCount(PartitionKey partitionKey)
+    {
+        using var document = JsonDocument.Parse(partitionKey.ToString());
+        return document.RootElement.ValueKind == JsonValueKind.Array ? document.RootElement.GetArrayLength() : 1;
+    }
+
+    internal static JsonElement ToPartitionKeyJson(PartitionKey partitionKey)
+    {
+        using var document = JsonDocument.Parse(partitionKey.ToString());
+        var root = document.RootElement;
+        var value = root.ValueKind == JsonValueKind.Array && root.GetArrayLength() == 1 ? root[0] : root;
+
+        // The SDK serializes numeric components as doubles (for example 7.0); render
+        // integral values the way users supply them.
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            WriteNormalizedPartitionKeyValue(writer, value);
+        }
+
+        using var normalized = JsonDocument.Parse(buffer.ToArray());
+        return normalized.RootElement.Clone();
+    }
+
+    private static void WriteNormalizedPartitionKeyValue(Utf8JsonWriter writer, JsonElement value)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (var component in value.EnumerateArray())
+                {
+                    WriteNormalizedPartitionKeyValue(writer, component);
+                }
+
+                writer.WriteEndArray();
+                break;
+            case JsonValueKind.Number when value.TryGetDouble(out var number)
+                && Math.Floor(number) == number
+                && number >= long.MinValue
+                && number <= long.MaxValue:
+                writer.WriteNumberValue((long)number);
+                break;
+            default:
+                value.WriteTo(writer);
+                break;
+        }
+    }
+
+    internal static PartitionKey ParsePartitionKey(string rawValue)
+    {
+        try
+        {
+            return CreatePartitionKeyFromArgument(rawValue);
+        }
+        catch (JsonException ex)
+        {
+            throw new CommandException("rm", MessageService.GetString("command-rm-error-invalid_pk_json"), ex);
+        }
     }
 
     internal static bool TryGetPartitionKeyElements(JsonElement element, IEnumerable<string> partitionKeyPropertyNames, out List<JsonElement> partitionKeyElements)
@@ -328,5 +436,159 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         }
 
         return partitionKeyElements.Count > 0;
+    }
+
+    private static bool HasWildcard(string pattern) => pattern.IndexOfAny(['*', '?']) >= 0;
+
+    private bool IsExactIdTarget()
+    {
+        return string.Equals(this.Key, IdPropertyName, StringComparison.Ordinal)
+            && !string.IsNullOrEmpty(this.Pattern)
+            && !HasWildcard(this.Pattern);
+    }
+
+    private void ValidateETagOptions(bool hasPipeInput)
+    {
+        if (this.ETag == null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(this.ETag))
+        {
+            throw new CommandException("rm", MessageService.GetString("command-rm-error-etag_empty"));
+        }
+
+        if (hasPipeInput || !this.IsExactIdTarget())
+        {
+            throw new CommandException("rm", MessageService.GetString("command-rm-error-etag_requires_exact_id"));
+        }
+
+        if (this.PartitionKeyArgument == null)
+        {
+            throw new CommandException("rm", MessageService.GetString("command-rm-error-etag_requires_partition_key"));
+        }
+    }
+
+    private PartitionKey? ParsePartitionKeyArgument()
+    {
+        return this.PartitionKeyArgument == null ? null : ParsePartitionKey(this.PartitionKeyArgument);
+    }
+
+    private async Task<ExitCode> RemoveExactItemAsync(Container container, PartitionKey partitionKey, CommandState commandState, CancellationToken token)
+    {
+        var id = this.Pattern!;
+        var dryRun = this.DryRun == true;
+        string? currentETag = null;
+        double requestCharge;
+        int count;
+
+        if (dryRun)
+        {
+            using var response = await container.ReadItemStreamAsync(id, partitionKey, cancellationToken: token);
+            requestCharge = response.Headers.RequestCharge;
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                count = 0;
+            }
+            else
+            {
+                response.EnsureSuccessStatusCode();
+                currentETag = response.Headers.ETag;
+                if (this.ETag != null && !string.Equals(this.ETag, currentETag, StringComparison.Ordinal))
+                {
+                    throw new CommandException("rm", GetETagMismatchMessage(id));
+                }
+
+                count = 1;
+            }
+        }
+        else
+        {
+            var requestOptions = this.ETag == null ? null : new ItemRequestOptions { IfMatchEtag = this.ETag };
+            try
+            {
+                var response = await container.DeleteItemAsync<object>(id, partitionKey, requestOptions, token);
+                requestCharge = response.RequestCharge;
+                count = 1;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                requestCharge = ex.RequestCharge;
+                count = 0;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.PreconditionFailed)
+            {
+                throw new CommandException("rm", GetETagMismatchMessage(id), ex);
+            }
+        }
+
+        var partitionKeyJson = ToPartitionKeyJson(partitionKey);
+        var result = this.CreateResult(count, dryRun);
+        result["id"] = id;
+        if (currentETag != null)
+        {
+            result["etag"] = currentETag;
+        }
+
+        string renderMessage;
+        if (count == 0)
+        {
+            renderMessage = MessageService.GetString(
+                "command-rm-no-matches",
+                new Dictionary<string, object>
+                {
+                    { "pattern", id },
+                    { "key", IdPropertyName },
+                });
+        }
+        else
+        {
+            renderMessage = MessageService.GetString(
+                dryRun ? "command-rm-dry-run-plan" : "command-rm-deleted_items",
+                new Dictionary<string, object> { { "count", count } });
+            if (dryRun)
+            {
+                renderMessage += Environment.NewLine + MessageService.GetString(
+                    "command-rm-dry-run-item",
+                    new Dictionary<string, object>
+                    {
+                        { "id", id },
+                        { "partitionKey", partitionKeyJson.GetRawText() },
+                        { "etag", currentETag ?? string.Empty },
+                    });
+            }
+        }
+
+        commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(result));
+        commandState.RenderUser = () => AnsiConsole.WriteLine(renderMessage);
+        commandState.RequestCharge = requestCharge > 0 ? requestCharge : null;
+        return new ExitCode(0);
+
+        static string GetETagMismatchMessage(string id) => MessageService.GetString(
+            "command-rm-error-etag_mismatch",
+            new Dictionary<string, object> { { "id", id } });
+    }
+
+    private Dictionary<string, object?> CreateResult(int count, bool dryRun)
+    {
+        var result = new Dictionary<string, object?>
+        {
+            ["type"] = "item",
+            ["count"] = count,
+            ["dryRun"] = dryRun,
+        };
+
+        if (this.partitionKey is PartitionKey scope)
+        {
+            result["partitionKey"] = ToPartitionKeyJson(scope);
+        }
+
+        if (this.ETag != null)
+        {
+            result["ifMatchEtag"] = this.ETag;
+        }
+
+        return result;
     }
 }
