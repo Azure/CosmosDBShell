@@ -127,7 +127,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 if (File.Exists(this.HistoryFile))
                 {
-                    using var stream = this.OpenHistoryFileWithExclusiveLock();
+                    using var stream = this.OpenHistoryFileWithExclusiveLock(FileAccess.Read);
                     entries = ReadHistoryEntries(stream);
                 }
             }
@@ -2393,10 +2393,15 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
-    private FileStream OpenHistoryFileWithExclusiveLock()
+    private FileStream OpenHistoryFileWithExclusiveLock(FileAccess access = FileAccess.ReadWrite)
     {
-        var options = new FileStreamOptions { Mode = FileMode.OpenOrCreate, Access = FileAccess.ReadWrite, Share = FileShare.None };
-        if (!OperatingSystem.IsWindows())
+        var options = new FileStreamOptions
+        {
+            Mode = access == FileAccess.Read ? FileMode.Open : FileMode.OpenOrCreate,
+            Access = access,
+            Share = FileShare.None,
+        };
+        if (access != FileAccess.Read && !OperatingSystem.IsWindows())
         {
             options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         }
