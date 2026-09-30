@@ -45,6 +45,8 @@ MCP clients supporting resource subscriptions can watch `cosmos://shell/current-
 
 The .NET runtime alone is not enough for the commands below. `dotnet run` and `dotnet tool install` are SDK commands. To verify the SDK is installed, run `dotnet --list-sdks`.
 
+In Linux containers without ICU, the shell also supports .NET globalization-invariant mode and falls back to its bundled English messages.
+
 ```bash
 dotnet run --project CosmosDBShell
 ```

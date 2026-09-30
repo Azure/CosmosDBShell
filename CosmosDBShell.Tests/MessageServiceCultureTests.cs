@@ -6,6 +6,7 @@ namespace CosmosShell.Tests;
 
 using System.Globalization;
 using Azure.Data.Cosmos.Shell.Util;
+using Fluent.Net;
 
 public class MessageServiceCultureTests
 {
@@ -26,5 +27,35 @@ public class MessageServiceCultureTests
     public void GetCultureFallbacks_ReturnsSpecificToNeutralCultures(string cultureName, params string[] expected)
     {
         Assert.Equal(expected, MessageService.GetCultureFallbacks(CultureInfo.GetCultureInfo(cultureName)));
+    }
+
+    [Fact]
+    public void CreateMessageContext_FallsBackToInvariantCulture_WhenLocaleIsNotSupported()
+    {
+        var options = new MessageContextOptions { UseIsolating = false };
+        var attempts = new List<string[]>();
+
+        var context = MessageService.CreateMessageContext(
+            "en",
+            options,
+            locales =>
+            {
+                var localeList = locales.ToArray();
+                attempts.Add(localeList);
+                if (localeList.SequenceEqual(["en"]))
+                {
+                    throw new CultureNotFoundException("name", "en", "unsupported");
+                }
+
+                return new MessageContext(localeList, options);
+            });
+
+        Assert.Equal(
+            [
+                ["en"],
+                [CultureInfo.InvariantCulture.Name, "en"],
+            ],
+            attempts);
+        Assert.NotNull(context);
     }
 }
