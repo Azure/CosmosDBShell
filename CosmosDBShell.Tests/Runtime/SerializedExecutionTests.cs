@@ -276,6 +276,30 @@ public class SerializedExecutionTests
     }
 
     [Fact]
+    public void ClearHistory_WhenHistoryFileIsLocked_PreservesLoadedHistory()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            using var shell = new ShellInterpreter(configPath);
+            var historyFile = Path.Join(configPath, "cmd_history");
+            shell.PrintCommand("echo existing");
+
+            using (var lockedStream = new FileStream(historyFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                Assert.Throws<IOException>(() => shell.ClearHistory());
+            }
+
+            Assert.Equal(["echo existing"], shell.History);
+            Assert.NotEmpty(File.ReadAllLines(historyFile));
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
     public void PrintCommand_PreservesMultilineHistoryWhenMergingInterpreters()
     {
         var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");

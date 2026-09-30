@@ -256,7 +256,16 @@ internal class Program
 
             if (o.ClearHistory)
             {
-                ShellInterpreter.Instance.ClearHistory();
+                try
+                {
+                    ShellInterpreter.Instance.ClearHistory();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    WriteStartupError(ex.Message);
+                    Environment.ExitCode = ShellExitCode.FromException(ex);
+                    return;
+                }
 
                 if (!startupMachineMode)
                 {
