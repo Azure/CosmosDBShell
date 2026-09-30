@@ -33,7 +33,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - MCP server for AI/tool integration
 - Distributed tracing via OpenTelemetry (`--otel`): emits a sampled W3C `traceparent` on Cosmos requests, with optional OTLP export
 
-Exports replace their destination only after successful completion, preserving an existing file on failure or cancellation. Imports stream records; CSV exports use temporary disk storage to discover columns without retaining all documents in memory. See [import/export](docs/commands.md#export).
+Exports replace their destination only after successful completion, preserving an existing file on failure or cancellation. Imports stream records; CSV exports use temporary disk storage to discover columns without retaining all documents in memory. Scalar CSV results use an empty column header by default; set `COSMOSDB_SHELL_CSV_SCALAR_COLUMN` to name it. An import rejects populated columns with empty headers rather than discarding their values. See [import/export](docs/commands.md#export).
 
 MCP command execution is serialized with the shell, and destructive confirmations are invalidated by connection or navigation changes. MCP invocations are echoed in the shell so their activity stays visible, and they are recorded in history alongside interactive commands. History remains fully replayable, including connection strings; treat its file as sensitive. See [MCP security](docs/mcp.md#security) and [history](docs/navigation.md#history).
 

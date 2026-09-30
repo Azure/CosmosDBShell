@@ -116,7 +116,7 @@ internal static class ImportFuzzer
             var pk = ImportCommand.ParsePartitionKeySegments(RandomPartitionKey());
             for (var r = 1; r < records.Count; r++)
             {
-                _ = ImportCommand.BuildCsvObject(headers, records[r], pk);
+                _ = ImportCommand.BuildCsvObject(headers, records[r], pk, r + 1);
             }
         }
     }

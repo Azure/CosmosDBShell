@@ -454,6 +454,7 @@ command-export-error-missing_file = A destination file path is required.
 command-export-error-file_exists = File '{ $file }' already exists. Use --force to overwrite.
 command-export-error-destination_directory = Destination '{ $file }' is a directory. Specify a file path instead.
 command-export-error-query_failed = Export query failed: { $status } - { $message }
+command-export-error-scalar_column_conflict = CSV scalar column '{ $column }' conflicts with an object property. Set COSMOSDB_SHELL_CSV_SCALAR_COLUMN to a different name.
 
 command-import-description = Imports items into a container from a JSON Lines, JSON array, or CSV file.
 command-import-description-file = Source file path.
@@ -479,6 +480,7 @@ command-import-dry-run-success = Dry run: { $count } valid { $count ->
 }
 command-import-error-missing_file = A source file path is required.
 command-import-error-invalid_csv = Invalid CSV record at line { $line }.
+command-import-error-unnamed_csv_value = Line { $line }, column { $column } has a value but no CSV header. Add a column name before importing.
 script-error-argument-count = Function '{ $name }' expects { $expected } { $expected ->
     [one] argument
    *[other] arguments
