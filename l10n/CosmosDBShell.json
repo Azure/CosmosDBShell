@@ -711,6 +711,7 @@
   "command-rm-error-partition_key_components": "The partition key must specify all {0} components of the container\u0027s partition key, but {1} {2} supplied.",
   "command-rm-error-partition_key_components.__p2.one": "was",
   "command-rm-error-partition_key_components.__p2.other": "were",
+  "command-rm-error-partition_key_missing_value": "The --partition-key option requires a value.",
   "command-rm-example-1": "Delete all items where partition key matches pattern starting with \u0027test-\u0027",
   "command-rm-example-2": "Delete all items where partition key matches pattern ending with \u0027-temp\u0027",
   "command-rm-example-3": "Delete items where \u0027id\u0027 field matches pattern",

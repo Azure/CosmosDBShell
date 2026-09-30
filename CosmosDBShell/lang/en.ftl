@@ -263,6 +263,7 @@ command-rm-error-partition_key_components = The partition key must specify all {
     *[other] were
 } supplied.
 command-rm-error-etag_empty = The --etag option requires a non-empty value.
+command-rm-error-partition_key_missing_value = The --partition-key option requires a value.
 command-rm-error-etag_requires_exact_id = The --etag option can only be used to delete a single item by exact id (--key=id without wildcards or piped input).
 command-rm-error-etag_requires_partition_key = The --etag option requires --partition-key.
 command-rm-error-etag_mismatch = Item '{ $id }' was modified since it was last read (ETag mismatch). The item was not deleted.

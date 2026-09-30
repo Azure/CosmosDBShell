@@ -28,6 +28,8 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
     private PatternMatcher? matcher;
     private ShellInterpreter? shell;
     private PartitionKey? partitionKey;
+    private string? partitionKeyArgument;
+    private string? etag;
 
     [CosmosParameter("pattern")]
     public string? Pattern { get; init; }
@@ -44,11 +46,33 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
     [CosmosOption("dry-run")]
     public bool? DryRun { get; init; }
 
+    // Track whether these safety options were supplied at all: MCP binds an explicit
+    // JSON null as a null value, which must not be treated as an omitted option.
     [CosmosOption("partition-key", "pk")]
-    public string? PartitionKeyArgument { get; init; }
+    public string? PartitionKeyArgument
+    {
+        get => this.partitionKeyArgument;
+        init
+        {
+            this.partitionKeyArgument = value;
+            this.PartitionKeySpecified = true;
+        }
+    }
 
     [CosmosOption("etag")]
-    public string? ETag { get; init; }
+    public string? ETag
+    {
+        get => this.etag;
+        init
+        {
+            this.etag = value;
+            this.ETagSpecified = true;
+        }
+    }
+
+    internal bool PartitionKeySpecified { get; private set; }
+
+    internal bool ETagSpecified { get; private set; }
 
     public async override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
@@ -449,7 +473,12 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
     private void ValidateETagOptions(bool hasPipeInput)
     {
-        if (this.ETag == null)
+        if (this.PartitionKeySpecified && this.PartitionKeyArgument == null)
+        {
+            throw new CommandException("rm", MessageService.GetString("command-rm-error-partition_key_missing_value"));
+        }
+
+        if (!this.ETagSpecified)
         {
             return;
         }

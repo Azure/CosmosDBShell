@@ -169,13 +169,9 @@ public class RmCommandTests
     {
         using var shell = ShellInterpreter.CreateInstance();
         shell.State = new DisconnectedState();
-        var command = new RmCommand
-        {
-            Pattern = pattern,
-            Key = key,
-            PartitionKeyArgument = partitionKey,
-            ETag = "\"etag\"",
-        };
+        var command = partitionKey == null
+            ? new RmCommand { Pattern = pattern, Key = key, ETag = "\"etag\"" }
+            : new RmCommand { Pattern = pattern, Key = key, PartitionKeyArgument = partitionKey, ETag = "\"etag\"" };
 
         var ex = await Assert.ThrowsAsync<CommandException>(
             () => command.ExecuteAsync(shell, new CommandState(), "rm", TestContext.Current.CancellationToken));
@@ -210,6 +206,30 @@ public class RmCommandTests
         var ex = await Assert.ThrowsAsync<CommandException>(
             () => command.ExecuteAsync(shell, piped, "rm", TestContext.Current.CancellationToken));
         Assert.Equal(MessageService.GetString("command-rm-error-etag_requires_exact_id"), ex.Message);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ExplicitNullETag_FailsInsteadOfDeletingUnconditionally()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new RmCommand { Pattern = "order-1", Key = "id", PartitionKeyArgument = "customer-42", ETag = null };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm", TestContext.Current.CancellationToken));
+        Assert.Equal(MessageService.GetString("command-rm-error-etag_empty"), ex.Message);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ExplicitNullPartitionKey_FailsInsteadOfScanningAllPartitions()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new RmCommand { Pattern = "order-*", Key = "id", PartitionKeyArgument = null };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm", TestContext.Current.CancellationToken));
+        Assert.Equal(MessageService.GetString("command-rm-error-partition_key_missing_value"), ex.Message);
     }
 
     [Fact]

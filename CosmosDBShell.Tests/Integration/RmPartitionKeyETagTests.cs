@@ -6,6 +6,10 @@ namespace CosmosShell.Tests.Integration;
 
 using System.Text.Json;
 
+using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
+
 using Xunit;
 
 public class RmPartitionKeyETagTests : EmulatorFixtureTestBase
@@ -155,6 +159,40 @@ public class RmPartitionKeyETagTests : EmulatorFixtureTestBase
 
         var remaining = Assert.Single(await this.QueryAsync("hpk"));
         Assert.Equal(8, remaining.GetProperty("pk").GetInt32());
+    }
+
+    [Fact]
+    public async Task Rm_PipedItemsFromMultiplePartitions_OnlyTouchesScopedPartition()
+    {
+        await this.CreateContainerAsync("/pk");
+        await this.CreateItemAsync(new { id = "pipe-1", pk = "a" });
+        await this.CreateItemAsync(new { id = "pipe-2", pk = "a" });
+        await this.CreateItemAsync(new { id = "pipe-3", pk = "b" });
+        var piped = JsonSerializer.SerializeToElement(new object[]
+        {
+            new { id = "pipe-1", pk = "a" },
+            new { id = "pipe-2", pk = "a" },
+            new { id = "pipe-3", pk = "b" },
+        });
+
+        var preview = await this.RunPipedAsync(piped, dryRun: true);
+        Assert.Equal(2, preview.GetProperty("count").GetInt32());
+        Assert.Equal(["pipe-1", "pipe-2", "pipe-3"], await this.QueryIdsAsync("pipe-"));
+
+        var deleted = await this.RunPipedAsync(piped, dryRun: false);
+        Assert.Equal(2, deleted.GetProperty("count").GetInt32());
+        Assert.Equal(["pipe-3"], await this.QueryIdsAsync("pipe-"));
+    }
+
+    private async Task<JsonElement> RunPipedAsync(JsonElement piped, bool dryRun)
+    {
+        var command = new RmCommand { Pattern = "*", Key = "id", PartitionKeyArgument = "a", DryRun = dryRun };
+        var state = await command.ExecuteAsync(
+            Shell,
+            new CommandState { Result = new ShellJson(piped) },
+            "rm",
+            TestContext.Current.CancellationToken);
+        return IntegrationTestBase.GetJson(state);
     }
 
     private async Task CreateContainerAsync(string partitionKeyPaths)
