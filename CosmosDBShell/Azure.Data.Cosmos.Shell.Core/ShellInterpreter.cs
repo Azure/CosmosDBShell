@@ -2332,24 +2332,17 @@ public partial class ShellInterpreter : IDisposable
 
     internal void ClearHistory()
     {
-        try
+        lock (this.historyLock)
         {
-            lock (this.historyLock)
+            lock (HistoryFileLock)
             {
-                this.history.Clear();
-                this.pendingHistoryEntries.Clear();
-
-                lock (HistoryFileLock)
-                {
-                    using var stream = this.OpenHistoryFileWithExclusiveLock();
-                    stream.SetLength(0);
-                    RestrictHistoryFileToOwner(this.HistoryFile);
-                }
+                using var stream = this.OpenHistoryFileWithExclusiveLock();
+                stream.SetLength(0);
+                RestrictHistoryFileToOwner(this.HistoryFile);
             }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            System.Diagnostics.Debug.WriteLine(ex);
+
+            this.history.Clear();
+            this.pendingHistoryEntries.Clear();
         }
     }
 
