@@ -4,6 +4,9 @@
 
 namespace Azure.Data.Cosmos.Shell.Parser;
 
+using System.Globalization;
+using System.Text.Json;
+
 using Azure.Data.Cosmos.Shell.ArgumentParser;
 using Azure.Data.Cosmos.Shell.Util;
 
@@ -673,7 +676,7 @@ internal class ExpressionParser
 
             this.Advance();
 
-            if (int.TryParse(token.Value, out int intValue))
+            if (int.TryParse(token.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
             {
                 return new ConstantExpression(token, new ShellNumber(intValue));
             }
@@ -693,7 +696,7 @@ internal class ExpressionParser
 
             this.Advance();
 
-            if (double.TryParse(token.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double doubleValue))
+            if (double.TryParse(token.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double doubleValue))
             {
                 return new ConstantExpression(token, new ShellDecimal(doubleValue));
             }
@@ -1233,7 +1236,7 @@ internal class ExpressionParser
             }
 
             // Parse property value as a full expression
-            var value = this.ParsePipeExpression();
+            var value = this.ParseJsonValueExpression();
 
             // Add to properties if key valid
             JsonProperty? propertyNode = null;
@@ -1362,7 +1365,7 @@ internal class ExpressionParser
             }
 
             // Parse next element as a full expression
-            var expr = this.ParsePipeExpression();
+            var expr = this.ParseJsonValueExpression();
             elements.Add(expr);
 
             this.SkipWhitespace();
@@ -1428,6 +1431,84 @@ internal class ExpressionParser
         this.ReportError(MessageService.GetString("expression_error_unmatched_brackets"), lbracket);
         var synthetic = this.CreateMissingToken(TokenType.CloseBracket, lbracket.Start + lbracket.Length);
         return new JsonArrayExpression(lbracket, synthetic, elements, commaTokens);
+    }
+
+    private Expression ParseJsonValueExpression()
+    {
+        if (this.TryParseLargeJsonIntegerLiteral(out var expression))
+        {
+            return expression!;
+        }
+
+        return this.ParsePipeExpression();
+    }
+
+    private bool TryParseLargeJsonIntegerLiteral(out Expression? expression)
+    {
+        expression = null;
+        if (this.aborted)
+        {
+            return false;
+        }
+
+        if (this.Check(TokenType.Number))
+        {
+            var token = this.Current;
+            if (token == null || int.TryParse(token.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return false;
+            }
+
+            expression = this.TryCreateJsonIntegerConstant(token, token.Value);
+            if (expression == null)
+            {
+                return false;
+            }
+
+            this.Advance();
+            return true;
+        }
+
+        if (this.Check(TokenType.Minus))
+        {
+            var minusToken = this.Current;
+            var numberToken = this.Peek();
+            if (minusToken == null ||
+                numberToken?.Type != TokenType.Number ||
+                int.TryParse(numberToken.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return false;
+            }
+
+            var value = "-" + numberToken.Value;
+            var token = new Token(TokenType.Number, value, minusToken.Start, numberToken.End - minusToken.Start);
+            expression = this.TryCreateJsonIntegerConstant(token, value);
+            if (expression == null)
+            {
+                return false;
+            }
+
+            this.Advance();
+            this.Advance();
+            return true;
+        }
+
+        return false;
+    }
+
+    private Expression? TryCreateJsonIntegerConstant(Token token, string value)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(value);
+            return document.RootElement.ValueKind == JsonValueKind.Number
+                ? new ConstantExpression(token, new ShellJson(document.RootElement.Clone()))
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private void ReportError(string message, Token? token, TokenType? expected = null, int? position = null, ParseErrorKind kind = ParseErrorKind.Generic)
@@ -1641,7 +1722,7 @@ internal class ExpressionParser
                 }
 
                 var indexToken = this.Consume(TokenType.Number, MessageService.GetString("expression_error_expected_array_index"));
-                int index = int.TryParse(indexToken.Value, out var parsedIndex) ? parsedIndex : 0;
+                int index = int.TryParse(indexToken.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedIndex) ? parsedIndex : 0;
                 var indexedCloseBracket = this.Consume(TokenType.CloseBracket, MessageService.GetString("expression_error_expected_close_bracket"));
                 var indexQuestionToken = this.TryConsumeQuestion();
                 end = indexedCloseBracket.Start + indexedCloseBracket.Length;

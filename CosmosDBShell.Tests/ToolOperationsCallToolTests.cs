@@ -135,6 +135,70 @@ public class ToolOperationsCallToolTests
     }
 
     [Fact]
+    public async Task CallTool_RmWithPartitionKeyAndETag_ConfirmationShowsTargetConditions()
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["pattern"] = Json("\"order-123\""),
+            ["key"] = Json("\"id\""),
+            ["pk"] = Json("\"customer-42\""),
+            ["etag"] = Json("\"\\\"etag-1\\\"\""),
+            ["database"] = Json("\"MyDb\""),
+            ["container"] = Json("\"Orders\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("rm", arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            var error = root.GetProperty("error").GetString();
+            Assert.Contains("does not support confirmation prompts", error);
+            Assert.Contains("rm \"order-123\"", error);
+            Assert.Contains("--partition-key \"customer-42\"", error);
+            Assert.Contains("--etag \"\\\"etag-1\\\"\"", error);
+        }
+    }
+
+    [Theory]
+    [InlineData("etag", "command-rm-error-etag_empty")]
+    [InlineData("partition-key", "command-rm-error-partition_key_missing_value")]
+    public async Task CallTool_RmWithJsonNullSafetyOption_ConfirmedCommandFailsWithoutDeleting(string argumentName, string expectedKey)
+    {
+        var tool = CreateToolOperations();
+        var factory = ShellInterpreter.Instance.App.Commands["rm"];
+        var command = (RmCommand)factory.CreateCommand();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["pattern"] = Json("\"order-123\""),
+            ["key"] = Json("\"id\""),
+            ["partition-key"] = Json("\"customer-42\""),
+            [argumentName] = Json("null"),
+        };
+
+        foreach (var argument in arguments)
+        {
+            var option = factory.Options.FirstOrDefault(o => o.Name.Contains(argument.Key));
+            var property = option?.PropertyInfo ?? factory.Parameters.First(p => p.Name.Contains(argument.Key)).PropertyInfo;
+            property.SetValue(command, argument.Value.GetString());
+        }
+
+        var result = await tool.ExecuteToolAsync(
+            factory,
+            command,
+            "rm \"order-123\" --key \"id\" --partition-key \"customer-42\"",
+            (_, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        Assert.Contains(
+            Azure.Data.Cosmos.Shell.Util.MessageService.GetString(expectedKey),
+            Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
     public async Task ConfirmDestructive_UserAccepts_ReturnsNull()
     {
         var tool = CreateToolOperations();
