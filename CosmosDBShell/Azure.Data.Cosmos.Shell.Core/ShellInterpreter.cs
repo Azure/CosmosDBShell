@@ -270,6 +270,8 @@ public partial class ShellInterpreter : IDisposable
     internal Func<bool> IsInteractiveSession { get; set; } =
         static () => !Console.IsInputRedirected && !Console.IsOutputRedirected;
 
+    internal Func<bool> IsInputRedirected { get; set; } = static () => Console.IsInputRedirected;
+
     // RadLine detects terminal capabilities itself when no console is supplied.
     internal IAnsiConsole? LineEditorTerminal { get; set; }
 
@@ -976,7 +978,9 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 this.ClearHighlightStatements();
-                var editor = this.Editor;
+
+                // RadLine polls Console.KeyAvailable, which throws when stdin is redirected.
+                var editor = this.IsInputRedirected() ? null : this.Editor;
                 var input = editor != null ? await editor.ReadLine(this.editorCancelTokenSource.Token) : PromptFallback();
                 if (editor == null && input == null)
                 {

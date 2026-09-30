@@ -32,6 +32,7 @@ public class NonAnsiFallbackTests
             using var shell = new ShellInterpreter(configPath)
             {
                 IsInteractiveSession = static () => false,
+                IsInputRedirected = static () => false,
                 LineEditorTerminal = nonAnsiConsole,
             };
 
@@ -46,6 +47,49 @@ public class NonAnsiFallbackTests
             Console.SetIn(savedIn);
             Console.SetOut(savedOut);
             Console.SetError(savedError);
+            AnsiConsole.Console = savedConsole;
+            DeleteConfigPath(configPath);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenInputIsRedirected_UsesPromptFallbackWithAnsiTerminal()
+    {
+        var configPath = CreateConfigPath();
+        var savedConsole = AnsiConsole.Console;
+        var savedIn = Console.In;
+        var savedOut = Console.Out;
+        using var input = new StringReader("echo hi" + Environment.NewLine);
+        using var output = new StringWriter();
+        try
+        {
+            var ansiConsole = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.Yes,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+                Enrichment = new ProfileEnrichment { UseDefaultEnrichers = false },
+            });
+            AnsiConsole.Console = ansiConsole;
+            Console.SetIn(input);
+            Console.SetOut(output);
+
+            using var shell = new ShellInterpreter(configPath)
+            {
+                IsInteractiveSession = static () => false,
+                IsInputRedirected = static () => true,
+                LineEditorTerminal = ansiConsole,
+            };
+
+            await shell.RunAsync().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            Assert.False(shell.IsRunning);
+            Assert.Contains("hi", output.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Console.SetIn(savedIn);
+            Console.SetOut(savedOut);
             AnsiConsole.Console = savedConsole;
             DeleteConfigPath(configPath);
         }
