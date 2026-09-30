@@ -120,19 +120,26 @@ public partial class ShellInterpreter : IDisposable
         this.HistoryFile = Path.Join(this.cfgPath, "cmd_history");
         this.welcomeMarkerFile = Path.Join(this.cfgPath, "welcome_seen");
 
-        if (File.Exists(this.HistoryFile))
+        try
         {
-            string[] lines;
+            List<string> entries = [];
             lock (HistoryFileLock)
             {
-                lines = File.ReadAllLines(this.HistoryFile);
+                if (File.Exists(this.HistoryFile))
+                {
+                    using var stream = this.OpenHistoryFileWithExclusiveLock();
+                    entries = ReadHistoryEntries(stream);
+                }
             }
 
-            foreach (var line in lines)
+            foreach (var entry in entries)
             {
-                var decoded = DecodeHistoryLine(line);
-                this.RecordHistoryEntry(decoded, persist: false);
+                this.RecordHistoryEntry(entry, persist: false);
             }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
         }
 
         Console.CancelKeyPress += this.Console_CancelKeyPress;

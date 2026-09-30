@@ -156,6 +156,32 @@ public class SerializedExecutionTests
     }
 
     [Fact]
+    public async Task Constructor_RetriesWhenHistoryFileIsLocked()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(configPath);
+        var historyFile = Path.Join(configPath, "cmd_history");
+        await File.WriteAllLinesAsync(historyFile, ["echo existing"], TestContext.Current.CancellationToken);
+        try
+        {
+            Task<ShellInterpreter> constructor;
+            using (var lockedStream = new FileStream(historyFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                constructor = Task.Run(() => new ShellInterpreter(configPath), TestContext.Current.CancellationToken);
+                await Task.Delay(TimeSpan.FromMilliseconds(75), TestContext.Current.CancellationToken);
+                Assert.False(constructor.IsCompleted);
+            }
+
+            using var shell = await constructor;
+            Assert.Equal(["echo existing"], shell.History);
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
     public void PrintCommand_DeduplicatesMergedHistoryAcrossInterpreters()
     {
         var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
