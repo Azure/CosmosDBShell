@@ -103,6 +103,13 @@ public class SerializedExecutionTests
         if (!string.IsNullOrEmpty(childConfigPath) && !string.IsNullOrEmpty(childPrefix))
         {
             using var shell = new ShellInterpreter(childConfigPath);
+            File.WriteAllText(Path.Join(childConfigPath, $"{childPrefix}.ready"), string.Empty);
+            var startFile = Path.Join(childConfigPath, "start");
+            while (!File.Exists(startFile))
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(10), TestContext.Current.CancellationToken);
+            }
+
             for (var index = 0; index < 20; index++)
             {
                 shell.PrintCommand($"echo {childPrefix}-{index}");
@@ -131,6 +138,10 @@ public class SerializedExecutionTests
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(45));
+            await WaitForFileAsync(Path.Join(configPath, "first.ready"), timeout.Token);
+            await WaitForFileAsync(Path.Join(configPath, "second.ready"), timeout.Token);
+            File.WriteAllText(Path.Join(configPath, "start"), string.Empty);
+
             await Task.WhenAll(
                 first.WaitForExitAsync(timeout.Token),
                 second.WaitForExitAsync(timeout.Token));
@@ -185,6 +196,37 @@ public class SerializedExecutionTests
         }
         finally
         {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Constructor_LoadsReadableHistoryFileWithoutWritePermission()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Unix file modes do not apply on Windows.");
+            return;
+        }
+
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(configPath);
+        var historyFile = Path.Join(configPath, "cmd_history");
+        try
+        {
+            File.WriteAllLines(historyFile, ["echo readable"]);
+            File.SetUnixFileMode(historyFile, UnixFileMode.UserRead);
+
+            using var shell = new ShellInterpreter(configPath);
+            Assert.Equal(["echo readable"], shell.History);
+        }
+        finally
+        {
+            if (File.Exists(historyFile))
+            {
+                File.SetUnixFileMode(historyFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+
             Directory.Delete(configPath, recursive: true);
         }
     }
@@ -534,6 +576,14 @@ public class SerializedExecutionTests
         startInfo.Environment["COSMOSDBSHELL_TEST_HISTORY_CONFIG"] = configPath;
         startInfo.Environment["COSMOSDBSHELL_TEST_HISTORY_PREFIX"] = prefix;
         return new Process { StartInfo = startInfo };
+    }
+
+    private static async Task WaitForFileAsync(string path, CancellationToken cancellationToken)
+    {
+        while (!File.Exists(path))
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken);
+        }
     }
 
     private static string GetDotnetPath()
