@@ -282,16 +282,16 @@ public class SerializedExecutionTests
         try
         {
             using var shell = new ShellInterpreter(configPath);
+            var historyFile = Path.Join(configPath, "cmd_history");
             shell.PrintCommand("echo retained");
 
-            using var lockedStream = new FileStream(
-                shell.HistoryFile,
-                FileMode.Open,
-                FileAccess.ReadWrite,
-                FileShare.None);
+            using (var lockedStream = new FileStream(historyFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                Assert.Throws<IOException>(() => shell.ClearHistory());
+            }
 
-            Assert.Throws<IOException>(shell.ClearHistory);
             Assert.Equal(["echo retained"], shell.History);
+            Assert.NotEmpty(File.ReadAllLines(historyFile));
         }
         finally
         {

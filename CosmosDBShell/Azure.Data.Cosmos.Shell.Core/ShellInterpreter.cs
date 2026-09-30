@@ -2337,8 +2337,8 @@ public partial class ShellInterpreter : IDisposable
             lock (HistoryFileLock)
             {
                 using var stream = this.OpenHistoryFileWithExclusiveLock();
-                stream.SetLength(0);
                 RestrictHistoryFileToOwner(this.HistoryFile);
+                stream.SetLength(0);
             }
 
             this.history.Clear();
