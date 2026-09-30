@@ -165,10 +165,18 @@ public class SerializedExecutionTests
         try
         {
             Task<ShellInterpreter> constructor;
+            using var constructorStarted = new ManualResetEventSlim();
             using (var lockedStream = new FileStream(historyFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
             {
-                constructor = Task.Run(() => new ShellInterpreter(configPath), TestContext.Current.CancellationToken);
-                await Task.Delay(TimeSpan.FromMilliseconds(75), TestContext.Current.CancellationToken);
+                constructor = Task.Run(
+                    () =>
+                    {
+                        constructorStarted.Set();
+                        return new ShellInterpreter(configPath);
+                    },
+                    TestContext.Current.CancellationToken);
+                Assert.True(constructorStarted.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+                Thread.Sleep(TimeSpan.FromMilliseconds(25));
                 Assert.False(constructor.IsCompleted);
             }
 
