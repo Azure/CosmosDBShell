@@ -492,6 +492,56 @@ public class ExpressionTests
     }
 
     [Fact]
+    public void EvaluateExpression_JsonObjectWithLargeIntegers_PreservesRawIntegerText()
+    {
+        var result = EvaluateExpression("{ \"ts\": 1727600000000, \"neg\": -1727600000000 }");
+        var json = Assert.IsType<ShellJson>(result);
+        Assert.Equal("1727600000000", json.Value.GetProperty("ts").GetRawText());
+        Assert.Equal("-1727600000000", json.Value.GetProperty("neg").GetRawText());
+    }
+
+    [Fact]
+    public void EvaluateExpression_JsonArrayWithLargeIntegers_PreservesRawIntegerText()
+    {
+        var result = EvaluateExpression("[2147483648, -1727600000000, 9007199254740993]");
+        var json = Assert.IsType<ShellJson>(result);
+        Assert.Equal("2147483648", json.Value[0].GetRawText());
+        Assert.Equal("-1727600000000", json.Value[1].GetRawText());
+        Assert.Equal("9007199254740993", json.Value[2].GetRawText());
+    }
+
+    [Fact]
+    public void EvaluateExpression_NestedJsonObjectWithLargeInteger_PreservesRawIntegerText()
+    {
+        var result = EvaluateExpression("{ \"outer\": { \"n\": 9007199254740993 } }");
+        var json = Assert.IsType<ShellJson>(result);
+        Assert.Equal("9007199254740993", json.Value.GetProperty("outer").GetProperty("n").GetRawText());
+    }
+
+    [Fact]
+    public async Task EvaluateExpression_LargeJsonIntegerPropertyArithmetic_UsesDecimalArithmetic()
+    {
+        var objectResult = Assert.IsType<ShellJson>(await EvaluateExpressionAsync("{ \"n\": 3000000000 }"));
+        var interpreter = new ShellInterpreter();
+        interpreter.SetVariable("o", objectResult);
+
+        var result = await ParseExpression("$o.n + 1").EvaluateAsync(interpreter, new CommandState(), CancellationToken.None);
+        var number = Assert.IsType<ShellDecimal>(result);
+        Assert.Equal(3000000001.0, number.Value);
+    }
+
+    [Fact]
+    public void ParseExpression_LargeIntegerOutsideJson_ReportsDocumentedError()
+    {
+        var lexer = new Lexer("2147483648");
+        var parser = new ExpressionParser(lexer);
+        var expression = parser.ParseExpression();
+
+        Assert.IsType<ErrorExpression>(expression);
+        Assert.Contains(lexer.Errors, error => error.Message == MessageService.GetArgsString("expression_error_invalid_number", "value", "2147483648"));
+    }
+
+    [Fact]
     public void EvaluateExpression_JsonArray_ReturnsShellJson()
     {
         var result = EvaluateExpression("[1, 2, 3, 4, 5]");

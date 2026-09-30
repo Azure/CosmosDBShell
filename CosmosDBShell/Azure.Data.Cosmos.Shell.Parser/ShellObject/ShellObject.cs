@@ -44,7 +44,7 @@ internal abstract class ShellObject
                 }
 
                 // Check if it's a number
-                if (int.TryParse(token.Value, out int intValue))
+                if (int.TryParse(token.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
                 {
                     return new ShellNumber(intValue);
                 }
