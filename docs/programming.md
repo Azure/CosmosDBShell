@@ -28,11 +28,13 @@ Variable names are case-sensitive. For compatibility, the lexer also accepts hyp
 - Negatives: `-1`
 - Decimal literals: `3.14`, `3.0`
 
-Integer values use signed 32-bit storage. Integer literal magnitudes must be between `0` and `2147483647`; the minus sign is a separate unary operator, so `-2147483648` is not accepted as a literal. The minimum integer value can be computed as `-2147483647 - 1`. Arithmetic between integers stays integer arithmetic, including truncating division (`3 / 2` is `1`). Integer overflow raises an error instead of wrapping. Use a decimal operand for floating-point arithmetic (`3.0 / 2` is `1.5`). Decimal values use IEEE 754 `double`, not exact base-10 decimal arithmetic.
+Integer values use signed 32-bit storage. Integer literal magnitudes must be between `0` and `2147483647`; the minus sign is a separate unary operator, so `-2147483648` is not accepted as a literal. The minimum integer value can be computed as `-2147483647 - 1`. Arithmetic between integers stays integer arithmetic, including truncating division (`3 / 2` is `1`). Integer overflow raises an error instead of wrapping. Use a decimal operand for floating-point arithmetic (`3.0 / 2` is `1.5`). Decimal values use IEEE 754 `double`, not exact base-10 decimal arithmetic. Numeric text conversion is culture-invariant and uses `.` as the decimal separator.
 
 JSON numbers use the same rules in expressions and `for` loops: integer-form values within the `Int32` range become integers; fractional, exponent-form, or larger values use `double`. Large JSON integers can therefore lose precision beyond the exact range of `double`. For example, a JSON property containing `3` divided by `2` produces `1`, while a property containing `3.0` produces `1.5`.
 
 JSON construction preserves the distinction between integers and shell decimals. Integral decimal values retain a fractional suffix or exponent, so `$object = {"value":3.0}` stores JSON `3.0` and `$object.value / 2` produces `1.5`. This also applies to arrays, computed decimal values, and repeated reconstruction after loop or function calls. Integer values remain JSON integers. The original spelling and number of trailing zeros are not preserved; values still use IEEE 754 `double` precision.
+
+JSON object and array literals accept larger integer-form values and preserve them as JSON integers.
 
 Numeric Boolean conversion uses zero versus nonzero, including for fractional and large JSON numbers. JSON numbers use the same `double` conversion as decimal shell values for this check, so `if 1.5` and `if $object.value` behave alike when the property contains `1.5`.
 
