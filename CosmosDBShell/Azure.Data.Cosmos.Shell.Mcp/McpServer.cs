@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
+using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -80,7 +81,10 @@ internal class McpServer
 
         var mcpServerBuilder = services.AddMcpServer();
         mcpServerBuilder.WithResources<ResourceOperations>();
-        mcpServerBuilder.WithHttpTransport();
+
+        // Destructive-command confirmation uses elicitation, a server-to-client request that
+        // requires a session. SDK 2.x defaults to stateless, so keep sessions enabled.
+        mcpServerBuilder.WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateful);
     }
 
     private static string LoadServerInstructions()
