@@ -204,6 +204,57 @@ public class McpLocationSubscriptionTests
     }
 
     [Fact]
+    public async Task ListenWithOnlyUnsupportedFilters_AcknowledgesNothingAndCompletes()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        using var host = McpServer.CreateHost(new Program.CosmosShellOptions { McpPort = 0 });
+        await host.StartAsync(timeout.Token);
+        try
+        {
+            var subscriptions = host.Services.GetRequiredService<LocationResourceSubscriptions>();
+            await using var client = await ConnectAsync(host, timeout.Token, protocolVersion: null);
+
+            var acknowledged = new TaskCompletionSource<JsonRpcNotification>(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using var acknowledgedHandler = client.RegisterNotificationHandler(
+                NotificationMethods.SubscriptionsAcknowledgedNotification,
+                (notification, _) =>
+                {
+                    acknowledged.TrySetResult(notification);
+                    return ValueTask.CompletedTask;
+                });
+
+            var response = await client.SendRequestAsync(
+                new JsonRpcRequest
+                {
+                    Id = new RequestId("unsupported-listen"),
+                    Method = RequestMethods.SubscriptionsListen,
+                    Params = JsonSerializer.SerializeToNode(new SubscriptionsListenRequestParams
+                    {
+                        Notifications = new SubscriptionsListenNotifications
+                        {
+                            ResourceSubscriptions = ["cosmos://docs/scripting"],
+                            ToolsListChanged = true,
+                        },
+                    }),
+                },
+                timeout.Token);
+
+            Assert.Equal("unsupported-listen", response.Id.ToString());
+            var acknowledgement = await acknowledged.Task.WaitAsync(timeout.Token);
+            var granted = acknowledgement.Params!["notifications"]!.AsObject();
+            Assert.False(granted.ContainsKey("resourceSubscriptions"));
+            Assert.False(granted.ContainsKey("toolsListChanged"));
+            Assert.Equal("unsupported-listen", acknowledgement.Params["_meta"]![MetaKeys.SubscriptionId]!.GetValue<string>());
+            Assert.Equal(0, subscriptions.ListenerCount);
+        }
+        finally
+        {
+            await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Fact]
     public async Task HostStop_EndsOpenListenStreamWithoutWaitingForShutdownTimeout()
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
