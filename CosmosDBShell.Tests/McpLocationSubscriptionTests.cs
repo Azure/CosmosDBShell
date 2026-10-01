@@ -189,6 +189,7 @@ public class McpLocationSubscriptionTests
             }
             catch (OperationCanceledException)
             {
+                Assert.True(listenCancellation.IsCancellationRequested);
             }
 
             while (subscriptions.ListenerCount != 0)

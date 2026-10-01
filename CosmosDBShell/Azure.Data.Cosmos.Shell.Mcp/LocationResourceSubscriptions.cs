@@ -169,10 +169,8 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
 
         try
         {
-            await Task.Delay(Timeout.Infinite, listenCancellation.Token);
-        }
-        catch (OperationCanceledException) when (listenCancellation.IsCancellationRequested)
-        {
+            // Cancellation is the normal end of a listen stream.
+            await Task.Delay(Timeout.Infinite, listenCancellation.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
         finally
         {

@@ -689,17 +689,11 @@ internal class ToolOperations
         {
             var snapshot = await shell.RunSerializedAsync(
                 () => Task.FromResult((Version: shell.StateVersion, Context: DescribeContext(shell.State))), cancellationToken);
-            CallToolResult? confirmation;
-            if (requestParams?.InputResponses?.TryGetValue(ConfirmationInputKey, out var response) == true)
-            {
-                confirmation = this.EvaluateConfirmationResponse(
-                    response, requestParams.RequestState, command.CommandName, commandLine, snapshot.Version);
-            }
-            else
-            {
-                confirmation = await this.ConfirmDestructiveAsync(
+            var confirmation = requestParams?.InputResponses?.TryGetValue(ConfirmationInputKey, out var response) == true
+                ? this.EvaluateConfirmationResponse(
+                    response, requestParams.RequestState, command.CommandName, commandLine, snapshot.Version)
+                : await this.ConfirmDestructiveAsync(
                     prompt, command.CommandName, commandLine, cancellationToken, snapshot.Context, snapshot.Version);
-            }
 
             if (confirmation != null)
             {
