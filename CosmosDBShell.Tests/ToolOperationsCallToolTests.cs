@@ -725,6 +725,18 @@ public class ToolOperationsCallToolTests : IDisposable
     }
 
     [Fact]
+    public void ConfirmationRequestState_DropsOldestBeyondMaxPending()
+    {
+        var oldest = ConfirmationRequestState.Create("rmdb oldest", 1);
+        var states = Enumerable.Range(0, ConfirmationRequestState.MaxPending)
+            .Select(index => ConfirmationRequestState.Create($"rmdb db{index}", 1))
+            .ToArray();
+
+        Assert.False(ConfirmationRequestState.TryRead(oldest, "rmdb oldest", out _));
+        Assert.True(ConfirmationRequestState.TryRead(states[^1], $"rmdb db{ConfirmationRequestState.MaxPending - 1}", out _));
+    }
+
+    [Fact]
     public void ConfirmationRequestState_ExpiresAfterLifetime()
     {
         var state = ConfirmationRequestState.Create("rmdb mydb", 42);

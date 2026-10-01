@@ -4,7 +4,6 @@
 
 namespace Azure.Data.Cosmos.Shell.Mcp;
 
-using System.Collections.Concurrent;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -19,24 +18,39 @@ using Microsoft.AspNetCore.WebUtilities;
 /// </summary>
 internal static class ConfirmationRequestState
 {
+    // Upper bound on tracked nonces. Beyond it the oldest is dropped, so its confirmation must be repeated.
+    internal const int MaxPending = 1024;
+
     internal static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
 
     // Per-process key: confirmations do not survive a server restart.
     private static readonly byte[] Key = RandomNumberGenerator.GetBytes(32);
 
-    // Outstanding nonces and their expiry. A nonce is removed when it is read or has expired.
-    private static readonly ConcurrentDictionary<string, DateTimeOffset> PendingNonces = new(StringComparer.Ordinal);
+    private static readonly object Sync = new();
+
+    // Outstanding nonces and their expiry. A nonce is removed when it is read, expires, or is evicted.
+    private static readonly Dictionary<string, DateTimeOffset> PendingNonces = new(StringComparer.Ordinal);
+
+    // Nonces in creation order. All share one lifetime, so the oldest expires first and pruning stops at the
+    // first live entry. Entries already read stay queued until pruned; the queue never exceeds MaxPending.
+    private static readonly Queue<(string Nonce, DateTimeOffset Expiry)> NonceOrder = new();
 
     public static string Create(string commandLine, long stateVersion)
     {
         var now = DateTimeOffset.UtcNow;
-        foreach (var expired in PendingNonces.Where(entry => entry.Value <= now))
+        var nonce = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(16));
+        lock (Sync)
         {
-            PendingNonces.TryRemove(expired);
+            while (NonceOrder.TryPeek(out var oldest) && (oldest.Expiry <= now || NonceOrder.Count >= MaxPending))
+            {
+                NonceOrder.Dequeue();
+                PendingNonces.Remove(oldest.Nonce);
+            }
+
+            PendingNonces[nonce] = now + Lifetime;
+            NonceOrder.Enqueue((nonce, now + Lifetime));
         }
 
-        var nonce = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(16));
-        PendingNonces[nonce] = now + Lifetime;
         var payload = Encoding.UTF8.GetBytes(nonce + "\n" + stateVersion.ToString(CultureInfo.InvariantCulture) + "\n" + commandLine);
         return WebEncoders.Base64UrlEncode(payload) + "." + WebEncoders.Base64UrlEncode(Sign(payload));
     }
@@ -84,7 +98,16 @@ internal static class ConfirmationRequestState
         }
 
         // Any signed state is consumed on first use, whether or not it matches this command.
-        if (!PendingNonces.TryRemove(parts[0], out var expiry) || expiry <= now)
+        DateTimeOffset expiry;
+        lock (Sync)
+        {
+            if (!PendingNonces.Remove(parts[0], out expiry))
+            {
+                return false;
+            }
+        }
+
+        if (expiry <= now)
         {
             return false;
         }

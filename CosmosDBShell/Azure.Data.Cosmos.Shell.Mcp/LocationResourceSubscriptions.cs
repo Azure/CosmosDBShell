@@ -156,16 +156,15 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
             },
             McpJsonUtilities.DefaultOptions)!.AsObject();
         acknowledgement["_meta"] = stream.CreateMeta();
+        using var listenCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.stopping.Token);
         if (!honorsLocation)
         {
-            await SendAcknowledgementAsync(request.Server, acknowledgement, cancellationToken);
+            await SendAcknowledgementAsync(request.Server, acknowledgement, listenCancellation.Token);
             return new EmptyResult();
         }
 
-        using var listenCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.stopping.Token);
-
-        // Register before acknowledging so no change is missed; changes seen before the acknowledgement
-        // is sent are held back and delivered right after it, keeping the acknowledgement first.
+        // Register before acknowledging so no change is missed. Changes seen before the acknowledgement
+        // is sent wait in the stream's queue, which is read only after the acknowledgement.
         lock (this.sync)
         {
             this.listenStreams.Add(stream);
@@ -173,23 +172,25 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
 
         try
         {
-            await SendAcknowledgementAsync(request.Server, acknowledgement, cancellationToken);
+            await SendAcknowledgementAsync(request.Server, acknowledgement, listenCancellation.Token);
 
-            bool pending;
-            lock (this.sync)
+            // Each listener sends its own updates, so a slow or stalled stream delays only itself.
+            while (await stream.Updates.Reader.WaitToReadAsync(listenCancellation.Token))
             {
-                stream.Acknowledged = true;
-                pending = stream.PendingUpdate;
-                stream.PendingUpdate = false;
+                stream.Updates.Reader.TryRead(out _);
+                try
+                {
+                    await stream.SendUpdateAsync(listenCancellation.Token);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    this.logger.LogWarning(ex, "Could not notify an MCP client about the shell location change.");
+                }
             }
-
-            if (pending)
-            {
-                await stream.SendUpdateAsync(cancellationToken);
-            }
-
+        }
+        catch (OperationCanceledException) when (listenCancellation.IsCancellationRequested)
+        {
             // Cancellation is the normal end of a listen stream.
-            await Task.Delay(Timeout.Infinite, listenCancellation.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
         finally
         {
@@ -213,19 +214,16 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
         await foreach (var change in this.changes.Reader.ReadAllAsync(stoppingToken))
         {
             ModelContextProtocol.Server.McpServer[] servers;
-            ListenStream[] streams;
             lock (this.sync)
             {
                 servers = this.subscribedSessionIds
                     .Select(sessionId => this.sessions.TryGetValue(sessionId, out var server) ? server : null)
                     .OfType<ModelContextProtocol.Server.McpServer>()
                     .ToArray();
-                foreach (var stream in this.listenStreams.Where(stream => !stream.Acknowledged))
+                foreach (var stream in this.listenStreams)
                 {
-                    stream.PendingUpdate = true;
+                    stream.Updates.Writer.TryWrite(true);
                 }
-
-                streams = [.. this.listenStreams.Where(stream => stream.Acknowledged)];
             }
 
             foreach (var server in servers)
@@ -244,23 +242,6 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
                 catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
                 {
                     // Session cleanup is tied to the session lifetime; a failed send only affects this notification.
-                    this.logger.LogWarning(ex, "Could not notify an MCP client about the shell location change.");
-                }
-            }
-
-            foreach (var stream in streams)
-            {
-                try
-                {
-                    await stream.SendUpdateAsync(stoppingToken);
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
-                {
-                    // The stream is removed when its listen request ends; a failed send only affects this notification.
                     this.logger.LogWarning(ex, "Could not notify an MCP client about the shell location change.");
                 }
             }
@@ -301,10 +282,9 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
     {
         public ModelContextProtocol.Server.McpServer Server { get; } = server;
 
-        // Guarded by the owning LocationResourceSubscriptions' sync lock.
-        public bool Acknowledged { get; set; }
-
-        public bool PendingUpdate { get; set; }
+        // Notifications carry only the URI, so pending changes for this listener are coalesced into one.
+        public Channel<bool> Updates { get; } = Channel.CreateBounded<bool>(
+            new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite, SingleReader = true, SingleWriter = true });
 
         public Task SendUpdateAsync(CancellationToken cancellationToken)
         {
