@@ -99,7 +99,7 @@ Clients can read the `cosmos://shell/current-location` MCP resource. Its JSON co
 
 Only `cosmos://shell/current-location` supports subscriptions; subscribing to any other URI, including the documentation resources, returns an invalid-params error.
 
-This server uses the subscription protocol supported by its MCP SDK; clients must support subscriptions and server-to-client notifications over the HTTP connection. A notification does not guarantee that a client refreshes the model's context. Every tool response also includes `currentLocation`, and explicit `database` / `container` arguments remain the reliable way to target independent operations.
+This server uses the subscription protocol supported by its MCP SDK; clients must support subscriptions and server-to-client notifications over the HTTP connection. Notifications are delivered on the session's GET stream. A subscription lasts as long as its MCP session: it ends when the client deletes the session or when the session has had no open request (including the GET stream) for 10 minutes. After that the server returns 404 for the session and the client must start a new session and subscribe again. A notification does not guarantee that a client refreshes the model's context. Every tool response also includes `currentLocation`, and explicit `database` / `container` arguments remain the reliable way to target independent operations.
 
 ### Data Exposure
 
