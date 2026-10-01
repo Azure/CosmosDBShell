@@ -16,8 +16,10 @@ using ModelContextProtocol.Protocol;
 [Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class McpConfirmationTests
 {
-    [Fact]
-    public async Task DestructiveCommand_OverHttp_AsksClientAndHonorsDecline()
+    [Theory]
+    [InlineData(null, "2026-07-28")] // Stateless request; confirmation uses native multi-round-trip requests.
+    [InlineData("2025-11-25", "2025-11-25")] // Initialize handshake; confirmation is sent over the session.
+    public async Task DestructiveCommand_OverHttp_AsksClientAndHonorsDecline(string? requestedVersion, string negotiatedVersion)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(10));
@@ -35,6 +37,7 @@ public class McpConfirmationTests
                 transport,
                 new McpClientOptions
                 {
+                    ProtocolVersion = requestedVersion,
                     Handlers = new McpClientHandlers
                     {
                         ElicitationHandler = (request, _) =>
@@ -45,6 +48,7 @@ public class McpConfirmationTests
                     },
                 },
                 cancellationToken: timeout.Token);
+            Assert.Equal(negotiatedVersion, client.NegotiatedProtocolVersion);
 
             var result = await client.CallToolAsync(
                 "rmdb",

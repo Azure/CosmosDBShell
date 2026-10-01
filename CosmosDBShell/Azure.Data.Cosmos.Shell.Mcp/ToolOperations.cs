@@ -656,7 +656,11 @@ internal class ToolOperations
         var commandLine = sb.ToString();
         var server = parameters.Server;
         ConfirmationPrompt? prompt = null;
-        if (server?.ClientCapabilities?.Elicitation != null && server.IsMrtrSupported)
+
+        // Stateless 2026-07-28 requests declare capabilities per request, which the SDK does not
+        // surface through ClientCapabilities.
+        var clientCapabilities = server?.ClientCapabilities ?? parameters.JsonRpcRequest?.Context?.ClientCapabilities;
+        if (clientCapabilities?.Elicitation != null && server!.IsMrtrSupported)
         {
             // Multi-round-trip request: the client prompts the user and retries this call with the answer.
             // On sessions that predate MRTR, the SDK sends an elicitation request and retries for us.
