@@ -540,7 +540,7 @@ internal class ToolOperations
         ConfigurePaging(cmd);
         var suppliedParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var positionalValues = new Dictionary<Parameter, object?>();
-        var optionText = new StringBuilder();
+        var optionTexts = new List<(int Order, string Text)>();
 
         if (parameters.Params.Arguments != null)
         {
@@ -561,7 +561,7 @@ internal class ToolOperations
                         memberKind: "option",
                         memberDisplay: $"--{option.Name[0]}",
                         commandName: command.CommandName,
-                        appendToHistory: value => optionText.Append(FormatOptionForHistory(option, value)));
+                        appendToHistory: value => optionTexts.Add((command.Options.IndexOf(option), FormatOptionForHistory(option, value))));
                     if (bindError != null)
                     {
                         return bindError;
@@ -652,7 +652,13 @@ internal class ToolOperations
 
         // MCP argument order is not semantic, so render positionals in the order the shell binds them.
         sb.Append(FormatPositionalsForHistory(command.Parameters, positionalValues));
-        sb.Append(optionText);
+
+        // Likewise render options in declaration order, so the confirmed command line does not depend on argument order.
+        foreach (var (_, text) in optionTexts.OrderBy(entry => entry.Order))
+        {
+            sb.Append(text);
+        }
+
         var commandLine = sb.ToString();
         var server = parameters.Server;
         ConfirmationPrompt? prompt = null;

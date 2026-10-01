@@ -152,16 +152,16 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
             },
             McpJsonUtilities.DefaultOptions)!.AsObject();
         acknowledgement["_meta"] = stream.CreateMeta();
-        await request.Server.SendMessageAsync(
-            new JsonRpcNotification { Method = NotificationMethods.SubscriptionsAcknowledgedNotification, Params = acknowledgement },
-            cancellationToken);
-
         if (!honorsLocation)
         {
+            await SendAcknowledgementAsync(request.Server, acknowledgement, cancellationToken);
             return new EmptyResult();
         }
 
         using var listenCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.stopping.Token);
+
+        // Register before acknowledging so no change is missed; changes seen before the acknowledgement
+        // is sent are held back and delivered right after it, keeping the acknowledgement first.
         lock (this.sync)
         {
             this.listenStreams.Add(stream);
@@ -169,6 +169,21 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
 
         try
         {
+            await SendAcknowledgementAsync(request.Server, acknowledgement, cancellationToken);
+
+            bool pending;
+            lock (this.sync)
+            {
+                stream.Acknowledged = true;
+                pending = stream.PendingUpdate;
+                stream.PendingUpdate = false;
+            }
+
+            if (pending)
+            {
+                await stream.SendUpdateAsync(cancellationToken);
+            }
+
             // Cancellation is the normal end of a listen stream.
             await Task.Delay(Timeout.Infinite, listenCancellation.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
@@ -201,7 +216,12 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
                     .Select(sessionId => this.sessions.TryGetValue(sessionId, out var server) ? server : null)
                     .OfType<ModelContextProtocol.Server.McpServer>()
                     .ToArray();
-                streams = [.. this.listenStreams];
+                foreach (var stream in this.listenStreams.Where(stream => !stream.Acknowledged))
+                {
+                    stream.PendingUpdate = true;
+                }
+
+                streams = [.. this.listenStreams.Where(stream => stream.Acknowledged)];
             }
 
             foreach (var server in servers)
@@ -228,10 +248,7 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
             {
                 try
                 {
-                    await stream.Server.SendNotificationAsync(
-                        NotificationMethods.ResourceUpdatedNotification,
-                        new ResourceUpdatedNotificationParams { Uri = ResourceOperations.CurrentLocationUri, Meta = stream.CreateMeta() },
-                        cancellationToken: stoppingToken);
+                    await stream.SendUpdateAsync(stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -263,6 +280,13 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
         }
     }
 
+    private static Task SendAcknowledgementAsync(ModelContextProtocol.Server.McpServer server, JsonObject acknowledgement, CancellationToken cancellationToken)
+    {
+        return server.SendMessageAsync(
+            new JsonRpcNotification { Method = NotificationMethods.SubscriptionsAcknowledgedNotification, Params = acknowledgement },
+            cancellationToken);
+    }
+
     private void OnLocationChanged()
     {
         this.changes.Writer.TryWrite(true);
@@ -271,6 +295,19 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
     private sealed class ListenStream(ModelContextProtocol.Server.McpServer server, RequestId id)
     {
         public ModelContextProtocol.Server.McpServer Server { get; } = server;
+
+        // Guarded by the owning LocationResourceSubscriptions' sync lock.
+        public bool Acknowledged { get; set; }
+
+        public bool PendingUpdate { get; set; }
+
+        public Task SendUpdateAsync(CancellationToken cancellationToken)
+        {
+            return this.Server.SendNotificationAsync(
+                NotificationMethods.ResourceUpdatedNotification,
+                new ResourceUpdatedNotificationParams { Uri = ResourceOperations.CurrentLocationUri, Meta = this.CreateMeta() },
+                cancellationToken: cancellationToken);
+        }
 
         // Notifications on a listen stream are tagged with the listen request ID so clients can demultiplex them.
         public JsonObject CreateMeta() => new()

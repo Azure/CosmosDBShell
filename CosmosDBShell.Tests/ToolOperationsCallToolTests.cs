@@ -170,6 +170,33 @@ public class ToolOperationsCallToolTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task CallTool_RmArgumentOrder_DoesNotChangeConfirmedCommandLine()
+    {
+        var tool = CreateToolOperations();
+        var forward = new Dictionary<string, JsonElement>
+        {
+            ["pattern"] = Json("\"order-123\""),
+            ["key"] = Json("\"id\""),
+            ["partition-key"] = Json("\"customer-42\""),
+            ["etag"] = Json("\"etag-1\""),
+        };
+        var reversed = forward.Reverse().ToDictionary();
+
+        var errors = new List<string?>();
+        foreach (var arguments in new[] { forward, reversed })
+        {
+            var (_, root, document) = ReadResult(await tool.CallToolHandler(CallContext("rm", arguments), CancellationToken.None));
+            using (document)
+            {
+                errors.Add(root.GetProperty("error").GetString());
+            }
+        }
+
+        Assert.Contains("rm \"order-123\" --key \"id\" --partition-key \"customer-42\" --etag \"etag-1\"", errors[0]);
+        Assert.Equal(errors[0], errors[1]);
+    }
+
     [Theory]
     [InlineData("etag", "command-rm-error-etag_empty")]
     [InlineData("partition-key", "command-rm-error-partition_key_missing_value")]
@@ -685,6 +712,24 @@ public class ToolOperationsCallToolTests : IDisposable
         Assert.False(ConfirmationRequestState.TryRead(state, "rmdb otherdb", out _));
     }
 
+    [Fact]
+    public void ConfirmationRequestState_CanBeReadOnlyOnce()
+    {
+        var state = ConfirmationRequestState.Create("rmdb mydb", 42);
+
+        Assert.True(ConfirmationRequestState.TryRead(state, "rmdb mydb", out _));
+        Assert.False(ConfirmationRequestState.TryRead(state, "rmdb mydb", out _));
+    }
+
+    [Fact]
+    public void ConfirmationRequestState_ExpiresAfterLifetime()
+    {
+        var state = ConfirmationRequestState.Create("rmdb mydb", 42);
+
+        Assert.False(ConfirmationRequestState.TryRead(
+            state, "rmdb mydb", DateTimeOffset.UtcNow + ConfirmationRequestState.Lifetime + TimeSpan.FromSeconds(1), out _));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -740,6 +785,24 @@ public class ToolOperationsCallToolTests : IDisposable
 
         Assert.False(result.IsError == true);
         Assert.True(command.Executed);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_ReplayedConfirmationResponse_DoesNotExecuteAgain()
+    {
+        var shell = ShellInterpreter.Instance;
+        var retry = ConfirmationRetry("accept", ConfirmationRequestState.Create("rm test-*", shell.StateVersion));
+        var first = new TrackingCommand();
+        var replayed = new TrackingCommand();
+
+        await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], first, "rm test-*", null, TestContext.Current.CancellationToken, retry);
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], replayed, "rm test-*", null, TestContext.Current.CancellationToken, retry);
+
+        Assert.True(first.Executed);
+        Assert.True(result.IsError);
+        Assert.False(replayed.Executed);
     }
 
     [Theory]
