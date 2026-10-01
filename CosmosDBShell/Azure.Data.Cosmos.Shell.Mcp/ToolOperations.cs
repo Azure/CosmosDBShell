@@ -54,13 +54,13 @@ internal class ToolOperations
 
     private ValueTask<EmptyResult> SubscribeToResourcesAsync(RequestContext<SubscribeRequestParams> context, CancellationToken cancellationToken)
     {
-        this.locationSubscriptions.Subscribe(context.Server, context.Params?.Uri ?? string.Empty);
+        this.locationSubscriptions.Subscribe(context.Server.SessionId, context.Params?.Uri ?? string.Empty);
         return ValueTask.FromResult(new EmptyResult());
     }
 
     private ValueTask<EmptyResult> UnsubscribeFromResourcesAsync(RequestContext<UnsubscribeRequestParams> context, CancellationToken cancellationToken)
     {
-        this.locationSubscriptions.Unsubscribe(context.Server, context.Params?.Uri ?? string.Empty);
+        this.locationSubscriptions.Unsubscribe(context.Server.SessionId, context.Params?.Uri ?? string.Empty);
         return ValueTask.FromResult(new EmptyResult());
     }
 

@@ -16,7 +16,11 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
 {
     private readonly object sync = new();
 
-    private readonly List<WeakReference<ModelContextProtocol.Server.McpServer>> subscribers = [];
+    // Session servers keyed by session ID. Entries are added when a session starts running and
+    // removed when it ends (DELETE, idle timeout, or shutdown), so no dead session is retained.
+    private readonly Dictionary<string, ModelContextProtocol.Server.McpServer> sessions = new(StringComparer.Ordinal);
+
+    private readonly HashSet<string> subscribedSessionIds = new(StringComparer.Ordinal);
 
     // Notifications carry only the URI, so pending changes are coalesced into one.
     private readonly Channel<bool> changes = Channel.CreateBounded<bool>(
@@ -30,25 +34,81 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
         ShellInterpreter.Instance.LocationChanged += this.OnLocationChanged;
     }
 
-    public void Subscribe(ModelContextProtocol.Server.McpServer server, string uri)
+    internal int SubscriberCount
     {
-        ValidateUri(uri);
-        lock (this.sync)
+        get
         {
-            this.PruneSubscribers();
-            if (!this.subscribers.Any(reference => reference.TryGetTarget(out var target) && ReferenceEquals(target, server)))
+            lock (this.sync)
             {
-                this.subscribers.Add(new WeakReference<ModelContextProtocol.Server.McpServer>(server));
+                return this.subscribedSessionIds.Count;
             }
         }
     }
 
-    public void Unsubscribe(ModelContextProtocol.Server.McpServer server, string uri)
+    /// <summary>
+    /// Runs an MCP session and keeps it available for notifications until the session ends.
+    /// </summary>
+    public async Task RunSessionAsync(ModelContextProtocol.Server.McpServer server, CancellationToken cancellationToken)
+    {
+        var sessionId = server.SessionId;
+        if (sessionId is not null)
+        {
+            lock (this.sync)
+            {
+                this.sessions[sessionId] = server;
+            }
+        }
+
+        try
+        {
+            await server.RunAsync(cancellationToken);
+        }
+        finally
+        {
+            if (sessionId is not null)
+            {
+                lock (this.sync)
+                {
+                    if (this.sessions.TryGetValue(sessionId, out var current) && ReferenceEquals(current, server))
+                    {
+                        this.sessions.Remove(sessionId);
+                        this.subscribedSessionIds.Remove(sessionId);
+                    }
+                }
+            }
+        }
+    }
+
+    public void Subscribe(string? sessionId, string uri)
     {
         ValidateUri(uri);
+        if (sessionId is null)
+        {
+            throw new McpProtocolException(
+                "Resource subscriptions require a stateful MCP session.",
+                McpErrorCode.InvalidRequest);
+        }
+
         lock (this.sync)
         {
-            this.subscribers.RemoveAll(reference => !reference.TryGetTarget(out var target) || ReferenceEquals(target, server));
+            if (this.sessions.ContainsKey(sessionId))
+            {
+                this.subscribedSessionIds.Add(sessionId);
+            }
+        }
+    }
+
+    public void Unsubscribe(string? sessionId, string uri)
+    {
+        ValidateUri(uri);
+        if (sessionId is null)
+        {
+            return;
+        }
+
+        lock (this.sync)
+        {
+            this.subscribedSessionIds.Remove(sessionId);
         }
     }
 
@@ -59,9 +119,8 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
             ModelContextProtocol.Server.McpServer[] servers;
             lock (this.sync)
             {
-                this.PruneSubscribers();
-                servers = this.subscribers
-                    .Select(reference => reference.TryGetTarget(out var server) ? server : null)
+                servers = this.subscribedSessionIds
+                    .Select(sessionId => this.sessions.TryGetValue(sessionId, out var server) ? server : null)
                     .OfType<ModelContextProtocol.Server.McpServer>()
                     .ToArray();
             }
@@ -81,11 +140,8 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
                 }
                 catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
                 {
+                    // Session cleanup is tied to the session lifetime; a failed send only affects this notification.
                     this.logger.LogWarning(ex, "Could not notify an MCP client about the shell location change.");
-                    lock (this.sync)
-                    {
-                        this.subscribers.RemoveAll(reference => !reference.TryGetTarget(out var target) || ReferenceEquals(target, server));
-                    }
                 }
             }
         }
@@ -110,10 +166,5 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
     private void OnLocationChanged()
     {
         this.changes.Writer.TryWrite(true);
-    }
-
-    private void PruneSubscribers()
-    {
-        this.subscribers.RemoveAll(reference => !reference.TryGetTarget(out _));
     }
 }
