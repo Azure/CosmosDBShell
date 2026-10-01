@@ -28,11 +28,19 @@ using Spectre.Console;
 // success path (which writes the highlighted command line through AnsiConsole) does
 // not race with other tests that swap the global console or theme.
 [Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
-public class ToolOperationsCallToolTests
+public class ToolOperationsCallToolTests : IDisposable
 {
-    private static ToolOperations CreateToolOperations()
+    private readonly LocationResourceSubscriptions locationSubscriptions =
+        new(NullLogger<LocationResourceSubscriptions>.Instance);
+
+    public void Dispose()
     {
-        return new ToolOperations(NullLogger<ToolOperations>.Instance);
+        this.locationSubscriptions.Dispose();
+    }
+
+    private ToolOperations CreateToolOperations()
+    {
+        return new ToolOperations(NullLogger<ToolOperations>.Instance, this.locationSubscriptions);
     }
 
     private static RequestContext<CallToolRequestParams> CallContext(string? name, Dictionary<string, JsonElement>? arguments = null)
