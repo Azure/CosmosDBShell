@@ -246,6 +246,8 @@ command-rm-description-database = The database containing the items to remove
 command-rm-description-container = The container containing the items to remove
 command-rm-description-key = The property name to match the pattern against (defaults to partition key)
 command-rm-description-dry-run = Preview how many items would be deleted without deleting them.
+command-rm-description-partition-key = Restrict removal to one complete logical partition key. Use a JSON array for hierarchical partition keys.
+command-rm-description-etag = Delete only if the item's current ETag matches. Requires an exact id with --key=id and --partition-key.
 command-rm-deleted_items = Deleted { $count } { $count ->
     [one] item
     *[other] items
@@ -255,6 +257,17 @@ command-rm-dry-run-plan = Dry run: Would delete { $count } { $count ->
     *[other] items
 }. No changes were made.
 command-rm-error-no_filter = Filter is missing.
+command-rm-error-invalid_pk_json = Partition key must be a JSON scalar value or a JSON array of values for hierarchical partition keys.
+command-rm-error-partition_key_components = The partition key must specify all { $expected } components of the container's partition key, but { $actual } { $actual ->
+    [one] was
+    *[other] were
+} supplied.
+command-rm-error-etag_empty = The --etag option requires a non-empty value.
+command-rm-error-partition_key_missing_value = The --partition-key option requires a value.
+command-rm-error-etag_requires_exact_id = The --etag option can only be used to delete a single item by exact id (--key=id without wildcards or piped input).
+command-rm-error-etag_requires_partition_key = The --etag option requires --partition-key.
+command-rm-error-etag_mismatch = Item '{ $id }' was modified since it was last read (ETag mismatch). The item was not deleted.
+command-rm-dry-run-item = Item '{ $id }' in partition { $partitionKey } has ETag { $etag }.
 command-rm-warning-missing-partition-key = Warning: Cannot delete item with id '{ $id }' - missing partition key '{ $partitionKey }'
 command-rm-no-matches = No items matched the pattern '{ $pattern }' for key '{ $key }'
 
@@ -1661,6 +1674,8 @@ command-rm-example-2 = Delete all items where partition key matches pattern endi
 command-rm-example-3 = Delete items where 'id' field matches pattern
 command-rm-example-4 = Delete items from specific database and container
 command-rm-example-5 = Preview how many items would be deleted without deleting them
+command-rm-example-6 = Preview deleting one item by id within a single logical partition, including its current ETag
+command-rm-example-7 = Delete one item only if it has not changed since the dry run
 command-rmcon-example-1 = Delete container with confirmation prompt
 command-rmcon-example-2 = Delete container skipping the interactive confirmation prompt (over MCP, confirmation is still required)
 command-rmcon-example-3 = Delete container from specific database

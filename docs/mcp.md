@@ -87,6 +87,8 @@ Shell and MCP command execution is serialized against the shared interpreter. Co
 
 The MCP confirmation applies even when a command is invoked with a force / no-prompt argument (for example `rmdb OldDB true`). That argument only skips the *interactive shell* prompt; it does not bypass the MCP elicitation gate.
 
+For single-item deletions, prefer `rm` with `key: "id"`, `partition-key`, and `dry-run: true` first, then repeat the call with the returned `etag` in the `etag` argument. The confirmation prompt shows the `--partition-key` and `--etag` values, and the delete only succeeds if the item still has the reviewed ETag, including when the item changes while the confirmation is pending. See [Deleting a single item safely](commands.md#deleting-a-single-item-safely).
+
 Database and container resource actions are executed through Azure Resource Manager when an ARM context is attached (Entra ID connections). MCP sessions connected with account keys, emulator credentials, or static data-plane tokens fall back to the Cosmos DB data plane for these actions.
 
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.
