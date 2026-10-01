@@ -73,7 +73,7 @@ Transactional batches invoked through MCP must use the one-shot `batch run` subc
 
 ### Destructive Command Confirmation
 
-Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an explicit user confirmation. When a client invokes one, the server asks the client for an elicitation prompt describing the exact command line before anything runs:
+Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an explicit user confirmation. When a client invokes one, the server sends the client an elicitation prompt describing the exact command line and waits for the user's answer before anything runs:
 
 - **Approved** — the command executes normally.
 - **Declined or cancelled** — nothing is executed and the tool call returns an error explaining that the user did not approve.
