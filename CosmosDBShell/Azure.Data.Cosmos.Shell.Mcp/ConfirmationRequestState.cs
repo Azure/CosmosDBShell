@@ -30,12 +30,9 @@ internal static class ConfirmationRequestState
     public static string Create(string commandLine, long stateVersion)
     {
         var now = DateTimeOffset.UtcNow;
-        foreach (var entry in PendingNonces)
+        foreach (var expired in PendingNonces.Where(entry => entry.Value <= now))
         {
-            if (entry.Value <= now)
-            {
-                PendingNonces.TryRemove(entry);
-            }
+            PendingNonces.TryRemove(expired);
         }
 
         var nonce = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(16));
