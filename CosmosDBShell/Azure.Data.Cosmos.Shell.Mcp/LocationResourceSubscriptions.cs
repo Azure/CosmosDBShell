@@ -27,8 +27,11 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
     // Open subscriptions/listen streams (2026-07-28). Each lives as long as its listen request.
     private readonly HashSet<ListenStream> listenStreams = [];
 
-    // Listen requests are held-open POSTs, which the transport does not end on shutdown.
+    // Listen requests are held-open POSTs, which the transport does not end on shutdown. They must end
+    // on ApplicationStopping: the web server stops before this service and waits for open requests.
     private readonly CancellationTokenSource stopping = new();
+
+    private readonly CancellationTokenRegistration stoppingRegistration;
 
     // Notifications carry only the URI, so pending changes are coalesced into one.
     private readonly Channel<bool> changes = Channel.CreateBounded<bool>(
@@ -36,9 +39,10 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
 
     private readonly ILogger<LocationResourceSubscriptions> logger;
 
-    public LocationResourceSubscriptions(ILogger<LocationResourceSubscriptions> logger)
+    public LocationResourceSubscriptions(ILogger<LocationResourceSubscriptions> logger, IHostApplicationLifetime? lifetime = null)
     {
         this.logger = logger;
+        this.stoppingRegistration = lifetime?.ApplicationStopping.Register(this.stopping.Cancel) ?? default;
         ShellInterpreter.Instance.LocationChanged += this.OnLocationChanged;
     }
 
@@ -266,6 +270,7 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
     public override void Dispose()
     {
         ShellInterpreter.Instance.LocationChanged -= this.OnLocationChanged;
+        this.stoppingRegistration.Dispose();
         this.stopping.Dispose();
         base.Dispose();
     }

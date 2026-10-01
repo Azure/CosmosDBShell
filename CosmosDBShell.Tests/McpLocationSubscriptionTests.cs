@@ -204,6 +204,41 @@ public class McpLocationSubscriptionTests
     }
 
     [Fact]
+    public async Task HostStop_EndsOpenListenStreamWithoutWaitingForShutdownTimeout()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        using var host = McpServer.CreateHost(new Program.CosmosShellOptions { McpPort = 0 });
+        await host.StartAsync(timeout.Token);
+        var subscriptions = host.Services.GetRequiredService<LocationResourceSubscriptions>();
+        await using var client = await ConnectAsync(host, timeout.Token, protocolVersion: null);
+
+        _ = client.SendRequestAsync(
+            new JsonRpcRequest
+            {
+                Id = new RequestId("shutdown-listen"),
+                Method = RequestMethods.SubscriptionsListen,
+                Params = JsonSerializer.SerializeToNode(new SubscriptionsListenRequestParams
+                {
+                    Notifications = new SubscriptionsListenNotifications
+                    {
+                        ResourceSubscriptions = [ResourceOperations.CurrentLocationUri],
+                    },
+                }),
+            },
+            timeout.Token);
+        while (subscriptions.ListenerCount != 1)
+        {
+            await Task.Delay(20, timeout.Token);
+        }
+
+        // The web server stops first and waits for open requests until the host shutdown timeout (30 s by default).
+        await host.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, subscriptions.ListenerCount);
+    }
+
+    [Fact]
     public void HttpTransport_UsesSessionsOnlyForInitializeClientsWithBoundedIdleTimeout()
     {
         var options = new ModelContextProtocol.AspNetCore.HttpServerTransportOptions();

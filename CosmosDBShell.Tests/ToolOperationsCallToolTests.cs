@@ -607,9 +607,12 @@ public class ToolOperationsCallToolTests : IDisposable
         var tool = CreateToolOperations();
         var history = ShellInterpreter.Instance.History.ToArray();
         using var output = new StringWriter();
+
+        // History drops duplicates, so the entry must be unique to this test to grow the history.
+        var unique = "world-" + Guid.NewGuid().ToString("N");
         var arguments = new Dictionary<string, JsonElement>
         {
-            ["messages"] = Json("[\"hello\", \"world\"]"),
+            ["messages"] = Json($"[\"hello\", \"{unique}\"]"),
         };
 
         var saved = AnsiConsole.Console;
@@ -627,14 +630,14 @@ public class ToolOperationsCallToolTests : IDisposable
             Assert.Contains("echo", output.ToString(), StringComparison.Ordinal);
             var recorded = ShellInterpreter.Instance.History.ToArray();
             Assert.Equal(history.Length + 1, recorded.Length);
-            Assert.Equal("echo \"hello\" \"world\"", recorded[^1]);
+            Assert.Equal($"echo \"hello\" \"{unique}\"", recorded[^1]);
             Assert.Single(recorded, entry => entry == recorded[^1]);
 
             var (isError, root, document) = ReadResult(result);
             using (document)
             {
                 Assert.False(isError);
-                Assert.Equal("hello world", root.GetProperty("result").GetString());
+                Assert.Equal($"hello {unique}", root.GetProperty("result").GetString());
                 Assert.True(root.TryGetProperty("currentLocation", out _));
             }
         }
