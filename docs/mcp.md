@@ -73,15 +73,17 @@ Transactional batches invoked through MCP must use the one-shot `batch run` subc
 
 ### Destructive Command Confirmation
 
-Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an explicit user confirmation. When a client invokes one, the server sends an MCP elicitation prompt describing the exact command line before anything runs:
+Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an explicit user confirmation. When a client invokes one, the server asks the client for an elicitation prompt describing the exact command line before anything runs:
 
 - **Approved** — the command executes normally.
 - **Declined or cancelled** — nothing is executed and the tool call returns an error explaining that the user did not approve.
 - **Client cannot confirm** — if the connected client does not support elicitation, the command is refused (fail-closed) and the response suggests running it manually in the shell.
 
+The prompt is sent as a multi-round-trip request: the tool call returns an input-required result, and the client shows the prompt and retries the call with the answer. For clients on protocol revisions before `2026-07-28`, the server sends a standard `elicitation/create` request on the session and retries the call itself, so those clients see the same prompt as before. The retry carries a server-signed state that ties the answer to the exact command line and shell context. An answer for a different command, or with a missing or altered state, is refused without executing.
+
 This replaces any opt-in write flag: destructive commands are always allowed to be invoked, but always require confirmation.
 
-Confirmation includes the connected account endpoint and current navigation location alongside the command and its explicit target arguments. If the connection or navigation state changes while confirmation is pending, the approved command is refused without executing; retry it to confirm the new context. Even navigating away and back invalidates the pending confirmation.
+Confirmation includes the connected account endpoint and current navigation location alongside the command and its explicit target arguments. If the connection or navigation state changes while confirmation is pending, the approved command is refused without executing; retry it to confirm the new context. Even navigating away and back invalidates the pending confirmation. A pending confirmation also expires when the MCP server restarts.
 
 Shell and MCP command execution is serialized against the shared interpreter. Confirmation prompts do not hold the execution lock, so the shell remains usable while waiting. Clients still share a connection and navigation context: pass explicit `database` and `container` arguments for independent operations rather than relying on an earlier `cd` call.
 
