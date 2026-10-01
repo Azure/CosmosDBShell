@@ -51,6 +51,8 @@ internal class McpServer
     private static void ConfigureMcpServer(IServiceCollection services)
     {
         services.AddSingleton<ToolOperations>();
+        services.AddSingleton<LocationResourceSubscriptions>();
+        services.AddHostedService(services => services.GetRequiredService<LocationResourceSubscriptions>());
         services.AddOptions<McpServerOptions>()
             .Configure<ToolOperations>((mcpServerOptions, toolOperations) =>
             {
@@ -67,13 +69,15 @@ internal class McpServer
                 mcpServerOptions.Capabilities = new ServerCapabilities
                 {
                     Tools = new ToolsCapability(),
-                    Resources = new ResourcesCapability(),
+                    Resources = new ResourcesCapability { Subscribe = true },
                 };
 
                 mcpServerOptions.Handlers = new McpServerHandlers
                 {
                     CallToolHandler = toolOperations.CallToolHandler,
                     ListToolsHandler = toolOperations.ListToolsHandler,
+                    SubscribeToResourcesHandler = toolOperations.SubscribeToResourcesHandler,
+                    UnsubscribeFromResourcesHandler = toolOperations.UnsubscribeFromResourcesHandler,
                 };
 
                 mcpServerOptions.ServerInstructions = LoadServerInstructions();
