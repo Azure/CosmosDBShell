@@ -114,7 +114,7 @@ MCP tool invocations are echoed as command lines in the shell window, so anyone 
 
 Positional arguments must be supplied without gaps: a call that provides a positional parameter while omitting an earlier one is rejected, because the equivalent shell command line would bind the value to the omitted slot.
 
-Explicit `null` argument values are treated as omitted and are not echoed into shell history. The paging `continuation` argument is an exception: a `null` token means the result set is exhausted, so passing it back is rejected. The `rm` safety options `partition-key` (including alias `pk`) and `etag` also reject explicit `null` values rather than silently dropping the partition scope or concurrency check.
+Explicit `null` argument values are treated as omitted and are not echoed into shell history. The paging `continuation` argument is an exception: a `null` output token means the result set is exhausted unless `resultIncomplete` is `true`, in which case results were truncated and cannot be resumed. A `null` token must never be passed back as `continuation`; doing so is rejected in either case. For incomplete results, retry with a larger `max` or a narrower query. The `rm` safety options `partition-key` (including alias `pk`) and `etag` also reject explicit `null` values rather than silently dropping the partition scope or concurrency check.
 
 Your MCP client may use a remote LLM. Command outputs, query results, and file contents could be transmitted to external services. **Treat all shell output as potentially shared.**
 

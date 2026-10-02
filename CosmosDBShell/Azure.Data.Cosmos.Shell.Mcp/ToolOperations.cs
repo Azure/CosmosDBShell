@@ -32,7 +32,7 @@ internal class ToolOperations
         "The shell context changed while awaiting confirmation. Nothing was executed. Retry the command and confirm its current target.";
 
     private const string ContinuationDescription =
-        "Non-null continuation token returned by a previous call to this tool. Pass it back to fetch the next page, or omit this argument to start from the beginning. A null output token means the result is exhausted and no further call should be made. The value is opaque; do not modify it.";
+        "Non-null continuation token returned by a previous call to this tool. Pass it back to fetch the next page, or omit this argument to start from the beginning. A null output token means the result is exhausted unless resultIncomplete is true, in which case results were truncated and cannot be resumed. Never pass back a null token. For incomplete results, retry with a larger max or a narrower query. The value is opaque; do not modify it.";
 
     private readonly ILogger<ToolOperations> logger;
     private readonly LocationResourceSubscriptions locationSubscriptions;

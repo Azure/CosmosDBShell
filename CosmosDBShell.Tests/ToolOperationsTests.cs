@@ -159,6 +159,10 @@ public class ToolOperationsTests
         var continuation = schema.GetProperty("properties").GetProperty("continuation");
 
         Assert.Equal("string", continuation.GetProperty("type").GetString());
+        var description = continuation.GetProperty("description").GetString();
+        Assert.Contains("unless resultIncomplete is true", description);
+        Assert.Contains("truncated and cannot be resumed", description);
+        Assert.Contains("Never pass back a null token", description);
     }
 
     [Fact]
