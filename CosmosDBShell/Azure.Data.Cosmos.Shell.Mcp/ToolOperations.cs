@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Mcp;
 
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -31,7 +32,7 @@ internal class ToolOperations
         "The shell context changed while awaiting confirmation. Nothing was executed. Retry the command and confirm its current target.";
 
     private const string ContinuationDescription =
-        "Non-null continuation token returned by a previous call to this tool. Pass it back to fetch the next page, or omit this argument to start from the beginning. A null output token means the result is exhausted and no further call should be made. The value is opaque; do not modify it.";
+        "Non-null continuation token returned by a previous call to this tool. Pass it back to fetch the next page, or omit this argument to start from the beginning. A null output token means the result is exhausted unless resultIncomplete is true, in which case results were truncated and cannot be resumed. Never pass back a null token. For incomplete results, retry with a larger max or a narrower query. The value is opaque; do not modify it.";
 
     private readonly ILogger<ToolOperations> logger;
     private readonly LocationResourceSubscriptions locationSubscriptions;
@@ -234,7 +235,7 @@ internal class ToolOperations
 
     internal static string FormatOptionForHistory(Option option, object? value)
     {
-        return $" --{option.Name[0]} {ShellLiteral.Quote(value?.ToString())}";
+        return $" --{option.Name[0]} {ShellLiteral.Quote(FormatValueForHistory(value))}";
     }
 
     // Shell syntax cannot skip a positional, so a later value would bind to the omitted slot on replay.
@@ -271,16 +272,21 @@ internal class ToolOperations
             {
                 foreach (var element in array)
                 {
-                    sb.Append(' ').Append(ShellLiteral.Quote(element?.ToString()));
+                    sb.Append(' ').Append(ShellLiteral.Quote(FormatValueForHistory(element)));
                 }
             }
             else
             {
-                sb.Append(' ').Append(ShellLiteral.Quote(value?.ToString()));
+                sb.Append(' ').Append(ShellLiteral.Quote(FormatValueForHistory(value)));
             }
         }
 
         return sb.ToString();
+    }
+
+    private static string? FormatValueForHistory(object? value)
+    {
+        return Convert.ToString(value, CultureInfo.InvariantCulture);
     }
 
     private static bool IsPositionalSupplied(IReadOnlyDictionary<Parameter, object?> values, Parameter parameter)
@@ -434,6 +440,11 @@ internal class ToolOperations
             && annotation.Destructive;
     }
 
+    private static bool IsExplicitJsonNull(JsonElement value)
+    {
+        return value.ValueKind is JsonValueKind.Null;
+    }
+
     private CallToolResult? BindMember(
         object cmd,
         PropertyInfo property,
@@ -454,7 +465,7 @@ internal class ToolOperations
         {
             convertedValue = rawValue is JsonElement jsonElement
                 ? ConvertJsonElement(jsonElement, targetType)
-                : Convert.ChangeType(rawValue, targetType);
+                : Convert.ChangeType(rawValue, targetType, CultureInfo.InvariantCulture);
         }
         catch (Exception ex)
         {
@@ -554,6 +565,26 @@ internal class ToolOperations
                 var option = command.Options.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (option != null)
                 {
+                    if (IsExplicitJsonNull(par.Value))
+                    {
+                        var safetyErrorKey = cmd is RmCommand
+                            ? option.PropertyInfo.Name switch
+                            {
+                                nameof(RmCommand.ETag) => "command-rm-error-etag_empty",
+                                nameof(RmCommand.PartitionKeyArgument) => "command-rm-error-partition_key_missing_value",
+                                _ => null,
+                            }
+                            : null;
+                        if (safetyErrorKey != null)
+                        {
+                            var errorMessage = MessageService.GetString(safetyErrorKey);
+                            this.logger?.LogWarning("{Message}", errorMessage);
+                            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
+                        }
+
+                        continue;
+                    }
+
                     var bindError = this.BindMember(
                         cmd,
                         option.PropertyInfo,
@@ -573,6 +604,11 @@ internal class ToolOperations
                 var parameter = command.Parameters.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (parameter != null)
                 {
+                    if (IsExplicitJsonNull(par.Value))
+                    {
+                        continue;
+                    }
+
                     var bindError = this.BindMember(
                         cmd,
                         parameter.PropertyInfo,
