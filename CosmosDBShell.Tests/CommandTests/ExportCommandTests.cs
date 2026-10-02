@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 using NSubstitute;
@@ -202,6 +203,119 @@ public class ExportCommandTests
         var output = writer.ToString();
         Assert.Contains("\"[1,2]\"", output);
         Assert.Contains("\"{\"\"a\"\":\"\"b\"\"}\"", output);
+    }
+
+    [Fact]
+    public async Task WriteCsvAsync_ObjectRowsKeepRawJsonValues()
+    {
+        var items = ToAsyncEnumerableAsync(
+            JsonSerializer.SerializeToElement(new { id = "1", flag = true, missing = (object?)null }));
+
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
+
+        Assert.Equal(1, count);
+        var lines = writer.ToString().TrimEnd('\n').Split('\n');
+        Assert.Equal("\"id\",\"flag\",\"missing\"", lines[0]);
+        Assert.Equal("\"1\",\"true\",\"null\"", lines[1]);
+    }
+
+    [Fact]
+    public async Task WriteCsvAsync_ScalarStringsUseEmptyHeaderAndEscapeCsv()
+    {
+        var items = ToAsyncEnumerableAsync(
+            JsonSerializer.SerializeToElement("a,\"b"));
+
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, string.Empty);
+
+        Assert.Equal(1, count);
+        Assert.Equal("\"\"\n\"a,\"\"b\"\n", writer.ToString());
+    }
+
+    [Fact]
+    public async Task WriteCsvAsync_ScalarNumbersBoolsAndNullUseEmptyHeader()
+    {
+        var items = ToAsyncEnumerableAsync(
+            JsonSerializer.SerializeToElement(42),
+            JsonSerializer.SerializeToElement(true),
+            JsonSerializer.SerializeToElement(false),
+            JsonSerializer.SerializeToElement((object?)null));
+
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, string.Empty);
+
+        Assert.Equal(4, count);
+        Assert.Equal("\"\"\n\"42\"\n\"True\"\n\"False\"\n\"\"\n", writer.ToString());
+    }
+
+    [Fact]
+    public async Task WriteCsvAsync_ArrayRowsUseEmptyHeader()
+    {
+        var items = ToAsyncEnumerableAsync(
+            JsonSerializer.SerializeToElement(new[] { 1, 2 }));
+
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, string.Empty);
+
+        Assert.Equal(1, count);
+        Assert.Equal("\"\"\n\"[1,2]\"\n", writer.ToString());
+    }
+
+    [Fact]
+    public async Task WriteCsvAsync_MixedObjectAndScalarRowsPreserveScalarValue()
+    {
+        var items = ToAsyncEnumerableAsync(
+            JsonSerializer.SerializeToElement(new { id = "1" }),
+            JsonSerializer.SerializeToElement("a,b"),
+            JsonSerializer.SerializeToElement(new { id = "2", value = 99 }));
+
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, string.Empty);
+
+        Assert.Equal(3, count);
+        Assert.Equal("\"id\",\"\",\"value\"\n\"1\",\"\",\"\"\n\"\",\"a,b\",\"\"\n\"2\",\"\",\"99\"\n", writer.ToString());
+    }
+
+    [Fact]
+    public async Task WriteCsvAsync_CustomScalarHeaderPreservesObjectValueColumn()
+    {
+        var items = ToAsyncEnumerableAsync(
+            JsonSerializer.SerializeToElement(new { value = 99 }),
+            JsonSerializer.SerializeToElement("text"));
+        using var writer = new StringWriter();
+        writer.NewLine = "\n";
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, "scalar");
+
+        Assert.Equal(2, count);
+        Assert.Equal("\"value\",\"scalar\"\n\"99\",\"\"\n\"\",\"text\"\n", writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("", "{\"\":1}")]
+    [InlineData("value", "{\"value\":1}")]
+    public async Task WriteCsvAsync_ScalarHeaderConflictingWithObjectPropertyFails(string header, string objectJson)
+    {
+        using var document = JsonDocument.Parse(objectJson);
+        var items = ToAsyncEnumerableAsync(JsonSerializer.SerializeToElement(42), document.RootElement.Clone());
+        using var writer = new StringWriter();
+
+        var error = await Assert.ThrowsAsync<CommandException>(() =>
+            ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, header));
+
+        Assert.Contains("COSMOSDB_SHELL_CSV_SCALAR_COLUMN", error.Message);
+        Assert.Equal(string.Empty, writer.ToString());
     }
 
     [Fact]

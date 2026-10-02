@@ -327,6 +327,7 @@ These values are a public contract. See the [CI/CD guide](ci.md#exit-code-contra
 | `COSMOSDB_SHELL_TOKEN` | Pre-obtained Entra ID access token (JWT) for single-shot auth |
 | `COSMOSDB_SHELL_ACCOUNT_KEY` | Account key for authentication |
 | `COSMOSDB_SHELL_CSVSEP` | CSV column separator |
+| `COSMOSDB_SHELL_CSV_SCALAR_COLUMN` | Header for non-object CSV export rows (empty by default) |
 | `COSMOSDB_SHELL_FORMAT` | Default output format (`user`, `json`, `table`, `csv`) used when `--output` is not supplied. Supplies a format only — it does not enable machine mode |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Default OTLP endpoint used by `--otel` when no endpoint is supplied |
 
