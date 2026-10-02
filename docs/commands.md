@@ -834,28 +834,40 @@ Database and container management commands prefer Azure Resource Manager when an
 Create database.
 
 ```text
-Usage: mkdb name
+Usage: mkdb name [options]
 
 Arguments:
     name        The database name to create
+
+Options:
+    --scale     Throughput mode: manual (m) or auto (default)
+    --ru        Max RU/s (default: 1000)
 ```
+
+On provisioned accounts, omitting both options creates shared autoscale throughput with a maximum of 1000 RU/s. On serverless accounts, omit both options to create the database without throughput settings. Supplying `--scale` or `--ru` produces an actionable error. ARM connections detect serverless accounts before sending the creation request. Data-plane connections first call create-if-not-exists with throughput settings: if the service rejects creation specifically because serverless throughput is unsupported, the shell retries without throughput only when neither option was supplied; explicit options produce the error without a retry. If the resource already exists and either option was supplied, the data-plane path reads its throughput to detect serverless and reject the unsupported options. Existing provisioned resources retain their throughput.
 
 ### mkcon
 
 Create container.
 
 ```text
-Usage: mkcon name partition_key [unique_key]
+Usage: mkcon name partition_key [unique_key] [options]
 
 Arguments:
     name            The container to create
     partition_key   The partition key path. For hierarchical partition keys, use comma-separated paths such as /tenantId,/userId,/sessionId
     [unique_key]    Unique key paths (Optional)
 
+Options:
+    --scale         Throughput mode: manual (m) or auto (default)
+    --ru            Max RU/s (default: 1000)
+
 Examples:
     mkcon Products /categoryId
     mkcon Orders /customerId,/orderId
 ```
+
+Throughput defaults and serverless handling match `mkdb`: serverless containers are created without throughput settings, and explicit `--scale` or `--ru` options are rejected. `create database` and `create container` behave the same way.
 
 ### rmdb
 

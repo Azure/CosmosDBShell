@@ -12,6 +12,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Inspect the connected identity with `whoami`, and probe data-plane access with `can-i` (both support `--format` table/json/csv)
 - Diagnose environment and connectivity with read-only `doctor` checks, versioned JSON reports, and optional query and ARM probes; use `doctor who` for known identity and access context ([troubleshooting](docs/commands.md#doctor))
 - Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
+- Create databases and containers on serverless accounts with `mkdb` and `mkcon` without specifying `--scale` or `--ru` ([command details](docs/commands.md#mkdb))
 - Delete a single item safely with `rm <id> --key=id --partition-key=<pk> --etag=<etag>`: point operations scoped to one logical partition, with server-enforced ETag checks ([docs](docs/commands.md#deleting-a-single-item-safely))
 - Inspect a query's execution plan and index usage with `query "<sql>" --explain`
 - Atomic multi-operation transactions on a single partition key: `batch`

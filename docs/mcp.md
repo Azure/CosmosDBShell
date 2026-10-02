@@ -93,6 +93,8 @@ For single-item deletions, prefer `rm` with `key: "id"`, `partition-key`, and `d
 
 Database and container resource actions are executed through Azure Resource Manager when an ARM context is attached (Entra ID connections). MCP sessions connected with account keys, emulator credentials, or static data-plane tokens fall back to the Cosmos DB data plane for these actions.
 
+On serverless accounts, `mkdb`, `mkcon`, and their `create` aliases omit throughput when neither `--scale` nor `--ru` is supplied. Explicit throughput options are rejected on serverless accounts for both ARM and data-plane connections. See [database and container creation](commands.md#mkdb).
+
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.
 
 ### Shell Location Updates
