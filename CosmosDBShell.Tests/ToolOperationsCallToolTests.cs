@@ -170,6 +170,33 @@ public class ToolOperationsCallToolTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task CallTool_RmArgumentOrder_DoesNotChangeConfirmedCommandLine()
+    {
+        var tool = CreateToolOperations();
+        var forward = new Dictionary<string, JsonElement>
+        {
+            ["pattern"] = Json("\"order-123\""),
+            ["key"] = Json("\"id\""),
+            ["partition-key"] = Json("\"customer-42\""),
+            ["etag"] = Json("\"etag-1\""),
+        };
+        var reversed = forward.Reverse().ToDictionary();
+
+        var errors = new List<string?>();
+        foreach (var arguments in new[] { forward, reversed })
+        {
+            var (_, root, document) = ReadResult(await tool.CallToolHandler(CallContext("rm", arguments), CancellationToken.None));
+            using (document)
+            {
+                errors.Add(root.GetProperty("error").GetString());
+            }
+        }
+
+        Assert.Contains("rm \"order-123\" --key \"id\" --partition-key \"customer-42\" --etag \"etag-1\"", errors[0]);
+        Assert.Equal(errors[0], errors[1]);
+    }
+
     [Theory]
     [InlineData("etag", "command-rm-error-etag_empty")]
     [InlineData("partition-key", "command-rm-error-partition_key_missing_value")]
@@ -197,7 +224,7 @@ public class ToolOperationsCallToolTests : IDisposable
             factory,
             command,
             "rm \"order-123\" --key \"id\" --partition-key \"customer-42\"",
-            (_, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
             TestContext.Current.CancellationToken);
 
         Assert.True(result.IsError);
@@ -212,7 +239,7 @@ public class ToolOperationsCallToolTests : IDisposable
         var tool = CreateToolOperations();
 
         var result = await tool.ConfirmDestructiveAsync(
-            (_, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
             "rmdb",
             "rmdb mydb",
             CancellationToken.None);
@@ -230,7 +257,7 @@ public class ToolOperationsCallToolTests : IDisposable
         {
             var result = await CreateToolOperations().ExecuteToolAsync(
                 shell.App.Commands["rm"], command, "rm test-*",
-                (request, _) =>
+                (request, _, _) =>
                 {
                     Assert.Contains("Account:", request.Message);
                     Assert.Contains("Current location:", request.Message);
@@ -266,7 +293,7 @@ public class ToolOperationsCallToolTests : IDisposable
         var command = new TrackingCommand();
         var result = await CreateToolOperations().ExecuteToolAsync(
             ShellInterpreter.Instance.App.Commands["rm"], command, "rm test-*",
-            (_, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
             TestContext.Current.CancellationToken);
         Assert.False(result.IsError == true);
         Assert.True(command.Executed);
@@ -292,7 +319,7 @@ public class ToolOperationsCallToolTests : IDisposable
 
             var result = await CreateToolOperations().ExecuteToolAsync(
                 ShellInterpreter.Instance.App.Commands["rm"], command, "rm test-*",
-                (_, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+                (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
                 TestContext.Current.CancellationToken);
 
             Assert.False(result.IsError == true);
@@ -316,7 +343,7 @@ public class ToolOperationsCallToolTests : IDisposable
         var tool = CreateToolOperations();
 
         var result = await tool.ConfirmDestructiveAsync(
-            (_, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = action }),
+            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = action }),
             "rmdb",
             "rmdb mydb",
             CancellationToken.None);
@@ -338,7 +365,7 @@ public class ToolOperationsCallToolTests : IDisposable
         var tool = CreateToolOperations();
 
         var result = await tool.ConfirmDestructiveAsync(
-            (_, _) => throw new InvalidOperationException("boom"),
+            (_, _, _) => throw new InvalidOperationException("boom"),
             "rmdb",
             "rmdb mydb",
             CancellationToken.None);
@@ -580,9 +607,12 @@ public class ToolOperationsCallToolTests : IDisposable
         var tool = CreateToolOperations();
         var history = ShellInterpreter.Instance.History.ToArray();
         using var output = new StringWriter();
+
+        // History drops duplicates, so the entry must be unique to this test to grow the history.
+        var unique = "world-" + Guid.NewGuid().ToString("N");
         var arguments = new Dictionary<string, JsonElement>
         {
-            ["messages"] = Json("[\"hello\", \"world\"]"),
+            ["messages"] = Json($"[\"hello\", \"{unique}\"]"),
         };
 
         var saved = AnsiConsole.Console;
@@ -600,14 +630,14 @@ public class ToolOperationsCallToolTests : IDisposable
             Assert.Contains("echo", output.ToString(), StringComparison.Ordinal);
             var recorded = ShellInterpreter.Instance.History.ToArray();
             Assert.Equal(history.Length + 1, recorded.Length);
-            Assert.Equal("echo \"hello\" \"world\"", recorded[^1]);
+            Assert.Equal($"echo \"hello\" \"{unique}\"", recorded[^1]);
             Assert.Single(recorded, entry => entry == recorded[^1]);
 
             var (isError, root, document) = ReadResult(result);
             using (document)
             {
                 Assert.False(isError);
-                Assert.Equal("hello world", root.GetProperty("result").GetString());
+                Assert.Equal($"hello {unique}", root.GetProperty("result").GetString());
                 Assert.True(root.TryGetProperty("currentLocation", out _));
             }
         }
@@ -673,5 +703,194 @@ public class ToolOperationsCallToolTests : IDisposable
         Assert.NotEmpty(result.Tools);
         Assert.Contains(result.Tools, t => t.Name == "query");
         Assert.Contains(result.Tools, t => t.Name == "echo");
+    }
+
+    [Fact]
+    public void ConfirmationRequestState_RoundTripsOnlyForTheSameCommand()
+    {
+        var state = ConfirmationRequestState.Create("rmdb mydb", 42);
+
+        Assert.True(ConfirmationRequestState.TryRead(state, "rmdb mydb", out var version));
+        Assert.Equal(42, version);
+        Assert.False(ConfirmationRequestState.TryRead(state, "rmdb otherdb", out _));
+    }
+
+    [Fact]
+    public void ConfirmationRequestState_CanBeReadOnlyOnce()
+    {
+        var state = ConfirmationRequestState.Create("rmdb mydb", 42);
+
+        Assert.True(ConfirmationRequestState.TryRead(state, "rmdb mydb", out _));
+        Assert.False(ConfirmationRequestState.TryRead(state, "rmdb mydb", out _));
+    }
+
+    [Fact]
+    public void ConfirmationRequestState_DropsOldestBeyondMaxPending()
+    {
+        var oldest = ConfirmationRequestState.Create("rmdb oldest", 1);
+        var states = Enumerable.Range(0, ConfirmationRequestState.MaxPending)
+            .Select(index => ConfirmationRequestState.Create($"rmdb db{index}", 1))
+            .ToArray();
+
+        Assert.False(ConfirmationRequestState.TryRead(oldest, "rmdb oldest", out _));
+        Assert.True(ConfirmationRequestState.TryRead(states[^1], $"rmdb db{ConfirmationRequestState.MaxPending - 1}", out _));
+    }
+
+    [Fact]
+    public void ConfirmationRequestState_ExpiresAfterLifetime()
+    {
+        var state = ConfirmationRequestState.Create("rmdb mydb", 42);
+
+        Assert.False(ConfirmationRequestState.TryRead(
+            state, "rmdb mydb", DateTimeOffset.UtcNow + ConfirmationRequestState.Lifetime + TimeSpan.FromSeconds(1), out _));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not-a-state")]
+    [InlineData("Zm9v.YmFy")]
+    public void ConfirmationRequestState_RejectsMissingOrForgedState(string? state)
+    {
+        Assert.False(ConfirmationRequestState.TryRead(state, "rmdb mydb", out _));
+    }
+
+    [Fact]
+    public void ConfirmationRequestState_RejectsTamperedPayload()
+    {
+        var state = ConfirmationRequestState.Create("rmdb mydb", 1);
+        var signature = state[(state.IndexOf('.') + 1)..];
+        var forgedPayload = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(
+            System.Text.Encoding.UTF8.GetBytes("1\nrmdb otherdb"));
+
+        Assert.False(ConfirmationRequestState.TryRead(forgedPayload + "." + signature, "rmdb otherdb", out _));
+    }
+
+    [Fact]
+    public async Task ExecuteTool_MrtrPrompt_RequestsConfirmationWithoutExecuting()
+    {
+        var command = new TrackingCommand();
+        var shell = ShellInterpreter.Instance;
+
+        var exception = await Assert.ThrowsAsync<InputRequiredException>(() => CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], command, "rm test-*",
+            (request, stateVersion, _) => throw new InputRequiredException(
+                inputRequests: new Dictionary<string, InputRequest> { ["confirm"] = InputRequest.ForElicitation(request) },
+                requestState: ConfirmationRequestState.Create("rm test-*", stateVersion)),
+            TestContext.Current.CancellationToken));
+
+        Assert.False(command.Executed);
+        var inputRequest = Assert.Single(exception.Result.InputRequests!);
+        Assert.Equal("confirm", inputRequest.Key);
+        Assert.Contains("rm test-*", inputRequest.Value.ElicitationParams!.Message);
+        Assert.True(ConfirmationRequestState.TryRead(exception.Result.RequestState, "rm test-*", out var version));
+        Assert.Equal(shell.StateVersion, version);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_AcceptedConfirmationResponse_ExecutesCommand()
+    {
+        var command = new TrackingCommand();
+        var shell = ShellInterpreter.Instance;
+
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], command, "rm test-*", null,
+            TestContext.Current.CancellationToken,
+            ConfirmationRetry("accept", ConfirmationRequestState.Create("rm test-*", shell.StateVersion)));
+
+        Assert.False(result.IsError == true);
+        Assert.True(command.Executed);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_ReplayedConfirmationResponse_DoesNotExecuteAgain()
+    {
+        var shell = ShellInterpreter.Instance;
+        var retry = ConfirmationRetry("accept", ConfirmationRequestState.Create("rm test-*", shell.StateVersion));
+        var first = new TrackingCommand();
+        var replayed = new TrackingCommand();
+
+        await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], first, "rm test-*", null, TestContext.Current.CancellationToken, retry);
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], replayed, "rm test-*", null, TestContext.Current.CancellationToken, retry);
+
+        Assert.True(first.Executed);
+        Assert.True(result.IsError);
+        Assert.False(replayed.Executed);
+    }
+
+    [Theory]
+    [InlineData("decline")]
+    [InlineData("cancel")]
+    public async Task ExecuteTool_DeclinedConfirmationResponse_DoesNotExecute(string action)
+    {
+        var command = new TrackingCommand();
+        var shell = ShellInterpreter.Instance;
+
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], command, "rm test-*", null,
+            TestContext.Current.CancellationToken,
+            ConfirmationRetry(action, ConfirmationRequestState.Create("rm test-*", shell.StateVersion)));
+
+        Assert.True(result.IsError);
+        Assert.False(command.Executed);
+        Assert.Contains("was not approved by the user", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_ConfirmationResponseForOtherCommand_DoesNotExecute()
+    {
+        var command = new TrackingCommand();
+        var shell = ShellInterpreter.Instance;
+
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], command, "rm *", null,
+            TestContext.Current.CancellationToken,
+            ConfirmationRetry("accept", ConfirmationRequestState.Create("rm test-*", shell.StateVersion)));
+
+        Assert.True(result.IsError);
+        Assert.False(command.Executed);
+        Assert.Contains("does not match this command", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_ContextChangedBetweenConfirmationRounds_DoesNotExecute()
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalState = shell.State;
+        var command = new TrackingCommand();
+        var requestState = ConfirmationRequestState.Create("rm test-*", shell.StateVersion);
+        try
+        {
+            shell.State = new DisconnectedState();
+            shell.State = originalState;
+
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["rm"], command, "rm test-*", null,
+                TestContext.Current.CancellationToken,
+                ConfirmationRetry("accept", requestState));
+
+            Assert.True(result.IsError);
+            Assert.False(command.Executed);
+            Assert.Contains("context changed", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        }
+        finally
+        {
+            shell.State = originalState;
+        }
+    }
+
+    private static CallToolRequestParams ConfirmationRetry(string action, string requestState)
+    {
+        return new CallToolRequestParams
+        {
+            Name = "rm",
+            RequestState = requestState,
+            InputResponses = new Dictionary<string, InputResponse>
+            {
+                ["confirm"] = InputResponse.FromElicitResult(new ElicitResult { Action = action }),
+            },
+        };
     }
 }

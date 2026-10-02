@@ -56,7 +56,7 @@ internal class McpServer
         services.AddSingleton<LocationResourceSubscriptions>();
         services.AddHostedService(services => services.GetRequiredService<LocationResourceSubscriptions>());
         services.AddOptions<McpServerOptions>()
-            .Configure<ToolOperations>((mcpServerOptions, toolOperations) =>
+            .Configure<ToolOperations, LocationResourceSubscriptions>((mcpServerOptions, toolOperations, locationSubscriptions) =>
             {
                 var entryAssembly = Assembly.GetEntryAssembly();
                 var assemblyName = entryAssembly?.GetName();
@@ -80,6 +80,7 @@ internal class McpServer
                     ListToolsHandler = toolOperations.ListToolsHandler,
                     SubscribeToResourcesHandler = toolOperations.SubscribeToResourcesHandler,
                     UnsubscribeFromResourcesHandler = toolOperations.UnsubscribeFromResourcesHandler,
+                    SubscriptionsListenHandler = locationSubscriptions.ListenAsync,
                 };
 
                 mcpServerOptions.ServerInstructions = LoadServerInstructions();
@@ -88,14 +89,14 @@ internal class McpServer
         var mcpServerBuilder = services.AddMcpServer();
         mcpServerBuilder.WithResources<ResourceOperations>();
 
-        // Destructive-command confirmation uses elicitation, a server-to-client request that
-        // requires a session. SDK 2.x defaults to stateless, so keep sessions enabled.
         mcpServerBuilder.WithHttpTransport(ConfigureHttpTransport);
     }
 
     internal static void ConfigureHttpTransport(HttpServerTransportOptions options)
     {
-        options.SessionMode = HttpServerSessionMode.Stateful;
+        // 2026-07-28 clients are served statelessly (confirmation via MRTR, updates via subscriptions/listen).
+        // Clients that use the initialize handshake still get a session for elicitation and resources/subscribe.
+        options.SessionMode = HttpServerSessionMode.StatefulForInitializeClients;
 
         // Sessions with an open GET stream never go idle. Once a client disconnects without DELETE,
         // the session is disposed after this timeout, which also ends its location subscription.
