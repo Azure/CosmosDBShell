@@ -70,6 +70,35 @@ public class FilterPathExpressionTests
         Assert.Equal(JsonValueKind.Null, Assert.IsType<ShellJson>(result).Value.ValueKind);
     }
 
+    [Theory]
+    [InlineData(".[2147483647]")]
+    [InlineData(".[2147483647]?")]
+    public async Task Index_MaximumRepresentableIndex_ReturnsNull(string expression)
+    {
+        var result = await EvalAsync(expression, new[] { 10, 20, 30 });
+
+        Assert.Equal(JsonValueKind.Null, Assert.IsType<ShellJson>(result).Value.ValueKind);
+    }
+
+    [Theory]
+    [InlineData(".[2147483648]", "2147483648")]
+    [InlineData(".[2147483648]?", "2147483648")]
+    [InlineData(".items[999999999999999999999999]", "999999999999999999999999")]
+    public void Index_Overflow_ReportsErrorAtIndex(string expression, string index)
+    {
+        var lexer = new Lexer(expression);
+        var parser = new ExpressionParser(lexer);
+
+        parser.ParseFilterExpression();
+
+        var error = Assert.Single(lexer.Errors);
+        Assert.Equal(expression.IndexOf(index, StringComparison.Ordinal), error.Start);
+        Assert.Equal(index.Length, error.Length);
+        Assert.Equal(
+            Azure.Data.Cosmos.Shell.Util.MessageService.GetArgsString("expression_error_invalid_number", "value", index),
+            error.Message);
+    }
+
     [Fact]
     public async Task Index_OnNonArrayWithoutOptional_Throws()
         => await Assert.ThrowsAsync<CommandException>(() => EvalAsync(".[0]", new { a = 1 }));
