@@ -256,9 +256,15 @@ internal class Program
 
             if (o.ClearHistory)
             {
-                if (File.Exists(ShellInterpreter.Instance.HistoryFile))
+                try
                 {
-                    File.Delete(ShellInterpreter.Instance.HistoryFile);
+                    ShellInterpreter.Instance.ClearHistory();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    WriteStartupError(MessageService.GetArgsString("shell-history-clear-error", "message", ex.Message));
+                    Environment.ExitCode = ShellExitCode.FromException(ex);
+                    return;
                 }
 
                 if (!startupMachineMode)

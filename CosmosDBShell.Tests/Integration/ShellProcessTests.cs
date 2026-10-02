@@ -439,6 +439,38 @@ public class ShellProcessTests
         Assert.Empty(result.StdOut.Trim());
     }
 
+    [Fact]
+    public async Task ClearHistory_WhenHistoryFileIsLocked_ReturnsFailure()
+    {
+        var configDir = Path.Join(Path.GetTempPath(), $"cosmosshell-clear-history-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(configDir);
+        var historyFile = Path.Join(configDir, "cmd_history");
+        await File.WriteAllTextAsync(historyFile, "echo retained", TestContext.Current.CancellationToken);
+        try
+        {
+            using var lockedStream = new FileStream(
+                historyFile,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.None);
+
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: ["--output", "json", "--clear-history"],
+                cancellationToken: TestContext.Current.CancellationToken,
+                configDirectory: configDir);
+
+            Assert.Equal(1, result.ExitCode);
+            Assert.Empty(result.StdOut.Trim());
+            Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Failed to clear history", result.StdErr);
+        }
+        finally
+        {
+            Directory.Delete(configDir, recursive: true);
+        }
+    }
+
     private static async Task<ShellProcessResult> RunShellAsync(
         string stdinScript,
         CancellationToken cancellationToken)
@@ -450,6 +482,7 @@ public class ShellProcessTests
         string? stdinScript,
         IEnumerable<string>? extraArgs,
         CancellationToken cancellationToken,
+        string? configDirectory = null,
         IReadOnlyDictionary<string, string?>? environment = null)
     {
         var argsList = extraArgs?.ToList();
@@ -468,7 +501,9 @@ public class ShellProcessTests
         // Isolate the shell's config directory so process-level tests (for example
         // --clear-history) never touch the developer's real command history under
         // %LocalAppData%\CosmosDBShell.
-        var isolatedConfigDir = Path.Join(Path.GetTempPath(), $"cosmosshell-test-{Guid.NewGuid():N}");
+        var ownsConfigDirectory = configDirectory == null;
+        var isolatedConfigDir = configDirectory
+            ?? Path.Join(Path.GetTempPath(), $"cosmosshell-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(isolatedConfigDir);
 
         try
@@ -587,13 +622,16 @@ public class ShellProcessTests
         }
         finally
         {
-            try
+            if (ownsConfigDirectory)
             {
-                Directory.Delete(isolatedConfigDir, recursive: true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // Best-effort cleanup; the OS temp directory is reclaimed eventually.
+                try
+                {
+                    Directory.Delete(isolatedConfigDir, recursive: true);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Best-effort cleanup; the OS temp directory is reclaimed eventually.
+                }
             }
         }
     }

@@ -1438,6 +1438,7 @@
   "shell-connect-vscode-credential-auth": "Connecting with Visual Studio Code credential...",
   "shell-connect-vscode-credential-fallback": "Visual Studio Code credential unavailable, falling back...",
   "shell-hisory_file_deleted": "History deleted.",
+  "shell-history-clear-error": "Failed to clear history: {0}",
   "shell-not_connected_hint": "Not connected. Run \u0027connect \u003Cendpoint\u003E\u0027 to authenticate, or \u0027help connect\u0027 for more options.",
   "shell-ready": "Cosmos DB shell ready.",
   "shell-startup-mcp-off": "off",
