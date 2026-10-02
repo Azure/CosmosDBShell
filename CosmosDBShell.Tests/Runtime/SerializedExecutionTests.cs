@@ -420,6 +420,127 @@ public class SerializedExecutionTests
     }
 
     [Fact]
+    public void WriteHistoryAtomically_FailedWritePreservesDestinationAndRemovesTemporaryFile()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(configPath);
+        var historyFile = Path.Join(configPath, "cmd_history");
+        try
+        {
+            File.WriteAllText(historyFile, "echo retained\n");
+            var failure = new IOException("Injected history write failure.");
+
+            var exception = Assert.Throws<IOException>(() => ShellInterpreter.WriteHistoryAtomically(historyFile, stream =>
+            {
+                using var writer = new StreamWriter(stream, leaveOpen: true);
+                writer.WriteLine("echo partial");
+                writer.Flush();
+                throw failure;
+            }));
+
+            Assert.Same(failure, exception);
+            Assert.Equal("echo retained\n", File.ReadAllText(historyFile));
+            Assert.Equal([historyFile], Directory.GetFiles(configPath));
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WriteHistoryAtomically_PublishesOnlyAfterWritingCompleteContent()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(configPath);
+        var historyFile = Path.Join(configPath, "cmd_history");
+        try
+        {
+            File.WriteAllText(historyFile, "echo retained\n");
+
+            ShellInterpreter.WriteHistoryAtomically(historyFile, stream =>
+            {
+                using var writer = new StreamWriter(stream, leaveOpen: true) { NewLine = "\n" };
+                writer.WriteLine("echo first");
+                writer.Flush();
+                Assert.Equal("echo retained\n", File.ReadAllText(historyFile));
+                writer.WriteLine("echo second");
+            });
+
+            Assert.Equal("echo first\necho second\n", File.ReadAllText(historyFile));
+            Assert.Equal([historyFile], Directory.GetFiles(configPath));
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PrintCommand_FailedSavesPreserveHistoryAndBoundPendingEntries()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            using var shell = new ShellInterpreter(configPath);
+            shell.PrintCommand("echo retained");
+            var lockFile = shell.HistoryFile + ".lock";
+            File.Delete(lockFile);
+            Directory.CreateDirectory(lockFile);
+
+            for (var index = 0; index < 70; index++)
+            {
+                shell.PrintCommand($"echo pending-{index}");
+            }
+
+            Assert.Equal(60, shell.PendingHistoryCount);
+            Assert.Equal(60, shell.History.Count);
+            Assert.Equal(["echo retained"], File.ReadAllLines(shell.HistoryFile));
+
+            Directory.Delete(lockFile);
+            shell.PrintCommand("echo recovered");
+
+            Assert.Equal(0, shell.PendingHistoryCount);
+            using var restarted = new ShellInterpreter(configPath);
+            Assert.Equal(60, restarted.History.Count);
+            Assert.Equal("echo pending-11", restarted.History[0]);
+            Assert.Equal("echo recovered", restarted.History[^1]);
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ClearHistory_UsesSharedLockAndPreservesPendingEntriesOnFailure()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            using var shell = new ShellInterpreter(configPath);
+            shell.PrintCommand("echo retained");
+            using (var locked = new FileStream(shell.HistoryFile + ".lock", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                shell.PrintCommand("echo pending");
+                Assert.Throws<IOException>(() => shell.ClearHistory());
+                Assert.Equal(1, shell.PendingHistoryCount);
+                Assert.Equal(["echo retained", "echo pending"], shell.History);
+                Assert.Equal(["echo retained"], File.ReadAllLines(shell.HistoryFile));
+            }
+
+            shell.ClearHistory();
+            Assert.Equal(0, shell.PendingHistoryCount);
+            Assert.Empty(shell.History);
+            Assert.Empty(File.ReadAllLines(shell.HistoryFile));
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Dispose_ReleasesExecutionGateAndIsIdempotent()
     {
         var shell = ShellInterpreter.CreateInstance();

@@ -150,6 +150,8 @@ public partial class ShellInterpreter : IDisposable
         this.editorCancelTokenSource = new CancellationTokenSource();
     }
 
+    internal event Action? LocationChanged;
+
     /// <summary>
     /// Gets the line editor instance used by the shell, or <c>null</c> if not available.
     /// </summary>
@@ -300,6 +302,17 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    internal int PendingHistoryCount
+    {
+        get
+        {
+            lock (this.historyLock)
+            {
+                return this.pendingHistoryEntries.Count;
+            }
+        }
+    }
+
     internal string? LastBuffer { get; set; }
 
     internal string? OriginalString { get; set; }
@@ -325,8 +338,15 @@ public partial class ShellInterpreter : IDisposable
         get;
         set
         {
+            var oldState = field;
             field = value;
             Interlocked.Increment(ref this.stateVersion);
+            if (oldState != null
+                && (ShellLocation.GetCurrentLocation(oldState) != ShellLocation.GetCurrentLocation(value)
+                    || (oldState as ConnectedState)?.Client != (value as ConnectedState)?.Client))
+            {
+                this.LocationChanged?.Invoke();
+            }
         }
     }
 
@@ -2369,9 +2389,14 @@ public partial class ShellInterpreter : IDisposable
         {
             lock (HistoryFileLock)
             {
-                using var stream = this.OpenHistoryFileWithExclusiveLock();
-                RestrictHistoryFileToOwner(this.HistoryFile);
-                stream.SetLength(0);
+                using var historyFileLock = this.OpenHistoryFileWithExclusiveLock(path: this.HistoryFile + ".lock");
+                if (File.Exists(this.HistoryFile))
+                {
+                    RestrictHistoryFileToOwner(this.HistoryFile);
+                    using var stream = this.OpenHistoryFileWithExclusiveLock(FileAccess.Read);
+                }
+
+                WriteHistoryAtomically(this.HistoryFile, static stream => stream.SetLength(0));
             }
 
             this.history.Clear();
@@ -2384,6 +2409,7 @@ public partial class ShellInterpreter : IDisposable
         lock (this.historyLock)
         {
             TrimHistoryEntries(this.history);
+            TrimHistoryEntries(this.pendingHistoryEntries);
 
             if (this.pendingHistoryEntries.Count == 0)
             {
@@ -2394,10 +2420,16 @@ public partial class ShellInterpreter : IDisposable
             // sharing the history file, cannot interleave.
             lock (HistoryFileLock)
             {
-                using var stream = this.OpenHistoryFileWithExclusiveLock();
-                RestrictHistoryFileToOwner(this.HistoryFile);
+                // The lock file remains in place when the history file is atomically replaced.
+                using var historyFileLock = this.OpenHistoryFileWithExclusiveLock(path: this.HistoryFile + ".lock");
+                List<string> mergedHistory = [];
+                if (File.Exists(this.HistoryFile))
+                {
+                    RestrictHistoryFileToOwner(this.HistoryFile);
+                    using var stream = this.OpenHistoryFileWithExclusiveLock(FileAccess.Read);
+                    mergedHistory = ReadHistoryEntries(stream);
+                }
 
-                var mergedHistory = ReadHistoryEntries(stream);
                 foreach (var entry in this.pendingHistoryEntries)
                 {
                     mergedHistory.Remove(entry);
@@ -2406,28 +2438,68 @@ public partial class ShellInterpreter : IDisposable
 
                 TrimHistoryEntries(mergedHistory);
 
-                stream.SetLength(0);
-                stream.Position = 0;
-
-                using (var writer = new StreamWriter(
-                           stream,
-                           new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-                           bufferSize: 1024,
-                           leaveOpen: true))
+                WriteHistoryAtomically(this.HistoryFile, stream =>
                 {
+                    using var writer = new StreamWriter(
+                        stream,
+                        new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                        bufferSize: 1024,
+                        leaveOpen: true);
                     foreach (var line in mergedHistory)
                     {
                         writer.WriteLine(EncodeHistoryLine(line));
                     }
-                }
+                });
 
                 this.pendingHistoryEntries.Clear();
             }
         }
     }
 
-    private FileStream OpenHistoryFileWithExclusiveLock(FileAccess access = FileAccess.ReadWrite)
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    internal static void WriteHistoryAtomically(string historyFile, Action<Stream> write)
     {
+        var temporary = historyFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        var options = new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+        };
+        if (!OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+
+        var created = false;
+        try
+        {
+            using (var stream = new FileStream(temporary, options))
+            {
+                created = true;
+                write(stream);
+                stream.Flush(flushToDisk: true);
+            }
+
+            File.Move(temporary, historyFile, overwrite: true);
+        }
+        finally
+        {
+            if (created)
+            {
+                File.Delete(temporary);
+            }
+        }
+    }
+
+    private FileStream OpenHistoryFileWithExclusiveLock(FileAccess access = FileAccess.ReadWrite, string? path = null)
+    {
+        path ??= this.HistoryFile;
+        if (access != FileAccess.Read && File.Exists(path))
+        {
+            RestrictHistoryFileToOwner(path);
+        }
+
         var options = new FileStreamOptions
         {
             Mode = access == FileAccess.Read ? FileMode.Open : FileMode.OpenOrCreate,
@@ -2443,7 +2515,7 @@ public partial class ShellInterpreter : IDisposable
         {
             try
             {
-                return new FileStream(this.HistoryFile, options);
+                return new FileStream(path, options);
             }
             catch (IOException) when (attempt < HistoryFileOpenRetryCount)
             {

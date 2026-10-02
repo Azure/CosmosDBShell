@@ -73,15 +73,17 @@ Transactional batches invoked through MCP must use the one-shot `batch run` subc
 
 ### Destructive Command Confirmation
 
-Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an explicit user confirmation. When a client invokes one, the server sends an MCP elicitation prompt describing the exact command line before anything runs:
+Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an explicit user confirmation. When a client invokes one, the server sends the client an elicitation prompt describing the exact command line and waits for the user's answer before anything runs:
 
 - **Approved** — the command executes normally.
 - **Declined or cancelled** — nothing is executed and the tool call returns an error explaining that the user did not approve.
 - **Client cannot confirm** — if the connected client does not support elicitation, the command is refused (fail-closed) and the response suggests running it manually in the shell.
 
+The prompt is sent as a multi-round-trip request: the tool call returns an input-required result, and the client shows the prompt and retries the call with the answer. For clients that use the `initialize` handshake, the server sends a standard `elicitation/create` request on the session and retries the call itself, so those clients see the same prompt as before. The retry carries a server-signed state that ties the answer to the exact command line and shell context. Each state can be answered once and expires after 10 minutes. At most 1,024 confirmations are tracked at a time; beyond that the oldest pending one is dropped and must be confirmed again. An answer for a different command, a reused or expired state, or a missing or altered state is refused without executing. Argument order does not matter: the command line is built with positionals in shell order and options in declaration order.
+
 This replaces any opt-in write flag: destructive commands are always allowed to be invoked, but always require confirmation.
 
-Confirmation includes the connected account endpoint and current navigation location alongside the command and its explicit target arguments. If the connection or navigation state changes while confirmation is pending, the approved command is refused without executing; retry it to confirm the new context. Even navigating away and back invalidates the pending confirmation.
+Confirmation includes the connected account endpoint and current navigation location alongside the command and its explicit target arguments. If the connection or navigation state changes while confirmation is pending, the approved command is refused without executing; retry it to confirm the new context. Even navigating away and back invalidates the pending confirmation. A pending confirmation also expires when the MCP server restarts.
 
 Shell and MCP command execution is serialized against the shared interpreter. Confirmation prompts do not hold the execution lock, so the shell remains usable while waiting. Clients still share a connection and navigation context: pass explicit `database` and `container` arguments for independent operations rather than relying on an earlier `cd` call.
 
@@ -91,7 +93,20 @@ For single-item deletions, prefer `rm` with `key: "id"`, `partition-key`, and `d
 
 Database and container resource actions are executed through Azure Resource Manager when an ARM context is attached (Entra ID connections). MCP sessions connected with account keys, emulator credentials, or static data-plane tokens fall back to the Cosmos DB data plane for these actions.
 
+On serverless accounts, `mkdb`, `mkcon`, and their `create` aliases omit throughput when neither `--scale` nor `--ru` is supplied. Explicit throughput options are rejected on serverless accounts for both ARM and data-plane connections. See [database and container creation](commands.md#mkdb).
+
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.
+
+### Shell Location Updates
+
+Clients can read the `cosmos://shell/current-location` MCP resource. Its JSON content has a `currentLocation` field (`null` when disconnected, `/` at the account root, or `/database[/container]`) and a separate `currentAccountEndpoint` field (the connected Cosmos DB account URL, or `null` when disconnected). For example: `{"currentLocation":"/myDb/myContainer","currentAccountEndpoint":"https://myaccount.documents.azure.com/"}`. Clients that support resource subscriptions receive `notifications/resources/updated` when the shared shell location or connection changes, including changes made interactively. On notification, read the resource again for the new values; the notification itself contains only the URI. Rapid consecutive changes may be coalesced into a single notification.
+
+How a client subscribes depends on its protocol revision:
+
+- **`2026-07-28` clients** send `subscriptions/listen` with `resourceSubscriptions` containing `cosmos://shell/current-location`. The server first sends `notifications/subscriptions/acknowledged` listing the subscriptions it honors, then streams updates on the same response. Every notification on the stream carries the listen request ID in `_meta["io.modelcontextprotocol/subscriptionId"]`. Only `cosmos://shell/current-location` is honored; other resource URIs and list-changed filters are left out of the acknowledgement. If nothing is honored, the listen request completes right after the acknowledgement. Otherwise the subscription lasts until the client cancels the request or closes the connection.
+- **Clients that use the `initialize` handshake** subscribe with `resources/subscribe` and unsubscribe with `resources/unsubscribe`. Subscribing to any URI other than `cosmos://shell/current-location`, including the documentation resources, returns an invalid-params error. Notifications are delivered on the session's GET stream. A subscription lasts as long as its MCP session: it ends when the client deletes the session or when the session has had no open request (including the GET stream) for 10 minutes. After that the server returns 404 for the session and the client must start a new session and subscribe again.
+
+The HTTP server serves `2026-07-28` requests without a session and gives a session only to clients that use the `initialize` handshake. A notification does not guarantee that a client refreshes the model's context. Every tool response also includes `currentLocation`, and explicit `database` / `container` arguments remain the reliable way to target independent operations.
 
 ### Data Exposure
 
