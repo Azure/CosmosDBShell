@@ -192,6 +192,7 @@ error-startup-navigation-requires-connect = Startup navigation options require '
 error-shell-not-initialized = Shell is not initialized
 error-unable_to_read_container = Unable to read container.
 error-arm-context-required = Database and container resource operations require Azure Resource Manager context. Reconnect with Entra ID and provide --subscription and --resource-group, or use --connect-subscription and --connect-resource-group at startup. Alternatively, use an identity that can discover the Cosmos DB account through ARM.
+error-serverless_throughput_not_supported = Serverless accounts do not support provisioned throughput. Omit --scale and --ru to create the resource without throughput settings.
 error-arm-context-incomplete = Provide subscription and resource group together to use an explicit Azure Resource Manager account context. The account name is inferred from the endpoint.
 error-arm-context-ambiguous = Multiple Cosmos DB Azure Resource Manager accounts match the connected endpoint. Reconnect and provide subscription and resource group explicitly.
 error-arm-context-endpoint-mismatch = The Azure Resource Manager account endpoint '{ $armEndpoint }' does not match the connected Cosmos DB endpoint '{ $dataPlaneEndpoint }'. Reconnect with the subscription and resource group that own the connected account.
@@ -246,6 +247,8 @@ command-rm-description-database = The database containing the items to remove
 command-rm-description-container = The container containing the items to remove
 command-rm-description-key = The property name to match the pattern against (defaults to partition key)
 command-rm-description-dry-run = Preview how many items would be deleted without deleting them.
+command-rm-description-partition-key = Restrict removal to one complete logical partition key. Use a JSON array for hierarchical partition keys.
+command-rm-description-etag = Delete only if the item's current ETag matches. Requires an exact id with --key=id and --partition-key.
 command-rm-deleted_items = Deleted { $count } { $count ->
     [one] item
     *[other] items
@@ -255,6 +258,17 @@ command-rm-dry-run-plan = Dry run: Would delete { $count } { $count ->
     *[other] items
 }. No changes were made.
 command-rm-error-no_filter = Filter is missing.
+command-rm-error-invalid_pk_json = Partition key must be a JSON scalar value or a JSON array of values for hierarchical partition keys.
+command-rm-error-partition_key_components = The partition key must specify all { $expected } components of the container's partition key, but { $actual } { $actual ->
+    [one] was
+    *[other] were
+} supplied.
+command-rm-error-etag_empty = The --etag option requires a non-empty value.
+command-rm-error-partition_key_missing_value = The --partition-key option requires a value.
+command-rm-error-etag_requires_exact_id = The --etag option can only be used to delete a single item by exact id (--key=id without wildcards or piped input).
+command-rm-error-etag_requires_partition_key = The --etag option requires --partition-key.
+command-rm-error-etag_mismatch = Item '{ $id }' was modified since it was last read (ETag mismatch). The item was not deleted.
+command-rm-dry-run-item = Item '{ $id }' in partition { $partitionKey } has ETag { $etag }.
 command-rm-warning-missing-partition-key = Warning: Cannot delete item with id '{ $id }' - missing partition key '{ $partitionKey }'
 command-rm-no-matches = No items matched the pattern '{ $pattern }' for key '{ $key }'
 
@@ -503,8 +517,8 @@ command-import-error-csv_pk_conflict = CSV column '{ $column }' conflicts with t
 
 command-mkdb-description = Creates new database
 command-mkdb-description-name = The database name to create
-command-mkdb-description-scale = Container scale (manual or auto)
-command-mkdb-description-ru = Container Max RU/s (default: 1000)
+command-mkdb-description-scale = Database throughput mode (manual or auto). Not supported on serverless accounts.
+command-mkdb-description-ru = Database max RU/s (default: 1000; omitted on serverless accounts)
 command-mkdb-database_created = Created database { $db }
 command-mkdb-error-only_auto_or_manual_allowed = Only manual or autoscale are allowed. Not both.
 
@@ -512,8 +526,8 @@ command-mkcon-description = Creates a new container in the current database.
 command-mkcon-description-name = The container to create.
 command-mkcon-description-partition_key = The partition key path(s) for the container. Use a single path (e.g. /categoryId) or comma-separated paths for hierarchical partition keys (e.g. /tenantId,/userId or /tenantId,/userId,/sessionId).
 command-mkcon-description-unique_key = The unique keys for the container to create.
-command-mkcon-description-scale = Container scale (manual or auto)
-command-mkcon-description-ru = Database Max RU/s (default: 1000)
+command-mkcon-description-scale = Container throughput mode (manual or auto). Not supported on serverless accounts.
+command-mkcon-description-ru = Container max RU/s (default: 1000; omitted on serverless accounts)
 command-mkcon-description-database = The database where the container should be created
 command-mkcon-CreatedContainer = Created container { $container }
 command-mkcon-error_partition_key_empty = Partition key path cannot be empty. Provide a path that starts with '/', for example: mkcon name /pk.
@@ -837,8 +851,8 @@ command-create-description-item = The object to create item, container or databa
 command-create-description-name = The container or database name to create.
 command-create-description-partition_key = { command-mkcon-description-partition_key }
 command-create-description-unique_key = { command-mkcon-description-unique_key }
-command-create-description-scale = { command-mkcon-description-scale }
-command-create-description-ru = Database or Container Max RU/s (default: 1000)
+command-create-description-scale = Database or container throughput mode (manual or auto). Not supported on serverless accounts.
+command-create-description-ru = Database or container max RU/s (default: 1000; omitted on serverless accounts)
 command-create-description-data = JSON data for the item to create
 command-create-description-database = The database for the create operation
 command-create-description-container = The container for creating items
@@ -1661,6 +1675,8 @@ command-rm-example-2 = Delete all items where partition key matches pattern endi
 command-rm-example-3 = Delete items where 'id' field matches pattern
 command-rm-example-4 = Delete items from specific database and container
 command-rm-example-5 = Preview how many items would be deleted without deleting them
+command-rm-example-6 = Preview deleting one item by id within a single logical partition, including its current ETag
+command-rm-example-7 = Delete one item only if it has not changed since the dry run
 command-rmcon-example-1 = Delete container with confirmation prompt
 command-rmcon-example-2 = Delete container skipping the interactive confirmation prompt (over MCP, confirmation is still required)
 command-rmcon-example-3 = Delete container from specific database

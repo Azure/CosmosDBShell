@@ -21,6 +21,7 @@ NAVIGATION:
 - The shell models Cosmos DB as a folder-like hierarchy: Account → Databases → Containers → Items.
 - Treat navigation state as convenience only. When a command supports --db and --con, prefer passing them explicitly instead of relying on prior 'cd' calls.
 - Reuse the currentLocation field returned by MCP responses for awareness, but still prefer explicit --db and --con on follow-up tool calls.
+- Clients that support resource subscriptions can subscribe to `cosmos://shell/current-location`. Read its `currentLocation` and `currentAccountEndpoint` fields again after an update notification to learn about interactive shell navigation, connection, or MCP navigation changes.
 - Use `cd [name]` to enter a database or container, `cd ..` to go up one level, and `cd` to return to the root.
 - Path chaining is supported: 'cd MyDatabase/MyContainer' navigates multiple levels at once.
 - Use 'ls' at any level to list resources (databases, containers, or items depending on context).

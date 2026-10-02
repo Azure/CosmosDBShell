@@ -63,6 +63,8 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly object historyLock = new();
 
+    private readonly object lineEditorLock = new();
+
     private readonly SemaphoreSlim executionGate = new(1, 1);
 
     private long stateVersion;
@@ -72,6 +74,8 @@ public partial class ShellInterpreter : IDisposable
     private TokenCredential? activeCredential;
 
     private LineEditor? lineEditor;
+
+    private bool lineEditorCreationAttempted;
 
     private CosmosShellPrompt? cosmosShellPrompt;
 
@@ -133,10 +137,27 @@ public partial class ShellInterpreter : IDisposable
         this.editorCancelTokenSource = new CancellationTokenSource();
     }
 
+    internal event Action? LocationChanged;
+
     /// <summary>
     /// Gets the line editor instance used by the shell, or <c>null</c> if not available.
     /// </summary>
-    public LineEditor? Editor { get => this.lineEditor ??= this.CreateLineEditor(); }
+    public LineEditor? Editor
+    {
+        get
+        {
+            lock (this.lineEditorLock)
+            {
+                if (!this.lineEditorCreationAttempted)
+                {
+                    this.lineEditorCreationAttempted = true;
+                    this.lineEditor = this.CreateLineEditor();
+                }
+
+                return this.lineEditor;
+            }
+        }
+    }
 
     /// <summary>
     /// Gets or sets a value indicating whether the shell is currently running.
@@ -251,6 +272,11 @@ public partial class ShellInterpreter : IDisposable
     internal Func<bool> IsInteractiveSession { get; set; } =
         static () => !Console.IsInputRedirected && !Console.IsOutputRedirected;
 
+    internal Func<bool> IsInputRedirected { get; set; } = static () => Console.IsInputRedirected;
+
+    // RadLine detects terminal capabilities itself when no console is supplied.
+    internal IAnsiConsole? LineEditorTerminal { get; set; }
+
     internal IReadOnlyList<string> History
     {
         get
@@ -288,8 +314,15 @@ public partial class ShellInterpreter : IDisposable
         get;
         set
         {
+            var oldState = field;
             field = value;
             Interlocked.Increment(ref this.stateVersion);
+            if (oldState != null
+                && (ShellLocation.GetCurrentLocation(oldState) != ShellLocation.GetCurrentLocation(value)
+                    || (oldState as ConnectedState)?.Client != (value as ConnectedState)?.Client))
+            {
+                this.LocationChanged?.Invoke();
+            }
         }
     }
 
@@ -954,7 +987,16 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 this.ClearHighlightStatements();
-                var input = this.Editor != null ? await this.Editor.ReadLine(this.editorCancelTokenSource.Token) : PromptFallback();
+
+                // RadLine polls Console.KeyAvailable, which throws when stdin is redirected.
+                var editor = this.IsInputRedirected() ? null : this.Editor;
+                var input = editor != null ? await editor.ReadLine(this.editorCancelTokenSource.Token) : PromptFallback();
+                if (editor == null && input == null)
+                {
+                    this.IsRunning = false;
+                    break;
+                }
+
                 var command = ProcessInteractiveLine(
                     input,
                     ref this.pendingMultiLineBuffer,
@@ -2234,47 +2276,47 @@ public partial class ShellInterpreter : IDisposable
         return options;
     }
 
-    private LineEditor CreateLineEditor()
+    private LineEditor? CreateLineEditor()
     {
         try
         {
             this.cosmosShellPrompt = new CosmosShellPrompt(this);
-            var lineEditor = new LineEditor()
+            var editor = new LineEditor(this.LineEditorTerminal)
             {
                 Prompt = this.cosmosShellPrompt,
                 LineDecorationRenderer = new CosmosCompletionRenderer(this),
                 Highlighter = this,
             };
-            lineEditor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.UpArrow);
-            lineEditor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.DownArrow);
+            editor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.UpArrow);
+            editor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.DownArrow);
 
-            lineEditor.KeyBindings.Add<ClearCurrentLineCommand>(ConsoleKey.Escape);
-            lineEditor.KeyBindings.Add<ClearScreenCommand>(ConsoleKey.L, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<MoveToStartOfLineCommand>(ConsoleKey.A, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<MoveToEndOfLineCommand>(ConsoleKey.E, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<DeleteToStartOfLineCommand>(ConsoleKey.U, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<DeleteToEndOfLineCommand>(ConsoleKey.K, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<DeletePreviousWordCommand>(ConsoleKey.W, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.P, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.N, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<MoveCursorLeftCommand>(ConsoleKey.B, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<MoveCursorRightCommand>(ConsoleKey.F, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add(ConsoleKey.D, ConsoleModifiers.Control, () => new ExitShellCommand(this));
-            lineEditor.KeyBindings.Add(ConsoleKey.R, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this));
-            lineEditor.KeyBindings.Add(ConsoleKey.S, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this, startsForward: true));
-            lineEditor.KeyBindings.Add(ConsoleKey.Tab, () => new CosmosCompleteCommand(this, AutoComplete.Next));
-            lineEditor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Control, () => new CosmosCompleteCommand(this, AutoComplete.Previous));
+            editor.KeyBindings.Add<ClearCurrentLineCommand>(ConsoleKey.Escape);
+            editor.KeyBindings.Add<ClearScreenCommand>(ConsoleKey.L, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<MoveToStartOfLineCommand>(ConsoleKey.A, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<MoveToEndOfLineCommand>(ConsoleKey.E, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<DeleteToStartOfLineCommand>(ConsoleKey.U, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<DeleteToEndOfLineCommand>(ConsoleKey.K, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<DeletePreviousWordCommand>(ConsoleKey.W, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.P, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.N, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<MoveCursorLeftCommand>(ConsoleKey.B, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<MoveCursorRightCommand>(ConsoleKey.F, ConsoleModifiers.Control);
+            editor.KeyBindings.Add(ConsoleKey.D, ConsoleModifiers.Control, () => new ExitShellCommand(this));
+            editor.KeyBindings.Add(ConsoleKey.R, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this));
+            editor.KeyBindings.Add(ConsoleKey.S, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this, startsForward: true));
+            editor.KeyBindings.Add(ConsoleKey.Tab, () => new CosmosCompleteCommand(this, AutoComplete.Next));
+            editor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Control, () => new CosmosCompleteCommand(this, AutoComplete.Previous));
             foreach (var line in this.History)
             {
-                lineEditor.History.Add(line);
+                editor.History.Add(line);
             }
 
-            return lineEditor;
+            return editor;
         }
         catch (Exception e)
         {
             Console.Error.WriteLine(e.Message);
-            return new LineEditor();
+            return null;
         }
     }
 

@@ -26,15 +26,22 @@ internal class ToolOperations
 
     private const string MaxArgument = "max";
 
+    private const string ConfirmationInputKey = "confirm";
+
+    private const string ContextChangedMessage =
+        "The shell context changed while awaiting confirmation. Nothing was executed. Retry the command and confirm its current target.";
+
     private const string ContinuationDescription =
         "Non-null continuation token returned by a previous call to this tool. Pass it back to fetch the next page, or omit this argument to start from the beginning. A null output token means the result is exhausted and no further call should be made. The value is opaque; do not modify it.";
 
     private readonly ILogger<ToolOperations> logger;
+    private readonly LocationResourceSubscriptions locationSubscriptions;
     private readonly Lazy<List<Tool>> cachedTools;
 
-    public ToolOperations(ILogger<ToolOperations> logger)
+    public ToolOperations(ILogger<ToolOperations> logger, LocationResourceSubscriptions locationSubscriptions)
     {
         this.logger = logger;
+        this.locationSubscriptions = locationSubscriptions;
         this.cachedTools = new Lazy<List<Tool>>(
             () => ShellInterpreter.Instance.App.Commands.Values
                 .DistinctBy(c => c.CommandName)
@@ -43,9 +50,30 @@ internal class ToolOperations
             LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
+    internal delegate ValueTask<ElicitResult> ConfirmationPrompt(
+        ElicitRequestParams request,
+        long stateVersion,
+        CancellationToken cancellationToken);
+
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult> ListToolsHandler => this.OnListToolsAsync;
 
     public McpRequestHandler<CallToolRequestParams, CallToolResult> CallToolHandler => this.OnCallToolsAsync;
+
+    public McpRequestHandler<SubscribeRequestParams, EmptyResult> SubscribeToResourcesHandler => this.SubscribeToResourcesAsync;
+
+    public McpRequestHandler<UnsubscribeRequestParams, EmptyResult> UnsubscribeFromResourcesHandler => this.UnsubscribeFromResourcesAsync;
+
+    private ValueTask<EmptyResult> SubscribeToResourcesAsync(RequestContext<SubscribeRequestParams> context, CancellationToken cancellationToken)
+    {
+        this.locationSubscriptions.Subscribe(context.Server.SessionId, context.Params?.Uri ?? string.Empty);
+        return ValueTask.FromResult(new EmptyResult());
+    }
+
+    private ValueTask<EmptyResult> UnsubscribeFromResourcesAsync(RequestContext<UnsubscribeRequestParams> context, CancellationToken cancellationToken)
+    {
+        this.locationSubscriptions.Unsubscribe(context.Server.SessionId, context.Params?.Uri ?? string.Empty);
+        return ValueTask.FromResult(new EmptyResult());
+    }
 
     internal static Tool GetTool(CommandFactory command)
     {
@@ -523,7 +551,7 @@ internal class ToolOperations
         ConfigurePaging(cmd);
         var suppliedParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var positionalValues = new Dictionary<Parameter, object?>();
-        var optionText = new StringBuilder();
+        var optionTexts = new List<(int Order, string Text)>();
 
         if (parameters.Params.Arguments != null)
         {
@@ -539,6 +567,21 @@ internal class ToolOperations
                 {
                     if (IsExplicitJsonNull(par.Value))
                     {
+                        var safetyErrorKey = cmd is RmCommand
+                            ? option.PropertyInfo.Name switch
+                            {
+                                nameof(RmCommand.ETag) => "command-rm-error-etag_empty",
+                                nameof(RmCommand.PartitionKeyArgument) => "command-rm-error-partition_key_missing_value",
+                                _ => null,
+                            }
+                            : null;
+                        if (safetyErrorKey != null)
+                        {
+                            var errorMessage = MessageService.GetString(safetyErrorKey);
+                            this.logger?.LogWarning("{Message}", errorMessage);
+                            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
+                        }
+
                         continue;
                     }
 
@@ -549,7 +592,7 @@ internal class ToolOperations
                         memberKind: "option",
                         memberDisplay: $"--{option.Name[0]}",
                         commandName: command.CommandName,
-                        appendToHistory: value => optionText.Append(FormatOptionForHistory(option, value)));
+                        appendToHistory: value => optionTexts.Add((command.Options.IndexOf(option), FormatOptionForHistory(option, value))));
                     if (bindError != null)
                     {
                         return bindError;
@@ -645,19 +688,42 @@ internal class ToolOperations
 
         // MCP argument order is not semantic, so render positionals in the order the shell binds them.
         sb.Append(FormatPositionalsForHistory(command.Parameters, positionalValues));
-        sb.Append(optionText);
+
+        // Likewise render options in declaration order, so the confirmed command line does not depend on argument order.
+        foreach (var (_, text) in optionTexts.OrderBy(entry => entry.Order))
+        {
+            sb.Append(text);
+        }
+
+        var commandLine = sb.ToString();
         var server = parameters.Server;
-        Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit =
-            server?.ClientCapabilities?.Elicitation != null ? server.ElicitAsync : null;
-        return await this.ExecuteToolAsync(command, cmd, sb.ToString(), elicit, cancellationToken);
+        ConfirmationPrompt? prompt = null;
+
+        // Stateless 2026-07-28 requests declare capabilities per request, which the SDK does not
+        // surface through ClientCapabilities.
+        var clientCapabilities = server?.ClientCapabilities ?? parameters.JsonRpcRequest?.Context?.ClientCapabilities;
+        if (clientCapabilities?.Elicitation != null && server!.IsMrtrSupported)
+        {
+            // Multi-round-trip request: the client prompts the user and retries this call with the answer.
+            // On sessions that predate MRTR, the SDK sends an elicitation request and retries for us.
+            prompt = (request, stateVersion, _) => throw new InputRequiredException(
+                inputRequests: new Dictionary<string, InputRequest>
+                {
+                    [ConfirmationInputKey] = InputRequest.ForElicitation(request),
+                },
+                requestState: ConfirmationRequestState.Create(commandLine, stateVersion));
+        }
+
+        return await this.ExecuteToolAsync(command, cmd, commandLine, prompt, cancellationToken, parameters.Params);
     }
 
     internal async Task<CallToolResult> ExecuteToolAsync(
         CommandFactory command,
         CosmosCommand cmd,
         string commandLine,
-        Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit,
-        CancellationToken cancellationToken)
+        ConfirmationPrompt? prompt,
+        CancellationToken cancellationToken,
+        RequestParams? requestParams = null)
     {
         var shell = ShellInterpreter.Instance;
         long? confirmedVersion = null;
@@ -665,8 +731,12 @@ internal class ToolOperations
         {
             var snapshot = await shell.RunSerializedAsync(
                 () => Task.FromResult((Version: shell.StateVersion, Context: DescribeContext(shell.State))), cancellationToken);
-            var confirmation = await this.ConfirmDestructiveAsync(
-                elicit, command.CommandName, commandLine, cancellationToken, snapshot.Context);
+            var confirmation = requestParams?.InputResponses?.TryGetValue(ConfirmationInputKey, out var response) == true
+                ? this.EvaluateConfirmationResponse(
+                    response, requestParams.RequestState, command.CommandName, commandLine, snapshot.Version)
+                : await this.ConfirmDestructiveAsync(
+                    prompt, command.CommandName, commandLine, cancellationToken, snapshot.Context, snapshot.Version);
+
             if (confirmation != null)
             {
                 return confirmation;
@@ -684,8 +754,7 @@ internal class ToolOperations
                 {
                     if (confirmedVersion.HasValue && confirmedVersion.Value != shell.StateVersion)
                     {
-                        return McpResponseFactory.CreateError(
-                            "The shell context changed while awaiting confirmation. Nothing was executed. Retry the command and confirm its current target.", shell.State);
+                        return McpResponseFactory.CreateError(ContextChangedMessage, shell.State);
                     }
 
                     shell.PrintCommand(commandLine);
@@ -716,19 +785,58 @@ internal class ToolOperations
         return $"Account: {endpoint}\nCurrent location: {McpResponseFactory.GetCurrentLocation(state) ?? "(none)"}\nExplicit database/container arguments in the command override this location.";
     }
 
-    // Gates a destructive command behind an MCP elicitation confirmation. Returns
-    // null when the operation is approved and should proceed; otherwise returns the
-    // CallToolResult to send back (refusal, denial, or a failed confirmation).
-    // Fails closed: when the client cannot elicit, the command is refused rather
-    // than executed.
+    // Validates the client's answer to a confirmation input request. Returns null when the
+    // operation is approved for the current shell context; otherwise returns the refusal.
+    internal CallToolResult? EvaluateConfirmationResponse(
+        InputResponse response,
+        string? requestState,
+        string commandName,
+        string commandLine,
+        long currentStateVersion)
+    {
+        if (!ConfirmationRequestState.TryRead(requestState, commandLine, out var confirmedStateVersion))
+        {
+            this.logger?.LogWarning(
+                "Rejected a confirmation response for '{Command}' whose request state does not match the command.",
+                commandName);
+            return McpResponseFactory.CreateError(
+                $"The confirmation for '{commandName}' does not match this command. Nothing was executed. Retry the command and confirm it again.",
+                ShellInterpreter.Instance.State);
+        }
+
+        if (confirmedStateVersion != currentStateVersion)
+        {
+            return McpResponseFactory.CreateError(ContextChangedMessage, ShellInterpreter.Instance.State);
+        }
+
+        ElicitResult? result;
+        try
+        {
+            result = response.Deserialize(InputResponse.ElicitResultJsonTypeInfo);
+        }
+        catch (JsonException)
+        {
+            result = null;
+        }
+
+        return this.EvaluateElicitResult(result, commandName);
+    }
+
+    // Gates a destructive command behind a user confirmation. Returns null when the
+    // operation is approved and should proceed; otherwise returns the CallToolResult
+    // to send back (refusal, denial, or a failed confirmation). A prompt may instead
+    // throw InputRequiredException, which ends this call and asks the client to retry
+    // with the user's answer. Fails closed: when the client cannot confirm, the
+    // command is refused rather than executed.
     internal async ValueTask<CallToolResult?> ConfirmDestructiveAsync(
-        Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit,
+        ConfirmationPrompt? prompt,
         string commandName,
         string commandLine,
         CancellationToken cancellationToken,
-        string? context = null)
+        string? context = null,
+        long stateVersion = 0)
     {
-        if (elicit == null)
+        if (prompt == null)
         {
             this.logger?.LogWarning(
                 "Destructive command '{Command}' requires confirmation, but the MCP client does not support elicitation.",
@@ -750,9 +858,13 @@ internal class ToolOperations
         ElicitResult result;
         try
         {
-            result = await elicit(request, cancellationToken);
+            result = await prompt(request, stateVersion, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (InputRequiredException)
         {
             throw;
         }
@@ -764,9 +876,14 @@ internal class ToolOperations
                 ShellInterpreter.Instance.State);
         }
 
-        if (!result.IsAccepted)
+        return this.EvaluateElicitResult(result, commandName);
+    }
+
+    private CallToolResult? EvaluateElicitResult(ElicitResult? result, string commandName)
+    {
+        if (result?.IsAccepted != true)
         {
-            var action = string.IsNullOrEmpty(result.Action) ? "cancel" : result.Action;
+            var action = string.IsNullOrEmpty(result?.Action) ? "cancel" : result.Action;
             this.logger?.LogInformation(
                 "User did not approve destructive command '{Command}' (action={Action}).",
                 commandName,
