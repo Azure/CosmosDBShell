@@ -39,6 +39,7 @@
 ## Documentation
 
 - Update `README.md` for user-visible CLI changes.
+- Always retain `## Unreleased` at the top of `CHANGELOG.md`, even when it is empty. When preparing a release, move its entries into a dated version section below it; never replace or remove the Unreleased heading.
 - Update the relevant docs in `docs/`, especially:
   - `docs/commands.md` for command usage
   - `docs/navigation.md` for CLI arguments and shell navigation
