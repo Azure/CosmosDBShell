@@ -341,8 +341,9 @@ internal class ImportCommand : CosmosCommand
     /// <param name="headers">The header field names.</param>
     /// <param name="values">The row values.</param>
     /// <param name="partitionKeySegments">Optional partition key path segments.</param>
+    /// <param name="lineNumber">The physical start line of the CSV record.</param>
     /// <returns>The constructed JSON object element.</returns>
-    internal static JsonElement BuildCsvObject(IReadOnlyList<string> headers, IReadOnlyList<string> values, string[]? partitionKeySegments)
+    internal static JsonElement BuildCsvObject(IReadOnlyList<string> headers, IReadOnlyList<string> values, string[]? partitionKeySegments, int lineNumber)
     {
         var root = new JsonObject();
         for (var i = 0; i < headers.Count; i++)
@@ -350,6 +351,18 @@ internal class ImportCommand : CosmosCommand
             var name = headers[i];
             if (string.IsNullOrEmpty(name))
             {
+                if (i < values.Count && !string.IsNullOrEmpty(values[i]))
+                {
+                    throw new CommandException(
+                        "import",
+                        MessageService.GetArgsString(
+                            "command-import-error-unnamed_csv_value",
+                            "line",
+                            lineNumber,
+                            "column",
+                            i + 1));
+                }
+
                 continue;
             }
 
@@ -426,7 +439,7 @@ internal class ImportCommand : CosmosCommand
                 continue;
             }
 
-            yield return (startLine, BuildCsvObject(headers, fields, partitionKeySegments));
+            yield return (startLine, BuildCsvObject(headers, fields, partitionKeySegments, startLine));
         }
     }
 

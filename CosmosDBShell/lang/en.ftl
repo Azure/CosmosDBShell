@@ -118,6 +118,7 @@ shell-welcome-examples = Examples
 shell-welcome-preview = PREVIEW VERSION
 shell-welcome-preview-warning = Commands, output, and behavior may change before general availability.
 shell-hisory_file_deleted = History deleted.
+shell-history-clear-error = Failed to clear history: { $message }
 shell-connect-browser-auth = Authenticating via browser. Please complete the login in the browser window that opens.
 shell-connect-devicecode-auth = Browser authentication failed. Falling back to device code authentication.
 shell-connect-key-auth = Connecting with account key...
@@ -468,6 +469,7 @@ command-export-error-missing_file = A destination file path is required.
 command-export-error-file_exists = File '{ $file }' already exists. Use --force to overwrite.
 command-export-error-destination_directory = Destination '{ $file }' is a directory. Specify a file path instead.
 command-export-error-query_failed = Export query failed: { $status } - { $message }
+command-export-error-scalar_column_conflict = CSV scalar column '{ $column }' conflicts with an object property. Set COSMOSDB_SHELL_CSV_SCALAR_COLUMN to a different name.
 
 command-import-description = Imports items into a container from a JSON Lines, JSON array, or CSV file.
 command-import-description-file = Source file path.
@@ -493,6 +495,7 @@ command-import-dry-run-success = Dry run: { $count } valid { $count ->
 }
 command-import-error-missing_file = A source file path is required.
 command-import-error-invalid_csv = Invalid CSV record at line { $line }.
+command-import-error-unnamed_csv_value = Line { $line }, column { $column } has a value but no CSV header. Add a column name before importing.
 script-error-argument-count = Function '{ $name }' expects { $expected } { $expected ->
     [one] argument
    *[other] arguments

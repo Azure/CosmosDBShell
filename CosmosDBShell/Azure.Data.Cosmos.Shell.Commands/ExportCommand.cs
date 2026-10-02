@@ -37,6 +37,7 @@ internal enum ExportFormat
 internal class ExportCommand : CosmosCommand
 {
     private const string DefaultQuery = "SELECT * FROM c";
+    private const string ScalarColumnEnvironmentVariable = "COSMOSDB_SHELL_CSV_SCALAR_COLUMN";
 
     [CosmosParameter("file", RequiredErrorKey = "command-export-error-missing_file")]
     public string? File { get; init; }
@@ -187,16 +188,19 @@ internal class ExportCommand : CosmosCommand
     /// <summary>
     /// Writes a sequence of items to <paramref name="writer"/> as CSV. The header row is the
     /// union of all top-level property names (in first-seen order); each subsequent row
-    /// contains the corresponding values. Nested objects and arrays are written as compact
-    /// JSON. Items are spooled to disk to compute the column set.
+    /// contains the corresponding values. Non-object rows are written in a configurable
+    /// column with an empty header by default. Nested objects and arrays are written as
+    /// compact JSON. Items are spooled to disk to compute the column set.
     /// </summary>
     /// <param name="items">The items to write.</param>
     /// <param name="writer">The destination writer.</param>
     /// <param name="separator">The field separator.</param>
     /// <param name="token">Cancellation token.</param>
+    /// <param name="scalarColumnName">The header for non-object rows; defaults to the environment setting.</param>
     /// <returns>The number of data rows written.</returns>
-    internal static async Task<int> WriteCsvAsync(IAsyncEnumerable<JsonElement> items, TextWriter writer, char separator, CancellationToken token)
+    internal static async Task<int> WriteCsvAsync(IAsyncEnumerable<JsonElement> items, TextWriter writer, char separator, CancellationToken token, string? scalarColumnName = null)
     {
+        scalarColumnName ??= Environment.GetEnvironmentVariable(ScalarColumnEnvironmentVariable) ?? string.Empty;
         var spoolOptions = new FileStreamOptions
         {
             Mode = FileMode.CreateNew,
@@ -213,21 +217,37 @@ internal class ExportCommand : CosmosCommand
         using var spoolWriter = new StreamWriter(spool, new UTF8Encoding(false), leaveOpen: true);
         var headers = new List<string>();
         var headerSet = new HashSet<string>(StringComparer.Ordinal);
+        var objectHeaders = new HashSet<string>(StringComparer.Ordinal);
+        var hasScalarRows = false;
         await foreach (var item in items.WithCancellation(token))
         {
             await spoolWriter.WriteLineAsync(SerializeJsonLine(item).AsMemory(), token);
             if (item.ValueKind != JsonValueKind.Object)
             {
+                hasScalarRows = true;
+                if (headerSet.Add(scalarColumnName))
+                {
+                    headers.Add(scalarColumnName);
+                }
+
                 continue;
             }
 
             foreach (var prop in item.EnumerateObject())
             {
+                objectHeaders.Add(prop.Name);
                 if (headerSet.Add(prop.Name))
                 {
                     headers.Add(prop.Name);
                 }
             }
+        }
+
+        if (hasScalarRows && objectHeaders.Contains(scalarColumnName))
+        {
+            throw new CommandException(
+                "export",
+                MessageService.GetArgsString("command-export-error-scalar_column_conflict", "column", scalarColumnName));
         }
 
         await spoolWriter.FlushAsync(token);
@@ -267,6 +287,10 @@ internal class ExportCommand : CosmosCommand
                     var text = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
                     sb.Append(CommandState.EscapeCSV(text));
                 }
+                else if (item.ValueKind != JsonValueKind.Object && headers[i] == scalarColumnName)
+                {
+                    sb.Append(CommandState.EscapeCSV(GetScalarCsvValue(item)));
+                }
                 else
                 {
                     sb.Append(CommandState.EscapeCSV(string.Empty));
@@ -279,6 +303,11 @@ internal class ExportCommand : CosmosCommand
 
         await writer.FlushAsync(token);
         return count;
+    }
+
+    private static string GetScalarCsvValue(JsonElement item)
+    {
+        return item.ToString();
     }
 
     private static async Task<(int Count, double Charge)> ExecuteExportAsync(

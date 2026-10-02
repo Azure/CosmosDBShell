@@ -340,11 +340,65 @@ public class ImportCommandTests
         var element = ImportCommand.BuildCsvObject(
             new[] { "id", "name" },
             new[] { "1", "Alice" },
-            partitionKeySegments: null);
+            partitionKeySegments: null,
+            lineNumber: 2);
 
         Assert.Equal(JsonValueKind.Object, element.ValueKind);
         Assert.Equal("1", element.GetProperty("id").GetString());
         Assert.Equal("Alice", element.GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public void BuildCsvObject_EmptyUnnamedColumnIsIgnored()
+    {
+        var element = ImportCommand.BuildCsvObject(
+            new[] { "id", "" },
+            new[] { "1", "" },
+            partitionKeySegments: null,
+            lineNumber: 2);
+
+        Assert.Equal("1", element.GetProperty("id").GetString());
+        Assert.False(element.TryGetProperty("", out _));
+    }
+
+    [Fact]
+    public void BuildCsvObject_PopulatedUnnamedColumnFailsWithLocation()
+    {
+        var error = Assert.Throws<CommandException>(() => ImportCommand.BuildCsvObject(
+            new[] { "id", "" },
+            new[] { "1", "lost" },
+            partitionKeySegments: null,
+            lineNumber: 7));
+
+        Assert.Contains("7", error.Message);
+        Assert.Contains("2", error.Message);
+        Assert.Contains("header", error.Message);
+    }
+
+    [Fact]
+    public async Task EnumerateCsvAsync_PopulatedUnnamedColumnReportsPhysicalStartLine()
+    {
+        var separator = Azure.Data.Cosmos.Shell.Core.ShellInterpreter.CSVSeparator;
+        var filePath = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(filePath, $"id{separator}\"\"\n\"a\nb\"{separator}\"\"\n2{separator}lost\n", TestContext.Current.CancellationToken);
+
+            var error = await Assert.ThrowsAsync<CommandException>(async () =>
+            {
+                await foreach (var _ in ImportCommand.EnumerateCsvAsync(filePath, null, TestContext.Current.CancellationToken))
+                {
+                    // Enumerate to trigger parsing and validation errors.
+                }
+            });
+
+            Assert.Contains("4", error.Message);
+            Assert.Contains("2", error.Message);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
     }
 
     [Fact]
@@ -464,7 +518,8 @@ public class ImportCommandTests
         var element = ImportCommand.BuildCsvObject(
             new[] { "id", "city" },
             new[] { "1", "Seattle" },
-            new[] { "city" });
+            new[] { "city" },
+            lineNumber: 2);
 
         Assert.Equal("Seattle", element.GetProperty("city").GetString());
     }
@@ -475,7 +530,8 @@ public class ImportCommandTests
         var element = ImportCommand.BuildCsvObject(
             new[] { "id", "city" },
             new[] { "1", "Seattle" },
-            new[] { "address", "city" });
+            new[] { "address", "city" },
+            lineNumber: 2);
 
         Assert.False(element.TryGetProperty("city", out _));
         Assert.Equal("Seattle", element.GetProperty("address").GetProperty("city").GetString());
@@ -488,7 +544,8 @@ public class ImportCommandTests
         var ex = Assert.Throws<CommandException>(() => ImportCommand.BuildCsvObject(
             new[] { "id", "address", "city" },
             new[] { "1", "123 Main St", "Seattle" },
-            new[] { "address", "city" }));
+            new[] { "address", "city" },
+            lineNumber: 2));
 
         Assert.Contains("address", ex.Message, StringComparison.Ordinal);
     }
@@ -499,7 +556,8 @@ public class ImportCommandTests
         var element = ImportCommand.BuildCsvObject(
             new[] { "id", "name", "extra" },
             new[] { "1" },
-            partitionKeySegments: null);
+            partitionKeySegments: null,
+            lineNumber: 2);
 
         Assert.Equal("1", element.GetProperty("id").GetString());
         Assert.Equal(string.Empty, element.GetProperty("name").GetString());

@@ -234,9 +234,9 @@ There is no separate "enter multi-line mode" command — the shell enters and le
 
 ### History
 
-Multi-line commands are saved to history as a single entry. When you recall one with `Up` / `Ctrl+P` or reverse-search (`Ctrl+R`), the full multi-line text is restored. History files written by older versions of the shell continue to load unchanged.
+Multi-line commands are saved to history as a single entry. When you recall one with `Up` / `Ctrl+P` or reverse-search (`Ctrl+R`), the full multi-line text is restored. History files written by older versions of the shell continue to load unchanged. Concurrent shells merge their saved entries into the shared history file. Saves and clears coordinate through `cmd_history.lock` and replace `cmd_history` only after the complete replacement has been written and flushed, so a failed write leaves the saved history intact. History saving remains best-effort; at most the newest 60 pending entries are retained for a later retry. A failed `--clear-history` reports an error and leaves the loaded history unchanged.
 
-Commands are stored in full so they can be executed again, including connection strings containing account keys. Treat the `cmd_history` file in the shell configuration directory as sensitive: protect it with your user account's file permissions and do not share it. Use Entra ID to avoid storing account keys, or `--clear-history` to clear the saved history. MCP tool invocations are echoed as command lines and recorded in the same history.
+Commands are stored in full so they can be executed again, including connection strings containing account keys. Treat the `cmd_history` file in the shell configuration directory as sensitive: protect it with your user account's file permissions and do not share it. Temporary history files have owner-only permissions on Unix. On Windows, they are created with the existing history file's access rules, or owner-only access for a new history file, without inheriting broader directory permissions; those rules remain on the published file. Use Entra ID to avoid storing account keys, or `--clear-history` to clear the saved history. MCP tool invocations are echoed as command lines and recorded in the same history.
 
 ## Keyboard Shortcuts
 
@@ -327,6 +327,7 @@ These values are a public contract. See the [CI/CD guide](ci.md#exit-code-contra
 | `COSMOSDB_SHELL_TOKEN` | Pre-obtained Entra ID access token (JWT) for single-shot auth |
 | `COSMOSDB_SHELL_ACCOUNT_KEY` | Account key for authentication |
 | `COSMOSDB_SHELL_CSVSEP` | CSV column separator |
+| `COSMOSDB_SHELL_CSV_SCALAR_COLUMN` | Header for non-object CSV export rows (empty by default) |
 | `COSMOSDB_SHELL_FORMAT` | Default output format (`user`, `json`, `table`, `csv`) used when `--output` is not supplied. Supplies a format only — it does not enable machine mode |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Default OTLP endpoint used by `--otel` when no endpoint is supplied |
 
