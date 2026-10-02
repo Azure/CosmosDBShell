@@ -1,6 +1,8 @@
 namespace CosmosShell.Tests.Runtime;
 
 using System.Diagnostics;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Azure.Data.Cosmos.Shell.Core;
 
 public class SerializedExecutionTests
@@ -477,6 +479,85 @@ public class SerializedExecutionTests
     }
 
     [Fact]
+    public void WriteHistoryAtomically_PreservesWindowsDestinationDaclAtCreationAndPublication()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Windows ACLs do not apply on this platform.");
+            return;
+        }
+
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(configPath);
+        var historyFile = Path.Join(configPath, "cmd_history");
+        try
+        {
+            File.WriteAllText(historyFile, "echo retained\n");
+            using var identity = WindowsIdentity.GetCurrent();
+            var owner = Assert.IsType<SecurityIdentifier>(identity.User);
+            var security = new FileSecurity();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            security.AddAccessRule(new FileSystemAccessRule(owner, FileSystemRights.FullControl, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(
+                new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.Read, AccessControlType.Allow));
+            new FileInfo(historyFile).SetAccessControl(security);
+            var expected = new FileInfo(historyFile).GetAccessControl(AccessControlSections.Access)
+                .GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+
+            ShellInterpreter.WriteHistoryAtomically(historyFile, stream =>
+            {
+                AssertWindowsHistoryDacl(Assert.Single(Directory.GetFiles(configPath, "cmd_history.*.tmp")), expected);
+                using var writer = new StreamWriter(stream, leaveOpen: true);
+                writer.WriteLine("echo replacement");
+            });
+
+            AssertWindowsHistoryDacl(historyFile, expected);
+            Assert.Equal(["echo replacement"], File.ReadAllLines(historyFile));
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WriteHistoryAtomically_NewWindowsHistoryHasOwnerOnlyDaclAtCreationAndPublication()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Windows ACLs do not apply on this platform.");
+            return;
+        }
+
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(configPath);
+        var historyFile = Path.Join(configPath, "cmd_history");
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            var owner = Assert.IsType<SecurityIdentifier>(identity.User);
+            var expected = new FileSecurity();
+            expected.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            expected.AddAccessRule(new FileSystemAccessRule(owner, FileSystemRights.FullControl, AccessControlType.Allow));
+            var expectedDacl = expected.GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+
+            ShellInterpreter.WriteHistoryAtomically(historyFile, stream =>
+            {
+                AssertWindowsHistoryDacl(Assert.Single(Directory.GetFiles(configPath, "cmd_history.*.tmp")), expectedDacl);
+                using var writer = new StreamWriter(stream, leaveOpen: true);
+                writer.WriteLine("echo private");
+            });
+
+            AssertWindowsHistoryDacl(historyFile, expectedDacl);
+            Assert.Equal(["echo private"], File.ReadAllLines(historyFile));
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
     public void PrintCommand_FailedSavesPreserveHistoryAndBoundPendingEntries()
     {
         var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
@@ -676,6 +757,24 @@ public class SerializedExecutionTests
         }
 
         Assert.Equal(3, await shell.RunSerializedAsync(() => Task.FromResult(3), TestContext.Current.CancellationToken));
+    }
+
+    private static void AssertWindowsHistoryDacl(string path, string expectedDacl)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("Windows ACLs do not apply on this platform.");
+        }
+
+        var security = new FileInfo(path).GetAccessControl(AccessControlSections.Access);
+        Assert.True(security.AreAccessRulesProtected);
+        var expected = Assert.IsType<RawAcl>(new RawSecurityDescriptor(expectedDacl).DiscretionaryAcl);
+        var actual = Assert.IsType<RawAcl>(new RawSecurityDescriptor(security.GetSecurityDescriptorBinaryForm(), 0).DiscretionaryAcl);
+        var expectedBytes = new byte[expected.BinaryLength];
+        var actualBytes = new byte[actual.BinaryLength];
+        expected.GetBinaryForm(expectedBytes, 0);
+        actual.GetBinaryForm(actualBytes, 0);
+        Assert.Equal(expectedBytes, actualBytes);
     }
 
     private static Process CreateHistoryWriterProcess(string configPath, string prefix)

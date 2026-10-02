@@ -6,6 +6,8 @@ namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Globalization;
 using System.Reflection;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Azure.Data.Cosmos.Shell.Commands;
@@ -2460,21 +2462,10 @@ public partial class ShellInterpreter : IDisposable
     internal static void WriteHistoryAtomically(string historyFile, Action<Stream> write)
     {
         var temporary = historyFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        var options = new FileStreamOptions
-        {
-            Mode = FileMode.CreateNew,
-            Access = FileAccess.Write,
-            Share = FileShare.None,
-        };
-        if (!OperatingSystem.IsWindows())
-        {
-            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-        }
-
         var created = false;
         try
         {
-            using (var stream = new FileStream(temporary, options))
+            using (var stream = CreateHistoryTemporaryFile(temporary, historyFile))
             {
                 created = true;
                 write(stream);
@@ -2490,6 +2481,39 @@ public partial class ShellInterpreter : IDisposable
                 File.Delete(temporary);
             }
         }
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    private static FileStream CreateHistoryTemporaryFile(string temporary, string historyFile)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            FileSecurity security;
+            if (File.Exists(historyFile))
+            {
+                security = new FileInfo(historyFile).GetAccessControl(AccessControlSections.Access);
+            }
+            else
+            {
+                using var identity = WindowsIdentity.GetCurrent();
+                var owner = identity.User ?? throw new UnauthorizedAccessException("The current Windows user SID is unavailable.");
+                security = new FileSecurity();
+                security.AddAccessRule(new FileSystemAccessRule(owner, FileSystemRights.FullControl, AccessControlType.Allow));
+            }
+
+            // Apply the DACL at creation, without inheriting broader directory permissions.
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: true);
+            return new FileInfo(temporary).Create(
+                FileMode.CreateNew, FileSystemRights.Write, FileShare.None, 4096, FileOptions.None, security);
+        }
+
+        return new FileStream(temporary, new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
+        });
     }
 
     private FileStream OpenHistoryFileWithExclusiveLock(FileAccess access = FileAccess.ReadWrite, string? path = null)
