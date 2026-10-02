@@ -299,6 +299,103 @@ public class ServerlessCreationThroughputTests
         Assert.Equal(1000, Assert.Single(sent)!.AutoscaleMaxThroughput);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExistingResource_ServerlessWithExplicitThroughput_RejectsOptions(bool isContainer)
+    {
+        var (operations, database, container) = CreateResourceOperations(HttpStatusCode.OK);
+        var rejection = new CosmosException(
+            "Reading or replacing offers is not supported for serverless accounts.", HttpStatusCode.BadRequest, 0, "a", 1.5);
+        database.ReadThroughputAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).ThrowsAsync(rejection);
+        container.ReadThroughputAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).ThrowsAsync(rejection);
+
+        var exception = await Assert.ThrowsAsync<ServerlessThroughputNotSupportedException>(
+            () => CreateResourceAsync(operations, isContainer, null, 400));
+
+        Assert.Same(rejection, exception.InnerException);
+    }
+
+    [Theory]
+    [InlineData(false, HttpStatusCode.Created, 400)]
+    [InlineData(true, HttpStatusCode.Created, 400)]
+    [InlineData(false, HttpStatusCode.OK, null)]
+    [InlineData(true, HttpStatusCode.OK, null)]
+    public async Task Resource_WithoutExistingExplicitThroughput_DoesNotReadOffers(bool isContainer, HttpStatusCode status, int? ru)
+    {
+        var (operations, database, container) = CreateResourceOperations(status);
+
+        await CreateResourceAsync(operations, isContainer, null, ru);
+
+        await database.DidNotReceiveWithAnyArgs().ReadThroughputAsync(default(RequestOptions)!, TestContext.Current.CancellationToken);
+        await container.DidNotReceiveWithAnyArgs().ReadThroughputAsync(default(RequestOptions)!, TestContext.Current.CancellationToken);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExistingResource_ProvisionedWithExplicitThroughput_PreservesSuccess(bool isContainer)
+    {
+        var (operations, database, container) = CreateResourceOperations(HttpStatusCode.OK);
+        var throughput = Substitute.For<ThroughputResponse>();
+        database.ReadThroughputAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).Returns(throughput);
+        container.ReadThroughputAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).Returns(throughput);
+
+        var result = await CreateResourceAsync(operations, isContainer, "manual", 400);
+
+        Assert.Equal(isContainer ? "Items" : "db", result);
+    }
+
+    [Theory]
+    [InlineData(false, HttpStatusCode.NotFound)]
+    [InlineData(true, HttpStatusCode.NotFound)]
+    [InlineData(false, HttpStatusCode.Forbidden)]
+    [InlineData(true, HttpStatusCode.Forbidden)]
+    [InlineData(false, HttpStatusCode.BadRequest)]
+    [InlineData(true, HttpStatusCode.BadRequest)]
+    public async Task ExistingResource_OfferReadFailure_OnlyMissingOfferPreservesSuccess(bool isContainer, HttpStatusCode status)
+    {
+        var (operations, database, container) = CreateResourceOperations(HttpStatusCode.OK);
+        var failure = new CosmosException("Offer read failed.", status, 0, "a", 1.5);
+        database.ReadThroughputAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).ThrowsAsync(failure);
+        container.ReadThroughputAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).ThrowsAsync(failure);
+
+        if (status == HttpStatusCode.NotFound)
+        {
+            Assert.Equal(isContainer ? "Items" : "db", await CreateResourceAsync(operations, isContainer, null, 400));
+        }
+        else
+        {
+            var exception = await Assert.ThrowsAsync<CosmosException>(
+                () => CreateResourceAsync(operations, isContainer, null, 400));
+            Assert.Same(failure, exception);
+        }
+    }
+
+    private static Task<string> CreateResourceAsync(DataPlaneCosmosResourceOperations operations, bool isContainer, string? scale, int? ru)
+        => isContainer
+            ? operations.CreateContainerAsync("db", "Items", ["/pk"], null, null, scale, ru, TestContext.Current.CancellationToken)
+            : operations.CreateDatabaseAsync("db", scale, ru, TestContext.Current.CancellationToken);
+
+    private static (DataPlaneCosmosResourceOperations Operations, Database Database, Container Container) CreateResourceOperations(HttpStatusCode status)
+    {
+        var (client, database) = CreateDataPlaneClient();
+        var container = Substitute.For<Container>();
+        database.Id.Returns("db");
+        container.Id.Returns("Items");
+        var databaseResponse = Substitute.For<DatabaseResponse>();
+        databaseResponse.StatusCode.Returns(status);
+        databaseResponse.Database.Returns(database);
+        client.CreateDatabaseIfNotExistsAsync("db", Arg.Any<ThroughputProperties?>(), Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(databaseResponse);
+        var containerResponse = Substitute.For<ContainerResponse>();
+        containerResponse.StatusCode.Returns(status);
+        containerResponse.Container.Returns(container);
+        database.CreateContainerIfNotExistsAsync(Arg.Any<ContainerProperties>(), Arg.Any<ThroughputProperties?>(), Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(containerResponse);
+        return (new DataPlaneCosmosResourceOperations(client), database, container);
+    }
+
     private static CosmosException ServerlessRejection() => new(ServerlessMessage, HttpStatusCode.BadRequest, 0, "a", 1.5);
 
     private static (CosmosClient Client, Database Database) CreateDataPlaneClient()

@@ -78,6 +78,12 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
             maxRu,
             throughput => client.CreateDatabaseIfNotExistsAsync(databaseName, throughput, cancellationToken: token));
         RequestChargeContext.Record(response.RequestCharge);
+        if (response.StatusCode == HttpStatusCode.OK && CreationThroughput.IsSpecified(scale, maxRu))
+        {
+            await ValidateExistingResourceThroughputAsync(
+                () => response.Database.ReadThroughputAsync(new RequestOptions(), token));
+        }
+
         return response.Database.Id;
     }
 
@@ -117,6 +123,12 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
             maxRu,
             throughput => database.CreateContainerIfNotExistsAsync(props, throughput, cancellationToken: token));
         RequestChargeContext.Record(response.RequestCharge);
+        if (response.StatusCode == HttpStatusCode.OK && CreationThroughput.IsSpecified(scale, maxRu))
+        {
+            await ValidateExistingResourceThroughputAsync(
+                () => response.Container.ReadThroughputAsync(new RequestOptions(), token));
+        }
+
         return response.Container.Id;
     }
 
@@ -455,6 +467,24 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     }
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
+
+    private static async Task ValidateExistingResourceThroughputAsync(Func<Task<ThroughputResponse>> readThroughput)
+    {
+        try
+        {
+            var response = await readThroughput();
+            RequestChargeContext.Record(response.RequestCharge);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.BadRequest && ThroughputErrors.IsServerlessThroughputError(ex.Message))
+        {
+            throw new ServerlessThroughputNotSupportedException(ex);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            // Provisioned resources without dedicated throughput have no offer to read.
+            RequestChargeContext.Record(ex.RequestCharge);
+        }
+    }
 
     // The data plane cannot read the capacity mode, so serverless is detected from the service's rejection.
     internal static async Task<T> CreateWithServerlessFallbackAsync<T>(string? scale, int? maxRu, Func<ThroughputProperties?, Task<T>> create)
