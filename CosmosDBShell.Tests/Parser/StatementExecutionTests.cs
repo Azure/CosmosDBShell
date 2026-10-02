@@ -97,6 +97,46 @@ public class StatementExecutionTests : TestBase
     }
 
     [Theory]
+    [InlineData("for $x typo [1,2] { $value = 3 }")]
+    [InlineData("do { $value = 3 } typo false")]
+    public async Task InvalidLoopKeyword_PreventsEarlierAssignmentAndLoopBody(string invalid)
+    {
+        SetVariable("value", new ShellNumber(1));
+
+        var state = await Shell.RunCommandAsync(new(), $"$value = 2; {invalid}", TestContext.Current.CancellationToken);
+
+        Assert.True(state.IsError);
+        Assert.Equal(1, GetInt("value"));
+    }
+
+    [Theory]
+    [InlineData("-", "0.5")]
+    [InlineData("*", "7.5")]
+    [InlineData("/", "1.2")]
+    [InlineData("%", "0.5")]
+    [InlineData("**", "15.588457268119896")]
+    [InlineData("<", "false")]
+    [InlineData("<=", "false")]
+    [InlineData(">", "true")]
+    [InlineData(">=", "true")]
+    public async Task JsonNumericStrings_MatchTextAcrossValueOrigins(string operation, string expected)
+    {
+        var state = await Shell.RunCommandAsync(
+            new(),
+            "$source = {\"value\":\"2.5\"}; def identity [value] { return $value }; " +
+            $"$direct = 3.0 {operation} \"2.5\"; $json = 3.0 {operation} $source.value; " +
+            $"$function = 3.0 {operation} (identity $source.value); " +
+            $"for $item in [$source.value] {{ $loop = 3.0 {operation} $item }}",
+            TestContext.Current.CancellationToken);
+
+        Assert.False(state.IsError);
+        foreach (var name in new[] { "direct", "json", "function", "loop" })
+        {
+            Assert.Equal(expected, GetVariable(name)!.ConvertShellObject(DataType.Text));
+        }
+    }
+
+    [Theory]
     [InlineData("break")]
     [InlineData("continue")]
     [InlineData("return 1")]

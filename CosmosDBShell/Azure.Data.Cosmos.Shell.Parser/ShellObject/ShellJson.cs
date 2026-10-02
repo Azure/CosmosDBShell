@@ -91,13 +91,13 @@ internal class ShellJson : ShellObject
             case DataType.Decimal:
                 if (this.Value.ValueKind == JsonValueKind.Number)
                 {
-                    return this.Value.GetDecimal();
+                    return this.Value.GetDouble();
                 }
 
                 if (this.Value.ValueKind == JsonValueKind.String)
                 {
                     var strValue = this.Value.GetString() ?? string.Empty;
-                    if (decimal.TryParse(strValue, NumberStyles.Float, CultureInfo.InvariantCulture, out decimal decimalValue))
+                    if (double.TryParse(strValue, NumberStyles.Float, CultureInfo.InvariantCulture, out double decimalValue))
                     {
                         return decimalValue;
                     }

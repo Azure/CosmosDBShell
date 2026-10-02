@@ -49,6 +49,65 @@ public class StatementParserEdgeTests
         Assert.IsType<ExecStatement>(Assert.Single(statements));
     }
 
+    [Theory]
+    [InlineData("for $x typo [1,2] {}", "typo", "statement_error_expected_in")]
+    [InlineData("do {} typo false", "typo", "statement_error_expected_while")]
+    public void Loop_InvalidKeyword_ReportsErrorAtKeyword(string source, string keyword, string messageKey)
+    {
+        var (_, parser) = ParseWithParser(source);
+
+        var error = Assert.Single(parser.Errors);
+        Assert.Equal(source.IndexOf(keyword, StringComparison.Ordinal), error.Start);
+        Assert.Equal(keyword.Length, error.Length);
+        Assert.Equal(Azure.Data.Cosmos.Shell.Util.MessageService.GetString(messageKey), error.Message);
+    }
+
+    [Theory]
+    [InlineData("for $x IN [1,2] {}")]
+    [InlineData("do {} WHILE false")]
+    public void Loop_KeywordsRemainCaseInsensitive(string source)
+    {
+        var (statements, parser) = ParseWithParser(source);
+
+        Assert.Single(statements);
+        Assert.Empty(parser.Errors);
+    }
+
+    [Theory]
+    [InlineData("-directory . -r")]
+    [InlineData("--directory=. --recursive")]
+    [InlineData("--directory:. --recursive=false")]
+    [InlineData("--directory=$path")]
+    [InlineData("-5 -1.5 +2")]
+    [InlineData("https://localhost:8081 *.json \"two words\"")]
+    [InlineData("{\"id\":1} [1,2] true $value (1 + 2)")]
+    public void Exec_ArgumentsMatchDirectCommandParsing(string arguments)
+    {
+        var (directStatements, directParser) = ParseWithParser($"dir {arguments}");
+        var (execStatements, execParser) = ParseWithParser($"exec $cmd {arguments}");
+
+        Assert.Empty(directParser.Errors);
+        Assert.Empty(execParser.Errors);
+        var direct = Assert.IsType<CommandStatement>(Assert.Single(directStatements));
+        var exec = Assert.IsType<ExecStatement>(Assert.Single(execStatements));
+        Assert.Equal(direct.Arguments.Count, exec.Arguments.Count);
+        for (int i = 0; i < direct.Arguments.Count; i++)
+        {
+            Assert.Equal(direct.Arguments[i].GetType(), exec.Arguments[i].GetType());
+            Assert.Equal(CommandArgumentFormatter.Format(direct.Arguments[i]), CommandArgumentFormatter.Format(exec.Arguments[i]));
+        }
+    }
+
+    [Theory]
+    [InlineData("exec \"echo\" --format=")]
+    [InlineData("exec \"echo\" --format=; echo after")]
+    public void Exec_MissingInlineOptionValue_ReportsError(string source)
+    {
+        var (_, parser) = ParseWithParser(source);
+
+        Assert.NotEmpty(parser.Errors);
+    }
+
     [Fact]
     public void Def_WithParenParameters_ParsesParameters()
     {
