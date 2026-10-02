@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
+using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -26,6 +27,8 @@ using static Program;
 /// </summary>
 internal class McpServer
 {
+    internal static readonly TimeSpan SessionIdleTimeout = TimeSpan.FromMinutes(10);
+
     public static IHost CreateHost(CosmosShellOptions serverArguments)
     {
         var builder = WebApplication.CreateBuilder([]);
@@ -50,6 +53,8 @@ internal class McpServer
     private static void ConfigureMcpServer(IServiceCollection services)
     {
         services.AddSingleton<ToolOperations>();
+        services.AddSingleton<LocationResourceSubscriptions>();
+        services.AddHostedService(services => services.GetRequiredService<LocationResourceSubscriptions>());
         services.AddOptions<McpServerOptions>()
             .Configure<ToolOperations>((mcpServerOptions, toolOperations) =>
             {
@@ -66,13 +71,15 @@ internal class McpServer
                 mcpServerOptions.Capabilities = new ServerCapabilities
                 {
                     Tools = new ToolsCapability(),
-                    Resources = new ResourcesCapability(),
+                    Resources = new ResourcesCapability { Subscribe = true },
                 };
 
                 mcpServerOptions.Handlers = new McpServerHandlers
                 {
                     CallToolHandler = toolOperations.CallToolHandler,
                     ListToolsHandler = toolOperations.ListToolsHandler,
+                    SubscribeToResourcesHandler = toolOperations.SubscribeToResourcesHandler,
+                    UnsubscribeFromResourcesHandler = toolOperations.UnsubscribeFromResourcesHandler,
                 };
 
                 mcpServerOptions.ServerInstructions = LoadServerInstructions();
@@ -80,7 +87,26 @@ internal class McpServer
 
         var mcpServerBuilder = services.AddMcpServer();
         mcpServerBuilder.WithResources<ResourceOperations>();
-        mcpServerBuilder.WithHttpTransport();
+
+        // Destructive-command confirmation uses elicitation, a server-to-client request that
+        // requires a session. SDK 2.x defaults to stateless, so keep sessions enabled.
+        mcpServerBuilder.WithHttpTransport(ConfigureHttpTransport);
+    }
+
+    internal static void ConfigureHttpTransport(HttpServerTransportOptions options)
+    {
+        options.SessionMode = HttpServerSessionMode.Stateful;
+
+        // Sessions with an open GET stream never go idle. Once a client disconnects without DELETE,
+        // the session is disposed after this timeout, which also ends its location subscription.
+#pragma warning disable MCP9006 // Stateful Streamable HTTP options are required for session-bound features.
+        options.IdleTimeout = SessionIdleTimeout;
+#pragma warning restore MCP9006
+
+#pragma warning disable MCPEXP002 // RunSessionHandler is the only hook that observes the session lifetime.
+        options.RunSessionHandler = (httpContext, server, cancellationToken) =>
+            httpContext.RequestServices.GetRequiredService<LocationResourceSubscriptions>().RunSessionAsync(server, cancellationToken);
+#pragma warning restore MCPEXP002
     }
 
     private static string LoadServerInstructions()

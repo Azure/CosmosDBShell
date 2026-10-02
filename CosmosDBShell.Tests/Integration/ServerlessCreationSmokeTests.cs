@@ -34,7 +34,9 @@ public class ServerlessCreationSmokeTests : IntegrationTestBase
         }
         finally
         {
-            await RunScriptAsync($"rmdb {databaseName} true");
+            using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var cleanup = await Shell.ExecuteCommandAsync($"rmdb {databaseName} true", cleanupTimeout.Token);
+            Assert.False(cleanup is ErrorCommandState, $"Cleanup of {databaseName} failed: {FormatError(cleanup)}");
         }
     }
 }

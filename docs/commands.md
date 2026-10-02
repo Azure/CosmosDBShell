@@ -645,12 +645,42 @@ Options:
                 Container containing the items to remove
     --key, -k   Property name to match the pattern against (defaults to partition key)
     --dry-run   Preview how many items would be deleted without deleting them
+    --partition-key, --pk
+                Restrict removal to one complete logical partition key
+    --etag      Delete only if the item's current ETag matches (exact id and partition key only)
 ```
 
 Examples:
 
 - `rm test-*` deletes every item whose partition key starts with `test-`.
 - `rm test-* --dry-run` reports how many items match without deleting anything.
+- `rm tmp-* --key=id --partition-key=customer-42 --dry-run` counts matching items only in the `customer-42` logical partition.
+
+#### Partition-key scoping
+
+`--partition-key` (alias `--pk`) restricts both the dry run and the deletion to a single logical partition. It uses the same typed parsing as `patch` and `batch`: JSON scalars keep their type (`--pk=7` targets the number `7`, `--pk='"7"'` targets the string `"7"`), and hierarchical keys are passed as a JSON array (`--pk='["tenant-1",7]'`). The value must supply every component of the container's partition key; a prefix of a hierarchical key is rejected. Piped items outside the partition are skipped.
+
+#### Deleting a single item safely
+
+When the pattern is an exact id (no `*` or `?`), `--key=id` is set, and `--partition-key` is supplied, `rm` targets exactly one item with a point read or point delete on `(id, partitionKey)` instead of scanning the container. The dry-run result keeps the `count` and adds the item's `id`, `partitionKey`, and current `etag`:
+
+```text
+rm order-123 --key=id --partition-key=customer-42 --dry-run
+```
+
+```json
+{ "type": "item", "count": 1, "dryRun": true, "partitionKey": "customer-42", "id": "order-123", "etag": "\"00000000-0000-0000-0000-000000000000\"" }
+```
+
+Pass that ETag to `--etag` to delete the item only if it has not changed since the dry run. ETags contain double quotes, so wrap the value in single quotes:
+
+```text
+rm order-123 --key=id --partition-key=customer-42 --etag '"00000000-0000-0000-0000-000000000000"'
+```
+
+The condition is enforced by Cosmos DB (`If-Match`). If the item was updated or recreated after the dry run, the command fails with `Item '<id>' was modified since it was last read (ETag mismatch). The item was not deleted.` and nothing is retried. A dry run with `--etag` reports the same mismatch without deleting anything.
+
+`--etag` is rejected before any deletion when the pattern contains wildcards, `--key=id` is missing, input is piped, the value is empty, or `--partition-key` is omitted.
 
 ### export
 
@@ -814,7 +844,7 @@ Options:
     --ru        Max RU/s (default: 1000)
 ```
 
-On provisioned accounts, omitting both options creates shared autoscale throughput with a maximum of 1000 RU/s. On serverless accounts, omit both options: the database is created without throughput settings, and supplying `--scale` or `--ru` fails with an explanation instead of sending a request the service rejects.
+On provisioned accounts, omitting both options creates shared autoscale throughput with a maximum of 1000 RU/s. On serverless accounts, omit both options to create the database without throughput settings. Supplying `--scale` or `--ru` produces an actionable error. ARM connections detect serverless accounts before sending the creation request. Data-plane connections first send a throughput-bearing request: if the service rejects it specifically because serverless throughput is unsupported, the shell retries without throughput only when neither option was supplied; explicit options produce the error without a retry.
 
 ### mkcon
 

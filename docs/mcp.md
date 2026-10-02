@@ -87,11 +87,21 @@ Shell and MCP command execution is serialized against the shared interpreter. Co
 
 The MCP confirmation applies even when a command is invoked with a force / no-prompt argument (for example `rmdb OldDB true`). That argument only skips the *interactive shell* prompt; it does not bypass the MCP elicitation gate.
 
+For single-item deletions, prefer `rm` with `key: "id"`, `partition-key`, and `dry-run: true` first, then repeat the call with the returned `etag` in the `etag` argument. The confirmation prompt shows the `--partition-key` and `--etag` values, and the delete only succeeds if the item still has the reviewed ETag, including when the item changes while the confirmation is pending. See [Deleting a single item safely](commands.md#deleting-a-single-item-safely).
+
 Database and container resource actions are executed through Azure Resource Manager when an ARM context is attached (Entra ID connections). MCP sessions connected with account keys, emulator credentials, or static data-plane tokens fall back to the Cosmos DB data plane for these actions.
 
 On serverless accounts, `mkdb`, `mkcon`, and their `create` aliases omit throughput when neither `--scale` nor `--ru` is supplied. Explicit throughput options are rejected on serverless accounts for both ARM and data-plane connections. See [database and container creation](commands.md#mkdb).
 
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.
+
+### Shell Location Updates
+
+Clients can read the `cosmos://shell/current-location` MCP resource. Its JSON content has a `currentLocation` field (`null` when disconnected, `/` at the account root, or `/database[/container]`) and a separate `currentAccountEndpoint` field (the connected Cosmos DB account URL, or `null` when disconnected). For example: `{"currentLocation":"/myDb/myContainer","currentAccountEndpoint":"https://myaccount.documents.azure.com/"}`. Clients that support resource subscriptions can subscribe to this URI with `resources/subscribe` and receive `notifications/resources/updated` when the shared shell location or connection changes, including changes made interactively. On notification, read the resource again for the new values; the notification itself contains only the URI. Rapid consecutive changes may be coalesced into a single notification. Unsubscribe with `resources/unsubscribe` when no longer needed.
+
+Only `cosmos://shell/current-location` supports subscriptions; subscribing to any other URI, including the documentation resources, returns an invalid-params error.
+
+This server uses the subscription protocol supported by its MCP SDK; clients must support subscriptions and server-to-client notifications over the HTTP connection. Notifications are delivered on the session's GET stream. A subscription lasts as long as its MCP session: it ends when the client deletes the session or when the session has had no open request (including the GET stream) for 10 minutes. After that the server returns 404 for the session and the client must start a new session and subscribe again. A notification does not guarantee that a client refreshes the model's context. Every tool response also includes `currentLocation`, and explicit `database` / `container` arguments remain the reliable way to target independent operations.
 
 ### Data Exposure
 

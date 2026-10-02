@@ -12,6 +12,7 @@
 - The language server now applies the same validation as script execution: control-flow placement, duplicate function parameters, document-local function names, and commands and built-in options nested inside blocks, branches, loops, pipelines, and command expressions. Variable and function symbols are case-sensitive, so `$value` and `$Value` stay distinct. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
 - Host-requested cancellation now propagates through script files, blocks, loops, and function calls without being turned into a positional runtime error. The shell reports a neutral result, records the cancellation in the diagnostic log, and restores call scopes and source context. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
 - Documented the shell language in [programming](docs/programming.md): operator precedence and associativity, compound assignment, numeric promotion, a statement grammar, validation rules, and resource limits. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- `rm` accepts `--partition-key` (`--pk`) to restrict both the dry run and the deletion to one complete logical partition key, including typed and hierarchical keys. `rm <id> --key=id --partition-key=<pk>` uses a point read or point delete instead of scanning the container, and its dry run reports the item's `id`, `partitionKey`, and `etag`. The new `--etag` option deletes that item only if its ETag still matches; a mismatch fails without retrying. ([#229](https://github.com/Azure/CosmosDBShell/issues/229))
 
 ### Breaking changes
 
