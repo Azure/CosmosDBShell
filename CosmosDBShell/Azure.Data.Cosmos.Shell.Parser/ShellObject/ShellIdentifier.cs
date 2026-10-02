@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Parser;
 
+using System.Globalization;
 using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
@@ -49,14 +50,14 @@ internal class ShellIdentifier : ShellObject
 
                 throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-identifier-boolean", "value", value));
             case DataType.Number:
-                if (int.TryParse(value, out int intValue))
+                if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
                 {
                     return intValue;
                 }
 
                 throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-identifier-number", "value", value));
             case DataType.Decimal:
-                if (double.TryParse(value, out double decimalValue))
+                if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double decimalValue))
                 {
                     return decimalValue;
                 }

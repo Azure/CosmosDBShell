@@ -12,6 +12,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Inspect the connected identity with `whoami`, and probe data-plane access with `can-i` (both support `--format` table/json/csv)
 - Diagnose environment and connectivity with read-only `doctor` checks, versioned JSON reports, and optional query and ARM probes; use `doctor who` for known identity and access context ([troubleshooting](docs/commands.md#doctor))
 - Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
+- Delete a single item safely with `rm <id> --key=id --partition-key=<pk> --etag=<etag>`: point operations scoped to one logical partition, with server-enforced ETag checks ([docs](docs/commands.md#deleting-a-single-item-safely))
 - Inspect a query's execution plan and index usage with `query "<sql>" --explain`
 - Atomic multi-operation transactions on a single partition key: `batch`
 - Bulk roundtrip with `import` / `export` for JSON Lines and JSON array files, plus CSV import/export (CSV import coerces values to strings; `--partition-key` nests a CSV column under a nested partition key path)
@@ -37,11 +38,15 @@ Exports replace their destination only after successful completion, preserving a
 
 MCP command execution is serialized with the shell, and destructive confirmations are invalidated by connection or navigation changes. MCP invocations are echoed in the shell so their activity stays visible, and they are recorded in history alongside interactive commands. History remains fully replayable, including connection strings; treat its file as sensitive. See [MCP security](docs/mcp.md#security) and [history](docs/navigation.md#history).
 
+MCP clients supporting resource subscriptions can watch `cosmos://shell/current-location` for interactive navigation and connection changes; the resource includes the current account endpoint separately from the location. See [MCP location updates](docs/mcp.md#shell-location-updates).
+
 ## Quick Start
 
 **Requirements:** .NET SDK 10.0+.
 
 The .NET runtime alone is not enough for the commands below. `dotnet run` and `dotnet tool install` are SDK commands. To verify the SDK is installed, run `dotnet --list-sdks`.
+
+In Linux containers without ICU, the shell also supports .NET globalization-invariant mode and falls back to its bundled English messages.
 
 ```bash
 dotnet run --project CosmosDBShell

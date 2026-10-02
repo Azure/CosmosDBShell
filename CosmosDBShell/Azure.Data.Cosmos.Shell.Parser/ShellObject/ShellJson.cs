@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Parser;
 
+using System.Globalization;
 using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
@@ -80,7 +81,7 @@ internal class ShellJson : ShellObject
                 if (this.Value.ValueKind == JsonValueKind.String)
                 {
                     var strValue = this.Value.GetString() ?? string.Empty;
-                    if (int.TryParse(strValue, out int intValue))
+                    if (int.TryParse(strValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
                     {
                         return intValue;
                     }
@@ -96,7 +97,7 @@ internal class ShellJson : ShellObject
                 if (this.Value.ValueKind == JsonValueKind.String)
                 {
                     var strValue = this.Value.GetString() ?? string.Empty;
-                    if (decimal.TryParse(strValue, out decimal decimalValue))
+                    if (decimal.TryParse(strValue, NumberStyles.Float, CultureInfo.InvariantCulture, out decimal decimalValue))
                     {
                         return decimalValue;
                     }

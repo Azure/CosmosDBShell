@@ -388,6 +388,7 @@ public class ImportCommandTests
             {
                 await foreach (var _ in ImportCommand.EnumerateCsvAsync(filePath, null, TestContext.Current.CancellationToken))
                 {
+                    // Enumerate to trigger parsing and validation errors.
                 }
             });
 

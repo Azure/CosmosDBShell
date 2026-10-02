@@ -29,11 +29,13 @@ internal class ToolOperations
         "Non-null continuation token returned by a previous call to this tool. Pass it back to fetch the next page, or omit this argument to start from the beginning. A null output token means the result is exhausted and no further call should be made. The value is opaque; do not modify it.";
 
     private readonly ILogger<ToolOperations> logger;
+    private readonly LocationResourceSubscriptions locationSubscriptions;
     private readonly Lazy<List<Tool>> cachedTools;
 
-    public ToolOperations(ILogger<ToolOperations> logger)
+    public ToolOperations(ILogger<ToolOperations> logger, LocationResourceSubscriptions locationSubscriptions)
     {
         this.logger = logger;
+        this.locationSubscriptions = locationSubscriptions;
         this.cachedTools = new Lazy<List<Tool>>(
             () => ShellInterpreter.Instance.App.Commands.Values
                 .DistinctBy(c => c.CommandName)
@@ -45,6 +47,22 @@ internal class ToolOperations
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult> ListToolsHandler => this.OnListToolsAsync;
 
     public McpRequestHandler<CallToolRequestParams, CallToolResult> CallToolHandler => this.OnCallToolsAsync;
+
+    public McpRequestHandler<SubscribeRequestParams, EmptyResult> SubscribeToResourcesHandler => this.SubscribeToResourcesAsync;
+
+    public McpRequestHandler<UnsubscribeRequestParams, EmptyResult> UnsubscribeFromResourcesHandler => this.UnsubscribeFromResourcesAsync;
+
+    private ValueTask<EmptyResult> SubscribeToResourcesAsync(RequestContext<SubscribeRequestParams> context, CancellationToken cancellationToken)
+    {
+        this.locationSubscriptions.Subscribe(context.Server.SessionId, context.Params?.Uri ?? string.Empty);
+        return ValueTask.FromResult(new EmptyResult());
+    }
+
+    private ValueTask<EmptyResult> UnsubscribeFromResourcesAsync(RequestContext<UnsubscribeRequestParams> context, CancellationToken cancellationToken)
+    {
+        this.locationSubscriptions.Unsubscribe(context.Server.SessionId, context.Params?.Uri ?? string.Empty);
+        return ValueTask.FromResult(new EmptyResult());
+    }
 
     internal static Tool GetTool(CommandFactory command)
     {
