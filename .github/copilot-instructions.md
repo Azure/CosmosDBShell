@@ -57,7 +57,8 @@
 
 - Be careful with state transitions in the shell. Some states share the same `CosmosClient`, so disposing the old state during navigation can break the new state.
 - Be careful with iterator lifetimes when returning `IAsyncEnumerable<T>`; do not dispose iterators before enumeration completes.
-- MCP in this repo is HTTP-only. The `--mcp` option optionally accepts a port and defaults to `6128`.
+- MCP supports two transports. `--mcp [port]` starts the HTTP server (default port `6128`). `--mcp-stdio` runs a headless server where stdin/stdout carry only MCP JSON-RPC and diagnostics go to stderr; it cannot be combined with `--mcp`, `--lsp`, `-c`, `-k`, or `--clear-history`.
+- In MCP stdio mode, nothing may write to the protocol stdout. Route user-facing output through `ShellOutput` (enforced by analyzer rule CZ0003), and never read console input.
 
 ## Preferred Change Pattern
 
