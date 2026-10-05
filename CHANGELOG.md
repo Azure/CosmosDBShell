@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes
+
+- Use consistent `double` conversion for JSON values in decimal arithmetic and comparisons, including numeric strings read through JSON paths.
+
 ## 1.1.271-preview — 2026-10-02
 
 ### New features

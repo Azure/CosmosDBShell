@@ -51,6 +51,22 @@ public class CultureInvariantConversionTests
         Assert.Equal(3.0d, value.Value);
     }
 
+    [Fact]
+    public void ShellJson_DecimalConversion_UsesInvariantCulture()
+    {
+        WithGermanCulture(() =>
+        {
+            using var document = System.Text.Json.JsonDocument.Parse("\"1.5\"");
+            var value = new ShellJson(document.RootElement);
+            Assert.Equal(1.5d, Assert.IsType<double>(value.ConvertShellObject(DataType.Decimal)));
+
+            using var localized = System.Text.Json.JsonDocument.Parse("\"1,5\"");
+            Assert.Throws<InvalidOperationException>(() =>
+                new ShellJson(localized.RootElement).ConvertShellObject(DataType.Decimal));
+            return true;
+        });
+    }
+
     private static T WithGermanCulture<T>(Func<T> action)
     {
         var originalCulture = CultureInfo.CurrentCulture;

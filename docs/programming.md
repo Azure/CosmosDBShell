@@ -44,6 +44,8 @@ JSON `null` remains JSON `null` when bound by a `for` loop or passed through a f
 
 The `+` operator concatenates when either operand is a shell string or a JSON string, including values read through JSON paths or passed as function arguments. Numeric-looking strings remain text: two JSON properties containing `"2"` concatenate to `"22"`, not `4`.
 
+Other arithmetic operators and ordered comparisons convert numeric strings when combined with a decimal operand. This conversion uses culture-invariant `double` for both shell and JSON strings: `"2" * 1.5` and a JSON property containing `"2"` multiplied by `1.5` both produce `3`.
+
 | Type | Syntax | Notes |
 | ------ | ------ | ----- |
 | Single-quoted | `'text'` | Literal, no escapes. Double `'` for quote: `'it''s'` |
