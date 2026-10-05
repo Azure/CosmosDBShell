@@ -53,19 +53,25 @@ public class ParsedDocDBConnectionString
 
     /// <summary>
     /// Determines whether the specified connection string or endpoint refers to a local endpoint
-    /// (localhost, 127.0.0.1, or the Cosmos DB emulator).
+    /// whose parsed HTTP(S) host is localhost or 127.0.0.1.
     /// </summary>
     /// <param name="connectionStringOrEndpoint">The connection string or endpoint URL to check.</param>
     /// <returns><c>true</c> if the endpoint is local; otherwise, <c>false</c>.</returns>
     public static bool IsLocalEmulatorEndpoint(string? connectionStringOrEndpoint)
     {
-        if (string.IsNullOrEmpty(connectionStringOrEndpoint))
+        if (string.IsNullOrWhiteSpace(connectionStringOrEndpoint))
         {
             return false;
         }
 
-        return connectionStringOrEndpoint.Contains("localhost", StringComparison.OrdinalIgnoreCase)
-            || connectionStringOrEndpoint.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase);
+        var endpoint = IsPlainUrl(connectionStringOrEndpoint)
+            ? connectionStringOrEndpoint
+            : GetPropertyFromConnectionString(connectionStringOrEndpoint, "AccountEndpoint");
+
+        return Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            && (string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

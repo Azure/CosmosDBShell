@@ -239,6 +239,43 @@ public class ParseDocDBConnectionTests
         Assert.True(ParsedDocDBConnectionString.IsLocalEmulatorEndpoint("AccountEndpoint=https://localhost:8081/;"));
     }
 
+    [Theory]
+    [InlineData("http://localhost:8081/")]
+    [InlineData("https://LOCALHOST:8081/")]
+    [InlineData("https://127.0.0.1:8081/")]
+    [InlineData("AccountEndpoint=https://127.0.0.1:8081/;AccountKey=abc==;")]
+    [InlineData("AccountKey=abc==;accountendpoint=https://LOCALHOST:8081/;Database=test;")]
+    public void IsLocalEmulatorEndpoint_UsesParsedLocalHost(string input)
+    {
+        Assert.True(ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(input));
+    }
+
+    [Theory]
+    [InlineData("https://localhost-prod.documents.azure.com/")]
+    [InlineData("https://localhost.attacker.example/")]
+    [InlineData("https://127.0.0.1.attacker.example/")]
+    [InlineData("https://myaccount.documents.azure.com/localhost/")]
+    [InlineData("https://myaccount.documents.azure.com/?host=localhost")]
+    [InlineData("https://myaccount.documents.azure.com/#127.0.0.1")]
+    [InlineData("https://localhost@myaccount.documents.azure.com/")]
+    [InlineData("https://myaccount.documents.azure.com/?AccountEndpoint=https://localhost:8081/;")]
+    [InlineData("AccountEndpoint=https://localhost-prod.documents.azure.com/;AccountKey=abc==;")]
+    [InlineData("AccountEndpoint=https://myaccount.documents.azure.com/;Database=localhost;AccountKey=abc==;")]
+    [InlineData("AccountEndpoint=https://myaccount.documents.azure.com/;AccountKey=localhost;")]
+    [InlineData("AccountEndpoint=https://myaccount.documents.azure.com/?host=127.0.0.1;AccountKey=abc==;")]
+    [InlineData("Database=localhost;")]
+    [InlineData("localhost")]
+    [InlineData("not-a-url-localhost")]
+    [InlineData("ftp://localhost/")]
+    [InlineData("AccountEndpoint=ftp://localhost/;")]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData(null)]
+    public void IsLocalEmulatorEndpoint_DoesNotEnableEmulatorForNonLocalHttpEndpoint(string? input)
+    {
+        Assert.False(ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(input));
+    }
+
     [Fact]
     public void TestPlainLocalhostUrlNotParsedAsConnectionString()
     {
