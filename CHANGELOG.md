@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes
+
+- Parse `exec` options and shell words like direct commands. Bind built-in options normally and pass option-shaped words to functions and script files as positional text.
+
 ## 1.1.271-preview — 2026-10-02
 
 ### New features

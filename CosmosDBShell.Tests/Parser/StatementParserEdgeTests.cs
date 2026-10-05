@@ -49,6 +49,43 @@ public class StatementParserEdgeTests
         Assert.IsType<ExecStatement>(Assert.Single(statements));
     }
 
+    [Theory]
+    [InlineData("exec $cmd --flag; echo next")]
+    [InlineData("exec $cmd --flag\necho next")]
+    [InlineData("{ exec $cmd --flag }; echo next")]
+    [InlineData("exec $cmd --flag | echo next")]
+    public void Exec_Options_StopAtStatementBoundaries(string input)
+    {
+        var result = StatementParser.ScriptParseResult.Parse(input);
+        Assert.False(result.Errors.HasErrors);
+        var statement = result.Statements[0] switch
+        {
+            BlockStatement block => block.Statements[0],
+            PipeStatement pipe => pipe.Statements[0],
+            var first => first,
+        };
+        var executed = Assert.IsType<ExecStatement>(statement);
+        Assert.Equal("flag", Assert.IsType<CommandOption>(Assert.Single(executed.Arguments)).Name);
+    }
+
+    [Theory]
+    [InlineData("exec $cmd --name=")]
+    [InlineData("exec $cmd --name:; echo next")]
+    public void Exec_MissingInlineOptionValue_ReportsParseError(string input)
+    {
+        var result = StatementParser.ScriptParseResult.Parse(input);
+        Assert.True(result.Errors.HasErrors);
+    }
+
+    [Fact]
+    public void Exec_ToString_PreservesOptionsAndQuotedValues()
+    {
+        const string input = "exec $cmd --name='two words' -m 5";
+        var result = StatementParser.ScriptParseResult.Parse(input);
+        Assert.False(result.Errors.HasErrors);
+        Assert.Equal("exec $cmd --name=\"two words\" -m 5", Assert.Single(result.Statements).ToString());
+    }
+
     [Fact]
     public void Def_WithParenParameters_ParsesParameters()
     {

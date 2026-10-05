@@ -304,6 +304,8 @@ Notes:
 
 - If the evaluated value is a file path that exists, the shell runs it as a `.csh` script.
 - Argument parsing stops at `;`, newline, `}`, or `|` (so you can chain with pipes).
+- Arguments use the same shell-word and option parsing as direct commands, including `-m 5`, `--name=value`, `--name:value`, quoted values, and variable or parenthesized values.
+- Built-in commands bind options using their normal metadata. Functions and script files receive option-shaped words as positional text, such as `--name=value`; values are evaluated once in the caller.
 
 Examples:
 

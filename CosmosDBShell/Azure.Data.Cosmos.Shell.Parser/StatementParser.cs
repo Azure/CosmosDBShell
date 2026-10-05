@@ -507,7 +507,12 @@ internal class StatementParser
                    this.expressionParser.Current.Type != TokenType.CloseBrace &&
                    this.expressionParser.Current.Type != TokenType.Pipe)
             {
-                var arg = this.expressionParser.ParsePrimaryExpression();
+                var arg = this.ParseCommandArgument(this.CreateCommandShellWordParser());
+                if (arg == null)
+                {
+                    break;
+                }
+
                 arguments.Add(arg);
             }
 
@@ -947,83 +952,13 @@ internal class StatementParser
                    this.expressionParser.Current.Type != TokenType.RedirectAppendError &&
                    !this.IsStderrRedirectStart())
             {
-                var commandWordParser = this.CreateCommandShellWordParser();
-
-                // In command mode an argument is either a structured option (`-name`, `--name[=:]value`)
-                // or a "shell word": a maximal run of adjacent simple tokens concatenated as text.
-                // Strings, interpolated strings, $-variables and (expr)/[..]/{..} drop into expression
-                // mode unchanged so existing scripting features keep working.
-                if (this.expressionParser.Current.Type == TokenType.Minus &&
-                    commandWordParser.IsCommandOptionStart())
+                var arg = this.ParseCommandArgument(this.CreateCommandShellWordParser());
+                if (arg == null)
                 {
-                    var optionStartToken = this.expressionParser.Current;
-                    this.expressionParser.Advance();
-
-                    bool doubleDash = false;
-                    if (!this.expressionParser.IsAtEnd &&
-                        this.expressionParser.Current != null &&
-                        this.expressionParser.Current.Type == TokenType.Minus)
-                    {
-                        doubleDash = true;
-                        this.expressionParser.Advance();
-                    }
-
-                    if (this.expressionParser.IsAtEnd ||
-                        this.expressionParser.Current == null ||
-                        this.expressionParser.Current.Type != TokenType.Identifier)
-                    {
-                        this.ReportError(
-                            MessageService.GetArgsString("statement_error_expected_option_name", "prefix", doubleDash ? "--" : "-"),
-                            this.expressionParser.Current);
-                        break;
-                    }
-
-                    var optionNameToken = this.expressionParser.Current;
-                    var optionName = optionNameToken.Value;
-                    this.expressionParser.Advance();
-
-                    Token? separatorToken = null;
-                    Expression? optionValue = null;
-                    if (!this.expressionParser.IsAtEnd &&
-                        this.expressionParser.Current != null &&
-                        (this.expressionParser.Current.Type == TokenType.Colon ||
-                         this.expressionParser.Current.Type == TokenType.Assignment))
-                    {
-                        separatorToken = this.expressionParser.Current;
-                        this.expressionParser.Advance();
-
-                        if (!this.expressionParser.IsAtEnd &&
-                            this.expressionParser.Current != null)
-                        {
-                            optionValue = commandWordParser.ParseShellWord();
-
-                            if (optionValue == null)
-                            {
-                                this.ReportError(
-                                    MessageService.GetArgsString("statement_error_invalid_option_value", "option", optionName),
-                                    this.expressionParser.Current);
-                            }
-                        }
-                        else
-                        {
-                            this.ReportError(
-                                MessageService.GetArgsString("statement_error_invalid_option_value", "option", optionName),
-                                this.expressionParser.Current);
-                        }
-                    }
-
-                    command.Arguments.Add(new CommandOption(optionStartToken, optionNameToken, separatorToken, optionValue));
+                    break;
                 }
-                else
-                {
-                    var arg = commandWordParser.ParseShellWord();
-                    if (arg == null)
-                    {
-                        break;
-                    }
 
-                    command.Arguments.Add(arg);
-                }
+                command.Arguments.Add(arg);
             }
 
             while (!this.expressionParser.IsAtEnd &&
@@ -1162,6 +1097,57 @@ internal class StatementParser
 
             return null;
         }
+    }
+
+    private Expression? ParseCommandArgument(CommandShellWordParser commandWordParser)
+    {
+        if (this.expressionParser.Current?.Type != TokenType.Minus ||
+            !commandWordParser.IsCommandOptionStart())
+        {
+            return commandWordParser.ParseShellWord();
+        }
+
+        var optionStartToken = this.expressionParser.Current;
+        this.expressionParser.Advance();
+        bool doubleDash = false;
+        if (!this.expressionParser.IsAtEnd &&
+            this.expressionParser.Current?.Type == TokenType.Minus)
+        {
+            doubleDash = true;
+            this.expressionParser.Advance();
+        }
+
+        if (this.expressionParser.IsAtEnd ||
+            this.expressionParser.Current == null ||
+            this.expressionParser.Current.Type != TokenType.Identifier)
+        {
+            this.ReportError(
+                MessageService.GetArgsString("statement_error_expected_option_name", "prefix", doubleDash ? "--" : "-"),
+                this.expressionParser.Current);
+            return null;
+        }
+
+        var optionNameToken = this.expressionParser.Current;
+        this.expressionParser.Advance();
+        Token? separatorToken = null;
+        Expression? optionValue = null;
+        if (!this.expressionParser.IsAtEnd &&
+            this.expressionParser.Current != null &&
+            (this.expressionParser.Current.Type == TokenType.Colon ||
+             this.expressionParser.Current.Type == TokenType.Assignment))
+        {
+            separatorToken = this.expressionParser.Current;
+            this.expressionParser.Advance();
+            optionValue = commandWordParser.ParseShellWord();
+            if (optionValue == null)
+            {
+                this.ReportError(
+                    MessageService.GetArgsString("statement_error_invalid_option_value", "option", optionNameToken.Value),
+                    this.expressionParser.Current);
+            }
+        }
+
+        return new CommandOption(optionStartToken, optionNameToken, separatorToken, optionValue);
     }
 
     private T? Safe<T>(Func<T?> action)

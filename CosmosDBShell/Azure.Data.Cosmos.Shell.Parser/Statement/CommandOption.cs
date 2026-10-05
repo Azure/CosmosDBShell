@@ -6,6 +6,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 
 using System;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal class CommandOption : Expression
 {
@@ -31,10 +32,21 @@ internal class CommandOption : Expression
 
     public override int Length => (this.Value != null ? this.Value.Start + this.Value.Length : this.NameToken.Start + this.NameToken.Length) - this.MinusToken.Start;
 
-    public override Task<ShellObject> EvaluateAsync(ShellInterpreter interpreter, CommandState currentState, CancellationToken cancellationToken)
+    public override async Task<ShellObject> EvaluateAsync(ShellInterpreter interpreter, CommandState currentState, CancellationToken cancellationToken)
     {
-        // should never be called directly, only used in CommandStatement
-        throw new NotImplementedException();
+        var text = CommandArgumentFormatter.FormatOptionName(this);
+        if (this.Value != null)
+        {
+            var value = await this.Value.EvaluateAsync(interpreter, currentState, cancellationToken);
+            if (value.ConvertShellObject(DataType.Text) is not string valueText)
+            {
+                throw new InvalidOperationException(MessageService.GetArgsString("statement_error_invalid_option_value", "option", this.Name));
+            }
+
+            text += (this.SeparatorToken?.Value ?? "=") + valueText;
+        }
+
+        return new ShellText(text);
     }
 
     public override void Accept(IAstVisitor visitor)
