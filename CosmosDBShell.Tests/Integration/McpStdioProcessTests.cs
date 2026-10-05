@@ -14,6 +14,29 @@ using ModelContextProtocol.Protocol;
 public class McpStdioProcessTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Stdio_DoesNotCreateOrModifyHistory(bool seedHistory)
+    {
+        await using var server = new ServerProcess(seedHistory: seedHistory);
+        var historyFile = Path.Combine(server.ConfigDirectory, "cmd_history");
+        var original = seedHistory ? await File.ReadAllBytesAsync(historyFile, TestContext.Current.CancellationToken) : null;
+        await server.InitializeAsync("2025-11-25");
+        await server.CallToolAsync(2, "echo", new { messages = new[] { "NO_HISTORY_MARKER" } });
+        await server.CompleteAsync();
+        Assert.Equal(0, server.ExitCode);
+        Assert.False(File.Exists(historyFile + ".lock"));
+        if (original is not null)
+        {
+            Assert.Equal(original, await File.ReadAllBytesAsync(historyFile, TestContext.Current.CancellationToken));
+        }
+        else
+        {
+            Assert.False(File.Exists(historyFile));
+        }
+    }
+
+    [Theory]
     [InlineData("2025-11-25")]
     [InlineData("2026-07-28")]
     public async Task Stdio_ToolsResourcesAndDiagnostics_KeepStdoutProtocolOnly(string version)
@@ -261,8 +284,14 @@ public class McpStdioProcessTests
 
         private JsonObject? requestMeta;
 
-        public ServerProcess(string[]? extraArguments = null)
+        public ServerProcess(string[]? extraArguments = null, bool seedHistory = false)
         {
+            if (seedHistory)
+            {
+                Directory.CreateDirectory(this.configDirectory);
+                File.WriteAllText(Path.Combine(this.configDirectory, "cmd_history"), "echo EXISTING_HISTORY\n");
+            }
+
             this.timeout.CancelAfter(TimeSpan.FromSeconds(30));
             var shellDll = Path.Combine(AppContext.BaseDirectory, "CosmosDBShell.dll");
             Assert.True(File.Exists(shellDll), $"Missing shell executable: {shellDll}");
@@ -296,6 +325,8 @@ public class McpStdioProcessTests
         }
 
         public List<JsonElement> Notifications { get; } = [];
+
+        public string ConfigDirectory => this.configDirectory;
 
         public int MessageCount { get; private set; }
 

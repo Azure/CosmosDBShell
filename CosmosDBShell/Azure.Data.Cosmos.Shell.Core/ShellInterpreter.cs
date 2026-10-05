@@ -33,11 +33,6 @@ public partial class ShellInterpreter : IDisposable
 
     private const string SessionRequestChargeWarningThresholdVariable = "sessionRequestChargeWarningThreshold";
 
-    // Declared before Instance: static initializers run in order and the constructor reads history.
-    private static readonly object HistoryFileLock = new();
-
-    internal static readonly ShellInterpreter Instance = new();
-
     private const int MAXHISTORYITEMS = 60;
 
     private const int HistoryFileOpenRetryCount = 10;
@@ -53,11 +48,17 @@ public partial class ShellInterpreter : IDisposable
     // user command that just happens to start with the prefix string.
     private const string EncodedHistoryLineMarker = "E:";
 
+    private static readonly object HistoryFileLock = new();
+
+    private static readonly Lazy<ShellInterpreter> SharedInstance = new(() => new ShellInterpreter(historyEnabled: !stdioStartup));
+
     private static readonly TimeSpan HistoryFileOpenRetryDelay = TimeSpan.FromMilliseconds(25);
 
     private static readonly TimeSpan LocalEmulatorOperationTimeout = TimeSpan.FromSeconds(10);
 
     private static CancellationTokenSource? currentTokenSource;
+
+    private static bool stdioStartup;
 
     private readonly string cfgPath;
 
@@ -107,7 +108,7 @@ public partial class ShellInterpreter : IDisposable
 
     private long sessionRequestChargeGeneration;
 
-    internal ShellInterpreter(string? configPath = null)
+    internal ShellInterpreter(string? configPath = null, bool historyEnabled = true)
     {
         this.State = new DisconnectedState();
 
@@ -126,26 +127,29 @@ public partial class ShellInterpreter : IDisposable
         this.HistoryFile = Path.Join(this.cfgPath, "cmd_history");
         this.welcomeMarkerFile = Path.Join(this.cfgPath, "welcome_seen");
 
-        try
+        if (historyEnabled)
         {
-            List<string> entries = [];
-            lock (HistoryFileLock)
+            try
             {
-                if (File.Exists(this.HistoryFile))
+                List<string> entries = [];
+                lock (HistoryFileLock)
                 {
-                    using var stream = this.OpenHistoryFileWithExclusiveLock(FileAccess.Read);
-                    entries = ReadHistoryEntries(stream);
+                    if (File.Exists(this.HistoryFile))
+                    {
+                        using var stream = this.OpenHistoryFileWithExclusiveLock(FileAccess.Read);
+                        entries = ReadHistoryEntries(stream);
+                    }
+                }
+
+                foreach (var entry in entries)
+                {
+                    this.RecordHistoryEntry(entry, persist: false);
                 }
             }
-
-            foreach (var entry in entries)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                this.RecordHistoryEntry(entry, persist: false);
+                System.Diagnostics.Debug.WriteLine(ex);
             }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            System.Diagnostics.Debug.WriteLine(ex);
         }
 
         Console.CancelKeyPress += this.Console_CancelKeyPress;
@@ -153,6 +157,8 @@ public partial class ShellInterpreter : IDisposable
     }
 
     internal event Action? LocationChanged;
+
+    internal static ShellInterpreter Instance => SharedInstance.Value;
 
     /// <summary>
     /// Gets the line editor instance used by the shell, or <c>null</c> if not available.
@@ -408,9 +414,22 @@ public partial class ShellInterpreter : IDisposable
     }
 
     /// <summary>
-    /// Create a new instance of the <see cref="ShellInterpreter"/> class.
+    /// Disables history loading before the shared stdio interpreter is constructed.
     /// </summary>
-    /// <returns>A new instance of the <see cref="ShellInterpreter"/> class.</returns>
+    internal static void ConfigureStdioStartup()
+    {
+        if (SharedInstance.IsValueCreated)
+        {
+            throw new InvalidOperationException("Stdio mode must be configured before creating the shell interpreter.");
+        }
+
+        stdioStartup = true;
+    }
+
+    /// <summary>
+    /// Creates a new shell interpreter instance.
+    /// </summary>
+    /// <returns>A new shell interpreter.</returns>
     public static ShellInterpreter CreateInstance()
     {
         return new ShellInterpreter();
@@ -1931,6 +1950,11 @@ public partial class ShellInterpreter : IDisposable
 
     internal void PrintCommand(string cmdString)
     {
+        if (this.Options?.McpStdio == true)
+        {
+            return;
+        }
+
         // Print the shell prompt similar to how it appears when typing command
         //        AnsiConsole.Markup(new CosmosShellPrompt(this).GetPromptString());
         //        AnsiConsole.Write(" ");
@@ -1944,11 +1968,6 @@ public partial class ShellInterpreter : IDisposable
         {
             // History is best-effort; an unwritable history file must not fail the command.
             System.Diagnostics.Debug.WriteLine(ex);
-        }
-
-        if (this.Options?.McpStdio == true)
-        {
-            return;
         }
 
         // Echoing and the line editor both need an ANSI terminal, which an MCP host may not

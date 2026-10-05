@@ -147,6 +147,26 @@ public class ToolOperationsCallToolTests : IDisposable
         Assert.True(ShellInterpreter.Instance.App.Commands.ContainsKey("theme"));
     }
 
+    [Fact]
+    public void Stdio_PrintCommand_DoesNotRecordInMemoryHistory()
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var originalHistory = shell.History.ToArray();
+        var originalPending = shell.PendingHistoryCount;
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { McpStdio = true };
+            shell.PrintCommand("echo STDIO_NO_HISTORY");
+            Assert.Equal(originalHistory, shell.History);
+            Assert.Equal(originalPending, shell.PendingHistoryCount);
+        }
+        finally
+        {
+            shell.Options = originalOptions;
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

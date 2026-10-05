@@ -33,6 +33,8 @@ internal class Program
         using var protocolOutput = stdioRequested ? Console.OpenStandardOutput() : null;
         if (stdioRequested)
         {
+            ShellInterpreter.ConfigureStdioStartup();
+
             // Only the transport may use the original streams; commands cannot consume MCP input.
             Console.SetOut(Console.Error);
             Console.SetIn(TextReader.Null);
