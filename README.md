@@ -37,7 +37,15 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 
 Exports replace their destination only after successful completion, preserving an existing file on failure or cancellation. Imports stream records; CSV exports use temporary disk storage to discover columns without retaining all documents in memory. Scalar CSV results use an empty column header by default; set `COSMOSDB_SHELL_CSV_SCALAR_COLUMN` to name it. An import rejects populated columns with empty headers rather than discarding their values. See [import/export](docs/commands.md#export).
 
-MCP command execution is serialized with the shell, and destructive confirmations are invalidated by connection or navigation changes. Ordinary explicit null MCP arguments are omitted; null continuation tokens and null `rm` partition-key/ETag safety options are rejected. MCP invocations are echoed in the shell so their activity stays visible, and they are recorded in history alongside interactive commands. Concurrent shells merge history under a shared lock and publish complete replacements instead of truncating the saved file. History remains fully replayable, including connection strings; treat its file as sensitive. See [MCP security](docs/mcp.md#security) and [history](docs/navigation.md#history).
+MCP command execution is serialized with the shell, and destructive confirmations are invalidated by connection or navigation changes. Ordinary explicit null MCP arguments are omitted; null continuation tokens and null `rm` partition-key/ETag safety options are rejected. HTTP MCP invocations are echoed in the shell so their activity stays visible; both HTTP and stdio invocations are recorded in history. Concurrent shells merge history under a shared lock and publish complete replacements instead of truncating the saved file. History remains fully replayable, including connection strings; treat its file as sensitive. See [MCP security](docs/mcp.md#security) and [history](docs/navigation.md#history).
+
+Use `cosmosdbshell --mcp-stdio` for a client-owned, headless MCP process without a
+listening port. Stdin and stdout are reserved exclusively for MCP; diagnostics go
+to stderr, commands are not echoed, and closing stdin stops the server.
+interactive-only commands, `jq`, and `theme` are omitted from stdio tools and help;
+destructive commands remain available through MCP confirmation. Existing
+`--mcp [port]` HTTP mode remains available alongside the interactive shell. See
+[stdio setup](docs/mcp.md#stdio-headless-mode).
 
 MCP clients supporting resource subscriptions can watch `cosmos://shell/current-location` for interactive navigation and connection changes; the resource includes the current account endpoint separately from the location. See [MCP location updates](docs/mcp.md#shell-location-updates).
 
@@ -210,6 +218,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--database <id>` | Navigate to this database after connecting at startup |
 | `--container <id>` | Navigate to this container after connecting at startup. Requires `--database` |
 | `--mcp [port]` | Enable MCP server on the given port, or `6128` by default |
+| `--mcp-stdio` | Run headless MCP over stdin/stdout; diagnostics use stderr and no port is opened |
 | `--diagnostics [path]` | Write timestamped diagnostic logs to a file, or to a timestamped file in the config directory by default |
 | `--otel [endpoint]` | Enable distributed tracing (sampled W3C `traceparent`); optional OTLP `endpoint`, else `OTEL_EXPORTER_OTLP_ENDPOINT` |
 | `--verbose` | Print full exception details |

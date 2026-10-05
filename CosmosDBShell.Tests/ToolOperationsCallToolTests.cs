@@ -119,6 +119,76 @@ public class ToolOperationsCallToolTests : IDisposable
             Assert.True(isError);
             Assert.Contains("restricted for MCP", root.GetProperty("error").GetString());
         }
+
+    }
+
+    [Fact]
+    public void StdioCommandRemoval_RemovesUnsupportedCommandsAndAliasesButKeepsConfirmableCommands()
+    {
+        var runner = new CommandRunner();
+        var expectedRemaining = runner.Commands.Where(entry => !ToolOperations.IsUnavailableInStdio(entry.Value)).Select(entry => entry.Key).ToList();
+        Assert.Contains(runner.Commands.Values, command => command.CommandName == "jq");
+        Assert.Contains(runner.Commands.Values, command => command.CommandName == "theme");
+
+        runner.RemoveCommands(ToolOperations.IsUnavailableInStdio);
+
+        Assert.DoesNotContain(runner.Commands.Values, command => command.CommandName is "jq" or "theme");
+        foreach (var name in new[] { "exit", "edit", "watch", "welcome", "sproc", "udf", "trigger" })
+        {
+            Assert.False(runner.Commands.ContainsKey(name), $"Unsupported command '{name}' remains registered.");
+        }
+
+        foreach (var name in new[] { "delete", "rm", "rmdb", "rmcon" })
+        {
+            Assert.True(runner.Commands.ContainsKey(name), $"Confirmable command '{name}' was removed.");
+        }
+
+        Assert.Equal(expectedRemaining.Order(), runner.Commands.Keys.Order());
+        Assert.True(ShellInterpreter.Instance.App.Commands.ContainsKey("theme"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Stdio_ApprovedConfirmation_IsScopedToCommandAndNeverReadsConsole(bool failAfterConfirmation)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var originalApproval = shell.McpConfirmationApproved;
+        shell.Options = new Program.CosmosShellOptions { McpStdio = true };
+        shell.McpConfirmationApproved = false;
+        try
+        {
+            Assert.Throws<CommandException>(() => ShellInterpreter.Confirm("command-rmdb-confirm_db_deletion"));
+            var result = await this.CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["rmdb"],
+                new ConfirmationCheckingCommand(failAfterConfirmation),
+                "rmdb StdioScopeTest",
+                (_, _, _) => ValueTask.FromResult(new ElicitResult { Action = "accept" }),
+                TestContext.Current.CancellationToken);
+            Assert.Equal(failAfterConfirmation, result.IsError == true);
+            Assert.False(shell.McpConfirmationApproved);
+            Assert.Throws<CommandException>(() => ShellInterpreter.Confirm("command-rmdb-confirm_db_deletion"));
+        }
+        finally
+        {
+            shell.McpConfirmationApproved = originalApproval;
+            shell.Options = originalOptions;
+        }
+    }
+
+    private sealed class ConfirmationCheckingCommand(bool failAfterConfirmation) : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            Assert.True(ShellInterpreter.Confirm("command-rmdb-confirm_db_deletion"));
+            if (failAfterConfirmation)
+            {
+                throw new InvalidOperationException("Confirmation scope test failure.");
+            }
+
+            return Task.FromResult(commandState);
+        }
     }
 
     [Fact]

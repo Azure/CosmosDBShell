@@ -21,8 +21,7 @@ using ModelContextProtocol.Server;
 using static Program;
 
 /// <summary>
-/// MCP Server implementation for running shell commands via HTTP.
-/// Provides a local HTTP endpoint that accepts command execution requests.
+/// MCP Server implementation for running shell commands via HTTP or stdio.
 /// SECURITY NOTE: This server is designed to run locally only and should not be exposed to external networks.
 /// </summary>
 internal class McpServer
@@ -32,7 +31,7 @@ internal class McpServer
     public static IHost CreateHost(CosmosShellOptions serverArguments)
     {
         var builder = WebApplication.CreateBuilder([]);
-        ConfigureMcpServer(builder.Services);
+        ConfigureMcpServer(builder.Services).WithHttpTransport(ConfigureHttpTransport);
         builder.WebHost
             .ConfigureKestrel(server =>
             {
@@ -50,10 +49,29 @@ internal class McpServer
         return application;
     }
 
-    private static void ConfigureMcpServer(IServiceCollection services)
+    public static IHost CreateStdioHost(Stream input, Stream output)
+    {
+        var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+        {
+            Args = [],
+            DisableDefaults = true,
+        });
+        builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
+        builder.Logging.SetMinimumLevel(LogLevel.Warning);
+        var protocolInput = new StdioInputStream(input);
+        ConfigureMcpServer(builder.Services, stdio: true).WithStreamServerTransport(protocolInput, output);
+        var host = builder.Build();
+        protocolInput.HostLifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+        return host;
+    }
+
+    private static IMcpServerBuilder ConfigureMcpServer(IServiceCollection services, bool stdio = false)
     {
         services.AddSingleton<ToolOperations>();
-        services.AddSingleton<LocationResourceSubscriptions>();
+        services.AddSingleton(services => new LocationResourceSubscriptions(
+            services.GetRequiredService<ILogger<LocationResourceSubscriptions>>(),
+            services.GetRequiredService<IHostApplicationLifetime>(),
+            stdio));
         services.AddHostedService(services => services.GetRequiredService<LocationResourceSubscriptions>());
         services.AddOptions<McpServerOptions>()
             .Configure<ToolOperations, LocationResourceSubscriptions>((mcpServerOptions, toolOperations, locationSubscriptions) =>
@@ -89,7 +107,7 @@ internal class McpServer
         var mcpServerBuilder = services.AddMcpServer();
         mcpServerBuilder.WithResources<ResourceOperations>();
 
-        mcpServerBuilder.WithHttpTransport(ConfigureHttpTransport);
+        return mcpServerBuilder;
     }
 
     internal static void ConfigureHttpTransport(HttpServerTransportOptions options)

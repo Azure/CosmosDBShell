@@ -94,6 +94,39 @@ public class ShellProcessTests
     }
 
     [Fact]
+    public async Task StdioOption_InResponseFile_IsRejectedWithoutStdout()
+    {
+        var responseFile = Path.Combine(Path.GetTempPath(), $"cosmosshell-stdio-{Guid.NewGuid():N}.rsp");
+        await File.WriteAllTextAsync(responseFile, "--mcp-stdio", TestContext.Current.CancellationToken);
+        try
+        {
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: ["@" + responseFile],
+                cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(2, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            Assert.Contains("response file", result.StdErr);
+        }
+        finally
+        {
+            File.Delete(responseFile);
+        }
+    }
+
+    [Fact]
+    public async Task StdioOption_InCommandTail_RemainsCommandText()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["-c", "echo \"--mcp-stdio\""],
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("--mcp-stdio", result.StdOut);
+        Assert.Empty(result.StdErr);
+    }
+
+    [Fact]
     public async Task InvariantGlobalization_ExecuteCommand_LoadsEnglishCatalog()
     {
         var result = await RunShellAsync(

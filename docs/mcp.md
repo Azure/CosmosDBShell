@@ -11,6 +11,65 @@ dotnet run --project CosmosDBShell -- --mcp 5050
 
 Bare `--mcp` starts the HTTP server on the default port `6128`.
 
+### Stdio (Headless Mode)
+
+For an MCP client that launches and owns its server process, use:
+
+```bash
+cosmosdbshell --mcp-stdio
+```
+
+This opens no HTTP listener and does not run an interactive shell. Each process
+has its own connection and navigation state:
+
+- **stdin** accepts newline-delimited MCP JSON-RPC messages only, never shell scripts.
+- **stdout** carries MCP messages only: responses, requests, and notifications.
+  Banners, command echoes, colors, and ordinary result rendering are disabled.
+- **stderr** carries startup errors, logs, and any incidental command diagnostics.
+  Tool results and errors remain in MCP response envelopes.
+- Closing stdin stops the server and releases the shell's resources.
+
+`--mcp-stdio` cannot be combined with `--mcp`, `--lsp`/`--stdio`, `-c`, `-k`,
+or `--clear-history`, and must be passed directly rather than through a
+response file (`@file`). Help and version output requested with `--mcp-stdio` goes
+to stderr and exits without starting the server.
+
+Startup connection and navigation options are supported, for example
+`--connect <endpoint> --connect-azure-cli --database <database> --container <container>`.
+Prefer an existing Azure CLI login, managed identity, or another non-interactive
+credential for unattended clients. Browser/device-code authentication may still
+require human interaction; device-code instructions are written to stderr unless
+`--quiet` is supplied.
+
+The `jq` and `theme` commands are not available in stdio mode: they are omitted
+from the tool list and `help`, and calls to them fail as unknown tools. Both
+launch external processes or manage terminal presentation, which has no meaning
+for a headless server and could write to the protocol streams. Commands restricted
+to non-MCP use (`exit`, `edit`, `watch`, `welcome`, `sproc`, `udf`, and `trigger`)
+are also omitted, including their aliases. HTTP mode retains its existing tool
+and help lists. Destructive commands (`delete`, `rm`, `rmdb`, and `rmcon`) remain
+listed and callable through confirmation. They
+use MCP confirmation/elicitation, never console input, and are refused when the
+client cannot confirm.
+
+Launch an installed tool or a previously built executable, not `dotnet run`
+with a build step: build output can contaminate stdout before the application
+starts.
+
+Example VS Code `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "localCosmosDBShellStdio": {
+      "type": "stdio",
+      "command": "cosmosdbshell",
+      "args": ["--mcp-stdio"]
+    }
+  }
+}
+```
+
 ## VS Code Setup
 
 > **Requires VS Code 1.103+**
@@ -67,6 +126,11 @@ The MCP server runs locally with your user permissions. Connected clients can ex
 - Query and retrieve documents
 - Create, update, and delete resources
 
+Stdio mode has no unauthenticated localhost listener; access is through the pipes
+owned by the launching client. It is not a sandbox: that client still exercises
+the process owner's filesystem and Cosmos permissions. Trust the client and its
+agents just as you would for HTTP mode.
+
 Server-side programming commands — stored procedures (`sproc`), user-defined functions (`udf`), and triggers (`trigger`) — are restricted from MCP. Run those commands manually in the shell.
 
 Transactional batches invoked through MCP must use the one-shot `batch run` subcommand. Stateful batch subcommands (`begin`, `add`, `execute`, `cancel`, `status`, and `show`, including their aliases) are restricted to the interactive shell because MCP tool calls share no client-specific batch state.
@@ -85,7 +149,7 @@ This replaces any opt-in write flag: destructive commands are always allowed to 
 
 Confirmation includes the connected account endpoint and current navigation location alongside the command and its explicit target arguments. If the connection or navigation state changes while confirmation is pending, the approved command is refused without executing; retry it to confirm the new context. Even navigating away and back invalidates the pending confirmation. A pending confirmation also expires when the MCP server restarts.
 
-Shell and MCP command execution is serialized against the shared interpreter. Confirmation prompts do not hold the execution lock, so the shell remains usable while waiting. Clients still share a connection and navigation context: pass explicit `database` and `container` arguments for independent operations rather than relying on an earlier `cd` call.
+Shell and MCP command execution is serialized against the shared interpreter. Confirmation prompts do not hold the execution lock, so the HTTP-mode shell remains usable while waiting. HTTP clients share a connection and navigation context; each stdio process has its own context. Pass explicit `database` and `container` arguments for independent operations rather than relying on an earlier `cd` call.
 
 The MCP confirmation applies even when a command is invoked with a force / no-prompt argument (for example `rmdb OldDB true`). That argument only skips the *interactive shell* prompt; it does not bypass the MCP elicitation gate.
 

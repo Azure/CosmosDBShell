@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### New features
+
+- Add `--mcp-stdio` for client-owned, headless MCP processes with protocol-only stdin/stdout, stderr diagnostics, no HTTP listener, and shutdown on stdin EOF. Startup connection/navigation, MCP confirmations, and location subscriptions are supported. Unsupported commands, including `jq`, `theme`, and interactive-only commands, are omitted from tools and help; destructive commands remain available through confirmation.
+
 ## 1.1.271-preview — 2026-10-02
 
 ### New features

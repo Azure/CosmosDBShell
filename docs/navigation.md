@@ -280,6 +280,7 @@ Start the shell with options to customize behavior:
 | `--database <id>` | Navigate to this database after connecting at startup |
 | `--container <id>` | Navigate to this container after connecting at startup. Requires `--database` |
 | `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
+| `--mcp-stdio` | Run a headless MCP server over stdin/stdout, with diagnostics on stderr and no listening port |
 | `--diagnostics [path]` | Write timestamped diagnostic logs (commands, timing, errors, connection events) to a file, or to a timestamped file in the config directory by default |
 | `--otel [endpoint]` | Enable distributed tracing so requests carry a sampled W3C `traceparent`. Optionally export spans to an OTLP `endpoint`; falls back to the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable |
 | `--color-system <n>` | Color scheme: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
@@ -352,6 +353,9 @@ cosmosdbshell --mcp
 # Start with MCP server enabled on a custom port
 cosmosdbshell --mcp 5050
 
+# Client-owned, headless MCP server; stdin/stdout carry only MCP messages
+cosmosdbshell --mcp-stdio
+
 # Capture a diagnostic log to the default location in the config directory
 cosmosdbshell --diagnostics
 
@@ -364,3 +368,8 @@ cosmosdbshell --otel
 # Enable distributed tracing and export spans to an OTLP collector
 cosmosdbshell --otel http://localhost:4317
 ```
+
+`--mcp-stdio` is mutually exclusive with `--mcp`, `--lsp`/`--stdio`, `-c`, `-k`,
+and `--clear-history`. It does not read stdin as a shell script or start a prompt.
+Startup `--connect`, credential options, `--database`, and `--container` remain
+available. See [MCP stdio mode](mcp.md#stdio-headless-mode).

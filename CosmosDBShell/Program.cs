@@ -25,6 +25,33 @@ internal class Program
         // accidentally trigger LSP mode.
         args = NormalizeArguments(args);
 
+        var preCommandArgs = TakePreCommandArgs(args);
+        bool stdioRequested = preCommandArgs.Any(a => a == "--mcp-stdio"
+            || a.StartsWith("--mcp-stdio=", StringComparison.Ordinal)
+            || a.StartsWith("--mcp-stdio:", StringComparison.Ordinal));
+        using var protocolInput = stdioRequested ? Console.OpenStandardInput() : null;
+        using var protocolOutput = stdioRequested ? Console.OpenStandardOutput() : null;
+        if (stdioRequested)
+        {
+            // Only the transport may use the original streams; commands cannot consume MCP input.
+            Console.SetOut(Console.Error);
+            Console.SetIn(TextReader.Null);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Interactive = InteractionSupport.No,
+                Out = new AnsiConsoleOutput(Console.Error),
+            });
+
+            if (preCommandArgs.Any(a => a is "--lsp" or "--stdio"))
+            {
+                WriteErrorLine(MessageService.GetString("mcp-error-stdio-incompatible-options"));
+                Environment.ExitCode = ShellExitCode.UsageError;
+                return;
+            }
+        }
+
         // Handle LSP mode early, before any other code can write to stdout.
         // The LSP protocol requires exclusive access to stdin/stdout. Only
         // inspect the prefix before -c / -k so that a command tail of literally
@@ -47,7 +74,6 @@ internal class Program
             // before -c / -k so that a command tail of literally "--help" or
             // "--version" (e.g. `-c --help`) is forwarded to the shell command
             // instead of intercepted here.
-            var preCommandArgs = TakePreCommandArgs(args);
             if (preCommandArgs.Any(a => a is "--help" or "-h" or "-?" or "/?" or "/h"))
             {
                 ShellInterpreter.WriteLine(BuildHelpText());
@@ -74,7 +100,7 @@ internal class Program
                 var isNonInteractive = !string.IsNullOrWhiteSpace(
                     parseResult.GetValueForOption(optionMap.ExecuteAndQuit));
 
-                var isMachineMode = OutputPolicy.IsMachineMode(outputMode, quiet, isNonInteractive);
+                var isMachineMode = stdioRequested || OutputPolicy.IsMachineMode(outputMode, quiet, isNonInteractive);
                 if (isMachineMode)
                 {
                     var errorStrings = parseResult.Errors.Select(e => e.Message).ToList();
@@ -119,6 +145,7 @@ internal class Program
                 ConnectAzureCli = parseResult.GetValueForOption(optionMap.ConnectAzureCli),
                 Database = parseResult.GetValueForOption(optionMap.Database),
                 Container = parseResult.GetValueForOption(optionMap.Container),
+                McpStdio = parseResult.GetValueForOption(optionMap.McpStdio),
                 StartLspServer = parseResult.GetValueForOption(optionMap.StartLspServer),
                 LspStdio = parseResult.GetValueForOption(optionMap.LspStdio),
                 Verbose = parseResult.GetValueForOption(optionMap.Verbose),
@@ -132,6 +159,24 @@ internal class Program
             {
                 var mcpValue = parseResult.GetValueForOption(optionMap.McpPort);
                 o.McpPort = mcpValue ?? DefaultMcpPort;
+            }
+
+            // Streams are reserved before parsing, so stdio mode cannot be enabled from a response file.
+            if (o.McpStdio && !stdioRequested)
+            {
+                WriteErrorLine(MessageService.GetString("mcp-error-stdio-response-file"));
+                Environment.ExitCode = ShellExitCode.UsageError;
+                return;
+            }
+
+            if (stdioRequested && (!o.McpStdio || o.McpPort.HasValue
+                || parseResult.FindResultFor(optionMap.ExecuteAndQuit) is not null
+                || parseResult.FindResultFor(optionMap.ExecuteAndContinue) is not null
+                || o.ClearHistory))
+            {
+                WriteErrorLine(MessageService.GetString("mcp-error-stdio-incompatible-options"));
+                Environment.ExitCode = ShellExitCode.UsageError;
+                return;
             }
 
             // --diagnostics supports an optional value: when present without a path,
@@ -221,7 +266,7 @@ internal class Program
                 o.Output = "json";
             }
 
-            var startupMachineMode = OutputPolicy.IsMachineMode(
+            var startupMachineMode = o.McpStdio || OutputPolicy.IsMachineMode(
                 o.Output, o.Quiet, !string.IsNullOrWhiteSpace(executeAndQuitCommand));
 
             void WriteStartupError(string message)
@@ -279,7 +324,9 @@ internal class Program
             if (startupMachineMode)
             {
                 colorSystemVal = 0; // Force NoColors in machine mode
-                o.Quiet = true; // Suppress informational messages to keep output clean
+
+                // Stdio diagnostics may use stderr, including device-code login instructions.
+                o.Quiet = o.McpStdio ? o.Quiet : true;
             }
 
             AnsiConsole.Profile.Capabilities.ColorSystem = colorSystemVal switch
@@ -299,7 +346,8 @@ internal class Program
                 {
                     Ansi = AnsiSupport.No,
                     ColorSystem = ColorSystemSupport.NoColors,
-                    Out = new AnsiConsoleOutput(TextWriter.Null),
+                    Interactive = InteractionSupport.No,
+                    Out = new AnsiConsoleOutput(o.McpStdio ? Console.Error : TextWriter.Null),
                 });
             }
 
@@ -346,7 +394,7 @@ internal class Program
                 {
                     Environment.ExitCode = ShellExitCode.FromException(ex);
 
-                    var inMachineMode = OutputPolicy.IsMachineMode(
+                    var inMachineMode = o.McpStdio || OutputPolicy.IsMachineMode(
                         o.Output, o.Quiet, !string.IsNullOrWhiteSpace(o.ExecuteAndQuit));
 
                     if (!inMachineMode
@@ -398,6 +446,23 @@ internal class Program
                     WriteStartupError(CommandException.GetDisplayMessage(ex));
                     return;
                 }
+            }
+
+            if (o.McpStdio)
+            {
+                try
+                {
+                    ShellInterpreter.Instance.App.RemoveCommands(ToolOperations.IsUnavailableInStdio);
+                    host = McpServer.CreateStdioHost(protocolInput!, protocolOutput!);
+                    await host.RunAsync();
+                }
+                catch (Exception ex)
+                {
+                    WriteStartupError(MessageService.GetArgsString("mcp-error-server-failed-start", "message", ex.Message));
+                    Environment.ExitCode = ShellExitCode.GeneralFailure;
+                }
+
+                return;
             }
 
             // Start MCP server if requested
@@ -692,6 +757,7 @@ internal class Program
         {
             Arity = ArgumentArity.ZeroOrOne,
         };
+        var mcpStdio = new Option<bool>("--mcp-stdio", MessageService.GetString("help-McpStdio"));
 
         var startLspServer = new Option<bool>("--lsp", MessageService.GetString("help-EnableLspServer"));
         var lspStdio = new Option<bool>("--stdio", MessageService.GetString("help-EnableLspServer"))
@@ -731,6 +797,7 @@ internal class Program
             database,
             container,
             mcpPort,
+            mcpStdio,
             startLspServer,
             lspStdio,
             verbose,
@@ -759,6 +826,7 @@ internal class Program
             database,
             container,
             mcpPort,
+            mcpStdio,
             startLspServer,
             lspStdio,
             verbose,
@@ -910,6 +978,7 @@ internal class Program
         Option<string?> Database,
         Option<string?> Container,
         Option<int?> McpPort,
+        Option<bool> McpStdio,
         Option<bool> StartLspServer,
         Option<bool> LspStdio,
         Option<bool> Verbose,
@@ -995,6 +1064,8 @@ internal class Program
         public string? Container { get; set; }
 
         public int? McpPort { get; set; }
+
+        public bool McpStdio { get; set; }
 
         public bool StartLspServer { get; set; }
 

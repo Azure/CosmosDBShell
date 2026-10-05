@@ -367,13 +367,15 @@ public partial class ShellInterpreter : IDisposable
     /// interactive rendering (friendly views, ANSI colors, banners) is suppressed in
     /// favor of deterministic structured output. Machine mode is entered via
     /// <c>--quiet</c>, a structured output format (<c>--output json</c> or <c>--output csv</c>),
-    /// or an execute-and-quit (<c>-c</c>) invocation. The human-facing <c>table</c> and
+    /// a headless <c>--mcp-stdio</c> server, or an execute-and-quit (<c>-c</c>) invocation. The human-facing <c>table</c> and
     /// <c>user</c> formats are not machine mode. See <see cref="OutputPolicy"/>.
     /// </summary>
-    internal bool IsMachineMode => OutputPolicy.IsMachineMode(
+    internal bool IsMachineMode => this.Options?.McpStdio == true || OutputPolicy.IsMachineMode(
         this.Options?.Output,
         this.Options?.Quiet == true,
         !string.IsNullOrWhiteSpace(this.Options?.ExecuteAndQuit));
+
+    internal bool McpConfirmationApproved { get; set; }
 
     /// <summary>
     /// Gets the session default <see cref="OutputFormat"/>, resolved from the global
@@ -492,6 +494,16 @@ public partial class ShellInterpreter : IDisposable
     /// <returns><c>true</c> if the user confirms; otherwise, <c>false</c>.</returns>
     public static bool Confirm(string message)
     {
+        if (Instance.Options?.McpStdio == true)
+        {
+            if (Instance.McpConfirmationApproved)
+            {
+                return true;
+            }
+
+            throw new CommandException("confirm", MessageService.GetString("mcp-error-stdio-console-input"));
+        }
+
         var yes = char.ToUpper(MessageService.GetString("yes_char")[0]);
         var no = char.ToUpper(MessageService.GetString("no_char")[0]);
 
@@ -905,6 +917,7 @@ public partial class ShellInterpreter : IDisposable
         var isQuiet = this.Options?.Quiet == true;
         var version = GetDisplayVersion(typeof(VersionCommand).Assembly);
         var port = this.McpPort;
+        var stdio = this.Options?.McpStdio == true;
         var repoUrl = GetRepositoryUrl(typeof(VersionCommand).Assembly);
 
         if (commandState == null)
@@ -912,7 +925,7 @@ public partial class ShellInterpreter : IDisposable
             // Startup banner: render immediately for interactive users.
             if (!isQuiet)
             {
-                RenderVersionBanner(version, port, repoUrl);
+                RenderVersionBanner(version, port, repoUrl, stdio);
             }
 
             return;
@@ -921,23 +934,27 @@ public partial class ShellInterpreter : IDisposable
         var json = new Dictionary<string, object?>
         {
             ["version"] = version,
-            ["mcpEnabled"] = port != null,
+            ["mcpEnabled"] = port != null || stdio,
             ["mcpPort"] = port, // will be null if not enabled
-            ["mcpStatus"] = port != null ? "on" : "off",
+            ["mcpStatus"] = port != null || stdio ? "on" : "off",
             ["repository"] = repoUrl,
         };
 
         var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
         commandState.Result = new ShellJson(jsonElement);
-        commandState.RenderUser = () => RenderVersionBanner(version, port, repoUrl);
+        commandState.RenderUser = () => RenderVersionBanner(version, port, repoUrl, stdio);
     }
 
-    private static void RenderVersionBanner(string version, int? port, string repoUrl)
+    private static void RenderVersionBanner(string version, int? port, string repoUrl, bool stdio)
     {
         var versionString = MessageService.GetArgsString("command-version", "version", version);
         AnsiConsole.MarkupLine(versionString);
 
-        if (port != null)
+        if (stdio)
+        {
+            AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-version-mcp-stdio")));
+        }
+        else if (port != null)
         {
             var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
             AnsiConsole.MarkupLine(Theme.FormatWarning(mcpPortString));
@@ -1927,6 +1944,11 @@ public partial class ShellInterpreter : IDisposable
         {
             // History is best-effort; an unwritable history file must not fail the command.
             System.Diagnostics.Debug.WriteLine(ex);
+        }
+
+        if (this.Options?.McpStdio == true)
+        {
+            return;
         }
 
         // Echoing and the line editor both need an ANSI terminal, which an MCP host may not
