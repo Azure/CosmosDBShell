@@ -113,10 +113,10 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         {
             foreach (var name in list)
             {
-                AnsiConsole.MarkupLine(Theme.DatabaseNamePromt(name));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.DatabaseNamePromt(name));
             }
 
-            AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_databases", new Dictionary<string, object>
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-ls-found_databases", new Dictionary<string, object>
             {
                 { "count", list.Count },
                 { "display", Theme.FormatTableValue(list.Count.ToString()) },
@@ -124,7 +124,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
             if (completionList.Count == 0 && hasArmContext)
             {
-                AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_databases_hint")));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatWarning(MessageService.GetString("command-ls-empty_databases_hint")));
             }
         };
         return result;
@@ -183,10 +183,10 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         {
             foreach (var name in list)
             {
-                AnsiConsole.MarkupLine(Theme.ContainerNamePromt(name));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.ContainerNamePromt(name));
             }
 
-            AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_containers", new Dictionary<string, object>
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-ls-found_containers", new Dictionary<string, object>
             {
                 { "count", list.Count },
                 { "display", Theme.FormatTableValue(list.Count.ToString()) },
@@ -195,7 +195,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
 
             if (completionList.Count == 0 && hasArmContext)
             {
-                AnsiConsole.MarkupLine(Theme.FormatWarning(MessageService.GetString("command-ls-empty_containers_hint", new Dictionary<string, object>
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatWarning(MessageService.GetString("command-ls-empty_containers_hint", new Dictionary<string, object>
                 {
                     { "database", databaseName },
                 })));
@@ -294,8 +294,8 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         var limitCount = effectiveMaxItemCount ?? 0;
         returnState.RenderUser = () =>
         {
-            AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(itemsElement));
-            AnsiConsole.MarkupLine(MessageService.GetString("command-ls-found_items", new Dictionary<string, object>
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, JsonOutputHighlighter.BuildMarkup(itemsElement));
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-ls-found_items", new Dictionary<string, object>
             {
                 { "count", itemCount },
                 { "display", Theme.FormatTableValue(itemCount.ToString()) },
@@ -303,7 +303,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
             }));
             if (reachedLimit)
             {
-                AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", limitCount } }));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", limitCount } }));
             }
         };
 

@@ -7,6 +7,12 @@
 - MCP stdio mode no longer loads or records shell history; existing history files are left untouched. Explicit diagnostic logging remains available.
 - Add `--mcp-stdio` for client-owned, headless MCP processes with protocol-only stdin/stdout, stderr diagnostics, no HTTP listener, and shutdown on stdin EOF. Startup connection/navigation, MCP confirmations, and location subscriptions are supported. Unsupported commands, including `jq`, `theme`, and interactive-only commands, are omitted from tools and help; destructive commands remain available through confirmation.
 
+### Improvements
+
+- Centralize shell presentation by message category. `--quiet` suppresses informational messages, progress, banners, and command echoes while preserving results, warnings, errors, and required authentication instructions, including previews shown before a confirmation. Machine-mode diagnostics use stderr without ANSI styling, and machine-mode stdout carries only the command result. MCP stdio continues to return results only through the protocol. Explicit diagnostic logging is unchanged.
+- In machine mode, `theme`, `help`, and `edit` failures are now reported as structured `{ "status": "error", ... }` objects on stderr; previously they exited with code 1 and no message. Interactive and script errors from these commands are reported once.
+- A new build analyzer rule (CZ0003) rejects direct `Console`/`AnsiConsole` output outside the shell's output policy.
+
 ## 1.1.271-preview — 2026-10-02
 
 ### New features

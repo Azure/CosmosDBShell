@@ -266,7 +266,7 @@ Start the shell with options to customize behavior:
 | Option | Description |
 | ------ | ----------- |
 | `--output <format>` | Output format for command results: `user` (default interactive view), `json`, `table`, or `csv`. Alias: `-o`. Selecting `json` or `csv` enables machine mode. Falls back to `COSMOSDB_SHELL_FORMAT`. |
-| `--quiet` | Suppress standard informational output (banners, connection logs). Enables machine mode. Alias: `-q` |
+| `--quiet` | Suppress informational messages, progress, banners, and command echoes. Preserve results, warnings, errors, and required authentication instructions. Enables machine mode. Alias: `-q` |
 | `-c <cmd>` | Execute command and exit. Everything after `-c` is taken as the command, so app-level options must come before `-c`. Windows-style `/c` is also accepted. |
 | `-k <cmd>` | Execute command and stay in shell. Everything after `-k` is taken as the command, so app-level options must come before `-k`. Windows-style `/k` is also accepted. |
 | `--connect <str>` | Connect with this connection string or endpoint on startup |
@@ -299,9 +299,16 @@ output. **Machine mode** is entered when any of the following is true:
 
 In machine mode the shell disables ANSI colors, suppresses connection/informational
 banners, emits command results as the selected structured format (JSON or CSV) on `STDOUT`,
-and writes early parser/connection failures as a structured `{ "status": "error", "error": ... }`
-object on `STDERR`. The human-facing `user` and `table` formats are not machine mode; `user`
+and writes parser, connection, and command failures as a structured `{ "status": "error", "error": ... }`
+object on `STDERR`. `STDOUT` carries only the command result; tables and other interactive
+views are not rendered. The human-facing `user` and `table` formats are not machine mode; `user`
 falls back to JSON whenever output is redirected, piped, or run in machine mode.
+
+Quiet is not a universal mute: warnings, errors, and required instructions (such as
+authentication prompts and previews shown before a confirmation) remain visible on
+`STDERR`, without ANSI styling. Explicit diagnostic
+logging is unaffected. Command results are separate from informational messages and
+remain on `STDOUT` (or in MCP responses for `--mcp-stdio`).
 
 Bare piped stdin (for example `echo "..." | cosmosdbshell`) is **not** implicitly machine
 mode; pass `-c`, `--output json`, or `--quiet` to opt into structured output.

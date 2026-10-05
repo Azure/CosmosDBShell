@@ -27,6 +27,8 @@ has its own connection and navigation state:
   Banners, command echoes, colors, and ordinary result rendering are disabled.
 - **stderr** carries startup errors, logs, and any incidental command diagnostics.
   Tool results and errors remain in MCP response envelopes.
+- `--quiet` suppresses informational messages and progress, not warnings, errors,
+  required authentication instructions, or explicit diagnostic logging.
 - Closing stdin stops the server and releases the shell's resources.
 - Stdio mode does not load existing shell history or record commands in memory or
   on disk. Existing history files are left untouched. Explicit `--diagnostics`
@@ -41,8 +43,8 @@ Startup connection and navigation options are supported, for example
 `--connect <endpoint> --connect-azure-cli --database <database> --container <container>`.
 Prefer an existing Azure CLI login, managed identity, or another non-interactive
 credential for unattended clients. Browser/device-code authentication may still
-require human interaction; device-code instructions are written to stderr unless
-`--quiet` is supplied.
+require human interaction; device-code instructions are written to stderr even
+when `--quiet` is supplied.
 
 The `jq` and `theme` commands are not available in stdio mode: they are omitted
 from the tool list and `help`, and calls to them fail as unknown tools. Both

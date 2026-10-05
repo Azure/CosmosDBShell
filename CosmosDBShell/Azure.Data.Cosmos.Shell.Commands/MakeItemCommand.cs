@@ -166,7 +166,8 @@ internal class MakeItemCommand : CosmosCommand
                             else
                             {
                                 failCount++;
-                                ShellInterpreter.WriteLine(
+                                ShellInterpreter.Instance.Output.WriteLine(
+                                    ShellMessageKind.Error,
                                     MessageService.GetArgsString(
                                         "command-mkitem-error-status-returned",
                                         "status",
@@ -177,7 +178,8 @@ internal class MakeItemCommand : CosmosCommand
                         {
                             RequestChargeContext.Record(ce.RequestCharge);
                             failCount++;
-                            ShellInterpreter.WriteLine(
+                            ShellInterpreter.Instance.Output.WriteLine(
+                                ShellMessageKind.Error,
                                 MessageService.GetArgsString(
                                     "command-mkitem-error-creation-failed",
                                     "status",
@@ -191,7 +193,8 @@ internal class MakeItemCommand : CosmosCommand
                     {
                         if ((createdCount + replacedCount) > 0 && failCount == 0)
                         {
-                            ShellInterpreter.WriteLine(
+                            ShellInterpreter.Instance.Output.WriteLine(
+                                ShellMessageKind.Information,
                                 MessageService.GetArgsString(
                                     "command-mkitem-upserted-multiple",
                                     "created",
@@ -203,7 +206,8 @@ internal class MakeItemCommand : CosmosCommand
                         }
                         else if ((createdCount + replacedCount) > 0)
                         {
-                            ShellInterpreter.WriteLine(
+                            ShellInterpreter.Instance.Output.WriteLine(
+                                ShellMessageKind.Warning,
                                 MessageService.GetArgsString(
                                     "command-mkitem-upserted-partial",
                                     "created",
@@ -217,7 +221,8 @@ internal class MakeItemCommand : CosmosCommand
                         }
                         else
                         {
-                            ShellInterpreter.WriteLine(
+                            ShellInterpreter.Instance.Output.WriteLine(
+                                ShellMessageKind.Error,
                                 MessageService.GetArgsString(
                                     "command-mkitem-upserted-all-failed",
                                     "count",
@@ -226,7 +231,8 @@ internal class MakeItemCommand : CosmosCommand
                     }
                     else if (createdCount > 0 && failCount == 0)
                     {
-                        ShellInterpreter.WriteLine(
+                        ShellInterpreter.Instance.Output.WriteLine(
+                            ShellMessageKind.Information,
                             MessageService.GetArgsString(
                                 "command-mkitem-created-multiple",
                                 "count",
@@ -236,7 +242,8 @@ internal class MakeItemCommand : CosmosCommand
                     }
                     else if (createdCount > 0 && failCount > 0)
                     {
-                        ShellInterpreter.WriteLine(
+                        ShellInterpreter.Instance.Output.WriteLine(
+                            ShellMessageKind.Warning,
                             MessageService.GetArgsString(
                                 "command-mkitem-created-partial",
                                 "success",
@@ -248,7 +255,8 @@ internal class MakeItemCommand : CosmosCommand
                     }
                     else
                     {
-                        ShellInterpreter.WriteLine(
+                        ShellInterpreter.Instance.Output.WriteLine(
+                            ShellMessageKind.Error,
                             MessageService.GetArgsString(
                                 "command-mkitem-created-all-failed",
                                 "count",
@@ -284,7 +292,7 @@ internal class MakeItemCommand : CosmosCommand
                         if (result.StatusCode == System.Net.HttpStatusCode.Created)
                         {
                             var key = force ? "command-mkitem-upserted-created" : "command-mkitem-created-success";
-                            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
                                 key,
                                 "charge",
                                 result.RequestCharge.ToString("F2")));
@@ -292,7 +300,7 @@ internal class MakeItemCommand : CosmosCommand
                         }
                         else if (force && result.StatusCode == System.Net.HttpStatusCode.OK)
                         {
-                            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
                                 "command-mkitem-upserted-replaced",
                                 "charge",
                                 result.RequestCharge.ToString("F2")));
@@ -300,7 +308,7 @@ internal class MakeItemCommand : CosmosCommand
                         }
                         else
                         {
-                            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString(
                                 "command-mkitem-error-status-returned",
                                 "status",
                                 result.StatusCode.ToString()));

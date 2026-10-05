@@ -204,7 +204,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | Option | Description |
 | ------ | ----------- |
 | `--output <format>` | The output format to use (`user`, `json`, `table`, `csv`). Alias: `-o`. Falls back to `COSMOSDB_SHELL_FORMAT`. |
-| `--quiet` | Suppress standard informational output. Alias: `-q` |
+| `--quiet` | Suppress informational messages, progress, banners, and command echoes; preserve results, warnings, errors, and required authentication instructions. Alias: `-q` |
 | `-c <cmd>` | Execute and exit |
 | `-k <cmd>` | Execute and stay |
 | `--connect <str>` | Connection string or endpoint URL |
@@ -273,7 +273,7 @@ When running scripts or automation, Cosmos DB Shell maps execution failures to a
 
 These values are a public contract: existing codes are never repurposed, and new failure categories get new codes. See the [CI/CD guide](docs/ci.md#exit-code-contract) for full details.
 
-> **Machine Mode**: Using `--output json` or `--output csv` or `--quiet` (or running `-c` without specifying `--output`, which defaults to `json`) disables ANSI colors, suppresses connection/informational banners, and redirects early parser/connection exceptions to `STDERR` as structured JSON. Data-operation commands emit their result in the selected structured format (JSON or CSV) on `STDOUT`; diagnostic and interactive commands may still write plain text. Interactively, commands render a friendly, human-readable view instead; the default `user` output format selects that friendly view and automatically falls back to JSON whenever output is redirected, piped, or run in machine mode. Bare piped stdin (`echo "..." | cosmosdbshell`) is not implicitly machine mode—pass `-c`, `--output json`, or `--quiet` to opt in.
+> **Machine Mode**: Using `--output json` or `--output csv` or `--quiet` (or running `-c` without specifying `--output`, which defaults to `json`) disables ANSI colors, suppresses connection/informational banners, and redirects parser, connection, and command failures to `STDERR` as structured JSON. Data-operation commands emit their result in the selected structured format (JSON or CSV) on `STDOUT`; diagnostic and interactive commands may still write plain text. Warnings, errors, and required authentication instructions remain visible on `STDERR`, even with `--quiet`; explicitly enabled diagnostic logging is unaffected. In MCP stdio mode, results are returned only through MCP and visible messages use `STDERR`. Interactively, commands render a friendly, human-readable view instead; the default `user` output format selects that friendly view and automatically falls back to JSON whenever output is redirected, piped, or run in machine mode. Bare piped stdin (`echo "..." | cosmosdbshell`) is not implicitly machine mode—pass `-c`, `--output json`, or `--quiet` to opt in.
 
 ## Theming
 

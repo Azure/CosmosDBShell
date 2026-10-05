@@ -212,7 +212,7 @@ help-examples = Examples:
 help-examples-heading = Examples
 help-aliases = Aliases:
 help-OutputFormat = The output format to use (user, json, table, csv).
-help-Quiet = Suppresses standard informational output.
+help-Quiet = Suppress informational messages, progress, banners, and command echoes. Preserve results, warnings, errors, and required authentication instructions.
 
 command-help-description = Shows help information for commands
 command-welcome-description = Displays the welcome screen

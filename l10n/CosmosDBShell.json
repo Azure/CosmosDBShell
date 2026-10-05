@@ -1313,7 +1313,7 @@
   "help-OptionsHeadingText": "OPTIONS:",
   "help-Otel": "Enable distributed tracing so requests carry a sampled W3C traceparent. Optionally specify an OTLP endpoint with --otel \u003Cendpoint\u003E; falls back to the OTEL_EXPORTER_OTLP_ENDPOINT environment variable.",
   "help-OutputFormat": "The output format to use (user, json, table, csv).",
-  "help-Quiet": "Suppresses standard informational output.",
+  "help-Quiet": "Suppress informational messages, progress, banners, and command echoes. Preserve results, warnings, errors, and required authentication instructions.",
   "help-RequiredWord": "Required.",
   "help-SentenceMutuallyExclusiveSetErrors": "{0}",
   "help-SentenceMutuallyExclusiveSetErrors.__p0.one": "-\u003E Option \u0027{0}\u0027 is not compatible with: {1}",

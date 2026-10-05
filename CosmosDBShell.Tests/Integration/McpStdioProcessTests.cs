@@ -13,6 +13,34 @@ using ModelContextProtocol.Protocol;
 
 public class McpStdioProcessTests
 {
+    [Fact]
+    public async Task StdioQuiet_PreservesWarningsAndProtocolResults()
+    {
+        await using var server = new ServerProcess(["--quiet", "--theme", "STDIO_WARNING_THEME"]);
+        await server.InitializeAsync("2025-11-25");
+        var echo = await server.CallToolAsync(2, "echo", new { messages = new[] { "QUIET_STDIO_RESULT" } });
+        Assert.Equal("QUIET_STDIO_RESULT", echo.GetProperty("result").GetProperty("structuredContent").GetProperty("result").GetString());
+        var error = await server.CallToolAsync(3, "help", new { command = "QUIET_MISSING_COMMAND" });
+        Assert.True(error.GetProperty("result").GetProperty("isError").GetBoolean());
+        await server.CompleteAsync();
+        Assert.Equal(0, server.ExitCode);
+        Assert.Contains("STDIO_WARNING_THEME", server.StdErr);
+        Assert.DoesNotContain("QUIET_STDIO_RESULT", server.StdErr);
+        Assert.DoesNotContain("\u001b", server.StdErr, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("--help", "USAGE:")]
+    [InlineData("--version", "CosmosDBShell")]
+    public async Task Stdio_ExplicitHelpAndVersion_UseStderr(string argument, string expected)
+    {
+        await using var server = new ServerProcess([argument]);
+        await server.CompleteAsync();
+        Assert.Equal(0, server.ExitCode);
+        Assert.Equal(0, server.MessageCount);
+        Assert.Contains(expected, server.StdErr);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -97,7 +125,6 @@ public class McpStdioProcessTests
         await server.CompleteAsync();
         Assert.Equal(0, server.ExitCode);
         Assert.Contains("STDIO_MISSING_COMMAND", server.StdErr);
-        Assert.Contains("Error:", server.StdErr);
         Assert.DoesNotContain("STDIO_RESULT", server.StdErr);
     }
 

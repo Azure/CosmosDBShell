@@ -59,21 +59,29 @@ internal class ThemeCommand : CosmosCommand
             "edit" => Task.FromResult(this.RunEdit(commandState)),
             "open" => Task.FromResult(this.RunOpen(commandState)),
             "reload" => Task.FromResult(this.RunReload(commandState)),
-            _ => Task.FromResult(this.RunUnknownAction(commandState, action)),
+            _ => throw UnknownAction(action),
         };
     }
 
-    private static CommandState ReportUnknownTheme(CommandState commandState, string requested)
-    {
-        var message = MessageService.GetArgsString(
-            "command-theme-unknown",
-            "name",
-            Markup.Escape(requested),
-            "themes",
-            string.Join(", ", ThemeRegistry.Instance.All.Keys.Select(Markup.Escape)));
-        AnsiConsole.MarkupLine(message);
-        return new ErrorCommandState(new CommandException("theme", message));
-    }
+    private static CommandException UnknownTheme(string requested)
+        => new(
+            "theme",
+            MessageService.GetArgsString(
+                "command-theme-unknown",
+                "name",
+                requested,
+                "themes",
+                string.Join(", ", ThemeRegistry.Instance.All.Keys)));
+
+    private static CommandException UnknownAction(string action)
+        => new(
+            "theme",
+            MessageService.GetArgsString(
+                "command-theme-unknown-action",
+                "action",
+                action,
+                "actions",
+                "current, list, show, use (alias: set), load, validate, save, edit, open, reload"));
 
     private static string ResolveActiveName()
     {
@@ -141,7 +149,7 @@ internal class ThemeCommand : CosmosCommand
         try
         {
             Theme.Apply(profile);
-            AnsiConsole.MarkupLine(MessageService.GetArgsString("command-theme-sample-heading", "name", Markup.Escape(profileName.ToLowerInvariant())));
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetArgsString("command-theme-sample-heading", "name", Markup.Escape(profileName.ToLowerInvariant())));
 
             var table = new Table().HideHeaders();
             table.AddColumn(string.Empty);
@@ -176,7 +184,7 @@ internal class ThemeCommand : CosmosCommand
             Row(MessageService.GetString("command-theme-role-help-description"), Theme.FormatHelpDescription(MessageService.GetString("command-theme-sample-description")));
             Row(MessageService.GetString("command-theme-role-brackets"), string.Concat(Theme.FormatBracket("{", 0), Theme.FormatBracket("[", 1), Theme.FormatBracket("(", 2), Theme.FormatBracket(")", 2), Theme.FormatBracket("]", 1), Theme.FormatBracket("}", 0)));
 
-            AnsiConsole.Write(table);
+            ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
         }
         finally
         {
@@ -187,7 +195,7 @@ internal class ThemeCommand : CosmosCommand
     private CommandState RunCurrent(CommandState commandState)
     {
         var name = ResolveActiveName();
-        commandState.RenderUser = () => AnsiConsole.MarkupLine(MessageService.GetArgsString("command-theme-active", "name", Markup.Escape(name)));
+        commandState.RenderUser = () => ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetArgsString("command-theme-active", "name", Markup.Escape(name)));
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "theme", id = name, active = true }));
         return commandState;
     }
@@ -221,7 +229,7 @@ internal class ThemeCommand : CosmosCommand
         {
             foreach (var (marker, name, source) in rows)
             {
-                AnsiConsole.MarkupLine($"  {marker} {Markup.Escape(name)}  {Theme.FormatMuted(source)}");
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, $"  {marker} {Markup.Escape(name)}  {Theme.FormatMuted(source)}");
             }
         };
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "theme", values = items }));
@@ -233,7 +241,7 @@ internal class ThemeCommand : CosmosCommand
         var profileName = string.IsNullOrWhiteSpace(this.Name) ? ResolveActiveName() : this.Name;
         if (!ThemeProfiles.TryGet(profileName, out var profile))
         {
-            return ReportUnknownTheme(commandState, profileName);
+            throw UnknownTheme(profileName);
         }
 
         commandState.RenderUser = () => RenderThemeSample(profile, profileName);
@@ -245,18 +253,17 @@ internal class ThemeCommand : CosmosCommand
     {
         if (string.IsNullOrWhiteSpace(this.Name))
         {
-            AnsiConsole.MarkupLine(MessageService.GetString("command-theme-use-missing-name"));
-            return new ErrorCommandState(new CommandException("theme", MessageService.GetString("command-theme-use-missing-name")));
+            throw new CommandException("theme", MessageService.GetString("command-theme-use-missing-name"));
         }
 
         if (!ThemeProfiles.TryGet(this.Name, out var profile))
         {
-            return ReportUnknownTheme(commandState, this.Name);
+            throw UnknownTheme(this.Name);
         }
 
         Theme.Apply(profile);
         var name = this.Name.ToLowerInvariant();
-        commandState.RenderUser = () => AnsiConsole.MarkupLine(MessageService.GetArgsString("command-theme-applied", "name", Markup.Escape(name)));
+        commandState.RenderUser = () => ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetArgsString("command-theme-applied", "name", Markup.Escape(name)));
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "theme", id = name, applied = true }));
         return commandState;
     }
@@ -267,8 +274,7 @@ internal class ThemeCommand : CosmosCommand
         if (string.IsNullOrWhiteSpace(requested))
         {
             var message = MessageService.GetString("command-theme-load-missing-path");
-            AnsiConsole.MarkupLine(message);
-            return new ErrorCommandState(new CommandException("theme", message));
+            throw new CommandException("theme", message);
         }
 
         var path = ResolveThemePath(requested);
@@ -277,7 +283,7 @@ internal class ThemeCommand : CosmosCommand
         {
             var result = ThemeRegistry.Instance.LoadFile(path);
             Theme.Apply(result.Options);
-            AnsiConsole.MarkupLine(MessageService.GetArgsString(
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
                 "command-theme-loaded",
                 "name",
                 Markup.Escape(result.Name),
@@ -285,7 +291,7 @@ internal class ThemeCommand : CosmosCommand
                 Markup.Escape(result.Source)));
             foreach (var warning in result.Warnings)
             {
-                AnsiConsole.MarkupLine(Theme.FormatWarning(warning));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
             }
 
             commandState.RenderUser = () => { };
@@ -301,14 +307,12 @@ internal class ThemeCommand : CosmosCommand
         }
         catch (ThemeLoadException ex)
         {
-            AnsiConsole.MarkupLine(Theme.FormatError(ex.Message));
-            return new ErrorCommandState(new CommandException("theme", ex.Message));
+            throw new CommandException("theme", ex.Message);
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
             var message = MessageService.GetArgsString("command-theme-load-not-found", "path", path);
-            AnsiConsole.MarkupLine(Theme.FormatError(message));
-            return new ErrorCommandState(new CommandException("theme", message));
+            throw new CommandException("theme", message);
         }
     }
 
@@ -317,8 +321,7 @@ internal class ThemeCommand : CosmosCommand
         if (string.IsNullOrWhiteSpace(this.Name))
         {
             var message = MessageService.GetString("command-theme-save-missing-name");
-            AnsiConsole.MarkupLine(message);
-            return new ErrorCommandState(new CommandException("theme", message));
+            throw new CommandException("theme", message);
         }
 
         string path;
@@ -333,8 +336,7 @@ internal class ThemeCommand : CosmosCommand
                 || this.Name != System.IO.Path.GetFileName(this.Name))
             {
                 var message = MessageService.GetArgsString("command-theme-save-invalid-name", "name", this.Name);
-                AnsiConsole.MarkupLine(Theme.FormatError(message));
-                return new ErrorCommandState(new CommandException("theme", message));
+                throw new CommandException("theme", message);
             }
 
             path = System.IO.Path.Combine(ThemeFile.DefaultUserThemesDirectory(), this.Name + ".toml");
@@ -347,20 +349,19 @@ internal class ThemeCommand : CosmosCommand
         if (File.Exists(path) && !this.Force)
         {
             var message = MessageService.GetArgsString("command-theme-save-exists", "path", path);
-            AnsiConsole.MarkupLine(Theme.FormatWarning(message));
-            return new ErrorCommandState(new CommandException("theme", message));
+            throw new CommandException("theme", message);
         }
 
         try
         {
             ThemeFile.Save(this.Name, Theme.Current, path);
-            AnsiConsole.MarkupLine(MessageService.GetArgsString(
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
                 "command-theme-saved",
                 "name",
                 Markup.Escape(this.Name),
                 "path",
                 Markup.Escape(System.IO.Path.GetFullPath(path))));
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString("command-theme-save-hint-reload", "name", this.Name)));
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(MessageService.GetArgsString("command-theme-save-hint-reload", "name", this.Name)));
             commandState.RenderUser = () => { };
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {
@@ -374,8 +375,7 @@ internal class ThemeCommand : CosmosCommand
         catch (Exception ex)
         {
             var message = MessageService.GetArgsString("command-theme-save-failed", "path", path, "message", ex.Message);
-            AnsiConsole.MarkupLine(Theme.FormatError(message));
-            return new ErrorCommandState(new CommandException("theme", message, ex));
+            throw new CommandException("theme", message, ex);
         }
     }
 
@@ -406,7 +406,7 @@ internal class ThemeCommand : CosmosCommand
         try
         {
             var result = ThemeRegistry.Instance.ValidateFile(path);
-            AnsiConsole.MarkupLine(MessageService.GetArgsString(
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
                 "command-theme-validated",
                 "name",
                 Markup.Escape(result.Name),
@@ -414,7 +414,7 @@ internal class ThemeCommand : CosmosCommand
                 Markup.Escape(result.Source)));
             foreach (var warning in result.Warnings)
             {
-                AnsiConsole.MarkupLine(Theme.FormatWarning(warning));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
             }
 
             if (this.Strict && result.Warnings.Count > 0)
@@ -425,8 +425,7 @@ internal class ThemeCommand : CosmosCommand
                     result.Name,
                     "count",
                     result.Warnings.Count);
-                AnsiConsole.MarkupLine(Theme.FormatError(strictMessage));
-                return new ErrorCommandState(new CommandException("theme", strictMessage));
+                throw new CommandException("theme", strictMessage);
             }
 
             commandState.RenderUser = () => { };
@@ -443,14 +442,12 @@ internal class ThemeCommand : CosmosCommand
         }
         catch (ThemeLoadException ex)
         {
-            AnsiConsole.MarkupLine(Theme.FormatError(ex.Message));
-            return new ErrorCommandState(new CommandException("theme", ex.Message));
+            throw new CommandException("theme", ex.Message);
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
             var message = MessageService.GetArgsString("command-theme-load-not-found", "path", path);
-            AnsiConsole.MarkupLine(Theme.FormatError(message));
-            return new ErrorCommandState(new CommandException("theme", message));
+            throw new CommandException("theme", message);
         }
     }
 
@@ -460,7 +457,7 @@ internal class ThemeCommand : CosmosCommand
         if (files.Length == 0)
         {
             var emptyMessage = MessageService.GetArgsString("command-theme-validate-no-files", "directory", directory);
-            AnsiConsole.MarkupLine(Theme.FormatMuted(emptyMessage));
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(emptyMessage));
             commandState.RenderUser = () => { };
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {
@@ -496,17 +493,17 @@ internal class ThemeCommand : CosmosCommand
                 if (failedStrict)
                 {
                     invalidCount++;
-                    AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2717")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
+                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2717")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
                 }
                 else
                 {
                     validCount++;
-                    AnsiConsole.MarkupLine($"  {Theme.FormatHelpAccent("\u2713")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
+                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, $"  {Theme.FormatHelpAccent("\u2713")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
                 }
 
                 foreach (var warning in result.Warnings)
                 {
-                    AnsiConsole.MarkupLine("    " + Theme.FormatWarning(warning));
+                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, "    " + Theme.FormatWarning(warning));
                 }
             }
             catch (Exception ex) when (ex is ThemeLoadException || ex is FileNotFoundException || ex is DirectoryNotFoundException)
@@ -514,22 +511,33 @@ internal class ThemeCommand : CosmosCommand
                 invalidCount++;
                 entry["valid"] = false;
                 entry["error"] = ex.Message;
-                AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2717")} {Markup.Escape(System.IO.Path.GetFileName(file))}");
-                AnsiConsole.MarkupLine("    " + Theme.FormatError(ex.Message));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2717")} {Markup.Escape(System.IO.Path.GetFileName(file))}");
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, "    " + Theme.FormatError(ex.Message));
             }
 
             fileResults.Add(entry);
         }
 
-        var summary = MessageService.GetArgsString(
+        if (invalidCount > 0)
+        {
+            throw new CommandException("theme", MessageService.GetArgsString(
+                "command-theme-validate-summary",
+                "valid",
+                validCount,
+                "total",
+                files.Length,
+                "directory",
+                directory));
+        }
+
+        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
             "command-theme-validate-summary",
             "valid",
             validCount,
             "total",
             files.Length,
             "directory",
-            Markup.Escape(directory));
-        AnsiConsole.MarkupLine(summary);
+            Markup.Escape(directory)));
 
         commandState.RenderUser = () => { };
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
@@ -540,11 +548,6 @@ internal class ThemeCommand : CosmosCommand
             valid = validCount,
             invalid = invalidCount,
         }));
-
-        if (invalidCount > 0)
-        {
-            return new ErrorCommandState(new CommandException("theme", summary));
-        }
 
         return commandState;
     }
@@ -572,11 +575,10 @@ internal class ThemeCommand : CosmosCommand
                 targetPath,
                 "message",
                 ex.Message);
-            AnsiConsole.MarkupLine(Theme.FormatError(message));
-            return new ErrorCommandState(new CommandException("theme", message, ex));
+            throw new CommandException("theme", message, ex);
         }
 
-        AnsiConsole.MarkupLine(MessageService.GetArgsString(
+        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
             "command-theme-opened",
             "path",
             Markup.Escape(targetPath)));
@@ -597,8 +599,7 @@ internal class ThemeCommand : CosmosCommand
         if (string.IsNullOrWhiteSpace(requested))
         {
             var message = MessageService.GetString("command-theme-edit-missing-name");
-            AnsiConsole.MarkupLine(message);
-            return new ErrorCommandState(new CommandException("theme", message));
+            throw new CommandException("theme", message);
         }
 
         // If the argument is itself a path to an existing file, edit it in place.
@@ -633,11 +634,10 @@ internal class ThemeCommand : CosmosCommand
                         var message = MessageService.GetArgsString(
                             "command-theme-edit-builtin-needs-force",
                             "name",
-                            Markup.Escape(registration.Name),
+                            registration.Name,
                             "path",
-                            Markup.Escape(seedPath));
-                        AnsiConsole.MarkupLine(Theme.FormatWarning(message));
-                        return new ErrorCommandState(new CommandException("theme", message));
+                            seedPath);
+                        throw new CommandException("theme", message);
                     }
 
                     try
@@ -652,12 +652,11 @@ internal class ThemeCommand : CosmosCommand
                             seedPath,
                             "message",
                             ex.Message);
-                        AnsiConsole.MarkupLine(Theme.FormatError(failed));
-                        return new ErrorCommandState(new CommandException("theme", failed, ex));
+                        throw new CommandException("theme", failed, ex);
                     }
 
                     targetPath = seedPath;
-                    AnsiConsole.MarkupLine(MessageService.GetArgsString(
+                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
                         "command-theme-edit-seeded",
                         "name",
                         Markup.Escape(registration.Name),
@@ -668,18 +667,17 @@ internal class ThemeCommand : CosmosCommand
         }
         else
         {
-            return ReportUnknownTheme(commandState, requested);
+            throw UnknownTheme(requested);
         }
 
         var editor = ExternalEditor.Resolve(null);
         if (editor is null)
         {
             var message = MessageService.GetString("command-theme-edit-no-editor");
-            AnsiConsole.MarkupLine(Theme.FormatError(message));
-            return new ErrorCommandState(new CommandException("theme", message));
+            throw new CommandException("theme", message);
         }
 
-        AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
+        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(MessageService.GetArgsString(
             "command-theme-edit-launching",
             "path",
             targetPath!,
@@ -708,8 +706,7 @@ internal class ThemeCommand : CosmosCommand
                 targetPath!,
                 "message",
                 ex.Message);
-            AnsiConsole.MarkupLine(Theme.FormatError(message));
-            return new ErrorCommandState(new CommandException("theme", message, ex));
+            throw new CommandException("theme", message, ex);
         }
 
         if (exitCode != 0)
@@ -720,8 +717,7 @@ internal class ThemeCommand : CosmosCommand
                 editor.DisplayName,
                 "code",
                 exitCode);
-            AnsiConsole.MarkupLine(Theme.FormatWarning(message));
-            return new ErrorCommandState(new CommandException("theme", message));
+            throw new CommandException("theme", message);
         }
 
         // Reload registry so renamed/edited files are picked up, then apply the
@@ -735,7 +731,7 @@ internal class ThemeCommand : CosmosCommand
             // Re-scan the directory too so other files stay in sync with disk.
             registry.LoadFromDirectory(ThemeFile.DefaultUserThemesDirectory());
 
-            AnsiConsole.MarkupLine(MessageService.GetArgsString(
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
                 "command-theme-edit-applied",
                 "name",
                 Markup.Escape(result.Name),
@@ -744,7 +740,7 @@ internal class ThemeCommand : CosmosCommand
 
             foreach (var warning in result.Warnings)
             {
-                AnsiConsole.MarkupLine(Theme.FormatWarning(warning));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
             }
 
             commandState.RenderUser = () => { };
@@ -766,8 +762,7 @@ internal class ThemeCommand : CosmosCommand
                 targetPath!,
                 "message",
                 ex.Message);
-            AnsiConsole.MarkupLine(Theme.FormatError(message));
-            return new ErrorCommandState(new CommandException("theme", message, ex));
+            throw new CommandException("theme", message, ex);
         }
     }
 
@@ -778,7 +773,7 @@ internal class ThemeCommand : CosmosCommand
         var directory = ThemeFile.DefaultUserThemesDirectory();
         var loaded = registry.LoadFromDirectory(directory);
 
-        AnsiConsole.MarkupLine(MessageService.GetArgsString(
+        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
             "command-theme-reloaded",
             "count",
             loaded,
@@ -786,7 +781,7 @@ internal class ThemeCommand : CosmosCommand
             Markup.Escape(directory)));
         foreach (var warning in registry.Warnings)
         {
-            AnsiConsole.MarkupLine(Theme.FormatWarning(warning));
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
         }
 
         commandState.RenderUser = () => { };
@@ -799,17 +794,5 @@ internal class ThemeCommand : CosmosCommand
             warnings = registry.Warnings,
         }));
         return commandState;
-    }
-
-    private CommandState RunUnknownAction(CommandState commandState, string action)
-    {
-        var message = MessageService.GetArgsString(
-            "command-theme-unknown-action",
-            "action",
-            Markup.Escape(action),
-            "actions",
-            "current, list, show, use (alias: set), load, validate, save, edit, open, reload");
-        AnsiConsole.MarkupLine(message);
-        return new ErrorCommandState(new CommandException("theme", message));
     }
 }

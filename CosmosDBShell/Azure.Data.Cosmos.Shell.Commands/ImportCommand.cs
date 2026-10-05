@@ -487,14 +487,14 @@ internal class ImportCommand : CosmosCommand
 
         if (dryRun)
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
                 "command-import-dry-run-success",
                 "count",
                 successCount));
         }
         else if (failCount == 0)
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
                 "command-import-success",
                 "count",
                 successCount,
@@ -503,7 +503,7 @@ internal class ImportCommand : CosmosCommand
         }
         else if (successCount > 0)
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Warning, MessageService.GetArgsString(
                 "command-import-success-partial",
                 "success",
                 successCount,
@@ -514,7 +514,7 @@ internal class ImportCommand : CosmosCommand
         }
         else
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString(
                 "command-import-all-failed",
                 "count",
                 failCount));
@@ -629,7 +629,7 @@ internal class ImportCommand : CosmosCommand
                     else
                     {
                         failed++;
-                        ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString(
                             "command-import-error-item_status",
                             "line",
                             lineNumber,
@@ -645,7 +645,7 @@ internal class ImportCommand : CosmosCommand
                 {
                     failed++;
                     charge += ce.RequestCharge;
-                    ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString(
                         "command-import-error-item_failed",
                         "line",
                         lineNumber,

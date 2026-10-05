@@ -78,13 +78,13 @@ internal class Program
             // instead of intercepted here.
             if (preCommandArgs.Any(a => a is "--help" or "-h" or "-?" or "/?" or "/h"))
             {
-                ShellInterpreter.WriteLine(BuildHelpText());
+                WriteStartupResult(BuildHelpText(), stdioRequested);
                 return;
             }
 
             if (preCommandArgs.Any(a => a is "--version"))
             {
-                WriteVersionHeading();
+                WriteVersionHeading(stdioRequested);
                 return;
             }
 
@@ -117,10 +117,10 @@ internal class Program
                 {
                     foreach (var error in parseResult.Errors)
                     {
-                        ShellInterpreter.WriteLine(error.Message);
+                        ShellOutput.StandardError.WriteLine(ShellMessageKind.Error, error.Message);
                     }
 
-                    ShellInterpreter.WriteLine(BuildHelpText());
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, BuildHelpText());
                 }
 
                 Environment.ExitCode = ShellExitCode.UsageError;
@@ -221,7 +221,7 @@ internal class Program
                     }
                     else
                     {
-                        ShellInterpreter.WriteLine(msg);
+                        ShellOutput.StandardError.WriteLine(ShellMessageKind.Error, msg);
                     }
 
                     return;
@@ -253,7 +253,7 @@ internal class Program
                 }
                 else
                 {
-                    ShellInterpreter.WriteLine(MessageService.GetString("error-mutually-exclusive-options"));
+                    ShellOutput.StandardError.WriteLine(ShellMessageKind.Error, MessageService.GetString("error-mutually-exclusive-options"));
                 }
 
                 return;
@@ -284,7 +284,7 @@ internal class Program
                     return;
                 }
 
-                AnsiConsole.WriteLine(message);
+                ShellOutput.StandardError.WriteLine(ShellMessageKind.Error, message);
             }
 
             if (o.Container != null && o.Database == null)
@@ -338,12 +338,13 @@ internal class Program
                 _ => ColorSystem.NoColors,
             };
 
-            ApplyTheme(o.Theme, startupMachineMode);
+            ShellInterpreter.Instance.Options = o;
+            ApplyTheme(o.Theme);
 
             if (startupMachineMode)
             {
-                // Keep machine-mode stdout deterministic even if a command
-                // accidentally writes via AnsiConsole instead of command state output.
+                // Safety net for dependency writes through the global Spectre console:
+                // machine-mode stdout carries only interpreter results.
                 AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
                 {
                     Ansi = AnsiSupport.No,
@@ -352,8 +353,6 @@ internal class Program
                     Out = new AnsiConsoleOutput(o.McpStdio ? Console.Error : TextWriter.Null),
                 });
             }
-
-            ShellInterpreter.Instance.Options = o;
 
             // Enable diagnostic logging before connecting so the startup --connect
             // event is captured in the log.
@@ -572,7 +571,7 @@ internal class Program
         }
     }
 
-    private static void WriteVersionHeading()
+    private static void WriteVersionHeading(bool stdio = false)
     {
         var assembly = typeof(Program).Assembly;
         var product = assembly.GetCustomAttribute<AssemblyProductAttribute>()?.Product;
@@ -586,7 +585,21 @@ internal class Program
         var heading = string.IsNullOrEmpty(commit)
             ? $"{product} {version}"
             : $"{product} {version} ({commit})";
-        ShellInterpreter.WriteLine(heading);
+        WriteStartupResult(heading, stdio);
+    }
+
+    // Explicit --help/--version output is the requested result; in stdio mode it must
+    // stay off the protocol stream.
+    private static void WriteStartupResult(string text, bool stdio)
+    {
+        if (stdio)
+        {
+            ShellOutput.StandardError.WriteLine(ShellMessageKind.Information, text);
+        }
+        else
+        {
+            ShellInterpreter.Instance.Output.WriteResult(text);
+        }
     }
 
     private static async Task StopHostAsync(IHost? host, Task? hostTask)
@@ -841,7 +854,7 @@ internal class Program
 
     private static void WriteErrorLine(string message)
     {
-        Console.Error.WriteLine(message);
+        ShellOutput.StandardError.WriteLine(ShellMessageKind.Error, message);
     }
 
     private static string BuildHelpText()
@@ -917,9 +930,9 @@ internal class Program
     /// Resolves the requested theme profile and applies it via <see cref="Theme.Apply"/>.
     /// Resolution order: explicit <c>--theme</c> flag, then <c>COSMOSDB_SHELL_THEME</c>
     /// environment variable, then the built-in default. Unknown names emit a warning
-    /// to standard output and fall back to the default profile.
+    /// and fall back to the default profile.
     /// </summary>
-    private static void ApplyTheme(string? themeFromCli, bool suppressStartupWarnings)
+    private static void ApplyTheme(string? themeFromCli)
     {
         // Always scan the user themes directory so file-loaded themes are visible
         // to --theme, the COSMOSDB_SHELL_THEME env var, and the in-shell `theme`
@@ -929,10 +942,7 @@ internal class Program
         registry.LoadFromDirectory(ThemeFile.DefaultUserThemesDirectory());
         foreach (var warning in registry.Warnings)
         {
-            if (!suppressStartupWarnings)
-            {
-                ShellInterpreter.WriteLine(warning);
-            }
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Warning, warning);
         }
 
         var requested = !string.IsNullOrWhiteSpace(themeFromCli)
@@ -946,15 +956,12 @@ internal class Program
 
         if (!ThemeProfiles.TryGet(requested, out var profile))
         {
-            if (!suppressStartupWarnings)
-            {
-                ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                    "warning-unknown-theme",
-                    "name",
-                    requested,
-                    "themes",
-                    string.Join(", ", registry.All.Keys)));
-            }
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Warning, MessageService.GetArgsString(
+                "warning-unknown-theme",
+                "name",
+                requested,
+                "themes",
+                string.Join(", ", registry.All.Keys)));
         }
 
         Theme.Apply(profile);

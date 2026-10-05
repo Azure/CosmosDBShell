@@ -119,12 +119,14 @@ internal class ReverseSearchHistoryCommand(ShellInterpreter shell, bool startsFo
         return isForwardSearch ? ReverseHistorySearch.FindInitialForwardMatch(history, query) : ReverseHistorySearch.FindInitialMatch(history, query);
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CZ0003:Direct console output", Justification = "Line-editor drawing runs only inside the interactive RadLine editor.")]
     private static void Render(string query, ReverseHistorySearchResult result, bool isForwardSearch, int? promptRow, ShellInterpreter shell)
     {
         ClearLine(promptRow);
         AnsiConsole.Markup(ReverseHistorySearch.FormatSearchPromptMarkup(query, result.Match, result.HasMatch, isForwardSearch, shell, TryGetLineWidth()));
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CZ0003:Direct console output", Justification = "Cursor control for the interactive RadLine editor, not user-facing output.")]
     private static void ClearLine(int? promptRow)
     {
         try

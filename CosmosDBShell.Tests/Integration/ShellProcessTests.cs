@@ -25,6 +25,72 @@ public class ShellProcessTests
     private static readonly Regex AnsiEscape = new("\x1b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
 
     [Theory]
+    [InlineData("theme use MACHINE_NOPE", "MACHINE_NOPE")]
+    [InlineData("help MACHINE_MISSING", "MACHINE_MISSING")]
+    [InlineData("edit machine.txt", "interactive terminal")]
+    public async Task MachineMode_CommandFailure_ReportsSingleStructuredError(string command, string expected)
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["-c", command],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Empty(result.StdOut);
+        var line = Assert.Single(result.StdErr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+        using var error = JsonDocument.Parse(line);
+        Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+        Assert.Contains(expected, error.RootElement.GetProperty("error").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Quiet_PreservesResultsAndStartupWarningsWithoutAnsi()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--quiet", "--theme", "QUIET_UNKNOWN_THEME", "-c", "echo QUIET_RESULT"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("QUIET_RESULT", result.StdOut.Trim());
+        Assert.Contains("QUIET_UNKNOWN_THEME", result.StdErr);
+        Assert.DoesNotContain("Cosmos Shell version:", result.StdOut);
+        Assert.DoesNotContain("\u001b", result.StdOut + result.StdErr, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("save", "saved")]
+    [InlineData("load", "loaded")]
+    [InlineData("validate", "valid")]
+    public async Task Quiet_SuppressesCommandInformationButPreservesStructuredResult(string action, string resultProperty)
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"cosmosshell-output-{Guid.NewGuid():N}.toml");
+        try
+        {
+            if (action != "save")
+            {
+                await File.WriteAllTextAsync(file, "name = \"OUTPUT_TEST\"\n[colors]\nliteral = \"purple\"\n", TestContext.Current.CancellationToken);
+            }
+
+            var command = action == "save"
+                ? $"theme save OUTPUT_TEST '{file}' --force"
+                : $"theme {action} '{file}'";
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: ["--quiet", "-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(0, result.ExitCode);
+            using var json = JsonDocument.Parse(result.StdOut);
+            Assert.True(json.RootElement.GetProperty(resultProperty).GetBoolean());
+            Assert.Empty(result.StdErr);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
     [InlineData("value", "identity", "1 argument, got 0")]
     [InlineData("value", "identity 1 2", "1 argument, got 2")]
     [InlineData("value", "$result = (identity)", "1 argument, got 0")]
