@@ -6,6 +6,7 @@
 
 - MCP stdio mode no longer loads or records shell history; existing history files are left untouched. Explicit diagnostic logging remains available.
 - Add `--mcp-stdio` for client-owned, headless MCP processes with protocol-only stdin/stdout, stderr diagnostics, no HTTP listener, and shutdown on stdin EOF. Startup connection/navigation, MCP confirmations, and location subscriptions are supported. Unsupported commands, including `jq`, `theme`, and interactive-only commands, are omitted from tools and help; destructive commands remain available through confirmation.
+- MCP stdio mode never opens a browser for sign-in. `--tenant`/`--hint` connections use device code sign-in with instructions on stderr, and endpoint-only connections use `DefaultAzureCredential` without its interactive browser step. Cancelling the tool call ends a pending sign-in.
 
 ### Improvements
 

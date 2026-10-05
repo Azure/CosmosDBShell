@@ -113,7 +113,7 @@ public partial class ShellInterpreter : IDisposable
         this.State = new DisconnectedState();
         this.Output = new ShellOutput(
             () => this.Options?.Quiet == true,
-            () => stdioStartup || this.Options?.McpStdio == true,
+            () => this.IsMcpStdio,
             () => stdioStartup || this.IsMachineMode);
 
         // editor.KeyBindings.Add<ClearInputCommand>(ConsoleKey.Escape);
@@ -165,6 +165,12 @@ public partial class ShellInterpreter : IDisposable
     internal static ShellInterpreter Instance => SharedInstance.Value;
 
     internal ShellOutput Output { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the shell runs as a headless MCP stdio server,
+    /// including during startup before options are applied.
+    /// </summary>
+    internal bool IsMcpStdio => stdioStartup || this.Options?.McpStdio == true;
 
     /// <summary>
     /// Gets the line editor instance used by the shell, or <c>null</c> if not available.
@@ -1427,34 +1433,42 @@ public partial class ShellInterpreter : IDisposable
         // which has its own dedicated step below and honors --tenant there.
         if (client == null && credentialMethod != CredentialMethod.AzureCli && (!string.IsNullOrWhiteSpace(tenantId) || !string.IsNullOrWhiteSpace(loginHint)))
         {
-            var browserOptions = new InteractiveBrowserCredentialOptions
+            if (AllowsInteractiveBrowser(this.IsMcpStdio))
             {
-                RedirectUri = new Uri(ConnectCommand.EntraRedirectUrl),
-            };
-            if (!string.IsNullOrWhiteSpace(tenantId))
+                var browserOptions = new InteractiveBrowserCredentialOptions
+                {
+                    RedirectUri = new Uri(ConnectCommand.EntraRedirectUrl),
+                };
+                if (!string.IsNullOrWhiteSpace(tenantId))
+                {
+                    browserOptions.TenantId = tenantId;
+                }
+
+                if (!string.IsNullOrWhiteSpace(loginHint))
+                {
+                    browserOptions.LoginHint = loginHint;
+                }
+
+                if (authorityHostUri != null)
+                {
+                    browserOptions.AuthorityHost = authorityHostUri;
+                }
+
+                WriteLine(MessageService.GetString("shell-connect-browser-auth"));
+                var browserCredential = new InteractiveBrowserCredential(browserOptions);
+                if (await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, browserCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: true, token))
+                {
+                    return;
+                }
+
+                // Browser auth failed; fall back to device code.
+                WriteLine(MessageService.GetString("shell-connect-devicecode-fallback"));
+            }
+            else
             {
-                browserOptions.TenantId = tenantId;
+                this.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("shell-connect-devicecode-stdio"));
             }
 
-            if (!string.IsNullOrWhiteSpace(loginHint))
-            {
-                browserOptions.LoginHint = loginHint;
-            }
-
-            if (authorityHostUri != null)
-            {
-                browserOptions.AuthorityHost = authorityHostUri;
-            }
-
-            WriteLine(MessageService.GetString("shell-connect-browser-auth"));
-            var browserCredential = new InteractiveBrowserCredential(browserOptions);
-            if (await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, browserCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: true, token))
-            {
-                return;
-            }
-
-            // Browser auth failed; fall back to device code.
-            WriteLine(MessageService.GetString("shell-connect-devicecode-fallback"));
             var deviceCodeOptions = new DeviceCodeCredentialOptions
             {
                 DeviceCodeCallback = (code, cancellationToken) =>
@@ -1509,15 +1523,7 @@ public partial class ShellInterpreter : IDisposable
         if (client == null)
         {
             WriteLine(MessageService.GetString("shell-connect-default-auth"));
-            var dacOptions = new DefaultAzureCredentialOptions
-            {
-                ExcludeInteractiveBrowserCredential = false,
-            };
-            if (authorityHostUri != null)
-            {
-                dacOptions.AuthorityHost = authorityHostUri;
-            }
-
+            var dacOptions = CreateDefaultCredentialOptions(authorityHostUri, AllowsInteractiveBrowser(this.IsMcpStdio));
             var dacCredential = new DefaultAzureCredential(dacOptions); // CodeQL [SM05137] Interactive developer CLI, not a hosted service: this is the last-resort fallback that adopts the developer's local identity (Azure CLI/azd, Visual Studio, env vars, or VM managed identity). No fixed service identity exists to pin to.
             await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, dacCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: false, token);
         }
@@ -2301,6 +2307,29 @@ public partial class ShellInterpreter : IDisposable
     {
         Instance.Output.Write(ShellMessageKind.RequiredInstruction, CosmosShellPrompt.PromptMarker + " ");
         return Console.ReadLine();
+    }
+
+    /// <summary>
+    /// Determines whether a sign-in may open a browser. A headless MCP stdio server has
+    /// no user at the terminal, and the platform browser launcher (for example
+    /// <c>xdg-open</c>) inherits the process stdout that carries the MCP protocol.
+    /// </summary>
+    /// <param name="mcpStdio">Whether the shell runs as an MCP stdio server.</param>
+    /// <returns><see langword="true"/> when interactive browser sign-in is allowed.</returns>
+    internal static bool AllowsInteractiveBrowser(bool mcpStdio) => !mcpStdio;
+
+    internal static DefaultAzureCredentialOptions CreateDefaultCredentialOptions(Uri? authorityHost, bool allowInteractiveBrowser)
+    {
+        var options = new DefaultAzureCredentialOptions
+        {
+            ExcludeInteractiveBrowserCredential = !allowInteractiveBrowser,
+        };
+        if (authorityHost != null)
+        {
+            options.AuthorityHost = authorityHost;
+        }
+
+        return options;
     }
 
     internal static CosmosClientOptions CreateClientOptions(ConnectionMode requestedMode, bool isEmulator = false)

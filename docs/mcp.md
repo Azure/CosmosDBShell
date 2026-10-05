@@ -42,9 +42,17 @@ to stderr and exits without starting the server.
 Startup connection and navigation options are supported, for example
 `--connect <endpoint> --connect-azure-cli --database <database> --container <container>`.
 Prefer an existing Azure CLI login, managed identity, or another non-interactive
-credential for unattended clients. Browser/device-code authentication may still
-require human interaction; device-code instructions are written to stderr even
-when `--quiet` is supplied.
+credential for unattended clients.
+
+Stdio mode never opens a browser: a headless server has no user at its terminal,
+and the browser launcher could write to the protocol stdout. When `--tenant`/`--hint`
+(or `--connect-tenant`/`--connect-hint` at startup) would start browser sign-in, the
+shell uses device code sign-in instead; an endpoint-only connection uses
+`DefaultAzureCredential` without its interactive browser step. Device code instructions
+are written to stderr, even with `--quiet`, so a person must read them from the
+client's server log. Sign-in waits until the code expires unless the client cancels the
+tool call, which ends the attempt immediately. A startup `--connect` that uses device
+code completes before the server answers MCP requests.
 
 The `jq` and `theme` commands are not available in stdio mode: they are omitted
 from the tool list and `help`, and calls to them fail as unknown tools. Both

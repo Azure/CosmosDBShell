@@ -1435,6 +1435,7 @@
   "shell-connect-default-auth": "Connecting with DefaultAzureCredential...",
   "shell-connect-devicecode-auth": "Browser authentication failed. Falling back to device code authentication.",
   "shell-connect-devicecode-fallback": "Browser authentication failed, falling back to device code authentication...",
+  "shell-connect-devicecode-stdio": "Browser sign-in is unavailable in MCP stdio mode. Using device code sign-in instead.",
   "shell-connect-error-cosmos-detail": "Cosmos DB request failed: HTTP {0} {1}, sub-status {2}, activity id {3}.",
   "shell-connect-key-auth": "Connecting with account key...",
   "shell-connect-key-env": "Using the account key from the COSMOSDB_SHELL_ACCOUNT_KEY environment variable.",
