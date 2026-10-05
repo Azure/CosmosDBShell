@@ -11,6 +11,23 @@ using Azure.Data.Cosmos.Shell.Parser;
 
 public class FilterCommandTests
 {
+    [Theory]
+    [InlineData(".[2147483648]")]
+    [InlineData(".[2147483648]?")]
+    [InlineData(".[999999999999999999999999999999]")]
+    public async Task ExecuteAsync_RejectsOversizedIndex_WithoutChangingInput(string expression)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var input = new ShellJson(JsonSerializer.SerializeToElement(new[] { 10, 20 }));
+        var state = new CommandState { Result = input };
+        var command = new FilterCommand { ExpressionText = expression };
+
+        await Assert.ThrowsAsync<CommandException>(() =>
+            command.ExecuteAsync(shell, state, string.Empty, CancellationToken.None));
+
+        Assert.Same(input, state.Result);
+    }
+
     [Fact]
     public async Task ExecuteAsync_AppliesPathExpression_AndPreservesStructuredResult()
     {

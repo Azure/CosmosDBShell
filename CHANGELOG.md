@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes
+
+- Reject oversized `filter` array indexes instead of silently selecting element zero.
+
 ## 1.1.271-preview — 2026-10-02
 
 ### New features
