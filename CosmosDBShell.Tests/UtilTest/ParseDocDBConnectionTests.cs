@@ -277,6 +277,18 @@ public class ParseDocDBConnectionTests
     }
 
     [Fact]
+    public void EmbeddedAccountEndpointText_DoesNotOverrideExactProperty()
+    {
+        const string connectionString =
+            "Metadata=AccountEndpoint=https://localhost:8081/;" +
+            "AccountEndpoint=https://remote.example/;AccountKey=abc==;";
+
+        Assert.False(ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString));
+        Assert.True(ParsedDocDBConnectionString.TryParseDocDBConnectionString(connectionString, out var parsed));
+        Assert.Equal("https://remote.example/", parsed?.Endpoint);
+    }
+
+    [Fact]
     public void TestPlainLocalhostUrlNotParsedAsConnectionString()
     {
         // A plain URL should NOT parse as a connection string (no AccountEndpoint= prefix)

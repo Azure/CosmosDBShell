@@ -4,8 +4,6 @@
 
 namespace Azure.Data.Cosmos.Shell.Util;
 
-using System.Text.RegularExpressions;
-
 /// <summary>
 /// Represents a parsed DocumentDB connection string, containing the endpoint, master key, and database name.
 /// </summary>
@@ -168,11 +166,20 @@ public class ParsedDocDBConnectionString
     /// <returns>The value of the property if found; otherwise, null.</returns>
     public static string? GetPropertyFromConnectionString(string connectionString, string property)
     {
-        var regex = new Regex($"{property}=([^;]+)", RegexOptions.IgnoreCase);
-        var match = regex.Match(connectionString);
-        if (match.Success)
+        foreach (var entry in connectionString.Split(';'))
         {
-            return match.Groups[1].Value;
+            var separatorIndex = entry.IndexOf('=');
+            if (separatorIndex < 0
+                || !string.Equals(entry[..separatorIndex].Trim(), property, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var value = entry[(separatorIndex + 1)..];
+            if (value.Length > 0)
+            {
+                return value;
+            }
         }
 
         return null;
