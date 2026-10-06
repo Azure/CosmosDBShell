@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
 
 /// <summary>
 /// Drives execution of <see cref="CommandStatement"/> and <see cref="ExecStatement"/>:
@@ -158,6 +159,20 @@ public class CommandExecutionTests : TestBase
         Assert.False(state.IsError);
         var result = invocation.StartsWith("$result", StringComparison.Ordinal) ? GetVariable("result") : state.Result;
         Assert.Equal(expected, Assert.IsType<ShellText>(result).Text);
+    }
+
+    [Theory]
+    [InlineData("=")]
+    [InlineData(":")]
+    public async Task Function_CommandExpressionMissingInlineOptionValue_ReportsError(string separator)
+    {
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Shell.RunCommandAsync(
+                new(),
+                $"def identity [value] {{ return $value }}; $result = (identity --name{separator})",
+                CancellationToken.None));
+
+        Assert.Equal(MessageService.GetArgsString("statement_error_invalid_option_value", "option", "name"), exception.Message);
     }
 
     [Theory]

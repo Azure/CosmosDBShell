@@ -35,6 +35,11 @@ internal class CommandOption : Expression
     public override async Task<ShellObject> EvaluateAsync(ShellInterpreter interpreter, CommandState currentState, CancellationToken cancellationToken)
     {
         var text = CommandArgumentFormatter.FormatOptionName(this);
+        if (this.SeparatorToken != null && this.Value == null)
+        {
+            throw new InvalidOperationException(MessageService.GetArgsString("statement_error_invalid_option_value", "option", this.Name));
+        }
+
         if (this.Value != null)
         {
             var value = await this.Value.EvaluateAsync(interpreter, currentState, cancellationToken);
