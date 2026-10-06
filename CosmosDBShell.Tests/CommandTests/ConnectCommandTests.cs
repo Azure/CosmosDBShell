@@ -54,6 +54,7 @@ public class ConnectCommandTests
         var options = ShellInterpreter.CreateDefaultCredentialOptions(authority, allowInteractiveBrowser);
 
         Assert.Equal(!allowInteractiveBrowser, options.ExcludeInteractiveBrowserCredential);
+        Assert.Equal(!allowInteractiveBrowser, options.ExcludeBrokerCredential);
         Assert.Equal(authority, options.AuthorityHost);
         Assert.False(options.ExcludeAzureCliCredential);
         Assert.False(options.ExcludeManagedIdentityCredential);

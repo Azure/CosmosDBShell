@@ -2323,6 +2323,7 @@ public partial class ShellInterpreter : IDisposable
         var options = new DefaultAzureCredentialOptions
         {
             ExcludeInteractiveBrowserCredential = !allowInteractiveBrowser,
+            ExcludeBrokerCredential = !allowInteractiveBrowser,
         };
         if (authorityHost != null)
         {
