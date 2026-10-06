@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixes
+
+- `for` and `do` loops now reject misspelled `in` and `while` keywords before any statements in the input execute. They previously accepted any identifier in those positions.
+- `filter` now rejects array index literals larger than `2147483647`, including optional access, instead of silently selecting element zero. Representable indexes beyond the array length still return `null`.
+- Decimal arithmetic and comparisons involving JSON numeric strings now use the same culture-invariant `double` conversion as shell strings instead of failing with a `Decimal`-to-`Double` cast error. String concatenation with `+` is unchanged.
+- `exec` now accepts normal command options, negative arguments, URLs, and file patterns while preserving variable, JSON, and parenthesized-expression arguments. Options previously failed to parse, including the documented `exec $cmd -m 5` form.
+
 ## 1.1.271-preview — 2026-10-02
 
 ### New features
@@ -40,10 +47,6 @@
 
 ### Fixes
 
-- `for` and `do` loops now reject misspelled `in` and `while` keywords before any statements in the input execute. They previously accepted any identifier in those positions.
-- `filter` now rejects array index literals larger than `2147483647`, including optional access, instead of silently selecting element zero. Representable indexes beyond the array length still return `null`.
-- Decimal arithmetic and comparisons involving JSON numeric strings now use the same culture-invariant `double` conversion as shell strings instead of failing with a `Decimal`-to-`Double` cast error. String concatenation with `+` is unchanged.
-- `exec` now accepts normal command options, negative arguments, URLs, and file patterns while preserving variable, JSON, and parenthesized-expression arguments. Options previously failed to parse, including the documented `exec $cmd -m 5` form.
 - `mkdb`, `mkcon`, `create database`, and `create container` now work on serverless accounts. They previously requested autoscale throughput even when `--scale` and `--ru` were omitted, which serverless accounts reject. Omitting both options now creates the resource without throughput settings; supplying either option on a serverless account fails with an explanation. Provisioned accounts keep the existing autoscale default of 1000 RU/s. ([#218](https://github.com/Azure/CosmosDBShell/issues/218))
 - Vector `ORDER BY`, `ORDER BY RANK` relevance ranking, and object-shaped `DISTINCT` projections no longer fail with a continuation-token error. These query pipelines execute successfully but cannot export a resumable token, which was previously reported as a command failure. Such queries now return their documents; through MCP they keep reading until the requested limit instead of stopping after one page, and a truncated result is reported as `resultIncomplete` rather than as an exhausted result set. ([#219](https://github.com/Azure/CosmosDBShell/issues/219))
 - Local emulator outages are now detected across Cosmos DB commands. Requests fail promptly with an error and return the shell to its disconnected state instead of leaving an unresponsive session labeled as connected.
