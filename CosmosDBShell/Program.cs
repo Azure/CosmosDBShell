@@ -26,19 +26,21 @@ internal class Program
         args = NormalizeArguments(args);
 
         var preCommandArgs = TakePreCommandArgs(args);
-        bool stdioRequested = preCommandArgs.Any(a => a == "--mcp-stdio"
+        var directStdioTokens = preCommandArgs.Where(a => a == "--mcp-stdio"
             || a.StartsWith("--mcp-stdio=", StringComparison.Ordinal)
-            || a.StartsWith("--mcp-stdio:", StringComparison.Ordinal));
+            || a.StartsWith("--mcp-stdio:", StringComparison.Ordinal)).ToArray();
+        bool stdioRequested = directStdioTokens.Length > 0;
         var (rootCommand, optionMap) = BuildRootCommand();
         var configuration = new System.CommandLine.CommandLineConfiguration(
             rootCommand,
             resources: new LocalizedCliResources());
         var parser = new System.CommandLine.Parsing.Parser(configuration);
         var parseResult = parser.Parse(args);
+        bool stdioDirectlyEnabled = directStdioTokens.Any(IsDirectlyEnabledMcpStdioToken);
 
         // Response files are expanded before any protocol-mode early return so a hidden
         // stdio request cannot bypass the direct-command-line transport requirement.
-        if (parseResult.GetValueForOption(optionMap.McpStdio) && !stdioRequested)
+        if (parseResult.GetValueForOption(optionMap.McpStdio) && !stdioDirectlyEnabled)
         {
             WriteErrorLine(MessageService.GetString("mcp-error-stdio-response-file"));
             Environment.ExitCode = ShellExitCode.UsageError;
@@ -725,6 +727,16 @@ internal class Program
         }
 
         return args;
+    }
+
+    private static bool IsDirectlyEnabledMcpStdioToken(string token)
+    {
+        if (token == "--mcp-stdio")
+        {
+            return true;
+        }
+
+        return bool.TryParse(token["--mcp-stdio=".Length..], out var enabled) && enabled;
     }
 
     private static (RootCommand Command, OptionMap Map) BuildRootCommand()

@@ -190,7 +190,10 @@ internal sealed class StdioStartupInput : IDisposable
                 FileShare.Read | FileShare.Delete,
                 4096,
                 FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.DeleteOnClose);
-            this.startupBufferReady.TrySetResult(reader);
+            if (!this.startupBufferReady.TrySetResult(reader))
+            {
+                await reader.DisposeAsync().ConfigureAwait(false);
+            }
         }
         finally
         {

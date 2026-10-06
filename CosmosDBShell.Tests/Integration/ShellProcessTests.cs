@@ -185,6 +185,27 @@ public class ShellProcessTests
     }
 
     [Fact]
+    public async Task StdioOption_InResponseFile_WithDirectFalseValue_DoesNotStartProtocol()
+    {
+        var responseFile = Path.Join(Path.GetTempPath(), $"cosmosshell-stdio-{Guid.NewGuid():N}.rsp");
+        await File.WriteAllTextAsync(responseFile, "--mcp-stdio", TestContext.Current.CancellationToken);
+        try
+        {
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: ["@" + responseFile, "--mcp-stdio=false"],
+                cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(2, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            Assert.Contains("--mcp-stdio cannot be combined", result.StdErr);
+        }
+        finally
+        {
+            File.Delete(responseFile);
+        }
+    }
+
+    [Fact]
     public async Task StdioOption_InCommandTail_RemainsCommandText()
     {
         var result = await RunShellAsync(
