@@ -30,6 +30,24 @@ public class StatementExecutionTests : TestBase
             ("3.5", "+", "2", "Decimal", "5.5"),
             ("3", "/", "2", "Number", "1"),
             ("3.0", "/", "2", "Decimal", "1.5"),
+            ("3.0", "-", "\"2.5\"", "Decimal", "0.5"),
+            ("\"2.5\"", "-", "3.0", "Decimal", "-0.5"),
+            ("3.0", "*", "\"2.5\"", "Decimal", "7.5"),
+            ("\"2.5\"", "*", "3.0", "Decimal", "7.5"),
+            ("3.0", "/", "\"2.5\"", "Decimal", "1.2"),
+            ("\"2.5\"", "/", "3.0", "Decimal", "0.8333333333333334"),
+            ("3.0", "%", "\"2.5\"", "Decimal", "0.5"),
+            ("\"2.5\"", "%", "3.0", "Decimal", "2.5"),
+            ("3.0", "**", "\"2.5\"", "Decimal", "15.588457268119896"),
+            ("\"2.5\"", "**", "3.0", "Decimal", "15.625"),
+            ("3.0", "<", "\"2.5\"", "Boolean", "false"),
+            ("\"2.5\"", "<", "3.0", "Boolean", "true"),
+            ("3.0", "<=", "\"2.5\"", "Boolean", "false"),
+            ("\"2.5\"", "<=", "3.0", "Boolean", "true"),
+            ("3.0", ">", "\"2.5\"", "Boolean", "true"),
+            ("\"2.5\"", ">", "3.0", "Boolean", "false"),
+            ("3.0", ">=", "\"2.5\"", "Boolean", "true"),
+            ("\"2.5\"", ">=", "3.0", "Boolean", "false"),
             ("[1]", "+", "[2]", "Json", "[1,2]"),
             ("\"a\"", "==", "\"a\"", "Boolean", "true"),
             ("true", "&&", "false", "Boolean", "false"),
@@ -107,33 +125,6 @@ public class StatementExecutionTests : TestBase
 
         Assert.True(state.IsError);
         Assert.Equal(1, GetInt("value"));
-    }
-
-    [Theory]
-    [InlineData("-", "0.5")]
-    [InlineData("*", "7.5")]
-    [InlineData("/", "1.2")]
-    [InlineData("%", "0.5")]
-    [InlineData("**", "15.588457268119896")]
-    [InlineData("<", "false")]
-    [InlineData("<=", "false")]
-    [InlineData(">", "true")]
-    [InlineData(">=", "true")]
-    public async Task JsonNumericStrings_MatchTextAcrossValueOrigins(string operation, string expected)
-    {
-        var state = await Shell.RunCommandAsync(
-            new(),
-            "$source = {\"value\":\"2.5\"}; def identity [value] { return $value }; " +
-            $"$direct = 3.0 {operation} \"2.5\"; $json = 3.0 {operation} $source.value; " +
-            $"$function = 3.0 {operation} (identity $source.value); " +
-            $"for $item in [$source.value] {{ $loop = 3.0 {operation} $item }}",
-            TestContext.Current.CancellationToken);
-
-        Assert.False(state.IsError);
-        foreach (var name in new[] { "direct", "json", "function", "loop" })
-        {
-            Assert.Equal(expected, GetVariable(name)!.ConvertShellObject(DataType.Text));
-        }
     }
 
     [Theory]
