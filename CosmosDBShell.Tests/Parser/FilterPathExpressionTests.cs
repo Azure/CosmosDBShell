@@ -70,6 +70,28 @@ public class FilterPathExpressionTests
         Assert.Equal(JsonValueKind.Null, Assert.IsType<ShellJson>(result).Value.ValueKind);
     }
 
+    [Theory]
+    [InlineData(".[2147483648]")]
+    [InlineData(".items[2147483648]?")]
+    [InlineData(".[999999999999999999999999999999]")]
+    public void Index_Overflow_ReportsErrorAtIndex(string input)
+    {
+        var lexer = new Lexer(input);
+        var expression = new ExpressionParser(lexer).ParseFilterExpression();
+
+        Assert.IsType<ErrorExpression>(expression);
+        Assert.True(lexer.Errors.HasErrors);
+        var error = Assert.Single(lexer.Errors);
+        Assert.Equal(input.IndexOf('[') + 1, error.Start);
+    }
+
+    [Fact]
+    public async Task Index_MaximumInt32_ReturnsNull()
+    {
+        var result = await EvalAsync(".[2147483647]", new[] { 10, 20, 30 });
+        Assert.Equal(JsonValueKind.Null, Assert.IsType<ShellJson>(result).Value.ValueKind);
+    }
+
     [Fact]
     public async Task Index_OnNonArrayWithoutOptional_Throws()
         => await Assert.ThrowsAsync<CommandException>(() => EvalAsync(".[0]", new { a = 1 }));
