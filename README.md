@@ -76,6 +76,11 @@ query "SELECT * FROM c"
 
 Cosmos DB SDK requests identify the shell as `CosmosDBShell/<version>` in the user agent, using the version reported by the `version` command.
 
+Automatic emulator authentication and certificate-validation bypass apply only
+when the parsed HTTP(S) endpoint host is `localhost` or `127.0.0.1`, not when those
+strings occur elsewhere in the URL or connection string. See the
+[connection guide](docs/connect.md#emulator).
+
 ## Build from Source
 
 ```bash

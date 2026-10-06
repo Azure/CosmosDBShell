@@ -14,6 +14,9 @@
 - Centralize shell presentation by message category. `--quiet` suppresses informational messages, progress, banners, and command echoes while preserving results, warnings, errors, and required authentication instructions, including previews shown before a confirmation. Machine-mode diagnostics use stderr without ANSI styling, and machine-mode stdout carries only the command result. MCP stdio continues to return results only through the protocol. Explicit diagnostic logging is unchanged.
 - In machine mode, `theme`, `help`, and `edit` failures are now reported as structured `{ "status": "error", ... }` objects on stderr; previously they exited with code 1 and no message. Interactive and script errors from these commands are reported once.
 - A new build analyzer rule (CZ0003) rejects direct `Console`/`AnsiConsole` output outside the shell's output policy.
+### Fixes
+
+- Detect local Cosmos DB emulator connections by the parsed HTTP(S) endpoint host, preventing misleading remote URLs or unrelated connection-string fields from automatically disabling TLS certificate validation.
 
 ## 1.1.271-preview — 2026-10-02
 
