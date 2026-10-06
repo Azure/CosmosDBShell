@@ -30,6 +30,8 @@ has its own connection and navigation state:
 - `--quiet` suppresses informational messages and progress, not warnings, errors,
   required authentication instructions, or explicit diagnostic logging.
 - Closing stdin stops the server and releases the shell's resources.
+- Startup connection and navigation share a 60-second timeout. Closing stdin
+  cancels pending startup; a timeout is reported on stderr with exit code `4`.
 - Stdio mode does not load existing shell history or record commands in memory or
   on disk. Existing history files are left untouched. Explicit `--diagnostics`
   logging remains available through the normal secret-redaction pipeline.
@@ -50,9 +52,11 @@ and the browser launcher could write to the protocol stdout. When `--tenant`/`--
 shell uses device code sign-in instead; an endpoint-only connection uses
 `DefaultAzureCredential` without its interactive browser step. Device code instructions
 are written to stderr, even with `--quiet`, so a person must read them from the
-client's server log. Sign-in waits until the code expires unless the client cancels the
-tool call, which ends the attempt immediately. A startup `--connect` that uses device
-code completes before the server answers MCP requests.
+client's server log. Tool sign-in waits until the code expires unless the client
+cancels the tool call, which ends the attempt immediately. A startup `--connect`
+that uses device code completes before the server answers MCP requests and is
+subject to the shared 60-second startup timeout. For sign-in that may take longer,
+start without `--connect` and invoke the `connect` tool after the MCP handshake.
 
 The `jq` and `theme` commands are not available in stdio mode: they are omitted
 from the tool list and `help`, and calls to them fail as unknown tools. Both

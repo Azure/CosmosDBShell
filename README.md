@@ -42,6 +42,8 @@ MCP command execution is serialized with the shell, and destructive confirmation
 Use `cosmosdbshell --mcp-stdio` for a client-owned, headless MCP process without a
 listening port. Stdin and stdout are reserved exclusively for MCP; diagnostics go
 to stderr, commands are not echoed, and closing stdin stops the server.
+Startup connection and navigation have a shared 60-second timeout and are
+cancelled when stdin closes; timeout errors go to stderr with exit code 4.
 interactive-only commands, `jq`, and `theme` are omitted from stdio tools and help;
 destructive commands remain available through MCP confirmation. Existing
 `--mcp [port]` HTTP mode remains available alongside the interactive shell. See

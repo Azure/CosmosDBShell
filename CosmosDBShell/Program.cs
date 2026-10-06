@@ -69,6 +69,7 @@ internal class Program
 
         IHost? host = null;
         TracingBootstrap? tracing = null;
+        StdioStartupInput? startupInput = null;
         try
         {
             // --help / --version handled manually so we can render our own
@@ -368,14 +369,21 @@ internal class Program
                 tracing = TracingBootstrap.Initialize(o.OtlpEndpoint);
             }
 
+            if (o.McpStdio && o.ConnectionString != null)
+            {
+                startupInput = new StdioStartupInput(protocolInput!);
+            }
+
             if (o.ConnectionString != null)
             {
                 using var connectTokenSource = ShellInterpreter.UserCancellationTokenSource;
-                var connectToken = connectTokenSource.Token;
+                using var startupConnectCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                    connectTokenSource.Token, startupInput?.StartupToken ?? CancellationToken.None);
+                var connectToken = startupConnectCancellation.Token;
                 try
                 {
                     var credentialMethod = ShellInterpreter.ResolveCredentialMethod(o.ConnectVSCodeCredential, o.ConnectAzureCli);
-                    await ShellInterpreter.Instance.ConnectAsync(
+                    var connectTask = ShellInterpreter.Instance.ConnectAsync(
                         o.ConnectionString,
                         o.ConnectHint,
                         o.ConnectionMode,
@@ -386,9 +394,14 @@ internal class Program
                         subscriptionId: o.ConnectSubscription,
                         resourceGroupName: o.ConnectResourceGroup,
                         token: connectToken);
+
+                    // Preserve connection argument validation even when stdin is already closed.
+                    startupInput?.Start();
+                    await connectTask;
                 }
                 catch (OperationCanceledException) when (connectToken.IsCancellationRequested)
                 {
+                    ReportStdioStartupCancellation(startupInput, WriteStartupError);
                     return;
                 }
                 catch (Exception ex)
@@ -425,8 +438,10 @@ internal class Program
 
             if (o.Database != null)
             {
-                var navigationTokenSource = ShellInterpreter.UserCancellationTokenSource;
-                var navigationToken = navigationTokenSource.Token;
+                using var navigationTokenSource = ShellInterpreter.UserCancellationTokenSource;
+                using var startupNavigationCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                    navigationTokenSource.Token, startupInput?.StartupToken ?? CancellationToken.None);
+                var navigationToken = startupNavigationCancellation.Token;
                 try
                 {
                     var navigation = new CdCommand
@@ -439,6 +454,7 @@ internal class Program
                 }
                 catch (OperationCanceledException) when (navigationToken.IsCancellationRequested)
                 {
+                    ReportStdioStartupCancellation(startupInput, WriteStartupError);
                     return;
                 }
                 catch (CommandException ex)
@@ -451,10 +467,17 @@ internal class Program
 
             if (o.McpStdio)
             {
+                startupInput?.CompleteStartup();
+                if (startupInput?.StartupToken.IsCancellationRequested == true)
+                {
+                    ReportStdioStartupCancellation(startupInput, WriteStartupError);
+                    return;
+                }
+
                 try
                 {
                     ShellInterpreter.Instance.App.RemoveCommands(ToolOperations.IsUnavailableInStdio);
-                    host = McpServer.CreateStdioHost(protocolInput!, protocolOutput!);
+                    host = McpServer.CreateStdioHost(startupInput?.Input ?? protocolInput!, protocolOutput!);
                     await host.RunAsync();
                 }
                 catch (Exception ex)
@@ -567,7 +590,22 @@ internal class Program
         {
             ShellInterpreter.Instance.Dispose();
             host?.Dispose();
+            startupInput?.Dispose();
             tracing?.Dispose();
+        }
+    }
+
+    internal static void ReportStdioStartupCancellation(StdioStartupInput? input, Action<string> writeError)
+    {
+        if (input?.InputError is { } error)
+        {
+            writeError(MessageService.GetArgsString("mcp-error-stdio-input", "message", error.Message));
+            Environment.ExitCode = ShellExitCode.FromException(error);
+        }
+        else if (input?.TimedOut == true)
+        {
+            writeError(MessageService.GetString("mcp-error-stdio-startup-timeout"));
+            Environment.ExitCode = ShellExitCode.ConnectionError;
         }
     }
 

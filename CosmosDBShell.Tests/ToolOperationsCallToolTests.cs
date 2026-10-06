@@ -18,6 +18,7 @@ using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.States;
 
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -195,6 +196,113 @@ public class ToolOperationsCallToolTests : IDisposable
             shell.McpConfirmationApproved = originalApproval;
             shell.Options = originalOptions;
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancelledTool_PropagatesCancellationWithoutLoggingFailure(bool queued)
+    {
+        var shell = ShellInterpreter.Instance;
+        var logger = new RecordingToolLogger();
+        var tools = new ToolOperations(logger, this.locationSubscriptions);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+        var gateEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = queued
+            ? shell.RunSerializedAsync(
+                async () =>
+                {
+                    gateEntered.SetResult();
+                    await releaseGate.Task.WaitAsync(timeout.Token);
+                    return true;
+                }, timeout.Token)
+            : Task.FromResult(true);
+        var command = new CancellationCheckingCommand();
+        try
+        {
+            if (queued)
+            {
+                await gateEntered.Task.WaitAsync(timeout.Token);
+            }
+
+            var call = tools.ExecuteToolAsync(
+                shell.App.Commands["echo"], command, "echo CANCELLED_TOOL", null, cancellation.Token);
+            if (!queued)
+            {
+                await command.Started.Task.WaitAsync(timeout.Token);
+            }
+
+            await cancellation.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => call.WaitAsync(timeout.Token));
+            Assert.Equal(!queued, command.Started.Task.IsCompleted);
+            Assert.DoesNotContain(LogLevel.Error, logger.Levels);
+        }
+        finally
+        {
+            releaseGate.TrySetResult();
+            await gate;
+        }
+
+        var next = await tools.CallToolHandler(
+            CallContext("echo", new() { ["messages"] = Json("[\"AFTER_CANCELLATION\"]") }), timeout.Token);
+        Assert.False(next.IsError == true);
+        Assert.Contains("AFTER_CANCELLATION", Assert.IsType<TextContentBlock>(Assert.Single(next.Content)).Text);
+    }
+
+    [Fact]
+    public async Task CancelledConfirmation_NeverExecutesCommandAndReleasesShell()
+    {
+        var shell = ShellInterpreter.Instance;
+        var tools = this.CreateToolOperations();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+        var prompted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var command = new CancellationCheckingCommand();
+        var call = tools.ExecuteToolAsync(
+            shell.App.Commands["rmdb"], command, "rmdb CANCELLED_CONFIRMATION",
+            async (_, _, token) =>
+            {
+                prompted.SetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return new ElicitResult { Action = "accept" };
+            }, cancellation.Token);
+        await prompted.Task.WaitAsync(timeout.Token);
+        await cancellation.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => call.WaitAsync(timeout.Token));
+        Assert.False(command.Started.Task.IsCompleted);
+        Assert.False(shell.McpConfirmationApproved);
+        Assert.True(await shell.RunSerializedAsync(() => Task.FromResult(true), timeout.Token));
+    }
+
+    private sealed class CancellationCheckingCommand : CosmosCommand
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            this.Started.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            return commandState;
+        }
+    }
+
+    private sealed class RecordingToolLogger : ILogger<ToolOperations>
+    {
+        public List<LogLevel> Levels { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => this.Levels.Add(logLevel);
     }
 
     private sealed class ConfirmationCheckingCommand(bool failAfterConfirmation) : CosmosCommand

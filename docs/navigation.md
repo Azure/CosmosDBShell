@@ -379,4 +379,6 @@ cosmosdbshell --otel http://localhost:4317
 `--mcp-stdio` is mutually exclusive with `--mcp`, `--lsp`/`--stdio`, `-c`, `-k`,
 and `--clear-history`. It does not read stdin as a shell script or start a prompt.
 Startup `--connect`, credential options, `--database`, and `--container` remain
-available. See [MCP stdio mode](mcp.md#stdio-headless-mode).
+available. Startup connection and navigation share a 60-second timeout and are
+cancelled when stdin closes. A timeout is reported on stderr with exit code `4`.
+See [MCP stdio mode](mcp.md#stdio-headless-mode).

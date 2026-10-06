@@ -784,6 +784,11 @@ internal class ToolOperations
                 },
                 cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            this.logger?.LogInformation("MCP command '{Command}' was cancelled.", command.CommandName);
+            throw;
+        }
         catch (Exception ex)
         {
             this.logger?.LogError(ex, $"An exception occurred running '{command.CommandName}'. ");

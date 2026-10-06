@@ -5,6 +5,8 @@
 namespace CosmosShell.Tests.Integration;
 
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -233,6 +235,113 @@ public class McpStdioProcessTests
         Assert.Equal(0, server.ExitCode);
     }
 
+    [Fact]
+    public async Task Stdio_CancelPendingConfirmation_RemainsResponsive()
+    {
+        await using var server = new ServerProcess();
+        await server.InitializeAsync("2025-11-25", new { elicitation = new { form = new { } } });
+        await server.WriteRequestAsync(2, "tools/call", new
+        {
+            name = "rmdb",
+            arguments = new { name = "CancelledStdioDb" },
+        });
+        var prompt = await server.ReadMessageAsync();
+        Assert.Equal("elicitation/create", prompt.GetProperty("method").GetString());
+        await server.WriteAsync(new
+        {
+            jsonrpc = "2.0",
+            method = "notifications/cancelled",
+            @params = new { requestId = 2, reason = "stdio cancellation test" },
+        });
+        await server.WriteRequestAsync(3, "tools/call", new
+        {
+            name = "echo",
+            arguments = new { messages = new[] { "AFTER_STDIO_CANCELLATION" } },
+        });
+        var response = await server.ReadResponseAsync(3, cancelledIds: [2]);
+        Assert.Equal("AFTER_STDIO_CANCELLATION",
+            response.GetProperty("result").GetProperty("structuredContent").GetProperty("result").GetString());
+        await server.CompleteAsync();
+        Assert.Equal(0, server.ExitCode);
+        Assert.DoesNotContain("An exception occurred", server.StdErr);
+    }
+
+    [Fact]
+    public async Task Stdio_EofDuringStartupConnection_ExitsWithoutWaitingForNetwork()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        await using var server = new ServerProcess([
+            "--connect",
+            $"AccountEndpoint=https://127.0.0.1:{endpoint.Port}/;AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;",
+        ]);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        using var connection = await listener.AcceptTcpClientAsync(timeout.Token);
+        await server.CompleteAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Equal(0, server.ExitCode);
+        Assert.Equal(0, server.MessageCount);
+        Assert.DoesNotContain("timed out", server.StdErr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Stdio_StartupFailure_ExitsWithStdinStillOpen()
+    {
+        await using var server = new ServerProcess(["--connect", "not-an-endpoint"]);
+        await server.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Equal(2, server.ExitCode);
+        Assert.Equal(0, server.MessageCount);
+        Assert.NotEmpty(server.StdErr);
+    }
+
+    [Fact]
+    public async Task Stdio_CancelRunningAndQueuedTools_ReleasesShell()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        await using var server = new ServerProcess();
+        await server.InitializeAsync("2025-11-25");
+        await server.WriteRequestAsync(2, "tools/call", new
+        {
+            name = "connect",
+            arguments = new
+            {
+                connectionString = $"AccountEndpoint=https://127.0.0.1:{endpoint.Port}/;AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;",
+            },
+        });
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        using var connection = await listener.AcceptTcpClientAsync(timeout.Token);
+        await server.WriteRequestAsync(3, "tools/call", new
+        {
+            name = "echo",
+            arguments = new { messages = new[] { "CANCELLED_QUEUED_RESULT" } },
+        });
+        foreach (var requestId in new[] { 3, 2 })
+        {
+            await server.WriteAsync(new
+            {
+                jsonrpc = "2.0",
+                method = "notifications/cancelled",
+                @params = new { requestId, reason = "stdio cancellation test" },
+            });
+        }
+
+        await server.WriteRequestAsync(4, "tools/call", new
+        {
+            name = "echo",
+            arguments = new { messages = new[] { "AFTER_QUEUED_CANCELLATION" } },
+        });
+        var response = await server.ReadResponseAsync(4, cancelledIds: [2, 3]);
+        Assert.Equal("AFTER_QUEUED_CANCELLATION",
+            response.GetProperty("result").GetProperty("structuredContent").GetProperty("result").GetString());
+        await server.CompleteAsync();
+        Assert.Equal(0, server.ExitCode);
+        Assert.DoesNotContain("An exception occurred", server.StdErr);
+    }
+
     [Theory]
     [InlineData("theme", "show")]
     [InlineData("theme", "edit")]
@@ -424,7 +533,7 @@ public class McpStdioProcessTests
             return message;
         }
 
-        public async Task<JsonElement> ReadResponseAsync(int id)
+        public async Task<JsonElement> ReadResponseAsync(int id, int[]? cancelledIds = null)
         {
             while (true)
             {
@@ -432,6 +541,14 @@ public class McpStdioProcessTests
                 if (message.TryGetProperty("id", out var responseId))
                 {
                     Assert.False(message.TryGetProperty("method", out _), $"Unexpected server request: {message}");
+                    if (cancelledIds?.Contains(responseId.GetInt32()) == true)
+                    {
+                        Assert.True(message.TryGetProperty("error", out _)
+                            || message.GetProperty("result").GetProperty("isError").GetBoolean(),
+                            $"Cancelled request returned success: {message}");
+                        continue;
+                    }
+
                     Assert.Equal(id, responseId.GetInt32());
                     return message;
                 }
@@ -442,6 +559,11 @@ public class McpStdioProcessTests
         public async Task CompleteAsync()
         {
             this.process.StandardInput.Close();
+            await this.WaitForExitAsync();
+        }
+
+        public async Task WaitForExitAsync()
+        {
             await this.process.WaitForExitAsync(this.timeout.Token);
             await this.outputTask;
             this.StdErr = await this.errorTask;
