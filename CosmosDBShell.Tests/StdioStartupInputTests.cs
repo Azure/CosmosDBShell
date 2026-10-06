@@ -54,7 +54,7 @@ public class StdioStartupInputTests
         var source = new Pipe();
         using var input = new StdioStartupInput(source.Reader.AsStream(), TimeSpan.FromMilliseconds(100));
         input.Start();
-        input.CompleteStartup();
+        await input.CompleteStartupAsync();
         await Task.Delay(TimeSpan.FromMilliseconds(200), TestContext.Current.CancellationToken);
         Assert.False(input.StartupToken.IsCancellationRequested);
         Assert.False(input.TimedOut);
@@ -64,6 +64,27 @@ public class StdioStartupInputTests
         Assert.Equal(1, await input.Input.ReadAsync(received.AsMemory(), TestContext.Current.CancellationToken));
         Assert.Equal(42, received[0]);
         await source.Writer.CompleteAsync();
+    }
+
+    [Fact]
+    public async Task LargeQueuedInput_DrainsThroughEofAndPreservesBytes()
+    {
+        var source = new Pipe();
+        using var input = new StdioStartupInput(source.Reader.AsStream());
+        input.Start();
+        var bytes = new byte[256 * 1024];
+        Random.Shared.NextBytes(bytes);
+
+        await source.Writer.WriteAsync(bytes, TestContext.Current.CancellationToken);
+        await source.Writer.CompleteAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            Task.Delay(Timeout.InfiniteTimeSpan, input.StartupToken)
+                .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+
+        using var received = new MemoryStream();
+        await input.Input.CopyToAsync(received, TestContext.Current.CancellationToken);
+        Assert.Equal(bytes, received.ToArray());
+        Assert.False(input.TimedOut);
     }
 
     [Fact]
@@ -108,8 +129,10 @@ public class StdioStartupInputTests
 
     private sealed class FaultingInput(Exception error) : MemoryStream
     {
-        public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken cancellationToken)
-            => Task.FromException(error);
+        public override ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromException<int>(error);
     }
 
     private static (int ExitCode, List<string> Messages) ReportCancellation(StdioStartupInput input)

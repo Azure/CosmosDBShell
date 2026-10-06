@@ -29,6 +29,22 @@ internal class Program
         bool stdioRequested = preCommandArgs.Any(a => a == "--mcp-stdio"
             || a.StartsWith("--mcp-stdio=", StringComparison.Ordinal)
             || a.StartsWith("--mcp-stdio:", StringComparison.Ordinal));
+        var (rootCommand, optionMap) = BuildRootCommand();
+        var configuration = new System.CommandLine.CommandLineConfiguration(
+            rootCommand,
+            resources: new LocalizedCliResources());
+        var parser = new System.CommandLine.Parsing.Parser(configuration);
+        var parseResult = parser.Parse(args);
+
+        // Response files are expanded before any protocol-mode early return so a hidden
+        // stdio request cannot bypass the direct-command-line transport requirement.
+        if (parseResult.GetValueForOption(optionMap.McpStdio) && !stdioRequested)
+        {
+            WriteErrorLine(MessageService.GetString("mcp-error-stdio-response-file"));
+            Environment.ExitCode = ShellExitCode.UsageError;
+            return;
+        }
+
         using var protocolInput = stdioRequested ? Console.OpenStandardInput() : null;
         using var protocolOutput = stdioRequested ? Console.OpenStandardOutput() : null;
         if (stdioRequested)
@@ -64,22 +80,6 @@ internal class Program
         {
             var server = await LspServer.CreateLanguageServerAsync();
             await server.WaitForExit;
-            return;
-        }
-
-        var (rootCommand, optionMap) = BuildRootCommand();
-        var configuration = new System.CommandLine.CommandLineConfiguration(
-            rootCommand,
-            resources: new LocalizedCliResources());
-        var parser = new System.CommandLine.Parsing.Parser(configuration);
-        var parseResult = parser.Parse(args);
-
-        // Parse response files before early help/version handling so a hidden stdio
-        // request cannot bypass the direct-command-line transport requirement.
-        if (parseResult.GetValueForOption(optionMap.McpStdio) && !stdioRequested)
-        {
-            WriteErrorLine(MessageService.GetString("mcp-error-stdio-response-file"));
-            Environment.ExitCode = ShellExitCode.UsageError;
             return;
         }
 
@@ -468,7 +468,11 @@ internal class Program
 
             if (o.McpStdio)
             {
-                startupInput?.CompleteStartup();
+                if (startupInput is not null)
+                {
+                    await startupInput.CompleteStartupAsync();
+                }
+
                 if (startupInput?.StartupToken.IsCancellationRequested == true)
                 {
                     ReportStdioStartupCancellation(startupInput, WriteStartupError);

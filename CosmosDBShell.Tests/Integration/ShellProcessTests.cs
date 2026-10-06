@@ -160,9 +160,11 @@ public class ShellProcessTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task StdioOption_InResponseFile_IsRejectedWithoutStdout(bool includeHelp)
+    [InlineData(null)]
+    [InlineData("--help")]
+    [InlineData("--lsp")]
+    [InlineData("--stdio")]
+    public async Task StdioOption_InResponseFile_IsRejectedWithoutStdout(string? additionalArgument)
     {
         var responseFile = Path.Join(Path.GetTempPath(), $"cosmosshell-stdio-{Guid.NewGuid():N}.rsp");
         await File.WriteAllTextAsync(responseFile, "--mcp-stdio", TestContext.Current.CancellationToken);
@@ -170,7 +172,7 @@ public class ShellProcessTests
         {
             var result = await RunShellAsync(
                 stdinScript: null,
-                extraArgs: includeHelp ? ["@" + responseFile, "--help"] : ["@" + responseFile],
+                extraArgs: additionalArgument is null ? ["@" + responseFile] : ["@" + responseFile, additionalArgument],
                 cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(2, result.ExitCode);
             Assert.Empty(result.StdOut);
