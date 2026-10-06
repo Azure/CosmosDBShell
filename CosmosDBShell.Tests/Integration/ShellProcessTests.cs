@@ -64,7 +64,7 @@ public class ShellProcessTests
     [InlineData("validate", "valid")]
     public async Task Quiet_SuppressesCommandInformationButPreservesStructuredResult(string action, string resultProperty)
     {
-        var file = Path.Combine(Path.GetTempPath(), $"cosmosshell-output-{Guid.NewGuid():N}.toml");
+        var file = Path.Join(Path.GetTempPath(), $"cosmosshell-output-{Guid.NewGuid():N}.toml");
         try
         {
             if (action != "save")
@@ -229,7 +229,7 @@ public class ShellProcessTests
     {
         // Emulates 'cosmosdbshell < script.txt > output.txt': the caller captures the
         // process's stdout and writes it to a file, then verifies the command ran.
-        var outFile = Path.Combine(Path.GetTempPath(), $"cosmosshell-proc-{Guid.NewGuid():N}.txt");
+        var outFile = Path.Join(Path.GetTempPath(), $"cosmosshell-proc-{Guid.NewGuid():N}.txt");
         try
         {
             var result = await RunShellAsync("echo \"PIPE_SMOKE_TEST\"", TestContext.Current.CancellationToken);
@@ -591,7 +591,7 @@ public class ShellProcessTests
             || (argsList?.Contains("-c") == true)
             || (argsList?.Contains("-k") == true);
 
-        var shellDll = Path.Combine(AppContext.BaseDirectory, "CosmosDBShell.dll");
+        var shellDll = Path.Join(AppContext.BaseDirectory, "CosmosDBShell.dll");
         if (!File.Exists(shellDll))
         {
             throw SkipException.ForSkip($"CosmosDBShell.dll not found next to test assembly at '{shellDll}'.");
