@@ -67,6 +67,22 @@ internal class Program
             return;
         }
 
+        var (rootCommand, optionMap) = BuildRootCommand();
+        var configuration = new System.CommandLine.CommandLineConfiguration(
+            rootCommand,
+            resources: new LocalizedCliResources());
+        var parser = new System.CommandLine.Parsing.Parser(configuration);
+        var parseResult = parser.Parse(args);
+
+        // Parse response files before early help/version handling so a hidden stdio
+        // request cannot bypass the direct-command-line transport requirement.
+        if (parseResult.GetValueForOption(optionMap.McpStdio) && !stdioRequested)
+        {
+            WriteErrorLine(MessageService.GetString("mcp-error-stdio-response-file"));
+            Environment.ExitCode = ShellExitCode.UsageError;
+            return;
+        }
+
         IHost? host = null;
         TracingBootstrap? tracing = null;
         try
@@ -87,13 +103,6 @@ internal class Program
                 WriteVersionHeading(stdioRequested);
                 return;
             }
-
-            var (rootCommand, optionMap) = BuildRootCommand();
-            var configuration = new System.CommandLine.CommandLineConfiguration(
-                rootCommand,
-                resources: new LocalizedCliResources());
-            var parser = new System.CommandLine.Parsing.Parser(configuration);
-            var parseResult = parser.Parse(args);
 
             if (parseResult.Errors.Count > 0)
             {
@@ -161,14 +170,6 @@ internal class Program
             {
                 var mcpValue = parseResult.GetValueForOption(optionMap.McpPort);
                 o.McpPort = mcpValue ?? DefaultMcpPort;
-            }
-
-            // Streams are reserved before parsing, so stdio mode cannot be enabled from a response file.
-            if (o.McpStdio && !stdioRequested)
-            {
-                WriteErrorLine(MessageService.GetString("mcp-error-stdio-response-file"));
-                Environment.ExitCode = ShellExitCode.UsageError;
-                return;
             }
 
             if (stdioRequested && (!o.McpStdio || o.McpPort.HasValue

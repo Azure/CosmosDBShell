@@ -413,7 +413,7 @@ public class McpStdioProcessTests
 
     private sealed class ServerProcess : IAsyncDisposable
     {
-        private readonly string configDirectory = Path.Combine(Path.GetTempPath(), $"cosmosshell-stdio-{Guid.NewGuid():N}");
+        private readonly string configDirectory = Path.Join(Path.GetTempPath(), $"cosmosshell-stdio-{Guid.NewGuid():N}");
         private readonly CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         private readonly Channel<JsonElement> messages = Channel.CreateUnbounded<JsonElement>();
         private readonly Process process;
@@ -427,11 +427,11 @@ public class McpStdioProcessTests
             if (seedHistory)
             {
                 Directory.CreateDirectory(this.configDirectory);
-                File.WriteAllText(Path.Combine(this.configDirectory, "cmd_history"), "echo EXISTING_HISTORY\n");
+                File.WriteAllText(Path.Join(this.configDirectory, "cmd_history"), "echo EXISTING_HISTORY\n");
             }
 
             this.timeout.CancelAfter(TimeSpan.FromSeconds(30));
-            var shellDll = Path.Combine(AppContext.BaseDirectory, "CosmosDBShell.dll");
+            var shellDll = Path.Join(AppContext.BaseDirectory, "CosmosDBShell.dll");
             Assert.True(File.Exists(shellDll), $"Missing shell executable: {shellDll}");
             var startInfo = new ProcessStartInfo
             {

@@ -159,16 +159,18 @@ public class ShellProcessTests
         Assert.Contains("hello from process", result.StdOut);
     }
 
-    [Fact]
-    public async Task StdioOption_InResponseFile_IsRejectedWithoutStdout()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StdioOption_InResponseFile_IsRejectedWithoutStdout(bool includeHelp)
     {
-        var responseFile = Path.Combine(Path.GetTempPath(), $"cosmosshell-stdio-{Guid.NewGuid():N}.rsp");
+        var responseFile = Path.Join(Path.GetTempPath(), $"cosmosshell-stdio-{Guid.NewGuid():N}.rsp");
         await File.WriteAllTextAsync(responseFile, "--mcp-stdio", TestContext.Current.CancellationToken);
         try
         {
             var result = await RunShellAsync(
                 stdinScript: null,
-                extraArgs: ["@" + responseFile],
+                extraArgs: includeHelp ? ["@" + responseFile, "--help"] : ["@" + responseFile],
                 cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(2, result.ExitCode);
             Assert.Empty(result.StdOut);

@@ -77,11 +77,13 @@ public class StdioStartupInputTests
             Task.Delay(Timeout.InfiniteTimeSpan, input.StartupToken)
                 .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
 
+        await source.Writer.CompleteAsync();
+        var received = new byte[1];
+        Assert.Equal(0, await input.Input.ReadAsync(received, TestContext.Current.CancellationToken));
         Assert.True(input.TimedOut);
         var (exitCode, messages) = ReportCancellation(input);
         Assert.Equal(4, exitCode);
         Assert.Contains("timed out after 60 seconds", Assert.Single(messages));
-        await source.Writer.CompleteAsync();
     }
 
     [Fact]

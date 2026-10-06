@@ -16,9 +16,11 @@ internal sealed class StdioStartupInput : IDisposable
     private readonly CancellationTokenSource inputEnded = new();
     private readonly CancellationTokenSource deadline = new();
     private readonly CancellationTokenSource startupCancellation;
+    private readonly Timer deadlineTimer;
     private Task pump = Task.CompletedTask;
 
     private Exception? inputError;
+    private int startupTermination;
     private int disposed;
 
     public StdioStartupInput(Stream input, TimeSpan? timeout = null)
@@ -28,20 +30,34 @@ internal sealed class StdioStartupInput : IDisposable
         this.startupCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             this.inputEnded.Token, this.deadline.Token);
         this.StartupToken = this.startupCancellation.Token;
-        this.deadline.CancelAfter(timeout ?? StartupTimeout);
+        this.deadlineTimer = new Timer(
+            static state => ((StdioStartupInput)state!).CancelForTimeout(),
+            this,
+            timeout ?? StartupTimeout,
+            Timeout.InfiniteTimeSpan);
+    }
+
+    private enum StartupTermination
+    {
+        None,
+        TimedOut,
+        InputEnded,
+        InputError,
     }
 
     public Stream Input { get; }
 
     public CancellationToken StartupToken { get; }
 
-    public Exception? InputError => Volatile.Read(ref this.inputError);
+    public Exception? InputError => Volatile.Read(ref this.startupTermination) == (int)StartupTermination.InputError
+        ? Volatile.Read(ref this.inputError)
+        : null;
 
-    public bool TimedOut => this.deadline.IsCancellationRequested && !this.inputEnded.IsCancellationRequested;
+    public bool TimedOut => Volatile.Read(ref this.startupTermination) == (int)StartupTermination.TimedOut;
 
     public void Start() => this.pump = this.PumpAsync();
 
-    public void CompleteStartup() => this.deadline.CancelAfter(Timeout.InfiniteTimeSpan);
+    public void CompleteStartup() => this.deadlineTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
     public void Dispose()
     {
@@ -61,6 +77,7 @@ internal sealed class StdioStartupInput : IDisposable
             {
                 this.startupCancellation.Dispose();
                 this.deadline.Dispose();
+                this.deadlineTimer.Dispose();
                 this.inputEnded.Dispose();
                 this.stopping.Dispose();
             },
@@ -85,14 +102,33 @@ internal sealed class StdioStartupInput : IDisposable
         {
             error = ex;
             Volatile.Write(ref this.inputError, ex);
+            Interlocked.CompareExchange(
+                ref this.startupTermination,
+                (int)StartupTermination.InputError,
+                (int)StartupTermination.None);
         }
         finally
         {
             await this.buffer.Writer.CompleteAsync(error).ConfigureAwait(false);
             if (!this.stopping.IsCancellationRequested)
             {
+                Interlocked.CompareExchange(
+                    ref this.startupTermination,
+                    (int)StartupTermination.InputEnded,
+                    (int)StartupTermination.None);
                 await this.inputEnded.CancelAsync().ConfigureAwait(false);
             }
+        }
+    }
+
+    private void CancelForTimeout()
+    {
+        if (Interlocked.CompareExchange(
+            ref this.startupTermination,
+            (int)StartupTermination.TimedOut,
+            (int)StartupTermination.None) == (int)StartupTermination.None)
+        {
+            this.deadline.Cancel();
         }
     }
 }
