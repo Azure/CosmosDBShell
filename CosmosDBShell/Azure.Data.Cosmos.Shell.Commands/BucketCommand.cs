@@ -71,15 +71,7 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
     public bool? Yes { get; init; }
 
     public static bool CheckBucket(int bucket)
-    {
-        var isValid = bucket >= 0 && bucket <= 5;
-        if (!isValid)
-        {
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, MessageService.GetString("error-invalid_bucket_value", new Dictionary<string, object> { { "bucket", bucket } }));
-        }
-
-        return isValid;
-    }
+        => bucket >= 0 && bucket <= 5;
 
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token) =>
         shell.State.AcceptAsync(this, shell, token);
@@ -254,7 +246,9 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             int bucket = int.Parse(this.Action!.Trim(), CultureInfo.InvariantCulture);
             if (!CheckBucket(bucket))
             {
-                return new CommandState();
+                throw new CommandException(
+                    "bucket",
+                    MessageService.GetString("error-invalid_bucket_value", new Dictionary<string, object> { { "bucket", bucket } }));
             }
 
             if (bucket == 0)

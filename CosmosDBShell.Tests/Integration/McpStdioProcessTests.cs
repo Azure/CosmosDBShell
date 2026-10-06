@@ -49,7 +49,7 @@ public class McpStdioProcessTests
     public async Task Stdio_DoesNotCreateOrModifyHistory(bool seedHistory)
     {
         await using var server = new ServerProcess(seedHistory: seedHistory);
-        var historyFile = Path.Combine(server.ConfigDirectory, "cmd_history");
+        var historyFile = Path.Join(server.ConfigDirectory, "cmd_history");
         var original = seedHistory ? await File.ReadAllBytesAsync(historyFile, TestContext.Current.CancellationToken) : null;
         await server.InitializeAsync("2025-11-25");
         await server.CallToolAsync(2, "echo", new { messages = new[] { "NO_HISTORY_MARKER" } });
@@ -391,6 +391,8 @@ public class McpStdioProcessTests
     [InlineData("--container", "orphan", 2)]
     [InlineData("--connect", "not-an-endpoint", 2)]
     [InlineData("--mcp-stdio=false", null, 2)]
+    [InlineData("--lsp=true", null, 2)]
+    [InlineData("--stdio=true", null, 2)]
     public async Task Stdio_StartupOutput_IsStderrOnly(string option, string? value, int expectedExitCode)
     {
         await using var server = new ServerProcess(value is null ? [option] : [option, value]);

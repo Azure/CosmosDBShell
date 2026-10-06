@@ -69,7 +69,6 @@ internal class Program
 
         IHost? host = null;
         TracingBootstrap? tracing = null;
-        StdioStartupInput? startupInput = null;
         try
         {
             // --help / --version handled manually so we can render our own
@@ -175,7 +174,9 @@ internal class Program
             if (stdioRequested && (!o.McpStdio || o.McpPort.HasValue
                 || parseResult.FindResultFor(optionMap.ExecuteAndQuit) is not null
                 || parseResult.FindResultFor(optionMap.ExecuteAndContinue) is not null
-                || o.ClearHistory))
+                || o.ClearHistory
+                || o.StartLspServer
+                || o.LspStdio))
             {
                 WriteErrorLine(MessageService.GetString("mcp-error-stdio-incompatible-options"));
                 Environment.ExitCode = ShellExitCode.UsageError;
@@ -329,7 +330,7 @@ internal class Program
                 colorSystemVal = 0; // Force NoColors in machine mode
 
                 // Stdio diagnostics may use stderr, including device-code login instructions.
-                o.Quiet = o.McpStdio ? o.Quiet : true;
+                o.Quiet = !o.McpStdio || o.Quiet;
             }
 
             AnsiConsole.Profile.Capabilities.ColorSystem = colorSystemVal switch
@@ -369,10 +370,9 @@ internal class Program
                 tracing = TracingBootstrap.Initialize(o.OtlpEndpoint);
             }
 
-            if (o.McpStdio && o.ConnectionString != null)
-            {
-                startupInput = new StdioStartupInput(protocolInput!);
-            }
+            using var startupInput = o.McpStdio && o.ConnectionString != null
+                ? new StdioStartupInput(protocolInput!)
+                : null;
 
             if (o.ConnectionString != null)
             {
@@ -590,7 +590,6 @@ internal class Program
         {
             ShellInterpreter.Instance.Dispose();
             host?.Dispose();
-            startupInput?.Dispose();
             tracing?.Dispose();
         }
     }

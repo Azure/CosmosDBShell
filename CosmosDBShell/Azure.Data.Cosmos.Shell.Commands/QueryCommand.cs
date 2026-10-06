@@ -70,7 +70,9 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
     {
         if (this.Bucket.HasValue && !BucketCommand.CheckBucket(this.Bucket.Value))
         {
-            return new CommandState();
+            throw new CommandException(
+                "query",
+                MessageService.GetString("error-invalid_bucket_value", new Dictionary<string, object> { { "bucket", this.Bucket.Value } }));
         }
 
         // Get connected state

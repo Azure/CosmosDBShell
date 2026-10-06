@@ -79,6 +79,7 @@ internal sealed class StdioStartupInput : IDisposable
         }
         catch (OperationCanceledException) when (this.stopping.IsCancellationRequested)
         {
+            // Disposal cancels the input pump; the pipe is completed in the finally block.
         }
         catch (Exception ex)
         {

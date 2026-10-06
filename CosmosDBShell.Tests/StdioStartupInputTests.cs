@@ -67,17 +67,16 @@ public class StdioStartupInputTests
     }
 
     [Fact]
-    public async Task ProductionDeadline_CancelsAfterSixtySecondsAndReportsConnectionError()
+    public async Task ProductionDeadline_IsSixtySecondsAndTimeoutReportsConnectionError()
     {
+        Assert.Equal(TimeSpan.FromSeconds(60), StdioStartupInput.StartupTimeout);
         var source = new Pipe();
-        var elapsed = Stopwatch.StartNew();
-        using var input = new StdioStartupInput(source.Reader.AsStream());
+        using var input = new StdioStartupInput(source.Reader.AsStream(), TimeSpan.FromMilliseconds(50));
         input.Start();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             Task.Delay(Timeout.InfiniteTimeSpan, input.StartupToken)
-                .WaitAsync(TimeSpan.FromSeconds(75), TestContext.Current.CancellationToken));
+                .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
 
-        Assert.InRange(elapsed.Elapsed.TotalSeconds, 59, 75);
         Assert.True(input.TimedOut);
         var (exitCode, messages) = ReportCancellation(input);
         Assert.Equal(4, exitCode);

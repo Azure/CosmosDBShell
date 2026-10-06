@@ -75,6 +75,14 @@ internal sealed class ShellOutput(
         }
     }
 
+    internal void WriteLine(ShellMessageKind kind, string message)
+    {
+        if (this.ShouldPresent(kind))
+        {
+            this.GetWriter(kind).WriteLine(message);
+        }
+    }
+
     internal void Write(ShellMessageKind kind, string message, params object[] args)
     {
         if (this.ShouldPresent(kind))
@@ -88,6 +96,14 @@ internal sealed class ShellOutput(
             {
                 writer.Write(message, args);
             }
+        }
+    }
+
+    internal void Write(ShellMessageKind kind, string message)
+    {
+        if (this.ShouldPresent(kind))
+        {
+            this.GetWriter(kind).Write(message);
         }
     }
 
@@ -107,6 +123,14 @@ internal sealed class ShellOutput(
         }
     }
 
+    internal void MarkupLine(ShellMessageKind kind, string markup)
+    {
+        if (this.ShouldPresent(kind))
+        {
+            this.GetConsole(kind).MarkupLine(markup);
+        }
+    }
+
     internal void Markup(ShellMessageKind kind, string markup, params object[] args)
     {
         if (this.ShouldPresent(kind))
@@ -120,6 +144,14 @@ internal sealed class ShellOutput(
             {
                 target.Markup(markup, args);
             }
+        }
+    }
+
+    internal void Markup(ShellMessageKind kind, string markup)
+    {
+        if (this.ShouldPresent(kind))
+        {
+            this.GetConsole(kind).Markup(markup);
         }
     }
 
@@ -143,7 +175,14 @@ internal sealed class ShellOutput(
     {
         if (this.ShouldPresent(kind))
         {
-            this.GetConsole(kind).WriteException(exception, settings ?? new ExceptionSettings());
+            if (machineMode() || stdio())
+            {
+                this.GetWriter(kind).WriteLine(exception);
+            }
+            else
+            {
+                this.GetConsole(kind).WriteException(exception, settings ?? new ExceptionSettings());
+            }
         }
     }
 

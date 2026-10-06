@@ -454,10 +454,15 @@ internal class ThemeCommand : CosmosCommand
     private CommandState RunValidateDirectory(CommandState commandState, string directory)
     {
         var files = ThemeFile.EnumerateThemeFiles(directory);
+        var presentResults = !ShellInterpreter.Instance.IsMachineMode;
         if (files.Length == 0)
         {
             var emptyMessage = MessageService.GetArgsString("command-theme-validate-no-files", "directory", directory);
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(emptyMessage));
+            if (presentResults)
+            {
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(emptyMessage));
+            }
+
             commandState.RenderUser = () => { };
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {
@@ -493,17 +498,26 @@ internal class ThemeCommand : CosmosCommand
                 if (failedStrict)
                 {
                     invalidCount++;
-                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2717")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
+                    if (presentResults)
+                    {
+                        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2717")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
+                    }
                 }
                 else
                 {
                     validCount++;
-                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, $"  {Theme.FormatHelpAccent("\u2713")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
+                    if (presentResults)
+                    {
+                        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, $"  {Theme.FormatHelpAccent("\u2713")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
+                    }
                 }
 
-                foreach (var warning in result.Warnings)
+                if (presentResults)
                 {
-                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, "    " + Theme.FormatWarning(warning));
+                    foreach (var warning in result.Warnings)
+                    {
+                        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, "    " + Theme.FormatWarning(warning));
+                    }
                 }
             }
             catch (Exception ex) when (ex is ThemeLoadException || ex is FileNotFoundException || ex is DirectoryNotFoundException)
@@ -511,8 +525,11 @@ internal class ThemeCommand : CosmosCommand
                 invalidCount++;
                 entry["valid"] = false;
                 entry["error"] = ex.Message;
-                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2717")} {Markup.Escape(System.IO.Path.GetFileName(file))}");
-                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, "    " + Theme.FormatError(ex.Message));
+                if (presentResults)
+                {
+                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2717")} {Markup.Escape(System.IO.Path.GetFileName(file))}");
+                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, "    " + Theme.FormatError(ex.Message));
+                }
             }
 
             fileResults.Add(entry);
@@ -530,14 +547,17 @@ internal class ThemeCommand : CosmosCommand
                 directory));
         }
 
-        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
-            "command-theme-validate-summary",
-            "valid",
-            validCount,
-            "total",
-            files.Length,
-            "directory",
-            Markup.Escape(directory)));
+        if (presentResults)
+        {
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                "command-theme-validate-summary",
+                "valid",
+                validCount,
+                "total",
+                files.Length,
+                "directory",
+                Markup.Escape(directory)));
+        }
 
         commandState.RenderUser = () => { };
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new

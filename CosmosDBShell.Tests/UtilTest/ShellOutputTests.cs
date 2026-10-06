@@ -51,7 +51,10 @@ public class ShellOutputTests
                 Assert.Contains(marker + suffix, visible);
             }
 
-            Assert.DoesNotContain("\u001b", visible, StringComparison.Ordinal);
+            if (machineMode)
+            {
+                Assert.DoesNotContain("\u001b", visible, StringComparison.Ordinal);
+            }
         }
     }
 
