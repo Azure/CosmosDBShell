@@ -5,6 +5,7 @@
 ### Fixes
 
 - Reject oversized `filter` array indexes instead of silently selecting element zero.
+- Detect local Cosmos DB emulator connections by the parsed HTTP(S) endpoint host, preventing misleading remote URLs or unrelated connection-string fields from automatically disabling TLS certificate validation.
 
 ## 1.1.271-preview — 2026-10-02
 
