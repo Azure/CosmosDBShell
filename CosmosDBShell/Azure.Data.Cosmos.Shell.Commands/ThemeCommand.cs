@@ -406,18 +406,22 @@ internal class ThemeCommand : CosmosCommand
         try
         {
             var result = ThemeRegistry.Instance.ValidateFile(path);
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
-                "command-theme-validated",
-                "name",
-                Markup.Escape(result.Name),
-                "path",
-                Markup.Escape(result.Source)));
-            foreach (var warning in result.Warnings)
+            var strictFailure = this.Strict && result.Warnings.Count > 0;
+            if (!ShellInterpreter.Instance.IsMachineMode || !strictFailure)
             {
-                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                    "command-theme-validated",
+                    "name",
+                    Markup.Escape(result.Name),
+                    "path",
+                    Markup.Escape(result.Source)));
+                foreach (var warning in result.Warnings)
+                {
+                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
+                }
             }
 
-            if (this.Strict && result.Warnings.Count > 0)
+            if (strictFailure)
             {
                 var strictMessage = MessageService.GetArgsString(
                     "command-theme-validate-strict-failed",
