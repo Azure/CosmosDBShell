@@ -10,7 +10,7 @@ The credential type is determined by the first matching rule (top-to-bottom):
 
 | Priority | Condition | Credential Used |
 | -------- | --------- | --------------- |
-| 1 | Endpoint is `localhost` or `127.0.0.1` | Emulator (well-known key) |
+| 1 | Parsed HTTP(S) endpoint host is exactly `localhost` or `127.0.0.1` | Emulator (well-known key) |
 | 2 | Connection string has `AccountKey`, or `COSMOSDB_SHELL_ACCOUNT_KEY` env provides a key | Account key |
 | 3 | `--connect-vscode-credential` flag provided (startup; hidden on interactive `connect`) | `VisualStudioCodeCredential` (falls back to next step) |
 | 4 | `COSMOSDB_SHELL_TOKEN` env var is set | Static access token |
@@ -90,6 +90,12 @@ connect https://myaccount.documents.azure.com:443/
 # Plain URL — automatically uses well-known emulator key + gateway mode
 connect https://localhost:8081
 ```
+
+Local emulator connections automatically disable server certificate validation for
+the emulator's self-signed certificate. Detection checks only the parsed endpoint
+host (`localhost` or `127.0.0.1`), not substrings in hostnames, URL paths, queries,
+or other connection-string fields. Remote endpoints retain normal TLS certificate
+validation unless explicitly disabled in the supplied connection string.
 
 ### Managed Identity (User-Assigned)
 
