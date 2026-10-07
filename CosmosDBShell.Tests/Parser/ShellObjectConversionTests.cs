@@ -116,7 +116,7 @@ public class ShellObjectConversionTests
         var json = Json("42");
         Assert.Equal("42", json.ConvertShellObject(DataType.Text));
         Assert.Equal(42, json.ConvertShellObject(DataType.Number));
-        Assert.Equal(42m, json.ConvertShellObject(DataType.Decimal));
+        Assert.Equal(42d, Assert.IsType<double>(json.ConvertShellObject(DataType.Decimal)));
         Assert.Equal(true, json.ConvertShellObject(DataType.Boolean));
     }
 
@@ -170,7 +170,7 @@ public class ShellObjectConversionTests
     [Fact]
     public void ShellJson_StringToDecimal()
     {
-        Assert.Equal(15m, Json("\"15\"").ConvertShellObject(DataType.Decimal));
+        Assert.Equal(15d, Assert.IsType<double>(Json("\"15\"").ConvertShellObject(DataType.Decimal)));
     }
 
     [Fact]

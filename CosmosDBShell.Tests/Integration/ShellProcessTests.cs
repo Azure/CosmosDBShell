@@ -91,6 +91,88 @@ public class ShellProcessTests
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ThemeValidation_Success_PreservesWarningsOnStderr(bool quiet, bool directory)
+    {
+        var path = Path.Join(Path.GetTempPath(), $"cosmosshell-theme-warnings-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(path);
+        try
+        {
+            var file = Path.Join(path, "warning.toml");
+            await File.WriteAllTextAsync(
+                file,
+                "name = \"WARNING_TEST\"\n[colors]\nunknown_warning_slot = \"red\"\n",
+                TestContext.Current.CancellationToken);
+            var target = directory ? path : file;
+            var command = $"theme validate '{target}'";
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: quiet ? ["--quiet", "-c", command] : ["-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            using var json = JsonDocument.Parse(result.StdOut);
+            var validation = directory ? json.RootElement.GetProperty("values")[0] : json.RootElement;
+            Assert.True(validation.GetProperty("valid").GetBoolean());
+            Assert.NotEqual(0, validation.GetProperty("warnings").GetArrayLength());
+            Assert.Contains("unknown_warning_slot", result.StdErr);
+            Assert.DoesNotContain("\u001b", result.StdOut + result.StdErr, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(Path.Join(path, "warning.toml"));
+            Directory.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ThemeValidation_FailedDirectoryScan_ReportsOnlyStructuredError(bool quiet, bool strict)
+    {
+        var path = Path.Join(Path.GetTempPath(), $"cosmosshell-theme-errors-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(path);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Join(path, "a-warning.toml"),
+                "name = \"WARNING_TEST\"\n[colors]\nunknown_warning_slot = \"red\"\n",
+                TestContext.Current.CancellationToken);
+            if (!strict)
+            {
+                await File.WriteAllTextAsync(
+                    Path.Join(path, "z-broken.toml"),
+                    "name = \"BROKEN_TEST\"\n[colors]\nliteral = \"not_a_color\"\n",
+                    TestContext.Current.CancellationToken);
+            }
+
+            var command = $"theme validate '{path}'" + (strict ? " --strict" : string.Empty);
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: quiet ? ["--quiet", "-c", command] : ["-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            var line = Assert.Single(result.StdErr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+            using var error = JsonDocument.Parse(line);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            Assert.DoesNotContain("unknown_warning_slot", result.StdErr);
+        }
+        finally
+        {
+            File.Delete(Path.Join(path, "a-warning.toml"));
+            File.Delete(Path.Join(path, "z-broken.toml"));
+            Directory.Delete(path);
+        }
+    }
+
+    [Theory]
     [InlineData("value", "identity", "1 argument, got 0")]
     [InlineData("value", "identity 1 2", "1 argument, got 2")]
     [InlineData("value", "$result = (identity)", "1 argument, got 0")]

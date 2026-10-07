@@ -29,7 +29,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Tail the change feed of a container with `watch` (alias `tail`)
 - Database and container management commands prefer Azure Resource Manager when connected with Entra ID, with data-plane fallback for key, emulator, and static-token connections
 - Pipelines and scripting with variables, loops, functions
-- Transform piped JSON output with `filter` using jq-inspired expressions (field access, indexing, `map`, `length`, pipelines)
+- Transform piped JSON output with `filter` using jq-inspired expressions (field access, indexing, `map`, `length`, pipelines). Indexes larger than `2147483647` are rejected; valid indexes beyond the array length return `null`.
 - Edit local files in your external editor with `edit`, and customize REPL colors with `theme` (`list`, `show`, `use`, `load`, `validate`, `save`, `edit`; built-in default/light/dark/monochrome)
 - Multi-line input at the prompt — automatic continuation for unclosed blocks/strings, plus explicit `\` line continuation ([docs](docs/navigation.md#multi-line-input))
 - MCP server for AI/tool integration
@@ -256,6 +256,8 @@ Scripts are parsed and validated before their statements execute. Functions pres
 
 Parser nesting, expression tree depth, and active function/script calls have fixed [resource limits](docs/programming.md#resource-limits). Limit violations fail with diagnostics rather than continuing recursive parsing or execution.
 
+Loop headers reject misspelled `in` and `while` keywords before execution, and `filter` rejects overflowing array indexes rather than selecting element zero. JSON numeric strings use the same decimal conversion as shell strings. Dynamic `exec` calls accept normal command options, negative arguments, and shell words. See [programming](docs/programming.md) and the [filter language](docs/filter-v1-spec.md).
+
 Script diagnostics preserve source files, runtime failure categories, and function/script call sites. The language server shares the runtime's control-flow and duplicate-parameter checks, recognizes document-local functions, and checks nested commands and options. Incorrect function argument counts produce usage exit code `2`. See [validation and errors](docs/programming.md#validation-and-errors).
 
 Loops and functions preserve JSON `null` values. Numeric conditions use the same zero/nonzero rule for shell values and JSON properties, including fractional numbers. See [value conversion rules](docs/programming.md#numbers).
@@ -365,6 +367,8 @@ Runtime commands for working with files:
 ```
 
 `theme save` writes a self-contained theme file with every color and style slot populated, so the saved file can be moved or edited without depending on another custom profile.
+
+Successful `theme validate` runs preserve warnings on stderr in machine mode, including `--quiet`. Failed directory scans emit only the structured error on stderr.
 
 ## How to Contribute
 

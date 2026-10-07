@@ -365,6 +365,8 @@ theme reload
 
 `theme validate` parses a TOML file and reports warnings without registering it or switching the active theme. When the argument is a directory it validates every `*.toml` file in that directory and prints a per-file summary. With no argument it scans the user themes directory (`~/.cosmosdbshell/themes`). The validator collects every issue in a single pass so that multiple typos can be fixed at once, and suggests the closest valid token when an unknown color or modifier is used. It also warns on bracket cycles that have only one color or contain duplicates. Pass `--strict` to fail when any warnings are present. Color values must be empty or one ANSI 16 color name. Style values may combine modifiers with at most one ANSI 16 color.
 
+In machine mode (including `--quiet`), successful validation keeps warnings on stderr and the structured result on stdout. Directory scans defer warnings until every file has been checked; failed scans emit only the structured error on stderr.
+
 ## Data Operations
 
 ### query

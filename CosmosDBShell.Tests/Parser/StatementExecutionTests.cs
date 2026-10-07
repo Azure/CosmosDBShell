@@ -30,6 +30,24 @@ public class StatementExecutionTests : TestBase
             ("3.5", "+", "2", "Decimal", "5.5"),
             ("3", "/", "2", "Number", "1"),
             ("3.0", "/", "2", "Decimal", "1.5"),
+            ("3.0", "-", "\"2.5\"", "Decimal", "0.5"),
+            ("\"2.5\"", "-", "3.0", "Decimal", "-0.5"),
+            ("3.0", "*", "\"2.5\"", "Decimal", "7.5"),
+            ("\"2.5\"", "*", "3.0", "Decimal", "7.5"),
+            ("3.0", "/", "\"2.5\"", "Decimal", "1.2"),
+            ("\"2.5\"", "/", "3.0", "Decimal", "0.8333333333333334"),
+            ("3.0", "%", "\"2.5\"", "Decimal", "0.5"),
+            ("\"2.5\"", "%", "3.0", "Decimal", "2.5"),
+            ("3.0", "**", "\"2.5\"", "Decimal", "15.588457268119896"),
+            ("\"2.5\"", "**", "3.0", "Decimal", "15.625"),
+            ("3.0", "<", "\"2.5\"", "Boolean", "false"),
+            ("\"2.5\"", "<", "3.0", "Boolean", "true"),
+            ("3.0", "<=", "\"2.5\"", "Boolean", "false"),
+            ("\"2.5\"", "<=", "3.0", "Boolean", "true"),
+            ("3.0", ">", "\"2.5\"", "Boolean", "true"),
+            ("\"2.5\"", ">", "3.0", "Boolean", "false"),
+            ("3.0", ">=", "\"2.5\"", "Boolean", "true"),
+            ("\"2.5\"", ">=", "3.0", "Boolean", "false"),
             ("[1]", "+", "[2]", "Json", "[1,2]"),
             ("\"a\"", "==", "\"a\"", "Boolean", "true"),
             ("true", "&&", "false", "Boolean", "false"),
@@ -91,6 +109,19 @@ public class StatementExecutionTests : TestBase
     {
         SetVariable("value", new ShellNumber(1));
         var state = await Shell.RunCommandAsync(new(), "$value = 2; if true {", System.Threading.CancellationToken.None);
+
+        Assert.True(state.IsError);
+        Assert.Equal(1, GetInt("value"));
+    }
+
+    [Theory]
+    [InlineData("for $x typo [1,2] { $value = 3 }")]
+    [InlineData("do { $value = 3 } typo false")]
+    public async Task InvalidLoopKeyword_PreventsEarlierAssignmentAndLoopBody(string invalid)
+    {
+        SetVariable("value", new ShellNumber(1));
+
+        var state = await Shell.RunCommandAsync(new(), $"$value = 2; {invalid}", TestContext.Current.CancellationToken);
 
         Assert.True(state.IsError);
         Assert.Equal(1, GetInt("value"));

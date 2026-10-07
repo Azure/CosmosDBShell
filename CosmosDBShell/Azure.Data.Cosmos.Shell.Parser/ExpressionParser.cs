@@ -1722,13 +1722,19 @@ internal class ExpressionParser
                 }
 
                 var indexToken = this.Consume(TokenType.Number, MessageService.GetString("expression_error_expected_array_index"));
-                int index = int.TryParse(indexToken.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedIndex) ? parsedIndex : 0;
+                bool validIndex = int.TryParse(indexToken.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index);
                 var indexedCloseBracket = this.Consume(TokenType.CloseBracket, MessageService.GetString("expression_error_expected_close_bracket"));
                 var indexQuestionToken = this.TryConsumeQuestion();
                 end = indexedCloseBracket.Start + indexedCloseBracket.Length;
                 if (indexQuestionToken != null)
                 {
                     end = indexQuestionToken.Start + indexQuestionToken.Length;
+                }
+
+                if (!validIndex)
+                {
+                    this.ReportError(MessageService.GetArgsString("expression_error_invalid_number", "value", indexToken.Value), indexToken);
+                    return new ErrorExpression(firstToken.Start, end - firstToken.Start);
                 }
 
                 segments.Add(new FilterIndexSegment(index, indexQuestionToken != null));

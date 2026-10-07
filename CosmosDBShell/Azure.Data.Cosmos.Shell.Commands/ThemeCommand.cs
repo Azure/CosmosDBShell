@@ -480,6 +480,7 @@ internal class ThemeCommand : CosmosCommand
         }
 
         var fileResults = new List<Dictionary<string, object?>>();
+        var pendingWarnings = new List<string>();
         var validCount = 0;
         var invalidCount = 0;
 
@@ -523,6 +524,10 @@ internal class ThemeCommand : CosmosCommand
                         ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, "    " + Theme.FormatWarning(warning));
                     }
                 }
+                else
+                {
+                    pendingWarnings.AddRange(result.Warnings);
+                }
             }
             catch (Exception ex) when (ex is ThemeLoadException || ex is FileNotFoundException || ex is DirectoryNotFoundException)
             {
@@ -549,6 +554,11 @@ internal class ThemeCommand : CosmosCommand
                 files.Length,
                 "directory",
                 directory));
+        }
+
+        foreach (var warning in pendingWarnings)
+        {
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, "    " + Theme.FormatWarning(warning));
         }
 
         if (presentResults)
