@@ -29,7 +29,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Tail the change feed of a container with `watch` (alias `tail`)
 - Database and container management commands prefer Azure Resource Manager when connected with Entra ID, with data-plane fallback for key, emulator, and static-token connections
 - Pipelines and scripting with variables, loops, functions
-- Transform piped JSON output with `filter` using jq-inspired expressions (field access, indexing, `map`, `length`, pipelines)
+- Transform piped JSON output with `filter` using jq-inspired expressions (field access, indexing, `map`, `length`, pipelines). Indexes larger than `2147483647` are rejected; valid indexes beyond the array length return `null`.
 - Edit local files in your external editor with `edit`, and customize REPL colors with `theme` (`list`, `show`, `use`, `load`, `validate`, `save`, `edit`; built-in default/light/dark/monochrome)
 - Multi-line input at the prompt — automatic continuation for unclosed blocks/strings, plus explicit `\` line continuation ([docs](docs/navigation.md#multi-line-input))
 - MCP server for AI/tool integration
