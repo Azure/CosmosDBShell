@@ -29,7 +29,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Tail the change feed of a container with `watch` (alias `tail`)
 - Database and container management commands prefer Azure Resource Manager when connected with Entra ID, with data-plane fallback for key, emulator, and static-token connections
 - Pipelines and scripting with variables, loops, functions
-- Transform piped JSON output with `filter` using jq-inspired expressions (field access, indexing, `map`, `length`, pipelines)
+- Transform piped JSON output with `filter` using jq-inspired expressions (field access, indexing, `map`, `length`, pipelines). Indexes larger than `2147483647` are rejected; valid indexes beyond the array length return `null`.
 - Edit local files in your external editor with `edit`, and customize REPL colors with `theme` (`list`, `show`, `use`, `load`, `validate`, `save`, `edit`; built-in default/light/dark/monochrome)
 - Multi-line input at the prompt — automatic continuation for unclosed blocks/strings, plus explicit `\` line continuation ([docs](docs/navigation.md#multi-line-input))
 - MCP server for AI/tool integration
@@ -65,6 +65,11 @@ query "SELECT * FROM c"
 ```
 
 Cosmos DB SDK requests identify the shell as `CosmosDBShell/<version>` in the user agent, using the version reported by the `version` command.
+
+Automatic emulator authentication and certificate-validation bypass apply only
+when the parsed HTTP(S) endpoint host is `localhost` or `127.0.0.1`, not when those
+strings occur elsewhere in the URL or connection string. See the
+[connection guide](docs/connect.md#emulator).
 
 ## Build from Source
 
@@ -239,6 +244,8 @@ echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;
 Scripts are parsed and validated before their statements execute. Functions preserve argument types and keep assignments local; `return`, `break`, and `continue` propagate through nested blocks to their owning function, script, or loop. Integer overflow is reported as an error. See the [language rules and compatibility notes](docs/programming.md#operators), including operator precedence, compound assignment, numeric promotion, and runtime errors. Runtime failures do not roll back earlier successful operations.
 
 Parser nesting, expression tree depth, and active function/script calls have fixed [resource limits](docs/programming.md#resource-limits). Limit violations fail with diagnostics rather than continuing recursive parsing or execution.
+
+Loop headers reject misspelled `in` and `while` keywords before execution, and `filter` rejects overflowing array indexes rather than selecting element zero. JSON numeric strings use the same decimal conversion as shell strings. Dynamic `exec` calls accept normal command options, negative arguments, and shell words. See [programming](docs/programming.md) and the [filter language](docs/filter-v1-spec.md).
 
 Script diagnostics preserve source files, runtime failure categories, and function/script call sites. The language server shares the runtime's control-flow and duplicate-parameter checks, recognizes document-local functions, and checks nested commands and options. Incorrect function argument counts produce usage exit code `2`. See [validation and errors](docs/programming.md#validation-and-errors).
 

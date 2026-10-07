@@ -36,6 +36,8 @@ JSON construction preserves the distinction between integers and shell decimals.
 
 JSON object and array literals accept larger integer-form values and preserve them as JSON integers.
 
+When a numeric operation converts text to a decimal value, JSON string properties use the same culture-invariant `double` conversion as shell strings. For example, `$object = {"value":"2.5"}; $result = 3.0 - $object.value` produces `0.5`, just like `3.0 - "2.5"`. The `+` operator still concatenates strings rather than converting them to numbers.
+
 Numeric Boolean conversion uses zero versus nonzero, including for fractional and large JSON numbers. JSON numbers use the same `double` conversion as decimal shell values for this check, so `if 1.5` and `if $object.value` behave alike when the property contains `1.5`.
 
 JSON `null` remains JSON `null` when bound by a `for` loop or passed through a function. Rebuilding an array from that value produces `[null]`, not `["null"]`. Text conversion remains explicit and separate from JSON type preservation.
@@ -121,6 +123,8 @@ parameters = "[", { name }, "]" | "(", [ name, { ",", name } ], ")" ;
 ### Validation and Errors
 
 Each command text or script file is fully parsed and checked for invalid control-flow placement and duplicate function parameters before any of its statements execute. Syntax or semantic errors prevent execution of that entire input. Script files are checked when invoked, including calls through `exec` and command expressions; callers are not recursively preflighted against dynamically selected files.
+
+Loop headers require the case-insensitive keywords `in` in a `for` loop and `while` after a `do` body. A misspelled keyword is a syntax error; no statements in that input execute.
 
 Runtime failures stop execution but do not roll back earlier successful commands. A failed command expression propagates an error rather than silently producing an empty result. Cancellation is checked between block statements and loop iterations, including loops without database commands.
 
@@ -304,7 +308,7 @@ Notes:
 
 - If the evaluated value is a file path that exists, the shell runs it as a `.csh` script.
 - Argument parsing stops at `;`, newline, `}`, or `|` (so you can chain with pipes).
-- Arguments use the same shell-word and option parsing as direct commands, including `-m 5`, `--name=value`, `--name:value`, quoted values, and variable or parenthesized values.
+- Arguments use normal command syntax, including `-name` / `--name` options with space-separated, `=`, or `:` values, negative arguments such as `-5`, and unquoted shell words such as URLs and file patterns. Variables, JSON values, and parenthesized expressions retain their normal evaluation behavior. Quote a dash-prefixed word when it should be a positional string rather than an option.
 - Built-in commands bind options using their normal metadata. Functions and script files receive option-shaped words as positional text, such as `--name=value`; values are evaluated once in the caller.
 
 Examples:

@@ -213,16 +213,20 @@ public class ScriptExecutionScopeTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task InvalidScript_DoesNotRegisterFunctions_AndRestoresScope(bool expression)
+    [InlineData(false, "if true {")]
+    [InlineData(true, "if true {")]
+    [InlineData(false, "for $x typo [1,2] { $value = 3 }")]
+    [InlineData(true, "for $x typo [1,2] { $value = 3 }")]
+    [InlineData(false, "do { $value = 3 } typo false")]
+    [InlineData(true, "do { $value = 3 } typo false")]
+    public async Task InvalidScript_DoesNotRegisterFunctions_AndRestoresScope(bool expression, string invalid)
     {
         var shell = ShellInterpreter.CreateInstance();
         shell.SetVariable("value", new ShellNumber(1));
         var path = Path.GetTempFileName();
         try
         {
-            await File.WriteAllTextAsync(path, "def mustNotRegister { return 1 }; if true {", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(path, $"def mustNotRegister {{ return 1 }}; {invalid}", TestContext.Current.CancellationToken);
             var token = new Token(TokenType.Identifier, path, 0, path.Length);
             var state = expression
                 ? await new CommandExpression(token).RunScriptAsync(shell, new(), CancellationToken.None)
