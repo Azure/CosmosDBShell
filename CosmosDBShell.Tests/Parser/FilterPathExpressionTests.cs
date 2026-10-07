@@ -83,14 +83,18 @@ public class FilterPathExpressionTests
     [Theory]
     [InlineData(".[2147483648]", "2147483648")]
     [InlineData(".[2147483648]?", "2147483648")]
+    [InlineData(".items[2147483648]?", "2147483648")]
     [InlineData(".items[999999999999999999999999]", "999999999999999999999999")]
+    [InlineData(".[999999999999999999999999999999]", "999999999999999999999999999999")]
     public void Index_Overflow_ReportsErrorAtIndex(string expression, string index)
     {
         var lexer = new Lexer(expression);
         var parser = new ExpressionParser(lexer);
 
-        parser.ParseFilterExpression();
+        var parsedExpression = parser.ParseFilterExpression();
 
+        Assert.IsType<ErrorExpression>(parsedExpression);
+        Assert.True(lexer.Errors.HasErrors);
         var error = Assert.Single(lexer.Errors);
         Assert.Equal(expression.IndexOf(index, StringComparison.Ordinal), error.Start);
         Assert.Equal(index.Length, error.Length);

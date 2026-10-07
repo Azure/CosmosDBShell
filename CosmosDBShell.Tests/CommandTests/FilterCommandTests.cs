@@ -12,9 +12,10 @@ using Azure.Data.Cosmos.Shell.Parser;
 public class FilterCommandTests
 {
     [Theory]
-    [InlineData(".[2147483648]")]
-    [InlineData(".[2147483648]?")]
-    public async Task ExecuteAsync_OverflowingIndex_RejectsInputWithoutChangingResult(string expression)
+    [InlineData(".[2147483648]", "2147483648")]
+    [InlineData(".[2147483648]?", "2147483648")]
+    [InlineData(".[999999999999999999999999999999]", "999999999999999999999999999999")]
+    public async Task ExecuteAsync_OverflowingIndex_RejectsInputWithoutChangingResult(string expression, string index)
     {
         using var shell = ShellInterpreter.CreateInstance();
         var input = new ShellJson(JsonSerializer.SerializeToElement(new[] { 1, 2, 3 }));
@@ -24,7 +25,7 @@ public class FilterCommandTests
         var error = await Assert.ThrowsAsync<CommandException>(() =>
             command.ExecuteAsync(shell, state, string.Empty, TestContext.Current.CancellationToken));
 
-        Assert.Contains("2147483648", error.Message);
+        Assert.Contains(index, error.Message);
         Assert.Same(input, state.Result);
     }
 
