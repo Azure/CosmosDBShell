@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests.Parser;
 
 using System.Globalization;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -49,6 +50,30 @@ public class CultureInvariantConversionTests
         var value = Assert.IsType<ShellDecimal>(result);
 
         Assert.Equal(3.0d, value.Value);
+    }
+
+    [Theory]
+    [InlineData("1.5", 1.5)]
+    [InlineData("\"1.5\"", 1.5)]
+    [InlineData("1e100", 1e100)]
+    [InlineData("\"1e100\"", 1e100)]
+    public void ShellJson_DecimalConversion_ReturnsInvariantDouble(string source, double expected)
+    {
+        using var document = JsonDocument.Parse(source);
+        var value = WithGermanCulture(() =>
+            Assert.IsType<double>(new ShellJson(document.RootElement).ConvertShellObject(DataType.Decimal)));
+
+        Assert.Equal(expected, value);
+    }
+
+    [Fact]
+    public void ShellJson_DecimalConversion_RejectsLocalizedDecimalSeparator()
+    {
+        using var document = JsonDocument.Parse("\"1,5\"");
+
+        WithGermanCulture(() =>
+            Assert.Throws<InvalidOperationException>(() =>
+                new ShellJson(document.RootElement).ConvertShellObject(DataType.Decimal)));
     }
 
     private static T WithGermanCulture<T>(Func<T> action)

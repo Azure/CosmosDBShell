@@ -71,25 +71,36 @@ public class FilterPathExpressionTests
     }
 
     [Theory]
-    [InlineData(".[2147483648]")]
-    [InlineData(".items[2147483648]?")]
-    [InlineData(".[999999999999999999999999999999]")]
-    public void Index_Overflow_ReportsErrorAtIndex(string input)
+    [InlineData(".[2147483647]")]
+    [InlineData(".[2147483647]?")]
+    public async Task Index_MaximumRepresentableIndex_ReturnsNull(string expression)
     {
-        var lexer = new Lexer(input);
-        var expression = new ExpressionParser(lexer).ParseFilterExpression();
+        var result = await EvalAsync(expression, new[] { 10, 20, 30 });
 
-        Assert.IsType<ErrorExpression>(expression);
-        Assert.True(lexer.Errors.HasErrors);
-        var error = Assert.Single(lexer.Errors);
-        Assert.Equal(input.IndexOf('[') + 1, error.Start);
+        Assert.Equal(JsonValueKind.Null, Assert.IsType<ShellJson>(result).Value.ValueKind);
     }
 
-    [Fact]
-    public async Task Index_MaximumInt32_ReturnsNull()
+    [Theory]
+    [InlineData(".[2147483648]", "2147483648")]
+    [InlineData(".[2147483648]?", "2147483648")]
+    [InlineData(".items[2147483648]?", "2147483648")]
+    [InlineData(".items[999999999999999999999999]", "999999999999999999999999")]
+    [InlineData(".[999999999999999999999999999999]", "999999999999999999999999999999")]
+    public void Index_Overflow_ReportsErrorAtIndex(string expression, string index)
     {
-        var result = await EvalAsync(".[2147483647]", new[] { 10, 20, 30 });
-        Assert.Equal(JsonValueKind.Null, Assert.IsType<ShellJson>(result).Value.ValueKind);
+        var lexer = new Lexer(expression);
+        var parser = new ExpressionParser(lexer);
+
+        var parsedExpression = parser.ParseFilterExpression();
+
+        Assert.IsType<ErrorExpression>(parsedExpression);
+        Assert.True(lexer.Errors.HasErrors);
+        var error = Assert.Single(lexer.Errors);
+        Assert.Equal(expression.IndexOf(index, StringComparison.Ordinal), error.Start);
+        Assert.Equal(index.Length, error.Length);
+        Assert.Equal(
+            Azure.Data.Cosmos.Shell.Util.MessageService.GetArgsString("expression_error_invalid_number", "value", index),
+            error.Message);
     }
 
     [Fact]
