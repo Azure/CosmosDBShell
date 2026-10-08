@@ -477,8 +477,9 @@ command-import-description-database = The database to write to.
 command-import-description-container = The container to write to.
 command-import-description-mode = Write mode: insert (default) or upsert.
 command-import-description-format = Input format: auto (default), jsonl, array, or csv.
+command-import-description-concurrency = Maximum in-flight writes (default: 16). Must be positive. Use 1 for sequential writes and file-order processing.
 command-import-description-partition-key = For CSV import, the partition key path. Nested paths (e.g. /address/city) place the matching column under that path.
-command-import-description-continue-on-error = Continue importing after individual item write failures. Parse or validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) still abort the import.
+command-import-description-continue-on-error = Continue importing after individual item write failures. Otherwise stop scheduling writes on the first observed failure and wait for in-flight writes. Parse or validation errors still abort the import.
 command-import-description-dry-run = Parse the file without writing any items.
 command-import-success = Imported { $count } { $count ->
     [one] item
@@ -494,6 +495,7 @@ command-import-dry-run-success = Dry run: { $count } valid { $count ->
     *[other] items
 }
 command-import-error-missing_file = A source file path is required.
+command-import-error-invalid_concurrency = Concurrency must be a positive integer.
 command-import-error-invalid_csv = Invalid CSV record at line { $line }.
 command-import-error-unnamed_csv_value = Line { $line }, column { $column } has a value but no CSV header. Add a column name before importing.
 script-error-argument-count = Function '{ $name }' expects { $expected } { $expected ->
@@ -1624,6 +1626,7 @@ command-import-example-4 = Import CSV and nest the matching column under a neste
 command-import-example-5 = Insert new items and replace any existing items with the same id
 command-import-example-6 = Keep importing after individual item write failures
 command-import-example-7 = Validate the file without writing any items
+command-import-example-8 = Import with up to 32 concurrent writes
 command-index-example-1 = Display the current container's indexing policy
 command-index-example-2 = Add a path to the included paths of the indexing policy
 command-index-example-3 = Remove a path from the indexing policy

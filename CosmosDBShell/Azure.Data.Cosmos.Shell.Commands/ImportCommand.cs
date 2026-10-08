@@ -41,6 +41,7 @@ internal enum ImportMode
 [CosmosExample("import items.jsonl --mode=upsert", DescriptionKey = "command-import-example-5")]
 [CosmosExample("import items.jsonl --continue-on-error", DescriptionKey = "command-import-example-6")]
 [CosmosExample("import items.jsonl --dry-run", DescriptionKey = "command-import-example-7")]
+[CosmosExample("import items.jsonl --concurrency=32", DescriptionKey = "command-import-example-8")]
 [McpAnnotation(
     Title = "Import Container Items",
     ReadOnly = false,
@@ -49,6 +50,8 @@ internal enum ImportMode
     Description = "Bulk-loads items into a Cosmos container from a local JSON Lines, JSON array, or CSV file.")]
 internal class ImportCommand : CosmosCommand
 {
+    internal const int DefaultConcurrency = 16;
+
     [CosmosParameter("file", RequiredErrorKey = "command-import-error-missing_file")]
     public string? File { get; init; }
 
@@ -63,6 +66,9 @@ internal class ImportCommand : CosmosCommand
 
     [CosmosOption("format", "f", DefaultValue = ImportFormat.Auto)]
     public ImportFormat? Format { get; init; }
+
+    [CosmosOption("concurrency", DefaultValue = DefaultConcurrency)]
+    public int? Concurrency { get; init; }
 
     [CosmosOption("partition-key", "pk")]
     public string? PartitionKey { get; init; }
@@ -445,6 +451,12 @@ internal class ImportCommand : CosmosCommand
 
     public override async Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
+        var concurrency = this.Concurrency ?? DefaultConcurrency;
+        if (concurrency < 1)
+        {
+            throw new CommandException("import", MessageService.GetString("command-import-error-invalid_concurrency"));
+        }
+
         if (string.IsNullOrWhiteSpace(this.File))
         {
             throw new CommandException("import", MessageService.GetString("command-import-error-missing_file"));
@@ -483,7 +495,7 @@ internal class ImportCommand : CosmosCommand
         var continueOnError = this.ContinueOnError == true;
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
 
-        var (successCount, failCount, charge) = await ExecuteImportAsync(filePath, format, mode, container, continueOnError, dryRun, partitionKeySegments, token);
+        var (successCount, failCount, charge) = await ExecuteImportAsync(filePath, format, mode, container, continueOnError, dryRun, partitionKeySegments, concurrency, token);
 
         if (dryRun)
         {
@@ -574,12 +586,9 @@ internal class ImportCommand : CosmosCommand
         bool continueOnError,
         bool dryRun,
         string[]? partitionKeySegments,
+        int concurrency,
         CancellationToken token)
     {
-        var success = 0;
-        var failed = 0;
-        var charge = 0.0;
-
         FileStream? stream = null;
         StreamReader? lineReader = null;
         IAsyncEnumerable<(int LineNumber, JsonElement Item)> source;
@@ -603,62 +612,19 @@ internal class ImportCommand : CosmosCommand
                 }
             }
 
-            await foreach (var (lineNumber, item) in source.WithCancellation(token))
+            if (dryRun)
             {
-                if (dryRun || container is null)
+                var count = 0;
+                await foreach (var item in source.WithCancellation(token))
                 {
-                    success++;
-                    continue;
+                    count++;
                 }
 
-                try
-                {
-                    var response = mode == ImportMode.Upsert
-                        ? await container.UpsertItemAsync(item, cancellationToken: token)
-                        : await container.CreateItemAsync(item, cancellationToken: token);
-                    charge += response.RequestCharge;
-
-                    var ok = mode == ImportMode.Upsert
-                        ? response.StatusCode == System.Net.HttpStatusCode.OK || response.StatusCode == System.Net.HttpStatusCode.Created
-                        : response.StatusCode == System.Net.HttpStatusCode.Created;
-
-                    if (ok)
-                    {
-                        success++;
-                    }
-                    else
-                    {
-                        failed++;
-                        ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                            "command-import-error-item_status",
-                            "line",
-                            lineNumber,
-                            "status",
-                            response.StatusCode.ToString()));
-                        if (!continueOnError)
-                        {
-                            break;
-                        }
-                    }
-                }
-                catch (CosmosException ce)
-                {
-                    failed++;
-                    charge += ce.RequestCharge;
-                    ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                        "command-import-error-item_failed",
-                        "line",
-                        lineNumber,
-                        "status",
-                        ce.StatusCode.ToString(),
-                        "message",
-                        CommandException.GetDisplayMessage(ce)));
-                    if (!continueOnError)
-                    {
-                        break;
-                    }
-                }
+                return (count, 0, 0);
             }
+
+            ArgumentNullException.ThrowIfNull(container);
+            return await WriteItemsAsync(source, container, mode, concurrency, continueOnError, token);
         }
         finally
         {
@@ -668,8 +634,128 @@ internal class ImportCommand : CosmosCommand
                 await stream.DisposeAsync();
             }
         }
+    }
 
+    internal static async Task<(int Success, int Failed, double Charge)> WriteItemsAsync(
+        IAsyncEnumerable<(int LineNumber, JsonElement Item)> source,
+        Container container,
+        ImportMode mode,
+        int concurrency,
+        bool continueOnError,
+        CancellationToken token)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
+        var pending = new List<Task<(double Charge, string? Error)>>();
+        var success = 0;
+        var failed = 0;
+        var charge = 0.0;
+
+        void Record((double Charge, string? Error) result)
+        {
+            charge += result.Charge;
+            if (result.Error is null)
+            {
+                success++;
+            }
+            else
+            {
+                failed++;
+                ShellInterpreter.WriteLine(result.Error);
+            }
+        }
+
+        async Task DrainCompletedAsync()
+        {
+            for (var i = pending.Count - 1; i >= 0; i--)
+            {
+                if (pending[i].IsCompleted)
+                {
+                    Record(await pending[i]);
+                    pending.RemoveAt(i);
+                }
+            }
+        }
+
+        await using var items = source.GetAsyncEnumerator(token);
+        try
+        {
+            while (true)
+            {
+                await DrainCompletedAsync();
+                if (failed > 0 && !continueOnError)
+                {
+                    break;
+                }
+
+                if (pending.Count >= concurrency)
+                {
+                    await Task.WhenAny(pending).WaitAsync(token);
+                    continue;
+                }
+
+                token.ThrowIfCancellationRequested();
+                if (!await items.MoveNextAsync())
+                {
+                    break;
+                }
+
+                await DrainCompletedAsync();
+                if (failed > 0 && !continueOnError)
+                {
+                    break;
+                }
+
+                token.ThrowIfCancellationRequested();
+                pending.Add(WriteItemAsync(container, mode, items.Current.LineNumber, items.Current.Item, token));
+            }
+        }
+        finally
+        {
+            // Drain every started write before returning or releasing the source, even on parse errors.
+            var results = await Task.WhenAll(pending);
+            foreach (var result in results)
+            {
+                Record(result);
+            }
+        }
+
+        token.ThrowIfCancellationRequested();
         return (success, failed, charge);
+    }
+
+    private static async Task<(double Charge, string? Error)> WriteItemAsync(
+        Container container,
+        ImportMode mode,
+        int lineNumber,
+        JsonElement item,
+        CancellationToken token)
+    {
+        try
+        {
+            var options = new ItemRequestOptions { EnableContentResponseOnWrite = false };
+            var response = mode == ImportMode.Upsert
+                ? await container.UpsertItemAsync(item, requestOptions: options, cancellationToken: token)
+                : await container.CreateItemAsync(item, requestOptions: options, cancellationToken: token);
+            var ok = response.StatusCode == System.Net.HttpStatusCode.Created ||
+                (mode == ImportMode.Upsert && response.StatusCode == System.Net.HttpStatusCode.OK);
+            return (response.RequestCharge, ok ? null : MessageService.GetArgsString(
+                "command-import-error-item_status",
+                "line",
+                lineNumber,
+                "status",
+                response.StatusCode.ToString()));
+        }
+        catch (CosmosException ce)
+        {
+            return (ce.RequestCharge, MessageService.GetArgsString(
+                "command-import-error-item_failed",
+                "line",
+                lineNumber,
+                "status",
+                ce.StatusCode.ToString(),
+                "message",
+                CommandException.GetDisplayMessage(ce)));
+        }
     }
 
     private sealed class CancellationAwareTextReader(TextReader inner, CancellationToken token) : TextReader

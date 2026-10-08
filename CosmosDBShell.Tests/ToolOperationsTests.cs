@@ -14,6 +14,18 @@ using Azure.Data.Cosmos.Shell.Util;
 public class ToolOperationsTests
 {
     [Fact]
+    public void GetTool_ImportExposesConfigurableConcurrencyWithDefault()
+    {
+        var factory = new CommandRunner().Commands["import"];
+        var tool = ToolOperations.GetTool(factory);
+        var property = tool.InputSchema.GetProperty("properties").GetProperty("concurrency");
+
+        Assert.Equal("integer", property.GetProperty("type").GetString());
+        Assert.Equal(16, property.GetProperty("default").GetInt32());
+        Assert.Contains("sequential", property.GetProperty("description").GetString());
+    }
+
+    [Fact]
     public void GetTool_IncludesCommandOptionsInInputSchema()
     {
         var factory = new CommandRunner().Commands["query"];
