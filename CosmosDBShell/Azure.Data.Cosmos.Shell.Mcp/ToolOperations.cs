@@ -136,6 +136,11 @@ internal class ToolOperations
                 GetMcpOptionDescription(command, option),
                 option.Name,
                 GetMcpDefaultValue(command, option));
+            if (option.MinimumValue is not null)
+            {
+                propertySchema["minimum"] = JsonSerializer.SerializeToNode(option.MinimumValue);
+            }
+
             if (IsPagedMaxOption(command, option))
             {
                 propertySchema["minimum"] = 1;

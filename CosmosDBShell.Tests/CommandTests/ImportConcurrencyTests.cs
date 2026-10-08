@@ -304,7 +304,8 @@ public class ImportConcurrencyTests
     [InlineData("csv", "id\na\nb\n")]
     public async Task DryRun_WithConcurrencyValidatesWithoutConnectionAndPreservesResult(string extension, string content)
     {
-        var path = Path.Combine(Path.GetTempPath(), $"cosmos-import-{Guid.NewGuid():N}.{extension}");
+        var fileName = $"cosmos-import-{Guid.NewGuid():N}.{Path.GetFileName(extension).TrimStart('.')}";
+        var path = Path.Join(Path.GetTempPath(), fileName);
         try
         {
             await File.WriteAllTextAsync(path, content, TestContext.Current.CancellationToken);

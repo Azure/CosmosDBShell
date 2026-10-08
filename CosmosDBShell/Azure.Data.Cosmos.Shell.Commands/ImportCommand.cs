@@ -67,7 +67,7 @@ internal class ImportCommand : CosmosCommand
     [CosmosOption("format", "f", DefaultValue = ImportFormat.Auto)]
     public ImportFormat? Format { get; init; }
 
-    [CosmosOption("concurrency", DefaultValue = DefaultConcurrency)]
+    [CosmosOption("concurrency", DefaultValue = DefaultConcurrency, MinimumValue = 1)]
     public int? Concurrency { get; init; }
 
     [CosmosOption("partition-key", "pk")]
