@@ -14,6 +14,19 @@ using Azure.Data.Cosmos.Shell.Util;
 public class ToolOperationsTests
 {
     [Fact]
+    public void GetTool_ImportExposesConfigurableConcurrencyWithDefault()
+    {
+        var factory = new CommandRunner().Commands["import"];
+        var tool = ToolOperations.GetTool(factory);
+        var property = tool.InputSchema.GetProperty("properties").GetProperty("concurrency");
+
+        Assert.Equal("integer", property.GetProperty("type").GetString());
+        Assert.Equal(16, property.GetProperty("default").GetInt32());
+        Assert.Equal(1, property.GetProperty("minimum").GetInt32());
+        Assert.Contains("sequential", property.GetProperty("description").GetString());
+    }
+
+    [Fact]
     public void GetTool_IncludesCommandOptionsInInputSchema()
     {
         var factory = new CommandRunner().Commands["query"];
@@ -29,6 +42,7 @@ public class ToolOperationsTests
         Assert.Equal("string", queryProperty.GetProperty("type").GetString());
         Assert.Equal("string", databaseProperty.GetProperty("type").GetString());
         Assert.Equal("string", containerProperty.GetProperty("type").GetString());
+        Assert.False(containerProperty.TryGetProperty("minimum", out _));
         Assert.Equal("integer", maxProperty.GetProperty("type").GetString());
         Assert.Equal(ToolOperations.DefaultPageSize, maxProperty.GetProperty("default").GetInt32());
         Assert.Equal(1, maxProperty.GetProperty("minimum").GetInt32());

@@ -28,6 +28,8 @@ internal class Option(PropertyInfo p, CosmosOptionAttribute opt)
 
     public object? DefaultValue => this.opt.DefaultValue;
 
+    public object? MinimumValue => this.opt.MinimumValue;
+
     /// <summary>
     /// Gets the description of the option.
     /// </summary>
