@@ -249,6 +249,8 @@ Loop headers reject misspelled `in` and `while` keywords before execution, and `
 
 Script diagnostics preserve source files, runtime failure categories, and function/script call sites. The language server shares the runtime's control-flow and duplicate-parameter checks, recognizes document-local functions, and checks nested commands and options. Incorrect function argument counts produce usage exit code `2`. See [validation and errors](docs/programming.md#validation-and-errors).
 
+Dynamic `exec` calls accept the same options and shell words as direct commands. Built-in commands bind options normally; functions and script files receive option-shaped arguments as positional text. See [exec](docs/programming.md#exec).
+
 Loops and functions preserve JSON `null` values. Numeric conditions use the same zero/nonzero rule for shell values and JSON properties, including fractional numbers. See [value conversion rules](docs/programming.md#numbers).
 
 JSON strings use the same `+` concatenation rules as shell strings. A bare `return` is valid immediately before a closing block brace. Editor variable symbols distinguish case-sensitive names such as `$value` and `$Value`.
