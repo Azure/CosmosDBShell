@@ -201,6 +201,7 @@ Examples:
 
 - If the input is an array and the index exists, the element is returned.
 - If the index is out of range, the result is `null`.
+- Index literals must fit in a non-negative signed 32-bit integer (`0` through `2147483647`). Larger literals are parse errors, including with optional access; they are never substituted with index zero.
 - If the input is not an array, evaluation fails unless optional access is used.
 
 Examples:

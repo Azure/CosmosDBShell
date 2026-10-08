@@ -39,7 +39,7 @@ Exports replace their destination only after successful completion, preserving a
 
 MCP command execution is serialized with the shell, and destructive confirmations are invalidated by connection or navigation changes. Ordinary explicit null MCP arguments are omitted; null continuation tokens and null `rm` partition-key/ETag safety options are rejected. MCP invocations are echoed in the shell so their activity stays visible, and they are recorded in history alongside interactive commands. Concurrent shells merge history under a shared lock and publish complete replacements instead of truncating the saved file. History remains fully replayable, including connection strings; treat its file as sensitive. See [MCP security](docs/mcp.md#security) and [history](docs/navigation.md#history).
 
-MCP clients supporting resource subscriptions can watch `cosmos://shell/current-location` for interactive navigation and connection changes; the resource includes the current account endpoint separately from the location. See [MCP location updates](docs/mcp.md#shell-location-updates).
+MCP clients supporting resource subscriptions can watch `cosmos://shell/current-location` for interactive navigation and connection changes; the resource includes the current account endpoint separately from the location. The resource list is static, so the server does not advertise `resources.listChanged`. See [MCP location updates](docs/mcp.md#shell-location-updates).
 
 ## Quick Start
 
@@ -245,9 +245,9 @@ Scripts are parsed and validated before their statements execute. Functions pres
 
 Parser nesting, expression tree depth, and active function/script calls have fixed [resource limits](docs/programming.md#resource-limits). Limit violations fail with diagnostics rather than continuing recursive parsing or execution.
 
-Script diagnostics preserve source files, runtime failure categories, and function/script call sites. The language server shares the runtime's control-flow and duplicate-parameter checks, recognizes document-local functions, and checks nested commands and options. Incorrect function argument counts produce usage exit code `2`. See [validation and errors](docs/programming.md#validation-and-errors).
+Loop headers reject misspelled `in` and `while` keywords before execution, and `filter` rejects overflowing array indexes rather than selecting element zero. JSON numeric strings use the same decimal conversion as shell strings. Dynamic `exec` calls accept normal command options, negative arguments, and shell words. See [programming](docs/programming.md) and the [filter language](docs/filter-v1-spec.md).
 
-Numeric strings read from JSON use the same `double` conversion as shell strings when combined with decimal operands in arithmetic or ordered comparisons. String addition remains concatenation.
+Script diagnostics preserve source files, runtime failure categories, and function/script call sites. The language server shares the runtime's control-flow and duplicate-parameter checks, recognizes document-local functions, and checks nested commands and options. Incorrect function argument counts produce usage exit code `2`. See [validation and errors](docs/programming.md#validation-and-errors).
 
 Loops and functions preserve JSON `null` values. Numeric conditions use the same zero/nonzero rule for shell values and JSON properties, including fractional numbers. See [value conversion rules](docs/programming.md#numbers).
 

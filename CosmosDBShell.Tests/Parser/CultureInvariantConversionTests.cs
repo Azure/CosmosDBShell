@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests.Parser;
 
 using System.Globalization;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -51,20 +52,28 @@ public class CultureInvariantConversionTests
         Assert.Equal(3.0d, value.Value);
     }
 
-    [Fact]
-    public void ShellJson_DecimalConversion_UsesInvariantCulture()
+    [Theory]
+    [InlineData("1.5", 1.5)]
+    [InlineData("\"1.5\"", 1.5)]
+    [InlineData("1e100", 1e100)]
+    [InlineData("\"1e100\"", 1e100)]
+    public void ShellJson_DecimalConversion_ReturnsInvariantDouble(string source, double expected)
     {
-        WithGermanCulture(() =>
-        {
-            using var document = System.Text.Json.JsonDocument.Parse("\"1.5\"");
-            var value = new ShellJson(document.RootElement);
-            Assert.Equal(1.5d, Assert.IsType<double>(value.ConvertShellObject(DataType.Decimal)));
+        using var document = JsonDocument.Parse(source);
+        var value = WithGermanCulture(() =>
+            Assert.IsType<double>(new ShellJson(document.RootElement).ConvertShellObject(DataType.Decimal)));
 
-            using var localized = System.Text.Json.JsonDocument.Parse("\"1,5\"");
+        Assert.Equal(expected, value);
+    }
+
+    [Fact]
+    public void ShellJson_DecimalConversion_RejectsLocalizedDecimalSeparator()
+    {
+        using var document = JsonDocument.Parse("\"1,5\"");
+
+        WithGermanCulture(() =>
             Assert.Throws<InvalidOperationException>(() =>
-                new ShellJson(localized.RootElement).ConvertShellObject(DataType.Decimal));
-            return true;
-        });
+                new ShellJson(document.RootElement).ConvertShellObject(DataType.Decimal)));
     }
 
     private static T WithGermanCulture<T>(Func<T> action)

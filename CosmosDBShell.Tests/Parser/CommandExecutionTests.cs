@@ -92,6 +92,74 @@ public class CommandExecutionTests : TestBase
         Assert.Equal("hello world", Assert.IsType<ShellText>(state.Result).Text);
     }
 
+    [Theory]
+    [InlineData("-5", "-5")]
+    [InlineData("-1.5 +2", "-1.5 +2")]
+    [InlineData("\"--format=json\"", "--format=json")]
+    [InlineData("https://localhost:8081 *.json", "https://localhost:8081 *.json")]
+    public async Task Exec_ShellWords_RunLikeDirectArguments(string arguments, string expected)
+    {
+        var state = await Shell.RunCommandAsync(new(), $"exec \"echo\" {arguments}", TestContext.Current.CancellationToken);
+
+        Assert.False(state.IsError);
+        Assert.Equal(expected, Assert.IsType<ShellText>(state.Result).Text);
+    }
+
+    [Theory]
+    [InlineData("-directory . -l")]
+    [InlineData("--directory=. --list")]
+    [InlineData("--directory:. --list=false")]
+    [InlineData("--directory=$path --list=true")]
+    public async Task Exec_Options_BindAndRunResolvedCommand(string arguments)
+    {
+        SetVariable("cmd", new ShellText("dir"));
+        SetVariable("path", new ShellText("."));
+
+        var state = await Shell.RunCommandAsync(
+            new(), $"exec $cmd \"*.missing-regression-file\" {arguments}", TestContext.Current.CancellationToken);
+
+        Assert.False(state.IsError);
+        Assert.Equal(0, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("values").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Exec_FunctionArguments_PreserveTypesAndParenthesizedExpressions()
+    {
+        var state = await Shell.RunCommandAsync(
+            new(),
+            "def capture [object flag number] { return [$object,$flag,$number] }; " +
+            "exec \"capture\" {\"id\":1} true (1.5 + 2)",
+            TestContext.Current.CancellationToken);
+
+        Assert.False(state.IsError);
+        Assert.Equal("[{\"id\":1},true,3.5]", Assert.IsType<ShellJson>(state.Result).Value.GetRawText());
+    }
+
+    [Fact]
+    public async Task Exec_UnknownOption_Throws()
+    {
+        await Assert.ThrowsAsync<UnknownOptionException>(() => RunSingleAsync("exec \"dir\" --bogus=1"));
+    }
+
+    [Fact]
+    public async Task Exec_OptionMissingValue_Throws()
+    {
+        await Assert.ThrowsAsync<CommandException>(() => RunSingleAsync("exec \"dir\" --directory"));
+    }
+
+    [Theory]
+    [InlineData("exec \"echo\" first; echo after")]
+    [InlineData("exec \"echo\" first\necho after")]
+    [InlineData("{ exec \"echo\" first }; echo after")]
+    [InlineData("exec \"echo\" first | echo after")]
+    public async Task Exec_ArgumentTerminators_PreserveFollowingStatements(string source)
+    {
+        var state = await Shell.RunCommandAsync(new(), source, TestContext.Current.CancellationToken);
+
+        Assert.False(state.IsError);
+        Assert.Equal("after", Assert.IsType<ShellText>(state.Result).Text);
+    }
+
     [Fact]
     public async Task Exec_EmptyCommandPath_Throws()
     {

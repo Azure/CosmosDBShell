@@ -4,8 +4,10 @@
 
 ### Fixes
 
-- Use consistent `double` conversion for JSON values in decimal arithmetic and comparisons, including numeric strings read through JSON paths.
-- Reject oversized `filter` array indexes instead of silently selecting element zero.
+- `for` and `do` loops now reject misspelled `in` and `while` keywords before any statements in the input execute. They previously accepted any identifier in those positions.
+- `filter` now rejects array index literals larger than `2147483647`, including optional access, instead of silently selecting element zero. Representable indexes beyond the array length still return `null`.
+- Decimal arithmetic and comparisons involving JSON numeric strings now use the same culture-invariant `double` conversion as shell strings instead of failing with a `Decimal`-to-`Double` cast error. String concatenation with `+` is unchanged.
+- `exec` now accepts normal command options, negative arguments, URLs, and file patterns while preserving variable, JSON, and parenthesized-expression arguments. Options previously failed to parse, including the documented `exec $cmd -m 5` form.
 - Detect local Cosmos DB emulator connections by the parsed HTTP(S) endpoint host, preventing misleading remote URLs or unrelated connection-string fields from automatically disabling TLS certificate validation.
 
 ## 1.1.271-preview — 2026-10-02
