@@ -1195,6 +1195,7 @@ mcp-error-stdio-response-file = Error: --mcp-stdio must be passed directly on th
 mcp-error-stdio-console-input = Interactive console input is unavailable in MCP stdio mode. Use MCP elicitation for confirmation.
 mcp-error-stdio-startup-timeout = MCP stdio startup connection and navigation timed out after 60 seconds. Use a non-interactive credential or connect through an MCP tool after starting the server.
 mcp-error-stdio-input = MCP stdio input failed: { $message }
+mcp-error-stdio-startup-buffer-limit = Startup input exceeded the 8 MiB buffering limit. Wait for startup to finish before sending more requests.
 help-Verbose = Print full exception details instead of only the message.
 help-Theme = Color theme profile to apply at startup. Falls back to the COSMOSDB_SHELL_THEME environment variable.
 help-Diagnostics = Write timestamped diagnostic logs to a file. Optionally specify a path with --diagnostics <path>; defaults to a timestamped file in the shell configuration directory.

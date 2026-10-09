@@ -33,7 +33,9 @@ has its own connection and navigation state:
 - Startup connection and navigation share a 60-second timeout. Closing stdin
   cancels pending startup; a timeout is reported on stderr with exit code `4`.
   Requests received during startup are buffered in a private delete-on-close
-  temporary file. Shutdown releases that file even if a stdin read remains blocked.
+  temporary file, capped at 8 MiB. Exceeding the cap cancels startup, reports an
+  input error on stderr, and exits with code `1`; normal transport after startup
+  is unaffected. Shutdown releases the file even if a stdin read remains blocked.
 - Stdio mode does not load existing shell history or record commands in memory or
   on disk. Existing history files are left untouched. Explicit `--diagnostics`
   logging remains available through the normal secret-redaction pipeline.

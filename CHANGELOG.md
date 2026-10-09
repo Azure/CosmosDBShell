@@ -14,6 +14,7 @@
 
 ### Improvements
 
+- Cap MCP stdio startup input buffering at 8 MiB and report an explicit error when the limit is exceeded.
 - Bound MCP stdio startup connection and navigation to 60 seconds and cancel pending startup when stdin closes. Report startup timeout errors on stderr with exit code 4. MCP request cancellation no longer logs an execution failure.
 - Centralize shell presentation by message category. `--quiet` suppresses informational messages, progress, banners, and command echoes while preserving results, warnings, errors, and required authentication instructions, including previews shown before a confirmation. Machine-mode diagnostics use stderr without ANSI styling, and machine-mode stdout carries only the command result. MCP stdio continues to return results only through the protocol. Explicit diagnostic logging is unchanged.
 - In machine mode, `theme`, `help`, and `edit` failures are now reported as structured `{ "status": "error", ... }` objects on stderr; previously they exited with code 1 and no message. Interactive and script errors from these commands are reported once.

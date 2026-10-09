@@ -5,9 +5,11 @@
 namespace Azure.Data.Cosmos.Shell.Mcp;
 
 using System.IO.Pipelines;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal sealed class StdioStartupInput : IDisposable
 {
+    internal const int MaximumStartupBufferBytes = 8 * 1024 * 1024;
     internal static readonly TimeSpan StartupTimeout = TimeSpan.FromSeconds(60);
 
     private readonly Stream input;
@@ -148,6 +150,11 @@ internal sealed class StdioStartupInput : IDisposable
                 {
                     if (!this.startupBufferCompleted)
                     {
+                        if (this.startupBuffer.Length > MaximumStartupBufferBytes - read)
+                        {
+                            throw new IOException(MessageService.GetString("mcp-error-stdio-startup-buffer-limit"));
+                        }
+
                         await this.startupBuffer.WriteAsync(
                             bytes.AsMemory(0, read),
                             this.stopping.Token).ConfigureAwait(false);

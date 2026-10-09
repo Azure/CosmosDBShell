@@ -181,6 +181,74 @@ public class StdioStartupInputTests
         Assert.Same(error, actual);
     }
 
+    [Fact]
+    public async Task StartupBuffer_ExactlyAtLimit_PreservesAllBytesWithoutCancellation()
+    {
+        Assert.Equal(8 * 1024 * 1024, StdioStartupInput.MaximumStartupBufferBytes);
+        var bytes = new byte[StdioStartupInput.MaximumStartupBufferBytes];
+        Random.Shared.NextBytes(bytes);
+        using var source = new UninterruptibleInput(bytes);
+        using var input = new StdioStartupInput(source);
+        input.Start();
+        try
+        {
+            await source.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.False(input.StartupToken.IsCancellationRequested);
+            Assert.Null(input.InputError);
+            await input.CompleteStartupAsync();
+            source.Release.TrySetResult();
+            using var received = new MemoryStream();
+            await input.Input.CopyToAsync(received, TestContext.Current.CancellationToken);
+
+            Assert.Equal(bytes, received.ToArray());
+            Assert.False(File.Exists(input.StartupBufferPath));
+        }
+        finally
+        {
+            source.Release.TrySetResult();
+        }
+    }
+
+    [Fact]
+    public async Task StartupBuffer_OneByteOverLimit_CancelsReportsErrorAndNeverExceedsLimit()
+    {
+        using var source = new MemoryStream(new byte[StdioStartupInput.MaximumStartupBufferBytes + 1]);
+        using var input = new StdioStartupInput(source);
+        input.Start();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            Task.Delay(Timeout.InfiniteTimeSpan, input.StartupToken)
+                .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+
+        Assert.False(input.TimedOut);
+        var error = Assert.IsType<IOException>(input.InputError);
+        var (exitCode, messages) = ReportCancellation(input);
+        Assert.Equal(1, exitCode);
+        Assert.Contains("8 MiB", Assert.Single(messages));
+        using var received = new MemoryStream();
+        var actual = await Assert.ThrowsAsync<IOException>(() =>
+            input.Input.CopyToAsync(received, TestContext.Current.CancellationToken));
+        Assert.Same(error, actual);
+        Assert.Equal(StdioStartupInput.MaximumStartupBufferBytes, received.Length);
+        Assert.False(File.Exists(input.StartupBufferPath));
+    }
+
+    [Fact]
+    public async Task CompletedStartup_InputOverStartupLimit_IsNotRejected()
+    {
+        var bytes = new byte[StdioStartupInput.MaximumStartupBufferBytes + 1];
+        Random.Shared.NextBytes(bytes);
+        using var source = new MemoryStream(bytes);
+        using var input = new StdioStartupInput(source);
+        await input.CompleteStartupAsync();
+        input.Start();
+        using var received = new MemoryStream();
+        await input.Input.CopyToAsync(received, TestContext.Current.CancellationToken);
+
+        Assert.Equal(bytes, received.ToArray());
+        Assert.Null(input.InputError);
+        Assert.False(input.TimedOut);
+    }
+
     private sealed class FaultingInput(Exception error) : MemoryStream
     {
         public override ValueTask<int> ReadAsync(
@@ -189,10 +257,9 @@ public class StdioStartupInputTests
             => ValueTask.FromException<int>(error);
     }
 
-    private sealed class UninterruptibleInput : MemoryStream
+    private sealed class UninterruptibleInput(byte[]? prefix = null) : MemoryStream(prefix ?? Prefix)
     {
         internal static readonly byte[] Prefix = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"method\":\"ping\"}\n");
-        private bool prefixReturned;
 
         internal TaskCompletionSource Blocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -202,11 +269,9 @@ public class StdioStartupInputTests
             Memory<byte> buffer,
             CancellationToken cancellationToken = default)
         {
-            if (!this.prefixReturned)
+            if (this.Position < this.Length)
             {
-                this.prefixReturned = true;
-                Prefix.CopyTo(buffer);
-                return Prefix.Length;
+                return await base.ReadAsync(buffer, cancellationToken);
             }
 
             this.Blocked.TrySetResult();

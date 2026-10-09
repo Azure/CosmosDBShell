@@ -51,6 +51,8 @@ destructive commands remain available through MCP confirmation. Existing
 
 MCP clients supporting resource subscriptions can watch `cosmos://shell/current-location` for interactive navigation and connection changes; the resource includes the current account endpoint separately from the location. The resource list is static, so the server does not advertise `resources.listChanged`. See [MCP location updates](docs/mcp.md#shell-location-updates).
 
+MCP stdio startup buffers at most 8 MiB of protocol input. Exceeding that limit cancels startup with an error on stderr and exit code `1`; it does not limit normal transport after startup.
+
 Machine-mode `watch` requires a positive `--max` and returns the collected changes as its final result; interactive watches can still follow without a limit. See [watch](docs/commands.md#watch).
 
 ## Quick Start
