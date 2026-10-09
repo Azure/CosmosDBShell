@@ -797,12 +797,15 @@ Arguments:
 Notes:
 
 - If `expression` evaluates to an existing file path, it is executed as a `.csh` script.
+- Arguments use direct-command shell-word and option syntax, including short options, `--name=value`, `--name:value`, and quoted or computed values. Built-in commands bind options normally; functions and scripts receive option-shaped words as positional text.
 
 Examples:
 
 ```bash
 $script = {path: "myscript.csh"}
 exec $script.path arg1 arg2
+
+exec "info" --db=mydb --con=mycontainer
 
 for $file in (dir "*.csh") { exec $file.path }
 ```

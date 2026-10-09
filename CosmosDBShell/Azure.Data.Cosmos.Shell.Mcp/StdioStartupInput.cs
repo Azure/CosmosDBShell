@@ -12,7 +12,7 @@ internal sealed class StdioStartupInput : IDisposable
 
     private readonly Stream input;
     private readonly Pipe liveBuffer = new();
-    private readonly string startupBufferPath = Path.GetTempFileName();
+    private readonly string startupBufferPath = Path.Join(Path.GetTempPath(), $"cosmos-stdio-{Guid.NewGuid():N}.tmp");
     private readonly FileStream startupBuffer;
     private readonly SemaphoreSlim startupBufferLock = new(1, 1);
     private readonly TaskCompletionSource<Stream> startupBufferReady =
@@ -33,13 +33,19 @@ internal sealed class StdioStartupInput : IDisposable
     public StdioStartupInput(Stream input, TimeSpan? timeout = null)
     {
         this.input = input;
-        this.startupBuffer = new FileStream(
-            this.startupBufferPath,
-            FileMode.Create,
-            FileAccess.Write,
-            FileShare.Read,
-            4096,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        var bufferOptions = new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.ReadWrite,
+            Share = FileShare.None,
+            Options = FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.DeleteOnClose,
+        };
+        if (!OperatingSystem.IsWindows())
+        {
+            bufferOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+
+        this.startupBuffer = new FileStream(this.startupBufferPath, bufferOptions);
         this.Input = new StartupBufferedStream(
             this.startupBufferReady.Task,
             this.liveBuffer.Reader.AsStream());
@@ -62,6 +68,8 @@ internal sealed class StdioStartupInput : IDisposable
     }
 
     public Stream Input { get; }
+
+    internal string StartupBufferPath => this.startupBufferPath;
 
     public CancellationToken StartupToken { get; }
 
@@ -87,6 +95,20 @@ internal sealed class StdioStartupInput : IDisposable
         }
 
         this.stopping.Cancel();
+
+        // The stdin pump may never unblock. Release the spool independently of its lifetime.
+        this.startupBufferLock.Wait();
+        try
+        {
+            this.startupBufferCompleted = true;
+            this.startupBuffer.Dispose();
+            this.startupBufferReady.TrySetCanceled(this.stopping.Token);
+        }
+        finally
+        {
+            this.startupBufferLock.Release();
+        }
+
         this.Input.Dispose();
         this.input.Dispose();
 
@@ -180,19 +202,12 @@ internal sealed class StdioStartupInput : IDisposable
                 return;
             }
 
-            this.startupBufferCompleted = true;
             await this.startupBuffer.FlushAsync().ConfigureAwait(false);
-            await this.startupBuffer.DisposeAsync().ConfigureAwait(false);
-            var reader = new FileStream(
-                this.startupBufferPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read | FileShare.Delete,
-                4096,
-                FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.DeleteOnClose);
-            if (!this.startupBufferReady.TrySetResult(reader))
+            this.startupBuffer.Position = 0;
+            this.startupBufferCompleted = true;
+            if (!this.startupBufferReady.TrySetResult(this.startupBuffer))
             {
-                await reader.DisposeAsync().ConfigureAwait(false);
+                await this.startupBuffer.DisposeAsync().ConfigureAwait(false);
             }
         }
         finally

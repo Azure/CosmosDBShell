@@ -49,7 +49,7 @@ destructive commands remain available through MCP confirmation. Existing
 `--mcp [port]` HTTP mode remains available alongside the interactive shell. See
 [stdio setup](docs/mcp.md#stdio-headless-mode).
 
-MCP clients supporting resource subscriptions can watch `cosmos://shell/current-location` for interactive navigation and connection changes; the resource includes the current account endpoint separately from the location. See [MCP location updates](docs/mcp.md#shell-location-updates).
+MCP clients supporting resource subscriptions can watch `cosmos://shell/current-location` for interactive navigation and connection changes; the resource includes the current account endpoint separately from the location. The resource list is static, so the server does not advertise `resources.listChanged`. See [MCP location updates](docs/mcp.md#shell-location-updates).
 
 ## Quick Start
 
@@ -259,6 +259,8 @@ Parser nesting, expression tree depth, and active function/script calls have fix
 Loop headers reject misspelled `in` and `while` keywords before execution, and `filter` rejects overflowing array indexes rather than selecting element zero. JSON numeric strings use the same decimal conversion as shell strings. Dynamic `exec` calls accept normal command options, negative arguments, and shell words. See [programming](docs/programming.md) and the [filter language](docs/filter-v1-spec.md).
 
 Script diagnostics preserve source files, runtime failure categories, and function/script call sites. The language server shares the runtime's control-flow and duplicate-parameter checks, recognizes document-local functions, and checks nested commands and options. Incorrect function argument counts produce usage exit code `2`. See [validation and errors](docs/programming.md#validation-and-errors).
+
+Dynamic `exec` calls accept the same options and shell words as direct commands. Built-in commands bind options normally; functions and script files receive option-shaped arguments as positional text. See [exec](docs/programming.md#exec).
 
 Loops and functions preserve JSON `null` values. Numeric conditions use the same zero/nonzero rule for shell values and JSON properties, including fractional numbers. See [value conversion rules](docs/programming.md#numbers).
 

@@ -16,6 +16,7 @@
 - A new build analyzer rule (CZ0003) rejects direct `Console`/`AnsiConsole` output outside the shell's output policy.
 ### Fixes
 
+- Parse `exec` options and shell words like direct commands. Bind built-in options normally and pass option-shaped words to functions and script files as positional text.
 - `for` and `do` loops now reject misspelled `in` and `while` keywords before any statements in the input execute. They previously accepted any identifier in those positions.
 - `filter` now rejects array index literals larger than `2147483647`, including optional access, instead of silently selecting element zero. Representable indexes beyond the array length still return `null`.
 - Decimal arithmetic and comparisons involving JSON numeric strings now use the same culture-invariant `double` conversion as shell strings instead of failing with a `Decimal`-to-`Double` cast error. String concatenation with `+` is unchanged.

@@ -32,6 +32,8 @@ has its own connection and navigation state:
 - Closing stdin stops the server and releases the shell's resources.
 - Startup connection and navigation share a 60-second timeout. Closing stdin
   cancels pending startup; a timeout is reported on stderr with exit code `4`.
+  Requests received during startup are buffered in a private delete-on-close
+  temporary file. Shutdown releases that file even if a stdin read remains blocked.
 - Stdio mode does not load existing shell history or record commands in memory or
   on disk. Existing history files are left untouched. Explicit `--diagnostics`
   logging remains available through the normal secret-redaction pipeline.
@@ -181,6 +183,8 @@ For deterministic ARM routing in multi-subscription environments, start the shel
 ### Shell Location Updates
 
 Clients can read the `cosmos://shell/current-location` MCP resource. Its JSON content has a `currentLocation` field (`null` when disconnected, `/` at the account root, or `/database[/container]`) and a separate `currentAccountEndpoint` field (the connected Cosmos DB account URL, or `null` when disconnected). For example: `{"currentLocation":"/myDb/myContainer","currentAccountEndpoint":"https://myaccount.documents.azure.com/"}`. Clients that support resource subscriptions receive `notifications/resources/updated` when the shared shell location or connection changes, including changes made interactively. On notification, read the resource again for the new values; the notification itself contains only the URI. Rapid consecutive changes may be coalesced into a single notification.
+
+The resource list is static, so the server does not advertise `resources.listChanged` or honor resource-list-change subscriptions. Resource-content subscriptions for `cosmos://shell/current-location` remain supported.
 
 How a client subscribes depends on its protocol revision:
 

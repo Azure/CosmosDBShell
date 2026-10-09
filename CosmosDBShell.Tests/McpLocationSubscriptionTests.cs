@@ -38,6 +38,9 @@ public class McpLocationSubscriptionTests
                 new StreamClientTransport(input.Writer.AsStream(), output.Reader.AsStream()),
                 new McpClientOptions { ProtocolVersion = "2025-11-25" },
                 cancellationToken: timeout.Token);
+            Assert.NotNull(client.ServerCapabilities.Resources);
+            Assert.True(client.ServerCapabilities.Resources.Subscribe);
+            Assert.False(client.ServerCapabilities.Resources.ListChanged);
             var updated = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             await using var subscription = await client.SubscribeToResourceAsync(
                 ResourceOperations.CurrentLocationUri,
@@ -86,8 +89,19 @@ public class McpLocationSubscriptionTests
         try
         {
             await using var client = await ConnectAsync(host, timeout.Token);
+            Assert.NotNull(client.ServerCapabilities.Resources);
+            Assert.True(client.ServerCapabilities.Resources.Subscribe);
+            Assert.False(client.ServerCapabilities.Resources.ListChanged);
             var resources = await client.ListResourcesAsync(cancellationToken: timeout.Token);
+            Assert.Equal(3, resources.Count);
             Assert.Contains(resources, resource => resource.Uri == ResourceOperations.CurrentLocationUri);
+            foreach (var documentation in resources.Where(resource => resource.Uri.StartsWith("cosmos://docs/", StringComparison.Ordinal)))
+            {
+                var result = await client.ReadResourceAsync(documentation.Uri, cancellationToken: timeout.Token);
+                Assert.NotEmpty(Assert.IsType<TextResourceContents>(Assert.Single(result.Contents)).Text);
+            }
+
+            Assert.Empty(await client.ListResourceTemplatesAsync(cancellationToken: timeout.Token));
 
             var invalid = await Assert.ThrowsAsync<McpProtocolException>(
                 () => client.SubscribeToResourceAsync("cosmos://docs/scripting", cancellationToken: timeout.Token));
@@ -161,6 +175,28 @@ public class McpLocationSubscriptionTests
         }
     }
 
+    [Theory]
+    [InlineData("2025-11-25", McpErrorCode.ResourceNotFound)]
+    [InlineData(null, McpErrorCode.InvalidParams)]
+    public async Task UnknownResource_PreservesProtocolError(string? protocolVersion, McpErrorCode errorCode)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        using var host = McpServer.CreateHost(new Program.CosmosShellOptions { McpPort = 0 });
+        await host.StartAsync(timeout.Token);
+        try
+        {
+            await using var client = await ConnectAsync(host, timeout.Token, protocolVersion);
+            var error = await Assert.ThrowsAsync<McpProtocolException>(
+                async () => await client.ReadResourceAsync("cosmos://docs/missing", cancellationToken: timeout.Token));
+            Assert.Equal(errorCode, error.ErrorCode);
+        }
+        finally
+        {
+            await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+    }
+
     [Fact]
     public async Task ListeningClient_ReceivesLocationChangeOnListenStream()
     {
@@ -173,6 +209,9 @@ public class McpLocationSubscriptionTests
             var subscriptions = host.Services.GetRequiredService<LocationResourceSubscriptions>();
             await using var client = await ConnectAsync(host, timeout.Token, protocolVersion: null);
             Assert.Equal("2026-07-28", client.NegotiatedProtocolVersion);
+            Assert.NotNull(client.ServerCapabilities.Resources);
+            Assert.True(client.ServerCapabilities.Resources.Subscribe);
+            Assert.False(client.ServerCapabilities.Resources.ListChanged);
 
             var acknowledged = new TaskCompletionSource<JsonRpcNotification>(TaskCreationOptions.RunContinuationsAsynchronously);
             var updated = new TaskCompletionSource<JsonRpcNotification>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -203,6 +242,7 @@ public class McpLocationSubscriptionTests
                         {
                             ResourceSubscriptions = [ResourceOperations.CurrentLocationUri, "cosmos://docs/scripting"],
                             ToolsListChanged = true,
+                            ResourcesListChanged = true,
                         },
                     }),
                 },
@@ -213,6 +253,7 @@ public class McpLocationSubscriptionTests
             var granted = acknowledgement.Params!["notifications"]!.AsObject();
             Assert.Equal(ResourceOperations.CurrentLocationUri, Assert.Single(granted["resourceSubscriptions"]!.AsArray())!.GetValue<string>());
             Assert.False(granted.ContainsKey("toolsListChanged"));
+            Assert.False(granted.ContainsKey("resourcesListChanged"));
             Assert.Equal("location-listen", acknowledgement.Params["_meta"]![MetaKeys.SubscriptionId]!.GetValue<string>());
             while (subscriptions.ListenerCount != 1)
             {
@@ -291,6 +332,7 @@ public class McpLocationSubscriptionTests
                         {
                             ResourceSubscriptions = ["cosmos://docs/scripting"],
                             ToolsListChanged = true,
+                            ResourcesListChanged = true,
                         },
                     }),
                 },
@@ -301,6 +343,7 @@ public class McpLocationSubscriptionTests
             var granted = acknowledgement.Params!["notifications"]!.AsObject();
             Assert.False(granted.ContainsKey("resourceSubscriptions"));
             Assert.False(granted.ContainsKey("toolsListChanged"));
+            Assert.False(granted.ContainsKey("resourcesListChanged"));
             Assert.Equal("unsupported-listen", acknowledgement.Params["_meta"]![MetaKeys.SubscriptionId]!.GetValue<string>());
             Assert.Equal(0, subscriptions.ListenerCount);
         }

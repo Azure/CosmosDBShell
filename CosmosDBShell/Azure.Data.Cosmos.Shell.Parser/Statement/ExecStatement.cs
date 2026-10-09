@@ -138,10 +138,11 @@ internal class ExecStatement : Statement
 
     public override string ToString()
     {
-        var args = string.Join(" ", this.Arguments.Select(a => a.ToString()));
+        var args = string.Join(" ", this.Arguments.Select(CommandArgumentFormatter.Format));
+        var command = CommandArgumentFormatter.Format(this.CommandExpression);
         return string.IsNullOrEmpty(args)
-            ? $"exec {this.CommandExpression}"
-            : $"exec {this.CommandExpression} {args}";
+            ? $"exec {command}"
+            : $"exec {command} {args}";
     }
 
     /// <summary>

@@ -11,6 +11,60 @@ using Azure.Data.Cosmos.Shell.Mcp;
 
 public class StdioStartupInputTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Dispose_DeletesStartupSpoolWithoutWaitingForUninterruptibleInput(bool timedOut)
+    {
+        using var source = new UninterruptibleInput();
+        using var input = new StdioStartupInput(
+            source, timedOut ? TimeSpan.FromMilliseconds(50) : TimeSpan.FromSeconds(60));
+        input.Start();
+        try
+        {
+            await source.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            if (timedOut)
+            {
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                    Task.Delay(Timeout.InfiniteTimeSpan, input.StartupToken)
+                        .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+                Assert.True(input.TimedOut);
+            }
+
+            input.Dispose();
+
+            Assert.False(source.Release.Task.IsCompleted);
+            Assert.False(File.Exists(input.StartupBufferPath));
+        }
+        finally
+        {
+            source.Release.TrySetResult();
+        }
+    }
+
+    [Fact]
+    public async Task CompletedStartup_ReusesSpoolHandleAndDeletesItAfterReading()
+    {
+        using var source = new UninterruptibleInput();
+        using var input = new StdioStartupInput(source);
+        input.Start();
+        try
+        {
+            await source.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            await input.CompleteStartupAsync();
+            source.Release.TrySetResult();
+            using var received = new MemoryStream();
+            await input.Input.CopyToAsync(received, TestContext.Current.CancellationToken);
+
+            Assert.Equal(UninterruptibleInput.Prefix, received.ToArray());
+            Assert.False(File.Exists(input.StartupBufferPath));
+        }
+        finally
+        {
+            source.Release.TrySetResult();
+        }
+    }
+
     [Fact]
     public async Task Eof_CancelsStartupAndPreservesBufferedProtocolBytes()
     {
@@ -133,6 +187,32 @@ public class StdioStartupInputTests
             Memory<byte> buffer,
             CancellationToken cancellationToken = default)
             => ValueTask.FromException<int>(error);
+    }
+
+    private sealed class UninterruptibleInput : MemoryStream
+    {
+        internal static readonly byte[] Prefix = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"method\":\"ping\"}\n");
+        private bool prefixReturned;
+
+        internal TaskCompletionSource Blocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            if (!this.prefixReturned)
+            {
+                this.prefixReturned = true;
+                Prefix.CopyTo(buffer);
+                return Prefix.Length;
+            }
+
+            this.Blocked.TrySetResult();
+            await this.Release.Task;
+            return 0;
+        }
     }
 
     private static (int ExitCode, List<string> Messages) ReportCancellation(StdioStartupInput input)

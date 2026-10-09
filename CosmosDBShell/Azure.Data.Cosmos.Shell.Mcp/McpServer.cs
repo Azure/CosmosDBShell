@@ -89,13 +89,15 @@ internal class McpServer
                 mcpServerOptions.Capabilities = new ServerCapabilities
                 {
                     Tools = new ToolsCapability(),
-                    Resources = new ResourcesCapability { Subscribe = true },
+                    Resources = new ResourcesCapability { Subscribe = true, ListChanged = false },
                 };
 
                 mcpServerOptions.Handlers = new McpServerHandlers
                 {
                     CallToolHandler = toolOperations.CallToolHandler,
                     ListToolsHandler = toolOperations.ListToolsHandler,
+                    ListResourcesHandler = ResourceOperations.ListResourcesAsync,
+                    ReadResourceHandler = ResourceOperations.ReadResourceAsync,
                     SubscribeToResourcesHandler = toolOperations.SubscribeToResourcesHandler,
                     UnsubscribeFromResourcesHandler = toolOperations.UnsubscribeFromResourcesHandler,
                     SubscriptionsListenHandler = locationSubscriptions.ListenAsync,
@@ -104,10 +106,8 @@ internal class McpServer
                 mcpServerOptions.ServerInstructions = LoadServerInstructions();
             });
 
-        var mcpServerBuilder = services.AddMcpServer();
-        mcpServerBuilder.WithResources<ResourceOperations>();
-
-        return mcpServerBuilder;
+        // SDK resource collections advertise list changes even when configured otherwise.
+        return services.AddMcpServer();
     }
 
     internal static void ConfigureHttpTransport(HttpServerTransportOptions options)
