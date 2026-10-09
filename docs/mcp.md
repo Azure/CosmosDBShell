@@ -81,7 +81,7 @@ Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an expli
 
 The prompt is sent as a multi-round-trip request: the tool call returns an input-required result, and the client shows the prompt and retries the call with the answer. For clients that use the `initialize` handshake, the server sends a standard `elicitation/create` request on the session and retries the call itself, so those clients see the same prompt as before. The retry carries a server-signed state that ties the answer to the exact command line and shell context. Each state can be answered once and expires after 10 minutes. At most 1,024 confirmations are tracked at a time; beyond that the oldest pending one is dropped and must be confirmed again. An answer for a different command, a reused or expired state, or a missing or altered state is refused without executing. Argument order does not matter: the command line is built with positionals in shell order and options in declaration order.
 
-This replaces any opt-in write flag: destructive commands are always allowed to be invoked, but always require confirmation.
+This replaces any opt-in write flag: destructive writes are allowed to be invoked, but always require confirmation. The `bulk` tool's `dry-run: true` mode is read-only and is exempt.
 
 Confirmation includes the connected account endpoint and current navigation location alongside the command and its explicit target arguments. If the connection or navigation state changes while confirmation is pending, the approved command is refused without executing; retry it to confirm the new context. Even navigating away and back invalidates the pending confirmation. A pending confirmation also expires when the MCP server restarts.
 
@@ -96,6 +96,14 @@ Database and container resource actions are executed through Azure Resource Mana
 On serverless accounts, `mkdb`, `mkcon`, and their `create` aliases omit throughput when neither `--scale` nor `--ru` is supplied. Explicit throughput options are rejected on serverless accounts for both ARM and data-plane connections. See [database and container creation](commands.md#mkdb).
 
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.
+
+### Bulk Operations
+
+The `bulk` tool exposes the stateless `run`, `patch`, and `delete` subcommands, with the same operation schema, selection, journal, and reporting semantics as the [CLI command](commands.md#bulk). Stateful subcommands (`begin`, `add`, `execute`, `cancel`, `status`, and `show`) are restricted to the interactive shell, like stateful batches. Writes always require MCP elicitation, even with `yes: true`; once approved, no second terminal prompt is shown. `dry-run: true` validates or selects without writes or elicitation, but selection reads consume RUs.
+
+Pass operations as JSON text or a file path in `data`, or use `where` with `operations` for query-driven patches. `concurrency` defaults to 16 and must be positive; optional `max-items` and `max-ru` must also be positive. File paths for `data`, `save`, and `journal` are local to the shell server.
+
+These are independent writes, **not** transactions across partitions. Failed or incomplete runs include their summary alongside the MCP error. The command-level `result.resultIncomplete` and `result.budgetExceeded` flags describe job execution and are distinct from the envelope's query-paging `resultIncomplete`. A journal never automatically retries a write whose outcome is unknown unless `retry-uncertain` is set.
 
 ### Shell Location Updates
 
