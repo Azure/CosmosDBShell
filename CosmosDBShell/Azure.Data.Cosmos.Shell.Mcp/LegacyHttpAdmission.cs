@@ -113,20 +113,13 @@ internal sealed class LegacyHttpAdmission
     {
         return async (context, cancellationToken) =>
         {
-            var admission = context.JsonRpcMessage switch
+            using var admission = context.JsonRpcMessage switch
             {
                 JsonRpcResponse response => this.Find(context.Server.SessionId, response.Id),
                 JsonRpcError error => this.Find(context.Server.SessionId, error.Id),
                 _ => null,
             };
-            try
-            {
-                await next(context, cancellationToken);
-            }
-            finally
-            {
-                admission?.Dispose();
-            }
+            await next(context, cancellationToken);
         };
     }
 

@@ -11,8 +11,10 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using NSubstitute;
 
-public class LegacyHttpAdmissionTests
+public class LegacyHttpAdmissionTests : IDisposable
 {
+    private readonly List<MemoryStream> requestBodies = [];
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -111,19 +113,29 @@ public class LegacyHttpAdmissionTests
         Assert.Equal(0, admission.OutstandingRequests);
     }
 
+    public void Dispose()
+    {
+        foreach (var body in this.requestBodies)
+        {
+            body.Dispose();
+        }
+    }
+
     private static JsonRpcRequest CreateRequest(int id)
     {
         return new JsonRpcRequest { Id = new RequestId(id), Method = RequestMethods.ToolsCall };
     }
 
-    private static DefaultHttpContext CreateContext(JsonRpcMessage message)
+    private DefaultHttpContext CreateContext(JsonRpcMessage message)
     {
+        var body = new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(message));
+        this.requestBodies.Add(body);
         var context = new DefaultHttpContext();
         context.Request.Path = "/message";
         context.Request.Method = HttpMethods.Post;
         context.Request.QueryString = new QueryString("?sessionId=legacy-test");
         context.Request.ContentType = "application/json";
-        context.Request.Body = new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(message));
+        context.Request.Body = body;
         context.Response.Body = Stream.Null;
         return context;
     }
