@@ -43,6 +43,8 @@ MCP clients supporting resource subscriptions can watch `cosmos://shell/current-
 
 `--mcp` supports Streamable HTTP at `http://127.0.0.1:6128/` and legacy SSE at `http://127.0.0.1:6128/sse` on the same server, without an extra option. Both share the interactive shell's state. Use trusted local clients; prefer Streamable HTTP when available. See [MCP transports](docs/mcp.md#start-mcp-server).
 
+Legacy SSE allows at most 16 outstanding MCP requests across all sessions; excess requests receive a retryable protocol error without being queued. Replies and cancellation notifications remain available.
+
 ## Quick Start
 
 **Requirements:** .NET SDK 10.0+.

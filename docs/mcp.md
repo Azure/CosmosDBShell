@@ -23,7 +23,15 @@ shell's connection, navigation, tools, and resources. For a custom port, replace
 `6128` with that port. Prefer Streamable HTTP when the client supports it.
 The server remains bound to loopback with Origin/Host validation; use only
 trusted local clients. Legacy SSE acknowledges request POSTs immediately and
-does not provide HTTP-level backpressure on outstanding handlers.
+does not provide HTTP-level backpressure on outstanding handlers. The shell
+therefore admits at most **16 outstanding legacy MCP requests across all SSE
+sessions**, including requests waiting for the shell execution gate or user
+confirmation. Excess requests receive a JSON-RPC server error (`-32000`) over
+the SSE stream without being queued; retry after an outstanding request
+completes. The HTTP POST may still return `202 Accepted`, which is not command
+success. Permits are released when handlers finish, fail, or are cancelled.
+Replies and notifications, including cancellation, do not consume permits.
+This limit does not apply to Streamable HTTP.
 
 ## VS Code Setup
 

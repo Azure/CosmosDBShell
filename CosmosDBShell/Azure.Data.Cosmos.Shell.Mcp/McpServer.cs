@@ -53,6 +53,7 @@ internal class McpServer
     private static void ConfigureMcpServer(IServiceCollection services)
     {
         services.AddSingleton<ToolOperations>();
+        services.AddSingleton<LegacyRequestLimiter>();
         services.AddSingleton<LocationResourceSubscriptions>();
         services.AddHostedService(services => services.GetRequiredService<LocationResourceSubscriptions>());
         services.AddOptions<McpServerOptions>()
@@ -101,6 +102,16 @@ internal class McpServer
 #pragma warning disable MCP9004 // Legacy transport compatibility is intentional for trusted loopback clients.
         options.EnableLegacySse = true;
 #pragma warning restore MCP9004
+        options.ConfigureSessionOptions = (httpContext, serverOptions, cancellationToken) =>
+        {
+            if (httpContext.Request.Path == "/sse")
+            {
+                var limiter = httpContext.RequestServices.GetRequiredService<LegacyRequestLimiter>();
+                serverOptions.Filters.Message.IncomingFilters.Add(limiter.Limit);
+            }
+
+            return Task.CompletedTask;
+        };
 
         // Sessions with an open GET stream never go idle. Once a client disconnects without DELETE,
         // the session is disposed after this timeout, which also ends its location subscription.

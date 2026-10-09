@@ -393,12 +393,99 @@ public class McpLocationSubscriptionTests
     }
 
     [Fact]
+    public async Task LegacyRequests_RejectExcessAcrossSessionsAndReleaseCancelledRequests()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        using var host = McpServer.CreateHost(new Program.CosmosShellOptions { McpPort = 0 });
+        await host.StartAsync(timeout.Token);
+        var releaseGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<bool>? heldGate = null;
+        var calls = new List<Task<CallToolResult>>();
+        try
+        {
+            await using var first = await ConnectAsync(host, timeout.Token, "2024-11-05", HttpTransportMode.Sse);
+            await using var second = await ConnectAsync(host, timeout.Token, "2024-11-05", HttpTransportMode.Sse);
+            await using var modern = await ConnectAsync(host, timeout.Token);
+            var limiter = host.Services.GetRequiredService<LegacyRequestLimiter>();
+            var enteredGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            heldGate = ShellInterpreter.Instance.RunSerializedAsync(
+                async () =>
+                {
+                    enteredGate.SetResult(true);
+                    return await releaseGate.Task;
+                },
+                timeout.Token);
+            await enteredGate.Task.WaitAsync(timeout.Token);
+
+            var cancelledRequestId = new RequestId("cancelled-limit-test");
+            var cancelledCall = first.SendRequestAsync(
+                new JsonRpcRequest
+                {
+                    Id = cancelledRequestId,
+                    Method = RequestMethods.ToolsCall,
+                    Params = JsonSerializer.SerializeToNode(new CallToolRequestParams { Name = "version" }),
+                },
+                timeout.Token);
+            for (var i = 1; i < LegacyRequestLimiter.MaxOutstandingRequests; i++)
+            {
+                var client = i % 2 == 0 ? first : second;
+                calls.Add(client.CallToolAsync("version", cancellationToken: timeout.Token).AsTask());
+            }
+
+            await WaitForOutstandingRequestsAsync(limiter, LegacyRequestLimiter.MaxOutstandingRequests, timeout.Token);
+            var error = await Assert.ThrowsAsync<McpProtocolException>(
+                async () => await second.CallToolAsync("version", cancellationToken: timeout.Token));
+            Assert.Equal(LegacyRequestLimiter.OverloadErrorCode, error.ErrorCode);
+            Assert.Contains("Retry", error.Message);
+            Assert.Equal(LegacyRequestLimiter.MaxOutstandingRequests, limiter.OutstandingRequests);
+            Assert.NotEmpty(await modern.ListToolsAsync(cancellationToken: timeout.Token));
+
+            await first.SendMessageAsync(
+                new JsonRpcNotification
+                {
+                    Method = NotificationMethods.CancelledNotification,
+                    Params = JsonSerializer.SerializeToNode(new CancelledNotificationParams { RequestId = cancelledRequestId }),
+                },
+                timeout.Token);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await cancelledCall.WaitAsync(timeout.Token));
+            await WaitForOutstandingRequestsAsync(limiter, LegacyRequestLimiter.MaxOutstandingRequests - 1, timeout.Token);
+            calls.Add(second.CallToolAsync("version", cancellationToken: timeout.Token).AsTask());
+            await WaitForOutstandingRequestsAsync(limiter, LegacyRequestLimiter.MaxOutstandingRequests, timeout.Token);
+
+            releaseGate.SetResult(true);
+            foreach (var call in calls)
+            {
+                Assert.False((await call.WaitAsync(timeout.Token)).IsError == true);
+            }
+
+            await WaitForOutstandingRequestsAsync(limiter, 0, timeout.Token);
+            var resourceError = await Assert.ThrowsAsync<McpProtocolException>(
+                async () => await first.ReadResourceAsync("cosmos://docs/missing", cancellationToken: timeout.Token));
+            Assert.Equal(McpErrorCode.ResourceNotFound, resourceError.ErrorCode);
+            await WaitForOutstandingRequestsAsync(limiter, 0, timeout.Token);
+            Assert.False((await first.CallToolAsync("version", cancellationToken: timeout.Token)).IsError == true);
+        }
+        finally
+        {
+            releaseGate.TrySetResult(true);
+            if (heldGate is not null)
+            {
+                await heldGate;
+            }
+
+            await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Fact]
     public void HttpTransport_UsesSessionsOnlyForInitializeClientsWithBoundedIdleTimeout()
     {
         var options = new ModelContextProtocol.AspNetCore.HttpServerTransportOptions();
         McpServer.ConfigureHttpTransport(options);
 
         Assert.Equal(ModelContextProtocol.AspNetCore.HttpServerSessionMode.StatefulForInitializeClients, options.SessionMode);
+        Assert.NotNull(options.ConfigureSessionOptions);
 #pragma warning disable MCP9004 // Verify the intentionally enabled legacy transport.
         Assert.True(options.EnableLegacySse);
 #pragma warning restore MCP9004
@@ -406,6 +493,14 @@ public class McpLocationSubscriptionTests
         Assert.Equal(McpServer.SessionIdleTimeout, options.IdleTimeout);
         Assert.NotNull(options.RunSessionHandler);
 #pragma warning restore MCP9006, MCPEXP002
+    }
+
+    private static async Task WaitForOutstandingRequestsAsync(LegacyRequestLimiter limiter, int expected, CancellationToken cancellationToken)
+    {
+        while (limiter.OutstandingRequests != expected)
+        {
+            await Task.Delay(20, cancellationToken);
+        }
     }
 
     // resources/subscribe and session lifetimes exist only for clients that use the initialize handshake.
