@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.1.280 — 2026-10-09
+
 ### Fixes
 
 - Restore legacy MCP HTTP+SSE endpoints alongside Streamable HTTP on the same `--mcp` server using SDK 2.2. No extra option is required. Bound outstanding legacy requests to 16 across all sessions and reject excess requests without queuing.
