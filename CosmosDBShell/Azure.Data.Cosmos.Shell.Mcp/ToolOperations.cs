@@ -90,7 +90,9 @@ internal class ToolOperations
 
             if (RequiresConfirmation(command))
             {
-                description += "Warning: This command is destructive. When invoked through MCP it always requires explicit user confirmation before it runs — even when a force or no-prompt argument is supplied. If the client cannot confirm, the command is refused.";
+                description += command.CommandName == "bulk"
+                    ? "Warning: Bulk writes require explicit user confirmation, even with yes=true. Dry-run selections do not require confirmation and issue no writes. Bulk operations are not transactions."
+                    : "Warning: This command is destructive. When invoked through MCP it always requires explicit user confirmation before it runs — even when a force or no-prompt argument is supplied. If the client cannot confirm, the command is refused.";
             }
             else
             {
@@ -139,6 +141,18 @@ internal class ToolOperations
             if (IsPagedMaxOption(command, option))
             {
                 propertySchema["minimum"] = 1;
+            }
+
+            if (command.CommandName == "bulk")
+            {
+                if (option.Name[0] is "concurrency" or "max-items")
+                {
+                    propertySchema["minimum"] = 1;
+                }
+                else if (option.Name[0] == "max-ru")
+                {
+                    propertySchema["exclusiveMinimum"] = 0;
+                }
             }
 
             properties[option.Name[0]] = propertySchema;
@@ -686,6 +700,14 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
         }
 
+        if (cmd is BulkCommand bulkCommand
+            && !BulkCommand.McpSubcommands.Contains(BulkCommand.NormalizeSubcommand(bulkCommand.Subcommand)))
+        {
+            const string errorMessage = "MCP supports only the stateless 'bulk run', 'bulk patch', and 'bulk delete' subcommands. Run stateful bulk commands manually in the shell.";
+            this.logger?.LogWarning(errorMessage);
+            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
+        }
+
         // MCP argument order is not semantic, so render positionals in the order the shell binds them.
         sb.Append(FormatPositionalsForHistory(command.Parameters, positionalValues));
 
@@ -727,7 +749,7 @@ internal class ToolOperations
     {
         var shell = ShellInterpreter.Instance;
         long? confirmedVersion = null;
-        if (RequiresConfirmation(command))
+        if (RequiresConfirmation(command) && cmd is not BulkCommand { DryRun: true })
         {
             var snapshot = await shell.RunSerializedAsync(
                 () => Task.FromResult((Version: shell.StateVersion, Context: DescribeContext(shell.State))), cancellationToken);
@@ -758,6 +780,11 @@ internal class ToolOperations
                     }
 
                     shell.PrintCommand(commandLine);
+                    if (cmd is BulkCommand bulk)
+                    {
+                        bulk.ConfirmationApproved = confirmedVersion.HasValue;
+                    }
+
                     var response = await shell.ExecuteCosmosCommandAsync(cmd, new CommandState(), command.CommandName, cancellationToken);
                     shell.CancelPrompt();
                     return McpResponseFactory.CreateSuccess(response, shell.State);

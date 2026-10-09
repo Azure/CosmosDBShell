@@ -16,6 +16,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Delete a single item safely with `rm <id> --key=id --partition-key=<pk> --etag=<etag>`: point operations scoped to one logical partition, with server-enforced ETag checks ([docs](docs/commands.md#deleting-a-single-item-safely))
 - Inspect a query's execution plan and index usage with `query "<sql>" --explain`
 - Atomic multi-operation transactions on a single partition key: `batch`
+- Non-transactional `bulk` writes across partitions, using the same operation JSON and `run`/`begin`/`add`/`execute` workflow as `batch`, plus `bulk patch --where` and `bulk delete --where` for query-driven migrations, bounded concurrency, dry-run, saved plans, and resumable journals ([bulk operations](docs/commands.md#bulk))
 - Bulk roundtrip with `import` / `export` for JSON Lines and JSON array files, plus CSV import/export (CSV import coerces values to strings; `--partition-key` nests a CSV column under a nested partition key path)
 - Manage container indexing policies with `index` (`show`, `add`, `remove`, `set`)
 - Inspect container/database/account configuration and usage statistics with `info` (partition key, throughput, policies, indexing policy summary, document count, storage size, regions; `--partitions` and `--detailed` for distribution analysis)

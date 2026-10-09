@@ -452,6 +452,85 @@ command-batch-error-already_active = A batch is already in progress. Run 'batch 
 command-batch-error-not_active = No batch is in progress. Start one with 'batch begin'.
 command-batch-error-failed = Batch failed with status { $status } and was rolled back (RU charge: { $charge })
 command-batch-error-execution_failed = Failed to execute batch: { $status } - { $message }
+command-bulk-description = Executes many independent write operations across partition keys with bounded concurrency, either in a single call (run, patch, delete) or as a stateful bulk job (begin, add, execute, cancel, status, show). Bulk jobs are not transactional: successful writes are not rolled back when others fail.
+command-bulk-mcp-help = Available through MCP for the stateless run, patch, and delete subcommands. Writes require user confirmation; dry runs do not require confirmation and send no writes.
+command-bulk-description-subcommand = The action to perform: run, patch, delete, begin, add, execute, cancel, status, or show.
+command-bulk-description-data = For run and add: operations as a JSON array or object (the batch schema plus optional partitionKey and ifMatch), or a path to a JSON array or JSON Lines file.
+command-bulk-description-where = For patch and delete: Cosmos SQL predicate over alias c that selects the target items.
+command-bulk-description-operations = For patch: JSON array of 1-10 patch operations applied atomically to each selected item.
+command-bulk-description-partition-key = Default partition key for delete and patch operations without partitionKey. Item operations must match it.
+command-bulk-description-database = The database containing the target container.
+command-bulk-description-container = The target container.
+command-bulk-description-concurrency = Maximum in-flight writes (default 16, positive integer). Operations on the same item run in list order.
+command-bulk-description-max-items = For patch and delete: positive maximum number of selected items.
+command-bulk-description-max-ru = Positive observed RU budget for this invocation, including selection reads. No new requests start once it is reached; in-flight requests can exceed it.
+command-bulk-description-dry-run = Validate operations, or select the items matching --where, without sending writes. Selection reads consume RUs.
+command-bulk-description-yes = Approve writes without a terminal prompt. Required in scripts; does not bypass MCP confirmation.
+command-bulk-description-continue-on-error = Keep scheduling writes after an operation fails. Otherwise stop scheduling new writes and wait for in-flight writes.
+command-bulk-description-etag = For patch and delete: send each selected item's _etag as ifMatch, so items changed since selection fail with 412 instead of being overwritten.
+command-bulk-description-save = For patch and delete: write the generated operations to a new JSON Lines file that bulk run accepts. Existing files are never overwritten.
+command-bulk-description-journal = JSON Lines file recording each write attempt and outcome. Rerunning the same operations with the same journal skips succeeded writes and retries failed ones.
+command-bulk-description-retry-uncertain = Also retry writes whose earlier outcome is unknown. Safe only for idempotent operations or operations with ifMatch.
+command-bulk-confirm-summary = About to run { $count } non-transactional { $count ->
+    [one] operation
+    *[other] operations
+} against { $target }. Successful writes are not rolled back if others fail.
+command-bulk-confirm = Proceed
+command-bulk-begun = Started a bulk job on { $database }/{ $container }. Add operations with 'bulk add' and run them with 'bulk execute'.
+command-bulk-added = Added { $count } { $count ->
+    [one] operation
+    *[other] operations
+} to the bulk job ({ $total } total)
+command-bulk-cancelled = Discarded the pending bulk job ({ $count } { $count ->
+    [one] operation
+    *[other] operations
+})
+command-bulk-status-inactive = No bulk job is currently active.
+command-bulk-status-more = ...and { $count } more
+command-bulk-progress = { $processed } of { $total } operations processed, { $failed } failed (RU charge: { $charge })
+command-bulk-success = Bulk completed { $count } { $count ->
+    [one] operation
+    *[other] operations
+}: { $succeeded } succeeded, { $skipped } skipped as already succeeded (RU charge: { $charge })
+command-bulk-dry-run = Dry run: { $count } valid { $count ->
+    [one] operation
+    *[other] operations
+}; no writes were sent (RU charge: { $charge })
+command-bulk-error-missing_subcommand = Missing subcommand. Use one of: run, patch, delete, begin, add, execute, cancel, status, show.
+command-bulk-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: run, patch, delete, begin, add, execute, cancel, status, show.
+command-bulk-error-option_not_supported = Option --{ $option } is not supported by 'bulk { $subcommand }'.
+command-bulk-error-data_not_supported = 'bulk { $subcommand }' does not accept positional data. Use --where to select items for patch and delete.
+command-bulk-error-invalid_number = --concurrency and --max-items must be positive integers; --max-ru must be a positive, finite number.
+command-bulk-error-missing_where = 'bulk { $subcommand }' requires --where with a predicate over alias c.
+command-bulk-error-missing_operations = 'bulk patch' requires --operations with a JSON array of patch operations.
+command-bulk-error-dry_run_option = --{ $option } cannot be combined with --dry-run.
+command-bulk-error-journal_requires_save = With --where, --journal requires --save. Resume with 'bulk run <saved-file> --journal <file>', because a new selection can match different items.
+command-bulk-error-retry_requires_journal = --retry-uncertain requires --journal.
+command-bulk-error-missing_data = Bulk operations are required. Provide a JSON array or object, pipe it in, or pass a JSON array or JSON Lines file path.
+command-bulk-error-file_not_found = File '{ $file }' was not found.
+command-bulk-error-save_exists = File '{ $file }' already exists. --save never overwrites files.
+command-bulk-error-empty = No bulk operations were provided.
+command-bulk-error-operation = Operation { $index }: { $message }
+command-bulk-error-id = Every operation needs a nonempty string id. Item operations take it from item.id; an explicit id must match item.id.
+command-bulk-error-partition_key = Missing or invalid partition key. Delete and patch operations need partitionKey or --partition-key. Use one value per partition-key path, as a JSON array for hierarchical keys, with an empty JSON object for an undefined component.
+command-bulk-error-partition_key_mismatch = The partitionKey does not match the partition key in the item.
+command-bulk-error-if_match = ifMatch must be a nonempty string and is not supported for create.
+command-bulk-error-patch_count = Each patch supports at most 10 operations.
+command-bulk-error-patch_path = Patch paths must start with '/'.
+command-bulk-error-selected_id = Every selected item must have a string id.
+command-bulk-error-selected_etag = Every selected item must have an _etag when --etag is used.
+command-bulk-error-container = Could not read container { $target } (status { $status }).
+command-bulk-error-container_changed = The container was recreated after 'bulk begin'. Run 'bulk cancel' and start a new bulk job.
+command-bulk-error-already_active = A bulk job is already in progress. Run 'bulk execute' or 'bulk cancel' first.
+command-bulk-error-not_active = No bulk job is in progress. Start one with 'bulk begin'.
+command-bulk-error-confirm_required = Bulk writes in scripts or non-interactive sessions require --yes. Use --dry-run to validate first.
+command-bulk-error-declined = Bulk operation was not approved. No writes were sent.
+command-bulk-error-journal_open = Could not open journal '{ $file }': { $message }
+command-bulk-error-journal_mismatch = The journal belongs to a different account, container, or operation list. Use the original operations or a new journal file.
+command-bulk-error-journal_invalid = The journal is damaged. Refusing to guess which writes can safely be repeated.
+command-bulk-error-failed = Bulk run incomplete: { $succeeded } succeeded, { $failed } failed ({ $uncertain } with unknown outcome) (RU charge: { $charge }). Successful writes were not rolled back.
+command-bulk-error-budget = Bulk run stopped at the RU budget after { $succeeded } of { $count } operations succeeded (RU charge: { $charge }). Rerun with --journal to continue.
+command-bulk-error-item = #{ $index } { $op } '{ $id }': { $status } { $message }
 
 command-export-description = Exports items from a container to a JSON Lines, JSON array, or CSV file.
 command-export-description-file = Destination file path.
@@ -1544,6 +1623,13 @@ command-batch-example-5 = Execute the queued operations atomically
 command-batch-example-6 = Show the active batch and its queued operations
 command-batch-example-7 = Print the queued operations as a JSON array
 command-batch-example-8 = Discard the active batch
+command-bulk-example-1 = Run independent operations across partition keys with up to 32 concurrent writes
+command-bulk-example-2 = Run operations from a JSON Lines file with a resumable journal
+command-bulk-example-3 = Preview a patch of every matching item and save the generated operations
+command-bulk-example-4 = Delete every matching item; items changed since selection fail instead
+command-bulk-example-5 = Start a stateful bulk job with a default partition key
+command-bulk-example-6 = Queue an operation onto the active bulk job
+command-bulk-example-7 = Execute the queued operations
 command-bucket-example-1 = Display the current client-side throughput bucket selection
 command-bucket-example-2 = Tag this client's requests with throughput bucket 3
 command-bucket-example-3 = Clear the client-side throughput bucket selection
