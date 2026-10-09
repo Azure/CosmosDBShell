@@ -41,6 +41,8 @@ MCP command execution is serialized with the shell, and destructive confirmation
 
 MCP clients supporting resource subscriptions can watch `cosmos://shell/current-location` for interactive navigation and connection changes; the resource includes the current account endpoint separately from the location. The resource list is static, so the server does not advertise `resources.listChanged`. See [MCP location updates](docs/mcp.md#shell-location-updates).
 
+`--mcp` supports Streamable HTTP at `http://127.0.0.1:6128/` and legacy SSE at `http://127.0.0.1:6128/sse` on the same server, without an extra option. Both share the interactive shell's state. Use trusted local clients; prefer Streamable HTTP when available. See [MCP transports](docs/mcp.md#start-mcp-server).
+
 ## Quick Start
 
 **Requirements:** .NET SDK 10.0+.

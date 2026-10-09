@@ -98,6 +98,9 @@ internal class McpServer
         // 2026-07-28 clients are served statelessly (confirmation via MRTR, updates via subscriptions/listen).
         // Clients that use the initialize handshake still get a session for elicitation and resources/subscribe.
         options.SessionMode = HttpServerSessionMode.StatefulForInitializeClients;
+#pragma warning disable MCP9004 // Legacy transport compatibility is intentional for trusted loopback clients.
+        options.EnableLegacySse = true;
+#pragma warning restore MCP9004
 
         // Sessions with an open GET stream never go idle. Once a client disconnects without DELETE,
         // the session is disposed after this timeout, which also ends its location subscription.

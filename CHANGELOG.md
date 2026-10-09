@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- Restore legacy MCP HTTP+SSE endpoints alongside Streamable HTTP on the same `--mcp` server using SDK 2.2. No extra option is required.
 - Parse `exec` options and shell words like direct commands. Bind built-in options normally and pass option-shaped words to functions and script files as positional text.
 - `for` and `do` loops now reject misspelled `in` and `while` keywords before any statements in the input execute. They previously accepted any identifier in those positions.
 - `filter` now rejects array index literals larger than `2147483647`, including optional access, instead of silently selecting element zero. Representable indexes beyond the array length still return `null`.

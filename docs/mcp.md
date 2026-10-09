@@ -11,6 +11,20 @@ dotnet run --project CosmosDBShell -- --mcp 5050
 
 Bare `--mcp` starts the HTTP server on the default port `6128`.
 
+The same server supports both transports without an extra option:
+
+- **Streamable HTTP:** `http://127.0.0.1:6128/` (unchanged).
+- **Legacy HTTP+SSE:** `http://127.0.0.1:6128/sse`. Clients send requests to
+  the `/message` URL announced by the SSE endpoint event, including its session
+  query parameter.
+
+Both transports use the MCP SDK's protocol handling and share the interactive
+shell's connection, navigation, tools, and resources. For a custom port, replace
+`6128` with that port. Prefer Streamable HTTP when the client supports it.
+The server remains bound to loopback with Origin/Host validation; use only
+trusted local clients. Legacy SSE acknowledges request POSTs immediately and
+does not provide HTTP-level backpressure on outstanding handlers.
+
 ## VS Code Setup
 
 > **Requires VS Code 1.103+**
