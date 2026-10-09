@@ -408,6 +408,7 @@ public class McpLocationSubscriptionTests
             await using var second = await ConnectAsync(host, timeout.Token, "2024-11-05", HttpTransportMode.Sse);
             await using var modern = await ConnectAsync(host, timeout.Token);
             var limiter = host.Services.GetRequiredService<LegacyRequestLimiter>();
+            var admission = host.Services.GetRequiredService<LegacyHttpAdmission>();
             var enteredGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             heldGate = ShellInterpreter.Instance.RunSerializedAsync(
                 async () =>
@@ -434,11 +435,12 @@ public class McpLocationSubscriptionTests
             }
 
             await WaitForOutstandingRequestsAsync(limiter, LegacyRequestLimiter.MaxOutstandingRequests, timeout.Token);
-            var error = await Assert.ThrowsAsync<McpProtocolException>(
+            var error = await Assert.ThrowsAsync<HttpRequestException>(
                 async () => await second.CallToolAsync("version", cancellationToken: timeout.Token));
-            Assert.Equal(LegacyRequestLimiter.OverloadErrorCode, error.ErrorCode);
+            Assert.Equal(System.Net.HttpStatusCode.TooManyRequests, error.StatusCode);
             Assert.Contains("Retry", error.Message);
             Assert.Equal(LegacyRequestLimiter.MaxOutstandingRequests, limiter.OutstandingRequests);
+            Assert.Equal(LegacyRequestLimiter.MaxOutstandingRequests, admission.OutstandingRequests);
             Assert.NotEmpty(await modern.ListToolsAsync(cancellationToken: timeout.Token));
 
             await first.SendMessageAsync(

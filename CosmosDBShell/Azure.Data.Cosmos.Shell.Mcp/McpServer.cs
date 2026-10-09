@@ -46,6 +46,8 @@ internal class McpServer
             });
         var application = builder.Build();
         application.UseOriginValidation();
+        application.Use((context, next) =>
+            context.RequestServices.GetRequiredService<LegacyHttpAdmission>().InvokeAsync(context, next));
         application.MapMcp();
         return application;
     }
@@ -54,6 +56,7 @@ internal class McpServer
     {
         services.AddSingleton<ToolOperations>();
         services.AddSingleton<LegacyRequestLimiter>();
+        services.AddSingleton<LegacyHttpAdmission>();
         services.AddSingleton<LocationResourceSubscriptions>();
         services.AddHostedService(services => services.GetRequiredService<LocationResourceSubscriptions>());
         services.AddOptions<McpServerOptions>()
@@ -107,7 +110,10 @@ internal class McpServer
             if (httpContext.Request.Path == "/sse")
             {
                 var limiter = httpContext.RequestServices.GetRequiredService<LegacyRequestLimiter>();
+                var admission = httpContext.RequestServices.GetRequiredService<LegacyHttpAdmission>();
+                serverOptions.Filters.Message.IncomingFilters.Add(admission.TrackIncoming);
                 serverOptions.Filters.Message.IncomingFilters.Add(limiter.Limit);
+                serverOptions.Filters.Message.OutgoingFilters.Add(admission.TrackOutgoing);
             }
 
             return Task.CompletedTask;
@@ -120,8 +126,20 @@ internal class McpServer
 #pragma warning restore MCP9006
 
 #pragma warning disable MCPEXP002 // RunSessionHandler is the only hook that observes the session lifetime.
-        options.RunSessionHandler = (httpContext, server, cancellationToken) =>
-            httpContext.RequestServices.GetRequiredService<LocationResourceSubscriptions>().RunSessionAsync(server, cancellationToken);
+        options.RunSessionHandler = async (httpContext, server, cancellationToken) =>
+        {
+            try
+            {
+                await httpContext.RequestServices.GetRequiredService<LocationResourceSubscriptions>().RunSessionAsync(server, cancellationToken);
+            }
+            finally
+            {
+                if (httpContext.Request.Path == "/sse")
+                {
+                    httpContext.RequestServices.GetRequiredService<LegacyHttpAdmission>().EndSession(server.SessionId);
+                }
+            }
+        };
 #pragma warning restore MCPEXP002
     }
 

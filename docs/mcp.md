@@ -26,10 +26,11 @@ trusted local clients. Legacy SSE acknowledges request POSTs immediately and
 does not provide HTTP-level backpressure on outstanding handlers. The shell
 therefore admits at most **16 outstanding legacy MCP requests across all SSE
 sessions**, including requests waiting for the shell execution gate or user
-confirmation. Excess requests receive a JSON-RPC server error (`-32000`) over
-the SSE stream without being queued; retry after an outstanding request
-completes. The HTTP POST may still return `202 Accepted`, which is not command
-success. Permits are released when handlers finish, fail, or are cancelled.
+confirmation. Excess requests receive **HTTP 429** with `Retry-After: 1` before
+reaching the SDK, without being queued; retry after an outstanding request
+completes. Admission remains held until the SSE response has been written,
+including error responses, or the request is cancelled or its session ends.
+Accepted HTTP POSTs return `202 Accepted`, which is not command success.
 Replies and notifications, including cancellation, do not consume permits.
 This limit does not apply to Streamable HTTP.
 
