@@ -1305,7 +1305,7 @@
   "help-HelpCommandMoreText": "Display more information on a specific command.",
   "help-HelpCommandScreenText": "Display this help screen.",
   "help-HelpOptionDescription": "Show this help text and exit.",
-  "help-McpPort": "Enable MCP HTTP server. Optionally specify a port with --mcp \u003Cport\u003E; default is 6128.",
+  "help-McpPort": "Enable MCP HTTP server with Streamable HTTP and legacy SSE. Optionally specify a port with --mcp \u003Cport\u003E; default is 6128.",
   "help-NotesHeadingText": "NOTES:",
   "help-OptionGroupWord": "Group",
   "help-OptionsHeadingText": "OPTIONS:",
