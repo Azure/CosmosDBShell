@@ -98,6 +98,7 @@ internal class ReplaceCommand : CosmosCommand
         int successCount = 0;
         int failCount = 0;
         double charge = 0.0;
+        var presentResults = !ShellInterpreter.Instance.IsMachineMode;
 
         foreach (var element in arrayRoot.EnumerateArray())
         {
@@ -111,21 +112,27 @@ internal class ReplaceCommand : CosmosCommand
             {
                 RequestChargeContext.Record(RequestChargeContext.GetCosmosExceptionCharge(ex));
                 failCount++;
-                ShellInterpreter.WriteLine(ex.Message);
+                if (presentResults)
+                {
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, ex.Message);
+                }
             }
         }
 
-        if (successCount > 0 && failCount == 0)
+        if (presentResults)
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString("command-replace-success-multiple", "count", successCount, "charge", charge.ToString("F2")));
-        }
-        else if (successCount > 0)
-        {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString("command-replace-success-partial", "success", successCount, "failed", failCount, "charge", charge.ToString("F2")));
-        }
-        else
-        {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString("command-replace-all-failed", "count", failCount));
+            if (successCount > 0 && failCount == 0)
+            {
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString("command-replace-success-multiple", "count", successCount, "charge", charge.ToString("F2")));
+            }
+            else if (successCount > 0)
+            {
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Warning, MessageService.GetArgsString("command-replace-success-partial", "success", successCount, "failed", failCount, "charge", charge.ToString("F2")));
+            }
+            else
+            {
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString("command-replace-all-failed", "count", failCount));
+            }
         }
 
         if (failCount > 0)
@@ -180,7 +187,7 @@ internal class ReplaceCommand : CosmosCommand
 
             if (printSuccess)
             {
-                ShellInterpreter.WriteLine(MessageService.GetArgsString("command-replace-success-single", "charge", response.RequestCharge.ToString("F2")));
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString("command-replace-success-single", "charge", response.RequestCharge.ToString("F2")));
             }
 
             return response.RequestCharge;

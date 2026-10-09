@@ -25,6 +25,53 @@ internal class Program
         // accidentally trigger LSP mode.
         args = NormalizeArguments(args);
 
+        var preCommandArgs = TakePreCommandArgs(args);
+        var directStdioTokens = preCommandArgs.Where(a => a == "--mcp-stdio"
+            || a.StartsWith("--mcp-stdio=", StringComparison.Ordinal)
+            || a.StartsWith("--mcp-stdio:", StringComparison.Ordinal)).ToArray();
+        bool stdioRequested = directStdioTokens.Length > 0;
+        var (rootCommand, optionMap) = BuildRootCommand();
+        var configuration = new System.CommandLine.CommandLineConfiguration(
+            rootCommand,
+            resources: new LocalizedCliResources());
+        var parser = new System.CommandLine.Parsing.Parser(configuration);
+        var parseResult = parser.Parse(args);
+        bool stdioDirectlyEnabled = directStdioTokens.Any(IsDirectlyEnabledMcpStdioToken);
+
+        // Response files are expanded before any protocol-mode early return so a hidden
+        // stdio request cannot bypass the direct-command-line transport requirement.
+        if (parseResult.GetValueForOption(optionMap.McpStdio) && !stdioDirectlyEnabled)
+        {
+            WriteErrorLine(MessageService.GetString("mcp-error-stdio-response-file"));
+            Environment.ExitCode = ShellExitCode.UsageError;
+            return;
+        }
+
+        using var protocolInput = stdioRequested ? Console.OpenStandardInput() : null;
+        using var protocolOutput = stdioRequested ? Console.OpenStandardOutput() : null;
+        if (stdioRequested)
+        {
+            ShellInterpreter.ConfigureStdioStartup();
+
+            // Only the transport may use the original streams; commands cannot consume MCP input.
+            Console.SetOut(Console.Error);
+            Console.SetIn(TextReader.Null);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Interactive = InteractionSupport.No,
+                Out = new AnsiConsoleOutput(Console.Error),
+            });
+
+            if (preCommandArgs.Any(a => a is "--lsp" or "--stdio"))
+            {
+                WriteErrorLine(MessageService.GetString("mcp-error-stdio-incompatible-options"));
+                Environment.ExitCode = ShellExitCode.UsageError;
+                return;
+            }
+        }
+
         // Handle LSP mode early, before any other code can write to stdout.
         // The LSP protocol requires exclusive access to stdin/stdout. Only
         // inspect the prefix before -c / -k so that a command tail of literally
@@ -47,25 +94,17 @@ internal class Program
             // before -c / -k so that a command tail of literally "--help" or
             // "--version" (e.g. `-c --help`) is forwarded to the shell command
             // instead of intercepted here.
-            var preCommandArgs = TakePreCommandArgs(args);
             if (preCommandArgs.Any(a => a is "--help" or "-h" or "-?" or "/?" or "/h"))
             {
-                ShellInterpreter.WriteLine(BuildHelpText());
+                WriteStartupResult(BuildHelpText(), stdioRequested);
                 return;
             }
 
             if (preCommandArgs.Any(a => a is "--version"))
             {
-                WriteVersionHeading();
+                WriteVersionHeading(stdioRequested);
                 return;
             }
-
-            var (rootCommand, optionMap) = BuildRootCommand();
-            var configuration = new System.CommandLine.CommandLineConfiguration(
-                rootCommand,
-                resources: new LocalizedCliResources());
-            var parser = new System.CommandLine.Parsing.Parser(configuration);
-            var parseResult = parser.Parse(args);
 
             if (parseResult.Errors.Count > 0)
             {
@@ -74,7 +113,7 @@ internal class Program
                 var isNonInteractive = !string.IsNullOrWhiteSpace(
                     parseResult.GetValueForOption(optionMap.ExecuteAndQuit));
 
-                var isMachineMode = OutputPolicy.IsMachineMode(outputMode, quiet, isNonInteractive);
+                var isMachineMode = stdioRequested || OutputPolicy.IsMachineMode(outputMode, quiet, isNonInteractive);
                 if (isMachineMode)
                 {
                     var errorStrings = parseResult.Errors.Select(e => e.Message).ToList();
@@ -89,10 +128,10 @@ internal class Program
                 {
                     foreach (var error in parseResult.Errors)
                     {
-                        ShellInterpreter.WriteLine(error.Message);
+                        ShellOutput.StandardError.WriteLine(ShellMessageKind.Error, error.Message);
                     }
 
-                    ShellInterpreter.WriteLine(BuildHelpText());
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, BuildHelpText());
                 }
 
                 Environment.ExitCode = ShellExitCode.UsageError;
@@ -119,6 +158,7 @@ internal class Program
                 ConnectAzureCli = parseResult.GetValueForOption(optionMap.ConnectAzureCli),
                 Database = parseResult.GetValueForOption(optionMap.Database),
                 Container = parseResult.GetValueForOption(optionMap.Container),
+                McpStdio = parseResult.GetValueForOption(optionMap.McpStdio),
                 StartLspServer = parseResult.GetValueForOption(optionMap.StartLspServer),
                 LspStdio = parseResult.GetValueForOption(optionMap.LspStdio),
                 Verbose = parseResult.GetValueForOption(optionMap.Verbose),
@@ -132,6 +172,18 @@ internal class Program
             {
                 var mcpValue = parseResult.GetValueForOption(optionMap.McpPort);
                 o.McpPort = mcpValue ?? DefaultMcpPort;
+            }
+
+            if (stdioRequested && (!o.McpStdio || o.McpPort.HasValue
+                || parseResult.FindResultFor(optionMap.ExecuteAndQuit) is not null
+                || parseResult.FindResultFor(optionMap.ExecuteAndContinue) is not null
+                || o.ClearHistory
+                || o.StartLspServer
+                || o.LspStdio))
+            {
+                WriteErrorLine(MessageService.GetString("mcp-error-stdio-incompatible-options"));
+                Environment.ExitCode = ShellExitCode.UsageError;
+                return;
             }
 
             // --diagnostics supports an optional value: when present without a path,
@@ -174,7 +226,7 @@ internal class Program
                     }
                     else
                     {
-                        ShellInterpreter.WriteLine(msg);
+                        ShellOutput.StandardError.WriteLine(ShellMessageKind.Error, msg);
                     }
 
                     return;
@@ -206,7 +258,7 @@ internal class Program
                 }
                 else
                 {
-                    ShellInterpreter.WriteLine(MessageService.GetString("error-mutually-exclusive-options"));
+                    ShellOutput.StandardError.WriteLine(ShellMessageKind.Error, MessageService.GetString("error-mutually-exclusive-options"));
                 }
 
                 return;
@@ -221,7 +273,7 @@ internal class Program
                 o.Output = "json";
             }
 
-            var startupMachineMode = OutputPolicy.IsMachineMode(
+            var startupMachineMode = o.McpStdio || OutputPolicy.IsMachineMode(
                 o.Output, o.Quiet, !string.IsNullOrWhiteSpace(executeAndQuitCommand));
 
             void WriteStartupError(string message)
@@ -237,7 +289,7 @@ internal class Program
                     return;
                 }
 
-                AnsiConsole.WriteLine(message);
+                ShellOutput.StandardError.WriteLine(ShellMessageKind.Error, message);
             }
 
             if (o.Container != null && o.Database == null)
@@ -279,7 +331,9 @@ internal class Program
             if (startupMachineMode)
             {
                 colorSystemVal = 0; // Force NoColors in machine mode
-                o.Quiet = true; // Suppress informational messages to keep output clean
+
+                // Stdio diagnostics may use stderr, including device-code login instructions.
+                o.Quiet = !o.McpStdio || o.Quiet;
             }
 
             AnsiConsole.Profile.Capabilities.ColorSystem = colorSystemVal switch
@@ -289,21 +343,21 @@ internal class Program
                 _ => ColorSystem.NoColors,
             };
 
-            ApplyTheme(o.Theme, startupMachineMode);
+            ShellInterpreter.Instance.Options = o;
+            ApplyTheme(o.Theme);
 
             if (startupMachineMode)
             {
-                // Keep machine-mode stdout deterministic even if a command
-                // accidentally writes via AnsiConsole instead of command state output.
+                // Safety net for dependency writes through the global Spectre console:
+                // machine-mode stdout carries only interpreter results.
                 AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
                 {
                     Ansi = AnsiSupport.No,
                     ColorSystem = ColorSystemSupport.NoColors,
-                    Out = new AnsiConsoleOutput(TextWriter.Null),
+                    Interactive = InteractionSupport.No,
+                    Out = new AnsiConsoleOutput(o.McpStdio ? Console.Error : TextWriter.Null),
                 });
             }
-
-            ShellInterpreter.Instance.Options = o;
 
             // Enable diagnostic logging before connecting so the startup --connect
             // event is captured in the log.
@@ -319,14 +373,20 @@ internal class Program
                 tracing = TracingBootstrap.Initialize(o.OtlpEndpoint);
             }
 
+            using var startupInput = o.McpStdio && o.ConnectionString != null
+                ? new StdioStartupInput(protocolInput!)
+                : null;
+
             if (o.ConnectionString != null)
             {
                 using var connectTokenSource = ShellInterpreter.UserCancellationTokenSource;
-                var connectToken = connectTokenSource.Token;
+                using var startupConnectCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                    connectTokenSource.Token, startupInput?.StartupToken ?? CancellationToken.None);
+                var connectToken = startupConnectCancellation.Token;
                 try
                 {
                     var credentialMethod = ShellInterpreter.ResolveCredentialMethod(o.ConnectVSCodeCredential, o.ConnectAzureCli);
-                    await ShellInterpreter.Instance.ConnectAsync(
+                    var connectTask = ShellInterpreter.Instance.ConnectAsync(
                         o.ConnectionString,
                         o.ConnectHint,
                         o.ConnectionMode,
@@ -337,16 +397,21 @@ internal class Program
                         subscriptionId: o.ConnectSubscription,
                         resourceGroupName: o.ConnectResourceGroup,
                         token: connectToken);
+
+                    // Preserve connection argument validation even when stdin is already closed.
+                    startupInput?.Start();
+                    await connectTask;
                 }
                 catch (OperationCanceledException) when (connectToken.IsCancellationRequested)
                 {
+                    ReportStdioStartupCancellation(startupInput, WriteStartupError);
                     return;
                 }
                 catch (Exception ex)
                 {
                     Environment.ExitCode = ShellExitCode.FromException(ex);
 
-                    var inMachineMode = OutputPolicy.IsMachineMode(
+                    var inMachineMode = o.McpStdio || OutputPolicy.IsMachineMode(
                         o.Output, o.Quiet, !string.IsNullOrWhiteSpace(o.ExecuteAndQuit));
 
                     if (!inMachineMode
@@ -376,8 +441,10 @@ internal class Program
 
             if (o.Database != null)
             {
-                var navigationTokenSource = ShellInterpreter.UserCancellationTokenSource;
-                var navigationToken = navigationTokenSource.Token;
+                using var navigationTokenSource = ShellInterpreter.UserCancellationTokenSource;
+                using var startupNavigationCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                    navigationTokenSource.Token, startupInput?.StartupToken ?? CancellationToken.None);
+                var navigationToken = startupNavigationCancellation.Token;
                 try
                 {
                     var navigation = new CdCommand
@@ -390,6 +457,7 @@ internal class Program
                 }
                 catch (OperationCanceledException) when (navigationToken.IsCancellationRequested)
                 {
+                    ReportStdioStartupCancellation(startupInput, WriteStartupError);
                     return;
                 }
                 catch (CommandException ex)
@@ -398,6 +466,34 @@ internal class Program
                     WriteStartupError(CommandException.GetDisplayMessage(ex));
                     return;
                 }
+            }
+
+            if (o.McpStdio)
+            {
+                if (startupInput is not null)
+                {
+                    await startupInput.CompleteStartupAsync();
+                }
+
+                if (startupInput?.StartupToken.IsCancellationRequested == true)
+                {
+                    ReportStdioStartupCancellation(startupInput, WriteStartupError);
+                    return;
+                }
+
+                try
+                {
+                    ShellInterpreter.Instance.App.RemoveCommands(ToolOperations.IsUnavailableInStdio);
+                    host = McpServer.CreateStdioHost(startupInput?.Input ?? protocolInput!, protocolOutput!);
+                    await host.RunAsync();
+                }
+                catch (Exception ex)
+                {
+                    WriteStartupError(MessageService.GetArgsString("mcp-error-server-failed-start", "message", ex.Message));
+                    Environment.ExitCode = ShellExitCode.GeneralFailure;
+                }
+
+                return;
             }
 
             // Start MCP server if requested
@@ -505,7 +601,21 @@ internal class Program
         }
     }
 
-    private static void WriteVersionHeading()
+    internal static void ReportStdioStartupCancellation(StdioStartupInput? input, Action<string> writeError)
+    {
+        if (input?.InputError is { } error)
+        {
+            writeError(MessageService.GetArgsString("mcp-error-stdio-input", "message", error.Message));
+            Environment.ExitCode = ShellExitCode.FromException(error);
+        }
+        else if (input?.TimedOut == true)
+        {
+            writeError(MessageService.GetString("mcp-error-stdio-startup-timeout"));
+            Environment.ExitCode = ShellExitCode.ConnectionError;
+        }
+    }
+
+    private static void WriteVersionHeading(bool stdio = false)
     {
         var assembly = typeof(Program).Assembly;
         var product = assembly.GetCustomAttribute<AssemblyProductAttribute>()?.Product;
@@ -519,7 +629,21 @@ internal class Program
         var heading = string.IsNullOrEmpty(commit)
             ? $"{product} {version}"
             : $"{product} {version} ({commit})";
-        ShellInterpreter.WriteLine(heading);
+        WriteStartupResult(heading, stdio);
+    }
+
+    // Explicit --help/--version output is the requested result; in stdio mode it must
+    // stay off the protocol stream.
+    private static void WriteStartupResult(string text, bool stdio)
+    {
+        if (stdio)
+        {
+            ShellOutput.StandardError.WriteLine(ShellMessageKind.Information, text);
+        }
+        else
+        {
+            ShellInterpreter.Instance.Output.WriteResult(text);
+        }
     }
 
     private static async Task StopHostAsync(IHost? host, Task? hostTask)
@@ -603,6 +727,16 @@ internal class Program
         }
 
         return args;
+    }
+
+    private static bool IsDirectlyEnabledMcpStdioToken(string token)
+    {
+        if (token == "--mcp-stdio")
+        {
+            return true;
+        }
+
+        return bool.TryParse(token["--mcp-stdio=".Length..], out var enabled) && enabled;
     }
 
     private static (RootCommand Command, OptionMap Map) BuildRootCommand()
@@ -692,6 +826,7 @@ internal class Program
         {
             Arity = ArgumentArity.ZeroOrOne,
         };
+        var mcpStdio = new Option<bool>("--mcp-stdio", MessageService.GetString("help-McpStdio"));
 
         var startLspServer = new Option<bool>("--lsp", MessageService.GetString("help-EnableLspServer"));
         var lspStdio = new Option<bool>("--stdio", MessageService.GetString("help-EnableLspServer"))
@@ -731,6 +866,7 @@ internal class Program
             database,
             container,
             mcpPort,
+            mcpStdio,
             startLspServer,
             lspStdio,
             verbose,
@@ -759,6 +895,7 @@ internal class Program
             database,
             container,
             mcpPort,
+            mcpStdio,
             startLspServer,
             lspStdio,
             verbose,
@@ -771,7 +908,7 @@ internal class Program
 
     private static void WriteErrorLine(string message)
     {
-        Console.Error.WriteLine(message);
+        ShellOutput.StandardError.WriteLine(ShellMessageKind.Error, message);
     }
 
     private static string BuildHelpText()
@@ -847,9 +984,9 @@ internal class Program
     /// Resolves the requested theme profile and applies it via <see cref="Theme.Apply"/>.
     /// Resolution order: explicit <c>--theme</c> flag, then <c>COSMOSDB_SHELL_THEME</c>
     /// environment variable, then the built-in default. Unknown names emit a warning
-    /// to standard output and fall back to the default profile.
+    /// and fall back to the default profile.
     /// </summary>
-    private static void ApplyTheme(string? themeFromCli, bool suppressStartupWarnings)
+    private static void ApplyTheme(string? themeFromCli)
     {
         // Always scan the user themes directory so file-loaded themes are visible
         // to --theme, the COSMOSDB_SHELL_THEME env var, and the in-shell `theme`
@@ -859,10 +996,7 @@ internal class Program
         registry.LoadFromDirectory(ThemeFile.DefaultUserThemesDirectory());
         foreach (var warning in registry.Warnings)
         {
-            if (!suppressStartupWarnings)
-            {
-                ShellInterpreter.WriteLine(warning);
-            }
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Warning, warning);
         }
 
         var requested = !string.IsNullOrWhiteSpace(themeFromCli)
@@ -876,15 +1010,12 @@ internal class Program
 
         if (!ThemeProfiles.TryGet(requested, out var profile))
         {
-            if (!suppressStartupWarnings)
-            {
-                ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                    "warning-unknown-theme",
-                    "name",
-                    requested,
-                    "themes",
-                    string.Join(", ", registry.All.Keys)));
-            }
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Warning, MessageService.GetArgsString(
+                "warning-unknown-theme",
+                "name",
+                requested,
+                "themes",
+                string.Join(", ", registry.All.Keys)));
         }
 
         Theme.Apply(profile);
@@ -910,6 +1041,7 @@ internal class Program
         Option<string?> Database,
         Option<string?> Container,
         Option<int?> McpPort,
+        Option<bool> McpStdio,
         Option<bool> StartLspServer,
         Option<bool> LspStdio,
         Option<bool> Verbose,
@@ -995,6 +1127,8 @@ internal class Program
         public string? Container { get; set; }
 
         public int? McpPort { get; set; }
+
+        public bool McpStdio { get; set; }
 
         public bool StartLspServer { get; set; }
 

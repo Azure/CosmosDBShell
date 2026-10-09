@@ -7,6 +7,7 @@ namespace CosmosShell.Tests.Parser;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
 
@@ -35,18 +36,20 @@ public class StatementPositionalErrorTests : TestBase
     }
 
     [Theory]
-    [InlineData("$value = (help totallyunknowncmd999)")]
-    [InlineData("if (help totallyunknowncmd999) {}")]
-    [InlineData("for $item in (help totallyunknowncmd999) {}")]
+    [InlineData("$value = (returned-error-test)")]
+    [InlineData("if (returned-error-test) {}")]
+    [InlineData("for $item in (returned-error-test) {}")]
     public async Task ReturnedExpressionError_UsesCommandLocation(string source)
     {
+        Assert.True(CommandFactory.TryCreateFactory(typeof(ReturnedErrorTestCommand), out var factory));
+        Shell.App.Commands["returned-error-test"] = factory;
         Shell.CurrentScriptFileName = "expression.csh";
         Shell.CurrentScriptContent = source;
         var statement = new StatementParser(source).ParseStatement()!;
         var exception = await Assert.ThrowsAsync<PositionalException>(() => statement.RunAsync(Shell, new(), TestContext.Current.CancellationToken));
         var frame = PositionalException.GetSourceTrace(exception)[0];
         Assert.Equal("expression.csh", frame.FileName);
-        Assert.Equal(source.IndexOf("help", StringComparison.Ordinal) + 1, frame.Column);
+        Assert.Equal(source.IndexOf("returned-error-test", StringComparison.Ordinal) + 1, frame.Column);
         var failure = Assert.IsType<CommandState.FailureException>(frame.InnerException);
         Assert.IsType<ErrorCommandState>(failure.State);
     }
@@ -64,6 +67,13 @@ public class StatementPositionalErrorTests : TestBase
         Assert.Equal("caller.csh", frame.FileName);
         Assert.Equal(2, frame.Line);
         Assert.Equal("\nprobe", Shell.CurrentScriptContent);
+    }
+
+    [CosmosCommand("returned-error-test")]
+    internal sealed class ReturnedErrorTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+            => Task.FromResult<CommandState>(new ErrorCommandState(new CommandException("returned-error-test", "failed")));
     }
 
     private sealed class ScriptContextProbe : Statement

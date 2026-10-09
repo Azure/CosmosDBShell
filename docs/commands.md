@@ -365,6 +365,8 @@ theme reload
 
 `theme validate` parses a TOML file and reports warnings without registering it or switching the active theme. When the argument is a directory it validates every `*.toml` file in that directory and prints a per-file summary. With no argument it scans the user themes directory (`~/.cosmosdbshell/themes`). The validator collects every issue in a single pass so that multiple typos can be fixed at once, and suggests the closest valid token when an unknown color or modifier is used. It also warns on bracket cycles that have only one color or contain duplicates. Pass `--strict` to fail when any warnings are present. Color values must be empty or one ANSI 16 color name. Style values may combine modifiers with at most one ANSI 16 color.
 
+In machine mode (including `--quiet`), successful validation keeps warnings on stderr and the structured result on stdout. Directory scans defer warnings until every file has been checked; failed scans emit only the structured error on stderr.
+
 ## Data Operations
 
 ### query
@@ -769,6 +771,8 @@ Options:
 ```
 
 By default `watch` starts from now and follows the container, printing each change as highlighted JSON until you press Ctrl+C. Use `--from-beginning` to replay existing items first, `--partition-key` to scope the feed to one partition, and `--max` to stop automatically after a number of changes. Use `--interval` to change how long the shell waits between polls once it has caught up (default 1 second; values below 0.1 are clamped to avoid hammering the container). The change feed surfaces creates and updates (not deletes). This command is interactive and streaming, so it is not exposed over MCP.
+
+Machine mode (`--quiet`, `--output json`, `--output csv`, or default execute-and-quit output) requires a positive `--max`. Changes are collected and emitted as the final result rather than streamed to stdout. An unbounded machine-mode watch fails before opening the change feed; interactive mode still supports following until Ctrl+C.
 
 ```bash
 watch

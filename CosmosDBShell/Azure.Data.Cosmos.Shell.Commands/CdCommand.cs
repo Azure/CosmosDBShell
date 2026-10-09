@@ -83,7 +83,7 @@ internal class CdCommand : CosmosCommand
             SetState(shell, new ConnectedState(connectedState.Client, connectedState.ArmContext));
             if (!this.Quiet)
             {
-                ShellInterpreter.WriteLine(MessageService.GetString("command-cd-changed_to_connected_state"));
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("command-cd-changed_to_connected_state"));
             }
 
             CosmosCompleteCommand.ClearContainers();
@@ -100,7 +100,7 @@ internal class CdCommand : CosmosCommand
                 SetState(shell, new DatabaseState(targetDatabase, connectedState.Client, connectedState.ArmContext));
                 if (!this.Quiet)
                 {
-                    ShellInterpreter.WriteLine(MessageService.GetString("command-cd-changed_to_db", new Dictionary<string, object> { { "db", targetDatabase } }));
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("command-cd-changed_to_db", new Dictionary<string, object> { { "db", targetDatabase } }));
                 }
 
                 CosmosCompleteCommand.ClearContainers();
@@ -112,7 +112,7 @@ internal class CdCommand : CosmosCommand
             SetState(shell, new ContainerState(targetContainer, targetDatabase, connectedState.Client, connectedState.ArmContext));
             if (!this.Quiet)
             {
-                ShellInterpreter.WriteLine(MessageService.GetString("command-cd-changed_to_container", new Dictionary<string, object> { { "container", targetContainer } }));
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("command-cd-changed_to_container", new Dictionary<string, object> { { "container", targetContainer } }));
             }
 
             CosmosCompleteCommand.ClearContainers();
@@ -132,7 +132,7 @@ internal class CdCommand : CosmosCommand
             SetState(shell, new ContainerState(targetContainer, dbName, connectedState.Client, connectedState.ArmContext));
             if (!this.Quiet)
             {
-                ShellInterpreter.WriteLine(MessageService.GetString("command-cd-changed_to_container", new Dictionary<string, object> { { "container", targetContainer } }));
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("command-cd-changed_to_container", new Dictionary<string, object> { { "container", targetContainer } }));
             }
 
             CosmosCompleteCommand.ClearContainers();

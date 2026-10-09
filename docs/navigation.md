@@ -266,7 +266,7 @@ Start the shell with options to customize behavior:
 | Option | Description |
 | ------ | ----------- |
 | `--output <format>` | Output format for command results: `user` (default interactive view), `json`, `table`, or `csv`. Alias: `-o`. Selecting `json` or `csv` enables machine mode. Falls back to `COSMOSDB_SHELL_FORMAT`. |
-| `--quiet` | Suppress standard informational output (banners, connection logs). Enables machine mode. Alias: `-q` |
+| `--quiet` | Suppress informational messages, progress, banners, and command echoes. Preserve results, warnings, errors, and required authentication instructions. Enables machine mode. Alias: `-q` |
 | `-c <cmd>` | Execute command and exit. Everything after `-c` is taken as the command, so app-level options must come before `-c`. Windows-style `/c` is also accepted. |
 | `-k <cmd>` | Execute command and stay in shell. Everything after `-k` is taken as the command, so app-level options must come before `-k`. Windows-style `/k` is also accepted. |
 | `--connect <str>` | Connect with this connection string or endpoint on startup |
@@ -280,6 +280,7 @@ Start the shell with options to customize behavior:
 | `--database <id>` | Navigate to this database after connecting at startup |
 | `--container <id>` | Navigate to this container after connecting at startup. Requires `--database` |
 | `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
+| `--mcp-stdio` | Run a headless MCP server over stdin/stdout, with diagnostics on stderr and no listening port |
 | `--diagnostics [path]` | Write timestamped diagnostic logs (commands, timing, errors, connection events) to a file, or to a timestamped file in the config directory by default |
 | `--otel [endpoint]` | Enable distributed tracing so requests carry a sampled W3C `traceparent`. Optionally export spans to an OTLP `endpoint`; falls back to the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable |
 | `--color-system <n>` | Color scheme: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
@@ -298,9 +299,16 @@ output. **Machine mode** is entered when any of the following is true:
 
 In machine mode the shell disables ANSI colors, suppresses connection/informational
 banners, emits command results as the selected structured format (JSON or CSV) on `STDOUT`,
-and writes early parser/connection failures as a structured `{ "status": "error", "error": ... }`
-object on `STDERR`. The human-facing `user` and `table` formats are not machine mode; `user`
+and writes parser, connection, and command failures as a structured `{ "status": "error", "error": ... }`
+object on `STDERR`. `STDOUT` carries only the command result; tables and other interactive
+views are not rendered. The human-facing `user` and `table` formats are not machine mode; `user`
 falls back to JSON whenever output is redirected, piped, or run in machine mode.
+
+Quiet is not a universal mute: warnings, errors, and required instructions (such as
+authentication prompts and previews shown before a confirmation) remain visible on
+`STDERR`, without ANSI styling. Explicit diagnostic
+logging is unaffected. Command results are separate from informational messages and
+remain on `STDOUT` (or in MCP responses for `--mcp-stdio`).
 
 Bare piped stdin (for example `echo "..." | cosmosdbshell`) is **not** implicitly machine
 mode; pass `-c`, `--output json`, or `--quiet` to opt into structured output.
@@ -352,6 +360,9 @@ cosmosdbshell --mcp
 # Start with MCP server enabled on a custom port
 cosmosdbshell --mcp 5050
 
+# Client-owned, headless MCP server; stdin/stdout carry only MCP messages
+cosmosdbshell --mcp-stdio
+
 # Capture a diagnostic log to the default location in the config directory
 cosmosdbshell --diagnostics
 
@@ -364,3 +375,10 @@ cosmosdbshell --otel
 # Enable distributed tracing and export spans to an OTLP collector
 cosmosdbshell --otel http://localhost:4317
 ```
+
+`--mcp-stdio` is mutually exclusive with `--mcp`, `--lsp`/`--stdio`, `-c`, `-k`,
+and `--clear-history`. It does not read stdin as a shell script or start a prompt.
+Startup `--connect`, credential options, `--database`, and `--container` remain
+available. Startup connection and navigation share a 60-second timeout and are
+cancelled when stdin closes. A timeout is reported on stderr with exit code `4`.
+See [MCP stdio mode](mcp.md#stdio-headless-mode).

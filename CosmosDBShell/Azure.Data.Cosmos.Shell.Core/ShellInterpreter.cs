@@ -33,11 +33,6 @@ public partial class ShellInterpreter : IDisposable
 
     private const string SessionRequestChargeWarningThresholdVariable = "sessionRequestChargeWarningThreshold";
 
-    // Declared before Instance: static initializers run in order and the constructor reads history.
-    private static readonly object HistoryFileLock = new();
-
-    internal static readonly ShellInterpreter Instance = new();
-
     private const int MAXHISTORYITEMS = 60;
 
     private const int HistoryFileOpenRetryCount = 10;
@@ -53,11 +48,17 @@ public partial class ShellInterpreter : IDisposable
     // user command that just happens to start with the prefix string.
     private const string EncodedHistoryLineMarker = "E:";
 
+    private static readonly object HistoryFileLock = new();
+
+    private static readonly Lazy<ShellInterpreter> SharedInstance = new(() => new ShellInterpreter(historyEnabled: !stdioStartup));
+
     private static readonly TimeSpan HistoryFileOpenRetryDelay = TimeSpan.FromMilliseconds(25);
 
     private static readonly TimeSpan LocalEmulatorOperationTimeout = TimeSpan.FromSeconds(10);
 
     private static CancellationTokenSource? currentTokenSource;
+
+    private static bool stdioStartup;
 
     private readonly string cfgPath;
 
@@ -107,9 +108,13 @@ public partial class ShellInterpreter : IDisposable
 
     private long sessionRequestChargeGeneration;
 
-    internal ShellInterpreter(string? configPath = null)
+    internal ShellInterpreter(string? configPath = null, bool historyEnabled = true)
     {
         this.State = new DisconnectedState();
+        this.Output = new ShellOutput(
+            () => this.Options?.Quiet == true,
+            () => this.IsMcpStdio,
+            () => stdioStartup || this.IsMachineMode);
 
         // editor.KeyBindings.Add<ClearInputCommand>(ConsoleKey.Escape);
         // TODO: Support selection commands?
@@ -126,26 +131,29 @@ public partial class ShellInterpreter : IDisposable
         this.HistoryFile = Path.Join(this.cfgPath, "cmd_history");
         this.welcomeMarkerFile = Path.Join(this.cfgPath, "welcome_seen");
 
-        try
+        if (historyEnabled)
         {
-            List<string> entries = [];
-            lock (HistoryFileLock)
+            try
             {
-                if (File.Exists(this.HistoryFile))
+                List<string> entries = [];
+                lock (HistoryFileLock)
                 {
-                    using var stream = this.OpenHistoryFileWithExclusiveLock(FileAccess.Read);
-                    entries = ReadHistoryEntries(stream);
+                    if (File.Exists(this.HistoryFile))
+                    {
+                        using var stream = this.OpenHistoryFileWithExclusiveLock(FileAccess.Read);
+                        entries = ReadHistoryEntries(stream);
+                    }
+                }
+
+                foreach (var entry in entries)
+                {
+                    this.RecordHistoryEntry(entry, persist: false);
                 }
             }
-
-            foreach (var entry in entries)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                this.RecordHistoryEntry(entry, persist: false);
+                System.Diagnostics.Debug.WriteLine(ex);
             }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            System.Diagnostics.Debug.WriteLine(ex);
         }
 
         Console.CancelKeyPress += this.Console_CancelKeyPress;
@@ -153,6 +161,16 @@ public partial class ShellInterpreter : IDisposable
     }
 
     internal event Action? LocationChanged;
+
+    internal static ShellInterpreter Instance => SharedInstance.Value;
+
+    internal ShellOutput Output { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the shell runs as a headless MCP stdio server,
+    /// including during startup before options are applied.
+    /// </summary>
+    internal bool IsMcpStdio => stdioStartup || this.Options?.McpStdio == true;
 
     /// <summary>
     /// Gets the line editor instance used by the shell, or <c>null</c> if not available.
@@ -367,13 +385,15 @@ public partial class ShellInterpreter : IDisposable
     /// interactive rendering (friendly views, ANSI colors, banners) is suppressed in
     /// favor of deterministic structured output. Machine mode is entered via
     /// <c>--quiet</c>, a structured output format (<c>--output json</c> or <c>--output csv</c>),
-    /// or an execute-and-quit (<c>-c</c>) invocation. The human-facing <c>table</c> and
+    /// a headless <c>--mcp-stdio</c> server, or an execute-and-quit (<c>-c</c>) invocation. The human-facing <c>table</c> and
     /// <c>user</c> formats are not machine mode. See <see cref="OutputPolicy"/>.
     /// </summary>
-    internal bool IsMachineMode => OutputPolicy.IsMachineMode(
+    internal bool IsMachineMode => this.Options?.McpStdio == true || OutputPolicy.IsMachineMode(
         this.Options?.Output,
         this.Options?.Quiet == true,
         !string.IsNullOrWhiteSpace(this.Options?.ExecuteAndQuit));
+
+    internal bool McpConfirmationApproved { get; set; }
 
     /// <summary>
     /// Gets the session default <see cref="OutputFormat"/>, resolved from the global
@@ -406,83 +426,71 @@ public partial class ShellInterpreter : IDisposable
     }
 
     /// <summary>
-    /// Create a new instance of the <see cref="ShellInterpreter"/> class.
+    /// Disables history loading before the shared stdio interpreter is constructed.
     /// </summary>
-    /// <returns>A new instance of the <see cref="ShellInterpreter"/> class.</returns>
+    internal static void ConfigureStdioStartup()
+    {
+        if (SharedInstance.IsValueCreated)
+        {
+            throw new InvalidOperationException("Stdio mode must be configured before creating the shell interpreter.");
+        }
+
+        stdioStartup = true;
+    }
+
+    /// <summary>
+    /// Creates a new shell interpreter instance.
+    /// </summary>
+    /// <returns>A new shell interpreter.</returns>
     public static ShellInterpreter CreateInstance()
     {
         return new ShellInterpreter();
     }
 
     /// <summary>
-    /// Writes the specified message to the standard output stream, using the specified format parameters.
+    /// Writes an informational message through the shell output policy, using the specified format parameters.
     /// </summary>
     /// <param name="message">The message to write.</param>
     /// <param name="par">An array of objects to format.</param>
     public static void WriteLine(string message, params object[] par)
     {
-        if (Instance?.Options?.Quiet == true)
-        {
-            return;
-        }
-
-        Console.WriteLine(message, par);
+        Instance.Output.WriteLine(ShellMessageKind.Information, message, par);
     }
 
     /// <summary>
-    /// Writes the specified message to the standard output stream.
+    /// Writes an informational message through the shell output policy.
     /// </summary>
     /// <param name="message">The message to write.</param>
     public static void WriteLine(string message)
     {
-        if (Instance?.Options?.Quiet == true)
-        {
-            return;
-        }
-
-        Console.WriteLine(message);
+        Instance.Output.WriteLine(ShellMessageKind.Information, message);
     }
 
     /// <summary>
-    /// Writes an empty line to the standard output stream.
+    /// Writes an informational empty line through the shell output policy.
     /// </summary>
     public static void WriteLine()
     {
-        if (Instance?.Options?.Quiet == true)
-        {
-            return;
-        }
-
-        Console.WriteLine();
+        Instance.Output.WriteLine(ShellMessageKind.Information);
     }
 
     /// <summary>
-    /// Writes the specified message to the standard output stream, using the specified format parameters.
+    /// Writes an informational message through the shell output policy, using the specified format parameters.
     /// </summary>
     /// <param name="message">The message to write.</param>
     /// <param name="par">An array of objects to format.</param>
     public static void Write(string message, params object[] par)
     {
-        if (Instance?.Options?.Quiet == true)
-        {
-            return;
-        }
-
-        Console.Write(message, par);
+        Instance.Output.Write(ShellMessageKind.Information, message, par);
     }
 
     /// <summary>
-    /// Writes the specified message to the standard output stream.
+    /// Writes an informational message through the shell output policy.
     /// </summary>
     /// <param name="message">The message to write.</param>
     public static void Write(string message)
     {
-        if (Instance?.Options?.Quiet == true)
-        {
-            return;
-        }
-
-        Console.Write(message);
+        Instance.Output.Write(ShellMessageKind.Information, message);
     }
 
     /// <summary>
@@ -492,6 +500,16 @@ public partial class ShellInterpreter : IDisposable
     /// <returns><c>true</c> if the user confirms; otherwise, <c>false</c>.</returns>
     public static bool Confirm(string message)
     {
+        if (Instance.Options?.McpStdio == true)
+        {
+            if (Instance.McpConfirmationApproved)
+            {
+                return true;
+            }
+
+            throw new CommandException("confirm", MessageService.GetString("mcp-error-stdio-console-input"));
+        }
+
         var yes = char.ToUpper(MessageService.GetString("yes_char")[0]);
         var no = char.ToUpper(MessageService.GetString("no_char")[0]);
 
@@ -503,7 +521,7 @@ public partial class ShellInterpreter : IDisposable
         {
             while (true)
             {
-                Console.Write($"{MessageService.GetString(message)} ({yes}/{no})?");
+                Instance.Output.Write(ShellMessageKind.RequiredInstruction, $"{MessageService.GetString(message)} ({yes}/{no})?");
 
                 ConsoleKeyInfo key;
                 try
@@ -514,25 +532,25 @@ public partial class ShellInterpreter : IDisposable
                 {
                     // No interactive console available (e.g. redirected input). Treat as
                     // a declined prompt rather than throwing.
-                    WriteLine();
+                    Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction);
                     return false;
                 }
 
                 if (key.Key == ConsoleKey.C && key.Modifiers.HasFlag(ConsoleModifiers.Control))
                 {
-                    WriteLine("^C");
+                    Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction, "^C");
                     return false;
                 }
 
                 if (key.Key == ConsoleKey.Escape)
                 {
-                    WriteLine();
+                    Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction);
                     return false;
                 }
 
                 // intercept:true suppresses the echo, so mirror the keystroke ourselves.
-                Console.Write(key.KeyChar);
-                WriteLine();
+                Instance.Output.Write(ShellMessageKind.RequiredInstruction, key.KeyChar.ToString());
+                Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction);
 
                 if (char.ToUpper(key.KeyChar) == yes)
                 {
@@ -868,7 +886,7 @@ public partial class ShellInterpreter : IDisposable
 
     internal static void ReportError(string message, params object[] par)
     {
-        AnsiConsole.MarkupLine(Theme.FormatError(message), par);
+        Instance.Output.MarkupLine(ShellMessageKind.Error, Theme.FormatError(message), par);
     }
 
     internal ShellObject GetVariable(string name)
@@ -902,61 +920,64 @@ public partial class ShellInterpreter : IDisposable
 
     internal void PrintVersion(CommandState? commandState)
     {
-        var isQuiet = this.Options?.Quiet == true;
         var version = GetDisplayVersion(typeof(VersionCommand).Assembly);
         var port = this.McpPort;
+        var stdio = this.Options?.McpStdio == true;
         var repoUrl = GetRepositoryUrl(typeof(VersionCommand).Assembly);
 
         if (commandState == null)
         {
-            // Startup banner: render immediately for interactive users.
-            if (!isQuiet)
-            {
-                RenderVersionBanner(version, port, repoUrl);
-            }
-
+            RenderVersionBanner(this.Output, ShellMessageKind.Information, version, port, repoUrl, stdio);
             return;
         }
 
         var json = new Dictionary<string, object?>
         {
             ["version"] = version,
-            ["mcpEnabled"] = port != null,
+            ["mcpEnabled"] = port != null || stdio,
             ["mcpPort"] = port, // will be null if not enabled
-            ["mcpStatus"] = port != null ? "on" : "off",
+            ["mcpStatus"] = port != null || stdio ? "on" : "off",
             ["repository"] = repoUrl,
         };
 
         var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
         commandState.Result = new ShellJson(jsonElement);
-        commandState.RenderUser = () => RenderVersionBanner(version, port, repoUrl);
+        commandState.RenderUser = () => RenderVersionBanner(this.Output, ShellMessageKind.Result, version, port, repoUrl, stdio);
     }
 
-    private static void RenderVersionBanner(string version, int? port, string repoUrl)
+    private static void RenderVersionBanner(ShellOutput output, ShellMessageKind kind, string version, int? port, string repoUrl, bool stdio)
     {
         var versionString = MessageService.GetArgsString("command-version", "version", version);
-        AnsiConsole.MarkupLine(versionString);
+        output.MarkupLine(kind, versionString);
 
-        if (port != null)
+        if (stdio)
+        {
+            output.MarkupLine(kind, Theme.FormatWarning(MessageService.GetString("command-version-mcp-stdio")));
+        }
+        else if (port != null)
         {
             var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
-            AnsiConsole.MarkupLine(Theme.FormatWarning(mcpPortString));
+            output.MarkupLine(kind, Theme.FormatWarning(mcpPortString));
         }
         else
         {
-            AnsiConsole.MarkupLine(MessageService.GetString("command-version-mcp-off"));
+            output.MarkupLine(kind, MessageService.GetString("command-version-mcp-off"));
         }
 
         if (!string.IsNullOrEmpty(repoUrl))
         {
             var repoString = MessageService.GetArgsString("command-version-repo", "url", repoUrl);
-            AnsiConsole.MarkupLine(repoString);
+            output.MarkupLine(kind, repoString);
         }
     }
 
     internal void ShowWelcome()
     {
-        WelcomeScreen.WriteTo(Console.Out);
+        this.Output.Write(ShellMessageKind.Information, WelcomeScreen.Text + "\u001b[0m");
+        if (!WelcomeScreen.Text.EndsWith('\n'))
+        {
+            this.Output.WriteLine(ShellMessageKind.Information);
+        }
     }
 
     internal bool ShowWelcomeOnFirstRun()
@@ -1412,39 +1433,47 @@ public partial class ShellInterpreter : IDisposable
         // which has its own dedicated step below and honors --tenant there.
         if (client == null && credentialMethod != CredentialMethod.AzureCli && (!string.IsNullOrWhiteSpace(tenantId) || !string.IsNullOrWhiteSpace(loginHint)))
         {
-            var browserOptions = new InteractiveBrowserCredentialOptions
+            if (AllowsInteractiveBrowser(this.IsMcpStdio))
             {
-                RedirectUri = new Uri(ConnectCommand.EntraRedirectUrl),
-            };
-            if (!string.IsNullOrWhiteSpace(tenantId))
+                var browserOptions = new InteractiveBrowserCredentialOptions
+                {
+                    RedirectUri = new Uri(ConnectCommand.EntraRedirectUrl),
+                };
+                if (!string.IsNullOrWhiteSpace(tenantId))
+                {
+                    browserOptions.TenantId = tenantId;
+                }
+
+                if (!string.IsNullOrWhiteSpace(loginHint))
+                {
+                    browserOptions.LoginHint = loginHint;
+                }
+
+                if (authorityHostUri != null)
+                {
+                    browserOptions.AuthorityHost = authorityHostUri;
+                }
+
+                WriteLine(MessageService.GetString("shell-connect-browser-auth"));
+                var browserCredential = new InteractiveBrowserCredential(browserOptions);
+                if (await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, browserCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: true, token))
+                {
+                    return;
+                }
+
+                // Browser auth failed; fall back to device code.
+                WriteLine(MessageService.GetString("shell-connect-devicecode-fallback"));
+            }
+            else
             {
-                browserOptions.TenantId = tenantId;
+                this.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("shell-connect-devicecode-stdio"));
             }
 
-            if (!string.IsNullOrWhiteSpace(loginHint))
-            {
-                browserOptions.LoginHint = loginHint;
-            }
-
-            if (authorityHostUri != null)
-            {
-                browserOptions.AuthorityHost = authorityHostUri;
-            }
-
-            WriteLine(MessageService.GetString("shell-connect-browser-auth"));
-            var browserCredential = new InteractiveBrowserCredential(browserOptions);
-            if (await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, browserCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: true, token))
-            {
-                return;
-            }
-
-            // Browser auth failed; fall back to device code.
-            WriteLine(MessageService.GetString("shell-connect-devicecode-fallback"));
             var deviceCodeOptions = new DeviceCodeCredentialOptions
             {
                 DeviceCodeCallback = (code, cancellationToken) =>
                 {
-                    ShellInterpreter.WriteLine(code.Message);
+                    this.Output.WriteLine(ShellMessageKind.RequiredInstruction, code.Message);
                     return Task.CompletedTask;
                 },
             };
@@ -1494,15 +1523,7 @@ public partial class ShellInterpreter : IDisposable
         if (client == null)
         {
             WriteLine(MessageService.GetString("shell-connect-default-auth"));
-            var dacOptions = new DefaultAzureCredentialOptions
-            {
-                ExcludeInteractiveBrowserCredential = false,
-            };
-            if (authorityHostUri != null)
-            {
-                dacOptions.AuthorityHost = authorityHostUri;
-            }
-
+            var dacOptions = CreateDefaultCredentialOptions(authorityHostUri, AllowsInteractiveBrowser(this.IsMcpStdio));
             var dacCredential = new DefaultAzureCredential(dacOptions); // CodeQL [SM05137] Interactive developer CLI, not a hosted service: this is the last-resort fallback that adopts the developer's local identity (Azure CLI/azd, Visual Studio, env vars, or VM managed identity). No fixed service identity exists to pin to.
             await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, dacCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: false, token);
         }
@@ -1914,6 +1935,11 @@ public partial class ShellInterpreter : IDisposable
 
     internal void PrintCommand(string cmdString)
     {
+        if (this.Options?.McpStdio == true)
+        {
+            return;
+        }
+
         // Print the shell prompt similar to how it appears when typing command
         //        AnsiConsole.Markup(new CosmosShellPrompt(this).GetPromptString());
         //        AnsiConsole.Write(" ");
@@ -1929,18 +1955,23 @@ public partial class ShellInterpreter : IDisposable
             System.Diagnostics.Debug.WriteLine(ex);
         }
 
+        if (this.Options?.Quiet == true)
+        {
+            return;
+        }
+
         // Echoing and the line editor both need an ANSI terminal, which an MCP host may not
         // provide. Neither may fail the command being announced.
         try
         {
             var txt = ((IHighlighter)Instance).BuildHighlightedText(cmdString);
-            AnsiConsole.Write(txt);
-            AnsiConsole.WriteLine(); // Ensure the next output starts on a new line
+            this.Output.Render(ShellMessageKind.Information, txt);
+            this.Output.WriteLine(ShellMessageKind.Information); // Ensure the next output starts on a new line
             this.Editor?.History.Add(cmdString);
         }
         catch (NotSupportedException)
         {
-            Console.Out.WriteLine(cmdString);
+            this.Output.WriteLine(ShellMessageKind.Information, cmdString);
         }
     }
 
@@ -2018,7 +2049,7 @@ public partial class ShellInterpreter : IDisposable
                     var element = (JsonElement?)state.Result.ConvertShellObject(Parser.DataType.Json);
                     if (element.HasValue)
                     {
-                        AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
+                        this.Output.MarkupLine(ShellMessageKind.Result, JsonOutputHighlighter.BuildMarkup(element.Value));
                         return state;
                     }
                 }
@@ -2037,7 +2068,7 @@ public partial class ShellInterpreter : IDisposable
                     && output != null
                     && state.Result is ShellText { Highlighter: { } highlighter })
                 {
-                    AnsiConsole.MarkupLine(highlighter(output));
+                    this.Output.MarkupLine(ShellMessageKind.Result, highlighter(output));
                     return state;
                 }
             }
@@ -2046,7 +2077,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 if (!redirected)
                 {
-                    Console.Out.WriteLine(output);
+                    this.Output.WriteResult(output);
                 }
                 else
                 {
@@ -2058,7 +2089,7 @@ public partial class ShellInterpreter : IDisposable
         {
             if (this.Options?.Verbose == true)
             {
-                AnsiConsole.WriteException(e);
+                this.Output.WriteException(ShellMessageKind.Error, e);
                 return new ErrorCommandState(e);
             }
 
@@ -2078,7 +2109,7 @@ public partial class ShellInterpreter : IDisposable
                 }
                 else if (!string.IsNullOrEmpty(canceled))
                 {
-                    AnsiConsole.MarkupLine(Theme.FormatWarning(canceled));
+                    this.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(canceled));
                 }
 
                 return new ErrorCommandState(e);
@@ -2091,16 +2122,16 @@ public partial class ShellInterpreter : IDisposable
             else
             {
                 var prefix = MessageService.GetString("runtime-error-prefix") ?? "error";
-                AnsiConsole.MarkupLine($"{Theme.FormatError(prefix + ":")} {Markup.Escape(e.Message)}");
+                this.Output.MarkupLine(ShellMessageKind.Error, $"{Theme.FormatError(prefix + ":")} {Markup.Escape(e.Message)}");
                 if (e is IShellExceptionWithHint hinted && !string.IsNullOrEmpty(hinted.Hint))
                 {
-                    AnsiConsole.MarkupLine(Markup.Escape(hinted.Hint));
+                    this.Output.MarkupLine(ShellMessageKind.Error, Markup.Escape(hinted.Hint));
                 }
 
                 var inner = e.InnerException;
                 while (inner != null)
                 {
-                    AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
+                    this.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
                     inner = inner.InnerException;
                 }
             }
@@ -2236,7 +2267,7 @@ public partial class ShellInterpreter : IDisposable
 
         if (this.IsMachineMode)
         {
-            Console.Error.WriteLine(JsonSerializer.Serialize(new Dictionary<string, string>
+            this.Output.WriteLine(ShellMessageKind.Warning, JsonSerializer.Serialize(new Dictionary<string, string>
             {
                 ["status"] = "warning",
                 ["warning"] = message,
@@ -2244,7 +2275,7 @@ public partial class ShellInterpreter : IDisposable
         }
         else
         {
-            AnsiConsole.MarkupLine(Theme.FormatWarning(message));
+            this.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(message));
         }
     }
 
@@ -2274,8 +2305,32 @@ public partial class ShellInterpreter : IDisposable
 
     private static string? PromptFallback()
     {
-        Console.Write(CosmosShellPrompt.PromptMarker + " ");
+        Instance.Output.Write(ShellMessageKind.RequiredInstruction, CosmosShellPrompt.PromptMarker + " ");
         return Console.ReadLine();
+    }
+
+    /// <summary>
+    /// Determines whether a sign-in may open a browser. A headless MCP stdio server has
+    /// no user at the terminal, and the platform browser launcher (for example
+    /// <c>xdg-open</c>) inherits the process stdout that carries the MCP protocol.
+    /// </summary>
+    /// <param name="mcpStdio">Whether the shell runs as an MCP stdio server.</param>
+    /// <returns><see langword="true"/> when interactive browser sign-in is allowed.</returns>
+    internal static bool AllowsInteractiveBrowser(bool mcpStdio) => !mcpStdio;
+
+    internal static DefaultAzureCredentialOptions CreateDefaultCredentialOptions(Uri? authorityHost, bool allowInteractiveBrowser)
+    {
+        var options = new DefaultAzureCredentialOptions
+        {
+            ExcludeInteractiveBrowserCredential = !allowInteractiveBrowser,
+            ExcludeBrokerCredential = !allowInteractiveBrowser,
+        };
+        if (authorityHost != null)
+        {
+            options.AuthorityHost = authorityHost;
+        }
+
+        return options;
     }
 
     internal static CosmosClientOptions CreateClientOptions(ConnectionMode requestedMode, bool isEmulator = false)
@@ -2341,7 +2396,7 @@ public partial class ShellInterpreter : IDisposable
         }
         catch (Exception e)
         {
-            Console.Error.WriteLine(e.Message);
+            ShellOutput.StandardError.WriteLine(ShellMessageKind.Error, e.Message);
             return null;
         }
     }
@@ -2863,7 +2918,7 @@ public partial class ShellInterpreter : IDisposable
         }
         else
         {
-            Console.Error.WriteLine(json);
+            this.Output.WriteLine(ShellMessageKind.Error, json);
         }
     }
 
@@ -2888,7 +2943,7 @@ public partial class ShellInterpreter : IDisposable
             var cosmos = FindException<CosmosException>(exception);
             if (cosmos != null)
             {
-                AnsiConsole.MarkupLine(Theme.FormatError(MessageService.GetArgsString(
+                Instance.Output.MarkupLine(ShellMessageKind.Error, Theme.FormatError(MessageService.GetArgsString(
                     "shell-connect-error-cosmos-detail",
                     "status",
                     ((int)cosmos.StatusCode).ToString(CultureInfo.InvariantCulture),
@@ -2904,20 +2959,20 @@ public partial class ShellInterpreter : IDisposable
             // per-credential failure reasons from DefaultAzureCredential's
             // AuthenticationFailedException and the Cosmos error body/diagnostics
             // from CosmosException.ToString().
-            AnsiConsole.WriteLine(exception.ToString());
+            Instance.Output.RenderLine(ShellMessageKind.Error, exception.ToString());
             return;
         }
 
-        AnsiConsole.MarkupLine(Theme.FormatError(exception.Message));
+        Instance.Output.MarkupLine(ShellMessageKind.Error, Theme.FormatError(exception.Message));
 
         var inner = exception.InnerException;
         while (inner != null)
         {
-            AnsiConsole.MarkupLine($"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
+            Instance.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2192")} {Markup.Escape(inner.Message)}");
             inner = inner.InnerException;
         }
 
-        AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("shell-connect-verbose-hint")));
+        Instance.Output.MarkupLine(ShellMessageKind.Error, Theme.FormatMuted(MessageService.GetString("shell-connect-verbose-hint")));
     }
 
     private void ReportExecutionError(Exception e, string? sourceText = null)
@@ -2982,20 +3037,20 @@ public partial class ShellInterpreter : IDisposable
         {
             if (!string.IsNullOrEmpty(prefix))
             {
-                AnsiConsole.MarkupLine(Markup.Escape(prefix.TrimEnd()));
+                this.Output.MarkupLine(ShellMessageKind.Error, Markup.Escape(prefix.TrimEnd()));
             }
 
-            AnsiConsole.WriteException(e, new ExceptionSettings
+            this.Output.WriteException(ShellMessageKind.Error, e, new ExceptionSettings
             {
                 Format = ExceptionFormats.ShortenPaths,
             });
         }
         else
         {
-            AnsiConsole.MarkupLine(prefix + Theme.FormatError(e.Message));
+            this.Output.MarkupLine(ShellMessageKind.Error, prefix + Theme.FormatError(e.Message));
             if (!string.IsNullOrEmpty(hint))
             {
-                AnsiConsole.MarkupLine(Markup.Escape(hint));
+                this.Output.MarkupLine(ShellMessageKind.Error, Markup.Escape(hint));
             }
 
             if (showInner)
@@ -3003,7 +3058,7 @@ public partial class ShellInterpreter : IDisposable
                 var inner = e.InnerException;
                 while (inner != null)
                 {
-                    AnsiConsole.MarkupLine($"  {Theme.FormatError("->")} {Markup.Escape(inner.Message)}");
+                    this.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("->")} {Markup.Escape(inner.Message)}");
                     inner = inner.InnerException;
                 }
             }
@@ -3038,7 +3093,7 @@ public partial class ShellInterpreter : IDisposable
             }
             else
             {
-                AnsiConsole.MarkupLine(Markup.Escape(e.Hint));
+                this.Output.MarkupLine(ShellMessageKind.Error, Markup.Escape(e.Hint));
             }
         }
 
@@ -3058,7 +3113,7 @@ public partial class ShellInterpreter : IDisposable
                 }
                 else
                 {
-                    AnsiConsole.MarkupLine(Markup.Escape(csHint));
+                    this.Output.MarkupLine(ShellMessageKind.Error, Markup.Escape(csHint));
                 }
             }
         }
@@ -3119,16 +3174,16 @@ public partial class ShellInterpreter : IDisposable
         }
         else
         {
-            AnsiConsole.MarkupLine($"{Markup.Escape($"{pe.FileName}:{pe.Line}:{pe.Column}:")} {Theme.FormatError(MessageService.GetString("runtime-error-prefix") + ":")} {Markup.Escape(pe.Message)}");
+            this.Output.MarkupLine(ShellMessageKind.Error, $"{Markup.Escape($"{pe.FileName}:{pe.Line}:{pe.Column}:")} {Theme.FormatError(MessageService.GetString("runtime-error-prefix") + ":")} {Markup.Escape(pe.Message)}");
             if (pe.LineText != null)
             {
-                AnsiConsole.MarkupLine("  " + Theme.FormatMuted(pe.LineText));
-                AnsiConsole.MarkupLine("  " + Theme.FormatError(new string(' ', Math.Max(0, pe.Column - 1)) + "^"));
+                this.Output.MarkupLine(ShellMessageKind.Error, "  " + Theme.FormatMuted(pe.LineText));
+                this.Output.MarkupLine(ShellMessageKind.Error, "  " + Theme.FormatError(new string(' ', Math.Max(0, pe.Column - 1)) + "^"));
             }
 
             foreach (var frame in callTrace)
             {
-                AnsiConsole.MarkupLine(Theme.FormatMuted(frame));
+                this.Output.MarkupLine(ShellMessageKind.Error, Theme.FormatMuted(frame));
             }
         }
     }
@@ -3360,16 +3415,16 @@ public partial class ShellInterpreter : IDisposable
             if (hasOrigin)
             {
                 var location = $"{origin}:{lineNumber}:{rendered.SourceColumn}:";
-                AnsiConsole.MarkupLine($"{Theme.FormatMuted(location)} {FormatLevel(levelPrefix + ":")} {m}");
+                this.Output.MarkupLine(isWarning ? ShellMessageKind.Warning : ShellMessageKind.Error, $"{Theme.FormatMuted(location)} {FormatLevel(levelPrefix + ":")} {m}");
             }
             else
             {
-                AnsiConsole.MarkupLine($"{FormatLevel(levelPrefix + ":")} {m} {Theme.FormatMuted($"({lineNumber}:{rendered.SourceColumn})")}");
+                this.Output.MarkupLine(isWarning ? ShellMessageKind.Warning : ShellMessageKind.Error, $"{FormatLevel(levelPrefix + ":")} {m} {Theme.FormatMuted($"({lineNumber}:{rendered.SourceColumn})")}");
             }
 
             var gutter = $"  > {lineNumber} | ";
-            AnsiConsole.MarkupLine($"{Theme.FormatMuted(gutter)}{Markup.Escape(rendered.Display)}");
-            AnsiConsole.MarkupLine($"{Theme.FormatMuted(new string(' ', gutter.Length) + rendered.CaretLeader)}{FormatLevel(rendered.CaretPad + rendered.CaretMarker)}");
+            this.Output.MarkupLine(isWarning ? ShellMessageKind.Warning : ShellMessageKind.Error, $"{Theme.FormatMuted(gutter)}{Markup.Escape(rendered.Display)}");
+            this.Output.MarkupLine(isWarning ? ShellMessageKind.Warning : ShellMessageKind.Error, $"{Theme.FormatMuted(new string(' ', gutter.Length) + rendered.CaretLeader)}{FormatLevel(rendered.CaretPad + rendered.CaretMarker)}");
         }
     }
 

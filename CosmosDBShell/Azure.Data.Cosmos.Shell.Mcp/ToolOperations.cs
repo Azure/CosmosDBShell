@@ -65,15 +65,22 @@ internal class ToolOperations
 
     private ValueTask<EmptyResult> SubscribeToResourcesAsync(RequestContext<SubscribeRequestParams> context, CancellationToken cancellationToken)
     {
-        this.locationSubscriptions.Subscribe(context.Server.SessionId, context.Params?.Uri ?? string.Empty);
+        this.locationSubscriptions.Subscribe(context.Server, context.Params?.Uri ?? string.Empty);
         return ValueTask.FromResult(new EmptyResult());
     }
 
     private ValueTask<EmptyResult> UnsubscribeFromResourcesAsync(RequestContext<UnsubscribeRequestParams> context, CancellationToken cancellationToken)
     {
-        this.locationSubscriptions.Unsubscribe(context.Server.SessionId, context.Params?.Uri ?? string.Empty);
+        this.locationSubscriptions.Unsubscribe(context.Server, context.Params?.Uri ?? string.Empty);
         return ValueTask.FromResult(new EmptyResult());
     }
+
+    /// <summary>
+    /// Determines whether a command cannot run in MCP stdio mode.
+    /// </summary>
+    internal static bool IsUnavailableInStdio(CommandFactory command)
+        => command.IsExternal || command.CommandName == "theme"
+            || (command.McpRestricted && !RequiresConfirmation(command));
 
     internal static Tool GetTool(CommandFactory command)
     {
@@ -713,6 +720,10 @@ internal class ToolOperations
                 },
                 requestState: ConfirmationRequestState.Create(commandLine, stateVersion));
         }
+        else if (clientCapabilities?.Elicitation != null && server is not null)
+        {
+            prompt = (request, _, token) => server.ElicitAsync(request, token);
+        }
 
         return await this.ExecuteToolAsync(command, cmd, commandLine, prompt, cancellationToken, parameters.Params);
     }
@@ -758,11 +769,25 @@ internal class ToolOperations
                     }
 
                     shell.PrintCommand(commandLine);
-                    var response = await shell.ExecuteCosmosCommandAsync(cmd, new CommandState(), command.CommandName, cancellationToken);
-                    shell.CancelPrompt();
-                    return McpResponseFactory.CreateSuccess(response, shell.State);
+                    var previousApproval = shell.McpConfirmationApproved;
+                    shell.McpConfirmationApproved = confirmedVersion.HasValue;
+                    try
+                    {
+                        var response = await shell.ExecuteCosmosCommandAsync(cmd, new CommandState(), command.CommandName, cancellationToken);
+                        shell.CancelPrompt();
+                        return McpResponseFactory.CreateSuccess(response, shell.State);
+                    }
+                    finally
+                    {
+                        shell.McpConfirmationApproved = previousApproval;
+                    }
                 },
                 cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            this.logger?.LogInformation("MCP command '{Command}' was cancelled.", command.CommandName);
+            throw;
         }
         catch (Exception ex)
         {

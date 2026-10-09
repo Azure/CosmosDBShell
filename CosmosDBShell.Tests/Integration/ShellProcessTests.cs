@@ -25,6 +25,154 @@ public class ShellProcessTests
     private static readonly Regex AnsiEscape = new("\x1b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
 
     [Theory]
+    [InlineData("theme use MACHINE_NOPE", "MACHINE_NOPE")]
+    [InlineData("help MACHINE_MISSING", "MACHINE_MISSING")]
+    [InlineData("edit machine.txt", "interactive terminal")]
+    public async Task MachineMode_CommandFailure_ReportsSingleStructuredError(string command, string expected)
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["-c", command],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Empty(result.StdOut);
+        var line = Assert.Single(result.StdErr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+        using var error = JsonDocument.Parse(line);
+        Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+        Assert.Contains(expected, error.RootElement.GetProperty("error").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Quiet_PreservesResultsAndStartupWarningsWithoutAnsi()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--quiet", "--theme", "QUIET_UNKNOWN_THEME", "-c", "echo QUIET_RESULT"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("QUIET_RESULT", result.StdOut.Trim());
+        Assert.Contains("QUIET_UNKNOWN_THEME", result.StdErr);
+        Assert.DoesNotContain("Cosmos Shell version:", result.StdOut);
+        Assert.DoesNotContain("\u001b", result.StdOut + result.StdErr, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("save", "saved")]
+    [InlineData("load", "loaded")]
+    [InlineData("validate", "valid")]
+    public async Task Quiet_SuppressesCommandInformationButPreservesStructuredResult(string action, string resultProperty)
+    {
+        var file = Path.Join(Path.GetTempPath(), $"cosmosshell-output-{Guid.NewGuid():N}.toml");
+        try
+        {
+            if (action != "save")
+            {
+                await File.WriteAllTextAsync(file, "name = \"OUTPUT_TEST\"\n[colors]\nliteral = \"purple\"\n", TestContext.Current.CancellationToken);
+            }
+
+            var command = action == "save"
+                ? $"theme save OUTPUT_TEST '{file}' --force"
+                : $"theme {action} '{file}'";
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: ["--quiet", "-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(0, result.ExitCode);
+            using var json = JsonDocument.Parse(result.StdOut);
+            Assert.True(json.RootElement.GetProperty(resultProperty).GetBoolean());
+            Assert.Empty(result.StdErr);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ThemeValidation_Success_PreservesWarningsOnStderr(bool quiet, bool directory)
+    {
+        var path = Path.Join(Path.GetTempPath(), $"cosmosshell-theme-warnings-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(path);
+        try
+        {
+            var file = Path.Join(path, "warning.toml");
+            await File.WriteAllTextAsync(
+                file,
+                "name = \"WARNING_TEST\"\n[colors]\nunknown_warning_slot = \"red\"\n",
+                TestContext.Current.CancellationToken);
+            var target = directory ? path : file;
+            var command = $"theme validate '{target}'";
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: quiet ? ["--quiet", "-c", command] : ["-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            using var json = JsonDocument.Parse(result.StdOut);
+            var validation = directory ? json.RootElement.GetProperty("values")[0] : json.RootElement;
+            Assert.True(validation.GetProperty("valid").GetBoolean());
+            Assert.NotEqual(0, validation.GetProperty("warnings").GetArrayLength());
+            Assert.Contains("unknown_warning_slot", result.StdErr);
+            Assert.DoesNotContain("\u001b", result.StdOut + result.StdErr, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(Path.Join(path, "warning.toml"));
+            Directory.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ThemeValidation_FailedDirectoryScan_ReportsOnlyStructuredError(bool quiet, bool strict)
+    {
+        var path = Path.Join(Path.GetTempPath(), $"cosmosshell-theme-errors-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(path);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Join(path, "a-warning.toml"),
+                "name = \"WARNING_TEST\"\n[colors]\nunknown_warning_slot = \"red\"\n",
+                TestContext.Current.CancellationToken);
+            if (!strict)
+            {
+                await File.WriteAllTextAsync(
+                    Path.Join(path, "z-broken.toml"),
+                    "name = \"BROKEN_TEST\"\n[colors]\nliteral = \"not_a_color\"\n",
+                    TestContext.Current.CancellationToken);
+            }
+
+            var command = $"theme validate '{path}'" + (strict ? " --strict" : string.Empty);
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: quiet ? ["--quiet", "-c", command] : ["-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            var line = Assert.Single(result.StdErr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+            using var error = JsonDocument.Parse(line);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            Assert.DoesNotContain("unknown_warning_slot", result.StdErr);
+        }
+        finally
+        {
+            File.Delete(Path.Join(path, "a-warning.toml"));
+            File.Delete(Path.Join(path, "z-broken.toml"));
+            Directory.Delete(path);
+        }
+    }
+
+    [Theory]
     [InlineData("value", "identity", "1 argument, got 0")]
     [InlineData("value", "identity 1 2", "1 argument, got 2")]
     [InlineData("value", "$result = (identity)", "1 argument, got 0")]
@@ -93,6 +241,64 @@ public class ShellProcessTests
         Assert.Contains("hello from process", result.StdOut);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("--help")]
+    [InlineData("--lsp")]
+    [InlineData("--stdio")]
+    public async Task StdioOption_InResponseFile_IsRejectedWithoutStdout(string? additionalArgument)
+    {
+        var responseFile = Path.Join(Path.GetTempPath(), $"cosmosshell-stdio-{Guid.NewGuid():N}.rsp");
+        await File.WriteAllTextAsync(responseFile, "--mcp-stdio", TestContext.Current.CancellationToken);
+        try
+        {
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: additionalArgument is null ? ["@" + responseFile] : ["@" + responseFile, additionalArgument],
+                cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(2, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            Assert.Contains("response file", result.StdErr);
+        }
+        finally
+        {
+            File.Delete(responseFile);
+        }
+    }
+
+    [Fact]
+    public async Task StdioOption_InResponseFile_WithDirectFalseValue_DoesNotStartProtocol()
+    {
+        var responseFile = Path.Join(Path.GetTempPath(), $"cosmosshell-stdio-{Guid.NewGuid():N}.rsp");
+        await File.WriteAllTextAsync(responseFile, "--mcp-stdio", TestContext.Current.CancellationToken);
+        try
+        {
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: ["@" + responseFile, "--mcp-stdio=false"],
+                cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(2, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            Assert.Contains("--mcp-stdio cannot be combined", result.StdErr);
+        }
+        finally
+        {
+            File.Delete(responseFile);
+        }
+    }
+
+    [Fact]
+    public async Task StdioOption_InCommandTail_RemainsCommandText()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["-c", "echo \"--mcp-stdio\""],
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("--mcp-stdio", result.StdOut);
+        Assert.Empty(result.StdErr);
+    }
+
     [Fact]
     public async Task InvariantGlobalization_ExecuteCommand_LoadsEnglishCatalog()
     {
@@ -128,7 +334,7 @@ public class ShellProcessTests
     {
         // Emulates 'cosmosdbshell < script.txt > output.txt': the caller captures the
         // process's stdout and writes it to a file, then verifies the command ran.
-        var outFile = Path.Combine(Path.GetTempPath(), $"cosmosshell-proc-{Guid.NewGuid():N}.txt");
+        var outFile = Path.Join(Path.GetTempPath(), $"cosmosshell-proc-{Guid.NewGuid():N}.txt");
         try
         {
             var result = await RunShellAsync("echo \"PIPE_SMOKE_TEST\"", TestContext.Current.CancellationToken);
@@ -490,7 +696,7 @@ public class ShellProcessTests
             || (argsList?.Contains("-c") == true)
             || (argsList?.Contains("-k") == true);
 
-        var shellDll = Path.Combine(AppContext.BaseDirectory, "CosmosDBShell.dll");
+        var shellDll = Path.Join(AppContext.BaseDirectory, "CosmosDBShell.dll");
         if (!File.Exists(shellDll))
         {
             throw SkipException.ForSkip($"CosmosDBShell.dll not found next to test assembly at '{shellDll}'.");

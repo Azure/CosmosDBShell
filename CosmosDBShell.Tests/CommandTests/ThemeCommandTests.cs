@@ -81,10 +81,9 @@ public class ThemeCommandTests
             Name = dir.Path,
         };
 
-        var state = await command.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), "", CancellationToken.None);
-        var error = Assert.IsType<ErrorCommandState>(state);
+        var error = await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), "", CancellationToken.None));
 
-        Assert.Contains("1 of 2", error.Exception.Message);
+        Assert.Contains("1 of 2", error.Message);
     }
 
     [Fact]
@@ -109,9 +108,8 @@ public class ThemeCommandTests
                 Strict = true,
             };
 
-            var state = await command.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), "", CancellationToken.None);
-            var error = Assert.IsType<ErrorCommandState>(state);
-            Assert.Contains("strict mode", error.Exception.Message);
+            var error = await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), "", CancellationToken.None));
+            Assert.Contains("strict mode", error.Message);
         }
         finally
         {

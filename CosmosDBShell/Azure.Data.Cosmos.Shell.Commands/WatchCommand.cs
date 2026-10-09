@@ -50,6 +50,11 @@ internal class WatchCommand : CosmosCommand
     {
         ArgumentNullException.ThrowIfNull(shell);
 
+        if (shell.IsMachineMode && this.Max is not > 0)
+        {
+            throw new CommandException("watch", MessageService.GetString("command-watch-error-machine_max_required"));
+        }
+
         if (shell.State is not ConnectedState connectedState)
         {
             throw new NotConnectedException("watch");
@@ -166,7 +171,7 @@ internal class WatchCommand : CosmosCommand
         var collected = (max.HasValue || redirected) ? new List<JsonElement>() : null;
         var count = 0;
 
-        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-watch-started", "container", Theme.ContainerNamePromt(container.Id)));
+        shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString("command-watch-started", "container", Theme.ContainerNamePromt(container.Id)));
 
         try
         {
@@ -195,9 +200,9 @@ internal class WatchCommand : CosmosCommand
                 var limitReached = false;
                 foreach (var element in documents)
                 {
-                    if (!redirected)
+                    if (!redirected && (collected == null || !shell.IsMachineMode))
                     {
-                        AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element));
+                        shell.Output.MarkupLine(ShellMessageKind.Result, JsonOutputHighlighter.BuildMarkup(element));
                     }
 
                     collected?.Add(element);
@@ -221,7 +226,7 @@ internal class WatchCommand : CosmosCommand
             // Ctrl+C: stop tailing and report what was seen so far.
         }
 
-        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-watch-stopped", "count", count.ToString()));
+        shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString("command-watch-stopped", "count", count.ToString()));
 
         var result = new CommandState();
         result.SetFormat(this.OutputFormat);

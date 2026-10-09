@@ -485,39 +485,42 @@ internal class ImportCommand : CosmosCommand
 
         var (successCount, failCount, charge) = await ExecuteImportAsync(filePath, format, mode, container, continueOnError, dryRun, partitionKeySegments, token);
 
-        if (dryRun)
+        if (!shell.IsMachineMode)
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                "command-import-dry-run-success",
-                "count",
-                successCount));
-        }
-        else if (failCount == 0)
-        {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                "command-import-success",
-                "count",
-                successCount,
-                "charge",
-                charge.ToString("F2", CultureInfo.InvariantCulture)));
-        }
-        else if (successCount > 0)
-        {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                "command-import-success-partial",
-                "success",
-                successCount,
-                "failed",
-                failCount,
-                "charge",
-                charge.ToString("F2", CultureInfo.InvariantCulture)));
-        }
-        else
-        {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                "command-import-all-failed",
-                "count",
-                failCount));
+            if (dryRun)
+            {
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                    "command-import-dry-run-success",
+                    "count",
+                    successCount));
+            }
+            else if (failCount == 0)
+            {
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                    "command-import-success",
+                    "count",
+                    successCount,
+                    "charge",
+                    charge.ToString("F2", CultureInfo.InvariantCulture)));
+            }
+            else if (successCount > 0)
+            {
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Warning, MessageService.GetArgsString(
+                    "command-import-success-partial",
+                    "success",
+                    successCount,
+                    "failed",
+                    failCount,
+                    "charge",
+                    charge.ToString("F2", CultureInfo.InvariantCulture)));
+            }
+            else
+            {
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString(
+                    "command-import-all-failed",
+                    "count",
+                    failCount));
+            }
         }
 
         if (failCount > 0)
@@ -629,12 +632,16 @@ internal class ImportCommand : CosmosCommand
                     else
                     {
                         failed++;
-                        ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                            "command-import-error-item_status",
-                            "line",
-                            lineNumber,
-                            "status",
-                            response.StatusCode.ToString()));
+                        if (!ShellInterpreter.Instance.IsMachineMode)
+                        {
+                            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString(
+                                "command-import-error-item_status",
+                                "line",
+                                lineNumber,
+                                "status",
+                                response.StatusCode.ToString()));
+                        }
+
                         if (!continueOnError)
                         {
                             break;
@@ -645,14 +652,18 @@ internal class ImportCommand : CosmosCommand
                 {
                     failed++;
                     charge += ce.RequestCharge;
-                    ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                        "command-import-error-item_failed",
-                        "line",
-                        lineNumber,
-                        "status",
-                        ce.StatusCode.ToString(),
-                        "message",
-                        CommandException.GetDisplayMessage(ce)));
+                    if (!ShellInterpreter.Instance.IsMachineMode)
+                    {
+                        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString(
+                            "command-import-error-item_failed",
+                            "line",
+                            lineNumber,
+                            "status",
+                            ce.StatusCode.ToString(),
+                            "message",
+                            CommandException.GetDisplayMessage(ce)));
+                    }
+
                     if (!continueOnError)
                     {
                         break;

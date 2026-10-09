@@ -22,6 +22,8 @@ The credential type is determined by the first matching rule (top-to-bottom):
 > **Note:** Step 3 is primarily a startup option (`--connect-vscode-credential`); it is also accepted as a hidden option on the interactive `connect` command.
 >
 > **Note:** `--azure-cli` takes precedence over the priority&nbsp;6 interactive selection, so combining `--azure-cli` with `--tenant` uses `AzureCliCredential` (honoring the tenant) rather than triggering the browser/device-code flow.
+>
+> **Note:** In MCP stdio mode (`--mcp-stdio`) the shell never opens a browser. Priority&nbsp;6 uses `DeviceCodeCredential` directly, and priority&nbsp;8 uses `DefaultAzureCredential` without its interactive browser step. See [MCP stdio](mcp.md#stdio-headless-mode).
 
 The `--authority-host` option is honored by the Entra ID credentials that accept it: `VisualStudioCodeCredential` (priority 3), `ManagedIdentityCredential` (priority 5), the interactive `InteractiveBrowserCredential`/`DeviceCodeCredential` (priority 6), and `DefaultAzureCredential` (priority 8). It does not affect which credential type is selected, and the static token (priority 4) and account key paths ignore it. `AzureCliCredential` (priority 7) uses the cloud that the Azure CLI is already configured for, so it does not accept `--authority-host`; if you supply both, the value is ignored and a warning is printed. Use `az cloud set` to change the Azure CLI cloud instead.
 

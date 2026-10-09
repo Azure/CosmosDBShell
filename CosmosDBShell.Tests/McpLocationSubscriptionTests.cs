@@ -4,6 +4,7 @@
 
 namespace CosmosShell.Tests;
 
+using System.IO.Pipelines;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Mcp;
@@ -20,6 +21,64 @@ using ModelContextProtocol.Protocol;
 [Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class McpLocationSubscriptionTests
 {
+    [Fact]
+    public async Task StdioSubscription_ReceivesLocationChangeWithoutHttpSession()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        var input = new Pipe();
+        var output = new Pipe();
+        using var host = McpServer.CreateStdioHost(input.Reader.AsStream(), output.Writer.AsStream());
+        Assert.Null(host.Services.GetService<IServer>());
+        await host.StartAsync(timeout.Token);
+        var subscriptions = host.Services.GetRequiredService<LocationResourceSubscriptions>();
+        try
+        {
+            await using var client = await McpClient.CreateAsync(
+                new StreamClientTransport(input.Writer.AsStream(), output.Reader.AsStream()),
+                new McpClientOptions { ProtocolVersion = "2025-11-25" },
+                cancellationToken: timeout.Token);
+            Assert.NotNull(client.ServerCapabilities.Resources);
+            Assert.True(client.ServerCapabilities.Resources.Subscribe);
+            Assert.False(client.ServerCapabilities.Resources.ListChanged);
+            var updated = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using var subscription = await client.SubscribeToResourceAsync(
+                ResourceOperations.CurrentLocationUri,
+                (notification, _) =>
+                {
+                    updated.TrySetResult(notification.Uri);
+                    return ValueTask.CompletedTask;
+                },
+                cancellationToken: timeout.Token);
+            Assert.Equal(1, subscriptions.SubscriberCount);
+            var originalState = ShellInterpreter.Instance.State;
+            using var cosmosClient = new CosmosClient(
+                "https://localhost:8081",
+                Convert.ToBase64String(new byte[64]),
+                new CosmosClientOptions { ConnectionMode = ConnectionMode.Gateway });
+            try
+            {
+                ShellInterpreter.Instance.State = new DatabaseState("StdioNotificationTest", cosmosClient);
+                Assert.Equal(ResourceOperations.CurrentLocationUri, await updated.Task.WaitAsync(timeout.Token));
+                var resource = await client.ReadResourceAsync(ResourceOperations.CurrentLocationUri, cancellationToken: timeout.Token);
+                using var json = JsonDocument.Parse(Assert.IsType<TextResourceContents>(Assert.Single(resource.Contents)).Text);
+                Assert.Equal("/StdioNotificationTest", json.RootElement.GetProperty("currentLocation").GetString());
+                await client.UnsubscribeFromResourceAsync(ResourceOperations.CurrentLocationUri, cancellationToken: timeout.Token);
+                Assert.Equal(0, subscriptions.SubscriberCount);
+            }
+            finally
+            {
+                ShellInterpreter.Instance.State = originalState;
+            }
+        }
+        finally
+        {
+            await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(0, subscriptions.SubscriberCount);
+    }
+
     [Fact]
     public async Task SubscribedClient_ReceivesInteractiveLocationChange()
     {

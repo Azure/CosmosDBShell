@@ -118,4 +118,59 @@ public class WatchCommandTests
         await Assert.ThrowsAsync<NotConnectedException>(
             () => command.ExecuteAsync(shell, new CommandState(), "watch", TestContext.Current.CancellationToken));
     }
+
+    [Theory]
+    [InlineData(true, null, null)]
+    [InlineData(true, null, 0)]
+    [InlineData(true, null, -1)]
+    [InlineData(false, "json", null)]
+    [InlineData(false, "json", 0)]
+    [InlineData(false, "csv", -1)]
+    public async Task ExecuteAsync_UnboundedMachineWatch_RejectsBeforeConnection(bool quiet, string? output, int? max)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Quiet = quiet, Output = output };
+        shell.State = new DisconnectedState();
+        var command = new WatchCommand { Max = max };
+
+        var error = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "watch", TestContext.Current.CancellationToken));
+
+        Assert.Contains("positive --max", error.Message);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("changes.json")]
+    public async Task ExecuteAsync_UnboundedExecuteAndQuitWatch_RejectsIncludingRedirection(string? redirectedPath)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { ExecuteAndQuit = "watch" };
+        shell.StdOutRedirect = redirectedPath;
+        shell.State = new DisconnectedState();
+        var command = new WatchCommand();
+
+        var error = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "watch", TestContext.Current.CancellationToken));
+
+        Assert.Contains("positive --max", error.Message);
+    }
+
+    [Theory]
+    [InlineData(true, null, 1)]
+    [InlineData(false, "json", 100)]
+    [InlineData(false, "csv", 1)]
+    [InlineData(false, "user", null)]
+    [InlineData(false, "table", 0)]
+    [InlineData(false, null, -1)]
+    public async Task ExecuteAsync_BoundedMachineOrInteractiveWatch_PreservesConnectionGuard(bool quiet, string? output, int? max)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Quiet = quiet, Output = output };
+        shell.State = new DisconnectedState();
+        var command = new WatchCommand { Max = max };
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "watch", TestContext.Current.CancellationToken));
+    }
 }

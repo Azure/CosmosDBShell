@@ -154,7 +154,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
                     Row("command-throughput-label-min", view.MinThroughput.Value.ToString(CultureInfo.InvariantCulture));
                 }
 
-                AnsiConsole.Write(table);
+                ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
             },
         };
     }
@@ -215,8 +215,8 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
                 Row("command-throughput-dry-run-label-current", DescribeMode(currentMode, current.Throughput, current.AutoscaleMaxThroughput));
                 Row("command-throughput-dry-run-label-planned", DescribeMode(plannedMode, plannedAutoscale ? null : plannedRu, plannedAutoscale ? plannedRu : null));
 
-                AnsiConsole.Write(table);
-                ShellInterpreter.WriteLine(MessageService.GetString("command-throughput-dry-run-note"));
+                ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-throughput-dry-run-note"));
             },
         };
     }
@@ -259,7 +259,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         string resourceName = containerName ?? databaseName;
         string modeLabel = MessageService.GetString(isAutoscale ? "command-throughput-mode-autoscale" : "command-throughput-mode-manual");
         string ruText = ru.ToString(CultureInfo.InvariantCulture);
-        AnsiConsole.MarkupLine(MessageService.GetArgsString("command-throughput-confirm_summary", "resource", Markup.Escape(resourceName), "mode", modeLabel, "ru", ruText));
+        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.RequiredInstruction, MessageService.GetArgsString("command-throughput-confirm_summary", "resource", Markup.Escape(resourceName), "mode", modeLabel, "ru", ruText));
         return ShellInterpreter.Confirm("command-throughput-confirm");
     }
 
@@ -318,7 +318,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
             return new CommandState
             {
                 Result = new ShellJson(cancelledDoc.RootElement.Clone()),
-                RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-throughput-cancelled")),
+                RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-throughput-cancelled")),
             };
         }
 
@@ -354,7 +354,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         var renderTable = built.RenderUser;
         built.RenderUser = () =>
         {
-            ShellInterpreter.WriteLine(MessageService.GetString("command-throughput-updated"));
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-throughput-updated"));
             renderTable?.Invoke();
         };
         return built;

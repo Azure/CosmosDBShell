@@ -18,6 +18,7 @@ using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.States;
 
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -118,6 +119,203 @@ public class ToolOperationsCallToolTests : IDisposable
         {
             Assert.True(isError);
             Assert.Contains("restricted for MCP", root.GetProperty("error").GetString());
+        }
+
+    }
+
+    [Fact]
+    public void StdioCommandRemoval_RemovesUnsupportedCommandsAndAliasesButKeepsConfirmableCommands()
+    {
+        var runner = new CommandRunner();
+        var expectedRemaining = runner.Commands.Where(entry => !ToolOperations.IsUnavailableInStdio(entry.Value)).Select(entry => entry.Key).ToList();
+        Assert.Contains(runner.Commands.Values, command => command.CommandName == "jq");
+        Assert.Contains(runner.Commands.Values, command => command.CommandName == "theme");
+
+        runner.RemoveCommands(ToolOperations.IsUnavailableInStdio);
+
+        Assert.DoesNotContain(runner.Commands.Values, command => command.CommandName is "jq" or "theme");
+        foreach (var name in new[] { "exit", "edit", "watch", "welcome", "sproc", "udf", "trigger" })
+        {
+            Assert.False(runner.Commands.ContainsKey(name), $"Unsupported command '{name}' remains registered.");
+        }
+
+        foreach (var name in new[] { "delete", "rm", "rmdb", "rmcon" })
+        {
+            Assert.True(runner.Commands.ContainsKey(name), $"Confirmable command '{name}' was removed.");
+        }
+
+        Assert.Equal(expectedRemaining.Order(), runner.Commands.Keys.Order());
+        Assert.True(ShellInterpreter.Instance.App.Commands.ContainsKey("theme"));
+    }
+
+    [Fact]
+    public void Stdio_PrintCommand_DoesNotRecordInMemoryHistory()
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var originalHistory = shell.History.ToArray();
+        var originalPending = shell.PendingHistoryCount;
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { McpStdio = true };
+            shell.PrintCommand("echo STDIO_NO_HISTORY");
+            Assert.Equal(originalHistory, shell.History);
+            Assert.Equal(originalPending, shell.PendingHistoryCount);
+        }
+        finally
+        {
+            shell.Options = originalOptions;
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Stdio_ApprovedConfirmation_IsScopedToCommandAndNeverReadsConsole(bool failAfterConfirmation)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var originalApproval = shell.McpConfirmationApproved;
+        shell.Options = new Program.CosmosShellOptions { McpStdio = true };
+        shell.McpConfirmationApproved = false;
+        try
+        {
+            Assert.Throws<CommandException>(() => ShellInterpreter.Confirm("command-rmdb-confirm_db_deletion"));
+            var result = await this.CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["rmdb"],
+                new ConfirmationCheckingCommand(failAfterConfirmation),
+                "rmdb StdioScopeTest",
+                (_, _, _) => ValueTask.FromResult(new ElicitResult { Action = "accept" }),
+                TestContext.Current.CancellationToken);
+            Assert.Equal(failAfterConfirmation, result.IsError == true);
+            Assert.False(shell.McpConfirmationApproved);
+            Assert.Throws<CommandException>(() => ShellInterpreter.Confirm("command-rmdb-confirm_db_deletion"));
+        }
+        finally
+        {
+            shell.McpConfirmationApproved = originalApproval;
+            shell.Options = originalOptions;
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancelledTool_PropagatesCancellationWithoutLoggingFailure(bool queued)
+    {
+        var shell = ShellInterpreter.Instance;
+        var logger = new RecordingToolLogger();
+        var tools = new ToolOperations(logger, this.locationSubscriptions);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+        var gateEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = queued
+            ? shell.RunSerializedAsync(
+                async () =>
+                {
+                    gateEntered.SetResult();
+                    await releaseGate.Task.WaitAsync(timeout.Token);
+                    return true;
+                }, timeout.Token)
+            : Task.FromResult(true);
+        var command = new CancellationCheckingCommand();
+        try
+        {
+            if (queued)
+            {
+                await gateEntered.Task.WaitAsync(timeout.Token);
+            }
+
+            var call = tools.ExecuteToolAsync(
+                shell.App.Commands["echo"], command, "echo CANCELLED_TOOL", null, cancellation.Token);
+            if (!queued)
+            {
+                await command.Started.Task.WaitAsync(timeout.Token);
+            }
+
+            await cancellation.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => call.WaitAsync(timeout.Token));
+            Assert.Equal(!queued, command.Started.Task.IsCompleted);
+            Assert.DoesNotContain(LogLevel.Error, logger.Levels);
+        }
+        finally
+        {
+            releaseGate.TrySetResult();
+            await gate;
+        }
+
+        var next = await tools.CallToolHandler(
+            CallContext("echo", new() { ["messages"] = Json("[\"AFTER_CANCELLATION\"]") }), timeout.Token);
+        Assert.False(next.IsError == true);
+        Assert.Contains("AFTER_CANCELLATION", Assert.IsType<TextContentBlock>(Assert.Single(next.Content)).Text);
+    }
+
+    [Fact]
+    public async Task CancelledConfirmation_NeverExecutesCommandAndReleasesShell()
+    {
+        var shell = ShellInterpreter.Instance;
+        var tools = this.CreateToolOperations();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+        var prompted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var command = new CancellationCheckingCommand();
+        var call = tools.ExecuteToolAsync(
+            shell.App.Commands["rmdb"], command, "rmdb CANCELLED_CONFIRMATION",
+            async (_, _, token) =>
+            {
+                prompted.SetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return new ElicitResult { Action = "accept" };
+            }, cancellation.Token);
+        await prompted.Task.WaitAsync(timeout.Token);
+        await cancellation.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => call.WaitAsync(timeout.Token));
+        Assert.False(command.Started.Task.IsCompleted);
+        Assert.False(shell.McpConfirmationApproved);
+        Assert.True(await shell.RunSerializedAsync(() => Task.FromResult(true), timeout.Token));
+    }
+
+    private sealed class CancellationCheckingCommand : CosmosCommand
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            this.Started.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            return commandState;
+        }
+    }
+
+    private sealed class RecordingToolLogger : ILogger<ToolOperations>
+    {
+        public List<LogLevel> Levels { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => this.Levels.Add(logLevel);
+    }
+
+    private sealed class ConfirmationCheckingCommand(bool failAfterConfirmation) : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            Assert.True(ShellInterpreter.Confirm("command-rmdb-confirm_db_deletion"));
+            if (failAfterConfirmation)
+            {
+                throw new InvalidOperationException("Confirmation scope test failure.");
+            }
+
+            return Task.FromResult(commandState);
         }
     }
 
