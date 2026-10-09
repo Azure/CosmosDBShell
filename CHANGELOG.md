@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Compatibility
+
+- Machine-mode `watch` now requires a positive `--max` so changes are returned as a bounded final result instead of silently suppressed. Interactive watches can still follow until Ctrl+C.
+
 ### New features
 
 - MCP stdio mode no longer loads or records shell history; existing history files are left untouched. Explicit diagnostic logging remains available.

@@ -772,6 +772,8 @@ Options:
 
 By default `watch` starts from now and follows the container, printing each change as highlighted JSON until you press Ctrl+C. Use `--from-beginning` to replay existing items first, `--partition-key` to scope the feed to one partition, and `--max` to stop automatically after a number of changes. Use `--interval` to change how long the shell waits between polls once it has caught up (default 1 second; values below 0.1 are clamped to avoid hammering the container). The change feed surfaces creates and updates (not deletes). This command is interactive and streaming, so it is not exposed over MCP.
 
+Machine mode (`--quiet`, `--output json`, `--output csv`, or default execute-and-quit output) requires a positive `--max`. Changes are collected and emitted as the final result rather than streamed to stdout. An unbounded machine-mode watch fails before opening the change feed; interactive mode still supports following until Ctrl+C.
+
 ```bash
 watch
 watch --from-beginning
