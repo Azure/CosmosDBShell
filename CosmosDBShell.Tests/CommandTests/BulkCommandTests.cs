@@ -830,6 +830,110 @@ public class BulkCommandTests
         await fixture.Container.Received(1).DeleteItemAsync<JsonElement>(Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StatefulRetriesCannotAddChangeOrOmitOriginalJournal(bool useJournal)
+    {
+        using var fixture = new Fixture();
+        var original = fixture.Directory.PathFor("original.jsonl");
+        var replacement = fixture.Directory.PathFor("replacement.jsonl");
+        await fixture.RunAsync("bulk begin --partition-key a --db db --con items");
+        await fixture.RunAsync("""bulk add '[{"op":"patch","id":"1","operations":[{"op":"incr","path":"/n","value":1}]},{"op":"patch","id":"2","operations":[{"op":"incr","path":"/n","value":1}]}]'""");
+        fixture.FailPatchFor("2", HttpStatusCode.PreconditionFailed);
+        var journalOption = useJournal ? $"--journal '{original}'" : string.Empty;
+        var first = await fixture.RunAsync($"bulk execute --yes {journalOption}");
+        Assert.True(first.IsError);
+        Assert.Equal(2, fixture.Writes().Count());
+
+        var addedOrChanged = await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync($"bulk execute --yes --journal '{replacement}'"));
+        Assert.Contains("same journal choice", addedOrChanged.Message);
+        Assert.False(File.Exists(replacement));
+        if (useJournal)
+        {
+            var omitted = await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync("bulk execute --yes"));
+            Assert.Contains("same journal choice", omitted.Message);
+        }
+
+        Assert.Equal(2, fixture.Writes().Count());
+        fixture.FailPatchFor(null, HttpStatusCode.OK);
+        var retry = await fixture.RunAsync($"bulk execute --yes {journalOption}");
+        Assert.False(retry.IsError);
+        Assert.Equal(1, Assert.IsType<ShellJson>(retry.Result).Value.GetProperty("skipped").GetInt64());
+        Assert.Equal(3, fixture.Writes().Count());
+        if (useJournal)
+        {
+            var operations = new[]
+            {
+                BulkOperationNormalizer.Normalize(Json("""{"op":"patch","id":"1","operations":[{"op":"incr","path":"/n","value":1}]}"""), SinglePath, """["a"]""", 0),
+                BulkOperationNormalizer.Normalize(Json("""{"op":"patch","id":"2","operations":[{"op":"incr","path":"/n","value":1}]}"""), SinglePath, """["a"]""", 1),
+            };
+            using var reopened = BulkJournal.Open(original, "https://unit-test.documents.azure.com/", "rid", BulkSpool.ComputeHash(operations.Select(operation => operation.Json)), 2);
+            Assert.Equal(BulkOutcome.Succeeded, reopened.Previous[0].Status);
+            Assert.Equal(BulkOutcome.Succeeded, reopened.Previous[1].Status);
+        }
+    }
+
+    [Theory]
+    [InlineData(10_000, 64L * 1024 * 1024)]
+    [InlineData(0, 0)]
+    public void StatefulCapacityAcceptsExactLimits(int count, long bytes)
+    {
+        PendingBulkState.ValidateCapacity(count, bytes);
+    }
+
+    [Theory]
+    [InlineData(10_001, 0)]
+    [InlineData(1, (64L * 1024 * 1024) + 1)]
+    public void StatefulCapacityRejectsExceededLimits(int count, long bytes)
+    {
+        var error = Assert.Throws<CommandException>(() => PendingBulkState.ValidateCapacity(count, bytes));
+        Assert.Contains("10,000 operations and 64 MiB", error.Message);
+    }
+
+    [Fact]
+    public async Task StatefulAddRejectsOverLimitFileAtomically()
+    {
+        using var fixture = new Fixture();
+        await fixture.RunAsync("bulk begin --partition-key a --db db --con items");
+        var path = fixture.Directory.PathFor("operations.jsonl");
+        await File.WriteAllLinesAsync(
+            path,
+            Enumerable.Range(0, PendingBulkState.MaxOperations - 1).Select(index => $$"""{"op":"delete","id":"{{index}}"}"""),
+            TestContext.Current.CancellationToken);
+        await fixture.RunAsync($"bulk add '{path}'");
+        var bulk = fixture.Shell.CurrentBulk!;
+        Assert.Equal(PendingBulkState.MaxOperations - 1, bulk.Operations.Count);
+        var bytes = bulk.CanonicalJsonBytes;
+
+        await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync("""bulk add '[{"op":"delete","id":"one"},{"op":"delete","id":"two"}]'"""));
+        Assert.Equal(PendingBulkState.MaxOperations - 1, bulk.Operations.Count);
+        Assert.Equal(bytes, bulk.CanonicalJsonBytes);
+        await fixture.RunAsync("""bulk add '{"op":"delete","id":"last"}'""");
+        Assert.Equal(PendingBulkState.MaxOperations, bulk.Operations.Count);
+        await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync("""bulk add '{"op":"delete","id":"extra"}'"""));
+        Assert.Equal(PendingBulkState.MaxOperations, bulk.Operations.Count);
+        Assert.Empty(fixture.Writes());
+    }
+
+    [Fact]
+    public async Task StatefulByteLimitUsesCanonicalUtf8AndRejectsAddAtomically()
+    {
+        using var fixture = new Fixture();
+        await fixture.RunAsync("bulk begin --partition-key a --db db --con items");
+        await fixture.RunAsync("""bulk add '{"op":"upsert","item":{"id":"1","pk":"a","name":"\u00e9"}}'""");
+        var bulk = fixture.Shell.CurrentBulk!;
+        var operation = Assert.Single(bulk.Operations);
+        Assert.Equal(Encoding.UTF8.GetByteCount(operation.Json), bulk.CanonicalJsonBytes);
+        Assert.True(bulk.CanonicalJsonBytes > operation.Json.Length);
+
+        bulk.CanonicalJsonBytes = PendingBulkState.MaxCanonicalJsonBytes;
+        await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync("""bulk add '{"op":"delete","id":"2"}'"""));
+        Assert.Single(bulk.Operations);
+        Assert.Equal(PendingBulkState.MaxCanonicalJsonBytes, bulk.CanonicalJsonBytes);
+        Assert.Empty(fixture.Writes());
+    }
+
     [Fact]
     public async Task StatefulErrorsMatchBatch()
     {

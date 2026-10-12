@@ -22,7 +22,7 @@ internal static class BulkExecutor
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         var pending = new List<(BulkOperation Operation, PartitionKey Key, Task<BulkOutcome> Task)>();
-        var uncertainItems = new List<(string Id, PartitionKey Key)>();
+        var uncertainItems = new HashSet<(string Id, PartitionKey Key)>();
         var newFailures = 0;
         ExceptionDispatchInfo? failure = null;
 
@@ -117,7 +117,7 @@ internal static class BulkExecutor
                     }
                 }
 
-                if (!retryUncertain && uncertainItems.Any(item => item.Id == operation.Id && item.Key.Equals(key)))
+                if (!retryUncertain && uncertainItems.Contains((operation.Id, key)))
                 {
                     summary.Skipped++;
                     summary.Processed++;

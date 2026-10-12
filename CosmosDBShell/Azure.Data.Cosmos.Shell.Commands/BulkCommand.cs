@@ -827,9 +827,14 @@ internal sealed class BulkCommand : CosmosCommand
         var bulk = shell.CurrentBulk ?? throw Error("command-bulk-error-not_active");
         var data = this.ResolveData(commandState);
         var added = new List<BulkOperation>();
+        long addedBytes = 0;
         await foreach (var element in ReadOperationsAsync(data, token))
         {
-            added.Add(BulkOperationNormalizer.Normalize(element, bulk.PartitionKeyPaths, bulk.DefaultPartitionKey, bulk.Operations.Count + added.Count));
+            PendingBulkState.ValidateCapacity(bulk.Operations.Count + added.Count + 1, bulk.CanonicalJsonBytes + addedBytes);
+            var operation = BulkOperationNormalizer.Normalize(element, bulk.PartitionKeyPaths, bulk.DefaultPartitionKey, bulk.Operations.Count + added.Count);
+            addedBytes += Encoding.UTF8.GetByteCount(operation.Json);
+            PendingBulkState.ValidateCapacity(bulk.Operations.Count + added.Count + 1, bulk.CanonicalJsonBytes + addedBytes);
+            added.Add(operation);
         }
 
         if (added.Count == 0)
@@ -838,6 +843,7 @@ internal sealed class BulkCommand : CosmosCommand
         }
 
         bulk.Operations.AddRange(added);
+        bulk.CanonicalJsonBytes += addedBytes;
         var message = MessageService.GetArgsString("command-bulk-added", "count", added.Count, "total", bulk.Operations.Count);
         return new CommandState { RenderUser = () => ShellInterpreter.WriteLine(message) };
     }
@@ -858,6 +864,14 @@ internal sealed class BulkCommand : CosmosCommand
             throw Error("command-bulk-error-container_changed");
         }
 
+        var journalPath = this.Journal is null ? null : Path.GetFullPath(this.Journal);
+        var pathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (bulk.Outcomes.Count > 0 && !string.Equals(bulk.JournalPath, journalPath, pathComparison))
+        {
+            throw Error("command-bulk-error-stateful_journal");
+        }
+
+        bulk.JournalPath = journalPath;
         var hash = BulkSpool.ComputeHash(bulk.Operations.Select(operation => operation.Json));
         var result = await this.ExecuteOperationsAsync(shell, target, bulk.Operations.Count, hash, EnumerateAsync(bulk.Operations), bulk.Outcomes, token);
         if (!result.IsError)

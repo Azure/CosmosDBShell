@@ -635,7 +635,7 @@ Execute many **independent** write operations with bounded concurrency. `bulk` u
 | | `batch` | `bulk` |
 |-|-|-|
 | Partition keys | One per batch (`--partition-key`) | Per operation `partitionKey`, or `--partition-key` as a default |
-| Size | 1-100 operations | Unlimited; files are streamed |
+| Size | 1-100 operations | Streamed files for `run`; stateful jobs capped at 10,000 operations and 64 MiB of canonical JSON |
 | Atomicity | All operations succeed or all roll back | Each operation succeeds or fails on its own; nothing is rolled back |
 | Execution | One transactional request | Up to `--concurrency` requests in flight |
 
@@ -737,11 +737,11 @@ The saved file is the reviewed snapshot: rerunning it targets the same items eve
 - retries operations that definitively failed, such as throttled (`429`), conflicting, or missing items;
 - holds back operations whose outcome is unknown — sent before an interruption, a timeout, or a server error — and reports them as failed and `uncertain`. Later writes for that same item ID and partition key are also held back to preserve ordering; unrelated items can continue. Retrying them blindly could, for example, apply an `incr` twice. Inspect or reconcile them, or pass `--retry-uncertain` when the operations are idempotent or use `ifMatch`.
 
-A torn final journal line from a crash is discarded safely; other damage is rejected rather than guessed around. For `--where`, `--journal` requires `--save`; resume with `bulk run <saved-file> --journal <file>`, because a new selection can match different items. A stateful job keeps outcomes in memory the same way, so running `bulk execute` again after a partial failure retries only failed operations.
+A torn final journal line from a crash is discarded safely; other damage is rejected rather than guessed around. For `--where`, `--journal` requires `--save`; resume with `bulk run <saved-file> --journal <file>`, because a new selection can match different items. A stateful job keeps outcomes in memory the same way, so running `bulk execute` again after a partial failure retries only failed operations. Stateful retries must keep the same journal choice as the first execution: if a journal was supplied, reuse its original path; if none was supplied, retries remain in-memory only. Adding, changing, or omitting a journal after writes have started is rejected.
 
 #### Limits, failures, and output
 
-- All input is validated before any write. Operations are spooled to a private temporary file that is deleted when the command ends, so large jobs are not held in memory.
+- All input is validated before any write. `run`, `patch`, and `delete` spool operations to a private temporary file that is deleted when the command ends. Stateful `begin`/`add` jobs retain operations in memory and are limited to 10,000 operations and 64 MiB of canonical UTF-8 JSON. An `add` that exceeds either limit is rejected in full, leaving the existing job unchanged. Use `bulk run <file>` for larger jobs.
 - By default, the first failed write stops scheduling new writes; `--continue-on-error` keeps going. Started writes are always awaited and reported, including after cancellation. Cancellation never reports success.
 - `--max-ru` counts the container metadata read, selection pages, and completed writes for the current invocation. No new request starts once it is reached; requests already in flight can exceed it. A budget stop returns exit code `6`. Resume writes only with the same journal supplied to the original run: creating a new journal cannot identify earlier successes and can replay non-idempotent writes. Without the original journal, reconcile completed writes before retrying. If the budget was exhausted during selection before any writes began, no execution journal was opened; increase the budget and select again.
 - `--max-items` limits selected items; `selectionLimited` reports that more items may match.

@@ -5,9 +5,14 @@
 namespace Azure.Data.Cosmos.Shell.Core;
 
 using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal sealed class PendingBulkState
 {
+    internal const int MaxOperations = 10_000;
+
+    internal const long MaxCanonicalJsonBytes = 64 * 1024 * 1024;
+
     public PendingBulkState(
         string databaseName,
         string containerName,
@@ -38,6 +43,18 @@ internal sealed class PendingBulkState
 
     public List<BulkOperation> Operations { get; } = [];
 
+    public long CanonicalJsonBytes { get; set; }
+
+    public string? JournalPath { get; set; }
+
     // Outcomes from earlier 'bulk execute' attempts, so a retry never replays a succeeded write.
     public Dictionary<long, BulkOutcome> Outcomes { get; } = [];
+
+    internal static void ValidateCapacity(int operationCount, long canonicalJsonBytes)
+    {
+        if (operationCount > MaxOperations || canonicalJsonBytes > MaxCanonicalJsonBytes)
+        {
+            throw new CommandException("bulk", MessageService.GetString("command-bulk-error-stateful_limit"));
+        }
+    }
 }

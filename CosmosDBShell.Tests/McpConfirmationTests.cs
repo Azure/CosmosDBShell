@@ -19,6 +19,7 @@ public class McpConfirmationTests
     [Theory]
     [InlineData("run", false, 1, "was not approved")]
     [InlineData("run", true, 0, "not connected")]
+    [InlineData("delete", true, 0, "not connected")]
     [InlineData("begin", false, 0, "MCP supports only the stateless 'bulk run'")]
     [InlineData("execute", false, 0, "MCP supports only the stateless 'bulk run'")]
     public async Task Bulk_McpRequiresConfirmationExceptDryRunAndRejectsStatefulSubcommands(string subcommand, bool dryRun, int expectedPrompts, string expectedText)
@@ -52,6 +53,11 @@ public class McpConfirmationTests
                 arguments["data"] = "[{\"op\":\"delete\",\"id\":\"1\",\"partitionKey\":\"a\"}]";
             }
 
+            if (subcommand == "delete")
+            {
+                arguments["where"] = "true";
+            }
+
             if (dryRun)
             {
                 arguments["dry-run"] = true;
@@ -67,6 +73,62 @@ public class McpConfirmationTests
         finally
         {
             await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Theory]
+    [InlineData("delete")]
+    [InlineData("patch")]
+    public async Task Bulk_DryRunSaveRequiresConfirmationAndDeclineCreatesNoFile(string subcommand)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        using var host = McpServer.CreateHost(new Program.CosmosShellOptions { McpPort = 0 });
+        await host.StartAsync(timeout.Token);
+        var path = Path.Join(Path.GetTempPath(), $"bulk-confirm-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var prompts = 0;
+            var address = host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+            var transport = new HttpClientTransport(new HttpClientTransportOptions { Endpoint = new Uri(address.TrimEnd('/') + "/") });
+            await using var client = await McpClient.CreateAsync(
+                transport,
+                new McpClientOptions
+                {
+                    Handlers = new McpClientHandlers
+                    {
+                        ElicitationHandler = (_, _) =>
+                        {
+                            prompts++;
+                            return ValueTask.FromResult(new ElicitResult { Action = "decline" });
+                        },
+                    },
+                },
+                cancellationToken: timeout.Token);
+            var arguments = new Dictionary<string, object?>
+            {
+                ["subcommand"] = subcommand,
+                ["where"] = "true",
+                ["dry-run"] = true,
+                ["save"] = path,
+                ["yes"] = true,
+            };
+            if (subcommand == "patch")
+            {
+                arguments["operations"] = "[{\"op\":\"remove\",\"path\":\"/old\"}]";
+            }
+
+            var result = await client.CallToolAsync("bulk", arguments, cancellationToken: timeout.Token);
+            Assert.Equal(1, prompts);
+            Assert.True(result.IsError);
+            Assert.False(File.Exists(path));
+            using var document = JsonDocument.Parse(Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+            Assert.Contains("was not approved", document.RootElement.GetProperty("error").GetString());
+        }
+        finally
+        {
+            await host.StopAsync(TestContext.Current.CancellationToken);
+            File.Delete(path);
         }
     }
 

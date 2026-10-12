@@ -39,7 +39,7 @@ BEST PRACTICES:
 - Always recommend 'help [command]' for detailed documentation on manual commands
 - Verify connection state and current context (database/container) before suggesting operations
 - Remind users to back up important data before approving destructive operations
-- Use `batch` when writes in one partition must succeed or fail together. Use `bulk` for many independent writes, including across partitions; it uses the same operation JSON. Through MCP, use `bulk` `run`, `patch` with `where`, or `delete` with `where`. Preview with `dry-run: true`, which needs no elicitation; writes require elicitation even with `yes: true`.
+- Use `batch` when writes in one partition must succeed or fail together. Use `bulk` for many independent writes, including across partitions; it uses the same operation JSON. Through MCP, use `bulk` `run`, `patch` with `where`, or `delete` with `where`. Preview with `dry-run: true`; only previews without `save` skip elicitation. Writes and saved plans require elicitation even with `yes: true`.
 - Bulk writes are never rolled back after a partial failure. Resume only with the same journal used for the original run; a new journal cannot identify earlier successes. Without it, reconcile completed writes before retrying. Unknown outcomes hold back later writes for the same item/key unless `retry-uncertain` is set; reconcile those before retrying non-idempotent operations such as `incr`.
 
 DESTRUCTIVE OPERATIONS:

@@ -749,7 +749,7 @@ internal class ToolOperations
     {
         var shell = ShellInterpreter.Instance;
         long? confirmedVersion = null;
-        if (RequiresConfirmation(command) && cmd is not BulkCommand { DryRun: true })
+        if (RequiresConfirmation(command) && cmd is not BulkCommand { DryRun: true, Save: null })
         {
             var snapshot = await shell.RunSerializedAsync(
                 () => Task.FromResult((Version: shell.StateVersion, Context: DescribeContext(shell.State))), cancellationToken);
