@@ -91,7 +91,7 @@ internal class ToolOperations
             if (RequiresConfirmation(command))
             {
                 description += command.CommandName == "bulk"
-                    ? "Warning: Bulk writes require explicit user confirmation, even with yes=true. Dry-run selections do not require confirmation and issue no writes. Bulk operations are not transactions."
+                    ? "Warning: Bulk writes and dry-run selections that save a plan require explicit user confirmation, even with yes=true. Only dry runs without save skip confirmation and issue no database writes. Bulk operations are not transactions."
                     : "Warning: This command is destructive. When invoked through MCP it always requires explicit user confirmation before it runs — even when a force or no-prompt argument is supplied. If the client cannot confirm, the command is refused.";
             }
             else

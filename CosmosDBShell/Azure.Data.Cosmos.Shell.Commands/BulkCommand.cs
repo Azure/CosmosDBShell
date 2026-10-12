@@ -40,7 +40,7 @@ Subcommands available through MCP:
 - 'patch --where <predicate> --operations <json-array>' patches every item matching a Cosmos SQL predicate over alias c.
 - 'delete --where <predicate>' deletes every matching item.
 
-Use 'dry-run' to validate or select without writing; dry runs do not require confirmation. Writes always require user confirmation. Stateful subcommands (begin, add, execute, cancel, status, show) are interactive-shell only.
+Use 'dry-run' to validate or select without database writes. Dry runs without 'save' do not require confirmation; saving a plan creates a server-local file and requires confirmation. Writes always require user confirmation. Stateful subcommands (begin, add, execute, cancel, status, show) are interactive-shell only.
 ",
     Restricted = true,
     Destructive = true,
@@ -825,6 +825,11 @@ internal sealed class BulkCommand : CosmosCommand
     private async Task<CommandState> AddAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
         var bulk = shell.CurrentBulk ?? throw Error("command-bulk-error-not_active");
+        if (bulk.JournalPath is not null && bulk.Outcomes.Count > 0)
+        {
+            throw Error("command-bulk-error-stateful_add");
+        }
+
         var data = this.ResolveData(commandState);
         var added = new List<BulkOperation>();
         long addedBytes = 0;
@@ -902,12 +907,25 @@ internal sealed class BulkCommand : CosmosCommand
         using var journal = this.Journal is null
             ? null
             : BulkJournal.Open(this.Journal, target.Endpoint, target.ContainerRid, hash, count);
+        if (journal is not null)
+        {
+            await journal.ValidateAsync(operations, token);
+        }
+
         var previous = new Dictionary<long, BulkOutcome>();
         foreach (var source in new[] { journal?.Previous, memory })
         {
             foreach (var (index, outcome) in source ?? Enumerable.Empty<KeyValuePair<long, BulkOutcome>>())
             {
                 previous[index] = outcome;
+            }
+        }
+
+        if (memory is not null)
+        {
+            foreach (var (index, outcome) in previous)
+            {
+                memory[index] = outcome;
             }
         }
 

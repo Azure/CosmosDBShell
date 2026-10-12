@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Core;
@@ -16,7 +17,7 @@ using Azure.Data.Cosmos.Shell.Util;
 /// </summary>
 internal sealed class BulkJournal : IDisposable
 {
-    private const int Version = 1;
+    private const int Version = 2;
 
     private readonly FileStream stream;
 
@@ -56,7 +57,6 @@ internal sealed class BulkJournal : IDisposable
         try
         {
             var header = new Header(Version, endpoint, containerRid, hash, operationCount);
-            TrimIncompleteLastLine(stream);
             var previous = new Dictionary<long, BulkOutcome>();
             if (stream.Length == 0)
             {
@@ -64,7 +64,14 @@ internal sealed class BulkJournal : IDisposable
             }
             else
             {
-                ReadExisting(stream, header, previous);
+                var completeLength = FindCompleteLength(stream);
+                if (completeLength == 0)
+                {
+                    throw Invalid(null);
+                }
+
+                ReadExisting(stream, header, previous, completeLength < stream.Length);
+                stream.SetLength(completeLength);
                 stream.Seek(0, SeekOrigin.End);
             }
 
@@ -79,9 +86,38 @@ internal sealed class BulkJournal : IDisposable
 
     public async Task RecordAsync(BulkOutcome outcome)
     {
-        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(outcome, BulkCommand.JsonOptions) + "\n");
+        var entry = new Entry(outcome, ComputeChecksum(outcome));
+        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(entry, BulkCommand.JsonOptions) + "\n");
         await this.stream.WriteAsync(bytes);
         await this.stream.FlushAsync();
+    }
+
+    public async Task ValidateAsync(IAsyncEnumerable<BulkOperation> operations, CancellationToken token)
+    {
+        if (this.Previous.Count == 0)
+        {
+            return;
+        }
+
+        var validated = 0;
+        await foreach (var operation in operations.WithCancellation(token))
+        {
+            if (this.Previous.TryGetValue(operation.Index, out var outcome))
+            {
+                if (outcome.Op != operation.Op || outcome.Id != operation.Id ||
+                    outcome.PartitionKey.GetRawText() != operation.PartitionKey)
+                {
+                    throw Invalid(null);
+                }
+
+                validated++;
+            }
+        }
+
+        if (validated != this.Previous.Count)
+        {
+            throw Invalid(null);
+        }
     }
 
     public void Dispose() => this.stream.Dispose();
@@ -95,12 +131,12 @@ internal sealed class BulkJournal : IDisposable
 
     // A crash can leave a partially written final line. Its write had not been sent (intent) or
     // its outcome is unknown (the earlier intent remains), so dropping it never hides an attempt.
-    private static void TrimIncompleteLastLine(FileStream stream)
+    private static long FindCompleteLength(FileStream stream)
     {
         var length = stream.Length;
         if (length == 0)
         {
-            return;
+            return 0;
         }
 
         var buffer = new byte[4096];
@@ -114,23 +150,17 @@ internal sealed class BulkJournal : IDisposable
             {
                 if (buffer[i] == (byte)'\n')
                 {
-                    var keep = start + i + 1;
-                    if (keep != length)
-                    {
-                        stream.SetLength(keep);
-                    }
-
-                    return;
+                    return start + i + 1;
                 }
             }
 
             end = start;
         }
 
-        stream.SetLength(0);
+        return 0;
     }
 
-    private static void ReadExisting(FileStream stream, Header expected, Dictionary<long, BulkOutcome> previous)
+    private static void ReadExisting(FileStream stream, Header expected, Dictionary<long, BulkOutcome> previous, bool tornTail)
     {
         stream.Position = 0;
         using var reader = new StreamReader(stream, new UTF8Encoding(false), false, 65536, leaveOpen: true);
@@ -144,8 +174,16 @@ internal sealed class BulkJournal : IDisposable
 
             while (reader.ReadLine() is { } line)
             {
-                var outcome = JsonSerializer.Deserialize<BulkOutcome>(line, BulkCommand.JsonOptions);
-                if (outcome is null || outcome.Index < 0 || outcome.Index >= expected.OperationCount || !BulkOutcome.IsKnownStatus(outcome.Status))
+                if (tornTail && reader.EndOfStream)
+                {
+                    break;
+                }
+
+                var entry = JsonSerializer.Deserialize<Entry>(line, BulkCommand.JsonOptions);
+                var outcome = entry?.Outcome;
+                if (outcome is null || outcome.Index < 0 || outcome.Index >= expected.OperationCount ||
+                    !BulkOutcome.IsKnownStatus(outcome.Status) || outcome.PartitionKey.ValueKind != JsonValueKind.Array ||
+                    entry is null || entry.Checksum != ComputeChecksum(outcome))
                 {
                     throw Invalid(null);
                 }
@@ -160,6 +198,11 @@ internal sealed class BulkJournal : IDisposable
     }
 
     private static CommandException Invalid(Exception? inner) => new("bulk", MessageService.GetString("command-bulk-error-journal_invalid"), inner);
+
+    private static string ComputeChecksum(BulkOutcome outcome) =>
+        Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(outcome, BulkCommand.JsonOptions)));
+
+    private sealed record Entry(BulkOutcome Outcome, string Checksum);
 
     private sealed record Header(int Version, string Endpoint, string ContainerRid, string Hash, long OperationCount);
 }

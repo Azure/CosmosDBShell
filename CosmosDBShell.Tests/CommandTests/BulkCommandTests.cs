@@ -9,6 +9,7 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Mcp;
@@ -668,6 +669,106 @@ public class BulkCommandTests
         Assert.Throws<CommandException>(() => BulkJournal.Open(path, "endpoint", "rid", "hash", 3));
     }
 
+    [Theory]
+    [InlineData("unrelated")]
+    [InlineData("unrelated\npartial")]
+    [InlineData("{\"op\":\"delete\",\"id\":\"0\",\"partitionKey\":\"a\"}")]
+    [InlineData("{\"op\":\"delete\",\"id\":\"0\",\"partitionKey\":\"a\"}\n")]
+    public async Task JournalRejectsUnrelatedFilesWithoutModifyingThem(string content)
+    {
+        using var fixture = new Fixture();
+        var path = fixture.Directory.PathFor("operations.jsonl");
+        await File.WriteAllTextAsync(path, content, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync($"bulk run '{{\"op\":\"delete\",\"id\":\"0\",\"partitionKey\":\"a\"}}' --journal '{path}' --yes --db db --con items"));
+        Assert.Equal(content, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+        Assert.Empty(fixture.Writes());
+    }
+
+    [Fact]
+    public async Task JournalCannotOverwriteTheOperationFile()
+    {
+        using var fixture = new Fixture();
+        var path = fixture.Directory.PathFor("operations.jsonl");
+        const string content = """{"op":"delete","id":"0","partitionKey":"a"}""";
+        await File.WriteAllTextAsync(path, content, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync($"bulk run '{path}' --journal '{path}' --yes --db db --con items"));
+        Assert.Equal(content, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+        Assert.Empty(fixture.Writes());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task JournalRejectsMismatchedOrOlderHeadersWithoutTrimmingTail(bool oldVersion)
+    {
+        using var directory = new TempDirectory();
+        var path = directory.PathFor("journal.jsonl");
+        using (var journal = BulkJournal.Open(path, "endpoint", "rid", "hash", 2))
+        {
+            await journal.RecordAsync(Succeeded(0));
+        }
+
+        var content = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+        if (oldVersion)
+        {
+            content = content.Replace("\"version\":2", "\"version\":1", StringComparison.Ordinal);
+        }
+
+        content += "{\"outcome\":";
+        await File.WriteAllTextAsync(path, content, TestContext.Current.CancellationToken);
+        Assert.Throws<CommandException>(() => BulkJournal.Open(path, "endpoint", "rid", oldVersion ? "hash" : "different", 2));
+        Assert.Equal(content, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("index", "1")]
+    [InlineData("op", "\"upsert\"")]
+    [InlineData("id", "\"other\"")]
+    [InlineData("partitionKey", "[\"other\"]")]
+    [InlineData("status", "\"failed\"")]
+    public async Task JournalRejectsChecksummedRecordCorruptionBeforeAnyWrites(string field, string value)
+    {
+        using var fixture = new Fixture();
+        var path = fixture.Directory.PathFor("journal.jsonl");
+        const string operations = """[{"op":"delete","id":"0","partitionKey":"a"},{"op":"delete","id":"1","partitionKey":"a"}]""";
+        await fixture.RunAsync($"bulk run '{operations}' --journal '{path}' --yes --db db --con items");
+        Assert.Equal(2, fixture.Writes().Count());
+        var lines = await File.ReadAllLinesAsync(path, TestContext.Current.CancellationToken);
+        var entry = JsonNode.Parse(lines[1])!;
+        entry["outcome"]![field] = JsonNode.Parse(value);
+        lines[1] = entry.ToJsonString();
+        var content = string.Join("\n", lines) + "\n{\"outcome\":";
+        await File.WriteAllTextAsync(path, content, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync($"bulk run '{operations}' --journal '{path}' --yes --db db --con items"));
+        Assert.Equal(2, fixture.Writes().Count());
+        Assert.Equal(content, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("id")]
+    [InlineData("op")]
+    [InlineData("partitionKey")]
+    public async Task JournalValidatesRecordIdentityAgainstCurrentOperationsBeforeAnyWrites(string field)
+    {
+        using var fixture = new Fixture();
+        var path = fixture.Directory.PathFor("journal.jsonl");
+        var outcome = Succeeded(1);
+        outcome = field switch
+        {
+            "id" => outcome with { Id = "different" },
+            "op" => outcome with { Op = "upsert" },
+            _ => outcome with { PartitionKey = Json("""["other"]""") },
+        };
+        using (var journal = BulkJournal.Open(path, "https://unit-test.documents.azure.com/", "rid", BulkSpool.ComputeHash([Operation(0).Json, Operation(1).Json]), 2))
+        {
+            await journal.RecordAsync(outcome);
+        }
+
+        var error = await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync($"bulk run '[{Operation(0).Json},{Operation(1).Json}]' --journal '{path}' --yes --db db --con items"));
+        Assert.Contains("journal is damaged", error.Message);
+        Assert.Empty(fixture.Writes());
+    }
+
     // End-to-end command behavior against a substituted container.
     [Fact]
     public async Task RunExecutesMixedOperationsAcrossPartitions()
@@ -845,6 +946,17 @@ public class BulkCommandTests
         var first = await fixture.RunAsync($"bulk execute --yes {journalOption}");
         Assert.True(first.IsError);
         Assert.Equal(2, fixture.Writes().Count());
+        var bulk = fixture.Shell.CurrentBulk!;
+        var bytes = bulk.CanonicalJsonBytes;
+        if (useJournal)
+        {
+            var originalContent = await File.ReadAllTextAsync(original, TestContext.Current.CancellationToken);
+            var add = await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync("""bulk add '{"op":"delete","id":"3"}'"""));
+            Assert.Contains("Cannot add operations", add.Message);
+            Assert.Equal(2, bulk.Operations.Count);
+            Assert.Equal(bytes, bulk.CanonicalJsonBytes);
+            Assert.Equal(originalContent, await File.ReadAllTextAsync(original, TestContext.Current.CancellationToken));
+        }
 
         var addedOrChanged = await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync($"bulk execute --yes --journal '{replacement}'"));
         Assert.Contains("same journal choice", addedOrChanged.Message);
@@ -880,6 +992,27 @@ public class BulkCommandTests
     public void StatefulCapacityAcceptsExactLimits(int count, long bytes)
     {
         PendingBulkState.ValidateCapacity(count, bytes);
+    }
+
+    [Fact]
+    public async Task StatefulJobResumingOnlyUncertainOutcomesCannotBeExtended()
+    {
+        using var fixture = new Fixture();
+        var path = fixture.Directory.PathFor("journal.jsonl");
+        using (var journal = BulkJournal.Open(path, "https://unit-test.documents.azure.com/", "rid", BulkSpool.ComputeHash([Operation(0).Json]), 1))
+        {
+            await journal.RecordAsync(Succeeded(0) with { Status = BulkOutcome.Started });
+        }
+
+        await fixture.RunAsync("bulk begin --db db --con items");
+        await fixture.RunAsync($"bulk add '{Operation(0).Json}'");
+        var result = await fixture.RunAsync($"bulk execute --journal '{path}' --yes");
+        Assert.True(result.IsError);
+        Assert.Equal(BulkOutcome.Started, fixture.Shell.CurrentBulk!.Outcomes[0].Status);
+        await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync($"bulk add '{Operation(1).Json}'"));
+        await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync("bulk execute --yes"));
+        Assert.Single(fixture.Shell.CurrentBulk.Operations);
+        Assert.Empty(fixture.Writes());
     }
 
     [Theory]
@@ -974,6 +1107,8 @@ public class BulkCommandTests
         Assert.Equal(0, properties.GetProperty("max-ru").GetProperty("exclusiveMinimum").GetInt32());
         Assert.Contains("subcommand", tool.InputSchema.GetProperty("required").EnumerateArray().Select(value => value.GetString()));
         Assert.Contains("patch --where", tool.Description);
+        Assert.Contains("saving a plan creates a server-local file and requires confirmation", tool.Description);
+        Assert.Contains("Only dry runs without save skip confirmation", tool.Description);
         Assert.True(factory.McpAnnotation!.Confirmable);
     }
 
