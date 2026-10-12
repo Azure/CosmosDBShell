@@ -17,7 +17,9 @@ using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Microsoft.Azure.Cosmos;
 using NSubstitute;
+using Spectre.Console;
 
+[Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class BulkCommandTests
 {
     private static readonly string[] SinglePath = ["/pk"];
@@ -119,6 +121,7 @@ public class BulkCommandTests
     [InlineData("""{"op":"delete","id":"1","partitionKey":[{"x":1},"a"]}""")]
     [InlineData("""{"op":"delete","id":1,"partitionKey":["a","b"]}""")]
     [InlineData("""{"op":"create","item":{"id":"1"},"ifMatch":"tag"}""")]
+    [InlineData("""{"op":"upsert","item":{"id":"1"},"ifMatch":"tag"}""")]
     [InlineData("""{"op":"replace","id":"2","item":{"id":"1"}}""")]
     [InlineData("""{"op":"patch","id":"1","partitionKey":["a","b"],"operations":[{"op":"remove","path":"old"}]}""")]
     [InlineData("""{"op":"patch","id":"1","partitionKey":["a","b"],"operations":[]}""")]
@@ -246,7 +249,8 @@ public class BulkCommandTests
         var json = op switch
         {
             "create" => """{"op":"create","item":{"id":"1","pk":"a"}}""",
-            "upsert" or "replace" => $$"""{"op":"{{op}}","item":{"id":"1","pk":"a"},"ifMatch":"tag"}""",
+            "upsert" => """{"op":"upsert","item":{"id":"1","pk":"a"}}""",
+            "replace" => """{"op":"replace","item":{"id":"1","pk":"a"},"ifMatch":"tag"}""",
             "delete" => """{"op":"delete","id":"1","partitionKey":"a","ifMatch":"tag"}""",
             _ => """{"op":"patch","id":"1","partitionKey":"a","ifMatch":"tag","operations":[{"op":"set","path":"/v","value":2}]}""",
         };
@@ -262,7 +266,7 @@ public class BulkCommandTests
         Assert.Contains(arguments, argument => argument is PartitionKey key && key.Equals(new PartitionKey("a")));
         var options = Assert.Single(arguments.OfType<ItemRequestOptions>());
         Assert.False(options.EnableContentResponseOnWrite);
-        Assert.Equal(op == "create" ? null : "tag", options.IfMatchEtag);
+        Assert.Equal(op is "create" or "upsert" ? null : "tag", options.IfMatchEtag);
     }
 
     [Theory]
@@ -808,6 +812,51 @@ public class BulkCommandTests
         Assert.Equal(17, state.RequestCharge);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunRejectsConditionalUpsertsBeforeAnyWrites(bool dryRun)
+    {
+        using var fixture = new Fixture();
+        var option = dryRun ? "--dry-run" : "--yes";
+        var error = await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync(
+            $$"""bulk run '[{"op":"delete","id":"1","partitionKey":"a"},{"op":"upsert","item":{"id":"2","pk":"a"},"ifMatch":"tag"}]' {{option}} --db db --con items"""));
+        Assert.Contains("Use replace for conditional item updates", error.Message);
+        Assert.Empty(fixture.Writes());
+    }
+
+    [Fact]
+    public async Task StatefulAddRejectsConditionalUpsertsAtomically()
+    {
+        using var fixture = new Fixture();
+        await fixture.RunAsync("bulk begin --partition-key a --db db --con items");
+        await fixture.RunAsync("""bulk add '{"op":"delete","id":"1"}'""");
+        var bulk = fixture.Shell.CurrentBulk!;
+        var bytes = bulk.CanonicalJsonBytes;
+        await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync(
+            """bulk add '[{"op":"delete","id":"2"},{"op":"upsert","item":{"id":"3","pk":"a"},"ifMatch":"tag"}]'"""));
+        Assert.Single(bulk.Operations);
+        Assert.Equal(bytes, bulk.CanonicalJsonBytes);
+        Assert.Empty(fixture.Writes());
+    }
+
+    [Theory]
+    [InlineData(404)]
+    [InlineData(412)]
+    public async Task ConditionalReplaceDoesNotCreateMissingOrChangedItems(int status)
+    {
+        using var fixture = new Fixture();
+        fixture.Container.ReplaceItemAsync(default(JsonElement), default!, default, default, TestContext.Current.CancellationToken)
+            .ReturnsForAnyArgs<Task<ItemResponse<JsonElement>>>(_ => throw new CosmosException("failure", (HttpStatusCode)status, 0, "activity", 1));
+        var state = await fixture.RunAsync(
+            """bulk run '{"op":"replace","item":{"id":"1","pk":"a"},"ifMatch":"tag"}' --yes --db db --con items""");
+        Assert.True(state.IsError);
+        var write = Assert.Single(fixture.Writes());
+        Assert.Equal("ReplaceItemAsync", write.GetMethodInfo().Name);
+        Assert.Equal("tag", Assert.Single(write.GetArguments().OfType<ItemRequestOptions>()).IfMatchEtag);
+        Assert.Equal(status, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("errors")[0].GetProperty("statusCode").GetInt32());
+    }
+
     [Fact]
     public async Task RunWithPipedOperationsAndDefaultPartitionKeyMatchesBatchStyle()
     {
@@ -981,6 +1030,46 @@ public class BulkCommandTests
         Assert.Equal(2, Assert.IsType<ShellJson>(retried.Result).Value.GetProperty("skipped").GetInt64());
         Assert.Null(fixture.Shell.CurrentBulk);
         await fixture.Container.Received(1).DeleteItemAsync<JsonElement>(Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StatefulStatusRendersTheSameOutcomeCountsAsJson()
+    {
+        using var fixture = new Fixture();
+        await fixture.RunAsync("bulk begin --partition-key a --db db --con items");
+        await fixture.RunAsync($"bulk add '[{string.Join(",", Enumerable.Range(0, 5).Select(index => Operation(index).Json))}]'");
+        var bulk = fixture.Shell.CurrentBulk!;
+        bulk.Outcomes[0] = Succeeded(0);
+        bulk.Outcomes[1] = Succeeded(1);
+        bulk.Outcomes[2] = Succeeded(2) with { Status = BulkOutcome.Failed };
+        bulk.Outcomes[3] = Succeeded(3) with { Status = BulkOutcome.Uncertain };
+        bulk.Outcomes[4] = Succeeded(4) with { Status = BulkOutcome.Started };
+        var state = await fixture.RunAsync("bulk status");
+        var result = Assert.IsType<ShellJson>(state.Result).Value;
+        Assert.Equal(2, result.GetProperty("succeeded").GetInt32());
+        Assert.Equal(1, result.GetProperty("failed").GetInt32());
+        Assert.Equal(2, result.GetProperty("uncertain").GetInt32());
+
+        var saved = AnsiConsole.Console;
+        using var output = new StringWriter();
+        try
+        {
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            state.RenderUser!();
+        }
+        finally
+        {
+            AnsiConsole.Console = saved;
+        }
+
+        Assert.Matches(@"Succeeded[^\r\n]*\b2\b", output.ToString());
+        Assert.Matches(@"Failed[^\r\n]*\b1\b", output.ToString());
+        Assert.Matches(@"Uncertain[^\r\n]*\b2\b", output.ToString());
     }
 
     [Theory]

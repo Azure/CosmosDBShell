@@ -486,6 +486,9 @@ command-bulk-cancelled = Discarded the pending bulk job ({ $count } { $count ->
     *[other] operations
 })
 command-bulk-status-inactive = No bulk job is currently active.
+command-bulk-status-succeeded = Succeeded
+command-bulk-status-failed = Failed
+command-bulk-status-uncertain = Uncertain
 command-bulk-status-more = ...and { $count } more
 command-bulk-progress = { $processed } of { $total } operations processed, { $failed } failed (RU charge: { $charge })
 command-bulk-success = Bulk completed { $count } { $count ->
@@ -514,7 +517,7 @@ command-bulk-error-operation = Operation { $index }: { $message }
 command-bulk-error-id = Every operation needs a nonempty string id. Item operations take it from item.id; an explicit id must match item.id.
 command-bulk-error-partition_key = Missing or invalid partition key. Delete and patch operations need partitionKey or --partition-key. Use one value per partition-key path, as a JSON array for hierarchical keys, with an empty JSON object for an undefined component.
 command-bulk-error-partition_key_mismatch = The partitionKey does not match the partition key in the item.
-command-bulk-error-if_match = ifMatch must be a nonempty string and is not supported for create.
+command-bulk-error-if_match = ifMatch must be a nonempty string and is supported only for replace, delete, and patch. Use replace for conditional item updates; create and upsert do not support ifMatch.
 command-bulk-error-patch_count = Each patch supports at most 10 operations.
 command-bulk-error-patch_path = Patch paths must start with '/'.
 command-bulk-error-selected_id = Every selected item must have a string id.

@@ -147,7 +147,7 @@ internal static class BulkOperationNormalizer
         string? ifMatch = null;
         if (element.TryGetProperty("ifMatch", out var tag))
         {
-            if (spec.Kind == BatchOperationKind.Create || tag.ValueKind != JsonValueKind.String || string.IsNullOrEmpty(tag.GetString()))
+            if (spec.Kind is BatchOperationKind.Create or BatchOperationKind.Upsert || tag.ValueKind != JsonValueKind.String || string.IsNullOrEmpty(tag.GetString()))
             {
                 throw Error("command-bulk-error-if_match");
             }

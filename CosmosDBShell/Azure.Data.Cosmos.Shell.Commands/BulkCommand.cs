@@ -36,7 +36,7 @@ using Spectre.Console;
 Executes many independent write operations with bounded concurrency. Unlike 'batch', operations may target different partition keys, there is no 100-operation limit, and nothing is rolled back: each operation succeeds or fails on its own.
 
 Subcommands available through MCP:
-- 'run <json-or-file>' executes operations. Same operation schema as batch, plus an optional per-operation 'partitionKey' (scalar, or array for hierarchical keys) and 'ifMatch' (ETag). The 'partition-key' argument sets a default for delete and patch operations without one.
+- 'run <json-or-file>' executes operations. Same operation schema as batch, plus an optional per-operation 'partitionKey' (scalar, or array for hierarchical keys) and 'ifMatch' (ETag, supported only for replace, delete, and patch). Use replace for conditional item updates; create and upsert reject ifMatch. The 'partition-key' argument sets a default for delete and patch operations without one.
 - 'patch --where <predicate> --operations <json-array>' patches every item matching a Cosmos SQL predicate over alias c.
 - 'delete --where <predicate>' deletes every matching item.
 
@@ -527,6 +527,9 @@ internal sealed class BulkCommand : CosmosCommand
         }
         else
         {
+            var succeeded = bulk.Outcomes.Values.Count(outcome => outcome.Status == BulkOutcome.Succeeded);
+            var failed = bulk.Outcomes.Values.Count(outcome => outcome.Status == BulkOutcome.Failed);
+            var uncertain = bulk.Outcomes.Values.Count(outcome => outcome.Status is BulkOutcome.Started or BulkOutcome.Uncertain);
             var operations = new JsonArray();
             foreach (var operation in bulk.Operations.Take(StatusPreviewCount))
             {
@@ -540,19 +543,19 @@ internal sealed class BulkCommand : CosmosCommand
                 ["container"] = bulk.ContainerName,
                 ["partitionKey"] = bulk.PartitionKeyArgument,
                 ["operationCount"] = bulk.Operations.Count,
-                ["succeeded"] = bulk.Outcomes.Values.Count(outcome => outcome.Status == BulkOutcome.Succeeded),
-                ["failed"] = bulk.Outcomes.Values.Count(outcome => outcome.Status == BulkOutcome.Failed),
-                ["uncertain"] = bulk.Outcomes.Values.Count(outcome => outcome.Status is BulkOutcome.Started or BulkOutcome.Uncertain),
+                ["succeeded"] = succeeded,
+                ["failed"] = failed,
+                ["uncertain"] = uncertain,
                 ["operations"] = operations,
             };
-            renderUser = () => RenderStatus(bulk);
+            renderUser = () => RenderStatus(bulk, succeeded, failed, uncertain);
         }
 
         using var document = JsonDocument.Parse(root.ToJsonString());
         return new CommandState { Result = new ShellJson(document.RootElement.Clone()), RenderUser = renderUser };
     }
 
-    private static void RenderStatus(PendingBulkState bulk)
+    private static void RenderStatus(PendingBulkState bulk, int succeeded, int failed, int uncertain)
     {
         var details = new Table().HideHeaders();
         details.AddColumn(string.Empty);
@@ -569,6 +572,9 @@ internal sealed class BulkCommand : CosmosCommand
         }
 
         AddDetail("command-batch-status-operation-count", bulk.Operations.Count.ToString(CultureInfo.InvariantCulture));
+        AddDetail("command-bulk-status-succeeded", succeeded.ToString(CultureInfo.InvariantCulture));
+        AddDetail("command-bulk-status-failed", failed.ToString(CultureInfo.InvariantCulture));
+        AddDetail("command-bulk-status-uncertain", uncertain.ToString(CultureInfo.InvariantCulture));
         AnsiConsole.Write(details);
         if (bulk.Operations.Count == 0)
         {

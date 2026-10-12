@@ -681,6 +681,7 @@ Options:
 |`show`|Print the queued operations in canonical form, which `bulk run` accepts.|
 
 When a stateful job is active, the prompt shows `[bulk:N]`. Connecting or disconnecting discards it, like a pending batch.
+`bulk status` shows succeeded, failed, and uncertain outcome counts in both the interactive table and JSON. Interrupted write intents count as uncertain.
 
 #### Operation schema
 
@@ -689,7 +690,7 @@ Operations use the [batch operation schema](#operation-schema) with two optional
 |Field|Description|
 |-|-|
 |`partitionKey`|The item's complete partition key: a scalar, or a JSON array for hierarchical keys. Use `{}` for an undefined component and `null` for a JSON null value. Required for `delete` and `patch` unless `--partition-key` is supplied. For `create`, `upsert`, and `replace`, the key is read from `item`; a supplied value or default must match it.|
-|`ifMatch`|An ETag. The write fails with `412` if the item changed. Not supported for `create`.|
+|`ifMatch`|An ETag for `replace`, `delete`, or `patch`. The write fails with `412` if the item changed. Rejected for `create` and `upsert`; use `replace` for conditional item updates so a missing or concurrently deleted item is not recreated.|
 
 ```json
 {"op":"upsert","item":{"id":"1","tenantId":"t1","name":"Ada"}}
