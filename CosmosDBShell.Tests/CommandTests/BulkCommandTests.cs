@@ -418,6 +418,46 @@ public class BulkCommandTests
     }
 
     [Fact]
+    public async Task JournalFailureDuringSettlementStillDrainsEveryStartedWrite()
+    {
+        using var timeout = Timeout();
+        var first = new TaskCompletionSource<BulkOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var second = new TaskCompletionSource<BulkOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var summary = new BulkSummary();
+        var settled = new List<long>();
+        var expected = new UnauthorizedAccessException("journal denied");
+        var run = BulkExecutor.ExecuteAsync(
+            SourceAsync(2, timeout.Token),
+            (operation, _) => operation.Index == 0 ? first.Task : second.Task,
+            outcome =>
+            {
+                if (outcome.Status != BulkOutcome.Started)
+                {
+                    settled.Add(outcome.Index);
+                    throw expected;
+                }
+
+                return Task.CompletedTask;
+            },
+            new Dictionary<long, BulkOutcome>(),
+            summary,
+            2,
+            null,
+            true,
+            false,
+            timeout.Token);
+
+        first.SetResult(Succeeded(0));
+        Assert.False(run.IsCompleted);
+        second.SetResult(Succeeded(1));
+
+        var actual = await Assert.ThrowsAsync<UnauthorizedAccessException>(async () => await run.WaitAsync(timeout.Token));
+        Assert.Same(expected, actual);
+        Assert.Equal([0L, 1L], settled);
+        Assert.Equal(2, summary.Succeeded);
+    }
+
+    [Fact]
     public async Task ResumeSkipsSucceededRetriesFailedAndHoldsBackUncertain()
     {
         var previous = new Dictionary<long, BulkOutcome>
@@ -746,13 +786,14 @@ public class BulkCommandTests
     {
         private readonly DirectoryInfo directory = System.IO.Directory.CreateTempSubdirectory("cosmos-bulk-test-");
 
-        public string PathFor(string name) => Path.Combine(this.directory.FullName, name);
+        public string PathFor(string name) => Path.Join(this.directory.FullName, name);
 
         public void Dispose() => this.directory.Delete(recursive: true);
     }
 
     private sealed class Fixture : IDisposable
     {
+        private readonly List<ResponseMessage> metadataResponses = [];
         private string? failingPatchId;
         private HttpStatusCode failingStatus = HttpStatusCode.OK;
 
@@ -772,6 +813,7 @@ public class BulkCommandTests
                     Content = new MemoryStream(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { _rid = this.Rid, partitionKey = new { paths = SinglePath } }))),
                 };
                 response.Headers.Add("x-ms-request-charge", "2");
+                this.metadataResponses.Add(response);
                 return Task.FromResult(response);
             });
             ConfigureWrites(this.Container, HttpStatusCode.OK, 5);
@@ -848,6 +890,11 @@ public class BulkCommandTests
 
         public void Dispose()
         {
+            foreach (var response in this.metadataResponses)
+            {
+                response.Dispose();
+            }
+
             this.Shell.Dispose();
             this.Directory.Dispose();
         }

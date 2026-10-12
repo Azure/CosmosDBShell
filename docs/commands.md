@@ -731,7 +731,7 @@ The saved file is the reviewed snapshot: rerunning it targets the same items eve
 
 #### Journals and resuming
 
-`--journal <file>` records each write intent before the write is sent, then its outcome. The journal is bound to the account endpoint, the container's resource ID, and a hash of the canonical operation list, so it cannot be reused with different operations or a recreated container. A lock prevents concurrent use. Rerunning the same operations with the same journal:
+`--journal <file>` records each write intent before the write is sent, then its outcome. The journal is bound to the account endpoint, the container's resource ID, and a hash of the canonical operation list, so it cannot be reused with different operations or a recreated container. The journal is opened exclusively for the duration of the run, preventing concurrent use on Windows and Linux. Read or copy it only after the run finishes. Rerunning the same operations with the same journal:
 
 - skips operations that succeeded;
 - retries operations that definitively failed, such as throttled (`429`), conflicting, or missing items;

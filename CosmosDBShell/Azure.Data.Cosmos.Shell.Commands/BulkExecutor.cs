@@ -36,7 +36,8 @@ internal static class BulkExecutor
             }
             catch (Exception ex)
             {
-                // The request may or may not have reached the service.
+                // Any fault can follow a dispatched write. Record uncertainty, drain peers,
+                // and rethrow the original exception after all started writes are observed.
                 failure ??= ExceptionDispatchInfo.Capture(ex);
                 result = BulkOutcome.Create(operation, BulkOutcome.Uncertain, error: ex.Message);
             }
@@ -117,6 +118,7 @@ internal static class BulkExecutor
         }
         catch (Exception ex)
         {
+            // Source and journal failures must not bypass settlement of in-flight writes.
             failure ??= ExceptionDispatchInfo.Capture(ex);
         }
         finally
@@ -130,6 +132,7 @@ internal static class BulkExecutor
                 }
                 catch (Exception ex)
                 {
+                    // A settlement failure must not leave the remaining writes unobserved.
                     failure ??= ExceptionDispatchInfo.Capture(ex);
                 }
             }

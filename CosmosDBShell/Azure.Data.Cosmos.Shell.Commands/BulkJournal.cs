@@ -35,7 +35,7 @@ internal sealed class BulkJournal : IDisposable
         {
             Mode = FileMode.OpenOrCreate,
             Access = FileAccess.ReadWrite,
-            Share = FileShare.Read,
+            Share = FileShare.None,
             Options = FileOptions.WriteThrough,
         };
         if (!OperatingSystem.IsWindows())

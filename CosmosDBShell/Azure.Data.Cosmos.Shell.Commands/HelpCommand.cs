@@ -381,10 +381,9 @@ internal class HelpCommand : CosmosCommand
 
         helpJson["options"] = options;
 
-        var ann = cmd?.McpAnnotation;
-        if (ann != null && ann.Restricted)
+        if (cmd is { McpAnnotation.Restricted: true })
         {
-            helpJson["isRestricted"] = cmd?.CommandName == "bulk"
+            helpJson["isRestricted"] = cmd.CommandName == "bulk"
                 ? MessageService.GetString("command-bulk-mcp-help")
                 : "This tool can't be run via MCP. User only.";
         }

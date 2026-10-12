@@ -42,7 +42,7 @@ internal sealed class BulkSpool : IDisposable
             options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         }
 
-        return new BulkSpool(new FileStream(Path.Combine(Path.GetTempPath(), $"cosmos-bulk-{Guid.NewGuid():N}.jsonl"), options));
+        return new BulkSpool(new FileStream(Path.Join(Path.GetTempPath(), $"cosmos-bulk-{Guid.NewGuid():N}.jsonl"), options));
     }
 
     public static string ComputeHash(IEnumerable<string> lines)
