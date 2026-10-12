@@ -384,12 +384,6 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
     internal static PartitionKey CreateItemPartitionKey(IReadOnlyList<JsonElement> elements) => CreatePartitionKey(elements);
 
-    internal static int GetPartitionKeyComponentCount(PartitionKey partitionKey)
-    {
-        using var document = JsonDocument.Parse(partitionKey.ToString());
-        return document.RootElement.ValueKind == JsonValueKind.Array ? document.RootElement.GetArrayLength() : 1;
-    }
-
     internal static JsonElement ToPartitionKeyJson(PartitionKey partitionKey)
     {
         using var document = JsonDocument.Parse(partitionKey.ToString());

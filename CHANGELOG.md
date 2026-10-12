@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes
+
+- `print` now accepts typed scalar and complete hierarchical partition keys through the established `--partition-key` / `--pk` syntax, while retaining legacy positional string keys. Invalid keys are distinguished from missing items. Shared argument parsing rejects object/nested-array components and non-finite numbers instead of coercing them. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
+
 ## 1.1.280 — 2026-10-09
 
 ### Fixes

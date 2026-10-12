@@ -409,15 +409,43 @@ To keep the cost low, `--explain` executes only the first page of the query (`Ma
 
 ### print
 
-Get item by id and partition key.
+Read one item by ID and its complete partition key using a point read, without a query fallback.
 
 ```text
-Usage: print id key
+Usage: print id [key] [--partition-key <ARG>] [--database <ARG>] [--container <ARG>]
 
 Arguments:
     id          The ID of the item
-    key         The partition key of the item
+    key         Legacy string partition key (optional when --partition-key is supplied)
+
+Options:
+    --partition-key, --pk
+                Typed scalar or complete hierarchical partition key
+    --database, --db
+                Override database name
+    --container, --con
+                Override container name
 ```
+
+Supply exactly one of the positional `key` and `--partition-key` (alias `--pk`). The positional key always remains a string for compatibility, even when it looks like a number, boolean, null, or JSON array.
+
+The option uses the same typed syntax as `rm`, `batch`, `sproc`, and `watch` (and the positional `pk` in `patch`). JSON scalar literals preserve their types; ordinary text remains a string. Hierarchical keys use a JSON array with every component in container path order. Objects, nested arrays, empty arrays, arrays with more than three components, and non-finite numbers are rejected. `print` also checks that the component count matches the container. Invalid input is reported separately from a valid key that addresses a missing item.
+
+Examples inside Cosmos DB Shell:
+
+```text
+print product-680 680                           # Legacy string "680"
+print product-680 --pk=680                      # Number 680
+print product-680 --partition-key='"680"'       # Explicit string "680"
+print customer-1001 --pk='[1001,"customer-1001"]'
+print order-42 --pk='["tenant-1",680,true]'
+print item-1 --pk=true                          # Boolean true
+print item-1 --pk='"true"'                      # String "true"
+print item-1 --pk=null                          # Null
+print item-1 --pk='"null"'                      # String "null"
+```
+
+The outer single quotes preserve the inner JSON double quotes. `--pk="680"` alone does **not** preserve a JSON string literal: shell quoting is removed, so the key is parsed as a number. Invoking these commands from a host shell may require additional escaping; see [quoting and escaping](navigation.md). In MCP, the `partition-key` argument is a string containing this value, for example `"680"`, `"\"680\""`, or `"[1001,\"customer-1001\"]"`; use the string `"null"` for a null key, not JSON null.
 
 ### mkitem
 

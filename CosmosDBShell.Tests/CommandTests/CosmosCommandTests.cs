@@ -113,6 +113,18 @@ public class CosmosCommandTests
         Assert.Equal(expected.ToString(), actual.ToString());
     }
 
+    [Theory]
+    [InlineData("[{}]")]
+    [InlineData("[[1]]")]
+    [InlineData("[]")]
+    [InlineData("[1,2,3,4]")]
+    [InlineData("1e400")]
+    [InlineData("[1e400]")]
+    public void CreatePartitionKeyFromArgument_RejectsUnsupportedComponents(string value)
+    {
+        Assert.Throws<JsonException>(() => TestCosmosCommand.CreatePartitionKeyFromArgumentForTest(value));
+    }
+
     private sealed class TestCosmosCommand : CosmosCommand
     {
         private readonly double? requestCharge;
@@ -152,6 +164,11 @@ public class CosmosCommandTests
         public static PartitionKey CreatePartitionKeyForTest(IReadOnlyList<JsonElement> elements)
         {
             return CreatePartitionKey(elements);
+        }
+
+        public static PartitionKey CreatePartitionKeyFromArgumentForTest(string value)
+        {
+            return CreatePartitionKeyFromArgument(value);
         }
     }
 }

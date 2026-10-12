@@ -321,15 +321,21 @@ command-query-error-request_failed = Query request failed with status code { $st
 command-query-error-no_content_stream = Query response did not contain a content stream.
 command-query-error-empty_content = Query response content is empty.
 
-command-print-description = Print a id/partition key.
+command-print-description = Read an item by ID and its complete partition key.
 command-print-description-id = The ID of the item to print
-command-print-description-key = The Partition Key of the item to print
+command-print-description-key = Legacy string partition key (including numeric-looking strings). Supply this or --partition-key, not both.
+command-print-description-partition-key = Typed partition key: a JSON scalar or an ordered JSON array of all hierarchical components. For example, --pk=680 is a number, --pk='"680"' is a string, and --pk='[1001,"customer-1001"]' is hierarchical. Plain text remains a string.
 command-print-description-format = Output format (json, table)
 command-print-description-database = The database containing the item to print
 command-print-description-container = The container containing the item to print
 command-print-error-item_not_found = Item with id '{ $id }' not found using partition key '{ $partitionKey }'. Verify the partition key value is correct.
 command-print-error-request_failed = Request failed for item '{ $id }'. (HTTP { $status })
 command-print-error-reading_item = Error reading item: { $message }
+command-print-error-missing_id = Specify the ID of the item to print.
+command-print-error-missing_key = Specify a positional string key or --partition-key (--pk). Use --pk=null for a null partition key (MCP: pass the string "null", not JSON null).
+command-print-error-conflicting_keys = Specify either the positional string key or --partition-key (--pk), not both.
+command-print-error-invalid_pk_json = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
+command-print-error-partition_key_components = The partition key must contain all { $expected } components in container path order; received { $actual }. Use --partition-key with the complete key.
 
 command-mkitem-description = Creates items in container
 command-mkitem-description-data = JSON data for the item to create
@@ -1662,6 +1668,9 @@ command-patch-example-5 = Insert at the start of an array
 command-patch-example-6 = Patch with optimistic concurrency
 command-print-example-1 = Retrieve and display a specific item by ID and partition key
 command-print-example-2 = Retrieve item from specific database and container
+command-print-example-3 = Read an item with a numeric partition key
+command-print-example-4 = Read an item with a numeric-looking string partition key
+command-print-example-5 = Read an item with a complete mixed-type hierarchical partition key
 command-pwd-example-1 = Show the current shell location
 command-query-example-1 = Query all documents from container
 command-query-example-2 = Query with filter condition

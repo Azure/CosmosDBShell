@@ -373,6 +373,20 @@ public class ToolOperationsTests
         Assert.Equal("Display", metrics.GetProperty("default").GetString());
     }
 
+    [Fact]
+    public void GetTool_PrintExposesTypedKeyAndOptionalLegacyKey()
+    {
+        var tool = ToolOperations.GetTool(new CommandRunner().Commands["print"]);
+        var properties = tool.InputSchema.GetProperty("properties");
+
+        var partitionKey = properties.GetProperty("partition-key");
+        Assert.Equal("string", partitionKey.GetProperty("type").GetString());
+        Assert.Contains("Aliases: pk", partitionKey.GetProperty("description").GetString());
+        Assert.Contains("JSON", partitionKey.GetProperty("description").GetString());
+        Assert.Equal("string", properties.GetProperty("key").GetProperty("type").GetString());
+        Assert.Equal("id", Assert.Single(tool.InputSchema.GetProperty("required").EnumerateArray()).GetString());
+    }
+
     private static JsonElement Json(string raw)
     {
         using var document = JsonDocument.Parse(raw);

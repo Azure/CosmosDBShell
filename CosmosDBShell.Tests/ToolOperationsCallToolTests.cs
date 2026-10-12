@@ -562,6 +562,64 @@ public class ToolOperationsCallToolTests : IDisposable
         }
     }
 
+    [Theory]
+    [InlineData("partition-key")]
+    [InlineData("pk")]
+    public async Task CallTool_PrintWithNullTypedKey_RejectsInsteadOfUsingLegacyKey(string option)
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["id"] = Json("\"item-1\""),
+            ["key"] = Json("\"legacy\""),
+            [option] = Json("null"),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Equal(
+                Azure.Data.Cosmos.Shell.Util.MessageService.GetString("command-print-error-missing_key"),
+                root.GetProperty("error").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData("partition-key", "680")]
+    [InlineData("pk", "\"680\"")]
+    [InlineData("pk", "[1001,\"customer-1001\"]")]
+    [InlineData("pk", "true")]
+    [InlineData("pk", "null")]
+    public async Task CallTool_PrintWithTypedKey_BindsWithoutRequiringLegacyKey(string option, string value)
+    {
+        var tool = CreateToolOperations();
+        var shell = ShellInterpreter.Instance;
+        var originalState = shell.State;
+        try
+        {
+            shell.State = new DisconnectedState();
+            var arguments = new Dictionary<string, JsonElement>
+            {
+                ["id"] = Json("\"item-1\""),
+                [option] = JsonSerializer.SerializeToElement(value),
+            };
+
+            var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
+            var (isError, root, document) = ReadResult(result);
+            using (document)
+            {
+                Assert.True(isError);
+                Assert.Equal($"Error executing command 'print': {new NotConnectedException("print").Message}", root.GetProperty("error").GetString());
+            }
+        }
+        finally
+        {
+            shell.State = originalState;
+        }
+    }
+
     [Fact]
     public async Task CallTool_UnknownArgument_ReturnsErrorListingKnownArguments()
     {
