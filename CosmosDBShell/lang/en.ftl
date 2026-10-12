@@ -333,6 +333,8 @@ command-print-error-request_failed = Request failed for item '{ $id }'. (HTTP { 
 command-print-error-reading_item = Error reading item: { $message }
 command-print-error-missing_id = Specify the ID of the item to print.
 command-print-error-missing_key = Specify a positional string key or --partition-key (--pk). Use --pk=null for a null partition key (MCP: pass the string "null", not JSON null).
+command-print-error-partition_key_missing_value = The --partition-key (--pk) option requires a non-null string value. For a null partition key, pass the string "null", not JSON null.
+command-print-error-reading_container = Error reading container metadata: { $message }
 command-print-error-conflicting_keys = Specify either the positional string key or --partition-key (--pk), not both.
 command-print-error-invalid_pk_json = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
 command-print-error-partition_key_components = The partition key must contain all { $expected } components in container path order; received { $actual }. Use --partition-key with the complete key.

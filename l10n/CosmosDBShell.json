@@ -605,6 +605,8 @@
   "command-print-error-missing_id": "Specify the ID of the item to print.",
   "command-print-error-missing_key": "Specify a positional string key or --partition-key (--pk). Use --pk=null for a null partition key (MCP: pass the string \u0022null\u0022, not JSON null).",
   "command-print-error-partition_key_components": "The partition key must contain all {0} components in container path order; received {1}. Use --partition-key with the complete key.",
+  "command-print-error-partition_key_missing_value": "The --partition-key (--pk) option requires a non-null string value. For a null partition key, pass the string \u0022null\u0022, not JSON null.",
+  "command-print-error-reading_container": "Error reading container metadata: {0}",
   "command-print-error-reading_item": "Error reading item: {0}",
   "command-print-error-request_failed": "Request failed for item \u0027{0}\u0027. (HTTP {1})",
   "command-print-example-1": "Retrieve and display a specific item by ID and partition key",

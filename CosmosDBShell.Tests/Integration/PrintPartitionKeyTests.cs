@@ -38,7 +38,7 @@ public class PrintPartitionKeyTests : EmulatorTestBase
                 var container = database.GetContainer(fixture.ContainerName);
                 using var body = new MemoryStream(Encoding.UTF8.GetBytes(fixture.Document));
                 using var created = await container.CreateItemStreamAsync(body, fixture.PartitionKey, cancellationToken: token);
-                Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+                Assert.True(created.StatusCode == HttpStatusCode.Created, $"{fixture.Document}: {created.StatusCode}");
             }
 
             foreach (var fixture in fixtures)
@@ -53,14 +53,15 @@ public class PrintPartitionKeyTests : EmulatorTestBase
                 foreach (var arguments in fixture.Arguments)
                 {
                     var command = $"print {id} {arguments} --database={database.Id} --container={fixture.ContainerName}";
-                    var actual = await this.ReadThroughShellAsync(command, recorder);
+                    var actual = await this.ReadThroughShellAsync(command, recorder, fixture.PartitionKey);
                     AssertDocumentEquals(fixture.Document, actual);
                 }
             }
 
             var navigation = await RunScriptAsync($"cd {database.Id}/Three");
             Assert.False(navigation.IsError, FormatError(navigation));
-            var scopedResult = await this.ReadThroughShellAsync("print order-42 --pk='[\"tenant-1\",680,true]'", recorder);
+            var scopedFixture = fixtures.First(fixture => fixture.ContainerName == "Three");
+            var scopedResult = await this.ReadThroughShellAsync("print order-42-three-numeric --pk='[\"tenant-1\",680,true]'", recorder, scopedFixture.PartitionKey);
             AssertDocumentEquals(fixtures.First(fixture => fixture.ContainerName == "Three").Document, scopedResult);
 
             await this.AssertInputErrorsAsync(database.Id, recorder);
@@ -69,7 +70,7 @@ public class PrintPartitionKeyTests : EmulatorTestBase
             var missing = await RunScriptAsync($"print missing --pk=680 --database={database.Id} --container=Scalar");
             Assert.True(missing.IsError);
             Assert.Contains("not found using partition key", GetErrorMessage(missing));
-            AssertPointRead(recorder);
+            AssertPointRead(recorder, new PartitionKey(680d));
         }
         finally
         {
@@ -85,37 +86,37 @@ public class PrintPartitionKeyTests : EmulatorTestBase
 
     private static KeyFixture[] CreateFixtures() =>
     [
-        new("Scalar", """{"id":"product-680","pk":680,"marker":"numeric"}""", new PartitionKey(680d),
+        new("Scalar", """{"id":"product-680-numeric","pk":680,"marker":"numeric"}""", new PartitionKey(680d),
             "--pk=680", "--partition-key 680", "--pk=\"680\""),
-        new("Scalar", """{"id":"product-680","pk":"680","marker":"numeric-string"}""", new PartitionKey("680"),
+        new("Scalar", """{"id":"product-680-numeric-string","pk":"680","marker":"numeric-string"}""", new PartitionKey("680"),
             "680", "\"680\"", "--partition-key='\"680\"'"),
-        new("Scalar", """{"id":"product-680","pk":680.5,"marker":"fraction"}""", new PartitionKey(680.5d), "--pk=680.5"),
-        new("Scalar", """{"id":"product-680","pk":true,"marker":"boolean"}""", new PartitionKey(true), "--pk=true"),
-        new("Scalar", """{"id":"product-680","pk":false,"marker":"false"}""", new PartitionKey(false), "--pk=false"),
-        new("Scalar", """{"id":"product-680","pk":"true","marker":"boolean-string"}""", new PartitionKey("true"),
+        new("Scalar", """{"id":"product-680-fraction","pk":680.5,"marker":"fraction"}""", new PartitionKey(680.5d), "--pk=680.5"),
+        new("Scalar", """{"id":"product-680-boolean","pk":true,"marker":"boolean"}""", new PartitionKey(true), "--pk=true"),
+        new("Scalar", """{"id":"product-680-false","pk":false,"marker":"false"}""", new PartitionKey(false), "--pk=false"),
+        new("Scalar", """{"id":"product-680-boolean-string","pk":"true","marker":"boolean-string"}""", new PartitionKey("true"),
             "true", "--pk='\"true\"'"),
-        new("Scalar", """{"id":"product-680","pk":null,"marker":"null"}""", PartitionKey.Null, "--pk=null"),
-        new("Scalar", """{"id":"product-680","pk":"null","marker":"null-string"}""", new PartitionKey("null"),
+        new("Scalar", """{"id":"product-680-null","pk":null,"marker":"null"}""", PartitionKey.Null, "--pk=null"),
+        new("Scalar", """{"id":"product-680-null-string","pk":"null","marker":"null-string"}""", new PartitionKey("null"),
             "'null'", "--pk='\"null\"'"),
-        new("Scalar", """{"id":"product-680","pk":"customer-1","marker":"ordinary"}""", new PartitionKey("customer-1"),
+        new("Scalar", """{"id":"product-680-ordinary","pk":"customer-1","marker":"ordinary"}""", new PartitionKey("customer-1"),
             "customer-1", "--pk=customer-1"),
-        new("Scalar", """{"id":"product-680","pk":"","marker":"empty"}""", new PartitionKey(""), "''", "--pk='\"\"'"),
-        new("Scalar", """{"id":"product-680","pk":" ","marker":"whitespace"}""", new PartitionKey(" "), "' '", "--pk='\" \"'"),
-        new("Scalar", """{"id":"product-680","pk":"[1001,\"customer-1001\"]","marker":"array-string"}""",
+        new("Scalar", """{"id":"product-680-empty","pk":"","marker":"empty"}""", new PartitionKey(""), "''", "--pk='\"\"'"),
+        new("Scalar", """{"id":"product-680-whitespace","pk":" ","marker":"whitespace"}""", new PartitionKey(" "), "' '", "--pk='\" \"'"),
+        new("Scalar", """{"id":"product-680-array-string","pk":"[1001,\"customer-1001\"]","marker":"array-string"}""",
             new PartitionKey("[1001,\"customer-1001\"]"), "'[1001,\"customer-1001\"]'"),
-        new("Two", """{"id":"customer-1001","first":1001,"second":"customer-1001","marker":"two-numeric"}""",
+        new("Two", """{"id":"customer-1001-two-numeric","first":1001,"second":"customer-1001","marker":"two-numeric"}""",
             new PartitionKeyBuilder().Add(1001d).Add("customer-1001").Build(), "--pk='[1001,\"customer-1001\"]'"),
-        new("Two", """{"id":"customer-1001","first":"1001","second":"customer-1001","marker":"two-string"}""",
+        new("Two", """{"id":"customer-1001-two-string","first":"1001","second":"customer-1001","marker":"two-string"}""",
             new PartitionKeyBuilder().Add("1001").Add("customer-1001").Build(), "--pk='[\"1001\",\"customer-1001\"]'"),
-        new("Two", """{"id":"customer-1001","first":"customer-1001","second":1001,"marker":"two-reversed"}""",
+        new("Two", """{"id":"customer-1001-two-reversed","first":"customer-1001","second":1001,"marker":"two-reversed"}""",
             new PartitionKeyBuilder().Add("customer-1001").Add(1001d).Build(), "--pk='[\"customer-1001\",1001]'"),
-        new("Two", """{"id":"customer-1001","first":"tenant-1","second":true,"marker":"two-boolean"}""",
+        new("Two", """{"id":"customer-1001-two-boolean","first":"tenant-1","second":true,"marker":"two-boolean"}""",
             new PartitionKeyBuilder().Add("tenant-1").Add(true).Build(), "--pk='[\"tenant-1\",true]'"),
-        new("Three", """{"id":"order-42","first":"tenant-1","second":680,"third":true,"marker":"three-numeric"}""",
+        new("Three", """{"id":"order-42-three-numeric","first":"tenant-1","second":680,"third":true,"marker":"three-numeric"}""",
             new PartitionKeyBuilder().Add("tenant-1").Add(680d).Add(true).Build(), "--pk='[\"tenant-1\",680,true]'"),
-        new("Three", """{"id":"order-42","first":"tenant-1","second":"680","third":true,"marker":"three-string"}""",
+        new("Three", """{"id":"order-42-three-string","first":"tenant-1","second":"680","third":true,"marker":"three-string"}""",
             new PartitionKeyBuilder().Add("tenant-1").Add("680").Add(true).Build(), "--pk='[\"tenant-1\",\"680\",true]'"),
-        new("Three", """{"id":"order-42","first":680,"second":"tenant-1","third":true,"marker":"three-reversed"}""",
+        new("Three", """{"id":"order-42-three-reversed","first":680,"second":"tenant-1","third":true,"marker":"three-reversed"}""",
             new PartitionKeyBuilder().Add(680d).Add("tenant-1").Add(true).Build(), "--pk='[680,\"tenant-1\",true]'"),
     ];
 
@@ -130,13 +131,16 @@ public class PrintPartitionKeyTests : EmulatorTestBase
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expected), actualDocument), $"Expected {expected}, received {actualDocument}");
     }
 
-    private static void AssertPointRead(RequestRecorder recorder)
+    private static void AssertPointRead(RequestRecorder recorder, PartitionKey expectedKey)
     {
         Assert.All(recorder.Requests, request => Assert.Equal(HttpMethod.Get, request.Method));
-        Assert.Single(recorder.Requests, request => request.Uri.Contains("/docs/", StringComparison.Ordinal));
+        var read = Assert.Single(recorder.Requests, request => request.Uri.Contains("/docs/", StringComparison.Ordinal));
+        using var expected = JsonDocument.Parse(expectedKey.ToString());
+        using var actual = JsonDocument.Parse(Assert.IsType<string>(read.PartitionKey));
+        Assert.True(JsonElement.DeepEquals(expected.RootElement, actual.RootElement));
     }
 
-    private async Task<JsonElement> ReadThroughShellAsync(string command, RequestRecorder recorder)
+    private async Task<JsonElement> ReadThroughShellAsync(string command, RequestRecorder recorder, PartitionKey expectedKey)
     {
         recorder.Requests.Clear();
         var output = CaptureOutputFile();
@@ -144,7 +148,7 @@ public class PrintPartitionKeyTests : EmulatorTestBase
         {
             var state = await RunScriptAsync(command);
             Assert.False(state.IsError, FormatError(state));
-            AssertPointRead(recorder);
+            AssertPointRead(recorder, expectedKey);
             using var document = JsonDocument.Parse(await ReadRedirectAsync(output));
             return document.RootElement.Clone();
         }
@@ -190,11 +194,11 @@ public class PrintPartitionKeyTests : EmulatorTestBase
 
     private sealed class RequestRecorder : RequestHandler
     {
-        public List<(HttpMethod Method, string Uri)> Requests { get; } = [];
+        public List<(HttpMethod Method, string Uri, string? PartitionKey)> Requests { get; } = [];
 
         public override Task<ResponseMessage> SendAsync(RequestMessage request, CancellationToken cancellationToken)
         {
-            this.Requests.Add((request.Method, request.RequestUri.OriginalString));
+            this.Requests.Add((request.Method, request.RequestUri.OriginalString, request.Headers["x-ms-documentdb-partitionkey"]));
             return base.SendAsync(request, cancellationToken);
         }
     }

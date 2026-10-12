@@ -563,17 +563,22 @@ public class ToolOperationsCallToolTests : IDisposable
     }
 
     [Theory]
-    [InlineData("partition-key")]
-    [InlineData("pk")]
-    public async Task CallTool_PrintWithNullTypedKey_RejectsInsteadOfUsingLegacyKey(string option)
+    [InlineData("partition-key", true)]
+    [InlineData("pk", true)]
+    [InlineData("partition-key", false)]
+    [InlineData("pk", false)]
+    public async Task CallTool_PrintWithNullTypedKey_RejectsInsteadOfUsingLegacyKey(string option, bool useLegacyKey)
     {
         var tool = CreateToolOperations();
         var arguments = new Dictionary<string, JsonElement>
         {
             ["id"] = Json("\"item-1\""),
-            ["key"] = Json("\"legacy\""),
             [option] = Json("null"),
         };
+        if (useLegacyKey)
+        {
+            arguments["key"] = Json("\"legacy\"");
+        }
 
         var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
         var (isError, root, document) = ReadResult(result);
@@ -581,7 +586,7 @@ public class ToolOperationsCallToolTests : IDisposable
         {
             Assert.True(isError);
             Assert.Equal(
-                Azure.Data.Cosmos.Shell.Util.MessageService.GetString("command-print-error-missing_key"),
+                Azure.Data.Cosmos.Shell.Util.MessageService.GetString("command-print-error-partition_key_missing_value"),
                 root.GetProperty("error").GetString());
         }
     }

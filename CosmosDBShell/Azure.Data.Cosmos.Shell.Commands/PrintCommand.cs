@@ -49,16 +49,24 @@ internal class PrintCommand : CosmosCommand
 
         var partitionKey = this.GetPartitionKey();
 
-        // Resolve container using the helper
-        var (databaseName, containerName, container) = await ResolveContainerAsync(
+        var (databaseName, containerName, container) = ResolveContainerReference(
             connectedState.Client,
             shell.State,
             this.Database,
             this.Container,
-            "print",
-            token);
+            "print");
 
-        var paths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(connectedState, databaseName!, containerName!, token);
+        IReadOnlyList<string> paths;
+        try
+        {
+            paths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(connectedState, databaseName, containerName, token);
+        }
+        catch (CosmosException ex)
+        {
+            RequestChargeContext.Record(ex.RequestCharge);
+            throw new CommandException("print", MessageService.GetArgsString("command-print-error-reading_container", "message", CommandException.GetDisplayMessage(ex)), ex);
+        }
+
         ValidatePartitionKeyComponentCount(partitionKey, paths.Count);
 
         return await this.PrintItemAsync(container, partitionKey, token);
