@@ -7,11 +7,15 @@ namespace CosmosShell.Tests.CommandTests;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Azure;
+using Azure.Core;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
+using Azure.ResourceManager;
+using Azure.ResourceManager.CosmosDB;
 using Microsoft.Azure.Cosmos;
 using NSubstitute;
 
@@ -169,6 +173,48 @@ public class PrintCommandTests
         Assert.StartsWith("Error reading container metadata:", error.Message);
         Assert.Same(failure, error.InnerException);
         Assert.Equal(1.75, scope.RequestCharge);
+        Assert.DoesNotContain(container.ReceivedCalls(), call => call.GetMethodInfo().Name == "ReadItemStreamAsync");
+    }
+
+    [Theory]
+    [InlineData("database")]
+    [InlineData("container")]
+    [InlineData("forbidden")]
+    public async Task ExecuteAsync_ArmMetadataFailureReportsErrorAndNeverReadsItem(string failure)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var client = Substitute.For<CosmosClient>();
+        var container = Substitute.For<Container>();
+        client.GetDatabase("db").GetContainer("items").Returns(container);
+        var account = Substitute.For<CosmosDBAccountResource>();
+        var databases = Substitute.For<CosmosDBSqlDatabaseCollection>();
+        account.GetCosmosDBSqlDatabases().Returns(databases);
+        var armDatabase = Substitute.For<CosmosDBSqlDatabaseResource>();
+        var containers = Substitute.For<CosmosDBSqlContainerCollection>();
+        armDatabase.GetCosmosDBSqlContainers().Returns(containers);
+        databases.GetIfExistsAsync("db", Arg.Any<CancellationToken>()).Returns(Task.FromResult(failure == "database"
+            ? Substitute.For<NullableResponse<CosmosDBSqlDatabaseResource>>()
+            : Response.FromValue(armDatabase, Substitute.For<Response>())));
+        if (failure == "forbidden")
+        {
+            containers.GetIfExistsAsync("items", Arg.Any<CancellationToken>())
+                .Returns<Task<NullableResponse<CosmosDBSqlContainerResource>>>(_ => throw new RequestFailedException(403, "forbidden"));
+        }
+        else
+        {
+            containers.GetIfExistsAsync("items", Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(Substitute.For<NullableResponse<CosmosDBSqlContainerResource>>()));
+        }
+
+        var id = new ResourceIdentifier("/subscriptions/s/resourceGroups/rg/providers/Microsoft.DocumentDB/databaseAccounts/a");
+        var context = new ArmCosmosContext(Substitute.For<ArmClient>(), id, "s", "rg", "a", new Uri("https://a.documents.azure.com"), account);
+        shell.State = new ConnectedState(client, context);
+        var command = new PrintCommand { Id = "item-1", PartitionKey = "680", Database = "db", Container = "items" };
+
+        var error = await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(shell, new CommandState(), "print", TestContext.Current.CancellationToken));
+
+        Assert.StartsWith("Error reading container metadata:", error.Message);
+        Assert.Equal(failure == "forbidden" ? 403 : 404, Assert.IsType<RequestFailedException>(error.InnerException).Status);
         Assert.DoesNotContain(container.ReceivedCalls(), call => call.GetMethodInfo().Name == "ReadItemStreamAsync");
     }
 }

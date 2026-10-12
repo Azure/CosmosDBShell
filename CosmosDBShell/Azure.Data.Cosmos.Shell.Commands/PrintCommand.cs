@@ -63,6 +63,10 @@ internal class PrintCommand : CosmosCommand
             RequestChargeContext.Record(ex.RequestCharge);
             throw new CommandException("print", MessageService.GetArgsString("command-print-error-reading_container", "message", CommandException.GetDisplayMessage(ex)), ex);
         }
+        catch (global::Azure.RequestFailedException ex)
+        {
+            throw new CommandException("print", MessageService.GetArgsString("command-print-error-reading_container", "message", CommandException.GetDisplayMessage(ex)), ex);
+        }
 
         ValidatePartitionKeyComponentCount(partitionKey, paths.Count);
 
