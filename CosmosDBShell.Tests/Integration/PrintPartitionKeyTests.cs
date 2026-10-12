@@ -15,7 +15,15 @@ using Microsoft.Azure.Cosmos;
 public class PrintPartitionKeyTests : EmulatorTestBase
 {
     [Fact]
-    public async Task Print_MixedKeyFixtures_SelectsExactDocumentsThroughShellPointReads()
+    public Task Print_MixedKeyFixtures_SelectsExactDocumentsThroughShellPointReads() =>
+        this.AssertFixturesAsync(CreateFixtures());
+
+    [Fact]
+    [Trait("Feature", "PartitionKeyCollisions")]
+    public Task Print_SameIdNumericAndStringKeys_SelectsExactScalarAndHierarchicalDocuments() =>
+        this.AssertFixturesAsync(CreateCollisionFixtures());
+
+    private async Task AssertFixturesAsync(KeyFixture[] fixtures)
     {
         var token = TestContext.Current.CancellationToken;
         var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(EmulatorEndpoint);
@@ -32,7 +40,6 @@ public class PrintPartitionKeyTests : EmulatorTestBase
             shellOptions.CustomHandlers.Add(recorder);
             Shell.State = new ConnectedState(new CosmosClient(connectionString, shellOptions));
 
-            var fixtures = CreateFixtures();
             foreach (var fixture in fixtures)
             {
                 var container = database.GetContainer(fixture.ContainerName);
@@ -61,7 +68,9 @@ public class PrintPartitionKeyTests : EmulatorTestBase
             var navigation = await RunScriptAsync($"cd {database.Id}/Three");
             Assert.False(navigation.IsError, FormatError(navigation));
             var scopedFixture = fixtures.First(fixture => fixture.ContainerName == "Three");
-            var scopedResult = await this.ReadThroughShellAsync("print order-42-three-numeric --pk='[\"tenant-1\",680,true]'", recorder, scopedFixture.PartitionKey);
+            using var scopedDocument = JsonDocument.Parse(scopedFixture.Document);
+            var scopedId = scopedDocument.RootElement.GetProperty("id").GetString();
+            var scopedResult = await this.ReadThroughShellAsync($"print {scopedId} --pk='[\"tenant-1\",680,true]'", recorder, scopedFixture.PartitionKey);
             AssertDocumentEquals(fixtures.First(fixture => fixture.ContainerName == "Three").Document, scopedResult);
 
             await this.AssertInputErrorsAsync(database.Id, recorder);
@@ -118,6 +127,22 @@ public class PrintPartitionKeyTests : EmulatorTestBase
             new PartitionKeyBuilder().Add("tenant-1").Add("680").Add(true).Build(), "--pk='[\"tenant-1\",\"680\",true]'"),
         new("Three", """{"id":"order-42-three-reversed","first":680,"second":"tenant-1","third":true,"marker":"three-reversed"}""",
             new PartitionKeyBuilder().Add(680d).Add("tenant-1").Add(true).Build(), "--pk='[680,\"tenant-1\",true]'"),
+    ];
+
+    private static KeyFixture[] CreateCollisionFixtures() =>
+    [
+        new("Scalar", """{"id":"product-680","pk":680,"marker":"numeric"}""", new PartitionKey(680d),
+            "--pk=680", "--partition-key 680"),
+        new("Scalar", """{"id":"product-680","pk":"680","marker":"numeric-string"}""", new PartitionKey("680"),
+            "680", "--pk='\"680\"'"),
+        new("Two", """{"id":"customer-1001","first":1001,"second":"customer-1001","marker":"two-numeric"}""",
+            new PartitionKeyBuilder().Add(1001d).Add("customer-1001").Build(), "--pk='[1001,\"customer-1001\"]'"),
+        new("Two", """{"id":"customer-1001","first":"1001","second":"customer-1001","marker":"two-string"}""",
+            new PartitionKeyBuilder().Add("1001").Add("customer-1001").Build(), "--pk='[\"1001\",\"customer-1001\"]'"),
+        new("Three", """{"id":"order-42","first":"tenant-1","second":680,"third":true,"marker":"three-numeric"}""",
+            new PartitionKeyBuilder().Add("tenant-1").Add(680d).Add(true).Build(), "--pk='[\"tenant-1\",680,true]'"),
+        new("Three", """{"id":"order-42","first":"tenant-1","second":"680","third":true,"marker":"three-string"}""",
+            new PartitionKeyBuilder().Add("tenant-1").Add("680").Add(true).Build(), "--pk='[\"tenant-1\",\"680\",true]'"),
     ];
 
     private static void AssertDocumentEquals(string expected, JsonElement actual)

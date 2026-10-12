@@ -91,6 +91,11 @@ Run the tests:
 dotnet test CosmosDBShell.sln
 ```
 
+Emulator integration CI runs the broad fixture suite on the Linux preview emulator.
+Same-ID numeric/string partition-key collision tests use the Windows emulator in a
+separate CI job, because the Linux preview rejects those fixtures. These tests have
+the `Feature=PartitionKeyCollisions` trait and exercise both scalar and hierarchical keys.
+
 The first-run welcome screen and `welcome` command use the OS UI language when
 translations are available. Command-example descriptions, theme-preview labels,
 and scripting and endpoint-validation messages also use localization resources.
