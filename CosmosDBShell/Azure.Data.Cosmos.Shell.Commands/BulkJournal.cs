@@ -180,10 +180,9 @@ internal sealed class BulkJournal : IDisposable
                 }
 
                 var entry = JsonSerializer.Deserialize<Entry>(line, BulkCommand.JsonOptions);
-                var outcome = entry?.Outcome;
-                if (outcome is null || outcome.Index < 0 || outcome.Index >= expected.OperationCount ||
+                if (entry is not { Outcome: { } outcome } || outcome.Index < 0 || outcome.Index >= expected.OperationCount ||
                     !BulkOutcome.IsKnownStatus(outcome.Status) || outcome.PartitionKey.ValueKind != JsonValueKind.Array ||
-                    entry is null || entry.Checksum != ComputeChecksum(outcome))
+                    entry.Checksum != ComputeChecksum(outcome))
                 {
                     throw Invalid(null);
                 }

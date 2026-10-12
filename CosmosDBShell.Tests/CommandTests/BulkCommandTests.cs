@@ -91,6 +91,29 @@ public class BulkCommandTests
     }
 
     [Theory]
+    [InlineData(9007199254740993L)]
+    [InlineData(-9007199254740993L)]
+    [InlineData(long.MaxValue)]
+    [InlineData(long.MinValue)]
+    public void NumericKeysMatchSdkIntegerConversionsAndCanonicalJsonKeepsOriginalDigits(long value)
+    {
+        var number = value.ToString(CultureInfo.InvariantCulture);
+        var single = BulkOperationNormalizer.Normalize(Json($$"""{"op":"delete","id":"1","partitionKey":{{number}}}"""), SinglePath, null, 0);
+        Assert.Equal($"[{number}]", single.PartitionKey);
+        Assert.Equal(new PartitionKey(value), new PartitionKey((double)value));
+        Assert.Equal(new PartitionKey(value).ToString(), BulkOperationNormalizer.ParseKey(single.PartitionKey).ToString());
+
+        var hierarchical = BulkOperationNormalizer.Normalize(Json($$"""{"op":"delete","id":"1","partitionKey":[{{number}},"tenant"]}"""), HierarchicalPaths, null, 0);
+        Assert.Equal($"""[{number},"tenant"]""", hierarchical.PartitionKey);
+        Assert.Equal(
+            new PartitionKeyBuilder().Add(value).Add("tenant").Build().ToString(),
+            BulkOperationNormalizer.ParseKey(hierarchical.PartitionKey).ToString());
+
+        var stringKey = BulkOperationNormalizer.CanonicalKeyFromArgument($"\"{number}\"", 1);
+        Assert.Equal(new PartitionKey(number).ToString(), BulkOperationNormalizer.ParseKey(stringKey).ToString());
+    }
+
+    [Theory]
     [InlineData("""{"op":"delete","id":"1"}""")]
     [InlineData("""{"op":"delete","id":"1","partitionKey":["a"]}""")]
     [InlineData("""{"op":"delete","id":"1","partitionKey":[{"x":1},"a"]}""")]
@@ -893,6 +916,35 @@ public class BulkCommandTests
         Assert.Equal(2, fixture.Writes().Count());
     }
 
+    [Theory]
+    [InlineData(null, 1000)]
+    [InlineData(1L, 1)]
+    [InlineData(999L, 999)]
+    [InlineData(1000L, 1000)]
+    [InlineData(1001L, 1000)]
+    [InlineData(long.MaxValue, 1000)]
+    public async Task WhereSelectionBoundsQueryPageSizeByMaximumItems(long? maxItems, int expectedPageSize)
+    {
+        using var fixture = new Fixture();
+        fixture.Query("""{"id":"a","__pk0":"t"}""", """{"id":"b","__pk0":"t"}""");
+        var command = new BulkCommand
+        {
+            Subcommand = "delete",
+            Where = "true",
+            DryRun = true,
+            MaxItems = maxItems,
+            Database = "db",
+            Container = "items",
+        };
+        var state = await command.ExecuteAsync(fixture.Shell, new CommandState(), string.Empty, TestContext.Current.CancellationToken);
+        Assert.False(state.IsError);
+        Assert.Equal(expectedPageSize, fixture.LastQueryPageSize);
+        var result = Assert.IsType<ShellJson>(state.Result).Value;
+        Assert.Equal(maxItems == 1 ? 1L : 2L, result.GetProperty("operationCount").GetInt64());
+        Assert.Equal(maxItems == 1, result.GetProperty("selectionLimited").GetBoolean());
+        Assert.Empty(fixture.Writes());
+    }
+
     [Fact]
     public async Task SaveNeverOverwritesExistingFiles()
     {
@@ -1202,6 +1254,8 @@ public class BulkCommandTests
 
         public string? LastQuery { get; private set; }
 
+        public int? LastQueryPageSize { get; private set; }
+
         public static void ConfigureWrites(Container container, HttpStatusCode status, double charge)
         {
             var response = Response(status, charge);
@@ -1226,6 +1280,7 @@ public class BulkCommandTests
             this.Container.GetItemQueryIterator<JsonElement>(Arg.Any<QueryDefinition>(), Arg.Any<string?>(), Arg.Any<QueryRequestOptions>()).Returns(call =>
             {
                 this.LastQuery = call.ArgAt<QueryDefinition>(0).QueryText;
+                this.LastQueryPageSize = call.ArgAt<QueryRequestOptions>(2).MaxItemCount;
                 var index = 0;
                 var iterator = Substitute.For<FeedIterator<JsonElement>>();
                 iterator.HasMoreResults.Returns(_ => index < rows.Length);

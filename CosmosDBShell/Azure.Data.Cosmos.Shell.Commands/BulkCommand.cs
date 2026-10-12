@@ -736,7 +736,7 @@ internal sealed class BulkCommand : CosmosCommand
             using var iterator = target.Container.GetItemQueryIterator<JsonElement>(
                 new QueryDefinition(query),
                 continuationToken: null,
-                new QueryRequestOptions { MaxItemCount = SelectionPageSize });
+                new QueryRequestOptions { MaxItemCount = this.MaxItems is { } maximum ? (int)Math.Min(SelectionPageSize, maximum) : SelectionPageSize });
             while (iterator.HasMoreResults && !summary.SelectionLimited)
             {
                 if (this.MaxRu is { } budget && summary.RequestCharge >= budget)
