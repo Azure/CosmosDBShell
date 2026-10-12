@@ -22,12 +22,13 @@ internal static class BulkExecutor
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         var pending = new List<(BulkOperation Operation, PartitionKey Key, Task<BulkOutcome> Task)>();
+        var uncertainItems = new List<(string Id, PartitionKey Key)>();
         var newFailures = 0;
         ExceptionDispatchInfo? failure = null;
 
         async Task SettleAsync(int index)
         {
-            var (operation, _, task) = pending[index];
+            var (operation, key, task) = pending[index];
             pending.RemoveAt(index);
             BulkOutcome result;
             try
@@ -52,6 +53,10 @@ internal static class BulkExecutor
             {
                 newFailures++;
                 summary.AddFailure(result);
+                if (result.Status == BulkOutcome.Uncertain)
+                {
+                    uncertainItems.Add((operation.Id, key));
+                }
             }
 
             await record(result);
@@ -107,8 +112,17 @@ internal static class BulkExecutor
                         summary.Skipped++;
                         summary.Processed++;
                         summary.AddFailure(old with { Status = BulkOutcome.Uncertain });
+                        uncertainItems.Add((operation.Id, key));
                         continue;
                     }
+                }
+
+                if (!retryUncertain && uncertainItems.Any(item => item.Id == operation.Id && item.Key.Equals(key)))
+                {
+                    summary.Skipped++;
+                    summary.Processed++;
+                    summary.ResultIncomplete = true;
+                    continue;
                 }
 
                 await record(BulkOutcome.Create(operation, BulkOutcome.Started));

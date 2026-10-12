@@ -119,7 +119,7 @@
   "command-bulk-dry-run.__p1.one": "operation",
   "command-bulk-dry-run.__p1.other": "operations",
   "command-bulk-error-already_active": "A bulk job is already in progress. Run \u0027bulk execute\u0027 or \u0027bulk cancel\u0027 first.",
-  "command-bulk-error-budget": "Bulk run stopped at the RU budget after {0} of {1} operations succeeded (RU charge: {2}). Rerun with --journal to continue.",
+  "command-bulk-error-budget": "Bulk run stopped at the RU budget after {0} of {1} operations succeeded (RU charge: {2}). Resume writes only with the same journal used for the original run; without one, reconcile completed writes before retrying. If selection exhausted the budget before writes began, increase the budget and select again.",
   "command-bulk-error-confirm_required": "Bulk writes in scripts or non-interactive sessions require --yes. Use --dry-run to validate first.",
   "command-bulk-error-container": "Could not read container {0} (status {1}).",
   "command-bulk-error-container_changed": "The container was recreated after \u0027bulk begin\u0027. Run \u0027bulk cancel\u0027 and start a new bulk job.",

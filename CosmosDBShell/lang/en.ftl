@@ -529,7 +529,7 @@ command-bulk-error-journal_open = Could not open journal '{ $file }': { $message
 command-bulk-error-journal_mismatch = The journal belongs to a different account, container, or operation list. Use the original operations or a new journal file.
 command-bulk-error-journal_invalid = The journal is damaged. Refusing to guess which writes can safely be repeated.
 command-bulk-error-failed = Bulk run incomplete: { $succeeded } succeeded, { $failed } failed ({ $uncertain } with unknown outcome) (RU charge: { $charge }). Successful writes were not rolled back.
-command-bulk-error-budget = Bulk run stopped at the RU budget after { $succeeded } of { $count } operations succeeded (RU charge: { $charge }). Rerun with --journal to continue.
+command-bulk-error-budget = Bulk run stopped at the RU budget after { $succeeded } of { $count } operations succeeded (RU charge: { $charge }). Resume writes only with the same journal used for the original run; without one, reconcile completed writes before retrying. If selection exhausted the budget before writes began, increase the budget and select again.
 command-bulk-error-item = #{ $index } { $op } '{ $id }': { $status } { $message }
 
 command-export-description = Exports items from a container to a JSON Lines, JSON array, or CSV file.

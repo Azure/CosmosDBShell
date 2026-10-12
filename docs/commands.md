@@ -735,7 +735,7 @@ The saved file is the reviewed snapshot: rerunning it targets the same items eve
 
 - skips operations that succeeded;
 - retries operations that definitively failed, such as throttled (`429`), conflicting, or missing items;
-- holds back operations whose outcome is unknown — sent before an interruption, a timeout, or a server error — and reports them as failed and `uncertain`. Retrying them blindly could, for example, apply an `incr` twice. Inspect or reconcile them, or pass `--retry-uncertain` when the operations are idempotent or use `ifMatch`.
+- holds back operations whose outcome is unknown — sent before an interruption, a timeout, or a server error — and reports them as failed and `uncertain`. Later writes for that same item ID and partition key are also held back to preserve ordering; unrelated items can continue. Retrying them blindly could, for example, apply an `incr` twice. Inspect or reconcile them, or pass `--retry-uncertain` when the operations are idempotent or use `ifMatch`.
 
 A torn final journal line from a crash is discarded safely; other damage is rejected rather than guessed around. For `--where`, `--journal` requires `--save`; resume with `bulk run <saved-file> --journal <file>`, because a new selection can match different items. A stateful job keeps outcomes in memory the same way, so running `bulk execute` again after a partial failure retries only failed operations.
 
@@ -743,7 +743,7 @@ A torn final journal line from a crash is discarded safely; other damage is reje
 
 - All input is validated before any write. Operations are spooled to a private temporary file that is deleted when the command ends, so large jobs are not held in memory.
 - By default, the first failed write stops scheduling new writes; `--continue-on-error` keeps going. Started writes are always awaited and reported, including after cancellation. Cancellation never reports success.
-- `--max-ru` counts the container metadata read, selection pages, and completed writes for the current invocation. No new request starts once it is reached; requests already in flight can exceed it. A budget stop returns exit code `6`; rerun with a journal to continue.
+- `--max-ru` counts the container metadata read, selection pages, and completed writes for the current invocation. No new request starts once it is reached; requests already in flight can exceed it. A budget stop returns exit code `6`. Resume writes only with the same journal supplied to the original run: creating a new journal cannot identify earlier successes and can replay non-idempotent writes. Without the original journal, reconcile completed writes before retrying. If the budget was exhausted during selection before any writes began, no execution journal was opened; increase the budget and select again.
 - `--max-items` limits selected items; `selectionLimited` reports that more items may match.
 - `--dry-run` validates and selects without writing. Selection reads consume RUs. It cannot check service-side conditions such as missing fields or permissions.
 - Writes are individual point operations with response bodies disabled, not transactional batches or SDK bulk execution. SDK retry handling for throttling still applies, and higher concurrency does not add provisioned RU/s.

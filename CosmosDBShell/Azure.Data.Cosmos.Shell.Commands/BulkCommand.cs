@@ -67,12 +67,12 @@ internal sealed class BulkCommand : CosmosCommand
 
     private static readonly Dictionary<string, string[]> AllowedOptions = new()
     {
-        ["run"] = ["partition-key", "database", "container", "max-ru", "dry-run", "yes", "continue-on-error", "journal", "retry-uncertain"],
-        ["patch"] = ["where", "operations", "database", "container", "max-items", "max-ru", "dry-run", "yes", "continue-on-error", "etag", "save", "journal"],
-        ["delete"] = ["where", "database", "container", "max-items", "max-ru", "dry-run", "yes", "continue-on-error", "etag", "save", "journal"],
+        ["run"] = ["partition-key", "database", "container", "concurrency", "max-ru", "dry-run", "yes", "continue-on-error", "journal", "retry-uncertain"],
+        ["patch"] = ["where", "operations", "database", "container", "concurrency", "max-items", "max-ru", "dry-run", "yes", "continue-on-error", "etag", "save", "journal"],
+        ["delete"] = ["where", "database", "container", "concurrency", "max-items", "max-ru", "dry-run", "yes", "continue-on-error", "etag", "save", "journal"],
         ["begin"] = ["partition-key", "database", "container"],
         ["add"] = [],
-        ["execute"] = ["max-ru", "yes", "continue-on-error", "journal", "retry-uncertain"],
+        ["execute"] = ["concurrency", "max-ru", "yes", "continue-on-error", "journal", "retry-uncertain"],
         ["cancel"] = [],
         ["status"] = [],
         ["show"] = [],
@@ -618,6 +618,7 @@ internal sealed class BulkCommand : CosmosCommand
             ("partition-key", this.PartitionKeyArgument != null),
             ("database", this.Database != null),
             ("container", this.Container != null),
+            ("concurrency", this.Concurrency.HasValue),
             ("max-items", this.MaxItems != null),
             ("max-ru", this.MaxRu != null),
             ("dry-run", this.DryRun == true),

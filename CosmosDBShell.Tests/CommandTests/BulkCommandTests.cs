@@ -163,6 +163,44 @@ public class BulkCommandTests
         Assert.Throws<CommandException>(() => command.Validate(subcommand));
     }
 
+    [Theory]
+    [InlineData("begin")]
+    [InlineData("add")]
+    [InlineData("status")]
+    [InlineData("show")]
+    [InlineData("cancel")]
+    public void ConcurrencyIsRejectedForNonExecutionSubcommands(string subcommand)
+    {
+        var command = new BulkCommand { Concurrency = BulkCommand.DefaultConcurrency };
+        var error = Assert.Throws<CommandException>(() => command.Validate(subcommand));
+        Assert.Contains("concurrency", error.Message);
+    }
+
+    [Theory]
+    [InlineData("run")]
+    [InlineData("patch")]
+    [InlineData("delete")]
+    [InlineData("execute")]
+    public void ConcurrencyIsAcceptedForExecutionSubcommands(string subcommand)
+    {
+        new BulkCommand
+        {
+            Concurrency = 5,
+            Where = subcommand is "patch" or "delete" ? "true" : null,
+            Operations = subcommand == "patch" ? """[{"op":"remove","path":"/old"}]""" : null,
+        }.Validate(subcommand);
+    }
+
+    [Theory]
+    [InlineData("concurrency")]
+    [InlineData("max-parallelism")]
+    public async Task ParserRejectsConcurrencyAliasesOnStatus(string option)
+    {
+        using var fixture = new Fixture();
+        var error = await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync($"bulk status --{option} 16"));
+        Assert.Contains("concurrency", error.Message);
+    }
+
     [Fact]
     public void SelectionQueryProjectsEscapedPartitionKeyPaths()
     {
@@ -508,6 +546,93 @@ public class BulkCommandTests
             true,
             TestContext.Current.CancellationToken);
         Assert.Equal([1L, 2L, 3L, 4L], attempted);
+    }
+
+    [Theory]
+    [InlineData(BulkOutcome.Started)]
+    [InlineData(BulkOutcome.Uncertain)]
+    public async Task ResumeHoldsBackDependentWritesButAllowsOtherItems(string status)
+    {
+        var operations = new[]
+        {
+            new BulkOperation(0, "patch", "same", "[1]", "{}"),
+            new BulkOperation(1, "patch", "same", "[1.0]", "{}"),
+            new BulkOperation(2, "patch", "same", "[2]", "{}"),
+            new BulkOperation(3, "patch", "other", "[1]", "{}"),
+        };
+        async IAsyncEnumerable<BulkOperation> OperationsAsync()
+        {
+            foreach (var operation in operations)
+            {
+                yield return operation;
+            }
+
+            await Task.CompletedTask;
+        }
+
+        var previous = new Dictionary<long, BulkOutcome>
+        {
+            [0] = BulkOutcome.Create(operations[0], status),
+        };
+        var attempted = new List<long>();
+        var records = new List<BulkOutcome>();
+        var summary = new BulkSummary();
+        await BulkExecutor.ExecuteAsync(
+            OperationsAsync(),
+            (operation, _) =>
+            {
+                attempted.Add(operation.Index);
+                return Task.FromResult(BulkOutcome.Create(operation, BulkOutcome.Succeeded));
+            },
+            outcome =>
+            {
+                records.Add(outcome);
+                return Task.CompletedTask;
+            },
+            previous, summary, 1, null, true, false, TestContext.Current.CancellationToken);
+
+        Assert.Equal([2L, 3L], attempted);
+        Assert.Equal(2, summary.Skipped);
+        Assert.Equal(1, summary.Uncertain);
+        Assert.True(summary.ResultIncomplete);
+        Assert.DoesNotContain(records, outcome => outcome.Index is 0 or 1);
+
+        attempted.Clear();
+        await BulkExecutor.ExecuteAsync(
+            OperationsAsync(),
+            (operation, _) =>
+            {
+                attempted.Add(operation.Index);
+                return Task.FromResult(BulkOutcome.Create(operation, BulkOutcome.Succeeded));
+            },
+            IgnoreAsync, previous, new BulkSummary(), 1, null, true, true, TestContext.Current.CancellationToken);
+        Assert.Equal([0L, 1L, 2L, 3L], attempted);
+    }
+
+    [Fact]
+    public async Task NewUncertainOutcomeAlsoHoldsBackDependentWrites()
+    {
+        var summary = new BulkSummary();
+        var attempted = new List<long>();
+        async IAsyncEnumerable<BulkOperation> OperationsAsync()
+        {
+            yield return new BulkOperation(0, "patch", "same", "[1]", "{}");
+            yield return new BulkOperation(1, "patch", "same", "[1.0]", "{}");
+            await Task.CompletedTask;
+        }
+
+        await BulkExecutor.ExecuteAsync(
+            OperationsAsync(),
+            (operation, _) =>
+            {
+                attempted.Add(operation.Index);
+                return Task.FromResult(BulkOutcome.Create(operation, BulkOutcome.Uncertain));
+            },
+            IgnoreAsync, new Dictionary<long, BulkOutcome>(), summary, 1, null, true, false, TestContext.Current.CancellationToken);
+
+        Assert.Equal([0L], attempted);
+        Assert.Equal(1, summary.Skipped);
+        Assert.True(summary.ResultIncomplete);
     }
 
     // Journal.

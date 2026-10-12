@@ -126,7 +126,7 @@ The `bulk` tool exposes the stateless `run`, `patch`, and `delete` subcommands, 
 
 Pass operations as JSON text or a file path in `data`, or use `where` with `operations` for query-driven patches. `concurrency` defaults to 16 and must be positive; optional `max-items` and `max-ru` must also be positive. File paths for `data`, `save`, and `journal` are local to the shell server.
 
-These are independent writes, **not** transactions across partitions. Failed or incomplete runs include their summary alongside the MCP error. The command-level `result.resultIncomplete` and `result.budgetExceeded` flags describe job execution and are distinct from the envelope's query-paging `resultIncomplete`. A journal never automatically retries a write whose outcome is unknown unless `retry-uncertain` is set.
+These are independent writes, **not** transactions across partitions. Failed or incomplete runs include their summary alongside the MCP error. The command-level `result.resultIncomplete` and `result.budgetExceeded` flags describe job execution and are distinct from the envelope's query-paging `resultIncomplete`. Resume only with the same journal from the original run; adding a new journal cannot prevent replaying earlier successes. Without the original journal, reconcile completed writes before retrying. A journal never automatically retries a write whose outcome is unknown unless `retry-uncertain` is set; later writes for the same item ID and partition key are also held back.
 
 ### Shell Location Updates
 
