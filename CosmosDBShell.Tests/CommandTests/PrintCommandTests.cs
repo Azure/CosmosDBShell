@@ -18,21 +18,6 @@ using NSubstitute;
 public class PrintCommandTests
 {
     [Theory]
-    [InlineData("680")]
-    [InlineData("true")]
-    [InlineData("null")]
-    [InlineData("[1001,\"customer-1001\"]")]
-    [InlineData("\"680\"")]
-    [InlineData("")]
-    [InlineData(" ")]
-    public void PositionalKey_PreservesStringValue(string value)
-    {
-        var command = new PrintCommand { PartitionKey = value };
-
-        Assert.Equal(new PartitionKey(value).ToString(), command.GetPartitionKey().ToString());
-    }
-
-    [Theory]
     [InlineData("680", "[680]")]
     [InlineData("680.5", "[680.5]")]
     [InlineData("\"680\"", "[\"680\"]")]
@@ -51,7 +36,7 @@ public class PrintCommandTests
     [InlineData("[\"tenant-1\",null,false]", "[\"tenant-1\",null,false]")]
     public void TypedKey_PreservesTypesAndOrder(string value, string expected)
     {
-        var command = new PrintCommand { PartitionKeyArgument = value };
+        var command = new PrintCommand { PartitionKey = value };
         using var expectedJson = JsonDocument.Parse(expected);
         using var actualJson = JsonDocument.Parse(command.GetPartitionKey().ToString());
 
@@ -70,7 +55,7 @@ public class PrintCommandTests
     [InlineData("[\"tenant\",1e400]")]
     public void TypedKey_InvalidJsonOrComponents_ThrowsInputError(string value)
     {
-        var command = new PrintCommand { PartitionKeyArgument = value };
+        var command = new PrintCommand { PartitionKey = value };
 
         var exception = Assert.Throws<CommandException>(() => command.GetPartitionKey());
 
@@ -87,25 +72,13 @@ public class PrintCommandTests
     }
 
     [Theory]
-    [InlineData("680")]
-    [InlineData("")]
-    public void BothKeyForms_ThrowsInputError(string positional)
-    {
-        var command = new PrintCommand { PartitionKey = positional, PartitionKeyArgument = "680" };
-
-        var exception = Assert.Throws<CommandException>(() => command.GetPartitionKey());
-
-        Assert.Equal(MessageService.GetString("command-print-error-conflicting_keys"), exception.Message);
-    }
-
-    [Theory]
     [InlineData("680", 2)]
     [InlineData("[1001]", 2)]
     [InlineData("[1001,\"customer-1001\",true]", 2)]
     [InlineData("[\"tenant\",680]", 3)]
     public void IncompleteOrExtraComponents_ThrowsInputError(string value, int expected)
     {
-        var key = new PrintCommand { PartitionKeyArgument = value }.GetPartitionKey();
+        var key = new PrintCommand { PartitionKey = value }.GetPartitionKey();
 
         var exception = Assert.Throws<CommandException>(() => PrintCommand.ValidatePartitionKeyComponentCount(key, expected));
 
@@ -119,7 +92,7 @@ public class PrintCommandTests
     [InlineData("[\"tenant\",680,true]", 3)]
     public void CompleteKey_AcceptsMatchingComponentCount(string value, int expected)
     {
-        var key = new PrintCommand { PartitionKeyArgument = value }.GetPartitionKey();
+        var key = new PrintCommand { PartitionKey = value }.GetPartitionKey();
 
         PrintCommand.ValidatePartitionKeyComponentCount(key, expected);
     }
@@ -160,8 +133,7 @@ public class PrintCommandTests
             Id = "item-1",
             Database = location == "account" ? "db" : null,
             Container = location == "container" ? null : "items",
-            PartitionKey = typed ? null : "legacy",
-            PartitionKeyArgument = typed ? "\"legacy\"" : null,
+            PartitionKey = typed ? "\"legacy\"" : "legacy",
         };
         using var scope = RequestChargeContext.Begin();
 
@@ -190,7 +162,7 @@ public class PrintCommandTests
             .Returns<Task<ContainerResponse>>(_ => throw failure);
         shell.State = new ConnectedState(client);
         using var scope = RequestChargeContext.Begin();
-        var command = new PrintCommand { Id = "item-1", PartitionKeyArgument = "680", Database = "db", Container = "items" };
+        var command = new PrintCommand { Id = "item-1", PartitionKey = "680", Database = "db", Container = "items" };
 
         var error = await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(shell, new CommandState(), "print", TestContext.Current.CancellationToken));
 

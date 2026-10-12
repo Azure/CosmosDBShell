@@ -574,9 +574,7 @@ internal class ToolOperations
                                 nameof(RmCommand.PartitionKeyArgument) => "command-rm-error-partition_key_missing_value",
                                 _ => null,
                             }
-                            : cmd is PrintCommand && option.PropertyInfo.Name == nameof(PrintCommand.PartitionKeyArgument)
-                                ? "command-print-error-partition_key_missing_value"
-                                : null;
+                            : null;
                         if (safetyErrorKey != null)
                         {
                             var errorMessage = MessageService.GetString(safetyErrorKey);

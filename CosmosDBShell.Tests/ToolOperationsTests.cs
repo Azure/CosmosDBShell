@@ -374,17 +374,17 @@ public class ToolOperationsTests
     }
 
     [Fact]
-    public void GetTool_PrintExposesTypedKeyAndOptionalLegacyKey()
+    public void GetTool_PrintRequiresTypedPositionalKey()
     {
         var tool = ToolOperations.GetTool(new CommandRunner().Commands["print"]);
         var properties = tool.InputSchema.GetProperty("properties");
 
-        var partitionKey = properties.GetProperty("partition-key");
-        Assert.Equal("string", partitionKey.GetProperty("type").GetString());
-        Assert.Contains("Aliases: pk", partitionKey.GetProperty("description").GetString());
-        Assert.Contains("JSON", partitionKey.GetProperty("description").GetString());
-        Assert.Equal("string", properties.GetProperty("key").GetProperty("type").GetString());
-        Assert.Equal("id", Assert.Single(tool.InputSchema.GetProperty("required").EnumerateArray()).GetString());
+        Assert.False(properties.TryGetProperty("partition-key", out _));
+        Assert.False(properties.TryGetProperty("pk", out _));
+        var key = properties.GetProperty("key");
+        Assert.Equal("string", key.GetProperty("type").GetString());
+        Assert.Contains("JSON", key.GetProperty("description").GetString());
+        Assert.Equal(["id", "key"], tool.InputSchema.GetProperty("required").EnumerateArray().Select(value => value.GetString()));
     }
 
     private static JsonElement Json(string raw)

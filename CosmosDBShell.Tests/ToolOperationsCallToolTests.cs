@@ -563,21 +563,18 @@ public class ToolOperationsCallToolTests : IDisposable
     }
 
     [Theory]
-    [InlineData("partition-key", true)]
-    [InlineData("pk", true)]
-    [InlineData("partition-key", false)]
-    [InlineData("pk", false)]
-    public async Task CallTool_PrintWithNullTypedKey_RejectsInsteadOfUsingLegacyKey(string option, bool useLegacyKey)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CallTool_PrintWithoutKey_ReportsMissingKey(bool explicitNull)
     {
         var tool = CreateToolOperations();
         var arguments = new Dictionary<string, JsonElement>
         {
             ["id"] = Json("\"item-1\""),
-            [option] = Json("null"),
         };
-        if (useLegacyKey)
+        if (explicitNull)
         {
-            arguments["key"] = Json("\"legacy\"");
+            arguments["key"] = Json("null");
         }
 
         var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
@@ -585,19 +582,42 @@ public class ToolOperationsCallToolTests : IDisposable
         using (document)
         {
             Assert.True(isError);
-            Assert.Equal(
-                Azure.Data.Cosmos.Shell.Util.MessageService.GetString("command-print-error-partition_key_missing_value"),
+            Assert.Contains(
+                Azure.Data.Cosmos.Shell.Util.MessageService.GetString("command-print-error-missing_key"),
                 root.GetProperty("error").GetString());
         }
     }
 
     [Theory]
-    [InlineData("partition-key", "680")]
-    [InlineData("pk", "\"680\"")]
-    [InlineData("pk", "[1001,\"customer-1001\"]")]
-    [InlineData("pk", "true")]
-    [InlineData("pk", "null")]
-    public async Task CallTool_PrintWithTypedKey_BindsWithoutRequiringLegacyKey(string option, string value)
+    [InlineData("partition-key")]
+    [InlineData("pk")]
+    public async Task CallTool_PrintWithRemovedPartitionKeyOption_IsUnknownArgument(string option)
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["id"] = Json("\"item-1\""),
+            ["key"] = Json("\"680\""),
+            [option] = Json("\"680\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.StartsWith($"Unknown argument '{option}' for command 'print'.", root.GetProperty("error").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData("680")]
+    [InlineData("\"680\"")]
+    [InlineData("[1001,\"customer-1001\"]")]
+    [InlineData("true")]
+    [InlineData("null")]
+    [InlineData("customer-1")]
+    public async Task CallTool_PrintWithTypedKey_Binds(string value)
     {
         var tool = CreateToolOperations();
         var shell = ShellInterpreter.Instance;
@@ -608,7 +628,7 @@ public class ToolOperationsCallToolTests : IDisposable
             var arguments = new Dictionary<string, JsonElement>
             {
                 ["id"] = Json("\"item-1\""),
-                [option] = JsonSerializer.SerializeToElement(value),
+                ["key"] = JsonSerializer.SerializeToElement(value),
             };
 
             var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);

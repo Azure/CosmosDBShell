@@ -112,7 +112,7 @@ pwd                  # /ToDoList/Items
 
 ### Reading an Item by ID
 
-For point reads, `print <id> --partition-key=<value>` (alias `--pk`) accepts the established typed-key syntax. Inside Cosmos DB Shell, `--pk=680` selects a number and `--pk='"680"'` selects a string: outer shell quotes are removed, while the inner JSON quotes determine the key type. A complete hierarchical key is an ordered JSON array, for example `--pk='[1001,"customer-1001"]'`. The legacy `print <id> <key>` form remains string-valued. See [print](commands.md#print) for examples and validation rules.
+For point reads, `print <id> <key>` accepts the established typed-key syntax. Inside Cosmos DB Shell, `print <id> 680` selects a number and `print <id> '"680"'` selects a string: outer shell quotes are removed, while the inner JSON quotes determine the key type. A complete hierarchical key is an ordered JSON array, for example `print <id> '[1001,"customer-1001"]'`. See [print](commands.md#print) for examples and validation rules.
 
 ## Pipes and JSON Flow
 

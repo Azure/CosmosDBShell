@@ -14,19 +14,16 @@ using global::Azure.Data.Cosmos.Shell.States;
 [CosmosCommand("print")]
 [CosmosExample("print item-123 partitionKey-value", DescriptionKey = "command-print-example-1")]
 [CosmosExample("print user-456 userId123 --database=MyDB --container=Users", DescriptionKey = "command-print-example-2")]
-[CosmosExample("print product-680 --pk=680", DescriptionKey = "command-print-example-3")]
-[CosmosExample("print product-680 --pk='\"680\"'", DescriptionKey = "command-print-example-4")]
-[CosmosExample("print customer-1001 --pk='[1001,\"customer-1001\"]'", DescriptionKey = "command-print-example-5")]
+[CosmosExample("print product-680 680", DescriptionKey = "command-print-example-3")]
+[CosmosExample("print product-680 '\"680\"'", DescriptionKey = "command-print-example-4")]
+[CosmosExample("print customer-1001 '[1001,\"customer-1001\"]'", DescriptionKey = "command-print-example-5")]
 internal class PrintCommand : CosmosCommand
 {
     [CosmosParameter("id", RequiredErrorKey = "command-print-error-missing_id")]
     public string? Id { get; init; }
 
-    [CosmosParameter("key", IsRequired = false)]
+    [CosmosParameter("key", RequiredErrorKey = "command-print-error-missing_key")]
     public string? PartitionKey { get; init; }
-
-    [CosmosOption("partition-key", "pk")]
-    public string? PartitionKeyArgument { get; init; }
 
     [CosmosOption("database", "db")]
     public string? Database { get; init; }
@@ -85,29 +82,19 @@ internal class PrintCommand : CosmosCommand
 
     internal PartitionKey GetPartitionKey()
     {
-        if (this.PartitionKey != null && this.PartitionKeyArgument != null)
-        {
-            throw new CommandException("print", MessageService.GetString("command-print-error-conflicting_keys"));
-        }
-
-        if (this.PartitionKeyArgument != null)
-        {
-            try
-            {
-                return CreatePartitionKeyFromArgument(this.PartitionKeyArgument);
-            }
-            catch (JsonException ex)
-            {
-                throw new CommandException("print", MessageService.GetString("command-print-error-invalid_pk_json"), ex);
-            }
-        }
-
         if (this.PartitionKey == null)
         {
             throw new CommandException("print", MessageService.GetString("command-print-error-missing_key"));
         }
 
-        return new PartitionKey(this.PartitionKey);
+        try
+        {
+            return CreatePartitionKeyFromArgument(this.PartitionKey);
+        }
+        catch (JsonException ex)
+        {
+            throw new CommandException("print", MessageService.GetString("command-print-error-invalid_pk_json"), ex);
+        }
     }
 
     private async Task<CommandState> PrintItemAsync(Container container, PartitionKey partitionKey, CancellationToken token)
@@ -133,7 +120,7 @@ internal class PrintCommand : CosmosCommand
                 throw new CommandException("print", MessageService.GetString("command-print-error-item_not_found", new Dictionary<string, object>
                 {
                     { "id", this.Id ?? "(null)" },
-                    { "partitionKey", this.PartitionKeyArgument ?? this.PartitionKey ?? "(null)" },
+                    { "partitionKey", this.PartitionKey ?? "(null)" },
                 }));
             }
             else

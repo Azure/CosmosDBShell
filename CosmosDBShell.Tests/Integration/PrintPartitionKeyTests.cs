@@ -70,13 +70,13 @@ public class PrintPartitionKeyTests : EmulatorTestBase
             var scopedFixture = fixtures.First(fixture => fixture.ContainerName == "Three");
             using var scopedDocument = JsonDocument.Parse(scopedFixture.Document);
             var scopedId = scopedDocument.RootElement.GetProperty("id").GetString();
-            var scopedResult = await this.ReadThroughShellAsync($"print {scopedId} --pk='[\"tenant-1\",680,true]'", recorder, scopedFixture.PartitionKey);
+            var scopedResult = await this.ReadThroughShellAsync($"print {scopedId} '[\"tenant-1\",680,true]'", recorder, scopedFixture.PartitionKey);
             AssertDocumentEquals(fixtures.First(fixture => fixture.ContainerName == "Three").Document, scopedResult);
 
             await this.AssertInputErrorsAsync(database.Id, recorder);
 
             recorder.Requests.Clear();
-            var missing = await RunScriptAsync($"print missing --pk=680 --database={database.Id} --container=Scalar");
+            var missing = await RunScriptAsync($"print missing 680 --database={database.Id} --container=Scalar");
             Assert.True(missing.IsError);
             Assert.Contains("not found using partition key", GetErrorMessage(missing));
             AssertPointRead(recorder, new PartitionKey(680d));
@@ -96,53 +96,54 @@ public class PrintPartitionKeyTests : EmulatorTestBase
     private static KeyFixture[] CreateFixtures() =>
     [
         new("Scalar", """{"id":"product-680-numeric","pk":680,"marker":"numeric"}""", new PartitionKey(680d),
-            "--pk=680", "--partition-key 680", "--pk=\"680\""),
+            "680", "\"680\""),
         new("Scalar", """{"id":"product-680-numeric-string","pk":"680","marker":"numeric-string"}""", new PartitionKey("680"),
-            "680", "\"680\"", "--partition-key='\"680\"'"),
-        new("Scalar", """{"id":"product-680-fraction","pk":680.5,"marker":"fraction"}""", new PartitionKey(680.5d), "--pk=680.5"),
-        new("Scalar", """{"id":"product-680-boolean","pk":true,"marker":"boolean"}""", new PartitionKey(true), "--pk=true"),
-        new("Scalar", """{"id":"product-680-false","pk":false,"marker":"false"}""", new PartitionKey(false), "--pk=false"),
+            "'\"680\"'"),
+        new("Scalar", """{"id":"product-680-fraction","pk":680.5,"marker":"fraction"}""", new PartitionKey(680.5d), "680.5"),
+        new("Scalar", """{"id":"product-680-boolean","pk":true,"marker":"boolean"}""", new PartitionKey(true), "true"),
+        new("Scalar", """{"id":"product-680-false","pk":false,"marker":"false"}""", new PartitionKey(false), "false"),
         new("Scalar", """{"id":"product-680-boolean-string","pk":"true","marker":"boolean-string"}""", new PartitionKey("true"),
-            "true", "--pk='\"true\"'"),
-        new("Scalar", """{"id":"product-680-null","pk":null,"marker":"null"}""", PartitionKey.Null, "--pk=null"),
+            "'\"true\"'"),
+        new("Scalar", """{"id":"product-680-null","pk":null,"marker":"null"}""", PartitionKey.Null, "null"),
         new("Scalar", """{"id":"product-680-null-string","pk":"null","marker":"null-string"}""", new PartitionKey("null"),
-            "'null'", "--pk='\"null\"'"),
+            "'\"null\"'"),
         new("Scalar", """{"id":"product-680-ordinary","pk":"customer-1","marker":"ordinary"}""", new PartitionKey("customer-1"),
-            "customer-1", "--pk=customer-1"),
-        new("Scalar", """{"id":"product-680-empty","pk":"","marker":"empty"}""", new PartitionKey(""), "''", "--pk='\"\"'"),
-        new("Scalar", """{"id":"product-680-whitespace","pk":" ","marker":"whitespace"}""", new PartitionKey(" "), "' '", "--pk='\" \"'"),
+            "customer-1", "'\"customer-1\"'"),
+        new("Scalar", """{"id":"product-680-leading-zero","pk":"001","marker":"leading-zero"}""", new PartitionKey("001"), "'001'"),
+        new("Scalar", """{"id":"product-680-empty","pk":"","marker":"empty"}""", new PartitionKey(""), "''", "'\"\"'"),
+        new("Scalar", """{"id":"product-680-whitespace","pk":" ","marker":"whitespace"}""", new PartitionKey(" "), "' '", "'\" \"'"),
         new("Scalar", """{"id":"product-680-array-string","pk":"[1001,\"customer-1001\"]","marker":"array-string"}""",
-            new PartitionKey("[1001,\"customer-1001\"]"), "'[1001,\"customer-1001\"]'"),
+            new PartitionKey("[1001,\"customer-1001\"]"), "'\"[1001,\\\"customer-1001\\\"]\"'"),
         new("Two", """{"id":"customer-1001-two-numeric","first":1001,"second":"customer-1001","marker":"two-numeric"}""",
-            new PartitionKeyBuilder().Add(1001d).Add("customer-1001").Build(), "--pk='[1001,\"customer-1001\"]'"),
+            new PartitionKeyBuilder().Add(1001d).Add("customer-1001").Build(), "'[1001,\"customer-1001\"]'"),
         new("Two", """{"id":"customer-1001-two-string","first":"1001","second":"customer-1001","marker":"two-string"}""",
-            new PartitionKeyBuilder().Add("1001").Add("customer-1001").Build(), "--pk='[\"1001\",\"customer-1001\"]'"),
+            new PartitionKeyBuilder().Add("1001").Add("customer-1001").Build(), "'[\"1001\",\"customer-1001\"]'"),
         new("Two", """{"id":"customer-1001-two-reversed","first":"customer-1001","second":1001,"marker":"two-reversed"}""",
-            new PartitionKeyBuilder().Add("customer-1001").Add(1001d).Build(), "--pk='[\"customer-1001\",1001]'"),
+            new PartitionKeyBuilder().Add("customer-1001").Add(1001d).Build(), "'[\"customer-1001\",1001]'"),
         new("Two", """{"id":"customer-1001-two-boolean","first":"tenant-1","second":true,"marker":"two-boolean"}""",
-            new PartitionKeyBuilder().Add("tenant-1").Add(true).Build(), "--pk='[\"tenant-1\",true]'"),
+            new PartitionKeyBuilder().Add("tenant-1").Add(true).Build(), "'[\"tenant-1\",true]'"),
         new("Three", """{"id":"order-42-three-numeric","first":"tenant-1","second":680,"third":true,"marker":"three-numeric"}""",
-            new PartitionKeyBuilder().Add("tenant-1").Add(680d).Add(true).Build(), "--pk='[\"tenant-1\",680,true]'"),
+            new PartitionKeyBuilder().Add("tenant-1").Add(680d).Add(true).Build(), "'[\"tenant-1\",680,true]'"),
         new("Three", """{"id":"order-42-three-string","first":"tenant-1","second":"680","third":true,"marker":"three-string"}""",
-            new PartitionKeyBuilder().Add("tenant-1").Add("680").Add(true).Build(), "--pk='[\"tenant-1\",\"680\",true]'"),
+            new PartitionKeyBuilder().Add("tenant-1").Add("680").Add(true).Build(), "'[\"tenant-1\",\"680\",true]'"),
         new("Three", """{"id":"order-42-three-reversed","first":680,"second":"tenant-1","third":true,"marker":"three-reversed"}""",
-            new PartitionKeyBuilder().Add(680d).Add("tenant-1").Add(true).Build(), "--pk='[680,\"tenant-1\",true]'"),
+            new PartitionKeyBuilder().Add(680d).Add("tenant-1").Add(true).Build(), "'[680,\"tenant-1\",true]'"),
     ];
 
     private static KeyFixture[] CreateCollisionFixtures() =>
     [
         new("Scalar", """{"id":"product-680","pk":680,"marker":"numeric"}""", new PartitionKey(680d),
-            "--pk=680", "--partition-key 680"),
+            "680"),
         new("Scalar", """{"id":"product-680","pk":"680","marker":"numeric-string"}""", new PartitionKey("680"),
-            "680", "--pk='\"680\"'"),
+            "'\"680\"'"),
         new("Two", """{"id":"customer-1001","first":1001,"second":"customer-1001","marker":"two-numeric"}""",
-            new PartitionKeyBuilder().Add(1001d).Add("customer-1001").Build(), "--pk='[1001,\"customer-1001\"]'"),
+            new PartitionKeyBuilder().Add(1001d).Add("customer-1001").Build(), "'[1001,\"customer-1001\"]'"),
         new("Two", """{"id":"customer-1001","first":"1001","second":"customer-1001","marker":"two-string"}""",
-            new PartitionKeyBuilder().Add("1001").Add("customer-1001").Build(), "--pk='[\"1001\",\"customer-1001\"]'"),
+            new PartitionKeyBuilder().Add("1001").Add("customer-1001").Build(), "'[\"1001\",\"customer-1001\"]'"),
         new("Three", """{"id":"order-42","first":"tenant-1","second":680,"third":true,"marker":"three-numeric"}""",
-            new PartitionKeyBuilder().Add("tenant-1").Add(680d).Add(true).Build(), "--pk='[\"tenant-1\",680,true]'"),
+            new PartitionKeyBuilder().Add("tenant-1").Add(680d).Add(true).Build(), "'[\"tenant-1\",680,true]'"),
         new("Three", """{"id":"order-42","first":"tenant-1","second":"680","third":true,"marker":"three-string"}""",
-            new PartitionKeyBuilder().Add("tenant-1").Add("680").Add(true).Build(), "--pk='[\"tenant-1\",\"680\",true]'"),
+            new PartitionKeyBuilder().Add("tenant-1").Add("680").Add(true).Build(), "'[\"tenant-1\",\"680\",true]'"),
     ];
 
     private static void AssertDocumentEquals(string expected, JsonElement actual)
@@ -187,21 +188,19 @@ public class PrintPartitionKeyTests : EmulatorTestBase
     {
         (string Arguments, string ExpectedMessage)[] invalid =
         [
-            ("customer-1001", "positional string key or --partition-key"),
-            ("--pk=680", "ID of the item"),
-            ("customer-1001 --pk", "requires a value"),
-            ("customer-1001 legacy --pk=680", "not both"),
-            ("customer-1001 '' --pk=680", "not both"),
-            ("customer-1001 --pk='[1001,]'", "Invalid partition key JSON"),
-            ("customer-1001 --pk='{}'", "Invalid partition key JSON"),
-            ("customer-1001 --pk='[{},1]'", "Invalid partition key JSON"),
-            ("customer-1001 --pk='[[1],2]'", "Invalid partition key JSON"),
-            ("customer-1001 --pk='[]'", "Invalid partition key JSON"),
-            ("customer-1001 --pk='[1,2,3,4]'", "Invalid partition key JSON"),
-            ("customer-1001 --pk='1e400'", "Invalid partition key JSON"),
-            ("customer-1001 --pk=1001", "all 2 components"),
-            ("customer-1001 --pk='[1001]'", "all 2 components"),
-            ("customer-1001 --pk='[1001,\"customer-1001\",true]'", "all 2 components"),
+            ("", "ID of the item"),
+            ("customer-1001", "Specify the item's partition key"),
+            ("customer-1001 --pk=680", "--pk"),
+            ("customer-1001 '[1001,]'", "Invalid partition key JSON"),
+            ("customer-1001 '{}'", "Invalid partition key JSON"),
+            ("customer-1001 '[{},1]'", "Invalid partition key JSON"),
+            ("customer-1001 '[[1],2]'", "Invalid partition key JSON"),
+            ("customer-1001 '[]'", "Invalid partition key JSON"),
+            ("customer-1001 '[1,2,3,4]'", "Invalid partition key JSON"),
+            ("customer-1001 '1e400'", "Invalid partition key JSON"),
+            ("customer-1001 1001", "all 2 components"),
+            ("customer-1001 '[1001]'", "all 2 components"),
+            ("customer-1001 '[1001,\"customer-1001\",true]'", "all 2 components"),
         ];
 
         foreach (var (arguments, expectedMessage) in invalid)
