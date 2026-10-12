@@ -5,9 +5,11 @@
 ### New features
 
 - **Non-transactional `bulk` command.** Run unlimited independent `create`, `upsert`, `replace`, `delete`, and `patch` operations across partition keys with bounded concurrency (default 16). It uses the batch operation schema, plus optional per-operation `partitionKey` and `ifMatch`, and the same `run`/`begin`/`add`/`execute`/`cancel`/`status`/`show` subcommands. `bulk patch --where` and `bulk delete --where` select items by predicate, including complete hierarchical partition keys. Add `--save` to write a reviewable plan for `bulk run`. Safeguards include dry-run, confirmation, item and observed-RU limits, and ETag checks. Journals skip succeeded writes on rerun, retry failed writes, and hold back writes with unknown outcomes. MCP exposes `run`, `patch`, and `delete`. ([#107](https://github.com/Azure/CosmosDBShell/issues/107))
+## 1.1.280 — 2026-10-09
 
 ### Fixes
 
+- Restore legacy MCP HTTP+SSE endpoints alongside Streamable HTTP on the same `--mcp` server using SDK 2.2. No extra option is required. Bound outstanding legacy requests to 16 across all sessions and reject excess requests without queuing.
 - Parse `exec` options and shell words like direct commands. Bind built-in options normally and pass option-shaped words to functions and script files as positional text.
 - `for` and `do` loops now reject misspelled `in` and `while` keywords before any statements in the input execute. They previously accepted any identifier in those positions.
 - `filter` now rejects array index literals larger than `2147483647`, including optional access, instead of silently selecting element zero. Representable indexes beyond the array length still return `null`.

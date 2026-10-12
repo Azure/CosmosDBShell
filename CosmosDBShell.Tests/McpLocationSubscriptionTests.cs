@@ -20,8 +20,10 @@ using ModelContextProtocol.Protocol;
 [Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class McpLocationSubscriptionTests
 {
-    [Fact]
-    public async Task SubscribedClient_ReceivesInteractiveLocationChange()
+    [Theory]
+    [InlineData(HttpTransportMode.StreamableHttp, "2025-11-25")]
+    [InlineData(HttpTransportMode.Sse, "2024-11-05")]
+    public async Task SubscribedClient_ReceivesInteractiveLocationChange(HttpTransportMode transportMode, string protocolVersion)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(10));
@@ -29,7 +31,7 @@ public class McpLocationSubscriptionTests
         await host.StartAsync(timeout.Token);
         try
         {
-            await using var client = await ConnectAsync(host, timeout.Token);
+            await using var client = await ConnectAsync(host, timeout.Token, protocolVersion, transportMode);
             Assert.NotNull(client.ServerCapabilities.Resources);
             Assert.True(client.ServerCapabilities.Resources.Subscribe);
             Assert.False(client.ServerCapabilities.Resources.ListChanged);
@@ -89,8 +91,10 @@ public class McpLocationSubscriptionTests
         }
     }
 
-    [Fact]
-    public async Task EndedSession_RemovesLocationSubscription()
+    [Theory]
+    [InlineData(HttpTransportMode.StreamableHttp, "2025-11-25")]
+    [InlineData(HttpTransportMode.Sse, "2024-11-05")]
+    public async Task EndedSession_RemovesLocationSubscription(HttpTransportMode transportMode, string protocolVersion)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(10));
@@ -99,11 +103,11 @@ public class McpLocationSubscriptionTests
         try
         {
             var subscriptions = host.Services.GetRequiredService<LocationResourceSubscriptions>();
-            var client = await ConnectAsync(host, timeout.Token);
+            await using var client = await ConnectAsync(host, timeout.Token, protocolVersion, transportMode);
             await client.SubscribeToResourceAsync(ResourceOperations.CurrentLocationUri, cancellationToken: timeout.Token);
             Assert.Equal(1, subscriptions.SubscriberCount);
 
-            // Disposing the client ends the session with DELETE, which must release the subscription.
+            // Closing either transport must release its session's subscription.
             await client.DisposeAsync();
             while (subscriptions.SubscriberCount != 0)
             {
@@ -330,25 +334,189 @@ public class McpLocationSubscriptionTests
     }
 
     [Fact]
+    public async Task LegacyAndStreamableHttpClients_ShareServerToolsAndResources()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        using var host = McpServer.CreateHost(new Program.CosmosShellOptions { McpPort = 0 });
+        await host.StartAsync(timeout.Token);
+        try
+        {
+            await using var modern = await ConnectAsync(host, timeout.Token);
+            await using var legacy = await ConnectAsync(host, timeout.Token, "2024-11-05", HttpTransportMode.Sse);
+            var modernTools = await modern.ListToolsAsync(cancellationToken: timeout.Token);
+            var legacyTools = await legacy.ListToolsAsync(cancellationToken: timeout.Token);
+            Assert.NotEmpty(modernTools);
+            Assert.Equal(modernTools.Select(tool => tool.Name), legacyTools.Select(tool => tool.Name));
+
+            var modernLocation = await modern.ReadResourceAsync(ResourceOperations.CurrentLocationUri, cancellationToken: timeout.Token);
+            var legacyLocation = await legacy.ReadResourceAsync(ResourceOperations.CurrentLocationUri, cancellationToken: timeout.Token);
+            Assert.Equal(
+                Assert.IsType<TextResourceContents>(Assert.Single(modernLocation.Contents)).Text,
+                Assert.IsType<TextResourceContents>(Assert.Single(legacyLocation.Contents)).Text);
+
+            foreach (var client in new[] { modern, legacy })
+            {
+                var result = await client.CallToolAsync("version", cancellationToken: timeout.Token);
+                Assert.False(result.IsError == true);
+                Assert.NotEmpty(result.Content);
+            }
+        }
+        finally
+        {
+            await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Theory]
+    [InlineData("/sse", "GET")]
+    [InlineData("/message", "POST")]
+    public async Task LegacyEndpoints_RejectNonLoopbackOrigins(string path, string method)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        using var host = McpServer.CreateHost(new Program.CosmosShellOptions { McpPort = 0 });
+        await host.StartAsync(timeout.Token);
+        try
+        {
+            var address = host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+            using var http = new HttpClient();
+            using var request = new HttpRequestMessage(new HttpMethod(method), address.TrimEnd('/') + path);
+            request.Headers.Add("Origin", "https://untrusted.example");
+            using var response = await http.SendAsync(request, timeout.Token);
+            Assert.Equal(System.Net.HttpStatusCode.Forbidden, response.StatusCode);
+        }
+        finally
+        {
+            await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task LegacyRequests_RejectExcessAcrossSessionsAndReleaseCancelledRequests()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        using var host = McpServer.CreateHost(new Program.CosmosShellOptions { McpPort = 0 });
+        await host.StartAsync(timeout.Token);
+        var releaseGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<bool>? heldGate = null;
+        var calls = new List<Task<CallToolResult>>();
+        try
+        {
+            await using var first = await ConnectAsync(host, timeout.Token, "2024-11-05", HttpTransportMode.Sse);
+            await using var second = await ConnectAsync(host, timeout.Token, "2024-11-05", HttpTransportMode.Sse);
+            await using var modern = await ConnectAsync(host, timeout.Token);
+            var limiter = host.Services.GetRequiredService<LegacyRequestLimiter>();
+            var admission = host.Services.GetRequiredService<LegacyHttpAdmission>();
+            var enteredGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            heldGate = ShellInterpreter.Instance.RunSerializedAsync(
+                async () =>
+                {
+                    enteredGate.SetResult(true);
+                    return await releaseGate.Task;
+                },
+                timeout.Token);
+            await enteredGate.Task.WaitAsync(timeout.Token);
+
+            var cancelledRequestId = new RequestId("cancelled-limit-test");
+            var cancelledCall = first.SendRequestAsync(
+                new JsonRpcRequest
+                {
+                    Id = cancelledRequestId,
+                    Method = RequestMethods.ToolsCall,
+                    Params = JsonSerializer.SerializeToNode(new CallToolRequestParams { Name = "version" }),
+                },
+                timeout.Token);
+            for (var i = 1; i < LegacyRequestLimiter.MaxOutstandingRequests; i++)
+            {
+                var client = i % 2 == 0 ? first : second;
+                calls.Add(client.CallToolAsync("version", cancellationToken: timeout.Token).AsTask());
+            }
+
+            await WaitForOutstandingRequestsAsync(limiter, LegacyRequestLimiter.MaxOutstandingRequests, timeout.Token);
+            var error = await Assert.ThrowsAsync<HttpRequestException>(
+                async () => await second.CallToolAsync("version", cancellationToken: timeout.Token));
+            Assert.Equal(System.Net.HttpStatusCode.TooManyRequests, error.StatusCode);
+            Assert.Contains("Retry", error.Message);
+            Assert.Equal(LegacyRequestLimiter.MaxOutstandingRequests, limiter.OutstandingRequests);
+            Assert.Equal(LegacyRequestLimiter.MaxOutstandingRequests, admission.OutstandingRequests);
+            Assert.NotEmpty(await modern.ListToolsAsync(cancellationToken: timeout.Token));
+
+            await first.SendMessageAsync(
+                new JsonRpcNotification
+                {
+                    Method = NotificationMethods.CancelledNotification,
+                    Params = JsonSerializer.SerializeToNode(new CancelledNotificationParams { RequestId = cancelledRequestId }),
+                },
+                timeout.Token);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await cancelledCall.WaitAsync(timeout.Token));
+            await WaitForOutstandingRequestsAsync(limiter, LegacyRequestLimiter.MaxOutstandingRequests - 1, timeout.Token);
+            calls.Add(second.CallToolAsync("version", cancellationToken: timeout.Token).AsTask());
+            await WaitForOutstandingRequestsAsync(limiter, LegacyRequestLimiter.MaxOutstandingRequests, timeout.Token);
+
+            releaseGate.SetResult(true);
+            foreach (var call in calls)
+            {
+                Assert.False((await call.WaitAsync(timeout.Token)).IsError == true);
+            }
+
+            await WaitForOutstandingRequestsAsync(limiter, 0, timeout.Token);
+            var resourceError = await Assert.ThrowsAsync<McpProtocolException>(
+                async () => await first.ReadResourceAsync("cosmos://docs/missing", cancellationToken: timeout.Token));
+            Assert.Equal(McpErrorCode.ResourceNotFound, resourceError.ErrorCode);
+            await WaitForOutstandingRequestsAsync(limiter, 0, timeout.Token);
+            Assert.False((await first.CallToolAsync("version", cancellationToken: timeout.Token)).IsError == true);
+        }
+        finally
+        {
+            releaseGate.TrySetResult(true);
+            if (heldGate is not null)
+            {
+                await heldGate;
+            }
+
+            await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Fact]
     public void HttpTransport_UsesSessionsOnlyForInitializeClientsWithBoundedIdleTimeout()
     {
         var options = new ModelContextProtocol.AspNetCore.HttpServerTransportOptions();
         McpServer.ConfigureHttpTransport(options);
 
         Assert.Equal(ModelContextProtocol.AspNetCore.HttpServerSessionMode.StatefulForInitializeClients, options.SessionMode);
+        Assert.NotNull(options.ConfigureSessionOptions);
+#pragma warning disable MCP9004 // Verify the intentionally enabled legacy transport.
+        Assert.True(options.EnableLegacySse);
+#pragma warning restore MCP9004
 #pragma warning disable MCP9006, MCPEXP002
         Assert.Equal(McpServer.SessionIdleTimeout, options.IdleTimeout);
         Assert.NotNull(options.RunSessionHandler);
 #pragma warning restore MCP9006, MCPEXP002
     }
 
+    private static async Task WaitForOutstandingRequestsAsync(LegacyRequestLimiter limiter, int expected, CancellationToken cancellationToken)
+    {
+        while (limiter.OutstandingRequests != expected)
+        {
+            await Task.Delay(20, cancellationToken);
+        }
+    }
+
     // resources/subscribe and session lifetimes exist only for clients that use the initialize handshake.
-    private static async Task<McpClient> ConnectAsync(IHost host, CancellationToken cancellationToken, string? protocolVersion = "2025-11-25")
+    private static async Task<McpClient> ConnectAsync(
+        IHost host,
+        CancellationToken cancellationToken,
+        string? protocolVersion = "2025-11-25",
+        HttpTransportMode transportMode = HttpTransportMode.StreamableHttp)
     {
         var address = host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
         var transport = new HttpClientTransport(new HttpClientTransportOptions
         {
-            Endpoint = new Uri(address.TrimEnd('/') + "/"),
+            Endpoint = new Uri(address.TrimEnd('/') + (transportMode == HttpTransportMode.Sse ? "/sse" : "/")),
+            TransportMode = transportMode,
         });
         return await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = protocolVersion }, cancellationToken: cancellationToken);
     }
