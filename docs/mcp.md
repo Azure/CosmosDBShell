@@ -34,6 +34,10 @@ Accepted HTTP POSTs return `202 Accepted`, which is not command success.
 Replies and notifications, including cancellation, do not consume permits.
 This limit does not apply to Streamable HTTP.
 
+Session cleanup is independent of the originating HTTP request's lifetime.
+Ending a session releases its location subscriptions and any outstanding legacy
+SSE admission state, even after the initialization request has ended.
+
 ## VS Code Setup
 
 > **Requires VS Code 1.103+**

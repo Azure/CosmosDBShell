@@ -128,16 +128,18 @@ internal class McpServer
 #pragma warning disable MCPEXP002 // RunSessionHandler is the only hook that observes the session lifetime.
         options.RunSessionHandler = async (httpContext, server, cancellationToken) =>
         {
+            // The session can outlive its originating HTTP request.
+            var subscriptions = httpContext.RequestServices.GetRequiredService<LocationResourceSubscriptions>();
+            var legacyAdmission = httpContext.Request.Path == "/sse"
+                ? httpContext.RequestServices.GetRequiredService<LegacyHttpAdmission>()
+                : null;
             try
             {
-                await httpContext.RequestServices.GetRequiredService<LocationResourceSubscriptions>().RunSessionAsync(server, cancellationToken);
+                await subscriptions.RunSessionAsync(server, cancellationToken);
             }
             finally
             {
-                if (httpContext.Request.Path == "/sse")
-                {
-                    httpContext.RequestServices.GetRequiredService<LegacyHttpAdmission>().EndSession(server.SessionId);
-                }
+                legacyAdmission?.EndSession(server.SessionId);
             }
         };
 #pragma warning restore MCPEXP002

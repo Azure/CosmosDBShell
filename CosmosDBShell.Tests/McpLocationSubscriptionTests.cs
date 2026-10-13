@@ -10,12 +10,14 @@ using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.States;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using NSubstitute;
 
 [Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class McpLocationSubscriptionTests
@@ -117,6 +119,76 @@ public class McpLocationSubscriptionTests
         finally
         {
             await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Theory]
+    [InlineData("/", false)]
+    [InlineData("/sse", false)]
+    [InlineData("/", true)]
+    [InlineData("/sse", true)]
+    public async Task RunSessionHandler_EndedRequestReleasesSessionState(string path, bool sessionFails)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        using var host = McpServer.CreateHost(new Program.CosmosShellOptions { McpPort = 0 });
+        var subscriptions = host.Services.GetRequiredService<LocationResourceSubscriptions>();
+        var admission = host.Services.GetRequiredService<LegacyHttpAdmission>();
+        var options = new ModelContextProtocol.AspNetCore.HttpServerTransportOptions();
+        McpServer.ConfigureHttpTransport(options);
+        var context = new DefaultHttpContext { RequestServices = host.Services };
+        context.Request.Path = path;
+        var server = Substitute.For<ModelContextProtocol.Server.McpServer>();
+        server.SessionId.Returns("ended-request-test");
+        var sessionCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        server.RunAsync(Arg.Any<CancellationToken>()).Returns(sessionCompletion.Task);
+
+        using var requestBody = new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(
+            new JsonRpcRequest { Id = new RequestId(1), Method = RequestMethods.ToolsCall }));
+        var admissionContext = new DefaultHttpContext();
+        admissionContext.Request.Path = "/message";
+        admissionContext.Request.Method = HttpMethods.Post;
+        admissionContext.Request.QueryString = new QueryString("?sessionId=ended-request-test");
+        admissionContext.Request.ContentType = "application/json";
+        admissionContext.Request.Body = requestBody;
+        await admission.InvokeAsync(admissionContext, current =>
+        {
+            current.Response.StatusCode = StatusCodes.Status202Accepted;
+            return Task.CompletedTask;
+        });
+        Assert.Equal(1, admission.OutstandingRequests);
+
+#pragma warning disable MCPEXP002 // Exercise cleanup after the originating HTTP context has expired.
+        var session = options.RunSessionHandler!(context, server, timeout.Token);
+#pragma warning restore MCPEXP002
+        try
+        {
+            subscriptions.Subscribe(server.SessionId, ResourceOperations.CurrentLocationUri);
+            Assert.Equal(1, subscriptions.SubscriberCount);
+            Assert.False(session.IsCompleted);
+            context.Uninitialize();
+            Assert.Throws<ObjectDisposedException>(() => context.Request.Path);
+
+            if (sessionFails)
+            {
+                var error = new InvalidOperationException("Session failed.");
+                sessionCompletion.SetException(error);
+                Assert.Same(error, await Assert.ThrowsAsync<InvalidOperationException>(
+                    () => session.WaitAsync(timeout.Token)));
+            }
+            else
+            {
+                sessionCompletion.SetResult();
+                await session.WaitAsync(timeout.Token);
+            }
+
+            Assert.Equal(0, subscriptions.SubscriberCount);
+            Assert.Equal(path == "/sse" ? 0 : 1, admission.OutstandingRequests);
+        }
+        finally
+        {
+            sessionCompletion.TrySetResult();
+            admission.EndSession(server.SessionId);
         }
     }
 
