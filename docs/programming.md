@@ -309,6 +309,7 @@ Notes:
 - If the evaluated value is a file path that exists, the shell runs it as a `.csh` script.
 - Argument parsing stops at `;`, newline, `}`, or `|` (so you can chain with pipes).
 - Arguments use normal command syntax, including `-name` / `--name` options with space-separated, `=`, or `:` values, negative arguments such as `-5`, and unquoted shell words such as URLs and file patterns. Variables, JSON values, and parenthesized expressions retain their normal evaluation behavior. Quote a dash-prefixed word when it should be a positional string rather than an option.
+- Built-in commands bind options using their normal metadata. Functions and script files receive option-shaped words as positional text, such as `--name=value`; values are evaluated once in the caller.
 
 Examples:
 

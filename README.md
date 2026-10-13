@@ -39,7 +39,11 @@ Exports replace their destination only after successful completion, preserving a
 
 MCP command execution is serialized with the shell, and destructive confirmations are invalidated by connection or navigation changes. Ordinary explicit null MCP arguments are omitted; null continuation tokens and null `rm` partition-key/ETag safety options are rejected. MCP invocations are echoed in the shell so their activity stays visible, and they are recorded in history alongside interactive commands. Concurrent shells merge history under a shared lock and publish complete replacements instead of truncating the saved file. History remains fully replayable, including connection strings; treat its file as sensitive. See [MCP security](docs/mcp.md#security) and [history](docs/navigation.md#history).
 
-MCP clients supporting resource subscriptions can watch `cosmos://shell/current-location` for interactive navigation and connection changes; the resource includes the current account endpoint separately from the location. See [MCP location updates](docs/mcp.md#shell-location-updates).
+MCP clients supporting resource subscriptions can watch `cosmos://shell/current-location` for interactive navigation and connection changes; the resource includes the current account endpoint separately from the location. The resource list is static, so the server does not advertise `resources.listChanged`. See [MCP location updates](docs/mcp.md#shell-location-updates).
+
+`--mcp` supports Streamable HTTP at `http://127.0.0.1:6128/` and legacy SSE at `http://127.0.0.1:6128/sse` on the same server, without an extra option. Both share the interactive shell's state. Use trusted local clients; prefer Streamable HTTP when available. See [MCP transports](docs/mcp.md#start-mcp-server).
+
+Legacy SSE allows at most 16 outstanding MCP requests across all sessions; excess requests receive HTTP 429 before reaching the SDK, without being queued. Replies and cancellation notifications remain available.
 
 ## Quick Start
 
@@ -248,6 +252,8 @@ Parser nesting, expression tree depth, and active function/script calls have fix
 Loop headers reject misspelled `in` and `while` keywords before execution, and `filter` rejects overflowing array indexes rather than selecting element zero. JSON numeric strings use the same decimal conversion as shell strings. Dynamic `exec` calls accept normal command options, negative arguments, and shell words. See [programming](docs/programming.md) and the [filter language](docs/filter-v1-spec.md).
 
 Script diagnostics preserve source files, runtime failure categories, and function/script call sites. The language server shares the runtime's control-flow and duplicate-parameter checks, recognizes document-local functions, and checks nested commands and options. Incorrect function argument counts produce usage exit code `2`. See [validation and errors](docs/programming.md#validation-and-errors).
+
+Dynamic `exec` calls accept the same options and shell words as direct commands. Built-in commands bind options normally; functions and script files receive option-shaped arguments as positional text. See [exec](docs/programming.md#exec).
 
 Loops and functions preserve JSON `null` values. Numeric conditions use the same zero/nonzero rule for shell values and JSON properties, including fractional numbers. See [value conversion rules](docs/programming.md#numbers).
 

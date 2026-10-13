@@ -167,10 +167,15 @@ public class ShellObjectConversionTests
         Assert.Equal(expected, Json(raw).ConvertShellObject(DataType.Number));
     }
 
-    [Fact]
-    public void ShellJson_StringToDecimal()
+    [Theory]
+    [InlineData("\"15\"", 15d)]
+    [InlineData("\"1.5\"", 1.5d)]
+    [InlineData("\"1e100\"", 1e100d)]
+    [InlineData("1e100", 1e100d)]
+    [InlineData("3.0", 3d)]
+    public void ShellJson_ToDecimal_ReturnsDouble(string raw, double expected)
     {
-        Assert.Equal(15d, Assert.IsType<double>(Json("\"15\"").ConvertShellObject(DataType.Decimal)));
+        Assert.Equal(expected, Assert.IsType<double>(Json(raw).ConvertShellObject(DataType.Decimal)));
     }
 
     [Fact]

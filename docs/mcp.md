@@ -11,6 +11,29 @@ dotnet run --project CosmosDBShell -- --mcp 5050
 
 Bare `--mcp` starts the HTTP server on the default port `6128`.
 
+The same server supports both transports without an extra option:
+
+- **Streamable HTTP:** `http://127.0.0.1:6128/` (unchanged).
+- **Legacy HTTP+SSE:** `http://127.0.0.1:6128/sse`. Clients send requests to
+  the `/message` URL announced by the SSE endpoint event, including its session
+  query parameter.
+
+Both transports use the MCP SDK's protocol handling and share the interactive
+shell's connection, navigation, tools, and resources. For a custom port, replace
+`6128` with that port. Prefer Streamable HTTP when the client supports it.
+The server remains bound to loopback with Origin/Host validation; use only
+trusted local clients. Legacy SSE acknowledges request POSTs immediately and
+does not provide HTTP-level backpressure on outstanding handlers. The shell
+therefore admits at most **16 outstanding legacy MCP requests across all SSE
+sessions**, including requests waiting for the shell execution gate or user
+confirmation. Excess requests receive **HTTP 429** with `Retry-After: 1` before
+reaching the SDK, without being queued; retry after an outstanding request
+completes. Admission remains held until the SSE response has been written,
+including error responses, or the request is cancelled or its session ends.
+Accepted HTTP POSTs return `202 Accepted`, which is not command success.
+Replies and notifications, including cancellation, do not consume permits.
+This limit does not apply to Streamable HTTP.
+
 ## VS Code Setup
 
 > **Requires VS Code 1.103+**
@@ -102,6 +125,8 @@ MCP `import` uses the same bounded concurrency as the CLI: up to 16 writes in fl
 ### Shell Location Updates
 
 Clients can read the `cosmos://shell/current-location` MCP resource. Its JSON content has a `currentLocation` field (`null` when disconnected, `/` at the account root, or `/database[/container]`) and a separate `currentAccountEndpoint` field (the connected Cosmos DB account URL, or `null` when disconnected). For example: `{"currentLocation":"/myDb/myContainer","currentAccountEndpoint":"https://myaccount.documents.azure.com/"}`. Clients that support resource subscriptions receive `notifications/resources/updated` when the shared shell location or connection changes, including changes made interactively. On notification, read the resource again for the new values; the notification itself contains only the URI. Rapid consecutive changes may be coalesced into a single notification.
+
+The resource list is static, so the server does not advertise `resources.listChanged` or honor resource-list-change subscriptions. Resource-content subscriptions for `cosmos://shell/current-location` remain supported.
 
 How a client subscribes depends on its protocol revision:
 

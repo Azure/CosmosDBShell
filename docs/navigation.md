@@ -279,7 +279,7 @@ Start the shell with options to customize behavior:
 | `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations at startup |
 | `--database <id>` | Navigate to this database after connecting at startup |
 | `--container <id>` | Navigate to this container after connecting at startup. Requires `--database` |
-| `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
+| `--mcp [port]` | Enable MCP server with Streamable HTTP and legacy SSE on the given port, or `6128` by default |
 | `--diagnostics [path]` | Write timestamped diagnostic logs (commands, timing, errors, connection events) to a file, or to a timestamped file in the config directory by default |
 | `--otel [endpoint]` | Enable distributed tracing so requests carry a sampled W3C `traceparent`. Optionally export spans to an OTLP `endpoint`; falls back to the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable |
 | `--color-system <n>` | Color scheme: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
@@ -351,6 +351,8 @@ cosmosdbshell --mcp
 
 # Start with MCP server enabled on a custom port
 cosmosdbshell --mcp 5050
+
+# The same server also accepts legacy clients at http://127.0.0.1:5050/sse
 
 # Capture a diagnostic log to the default location in the config directory
 cosmosdbshell --diagnostics

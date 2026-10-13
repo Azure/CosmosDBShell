@@ -22,8 +22,7 @@ internal static class CommandArgumentFormatter
         // remain separate AST arguments and are bound later using command metadata.
         if (argument is CommandOption option)
         {
-            var dashCount = Math.Max(1, option.NameToken.Start - option.MinusToken.Start);
-            var text = new string('-', dashCount) + option.Name;
+            var text = FormatOptionName(option);
             return option.Value == null ? text : $"{text}{option.SeparatorToken?.Value ?? "="}{Format(option.Value)}";
         }
 
@@ -40,5 +39,11 @@ internal static class CommandArgumentFormatter
         }
 
         return argument.ToString() ?? string.Empty;
+    }
+
+    internal static string FormatOptionName(CommandOption option)
+    {
+        var dashCount = Math.Max(1, option.NameToken.Start - option.MinusToken.Start);
+        return new string('-', dashCount) + option.Name;
     }
 }
