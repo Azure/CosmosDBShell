@@ -69,9 +69,13 @@ internal static class BulkOperationNormalizer
                 ? JsonSerializer.Deserialize<JsonElement>(trimmed)
                 : JsonSerializer.SerializeToElement(raw);
         }
-        catch (JsonException)
+        catch (JsonException) when (trimmed[0] is not ('[' or '{' or '"'))
         {
             element = JsonSerializer.SerializeToElement(raw);
+        }
+        catch (JsonException ex)
+        {
+            throw new CommandException("bulk", MessageService.GetString("command-bulk-error-partition_key"), ex);
         }
 
         var key = CanonicalKey(element);

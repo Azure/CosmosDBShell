@@ -728,6 +728,8 @@ Operations use the [batch operation schema](#operation-schema) with two optional
 
 IDs must be nonempty strings. Patch operations are limited to 1-10 per item and apply atomically to that item; paths must start with `/`. `remove` fails if the property does not exist. Operations on the same item run in list order; operations on different items can complete in any order.
 
+`--partition-key` defaults beginning with `[`, `{`, or `"` must be valid JSON. Encode a literal string as a JSON string if it starts with one of these characters. Ambiguous scalar values such as `001` remain string keys.
+
 #### Examples
 
 ```bash

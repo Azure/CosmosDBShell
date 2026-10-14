@@ -93,6 +93,37 @@ public class BulkCommandTests
     }
 
     [Theory]
+    [InlineData("[\"tenant\"")]
+    [InlineData("{\"pk\":")]
+    [InlineData("\"tenant")]
+    [InlineData("  [\"tenant\"")]
+    [InlineData("  {\"pk\":")]
+    [InlineData("  \"tenant")]
+    public void DefaultPartitionKeyRejectsMalformedJsonShapes(string raw)
+    {
+        var error = Assert.Throws<CommandException>(() => BulkOperationNormalizer.CanonicalKeyFromArgument(raw, 1));
+
+        Assert.IsType<JsonException>(error.InnerException);
+    }
+
+    [Theory]
+    [InlineData("001", """["001"]""")]
+    [InlineData("-svc", """["-svc"]""")]
+    [InlineData("123abc", """["123abc"]""")]
+    [InlineData("", """[""]""")]
+    [InlineData("tenant", """["tenant"]""")]
+    [InlineData("42", "[42]")]
+    [InlineData("true", "[true]")]
+    [InlineData("null", "[null]")]
+    [InlineData("{}", "[{}]")]
+    [InlineData("\"[tenant\"", """["[tenant"]""")]
+    [InlineData("""["tenant","west"]""", """["tenant","west"]""")]
+    public void DefaultPartitionKeyPreservesValidKeysAndAmbiguousScalars(string raw, string canonical)
+    {
+        Assert.Equal(canonical, BulkOperationNormalizer.CanonicalKeyFromArgument(raw, Json(canonical).GetArrayLength()));
+    }
+
+    [Theory]
     [InlineData(9007199254740993L)]
     [InlineData(-9007199254740993L)]
     [InlineData(long.MaxValue)]
@@ -1014,6 +1045,26 @@ public class BulkCommandTests
 
         Assert.False(state.IsError);
         await fixture.Container.Received(2).DeleteItemAsync<JsonElement>(Arg.Any<string>(), new PartitionKey("a"), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("run", "[\"tenant\"")]
+    [InlineData("run", "{\"pk\":")]
+    [InlineData("run", "\"tenant")]
+    [InlineData("begin", "[\"tenant\"")]
+    [InlineData("begin", "{\"pk\":")]
+    [InlineData("begin", "\"tenant")]
+    public async Task MalformedDefaultPartitionKeyDoesNotWriteOrStartAJob(string subcommand, string raw)
+    {
+        using var fixture = new Fixture();
+        var data = subcommand == "run" ? """ '{"op":"delete","id":"1"}' --yes""" : string.Empty;
+
+        var error = await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync(
+            $"bulk {subcommand}{data} --partition-key '{raw}' --db db --con items"));
+
+        Assert.IsType<JsonException>(error.InnerException);
+        Assert.Empty(fixture.Writes());
+        Assert.Null(fixture.Shell.CurrentBulk);
     }
 
     [Theory]
