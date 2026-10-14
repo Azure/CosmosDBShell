@@ -10,6 +10,10 @@
 
 - `print` now reads items with typed scalar and complete hierarchical partition keys, for example `print customer-1001 '[1001,"customer-1001"]'`. Invalid keys are distinguished from missing items. Shared argument parsing rejects object/nested-array components and non-finite numbers instead of coercing them. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
 
+### Improvements
+
+- `import` now streams documents with up to 16 concurrent writes by default. Use `--concurrency` to tune the limit or `--concurrency=1` for sequential, file-order writes. On a failure, imports stop scheduling new writes and wait for in-flight writes; `--continue-on-error` continues after per-item write failures.
+
 ## 1.1.280 — 2026-10-09
 
 ### Fixes
