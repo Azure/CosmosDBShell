@@ -120,17 +120,8 @@ internal class SprocCommand : CosmosCommand
     /// (including JSON arrays for hierarchical partition keys). Object-shaped or otherwise
     /// malformed JSON is rejected with a clear error rather than silently coerced.
     /// </summary>
-    internal static PartitionKey ParsePartitionKey(string value)
-    {
-        try
-        {
-            return CreatePartitionKeyFromArgument(value);
-        }
-        catch (JsonException ex)
-        {
-            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-invalid_pk"), ex);
-        }
-    }
+    internal static PartitionKey ParsePartitionKey(string value) =>
+        CreatePartitionKeyFromArgument(value, "sproc", "command-sproc-error-invalid_pk");
 
     private static CommandException NotFound(string name, Exception inner) =>
         new("sproc", MessageService.GetArgsString("command-sproc-error-not_found", "name", name), inner);

@@ -233,7 +233,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 foreach (var item in itemsArray.EnumerateArray())
                 {
                     if (item.TryGetProperty("id", out var idElement) &&
-                        TryCreateItemPartitionKey(item, partitionKeyPropertyNames, out var itemPartitionKey, out var hasUndefinedComponent))
+                        TryCreatePartitionKeyFromItem(item, partitionKeyPropertyNames, out var hasUndefinedComponent, out var itemPartitionKey))
                     {
                         var id = idElement.GetString();
 
@@ -269,7 +269,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             {
                 // Single item from pipe
                 if (itemsArray.TryGetProperty("id", out var idElement) &&
-                    TryCreateItemPartitionKey(itemsArray, partitionKeyPropertyNames, out var itemPartitionKey, out var hasUndefinedComponent))
+                    TryCreatePartitionKeyFromItem(itemsArray, partitionKeyPropertyNames, out var hasUndefinedComponent, out var itemPartitionKey))
                 {
                     // Check if pattern matches (if matcher is set)
                     bool shouldDelete = this.matcher == null; // No pattern = delete all
@@ -343,7 +343,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         continue;
                     }
 
-                    TryCreateItemPartitionKey(element, partitionKeyPropertyNames, out var itemPartitionKey, out var hasUndefinedComponent);
+                    TryCreatePartitionKeyFromItem(element, partitionKeyPropertyNames, out var hasUndefinedComponent, out var itemPartitionKey);
 
                     // Check if pattern matches
                     bool shouldDelete = MatchesAnyPath(element, matchKeyPropertyNames, this.matcher);
@@ -396,94 +396,8 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         return new ExitCode(0);
     }
 
-    internal static PartitionKey CreateItemPartitionKey(IReadOnlyList<JsonElement> elements) => CreatePartitionKey(elements);
-
-    internal static bool TryCreateItemPartitionKey(
-        JsonElement item,
-        IReadOnlyList<string> partitionKeyPropertyNames,
-        out PartitionKey partitionKey,
-        out bool hasUndefinedComponent)
-    {
-        return TryCreatePartitionKeyFromItem(item, partitionKeyPropertyNames, out hasUndefinedComponent, out partitionKey);
-    }
-
-    internal static JsonElement ToPartitionKeyJson(PartitionKey partitionKey)
-    {
-        if (partitionKey.Equals(PartitionKey.None))
-        {
-            using var noneDocument = JsonDocument.Parse("{}");
-            return noneDocument.RootElement.Clone();
-        }
-
-        using var document = JsonDocument.Parse(partitionKey.ToString());
-        var root = document.RootElement;
-        var value = root.ValueKind == JsonValueKind.Array && root.GetArrayLength() == 1 ? root[0] : root;
-
-        // The SDK serializes numeric components as doubles (for example 7.0); render
-        // integral values the way users supply them.
-        using var buffer = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(buffer))
-        {
-            WriteNormalizedPartitionKeyValue(writer, value);
-        }
-
-        using var normalized = JsonDocument.Parse(buffer.ToArray());
-        return normalized.RootElement.Clone();
-    }
-
-    private static void WriteNormalizedPartitionKeyValue(Utf8JsonWriter writer, JsonElement value)
-    {
-        switch (value.ValueKind)
-        {
-            case JsonValueKind.Array:
-                writer.WriteStartArray();
-                foreach (var component in value.EnumerateArray())
-                {
-                    WriteNormalizedPartitionKeyValue(writer, component);
-                }
-
-                writer.WriteEndArray();
-                break;
-            case JsonValueKind.Number when value.TryGetDecimal(out var number)
-                && number == decimal.Truncate(number)
-                && number >= long.MinValue
-                && number <= long.MaxValue:
-                writer.WriteNumberValue((long)number);
-                break;
-            default:
-                value.WriteTo(writer);
-                break;
-        }
-    }
-
-    internal static PartitionKey ParsePartitionKey(string rawValue)
-    {
-        try
-        {
-            return CreatePartitionKeyFromArgument(rawValue);
-        }
-        catch (JsonException ex)
-        {
-            throw new CommandException("rm", MessageService.GetString("command-rm-error-invalid_pk_json"), ex);
-        }
-    }
-
-    internal static bool TryGetPartitionKeyElements(JsonElement element, IEnumerable<string> partitionKeyPropertyNames, out List<JsonElement> partitionKeyElements)
-    {
-        partitionKeyElements = [];
-        foreach (var partitionKeyPropertyName in partitionKeyPropertyNames)
-        {
-            if (!TryGetNestedProperty(element, partitionKeyPropertyName, out var partitionKeyElement))
-            {
-                partitionKeyElements = [];
-                return false;
-            }
-
-            partitionKeyElements.Add(partitionKeyElement);
-        }
-
-        return partitionKeyElements.Count > 0;
-    }
+    internal static PartitionKey ParsePartitionKey(string rawValue) =>
+        CreatePartitionKeyFromArgument(rawValue, "rm", "command-rm-error-invalid_pk_json");
 
     private static bool HasWildcard(string pattern) => pattern.IndexOfAny(['*', '?']) >= 0;
 

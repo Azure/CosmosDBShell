@@ -4,8 +4,6 @@
 
 namespace CosmosShell.Tests.Integration;
 
-using System.Text;
-using System.Text.Json;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
@@ -28,11 +26,15 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
         {
             Shell.State = new ConnectedState(new CosmosClient(connectionString, CreateClientOptions()));
 
-            using (var body = new MemoryStream(Encoding.UTF8.GetBytes("""{"id":"shared","value":1}""")))
-            using (var create = await container.CreateItemStreamAsync(body, PartitionKey.None, cancellationToken: token))
-            {
-                Assert.Equal(System.Net.HttpStatusCode.Created, create.StatusCode);
-            }
+            var create = await RunScriptAsync(
+                $"mkitem '{{\"id\":\"shared\",\"value\":1}}' --database={database.Id} --container={container.Id}");
+            Assert.False(create.IsError, FormatError(create));
+            Assert.Equal(1, GetJson(create).GetProperty("created").GetInt32());
+
+            var upsert = await RunScriptAsync(
+                $"mkitem --force '{{\"id\":\"shared\",\"value\":1}}' --database={database.Id} --container={container.Id}");
+            Assert.False(upsert.IsError, FormatError(upsert));
+            Assert.Equal(1, GetJson(upsert).GetProperty("replaced").GetInt32());
 
             var read = await RunScriptAsync(
                 $"print shared '{{}}' --database={database.Id} --container={container.Id}");
@@ -75,6 +77,19 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
                 $"rm shared --key=id --partition-key '{{}}' --database={database.Id} --container={container.Id}");
             Assert.False(remove.IsError, FormatError(remove));
             Assert.Equal(1, GetJson(remove).GetProperty("count").GetInt32());
+
+            var bulkJson = """[{"id":"bulk-none"},{"id":"bulk-string","pk":"tenant"}]""";
+            var bulkCreate = await RunScriptAsync(
+                $"mkitem '{bulkJson}' --database={database.Id} --container={container.Id}");
+            Assert.False(bulkCreate.IsError, FormatError(bulkCreate));
+            Assert.Equal(2, GetJson(bulkCreate).GetProperty("created").GetInt32());
+            Assert.Equal(0, GetJson(bulkCreate).GetProperty("failed").GetInt32());
+
+            var bulkUpsert = await RunScriptAsync(
+                $"mkitem --force '{bulkJson}' --database={database.Id} --container={container.Id}");
+            Assert.False(bulkUpsert.IsError, FormatError(bulkUpsert));
+            Assert.Equal(2, GetJson(bulkUpsert).GetProperty("replaced").GetInt32());
+            Assert.Equal(0, GetJson(bulkUpsert).GetProperty("failed").GetInt32());
         }
         finally
         {

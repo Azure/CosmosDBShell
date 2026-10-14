@@ -96,7 +96,7 @@ public class RmCommandTests
     }
 
     [Fact]
-    public void TryGetPartitionKeyElements_ReturnsAllHierarchicalValues()
+    public void TryCreatePartitionKeyFromItem_ReturnsAllHierarchicalValues()
     {
         using var document = JsonDocument.Parse("""
         {
@@ -107,17 +107,21 @@ public class RmCommandTests
         }
         """);
 
-        var found = RmCommand.TryGetPartitionKeyElements(
+        var found = CosmosCommand.TryCreatePartitionKeyFromItem(
             document.RootElement,
             ["tenantId", "userId", "sessionId"],
-            out var partitionKeyElements);
+            out var hasUndefinedComponent,
+            out var partitionKey);
 
         Assert.True(found);
-        Assert.Equal(["tenant-a", "user-b", "session-c"], partitionKeyElements.Select(element => element.GetString()!).ToArray());
+        Assert.False(hasUndefinedComponent);
+        Assert.Equal(
+            new PartitionKeyBuilder().Add("tenant-a").Add("user-b").Add("session-c").Build().ToString(),
+            partitionKey.ToString());
     }
 
     [Fact]
-    public void TryGetPartitionKeyElements_SupportsNestedHierarchicalValues()
+    public void TryCreatePartitionKeyFromItem_SupportsNestedHierarchicalValues()
     {
         using var document = JsonDocument.Parse("""
         {
@@ -131,32 +135,17 @@ public class RmCommandTests
         }
         """);
 
-        var found = RmCommand.TryGetPartitionKeyElements(
+        var found = CosmosCommand.TryCreatePartitionKeyFromItem(
             document.RootElement,
             ["tenant/id", "user/id"],
-            out var partitionKeyElements);
+            out var hasUndefinedComponent,
+            out var partitionKey);
 
         Assert.True(found);
-        Assert.Equal(["tenant-a", "user-b"], partitionKeyElements.Select(element => element.GetString()!).ToArray());
-    }
-
-    [Fact]
-    public void TryGetPartitionKeyElements_ReturnsFalseWhenAnyPathIsMissing()
-    {
-        using var document = JsonDocument.Parse("""
-        {
-          "id": "1",
-          "tenantId": "tenant-a"
-        }
-        """);
-
-        var found = RmCommand.TryGetPartitionKeyElements(
-            document.RootElement,
-            ["tenantId", "userId"],
-            out var partitionKeyElements);
-
-        Assert.False(found);
-        Assert.Empty(partitionKeyElements);
+        Assert.False(hasUndefinedComponent);
+        Assert.Equal(
+            new PartitionKeyBuilder().Add("tenant-a").Add("user-b").Build().ToString(),
+            partitionKey.ToString());
     }
 
     [Theory]
@@ -300,23 +289,23 @@ public class RmCommandTests
     {
         using var item = JsonDocument.Parse(itemJson);
         var paths = item.RootElement.TryGetProperty("tenant", out _) ? new[] { "tenant", "pk" } : ["pk"];
-        Assert.True(RmCommand.TryGetPartitionKeyElements(item.RootElement, paths, out var elements));
+        Assert.True(CosmosCommand.TryCreatePartitionKeyFromItem(item.RootElement, paths, out _, out var itemPartitionKey));
 
         var scope = RmCommand.ParsePartitionKey(rawValue);
 
-        Assert.Equal(expected, scope.Equals(RmCommand.CreateItemPartitionKey(elements)));
+        Assert.Equal(expected, scope.Equals(itemPartitionKey));
     }
 
     [Fact]
-    public void TryCreateItemPartitionKey_MissingScalarPropertyCreatesNone()
+    public void TryCreatePartitionKeyFromItem_MissingScalarPropertyCreatesNone()
     {
         using var item = JsonDocument.Parse("""{"id":"missing"}""");
 
-        var created = RmCommand.TryCreateItemPartitionKey(
+        var created = CosmosCommand.TryCreatePartitionKeyFromItem(
             item.RootElement,
             ["pk"],
-            out var partitionKey,
-            out var hasUndefinedComponent);
+            out var hasUndefinedComponent,
+            out var partitionKey);
 
         Assert.True(created);
         Assert.True(hasUndefinedComponent);

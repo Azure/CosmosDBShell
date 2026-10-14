@@ -766,14 +766,7 @@ internal class ImportCommand : CosmosCommand
                 Record(result);
             }
 
-            if (undefinedPartitionKeyMutationCount > 0)
-            {
-                ShellInterpreter.WriteLine(
-                    MessageService.GetArgsString(
-                        "warning-undefined-partition-key-mutation",
-                        "count",
-                        undefinedPartitionKeyMutationCount));
-            }
+            WriteUndefinedPartitionKeyWarning(undefinedPartitionKeyMutationCount);
         }
 
         token.ThrowIfCancellationRequested();

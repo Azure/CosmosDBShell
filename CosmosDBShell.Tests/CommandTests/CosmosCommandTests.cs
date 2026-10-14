@@ -146,6 +146,19 @@ public class CosmosCommandTests
             TestCosmosCommand.CreatePartitionKeyFromArgumentForTest("""["tenant",{}]""").ToString());
     }
 
+    [Fact]
+    public void CreatePartitionKeyFromArgument_HierarchicalNumericComponentsMatchBuilderOutput()
+    {
+        var expected = new PartitionKeyBuilder()
+            .Add(42)
+            .Add(9007199254740993L)
+            .Build();
+
+        Assert.Equal(
+            expected.ToString(),
+            TestCosmosCommand.CreatePartitionKeyFromArgumentForTest("[42,9007199254740993]").ToString());
+    }
+
     [Theory]
     [InlineData("none")]
     [InlineData("undefined")]
@@ -165,7 +178,7 @@ public class CosmosCommandTests
             .AddNoneType()
             .Build();
 
-        var created = TestCosmosCommand.TryCreatePartitionKeyFromItemForTest(
+        var created = CosmosCommand.TryCreatePartitionKeyFromItem(
             item.RootElement,
             ["tenant", "user"],
             out var hasUndefinedComponent,
@@ -236,15 +249,6 @@ public class CosmosCommandTests
         public static PartitionKey CreatePartitionKeyFromArgumentForTest(string value)
         {
             return CreatePartitionKeyFromArgument(value);
-        }
-
-        public static bool TryCreatePartitionKeyFromItemForTest(
-            JsonElement item,
-            IReadOnlyList<string> paths,
-            out bool hasUndefinedComponent,
-            out PartitionKey partitionKey)
-        {
-            return TryCreatePartitionKeyFromItem(item, paths, out hasUndefinedComponent, out partitionKey);
         }
     }
 }

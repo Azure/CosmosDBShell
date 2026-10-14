@@ -370,41 +370,7 @@ internal abstract class CosmosCommand
         var builder = new PartitionKeyBuilder();
         foreach (var element in elements)
         {
-            switch (element.ValueKind)
-            {
-                case JsonValueKind.String:
-                    builder.Add(element.GetString());
-                    break;
-                case JsonValueKind.Number:
-                    // Use the most precise numeric type available so 64-bit
-                    // integer key components above 2^53 are not silently
-                    // rounded by GetDouble().
-                    if (element.TryGetInt64(out var longValue))
-                    {
-                        builder.Add(longValue);
-                    }
-                    else
-                    {
-                        builder.Add(element.GetDouble());
-                    }
-
-                    break;
-                case JsonValueKind.True:
-                    builder.Add(true);
-                    break;
-                case JsonValueKind.False:
-                    builder.Add(false);
-                    break;
-                case JsonValueKind.Null:
-                    builder.AddNullValue();
-                    break;
-                case JsonValueKind.Object when !element.EnumerateObject().Any():
-                    builder.AddNoneType();
-                    break;
-                default:
-                    builder.Add(element.GetRawText());
-                    break;
-            }
+            AddPartitionKeyValue(builder, element);
         }
 
         return builder.Build();
@@ -473,15 +439,77 @@ internal abstract class CosmosCommand
         return new PartitionKey(rawValue);
     }
 
+    /// <summary>
+    /// Creates a PartitionKey from a shell argument and reports invalid JSON with the
+    /// command's localized error message.
+    /// </summary>
+    /// <param name="rawValue">The raw shell argument value.</param>
+    /// <param name="commandName">The command reporting the error.</param>
+    /// <param name="errorKey">The localization key for the invalid-key message.</param>
+    /// <returns>A typed PartitionKey.</returns>
+    protected static PartitionKey CreatePartitionKeyFromArgument(string rawValue, string commandName, string errorKey)
+    {
+        try
+        {
+            return CreatePartitionKeyFromArgument(rawValue);
+        }
+        catch (JsonException ex)
+        {
+            throw new CommandException(commandName, MessageService.GetString(errorKey), ex);
+        }
+    }
+
     internal static int GetPartitionKeyComponentCount(PartitionKey partitionKey)
     {
-        if (partitionKey.Equals(PartitionKey.None))
+        using var document = ParsePartitionKeyJson(partitionKey);
+        return document.RootElement.ValueKind == JsonValueKind.Array ? document.RootElement.GetArrayLength() : 1;
+    }
+
+    internal static JsonElement ToPartitionKeyJson(PartitionKey partitionKey)
+    {
+        using var document = ParsePartitionKeyJson(partitionKey);
+        var root = document.RootElement;
+        var value = root.ValueKind == JsonValueKind.Array && root.GetArrayLength() == 1 ? root[0] : root;
+
+        // The SDK serializes numeric components as doubles (for example 7.0); render
+        // integral values the way users supply them.
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer))
         {
-            return 1;
+            WriteNormalizedPartitionKeyValue(writer, value);
         }
 
-        using var document = JsonDocument.Parse(partitionKey.ToString());
-        return document.RootElement.ValueKind == JsonValueKind.Array ? document.RootElement.GetArrayLength() : 1;
+        using var normalized = JsonDocument.Parse(buffer.ToArray());
+        return normalized.RootElement.Clone();
+    }
+
+    // PartitionKey.None.ToString() is not JSON; represent it as one undefined component.
+    private static JsonDocument ParsePartitionKeyJson(PartitionKey partitionKey) =>
+        JsonDocument.Parse(partitionKey.Equals(PartitionKey.None) ? "[{}]" : partitionKey.ToString());
+
+    private static void WriteNormalizedPartitionKeyValue(Utf8JsonWriter writer, JsonElement value)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (var component in value.EnumerateArray())
+                {
+                    WriteNormalizedPartitionKeyValue(writer, component);
+                }
+
+                writer.WriteEndArray();
+                break;
+            case JsonValueKind.Number when value.TryGetDecimal(out var number)
+                && number == decimal.Truncate(number)
+                && number >= long.MinValue
+                && number <= long.MaxValue:
+                writer.WriteNumberValue((long)number);
+                break;
+            default:
+                value.WriteTo(writer);
+                break;
+        }
     }
 
     private static void ValidatePartitionKeyArgumentComponent(JsonElement component)
@@ -499,23 +527,6 @@ internal abstract class CosmosCommand
     }
 
     /// <summary>
-    /// Gets normalized partition key paths from container metadata.
-    /// </summary>
-    /// <param name="properties">The container properties.</param>
-    /// <returns>Partition key paths without leading slashes.</returns>
-    protected static IReadOnlyList<string> GetPartitionKeyPaths(ContainerProperties properties)
-    {
-        if (properties.PartitionKeyPaths is { Count: > 0 })
-        {
-            return properties.PartitionKeyPaths.Select(path => path.TrimStart('/')).ToArray();
-        }
-
-        return string.IsNullOrWhiteSpace(properties.PartitionKeyPath)
-            ? []
-            : [properties.PartitionKeyPath.TrimStart('/')];
-    }
-
-    /// <summary>
     /// Creates a PartitionKey from an item using the container partition key definition.
     /// </summary>
     /// <param name="item">The item JSON.</param>
@@ -523,7 +534,7 @@ internal abstract class CosmosCommand
     /// <param name="hasUndefinedComponent">Whether one or more configured paths are absent.</param>
     /// <param name="partitionKey">The resulting partition key.</param>
     /// <returns>True when the container defines at least one partition-key path.</returns>
-    protected static bool TryCreatePartitionKeyFromItem(JsonElement item, IReadOnlyList<string> partitionKeyPaths, out bool hasUndefinedComponent, out PartitionKey partitionKey)
+    internal static bool TryCreatePartitionKeyFromItem(JsonElement item, IReadOnlyList<string> partitionKeyPaths, out bool hasUndefinedComponent, out PartitionKey partitionKey)
     {
         hasUndefinedComponent = false;
         if (partitionKeyPaths.Count == 0)
@@ -565,6 +576,14 @@ internal abstract class CosmosCommand
     protected static bool HasUndefinedPartitionKeyComponent(JsonElement item, IReadOnlyList<string> partitionKeyPaths)
     {
         return partitionKeyPaths.Any(path => !TryGetNestedProperty(item, path, out _));
+    }
+
+    protected static void WriteUndefinedPartitionKeyWarning(int count)
+    {
+        if (count > 0)
+        {
+            ShellInterpreter.WriteLine(MessageService.GetArgsString("warning-undefined-partition-key-mutation", "count", count));
+        }
     }
 
     private static bool LooksLikeJsonLiteral(string trimmed)

@@ -225,13 +225,5 @@ internal class ReplaceCommand : CosmosCommand
         }
     }
 
-    private static void WriteUndefinedPartitionKeyWarning(int count)
-    {
-        if (count > 0)
-        {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString("warning-undefined-partition-key-mutation", "count", count));
-        }
-    }
-
     private readonly record struct ReplaceSummary(int Replaced, int Failed, double RequestCharge);
 }
