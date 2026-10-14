@@ -727,6 +727,8 @@ Options:
     --con, --container            Target container (defaults to the current navigation context).
     --mode                        Write mode: insert (default) or upsert.
     --format, -f                  Input format: auto (default), jsonl, array, or csv.
+    --concurrency                 Maximum in-flight writes (default: 16; positive integer).
+                                  Use 1 for sequential writes in file order.
     --partition-key, --pk         For CSV import, the partition key path. Nested paths
                                   (e.g. /address/city) nest the matching column.
     --continue, --continue-on-error
@@ -737,13 +739,17 @@ Options:
 Examples:
 
 - `import items.jsonl` inserts every item from a JSON Lines file.
+- `import items.jsonl --concurrency=32` allows up to 32 writes in flight.
+- `import items.jsonl --concurrency=1` writes sequentially in file order.
 - `import items.json --format=array` reads a JSON array file.
 - `import items.csv` imports a CSV file, mapping each header column to a string property.
 - `import items.csv --partition-key=/address/city` nests the `city` column under `address` for a nested partition key. If a scalar column already occupies an intermediate path segment (for example an `address` column), the import fails with a conflict error rather than silently overwriting it.
 - `import items.jsonl --mode=upsert --continue-on-error` upserts items and keeps going on per-item failures.
 - `import items.jsonl --dry-run` validates the file without writing anything; useful before a real run.
 
-By default, the first failure stops the import. With `--continue-on-error` the command keeps going after per-item *write* failures (for example a Cosmos write that throws) and the final summary reports how many items succeeded and how many failed. Parse and validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) still abort the import immediately. The command exits with an error status if any items failed.
+Imports keep up to 16 writes in flight by default without loading the entire file. `--concurrency` controls this bound; it must be a positive integer. Completion order is not guaranteed when concurrency exceeds 1. Use `--concurrency=1` when repeated IDs must be processed in file order (especially with upsert), or when exact sequential stop-on-error behavior is required. Higher concurrency can hide network latency but does not increase provisioned RU/s or avoid throttling; Cosmos SDK retry handling remains unchanged. Dry runs only validate input and do not start writes.
+
+By default, the first observed write failure stops scheduling new writes. Already-started writes are awaited and included in the final success/failure counts and request charge; they may succeed after the failure. With `--continue-on-error` the command keeps going after per-item *write* failures (for example a Cosmos write that throws) and the final summary reports how many items succeeded and how many failed. Parse and validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) always stop scheduling writes, even with `--continue-on-error`, and in-flight writes are awaited before the error is returned. Cancellation is passed to both input reads and writes, and the command waits for started writes to settle before returning. Earlier writes are never rolled back. The command exits with an error status if any items failed.
 
 ### watch
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Improvements
+
+- `import` now streams documents with up to 16 concurrent writes by default. Use `--concurrency` to tune the limit or `--concurrency=1` for sequential, file-order writes. On a failure, imports stop scheduling new writes and wait for in-flight writes; `--continue-on-error` continues after per-item write failures.
+
 ## 1.1.280 — 2026-10-09
 
 ### Fixes
