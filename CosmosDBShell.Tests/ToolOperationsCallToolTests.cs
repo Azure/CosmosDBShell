@@ -562,6 +562,89 @@ public class ToolOperationsCallToolTests : IDisposable
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CallTool_PrintWithoutKey_ReportsMissingKey(bool explicitNull)
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["id"] = Json("\"item-1\""),
+        };
+        if (explicitNull)
+        {
+            arguments["key"] = Json("null");
+        }
+
+        var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Contains(
+                Azure.Data.Cosmos.Shell.Util.MessageService.GetString("command-print-error-missing_key"),
+                root.GetProperty("error").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData("partition-key")]
+    [InlineData("pk")]
+    public async Task CallTool_PrintWithRemovedPartitionKeyOption_IsUnknownArgument(string option)
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["id"] = Json("\"item-1\""),
+            ["key"] = Json("\"680\""),
+            [option] = Json("\"680\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.StartsWith($"Unknown argument '{option}' for command 'print'.", root.GetProperty("error").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData("680")]
+    [InlineData("\"680\"")]
+    [InlineData("[1001,\"customer-1001\"]")]
+    [InlineData("true")]
+    [InlineData("null")]
+    [InlineData("customer-1")]
+    public async Task CallTool_PrintWithTypedKey_Binds(string value)
+    {
+        var tool = CreateToolOperations();
+        var shell = ShellInterpreter.Instance;
+        var originalState = shell.State;
+        try
+        {
+            shell.State = new DisconnectedState();
+            var arguments = new Dictionary<string, JsonElement>
+            {
+                ["id"] = Json("\"item-1\""),
+                ["key"] = JsonSerializer.SerializeToElement(value),
+            };
+
+            var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
+            var (isError, root, document) = ReadResult(result);
+            using (document)
+            {
+                Assert.True(isError);
+                Assert.Equal($"Error executing command 'print': {new NotConnectedException("print").Message}", root.GetProperty("error").GetString());
+            }
+        }
+        finally
+        {
+            shell.State = originalState;
+        }
+    }
+
     [Fact]
     public async Task CallTool_UnknownArgument_ReturnsErrorListingKnownArguments()
     {

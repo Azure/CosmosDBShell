@@ -124,6 +124,8 @@ On serverless accounts, `mkdb`, `mkcon`, and their `create` aliases omit through
 
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.
 
+MCP `import` uses the same bounded concurrency as the CLI: up to 16 writes in flight by default, configurable with the `concurrency` argument. Its schema requires a positive integer (`minimum: 1`). Use `concurrency: 1` for sequential, file-order writes. In-flight writes may complete after an error; imports are not transactional. See [import](commands.md#import) for error and cancellation behavior.
+
 ### Shell Location Updates
 
 Clients can read the `cosmos://shell/current-location` MCP resource. Its JSON content has a `currentLocation` field (`null` when disconnected, `/` at the account root, or `/database[/container]`) and a separate `currentAccountEndpoint` field (the connected Cosmos DB account URL, or `null` when disconnected). For example: `{"currentLocation":"/myDb/myContainer","currentAccountEndpoint":"https://myaccount.documents.azure.com/"}`. Clients that support resource subscriptions receive `notifications/resources/updated` when the shared shell location or connection changes, including changes made interactively. On notification, read the resource again for the new values; the notification itself contains only the URI. Rapid consecutive changes may be coalesced into a single notification.
@@ -144,6 +146,8 @@ MCP tool invocations are echoed as command lines in the shell window, so anyone 
 Positional arguments must be supplied without gaps: a call that provides a positional parameter while omitting an earlier one is rejected, because the equivalent shell command line would bind the value to the omitted slot.
 
 Explicit `null` argument values are treated as omitted and are not echoed into shell history. The paging `continuation` argument is an exception: a `null` output token means the result set is exhausted unless `resultIncomplete` is `true`, in which case results were truncated and cannot be resumed. A `null` token must never be passed back as `continuation`; doing so is rejected in either case. For incomplete results, retry with a larger `max` or a narrower query. The `rm` safety options `partition-key` (including alias `pk`) and `etag` also reject explicit `null` values rather than silently dropping the partition scope or concurrency check.
+
+For `print`, the `key` argument uses the same typed syntax as `patch`: `"680"` selects a number, `"\"680\""` selects a string, and `"[1001,\"customer-1001\"]"` selects a hierarchical key. Pass `"null"` for a null partition key; explicit JSON `null` is treated as omitted and reported as a missing key. See [print](commands.md#print).
 
 Your MCP client may use a remote LLM. Command outputs, query results, and file contents could be transmitted to external services. **Treat all shell output as potentially shared.**
 

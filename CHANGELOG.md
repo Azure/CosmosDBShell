@@ -2,9 +2,20 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- `print <id> <key>` now parses the key with the same typed syntax as `patch`, so `print item-1 680` reads numeric key `680` instead of string `"680"`. To address a string key that looks like a number, boolean, null, or JSON array, quote it as a JSON string: `print item-1 '"680"'`. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
+
+### New features
+
 ### Fixes
 
+- `print` now reads items with typed scalar and complete hierarchical partition keys, for example `print customer-1001 '[1001,"customer-1001"]'`. Invalid keys are distinguished from missing items. Shared argument parsing rejects object/nested-array components and non-finite numbers instead of coercing them. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
 - Avoid accessing an expired HTTP request during MCP session teardown, preventing disposal errors while releasing location subscriptions and legacy SSE admission state. ([#249](https://github.com/Azure/CosmosDBShell/issues/249))
+
+### Improvements
+
+- `import` now streams documents with up to 16 concurrent writes by default. Use `--concurrency` to tune the limit or `--concurrency=1` for sequential, file-order writes. On a failure, imports stop scheduling new writes and wait for in-flight writes; `--continue-on-error` continues after per-item write failures.
 
 ## 1.1.280 — 2026-10-09
 

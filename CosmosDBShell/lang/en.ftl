@@ -259,7 +259,7 @@ command-rm-dry-run-plan = Dry run: Would delete { $count } { $count ->
     *[other] items
 }. No changes were made.
 command-rm-error-no_filter = Filter is missing.
-command-rm-error-invalid_pk_json = Partition key must be a JSON scalar value or a JSON array of values for hierarchical partition keys.
+command-rm-error-invalid_pk_json = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
 command-rm-error-partition_key_components = The partition key must specify all { $expected } components of the container's partition key, but { $actual } { $actual ->
     [one] was
     *[other] were
@@ -321,15 +321,20 @@ command-query-error-request_failed = Query request failed with status code { $st
 command-query-error-no_content_stream = Query response did not contain a content stream.
 command-query-error-empty_content = Query response content is empty.
 
-command-print-description = Print a id/partition key.
+command-print-description = Read an item by ID and its complete partition key.
 command-print-description-id = The ID of the item to print
-command-print-description-key = The Partition Key of the item to print
+command-print-description-key = Complete partition key: a JSON scalar or an ordered JSON array of all hierarchical components. For example, 680 is a number, '"680"' is a string, and '[1001,"customer-1001"]' is hierarchical. Other plain text is a string.
 command-print-description-format = Output format (json, table)
 command-print-description-database = The database containing the item to print
 command-print-description-container = The container containing the item to print
 command-print-error-item_not_found = Item with id '{ $id }' not found using partition key '{ $partitionKey }'. Verify the partition key value is correct.
 command-print-error-request_failed = Request failed for item '{ $id }'. (HTTP { $status })
 command-print-error-reading_item = Error reading item: { $message }
+command-print-error-missing_id = Specify the ID of the item to print.
+command-print-error-missing_key = Specify the item's partition key. Use null for a null partition key (MCP: pass the string "null", not JSON null).
+command-print-error-reading_container = Error reading container metadata: { $message }
+command-print-error-invalid_pk_json = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
+command-print-error-partition_key_components = The partition key must contain all { $expected } components in container path order; received { $actual }. Supply the complete key as a JSON array.
 
 command-mkitem-description = Creates items in container
 command-mkitem-description-data = JSON data for the item to create
@@ -392,7 +397,7 @@ command-patch-description-etag = Optional ETag for optimistic concurrency contro
 command-patch-success = Successfully patched item (RU charge: { $charge })
 command-patch-error-missing_id = Item ID is required.
 command-patch-error-missing_pk = Partition key is required.
-command-patch-error-invalid_pk_json = Partition key must be a JSON scalar value or a JSON array of values for hierarchical partition keys.
+command-patch-error-invalid_pk_json = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
 command-patch-error-missing_op = Patch operation is required. Supported: set, add, replace, remove, incr.
 command-patch-error-missing_path = Patch path is required.
 command-patch-error-invalid_path = Patch path must start with '/'.
@@ -434,7 +439,7 @@ command-batch-status-column-id = Item ID
 command-batch-error-missing_subcommand = Missing subcommand. Use one of: run, begin, add, execute, cancel, status, show.
 command-batch-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: run, begin, add, execute, cancel, status, show.
 command-batch-error-missing_pk = A partition key is required. Specify it with --partition-key.
-command-batch-error-invalid_pk_json = Partition key must be a JSON scalar value or a JSON array of values for hierarchical partition keys.
+command-batch-error-invalid_pk_json = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
 command-batch-error-missing_data = Batch operations are required. Provide a JSON array of operations, or a single operation object.
 command-batch-error-invalid_json = The batch operations are not valid JSON: { $message }
 command-batch-error-not_object = Each batch operation must be a JSON object, and the batch itself must be a JSON object or an array of objects.
@@ -477,8 +482,9 @@ command-import-description-database = The database to write to.
 command-import-description-container = The container to write to.
 command-import-description-mode = Write mode: insert (default) or upsert.
 command-import-description-format = Input format: auto (default), jsonl, array, or csv.
+command-import-description-concurrency = Maximum in-flight writes (default: 16). Must be positive. Use 1 for sequential writes and file-order processing.
 command-import-description-partition-key = For CSV import, the partition key path. Nested paths (e.g. /address/city) place the matching column under that path.
-command-import-description-continue-on-error = Continue importing after individual item write failures. Parse or validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) still abort the import.
+command-import-description-continue-on-error = Continue importing after individual item write failures. Otherwise stop scheduling writes on the first observed failure and wait for in-flight writes. Parse or validation errors still abort the import.
 command-import-description-dry-run = Parse the file without writing any items.
 command-import-success = Imported { $count } { $count ->
     [one] item
@@ -494,6 +500,7 @@ command-import-dry-run-success = Dry run: { $count } valid { $count ->
     *[other] items
 }
 command-import-error-missing_file = A source file path is required.
+command-import-error-invalid_concurrency = Concurrency must be a positive integer.
 command-import-error-invalid_csv = Invalid CSV record at line { $line }.
 command-import-error-unnamed_csv_value = Line { $line }, column { $column } has a value but no CSV header. Add a column name before importing.
 script-error-argument-count = Function '{ $name }' expects { $expected } { $expected ->
@@ -676,7 +683,7 @@ command-sproc-error-file_not_found = File not found: '{ $file }'.
 command-sproc-error-already_exists = Stored procedure '{ $name }' already exists. Use --force to replace it.
 command-sproc-error-not_found = Stored procedure '{ $name }' was not found.
 command-sproc-error-invalid_params = Invalid parameters. Provide a JSON array of arguments, for example: '["a", 1, true]'.
-command-sproc-error-invalid_pk = Invalid partition key. Provide a JSON scalar, or a JSON array for a hierarchical partition key.
+command-sproc-error-invalid_pk = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
 command-sproc-error-missing_partition_key = A partition key is required to execute a stored procedure. Use --partition-key.
 command-sproc-error-not_interactive = 'sproc edit' needs an interactive terminal and cannot run from a script or piped input.
 command-sproc-error-no_editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
@@ -1624,6 +1631,7 @@ command-import-example-4 = Import CSV and nest the matching column under a neste
 command-import-example-5 = Insert new items and replace any existing items with the same id
 command-import-example-6 = Keep importing after individual item write failures
 command-import-example-7 = Validate the file without writing any items
+command-import-example-8 = Import with up to 32 concurrent writes
 command-index-example-1 = Display the current container's indexing policy
 command-index-example-2 = Add a path to the included paths of the indexing policy
 command-index-example-3 = Remove a path from the indexing policy
@@ -1662,6 +1670,9 @@ command-patch-example-5 = Insert at the start of an array
 command-patch-example-6 = Patch with optimistic concurrency
 command-print-example-1 = Retrieve and display a specific item by ID and partition key
 command-print-example-2 = Retrieve item from specific database and container
+command-print-example-3 = Read an item with a numeric partition key
+command-print-example-4 = Read an item with a numeric-looking string partition key
+command-print-example-5 = Read an item with a complete mixed-type hierarchical partition key
 command-pwd-example-1 = Show the current shell location
 command-query-example-1 = Query all documents from container
 command-query-example-2 = Query with filter condition
