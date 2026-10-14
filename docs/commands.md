@@ -409,15 +409,41 @@ To keep the cost low, `--explain` executes only the first page of the query (`Ma
 
 ### print
 
-Get item by id and partition key.
+Read one item by ID and its complete partition key using a point read, without a query fallback.
 
 ```text
-Usage: print id key
+Usage: print id key [--database <ARG>] [--container <ARG>]
 
 Arguments:
     id          The ID of the item
-    key         The partition key of the item
+    key         Complete partition key: a JSON scalar or an ordered JSON array
+
+Options:
+    --database, --db
+                Override database name
+    --container, --con
+                Override container name
 ```
+
+The key uses the same typed syntax as the positional `pk` in `patch` (and `--partition-key` in `rm`, `batch`, `sproc`, and `watch`). JSON scalar literals preserve their types; other text is a string. Hierarchical keys use a JSON array with every component in container path order. Objects, nested arrays, empty arrays, arrays with more than three components, and non-finite numbers are rejected. `print` also checks that the component count matches the container. Invalid input is reported separately from a valid key that addresses a missing item.
+
+Examples inside Cosmos DB Shell:
+
+```text
+print product-680 680                           # Number 680
+print product-680 '"680"'                       # String "680"
+print customer-1001 '[1001,"customer-1001"]'
+print order-42 '["tenant-1",680,true]'
+print item-1 true                               # Boolean true
+print item-1 '"true"'                           # String "true"
+print item-1 null                               # Null
+print item-1 '"null"'                           # String "null"
+print item-1 customer-1                         # String "customer-1"
+```
+
+The outer single quotes preserve the inner JSON double quotes. `"680"` alone does **not** preserve a JSON string literal: shell quoting is removed, so the key is parsed as a number. Unquoted numeric tokens are normalized by the shell, so quote text such as `'001'` to keep it as the string `"001"`. Invoking these commands from a host shell may require additional escaping; see [quoting and escaping](navigation.md). In MCP, the `key` argument is a string containing this value, for example `"680"`, `"\"680\""`, or `"[1001,\"customer-1001\"]"`; use the string `"null"` for a null key, not JSON null.
+
+> **Note:** Earlier versions always treated this key as a string, so `print item-1 680` read string `"680"`. To address a string key that looks like a number, boolean, null, or JSON array, quote it as a JSON string, for example `print item-1 '"680"'`.
 
 ### mkitem
 
@@ -666,6 +692,8 @@ Options:
     --retry-uncertain             Also retry writes whose earlier outcome is unknown.
 ```
 
+Options are validated by whether they were supplied, even when a boolean value is explicitly `false`. For example, `bulk status --dry-run=false` is rejected because `status` does not support `--dry-run`.
+
 #### Subcommands
 
 |Subcommand|Description|
@@ -850,6 +878,8 @@ Options:
     --con, --container            Target container (defaults to the current navigation context).
     --mode                        Write mode: insert (default) or upsert.
     --format, -f                  Input format: auto (default), jsonl, array, or csv.
+    --concurrency                 Maximum in-flight writes (default: 16; positive integer).
+                                  Use 1 for sequential writes in file order.
     --partition-key, --pk         For CSV import, the partition key path. Nested paths
                                   (e.g. /address/city) nest the matching column.
     --continue, --continue-on-error
@@ -860,13 +890,17 @@ Options:
 Examples:
 
 - `import items.jsonl` inserts every item from a JSON Lines file.
+- `import items.jsonl --concurrency=32` allows up to 32 writes in flight.
+- `import items.jsonl --concurrency=1` writes sequentially in file order.
 - `import items.json --format=array` reads a JSON array file.
 - `import items.csv` imports a CSV file, mapping each header column to a string property.
 - `import items.csv --partition-key=/address/city` nests the `city` column under `address` for a nested partition key. If a scalar column already occupies an intermediate path segment (for example an `address` column), the import fails with a conflict error rather than silently overwriting it.
 - `import items.jsonl --mode=upsert --continue-on-error` upserts items and keeps going on per-item failures.
 - `import items.jsonl --dry-run` validates the file without writing anything; useful before a real run.
 
-By default, the first failure stops the import. With `--continue-on-error` the command keeps going after per-item *write* failures (for example a Cosmos write that throws) and the final summary reports how many items succeeded and how many failed. Parse and validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) still abort the import immediately. The command exits with an error status if any items failed.
+Imports keep up to 16 writes in flight by default without loading the entire file. `--concurrency` controls this bound; it must be a positive integer. Completion order is not guaranteed when concurrency exceeds 1. Use `--concurrency=1` when repeated IDs must be processed in file order (especially with upsert), or when exact sequential stop-on-error behavior is required. Higher concurrency can hide network latency but does not increase provisioned RU/s or avoid throttling; Cosmos SDK retry handling remains unchanged. Dry runs only validate input and do not start writes.
+
+By default, the first observed write failure stops scheduling new writes. Already-started writes are awaited and included in the final success/failure counts and request charge; they may succeed after the failure. With `--continue-on-error` the command keeps going after per-item *write* failures (for example a Cosmos write that throws) and the final summary reports how many items succeeded and how many failed. Parse and validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) always stop scheduling writes, even with `--continue-on-error`, and in-flight writes are awaited before the error is returned. Cancellation is passed to both input reads and writes, and the command waits for started writes to settle before returning. Earlier writes are never rolled back. The command exits with an error status if any items failed.
 
 ### watch
 

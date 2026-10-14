@@ -191,6 +191,57 @@ public class BulkCommandTests
     }
 
     [Theory]
+    [InlineData("dry-run", false)]
+    [InlineData("dry-run", true)]
+    [InlineData("yes", false)]
+    [InlineData("yes", true)]
+    [InlineData("continue-on-error", false)]
+    [InlineData("continue-on-error", true)]
+    [InlineData("etag", false)]
+    [InlineData("etag", true)]
+    [InlineData("retry-uncertain", false)]
+    [InlineData("retry-uncertain", true)]
+    public void ExplicitBooleanOptionsAreValidatedByPresence(string option, bool value)
+    {
+        var command = option switch
+        {
+            "dry-run" => new BulkCommand { DryRun = value },
+            "yes" => new BulkCommand { Yes = value },
+            "continue-on-error" => new BulkCommand { ContinueOnError = value },
+            "etag" => new BulkCommand { ETag = value },
+            _ => new BulkCommand { RetryUncertain = value },
+        };
+
+        var error = Assert.Throws<CommandException>(() => command.Validate("status"));
+
+        Assert.Contains($"--{option}", error.Message);
+    }
+
+    [Fact]
+    public void FalseBooleanOptionsAreAcceptedWhenSupported()
+    {
+        new BulkCommand { DryRun = false, Yes = false, ContinueOnError = false, RetryUncertain = false }.Validate("run");
+        new BulkCommand { Where = "true", Operations = """[{"op":"set","path":"/v","value":1}]""", ETag = false }.Validate("patch");
+    }
+
+    [Theory]
+    [InlineData("status", "dry-run")]
+    [InlineData("status", "continue-on-error")]
+    [InlineData("status", "etag")]
+    [InlineData("status", "retry-uncertain")]
+    [InlineData("begin", "yes")]
+    public async Task UnsupportedFalseBooleanOptionsAreRejectedThroughShell(string subcommand, string option)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+
+        var state = await shell.ExecuteCommandAsync($"bulk {subcommand} --{option}=false", TestContext.Current.CancellationToken);
+
+        Assert.True(state.IsError);
+        Assert.Contains($"--{option}", Assert.IsType<ErrorCommandState>(state).Exception.Message);
+        Assert.Contains($"bulk {subcommand}", Assert.IsType<ErrorCommandState>(state).Exception.Message);
+    }
+
+    [Theory]
     [InlineData("begin")]
     [InlineData("add")]
     [InlineData("status")]

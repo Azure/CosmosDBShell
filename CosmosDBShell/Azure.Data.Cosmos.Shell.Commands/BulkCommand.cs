@@ -627,13 +627,13 @@ internal sealed class BulkCommand : CosmosCommand
             ("concurrency", this.Concurrency.HasValue),
             ("max-items", this.MaxItems != null),
             ("max-ru", this.MaxRu != null),
-            ("dry-run", this.DryRun == true),
-            ("yes", this.Yes == true),
-            ("continue-on-error", this.ContinueOnError == true),
-            ("etag", this.ETag == true),
+            ("dry-run", this.DryRun.HasValue),
+            ("yes", this.Yes.HasValue),
+            ("continue-on-error", this.ContinueOnError.HasValue),
+            ("etag", this.ETag.HasValue),
             ("save", this.Save != null),
             ("journal", this.Journal != null),
-            ("retry-uncertain", this.RetryUncertain == true),
+            ("retry-uncertain", this.RetryUncertain.HasValue),
         ];
     }
 

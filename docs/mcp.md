@@ -34,6 +34,10 @@ Accepted HTTP POSTs return `202 Accepted`, which is not command success.
 Replies and notifications, including cancellation, do not consume permits.
 This limit does not apply to Streamable HTTP.
 
+Session cleanup is independent of the originating HTTP request's lifetime.
+Ending a session releases its location subscriptions and any outstanding legacy
+SSE admission state, even after the initialization request has ended.
+
 ## VS Code Setup
 
 > **Requires VS Code 1.103+**
@@ -120,11 +124,13 @@ On serverless accounts, `mkdb`, `mkcon`, and their `create` aliases omit through
 
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.
 
+MCP `import` uses the same bounded concurrency as the CLI: up to 16 writes in flight by default, configurable with the `concurrency` argument. Its schema requires a positive integer (`minimum: 1`). Use `concurrency: 1` for sequential, file-order writes. In-flight writes may complete after an error; imports are not transactional. See [import](commands.md#import) for error and cancellation behavior.
+
 ### Bulk Operations
 
 The `bulk` tool exposes the stateless `run`, `patch`, and `delete` subcommands, with the same operation schema, selection, journal, and reporting semantics as the [CLI command](commands.md#bulk). Stateful subcommands (`begin`, `add`, `execute`, `cancel`, `status`, and `show`) are restricted to the interactive shell, like stateful batches. Writes always require MCP elicitation, even with `yes: true`; once approved, no second terminal prompt is shown. `dry-run: true` validates or selects without database writes, but selection reads consume RUs. Only dry runs without `save` skip elicitation: saving a plan creates a server-local file and requires confirmation.
 
-Pass operations as JSON text or a file path in `data`, or use `where` with `operations` for query-driven patches. `concurrency` defaults to 16 and must be positive; optional `max-items` and `max-ru` must also be positive. File paths for `data`, `save`, and `journal` are local to the shell server.
+Pass operations as JSON text or a file path in `data`, or use `where` with `operations` for query-driven patches. `concurrency` defaults to 16 and must be positive; optional `max-items` and `max-ru` must also be positive. Explicit `false` boolean values still count as supplied arguments and are rejected when the subcommand does not support them. File paths for `data`, `save`, and `journal` are local to the shell server.
 
 These are independent writes, **not** transactions across partitions. Failed or incomplete runs include their summary alongside the MCP error. The command-level `result.resultIncomplete` and `result.budgetExceeded` flags describe job execution and are distinct from the envelope's query-paging `resultIncomplete`. Resume only with the same journal from the original run; adding a new journal cannot prevent replaying earlier successes. Without the original journal, reconcile completed writes before retrying. A journal never automatically retries a write whose outcome is unknown unless `retry-uncertain` is set; later writes for the same item ID and partition key are also held back.
 
@@ -148,6 +154,8 @@ MCP tool invocations are echoed as command lines in the shell window, so anyone 
 Positional arguments must be supplied without gaps: a call that provides a positional parameter while omitting an earlier one is rejected, because the equivalent shell command line would bind the value to the omitted slot.
 
 Explicit `null` argument values are treated as omitted and are not echoed into shell history. The paging `continuation` argument is an exception: a `null` output token means the result set is exhausted unless `resultIncomplete` is `true`, in which case results were truncated and cannot be resumed. A `null` token must never be passed back as `continuation`; doing so is rejected in either case. For incomplete results, retry with a larger `max` or a narrower query. The `rm` safety options `partition-key` (including alias `pk`) and `etag` also reject explicit `null` values rather than silently dropping the partition scope or concurrency check.
+
+For `print`, the `key` argument uses the same typed syntax as `patch`: `"680"` selects a number, `"\"680\""` selects a string, and `"[1001,\"customer-1001\"]"` selects a hierarchical key. Pass `"null"` for a null partition key; explicit JSON `null` is treated as omitted and reported as a missing key. See [print](commands.md#print).
 
 Your MCP client may use a remote LLM. Command outputs, query results, and file contents could be transmitted to external services. **Treat all shell output as potentially shared.**
 

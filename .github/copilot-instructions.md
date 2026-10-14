@@ -42,6 +42,8 @@
 - Do not add implementation details, internal lifecycle or cleanup behavior, SDK plumbing, or test details to `README.md`. Describe bugfixes in `CHANGELOG.md` in terms of their user-visible impact; put implementation rationale in the PR description or a necessary code comment.
 - Before adding README text, identify what users can do differently or what they need to know because of it. If neither applies, leave the README unchanged. Keep detailed usage and troubleshooting guidance in the relevant `docs/` page and link from the README only when useful.
 - Always retain `## Unreleased` at the top of `CHANGELOG.md`, even when it is empty. When preparing a release, move its entries into a dated version section below it; never replace or remove the Unreleased heading.
+- Keep permanent category headings under `## Unreleased` in this order: `### Breaking changes`, `### New features`, `### Fixes`, `### Improvements`. Retain all four headings even when empty, including after preparing a release.
+- Append new changelog entries to the appropriate existing category. Do not duplicate or reorder headings, reorder existing entries, or rewrite unrelated changelog text. Keep a blank line between sections to reduce overlapping edits and merge conflicts.
 - Update the relevant docs in `docs/`, especially:
   - `docs/commands.md` for command usage
   - `docs/navigation.md` for CLI arguments and shell navigation
