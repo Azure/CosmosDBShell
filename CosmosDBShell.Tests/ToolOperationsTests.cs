@@ -387,6 +387,20 @@ public class ToolOperationsTests
         Assert.Equal("Display", metrics.GetProperty("default").GetString());
     }
 
+    [Fact]
+    public void GetTool_PrintRequiresTypedPositionalKey()
+    {
+        var tool = ToolOperations.GetTool(new CommandRunner().Commands["print"]);
+        var properties = tool.InputSchema.GetProperty("properties");
+
+        Assert.False(properties.TryGetProperty("partition-key", out _));
+        Assert.False(properties.TryGetProperty("pk", out _));
+        var key = properties.GetProperty("key");
+        Assert.Equal("string", key.GetProperty("type").GetString());
+        Assert.Contains("JSON", key.GetProperty("description").GetString());
+        Assert.Equal(["id", "key"], tool.InputSchema.GetProperty("required").EnumerateArray().Select(value => value.GetString()));
+    }
+
     private static JsonElement Json(string raw)
     {
         using var document = JsonDocument.Parse(raw);

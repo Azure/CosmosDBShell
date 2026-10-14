@@ -143,6 +143,8 @@ Positional arguments must be supplied without gaps: a call that provides a posit
 
 Explicit `null` argument values are treated as omitted and are not echoed into shell history. The paging `continuation` argument is an exception: a `null` output token means the result set is exhausted unless `resultIncomplete` is `true`, in which case results were truncated and cannot be resumed. A `null` token must never be passed back as `continuation`; doing so is rejected in either case. For incomplete results, retry with a larger `max` or a narrower query. The `rm` safety options `partition-key` (including alias `pk`) and `etag` also reject explicit `null` values rather than silently dropping the partition scope or concurrency check.
 
+For `print`, the `key` argument uses the same typed syntax as `patch`: `"680"` selects a number, `"\"680\""` selects a string, and `"[1001,\"customer-1001\"]"` selects a hierarchical key. Pass `"null"` for a null partition key; explicit JSON `null` is treated as omitted and reported as a missing key. See [print](commands.md#print).
+
 Your MCP client may use a remote LLM. Command outputs, query results, and file contents could be transmitted to external services. **Treat all shell output as potentially shared.**
 
 ### Best Practices

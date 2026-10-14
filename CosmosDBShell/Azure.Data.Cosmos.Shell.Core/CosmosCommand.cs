@@ -435,6 +435,16 @@ internal abstract class CosmosCommand
                 var root = doc.RootElement;
                 if (root.ValueKind == JsonValueKind.Array)
                 {
+                    if (root.GetArrayLength() is < 1 or > 3)
+                    {
+                        throw new JsonException("A hierarchical partition key must contain between one and three components.");
+                    }
+
+                    foreach (var component in root.EnumerateArray())
+                    {
+                        ValidatePartitionKeyArgumentComponent(component);
+                    }
+
                     return CreatePartitionKey(root.EnumerateArray());
                 }
 
@@ -446,11 +456,27 @@ internal abstract class CosmosCommand
                     throw new JsonException("Partition key cannot be a JSON object.");
                 }
 
+                ValidatePartitionKeyArgumentComponent(root);
                 return CreatePartitionKey(root);
             }
         }
 
         return new PartitionKey(rawValue);
+    }
+
+    internal static int GetPartitionKeyComponentCount(PartitionKey partitionKey)
+    {
+        using var document = JsonDocument.Parse(partitionKey.ToString());
+        return document.RootElement.ValueKind == JsonValueKind.Array ? document.RootElement.GetArrayLength() : 1;
+    }
+
+    private static void ValidatePartitionKeyArgumentComponent(JsonElement component)
+    {
+        if (component.ValueKind is not (JsonValueKind.String or JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null)
+            || (component.ValueKind == JsonValueKind.Number && !double.IsFinite(component.GetDouble())))
+        {
+            throw new JsonException("Partition key components must be JSON strings, finite numbers, booleans, or null.");
+        }
     }
 
     /// <summary>

@@ -409,15 +409,41 @@ To keep the cost low, `--explain` executes only the first page of the query (`Ma
 
 ### print
 
-Get item by id and partition key.
+Read one item by ID and its complete partition key using a point read, without a query fallback.
 
 ```text
-Usage: print id key
+Usage: print id key [--database <ARG>] [--container <ARG>]
 
 Arguments:
     id          The ID of the item
-    key         The partition key of the item
+    key         Complete partition key: a JSON scalar or an ordered JSON array
+
+Options:
+    --database, --db
+                Override database name
+    --container, --con
+                Override container name
 ```
+
+The key uses the same typed syntax as the positional `pk` in `patch` (and `--partition-key` in `rm`, `batch`, `sproc`, and `watch`). JSON scalar literals preserve their types; other text is a string. Hierarchical keys use a JSON array with every component in container path order. Objects, nested arrays, empty arrays, arrays with more than three components, and non-finite numbers are rejected. `print` also checks that the component count matches the container. Invalid input is reported separately from a valid key that addresses a missing item.
+
+Examples inside Cosmos DB Shell:
+
+```text
+print product-680 680                           # Number 680
+print product-680 '"680"'                       # String "680"
+print customer-1001 '[1001,"customer-1001"]'
+print order-42 '["tenant-1",680,true]'
+print item-1 true                               # Boolean true
+print item-1 '"true"'                           # String "true"
+print item-1 null                               # Null
+print item-1 '"null"'                           # String "null"
+print item-1 customer-1                         # String "customer-1"
+```
+
+The outer single quotes preserve the inner JSON double quotes. `"680"` alone does **not** preserve a JSON string literal: shell quoting is removed, so the key is parsed as a number. Unquoted numeric tokens are normalized by the shell, so quote text such as `'001'` to keep it as the string `"001"`. Invoking these commands from a host shell may require additional escaping; see [quoting and escaping](navigation.md). In MCP, the `key` argument is a string containing this value, for example `"680"`, `"\"680\""`, or `"[1001,\"customer-1001\"]"`; use the string `"null"` for a null key, not JSON null.
+
+> **Note:** Earlier versions always treated this key as a string, so `print item-1 680` read string `"680"`. To address a string key that looks like a number, boolean, null, or JSON array, quote it as a JSON string, for example `print item-1 '"680"'`.
 
 ### mkitem
 
