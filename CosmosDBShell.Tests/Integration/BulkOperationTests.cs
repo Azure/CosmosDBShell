@@ -357,7 +357,7 @@ public class BulkOperationTests : ConnectedEmulatorTestBase
 
     private string PathFor(string name)
     {
-        var path = Path.Combine(Path.GetTempPath(), $"bulk-integration-{Guid.NewGuid():N}-{Path.GetFileName(name)}");
+        var path = Path.Join(Path.GetTempPath(), $"bulk-integration-{Guid.NewGuid():N}-{Path.GetFileName(name)}");
         this.files.Add(path);
         return path;
     }
