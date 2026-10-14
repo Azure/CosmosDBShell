@@ -259,7 +259,7 @@ command-rm-dry-run-plan = Dry run: Would delete { $count } { $count ->
     *[other] items
 }. No changes were made.
 command-rm-error-no_filter = Filter is missing.
-command-rm-error-invalid_pk_json = Partition key must be a JSON scalar value or a JSON array of values for hierarchical partition keys.
+command-rm-error-invalid_pk_json = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
 command-rm-error-partition_key_components = The partition key must specify all { $expected } components of the container's partition key, but { $actual } { $actual ->
     [one] was
     *[other] were
@@ -397,7 +397,7 @@ command-patch-description-etag = Optional ETag for optimistic concurrency contro
 command-patch-success = Successfully patched item (RU charge: { $charge })
 command-patch-error-missing_id = Item ID is required.
 command-patch-error-missing_pk = Partition key is required.
-command-patch-error-invalid_pk_json = Partition key must be a JSON scalar value or a JSON array of values for hierarchical partition keys.
+command-patch-error-invalid_pk_json = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
 command-patch-error-missing_op = Patch operation is required. Supported: set, add, replace, remove, incr.
 command-patch-error-missing_path = Patch path is required.
 command-patch-error-invalid_path = Patch path must start with '/'.
@@ -439,7 +439,7 @@ command-batch-status-column-id = Item ID
 command-batch-error-missing_subcommand = Missing subcommand. Use one of: run, begin, add, execute, cancel, status, show.
 command-batch-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: run, begin, add, execute, cancel, status, show.
 command-batch-error-missing_pk = A partition key is required. Specify it with --partition-key.
-command-batch-error-invalid_pk_json = Partition key must be a JSON scalar value or a JSON array of values for hierarchical partition keys.
+command-batch-error-invalid_pk_json = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
 command-batch-error-missing_data = Batch operations are required. Provide a JSON array of operations, or a single operation object.
 command-batch-error-invalid_json = The batch operations are not valid JSON: { $message }
 command-batch-error-not_object = Each batch operation must be a JSON object, and the batch itself must be a JSON object or an array of objects.
@@ -683,7 +683,7 @@ command-sproc-error-file_not_found = File not found: '{ $file }'.
 command-sproc-error-already_exists = Stored procedure '{ $name }' already exists. Use --force to replace it.
 command-sproc-error-not_found = Stored procedure '{ $name }' was not found.
 command-sproc-error-invalid_params = Invalid parameters. Provide a JSON array of arguments, for example: '["a", 1, true]'.
-command-sproc-error-invalid_pk = Invalid partition key. Provide a JSON scalar, or a JSON array for a hierarchical partition key.
+command-sproc-error-invalid_pk = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
 command-sproc-error-missing_partition_key = A partition key is required to execute a stored procedure. Use --partition-key.
 command-sproc-error-not_interactive = 'sproc edit' needs an interactive terminal and cannot run from a script or piped input.
 command-sproc-error-no_editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.

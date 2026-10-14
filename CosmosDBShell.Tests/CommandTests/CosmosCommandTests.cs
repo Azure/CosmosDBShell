@@ -7,6 +7,7 @@ namespace CosmosShell.Tests.CommandTests;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 
 public class CosmosCommandTests
@@ -123,6 +124,22 @@ public class CosmosCommandTests
     public void CreatePartitionKeyFromArgument_RejectsUnsupportedComponents(string value)
     {
         Assert.Throws<JsonException>(() => TestCosmosCommand.CreatePartitionKeyFromArgumentForTest(value));
+    }
+
+    [Theory]
+    [InlineData("command-print-error-invalid_pk_json")]
+    [InlineData("command-patch-error-invalid_pk_json")]
+    [InlineData("command-rm-error-invalid_pk_json")]
+    [InlineData("command-batch-error-invalid_pk_json")]
+    [InlineData("command-sproc-error-invalid_pk")]
+    public void InvalidPartitionKeyMessage_ExplainsSupportedComponents(string key)
+    {
+        var message = MessageService.GetString(key);
+
+        Assert.Contains("JSON scalar", message);
+        Assert.Contains("one to three", message);
+        Assert.Contains("string, finite number, boolean, or null", message);
+        Assert.Contains("Objects and nested arrays are not supported", message);
     }
 
     private sealed class TestCosmosCommand : CosmosCommand

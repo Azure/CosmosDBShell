@@ -38,7 +38,7 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 
 Exports replace their destination only after successful completion, preserving an existing file on failure or cancellation. Imports stream records with up to 16 concurrent writes by default; set `--concurrency` to tune this, or use `--concurrency=1` for sequential, file-order writes. Concurrent writes can finish out of order, and in-flight writes may finish after an error. CSV exports use temporary disk storage to discover columns without retaining all documents in memory. Scalar CSV results use an empty column header by default; set `COSMOSDB_SHELL_CSV_SCALAR_COLUMN` to name it. An import rejects populated columns with empty headers rather than discarding their values. See [import/export](docs/commands.md#export).
 
-MCP command execution is serialized with the shell, and destructive confirmations are invalidated by connection or navigation changes. Ordinary explicit null MCP arguments are omitted; null continuation tokens, null `rm` partition-key/ETag safety options, and null `print` partition-key options are rejected. MCP invocations are echoed in the shell so their activity stays visible, and they are recorded in history alongside interactive commands. Concurrent shells merge history under a shared lock and publish complete replacements instead of truncating the saved file. History remains fully replayable, including connection strings; treat its file as sensitive. See [MCP security](docs/mcp.md#security) and [history](docs/navigation.md#history).
+MCP command execution is serialized with the shell, and destructive confirmations are invalidated by connection or navigation changes. Ordinary explicit null MCP arguments are omitted; null continuation tokens and null `rm` partition-key/ETag safety options are rejected. MCP invocations are echoed in the shell so their activity stays visible, and they are recorded in history alongside interactive commands. Concurrent shells merge history under a shared lock and publish complete replacements instead of truncating the saved file. History remains fully replayable, including connection strings; treat its file as sensitive. See [MCP security](docs/mcp.md#security) and [history](docs/navigation.md#history).
 
 MCP clients supporting resource subscriptions can watch `cosmos://shell/current-location` for interactive navigation and connection changes; the resource includes the current account endpoint separately from the location. The resource list is static, so the server does not advertise `resources.listChanged`. See [MCP location updates](docs/mcp.md#shell-location-updates).
 
@@ -90,11 +90,6 @@ Run the tests:
 ```bash
 dotnet test CosmosDBShell.sln
 ```
-
-Emulator integration CI runs the broad fixture suite on the Linux preview emulator.
-Same-ID numeric/string partition-key collision tests use the Windows emulator in a
-separate CI job, because the Linux preview rejects those fixtures. These tests have
-the `Feature=PartitionKeyCollisions` trait and exercise both scalar and hierarchical keys.
 
 The first-run welcome screen and `welcome` command use the OS UI language when
 translations are available. Command-example descriptions, theme-preview labels,
