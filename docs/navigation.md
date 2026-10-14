@@ -324,6 +324,8 @@ or `$LASTEXITCODE`):
 
 These values are a public contract. See the [CI/CD guide](ci.md#exit-code-contract) for install steps, auth patterns, and scripted failure handling.
 
+Scripted `bulk` writes require `--yes`; use `--dry-run` to preview first. Bulk operations are not transactional, and an exhausted observed RU budget returns exit code `6`. Supply `--journal` on the original run and reuse that same journal to resume; without it, reconcile completed writes before retrying. See [bulk operations](commands.md#bulk) for recovery and partial-success semantics.
+
 ### Environment Variables
 
 | Variable | Description |
