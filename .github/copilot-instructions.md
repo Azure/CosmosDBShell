@@ -40,6 +40,8 @@
 
 - Update `README.md` for user-visible CLI changes.
 - Always retain `## Unreleased` at the top of `CHANGELOG.md`, even when it is empty. When preparing a release, move its entries into a dated version section below it; never replace or remove the Unreleased heading.
+- Keep permanent category headings under `## Unreleased` in this order: `### Breaking changes`, `### New features`, `### Fixes`, `### Improvements`. Retain all four headings even when empty, including after preparing a release.
+- Append new changelog entries to the appropriate existing category. Do not duplicate or reorder headings, reorder existing entries, or rewrite unrelated changelog text. Keep a blank line between sections to reduce overlapping edits and merge conflicts.
 - Update the relevant docs in `docs/`, especially:
   - `docs/commands.md` for command usage
   - `docs/navigation.md` for CLI arguments and shell navigation

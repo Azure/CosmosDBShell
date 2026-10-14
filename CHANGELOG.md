@@ -6,6 +6,8 @@
 
 - `print <id> <key>` now parses the key with the same typed syntax as `patch`, so `print item-1 680` reads numeric key `680` instead of string `"680"`. To address a string key that looks like a number, boolean, null, or JSON array, quote it as a JSON string: `print item-1 '"680"'`. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
 
+### New features
+
 ### Fixes
 
 - `print` now reads items with typed scalar and complete hierarchical partition keys, for example `print customer-1001 '[1001,"customer-1001"]'`. Invalid keys are distinguished from missing items. Shared argument parsing rejects object/nested-array components and non-finite numbers instead of coercing them. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
