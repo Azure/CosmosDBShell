@@ -270,6 +270,7 @@ internal abstract class CosmosCommand
     {
         return element.ValueKind switch
         {
+            JsonValueKind.Object when !element.EnumerateObject().Any() => PartitionKey.None,
             JsonValueKind.String => new PartitionKey(element.GetString()),
             JsonValueKind.Number =>
                 element.TryGetInt32(out int intValue) ? new PartitionKey(intValue) :
@@ -328,6 +329,9 @@ internal abstract class CosmosCommand
                 break;
             case JsonValueKind.Null:
                 builder.AddNullValue();
+                break;
+            case JsonValueKind.Object when !element.EnumerateObject().Any():
+                builder.AddNoneType();
                 break;
             default:
                 builder.Add(element.GetRawText());
@@ -394,6 +398,9 @@ internal abstract class CosmosCommand
                 case JsonValueKind.Null:
                     builder.AddNullValue();
                     break;
+                case JsonValueKind.Object when !element.EnumerateObject().Any():
+                    builder.AddNoneType();
+                    break;
                 default:
                     builder.Add(element.GetRawText());
                     break;
@@ -448,11 +455,13 @@ internal abstract class CosmosCommand
                     return CreatePartitionKey(root.EnumerateArray());
                 }
 
-                // Reject object-shaped JSON: a JSON object cannot represent a
-                // partition key value. Surface this as a JsonException so callers
-                // can translate it into their localized invalid-PK message.
                 if (root.ValueKind == JsonValueKind.Object)
                 {
+                    if (!root.EnumerateObject().Any())
+                    {
+                        return PartitionKey.None;
+                    }
+
                     throw new JsonException("Partition key cannot be a JSON object.");
                 }
 
@@ -466,16 +475,26 @@ internal abstract class CosmosCommand
 
     internal static int GetPartitionKeyComponentCount(PartitionKey partitionKey)
     {
+        if (partitionKey.Equals(PartitionKey.None))
+        {
+            return 1;
+        }
+
         using var document = JsonDocument.Parse(partitionKey.ToString());
         return document.RootElement.ValueKind == JsonValueKind.Array ? document.RootElement.GetArrayLength() : 1;
     }
 
     private static void ValidatePartitionKeyArgumentComponent(JsonElement component)
     {
+        if (component.ValueKind == JsonValueKind.Object && !component.EnumerateObject().Any())
+        {
+            return;
+        }
+
         if (component.ValueKind is not (JsonValueKind.String or JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null)
             || (component.ValueKind == JsonValueKind.Number && !double.IsFinite(component.GetDouble())))
         {
-            throw new JsonException("Partition key components must be JSON strings, finite numbers, booleans, or null.");
+            throw new JsonException("Partition key components must be JSON strings, finite numbers, booleans, null, or {}.");
         }
     }
 
@@ -501,27 +520,51 @@ internal abstract class CosmosCommand
     /// </summary>
     /// <param name="item">The item JSON.</param>
     /// <param name="partitionKeyPaths">The normalized partition key paths.</param>
-    /// <param name="missingPath">The missing path when the method returns false.</param>
+    /// <param name="hasUndefinedComponent">Whether one or more configured paths are absent.</param>
     /// <param name="partitionKey">The resulting partition key.</param>
-    /// <returns>True if all key components were found; otherwise false.</returns>
-    protected static bool TryCreatePartitionKeyFromItem(JsonElement item, IReadOnlyList<string> partitionKeyPaths, out string? missingPath, out PartitionKey partitionKey)
+    /// <returns>True when the container defines at least one partition-key path.</returns>
+    protected static bool TryCreatePartitionKeyFromItem(JsonElement item, IReadOnlyList<string> partitionKeyPaths, out bool hasUndefinedComponent, out PartitionKey partitionKey)
     {
-        var components = new List<JsonElement>();
+        hasUndefinedComponent = false;
+        if (partitionKeyPaths.Count == 0)
+        {
+            partitionKey = default;
+            return false;
+        }
+
+        if (partitionKeyPaths.Count == 1)
+        {
+            if (!TryGetNestedProperty(item, partitionKeyPaths[0], out var component))
+            {
+                hasUndefinedComponent = true;
+                partitionKey = PartitionKey.None;
+                return true;
+            }
+
+            partitionKey = CreatePartitionKey(component);
+            return true;
+        }
+
+        var builder = new PartitionKeyBuilder();
         foreach (var path in partitionKeyPaths)
         {
             if (!TryGetNestedProperty(item, path, out var keyComponent))
             {
-                missingPath = path;
-                partitionKey = default;
-                return false;
+                builder.AddNoneType();
+                hasUndefinedComponent = true;
+                continue;
             }
 
-            components.Add(keyComponent);
+            AddPartitionKeyValue(builder, keyComponent);
         }
 
-        missingPath = null;
-        partitionKey = components.Count == 1 ? CreatePartitionKey(components[0]) : CreatePartitionKey(components);
+        partitionKey = builder.Build();
         return true;
+    }
+
+    protected static bool HasUndefinedPartitionKeyComponent(JsonElement item, IReadOnlyList<string> partitionKeyPaths)
+    {
+        return partitionKeyPaths.Any(path => !TryGetNestedProperty(item, path, out _));
     }
 
     private static bool LooksLikeJsonLiteral(string trimmed)

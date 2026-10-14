@@ -179,6 +179,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
 
         var totalCount = 0;
+        var undefinedPartitionKeyMutationCount = 0;
         double totalCharge = 0;
         bool dryRun = this.DryRun == true;
 
@@ -232,7 +233,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 foreach (var item in itemsArray.EnumerateArray())
                 {
                     if (item.TryGetProperty("id", out var idElement) &&
-                        TryGetPartitionKeyElements(item, partitionKeyPropertyNames, out var pkElements))
+                        TryCreateItemPartitionKey(item, partitionKeyPropertyNames, out var itemPartitionKey, out var hasUndefinedComponent))
                     {
                         var id = idElement.GetString();
 
@@ -250,11 +251,15 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
                         if (id != null && shouldDelete)
                         {
-                            var deleteResult = await TryDeleteAsync(id, CreateItemPartitionKey(pkElements));
+                            var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
                             totalCharge += deleteResult.RequestCharge;
                             if (deleteResult.Counted)
                             {
                                 totalCount++;
+                                if (!dryRun && hasUndefinedComponent)
+                                {
+                                    undefinedPartitionKeyMutationCount++;
+                                }
                             }
                         }
                     }
@@ -264,7 +269,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             {
                 // Single item from pipe
                 if (itemsArray.TryGetProperty("id", out var idElement) &&
-                    TryGetPartitionKeyElements(itemsArray, partitionKeyPropertyNames, out var pkElements))
+                    TryCreateItemPartitionKey(itemsArray, partitionKeyPropertyNames, out var itemPartitionKey, out var hasUndefinedComponent))
                 {
                     // Check if pattern matches (if matcher is set)
                     bool shouldDelete = this.matcher == null; // No pattern = delete all
@@ -283,11 +288,15 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         var id = idElement.GetString();
                         if (id != null)
                         {
-                            var deleteResult = await TryDeleteAsync(id, CreateItemPartitionKey(pkElements));
+                            var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
                             totalCharge += deleteResult.RequestCharge;
                             if (deleteResult.Counted)
                             {
                                 totalCount++;
+                                if (!dryRun && hasUndefinedComponent)
+                                {
+                                    undefinedPartitionKeyMutationCount++;
+                                }
                             }
                         }
                     }
@@ -334,29 +343,22 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         continue;
                     }
 
-                    if (!TryGetPartitionKeyElements(element, partitionKeyPropertyNames, out var pkElements))
-                    {
-                        AnsiConsole.MarkupLine(
-                            MessageService.GetString(
-                                "command-rm-warning-missing-partition-key",
-                                new Dictionary<string, object>
-                                {
-                                    { "id", id },
-                                    { "partitionKey", string.Join(',', partitionKeyPropertyNames) },
-                                }));
-                        continue;
-                    }
+                    TryCreateItemPartitionKey(element, partitionKeyPropertyNames, out var itemPartitionKey, out var hasUndefinedComponent);
 
                     // Check if pattern matches
                     bool shouldDelete = MatchesAnyPath(element, matchKeyPropertyNames, this.matcher);
 
                     if (shouldDelete)
                     {
-                        var deleteResult = await TryDeleteAsync(id, CreateItemPartitionKey(pkElements));
+                        var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
                         totalCharge += deleteResult.RequestCharge;
                         if (deleteResult.Counted)
                         {
                             totalCount++;
+                            if (!dryRun && hasUndefinedComponent)
+                            {
+                                undefinedPartitionKeyMutationCount++;
+                            }
                         }
                     }
                 }
@@ -376,7 +378,19 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 });
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(this.CreateResult(totalCount, dryRun)));
-        commandState.RenderUser = () => AnsiConsole.MarkupLine(renderMessage);
+        commandState.RenderUser = () =>
+        {
+            if (undefinedPartitionKeyMutationCount > 0)
+            {
+                AnsiConsole.MarkupLine(
+                    MessageService.GetArgsString(
+                        "warning-undefined-partition-key-mutation",
+                        "count",
+                        undefinedPartitionKeyMutationCount));
+            }
+
+            AnsiConsole.MarkupLine(renderMessage);
+        };
 
         commandState.RequestCharge = totalCharge > 0 ? totalCharge : null;
         return new ExitCode(0);
@@ -384,8 +398,23 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
     internal static PartitionKey CreateItemPartitionKey(IReadOnlyList<JsonElement> elements) => CreatePartitionKey(elements);
 
+    internal static bool TryCreateItemPartitionKey(
+        JsonElement item,
+        IReadOnlyList<string> partitionKeyPropertyNames,
+        out PartitionKey partitionKey,
+        out bool hasUndefinedComponent)
+    {
+        return TryCreatePartitionKeyFromItem(item, partitionKeyPropertyNames, out hasUndefinedComponent, out partitionKey);
+    }
+
     internal static JsonElement ToPartitionKeyJson(PartitionKey partitionKey)
     {
+        if (partitionKey.Equals(PartitionKey.None))
+        {
+            using var noneDocument = JsonDocument.Parse("{}");
+            return noneDocument.RootElement.Clone();
+        }
+
         using var document = JsonDocument.Parse(partitionKey.ToString());
         var root = document.RootElement;
         var value = root.ValueKind == JsonValueKind.Array && root.GetArrayLength() == 1 ? root[0] : root;

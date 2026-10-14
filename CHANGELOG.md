@@ -10,6 +10,7 @@
 
 ### Fixes
 
+- Item commands now support undefined partition-key values (`PartitionKey.None`) with the explicit `{}` syntax, including missing components in hierarchical keys. Mutations that infer undefined keys from item content emit bounded warnings. ([#251](https://github.com/Azure/CosmosDBShell/issues/251))
 - `print` now reads items with typed scalar and complete hierarchical partition keys, for example `print customer-1001 '[1001,"customer-1001"]'`. Invalid keys are distinguished from missing items. Shared argument parsing rejects object/nested-array components and non-finite numbers instead of coercing them. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
 - Avoid accessing an expired HTTP request during MCP session teardown, preventing disposal errors while releasing location subscriptions and legacy SSE admission state. ([#249](https://github.com/Azure/CosmosDBShell/issues/249))
 

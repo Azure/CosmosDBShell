@@ -438,12 +438,23 @@ print item-1 true                               # Boolean true
 print item-1 '"true"'                           # String "true"
 print item-1 null                               # Null
 print item-1 '"null"'                           # String "null"
+print item-1 '{}'                               # Undefined / missing partition-key property
 print item-1 customer-1                         # String "customer-1"
 ```
 
 The outer single quotes preserve the inner JSON double quotes. `"680"` alone does **not** preserve a JSON string literal: shell quoting is removed, so the key is parsed as a number. Unquoted numeric tokens are normalized by the shell, so quote text such as `'001'` to keep it as the string `"001"`. Invoking these commands from a host shell may require additional escaping; see [quoting and escaping](navigation.md). In MCP, the `key` argument is a string containing this value, for example `"680"`, `"\"680\""`, or `"[1001,\"customer-1001\"]"`; use the string `"null"` for a null key, not JSON null.
 
 > **Note:** Earlier versions always treated this key as a string, so `print item-1 680` read string `"680"`. To address a string key that looks like a number, boolean, null, or JSON array, quote it as a JSON string, for example `print item-1 '"680"'`.
+
+#### Undefined partition keys
+
+Use the empty JSON object `{}` to address Cosmos DB's undefined partition-key value (`PartitionKey.None`). This is distinct from JSON `null` (`PartitionKey.Null`) and the strings `"none"` and `"undefined"`. In hierarchical keys, use `{}` for each missing component, for example `'["tenant-1",{}]'`.
+
+The syntax applies to `print`, `patch`, `batch`, `sproc exec`, `rm --partition-key`, and `watch --partition-key`. Quote `{}` or a hierarchical JSON array in the interactive shell so it remains one argument. MCP callers pass the same syntax as a string.
+
+When `mkitem`, `create item`, `import`, `replace`, or scan-based `rm` derives a partition key from item content and a configured path is absent, the command uses `PartitionKey.None`. Mutating commands print one warning (or one bounded summary warning for bulk input). Explicitly targeting `{}` does not warn, and reads never warn.
+
+Undefined partition keys are supported for legacy, transitional, and exceptional data. For new data, follow Microsoft's [partition-key guidance](https://learn.microsoft.com/azure/cosmos-db/partitioning-overview#choose-a-partition-key): choose a stable, high-cardinality property and include a value on every item.
 
 ### mkitem
 
@@ -484,7 +495,7 @@ Options:
                Override container name (Optional)
 ```
 
-`replace` derives the partition key from the item JSON and supports hierarchical partition key containers. The `--etag` option is only supported for single-object input because each item has its own ETag. `replace` fails when the target item does not already exist.
+`replace` derives the partition key from the item JSON and supports hierarchical partition key containers. A missing configured path is treated as an undefined component and produces a warning before mutation. The `--etag` option is only supported for single-object input because each item has its own ETag. `replace` fails when the target item does not already exist.
 
 ### patch
 
@@ -537,7 +548,7 @@ The `value` argument is parsed as JSON when it looks like a JSON literal. Otherw
 
 Quoting rules follow the shell: wrap values that contain spaces or shell metacharacters in quotes. Use single quotes around JSON object/array literals so the shell does not try to interpret them.
 
-The `pk` argument follows the same JSON-literal typing for numbers, booleans, and null. For hierarchical partition keys, pass the key components as a JSON array, for example `'["tenant-1","order-42"]'`.
+The `pk` argument follows the same JSON-literal typing for numbers, booleans, and null. Use `'{}'` for an undefined value. For hierarchical partition keys, pass the key components as a JSON array, for example `'["tenant-1",{}]'`.
 
 #### Examples
 
@@ -684,7 +695,7 @@ Examples:
 
 #### Partition-key scoping
 
-`--partition-key` (alias `--pk`) restricts both the dry run and the deletion to a single logical partition. It uses the same typed parsing as `patch` and `batch`: JSON scalars keep their type (`--pk=7` targets the number `7`, `--pk='"7"'` targets the string `"7"`), and hierarchical keys are passed as a JSON array (`--pk='["tenant-1",7]'`). The value must supply every component of the container's partition key; a prefix of a hierarchical key is rejected. Piped items outside the partition are skipped.
+`--partition-key` (alias `--pk`) restricts both the dry run and the deletion to a single logical partition. It uses the same typed parsing as `patch` and `batch`: JSON scalars keep their type (`--pk=7` targets the number `7`, `--pk='"7"'` targets the string `"7"`), `{}` targets an undefined value, and hierarchical keys are passed as a JSON array (`--pk='["tenant-1",{}]'`). The value must supply every component of the container's partition key; a prefix of a hierarchical key is rejected. Piped items outside the partition are skipped.
 
 #### Deleting a single item safely
 
@@ -740,7 +751,7 @@ The summary line reports the number of items written and the total RU charge.
 
 ### import
 
-Bulk-load items from a JSON Lines, JSON array, or CSV file into a container. Format is auto-detected: a `.csv` extension selects CSV, otherwise the first non-whitespace character is inspected (`[` ⇒ array, otherwise JSON Lines). It can be forced with `--format`. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist. For CSV, the header row defines property names and every value is imported as a string; the CSV separator follows `COSMOSDB_SHELL_CSVSEP` (default `;`). Empty headers with empty cells are ignored; a value under an empty header fails import with its line and column instead of being silently discarded. All formats are read incrementally rather than loading the complete file into memory. CSV supports quoted separators, escaped quotes, and multiline fields; malformed records abort the import with their physical start line. Earlier writes are not rolled back, so use `--dry-run` first when the entire file must be validated before any writes.
+Bulk-load items from a JSON Lines, JSON array, or CSV file into a container. Format is auto-detected: a `.csv` extension selects CSV, otherwise the first non-whitespace character is inspected (`[` ⇒ array, otherwise JSON Lines). It can be forced with `--format`. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist. For CSV, the header row defines property names and every value is imported as a string; the CSV separator follows `COSMOSDB_SHELL_CSVSEP` (default `;`). Empty headers with empty cells are ignored; a value under an empty header fails import with its line and column instead of being silently discarded. All formats are read incrementally rather than loading the complete file into memory. CSV supports quoted separators, escaped quotes, and multiline fields; malformed records abort the import with their physical start line. When an imported item omits a configured partition-key path, Cosmos DB infers an undefined value and the command emits one bounded warning with the affected item count. Earlier writes are not rolled back, so use `--dry-run` first when the entire file must be validated before any writes.
 
 ```text
 Usage: import <file> [options]

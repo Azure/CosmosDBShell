@@ -132,6 +132,14 @@ public class PrintPartitionKeyTests : EmulatorTestBase
 
     private static KeyFixture[] CreateCollisionFixtures() =>
     [
+        new("Scalar", """{"id":"undefined-collision","marker":"undefined"}""", PartitionKey.None,
+            "'{}'"),
+        new("Scalar", """{"id":"undefined-collision","pk":null,"marker":"null"}""", PartitionKey.Null,
+            "null"),
+        new("Scalar", """{"id":"undefined-collision","pk":"undefined","marker":"undefined-string"}""", new PartitionKey("undefined"),
+            "undefined", "'\"undefined\"'"),
+        new("Two", """{"id":"undefined-hpk","first":"tenant-1","marker":"undefined-second"}""",
+            new PartitionKeyBuilder().Add("tenant-1").AddNoneType().Build(), "'[\"tenant-1\",{}]'"),
         new("Scalar", """{"id":"product-680","pk":680,"marker":"numeric"}""", new PartitionKey(680d),
             "680"),
         new("Scalar", """{"id":"product-680","pk":"680","marker":"numeric-string"}""", new PartitionKey("680"),
@@ -161,7 +169,8 @@ public class PrintPartitionKeyTests : EmulatorTestBase
     {
         Assert.All(recorder.Requests, request => Assert.Equal(HttpMethod.Get, request.Method));
         var read = Assert.Single(recorder.Requests, request => request.Uri.Contains("/docs/", StringComparison.Ordinal));
-        using var expected = JsonDocument.Parse(expectedKey.ToString());
+        using var expected = JsonDocument.Parse(
+            expectedKey.Equals(PartitionKey.None) ? "[{}]" : expectedKey.ToString());
         using var actual = JsonDocument.Parse(Assert.IsType<string>(read.PartitionKey));
         Assert.True(JsonElement.DeepEquals(expected.RootElement, actual.RootElement));
     }
@@ -192,8 +201,6 @@ public class PrintPartitionKeyTests : EmulatorTestBase
             ("customer-1001", "Specify the item's partition key"),
             ("customer-1001 --pk=680", "--pk"),
             ("customer-1001 '[1001,]'", "Invalid partition key JSON"),
-            ("customer-1001 '{}'", "Invalid partition key JSON"),
-            ("customer-1001 '[{},1]'", "Invalid partition key JSON"),
             ("customer-1001 '[[1],2]'", "Invalid partition key JSON"),
             ("customer-1001 '[]'", "Invalid partition key JSON"),
             ("customer-1001 '[1,2,3,4]'", "Invalid partition key JSON"),

@@ -4,6 +4,7 @@
 
 namespace CosmosShell.Tests.CommandTests;
 
+using System.Net;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
@@ -193,11 +194,12 @@ public class SprocCommandExecutionTests
     public async Task ExecAsync_ReturnsResource()
     {
         var (container, scripts) = ScriptMocks.NewContainer();
-        using var doc = JsonDocument.Parse("{\"ok\":true}");
-        var execResponse = Substitute.For<StoredProcedureExecuteResponse<JsonElement>>();
-        execResponse.Resource.Returns(doc.RootElement.Clone());
-        execResponse.RequestCharge.Returns(2.0);
-        scripts.ExecuteStoredProcedureAsync<JsonElement>(
+        using var execResponse = new ResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("{\"ok\":true}")),
+        };
+        execResponse.Headers.Add("x-ms-request-charge", "2");
+        scripts.ExecuteStoredProcedureStreamAsync(
                 Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<dynamic[]>(), Arg.Any<StoredProcedureRequestOptions>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(execResponse));
 

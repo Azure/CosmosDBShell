@@ -308,6 +308,30 @@ public class RmCommandTests
     }
 
     [Fact]
+    public void TryCreateItemPartitionKey_MissingScalarPropertyCreatesNone()
+    {
+        using var item = JsonDocument.Parse("""{"id":"missing"}""");
+
+        var created = RmCommand.TryCreateItemPartitionKey(
+            item.RootElement,
+            ["pk"],
+            out var partitionKey,
+            out var hasUndefinedComponent);
+
+        Assert.True(created);
+        Assert.True(hasUndefinedComponent);
+        Assert.Equal(PartitionKey.None.ToString(), partitionKey.ToString());
+    }
+
+    [Fact]
+    public void ParsePartitionKey_NoneRendersAsEmptyObject()
+    {
+        var partitionKey = RmCommand.ParsePartitionKey("{}");
+
+        Assert.Equal("{}", RmCommand.ToPartitionKeyJson(partitionKey).GetRawText());
+    }
+
+    [Fact]
     public void RmNewLocalizationKeys_ArePresent()
     {
         string[] keys =

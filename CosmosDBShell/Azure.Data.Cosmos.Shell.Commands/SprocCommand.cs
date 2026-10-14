@@ -443,21 +443,23 @@ internal class SprocCommand : CosmosCommand
 
         try
         {
-            var response = await container.Scripts.ExecuteStoredProcedureAsync<JsonElement>(
+            using var response = await container.Scripts.ExecuteStoredProcedureStreamAsync(
                 name,
                 partitionKey,
                 parameters,
                 cancellationToken: token);
+            response.EnsureSuccessStatusCode();
 
             ShellInterpreter.WriteLine(MessageService.GetArgsString(
                 "command-sproc-executed",
                 "name",
                 name,
                 "charge",
-                response.RequestCharge.ToString("F2")));
+                response.Headers.RequestCharge.ToString("F2")));
 
-            commandState.Result = new ShellJson(response.Resource.Clone());
-            commandState.RequestCharge = response.RequestCharge;
+            using var result = await JsonDocument.ParseAsync(response.Content, cancellationToken: token);
+            commandState.Result = new ShellJson(result.RootElement.Clone());
+            commandState.RequestCharge = response.Headers.RequestCharge;
             return commandState;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)

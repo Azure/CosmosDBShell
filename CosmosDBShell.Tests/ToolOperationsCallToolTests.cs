@@ -616,6 +616,8 @@ public class ToolOperationsCallToolTests : IDisposable
     [InlineData("[1001,\"customer-1001\"]")]
     [InlineData("true")]
     [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("[\"tenant-1\",{}]")]
     [InlineData("customer-1")]
     public async Task CallTool_PrintWithTypedKey_Binds(string value)
     {

@@ -149,6 +149,8 @@ Explicit `null` argument values are treated as omitted and are not echoed into s
 
 For `print`, the `key` argument uses the same typed syntax as `patch`: `"680"` selects a number, `"\"680\""` selects a string, and `"[1001,\"customer-1001\"]"` selects a hierarchical key. Pass `"null"` for a null partition key; explicit JSON `null` is treated as omitted and reported as a missing key. See [print](commands.md#print).
 
+Pass `"{}"` to explicitly target an undefined partition-key value (`PartitionKey.None`), or include `{}` in a hierarchical key string such as `"[\"tenant-1\",{}]"`. This is distinct from `"null"` and from the literal strings `"none"` and `"undefined"`. Explicit undefined targets do not warn. Commands that infer an undefined key from missing item content emit one bounded mutation warning; reads do not warn. See [Undefined partition keys](commands.md#undefined-partition-keys).
+
 Your MCP client may use a remote LLM. Command outputs, query results, and file contents could be transmitted to external services. **Treat all shell output as potentially shared.**
 
 ### Best Practices

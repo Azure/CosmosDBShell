@@ -51,15 +51,20 @@ internal class MakeItemCommand : CosmosCommand
         }
 
         // Resolve container using the helper
-        var (_, _, container) = await ResolveContainerAsync(
+        var (databaseName, containerName, container) = await ResolveContainerAsync(
             connectedState.Client,
             shell.State,
             this.Database,
             this.Container,
             "mkitem",
             token);
+        var partitionKeyPaths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(
+            connectedState,
+            databaseName!,
+            containerName!,
+            token);
 
-        var summary = await WriteItemAsync(container, jsonOpt, this.Force == true, token);
+        var summary = await WriteItemAsync(container, partitionKeyPaths, jsonOpt, this.Force == true, token);
 
         var returnState = new CommandState();
         returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
@@ -132,7 +137,12 @@ internal class MakeItemCommand : CosmosCommand
         }
     }
 
-    private static async Task<WriteSummary> WriteItemAsync(Container container, string? jsonOpt, bool force, CancellationToken token)
+    private static async Task<WriteSummary> WriteItemAsync(
+        Container container,
+        IReadOnlyList<string> partitionKeyPaths,
+        string? jsonOpt,
+        bool force,
+        CancellationToken token)
     {
         if (!string.IsNullOrEmpty(jsonOpt))
         {
@@ -143,6 +153,8 @@ internal class MakeItemCommand : CosmosCommand
 
                 if (root.ValueKind == JsonValueKind.Array)
                 {
+                    WriteUndefinedPartitionKeyWarning(
+                        root.EnumerateArray().Count(item => HasUndefinedPartitionKeyComponent(item, partitionKeyPaths)));
                     int createdCount = 0;
                     int replacedCount = 0;
                     int failCount = 0;
@@ -151,10 +163,13 @@ internal class MakeItemCommand : CosmosCommand
                     {
                         try
                         {
-                            ItemResponse<JsonElement> result = force
-                                ? await container.UpsertItemAsync(element, cancellationToken: token)
-                                : await container.CreateItemAsync(element, cancellationToken: token);
-                            charge += result.RequestCharge;
+                            using var body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(element.GetRawText()));
+                            TryCreatePartitionKeyFromItem(element, partitionKeyPaths, out _, out var partitionKey);
+                            using var result = force
+                                ? await container.UpsertItemStreamAsync(body, partitionKey, cancellationToken: token)
+                                : await container.CreateItemStreamAsync(body, partitionKey, cancellationToken: token);
+                            result.EnsureSuccessStatusCode();
+                            charge += result.Headers.RequestCharge;
                             if (result.StatusCode == System.Net.HttpStatusCode.Created)
                             {
                                 createdCount++;
@@ -275,11 +290,16 @@ internal class MakeItemCommand : CosmosCommand
                 }
                 else
                 {
+                    WriteUndefinedPartitionKeyWarning(
+                        HasUndefinedPartitionKeyComponent(root, partitionKeyPaths) ? 1 : 0);
                     try
                     {
-                        ItemResponse<JsonElement> result = force
-                            ? await container.UpsertItemAsync(root, cancellationToken: token)
-                            : await container.CreateItemAsync(root, cancellationToken: token);
+                        using var body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(root.GetRawText()));
+                        TryCreatePartitionKeyFromItem(root, partitionKeyPaths, out _, out var partitionKey);
+                        using var result = force
+                            ? await container.UpsertItemStreamAsync(body, partitionKey, cancellationToken: token)
+                            : await container.CreateItemStreamAsync(body, partitionKey, cancellationToken: token);
+                        result.EnsureSuccessStatusCode();
 
                         if (result.StatusCode == System.Net.HttpStatusCode.Created)
                         {
@@ -287,16 +307,16 @@ internal class MakeItemCommand : CosmosCommand
                             ShellInterpreter.WriteLine(MessageService.GetArgsString(
                                 key,
                                 "charge",
-                                result.RequestCharge.ToString("F2")));
-                            return new WriteSummary(1, 0, 0, result.RequestCharge);
+                                result.Headers.RequestCharge.ToString("F2")));
+                            return new WriteSummary(1, 0, 0, result.Headers.RequestCharge);
                         }
                         else if (force && result.StatusCode == System.Net.HttpStatusCode.OK)
                         {
                             ShellInterpreter.WriteLine(MessageService.GetArgsString(
                                 "command-mkitem-upserted-replaced",
                                 "charge",
-                                result.RequestCharge.ToString("F2")));
-                            return new WriteSummary(0, 1, 0, result.RequestCharge);
+                                result.Headers.RequestCharge.ToString("F2")));
+                            return new WriteSummary(0, 1, 0, result.Headers.RequestCharge);
                         }
                         else
                         {
@@ -304,7 +324,7 @@ internal class MakeItemCommand : CosmosCommand
                                 "command-mkitem-error-status-returned",
                                 "status",
                                 result.StatusCode.ToString()));
-                            return new WriteSummary(0, 0, 1, result.RequestCharge);
+                            return new WriteSummary(0, 0, 1, result.Headers.RequestCharge);
                         }
                     }
                     catch (CosmosException ce)
@@ -328,6 +348,14 @@ internal class MakeItemCommand : CosmosCommand
         }
 
         return default;
+    }
+
+    private static void WriteUndefinedPartitionKeyWarning(int count)
+    {
+        if (count > 0)
+        {
+            ShellInterpreter.WriteLine(MessageService.GetArgsString("warning-undefined-partition-key-mutation", "count", count));
+        }
     }
 
     private readonly record struct WriteSummary(int Created, int Replaced, int Failed, double RequestCharge);
