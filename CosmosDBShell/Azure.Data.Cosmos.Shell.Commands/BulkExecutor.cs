@@ -90,7 +90,7 @@ internal static class BulkExecutor
                 }
 
                 var budgetExhausted = maxRu.HasValue && summary.RequestCharge >= maxRu.Value;
-                if (failure != null || (newFailures > 0 && !continueOnError) || budgetExhausted)
+                if (failure != null || (newFailures > 0 && !continueOnError))
                 {
                     summary.ResultIncomplete = true;
                     summary.BudgetExceeded = budgetExhausted;
@@ -123,6 +123,13 @@ internal static class BulkExecutor
                     summary.Processed++;
                     summary.ResultIncomplete = true;
                     continue;
+                }
+
+                if (budgetExhausted)
+                {
+                    summary.ResultIncomplete = true;
+                    summary.BudgetExceeded = true;
+                    break;
                 }
 
                 await record(BulkOutcome.Create(operation, BulkOutcome.Started));

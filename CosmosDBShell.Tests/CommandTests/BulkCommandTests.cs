@@ -434,6 +434,104 @@ public class BulkCommandTests
         Assert.True(summary.ResultIncomplete);
     }
 
+    [Theory]
+    [InlineData(BulkOutcome.Succeeded)]
+    [InlineData(BulkOutcome.Started)]
+    [InlineData(BulkOutcome.Uncertain)]
+    public async Task ExhaustedRuBudgetDoesNotPreventLocalJournalSkips(string status)
+    {
+        var previous = Enumerable.Range(0, 3).ToDictionary(index => (long)index, index => Succeeded(index) with { Status = status });
+        var summary = new BulkSummary { RequestCharge = 2 };
+        var writes = new List<long>();
+        var records = new List<BulkOutcome>();
+
+        await BulkExecutor.ExecuteAsync(
+            SourceAsync(3, TestContext.Current.CancellationToken),
+            (operation, _) =>
+            {
+                writes.Add(operation.Index);
+                return Task.FromResult(Succeeded(operation.Index));
+            },
+            outcome =>
+            {
+                records.Add(outcome);
+                return Task.CompletedTask;
+            },
+            previous, summary, 1, 1, true, false, TestContext.Current.CancellationToken);
+
+        Assert.Empty(writes);
+        Assert.Empty(records);
+        Assert.Equal(3, summary.Skipped);
+        Assert.Equal(3, summary.Processed);
+        Assert.Equal(0, summary.Attempted);
+        Assert.Equal(2, summary.RequestCharge);
+        Assert.False(summary.BudgetExceeded);
+        Assert.False(summary.ResultIncomplete);
+        Assert.Equal(status == BulkOutcome.Succeeded, summary.Success);
+        Assert.Equal(status == BulkOutcome.Succeeded ? 0 : 3, summary.Uncertain);
+    }
+
+    [Fact]
+    public async Task ExhaustedRuBudgetStillBlocksNewWritesAfterJournalSkips()
+    {
+        var previous = new Dictionary<long, BulkOutcome>
+        {
+            [0] = Succeeded(0),
+            [1] = Succeeded(1) with { Status = BulkOutcome.Uncertain },
+        };
+        var summary = new BulkSummary { RequestCharge = 2 };
+        var writes = new List<long>();
+
+        await BulkExecutor.ExecuteAsync(
+            SourceAsync(3, TestContext.Current.CancellationToken),
+            (operation, _) =>
+            {
+                writes.Add(operation.Index);
+                return Task.FromResult(Succeeded(operation.Index));
+            },
+            IgnoreAsync, previous, summary, 1, 1, true, false, TestContext.Current.CancellationToken);
+
+        Assert.Empty(writes);
+        Assert.Equal(2, summary.Skipped);
+        Assert.Equal(1, summary.Uncertain);
+        Assert.Equal(0, summary.Attempted);
+        Assert.True(summary.BudgetExceeded);
+        Assert.True(summary.ResultIncomplete);
+    }
+
+    [Theory]
+    [InlineData(BulkOutcome.Failed, false)]
+    [InlineData(BulkOutcome.Started, true)]
+    [InlineData(BulkOutcome.Uncertain, true)]
+    public async Task ExhaustedRuBudgetStillBlocksJournalRetries(string status, bool retryUncertain)
+    {
+        var previous = new Dictionary<long, BulkOutcome> { [0] = Succeeded(0) with { Status = status } };
+        var summary = new BulkSummary { RequestCharge = 2 };
+        var writes = new List<long>();
+        var records = new List<BulkOutcome>();
+
+        await BulkExecutor.ExecuteAsync(
+            SourceAsync(1, TestContext.Current.CancellationToken),
+            (operation, _) =>
+            {
+                writes.Add(operation.Index);
+                return Task.FromResult(Succeeded(operation.Index));
+            },
+            outcome =>
+            {
+                records.Add(outcome);
+                return Task.CompletedTask;
+            },
+            previous, summary, 1, 1, true, retryUncertain, TestContext.Current.CancellationToken);
+
+        Assert.Empty(writes);
+        Assert.Empty(records);
+        Assert.Equal(0, summary.Skipped);
+        Assert.Equal(0, summary.Attempted);
+        Assert.True(summary.BudgetExceeded);
+        Assert.True(summary.ResultIncomplete);
+    }
+
     [Fact]
     public async Task OperationsOnTheSameItemRunInOrderEvenWithEquivalentKeys()
     {

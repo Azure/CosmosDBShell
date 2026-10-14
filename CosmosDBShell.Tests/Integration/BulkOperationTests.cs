@@ -192,7 +192,10 @@ public class BulkOperationTests : ConnectedEmulatorTestBase
         Assert.Equal(9, (await ReadJsonLinesAsync(journal)).Length);
         var completedJournal = await File.ReadAllBytesAsync(journal, token);
 
-        var (_, replay) = await this.RunJsonAsync($"bulk run '{plan}' --journal '{journal}' --yes", shell: resumedShell);
+        var (_, replay) = await this.RunJsonAsync($"bulk run '{plan}' --journal '{journal}' --max-ru 0.01 --yes", shell: resumedShell);
+        Assert.True(replay.GetProperty("requestCharge").GetDouble() > 0.01);
+        Assert.True(replay.GetProperty("success").GetBoolean());
+        Assert.False(replay.GetProperty("budgetExceeded").GetBoolean());
         Assert.Equal(0, replay.GetProperty("attempted").GetInt64());
         Assert.Equal(3, replay.GetProperty("skipped").GetInt64());
         Assert.Equal(completedJournal, await File.ReadAllBytesAsync(journal, token));
@@ -354,7 +357,7 @@ public class BulkOperationTests : ConnectedEmulatorTestBase
 
     private string PathFor(string name)
     {
-        var path = Path.Combine(Path.GetTempPath(), $"bulk-integration-{Guid.NewGuid():N}-{name}");
+        var path = Path.Combine(Path.GetTempPath(), $"bulk-integration-{Guid.NewGuid():N}-{Path.GetFileName(name)}");
         this.files.Add(path);
         return path;
     }
