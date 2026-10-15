@@ -123,6 +123,29 @@ internal class SprocCommand : CosmosCommand
     internal static PartitionKey ParsePartitionKey(string value) =>
         CreatePartitionKeyFromArgument(value, "sproc", "command-sproc-error-invalid_pk");
 
+    /// <summary>
+    /// Reads a stored procedure response body. A procedure that never calls <c>setBody</c>
+    /// returns no content; that is a successful execution with a JSON <c>null</c> result,
+    /// not a parse failure reported after the procedure's writes have committed.
+    /// </summary>
+    internal static async Task<JsonElement> ReadExecResultAsync(Stream? content, CancellationToken token)
+    {
+        if (content == null)
+        {
+            return JsonSerializer.SerializeToElement<object?>(null);
+        }
+
+        using var reader = new StreamReader(content, leaveOpen: true);
+        var text = await reader.ReadToEndAsync(token);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return JsonSerializer.SerializeToElement<object?>(null);
+        }
+
+        using var document = JsonDocument.Parse(text);
+        return document.RootElement.Clone();
+    }
+
     private static CommandException NotFound(string name, Exception inner) =>
         new("sproc", MessageService.GetArgsString("command-sproc-error-not_found", "name", name), inner);
 
@@ -440,6 +463,7 @@ internal class SprocCommand : CosmosCommand
                 parameters,
                 cancellationToken: token);
             response.EnsureSuccessStatusCode();
+            commandState.RequestCharge = response.Headers.RequestCharge;
 
             ShellInterpreter.WriteLine(MessageService.GetArgsString(
                 "command-sproc-executed",
@@ -448,9 +472,7 @@ internal class SprocCommand : CosmosCommand
                 "charge",
                 response.Headers.RequestCharge.ToString("F2")));
 
-            using var result = await JsonDocument.ParseAsync(response.Content, cancellationToken: token);
-            commandState.Result = new ShellJson(result.RootElement.Clone());
-            commandState.RequestCharge = response.Headers.RequestCharge;
+            commandState.Result = new ShellJson(await ReadExecResultAsync(response.Content, token));
             return commandState;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
