@@ -357,6 +357,7 @@ public class ImportConcurrencyTests
                 shell);
 
             Assert.Equal((2, 0, 0.0), result);
+            Assert.Equal(2, responses.Count);
             Assert.Contains(MessageService.GetString("warning-undefined-partition-key-pending"), stderrAtFirstWrite);
             var warning = Assert.Single(commandState.Warnings);
             Assert.Contains("2", warning.Message);

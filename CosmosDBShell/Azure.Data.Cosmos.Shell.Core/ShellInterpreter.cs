@@ -676,7 +676,7 @@ public partial class ShellInterpreter : IDisposable
                 wasCancelled = true;
                 result = new CommandState();
                 result.ShareWarningsFrom(state);
-                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
                 return result;
             }
             catch (OperationCanceledException e) when (isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested)
@@ -724,7 +724,8 @@ public partial class ShellInterpreter : IDisposable
                     result,
                     !string.IsNullOrEmpty(this.StdOutRedirect),
                     this.IsMachineMode,
-                    deferToErrorEnvelope: !ContainsException<CommandReportedException>(e));
+                    deferToErrorEnvelope: !ContainsException<CommandReportedException>(e),
+                    flushConsoleWarnings: true);
                 this.ReportExecutionError(e, command, result.Warnings);
                 this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 return result;
@@ -734,7 +735,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 wasCancelled = true;
                 result = state;
-                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
                 return result;
             }
 
@@ -1972,7 +1973,32 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    /// <summary>
+    /// Renders a command state's output and pending warnings.
+    /// </summary>
+    /// <param name="state">The state to render.</param>
+    /// <param name="markAsRendered">Whether to mark the state's output as rendered.</param>
+    /// <param name="deferMachineModeWarnings">
+    /// Whether this is an intermediate render inside one top-level command (a script, block,
+    /// or pipeline). Machine-mode warnings bound for the console are then left pending so a
+    /// later failure can still report them in its single JSON error payload.
+    /// </param>
+    /// <returns>The rendered state, or an error state when rendering failed.</returns>
     internal CommandState PrintState(CommandState state, bool markAsRendered = false, bool deferMachineModeWarnings = false)
+    {
+        var result = this.PrintStateCore(state, markAsRendered);
+
+        // Console-bound machine-mode warnings are written only after output rendering succeeded.
+        // A rendering failure or structured error writes an envelope that carries them instead.
+        if (!deferMachineModeWarnings && ReferenceEquals(result, state) && state is not StructuredErrorCommandState)
+        {
+            this.RenderWarnings(state, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
+        }
+
+        return result;
+    }
+
+    private CommandState PrintStateCore(CommandState state, bool markAsRendered)
     {
         try
         {
@@ -1981,14 +2007,16 @@ public partial class ShellInterpreter : IDisposable
 
             // Machine mode includes warnings in the structured error envelope instead of
             // writing them separately, which would leave stderr without a single JSON payload.
-            // Intermediate renders inside one top-level command (scripts, blocks, pipelines)
-            // likewise hold console warnings until the command completes, so a later failure
-            // can still report them in that payload.
+            // Console-bound machine-mode warnings stay pending here; PrintState flushes them
+            // after output rendering succeeds. File-bound warnings are written immediately.
             // Warnings are flushed even for already-rendered states because later statements
             // (for example a false condition) can add warnings to a state they return unchanged.
-            var deferWarnings = state is StructuredErrorCommandState
-                || (deferMachineModeWarnings && this.DeferMachineModeConsoleWarnings(state));
-            this.RenderWarnings(state, redirected, inMachineMode, deferToErrorEnvelope: deferWarnings);
+            this.DeferMachineModeConsoleWarnings(state);
+            this.RenderWarnings(
+                state,
+                redirected,
+                inMachineMode,
+                deferToErrorEnvelope: state is StructuredErrorCommandState);
 
             if (state.OutputRendered)
             {
@@ -2205,7 +2233,8 @@ public partial class ShellInterpreter : IDisposable
         bool redirected,
         bool inMachineMode,
         bool renderUpdates = false,
-        bool deferToErrorEnvelope = false)
+        bool deferToErrorEnvelope = false,
+        bool flushConsoleWarnings = false)
     {
         if (inMachineMode && deferToErrorEnvelope)
         {
@@ -2222,6 +2251,12 @@ public partial class ShellInterpreter : IDisposable
 
             if (warning.DeferredToConsole)
             {
+                // Held until the top-level command finalizes; see DeferMachineModeConsoleWarnings.
+                if (!flushConsoleWarnings)
+                {
+                    continue;
+                }
+
                 Console.Error.WriteLine(warning.Message);
             }
             else if (this.ErrOutRedirect != null)

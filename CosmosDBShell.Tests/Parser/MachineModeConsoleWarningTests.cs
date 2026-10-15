@@ -79,6 +79,47 @@ public class MachineModeConsoleWarningTests
         }
     }
 
+    [Fact]
+    public async Task OutputRedirectFailure_KeepsConsoleWarningInErrorEnvelope()
+    {
+        var missingDirectory = Path.Join(Path.GetTempPath(), $"missing-{Guid.NewGuid():N}");
+        var output = Path.Join(missingDirectory, "out.json").Replace('\\', '/');
+
+        var (stderr, result) = await RunCommandAsync($"warning-output-test > {ShellLiteral.Quote(output)}");
+
+        Assert.True(result.IsError);
+        using var document = JsonDocument.Parse(stderr);
+        Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+        Assert.Equal(
+            "script warning",
+            Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+    }
+
+    [Fact]
+    public async Task RedirectedWarning_DoesNotFlushEarlierConsoleWarningBeforeFailure()
+    {
+        var file = Path.GetTempFileName();
+        try
+        {
+            var (stderr, result) = await RunScriptAsync(
+                "warning-render-test\n"
+                    + $"warning-render-test 2> {ShellLiteral.Quote(file.Replace('\\', '/'))}\n"
+                    + "warning-failure-test");
+
+            Assert.True(result.IsError);
+            using var document = JsonDocument.Parse(stderr);
+            Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+            Assert.Equal(
+                "rendered warning",
+                Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+            Assert.Equal($"rendered warning{Environment.NewLine}", await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
     private static async Task<(string Stderr, CommandState Result)> RunScriptAsync(string scriptContent)
     {
         var script = Path.GetTempFileName();
