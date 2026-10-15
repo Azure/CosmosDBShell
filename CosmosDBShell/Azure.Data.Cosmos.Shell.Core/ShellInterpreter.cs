@@ -334,6 +334,12 @@ public partial class ShellInterpreter : IDisposable
         set => this.errorRedirectHasWarning = value;
     }
 
+    /// <summary>
+    /// Gets or sets a counter incremented whenever a statement establishes its own error
+    /// redirect, so enclosing scopes can detect nested redirects and restore warning tracking.
+    /// </summary>
+    internal long ErrorRedirectScopeVersion { get; set; }
+
     internal bool AppendOutRedirection { get; set; }
 
     internal bool AppendErrRedirection { get; set; }

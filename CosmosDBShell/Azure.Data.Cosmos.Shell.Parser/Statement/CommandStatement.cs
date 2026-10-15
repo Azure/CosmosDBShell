@@ -164,6 +164,7 @@ internal class CommandStatement : Statement
             shell.ErrOutRedirect = this.ErrorRedirect;
             shell.AppendErrRedirection = this.AppendError;
             shell.ErrorRedirectHasWarning = false;
+            shell.ErrorRedirectScopeVersion++;
         }
 
         if (shell.Functions.TryGetValue(this.Name, out var function))
@@ -446,8 +447,7 @@ internal class CommandStatement : Statement
                 var savedErrOut = shell.ErrOutRedirect;
                 var savedAppendErr = shell.AppendErrRedirection;
                 var savedErrorRedirectHasWarning = shell.ErrorRedirectHasWarning;
-                var establishesErrorRedirectScope =
-                    statement is CommandStatement commandStatement && commandStatement.ErrRedirectToken != null;
+                var savedErrorRedirectScopeVersion = shell.ErrorRedirectScopeVersion;
 
                 try
                 {
@@ -511,7 +511,10 @@ internal class CommandStatement : Statement
                     shell.AppendOutRedirection = savedAppendOut;
                     shell.ErrOutRedirect = savedErrOut;
                     shell.AppendErrRedirection = savedAppendErr;
-                    if (establishesErrorRedirectScope)
+
+                    // Any redirect established within this statement, including one nested in a
+                    // pipeline or block, replaced the tracking for the inherited destination.
+                    if (shell.ErrorRedirectScopeVersion != savedErrorRedirectScopeVersion)
                     {
                         shell.ErrorRedirectHasWarning = savedErrorRedirectHasWarning;
                     }

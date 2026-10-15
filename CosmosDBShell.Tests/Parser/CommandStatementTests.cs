@@ -552,6 +552,44 @@ public class CommandStatementTests
     }
 
     [Fact]
+    public async Task Script_PreservesInheritedWarningTrackingAcrossRedirectedPipeline()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var warningFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(FreshStateTestCommand), out var freshFactory));
+        shell.App.Commands["warning-output-test"] = warningFactory;
+        shell.App.Commands["fresh-state-test"] = freshFactory;
+        var script = Path.GetTempFileName();
+        var outer = Path.GetTempFileName();
+        var inner = Path.GetTempFileName();
+        shell.ErrOutRedirect = outer;
+        try
+        {
+            await File.WriteAllTextAsync(
+                script,
+                "warning-output-test\n"
+                    + $"fresh-state-test | fresh-state-test 2> {ShellLiteral.Quote(inner.Replace('\\', '/'))}\n"
+                    + "warning-output-test",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length));
+
+            var result = await command.RunScriptAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal(
+                $"script warning{Environment.NewLine}script warning{Environment.NewLine}",
+                await File.ReadAllTextAsync(outer, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(script);
+            File.Delete(outer);
+            File.Delete(inner);
+        }
+    }
+
+    [Fact]
     public async Task Script_MachineErrorKeepsEarlierRedirectedWarnings()
     {
         using var shell = ShellInterpreter.CreateInstance();
