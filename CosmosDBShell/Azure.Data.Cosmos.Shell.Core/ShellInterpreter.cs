@@ -734,6 +734,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 wasCancelled = true;
                 result = state;
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
                 return result;
             }
 
@@ -1971,7 +1972,7 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
-    internal CommandState PrintState(CommandState state, bool markAsRendered = false)
+    internal CommandState PrintState(CommandState state, bool markAsRendered = false, bool deferMachineModeWarnings = false)
     {
         try
         {
@@ -1980,13 +1981,14 @@ public partial class ShellInterpreter : IDisposable
 
             // Machine mode includes warnings in the structured error envelope instead of
             // writing them separately, which would leave stderr without a single JSON payload.
+            // Intermediate renders inside one top-level command (scripts, blocks, pipelines)
+            // likewise hold console warnings until the command completes, so a later failure
+            // can still report them in that payload.
             // Warnings are flushed even for already-rendered states because later statements
             // (for example a false condition) can add warnings to a state they return unchanged.
-            this.RenderWarnings(
-                state,
-                redirected,
-                inMachineMode,
-                deferToErrorEnvelope: state is StructuredErrorCommandState);
+            var deferWarnings = state is StructuredErrorCommandState
+                || (deferMachineModeWarnings && this.ErrOutRedirect == null);
+            this.RenderWarnings(state, redirected, inMachineMode, deferToErrorEnvelope: deferWarnings);
 
             if (state.OutputRendered)
             {

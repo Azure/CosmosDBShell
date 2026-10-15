@@ -482,7 +482,7 @@ internal class CommandStatement : Statement
                             shell.ErrorRedirectWarnings = savedErrorRedirectWarnings;
                         }
 
-                        currentState = shell.PrintState(currentState, markAsRendered: true);
+                        currentState = shell.PrintState(currentState, markAsRendered: true, deferMachineModeWarnings: true);
                     }
 
                     if (currentState.IsError)
