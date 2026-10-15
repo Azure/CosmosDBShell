@@ -328,6 +328,12 @@ public partial class ShellInterpreter : IDisposable
 
     internal string? ErrOutRedirect { get; set; }
 
+    internal bool ErrorRedirectHasWarning
+    {
+        get => this.errorRedirectHasWarning;
+        set => this.errorRedirectHasWarning = value;
+    }
+
     internal bool AppendOutRedirection { get; set; }
 
     internal bool AppendErrRedirection { get; set; }
@@ -2147,7 +2153,21 @@ public partial class ShellInterpreter : IDisposable
         this.RenderWarnings(state, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
     }
 
-    private void RenderWarnings(CommandState state, bool redirected, bool inMachineMode)
+    internal void RenderUpdatedWarnings(CommandState state)
+    {
+        if (this.IsMachineMode || this.McpPort.HasValue)
+        {
+            return;
+        }
+
+        this.RenderWarnings(state, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, renderUpdates: true);
+    }
+
+    private void RenderWarnings(
+        CommandState state,
+        bool redirected,
+        bool inMachineMode,
+        bool renderUpdates = false)
     {
         if (inMachineMode && state.IsError)
         {
@@ -2156,7 +2176,8 @@ public partial class ShellInterpreter : IDisposable
 
         foreach (var warning in state.Warnings)
         {
-            if (warning.IsRendered)
+            if (warning.IsRendered
+                && (!renderUpdates || string.Equals(warning.LastRenderedMessage, warning.Message, StringComparison.Ordinal)))
             {
                 continue;
             }
@@ -2176,6 +2197,10 @@ public partial class ShellInterpreter : IDisposable
             }
 
             warning.IsRendered = true;
+            warning.LastRenderedMessage = warning.Message;
+            warning.RenderedErrorRedirect = this.ErrOutRedirect == null
+                ? null
+                : Path.GetFullPath(this.ErrOutRedirect);
         }
     }
 
@@ -2905,10 +2930,17 @@ public partial class ShellInterpreter : IDisposable
             ["status"] = "error",
             ["error"] = errorMessage,
         };
-        var pendingWarnings = warnings?.Where(warning => !warning.IsRendered).ToArray() ?? [];
-        if (pendingWarnings.Length > 0)
+        var replacedRedirectPath = this.ErrOutRedirect != null && !this.AppendErrRedirection
+            ? Path.GetFullPath(this.ErrOutRedirect)
+            : null;
+        var outputWarnings = warnings?.Where(warning =>
+            !warning.IsRendered
+            || (replacedRedirectPath != null
+                && warning.RenderedErrorRedirect != null
+                && this.PathsEqual(warning.RenderedErrorRedirect, replacedRedirectPath))).ToArray() ?? [];
+        if (outputWarnings.Length > 0)
         {
-            error["warnings"] = pendingWarnings.Select(warning => warning.Message).ToArray();
+            error["warnings"] = outputWarnings.Select(warning => warning.Message).ToArray();
         }
 
         if (result?.ConvertShellObject(Parser.DataType.Json) is JsonElement resultElement)
@@ -2935,11 +2967,21 @@ public partial class ShellInterpreter : IDisposable
             Console.Error.WriteLine(json);
         }
 
-        foreach (var warning in pendingWarnings)
+        foreach (var warning in outputWarnings)
         {
             warning.IsRendered = true;
+            warning.LastRenderedMessage = warning.Message;
+            warning.RenderedErrorRedirect = this.ErrOutRedirect == null
+                ? null
+                : Path.GetFullPath(this.ErrOutRedirect);
         }
     }
+
+    private bool PathsEqual(string first, string second) =>
+        string.Equals(
+            first,
+            second,
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     private void WriteErrorRedirect(string text)
     {

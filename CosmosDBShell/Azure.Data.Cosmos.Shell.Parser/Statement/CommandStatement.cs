@@ -444,6 +444,8 @@ internal class CommandStatement : Statement
                 var savedAppendOut = shell.AppendOutRedirection;
                 var savedErrOut = shell.ErrOutRedirect;
                 var savedAppendErr = shell.AppendErrRedirection;
+                var savedErrorRedirectHasWarning = shell.ErrorRedirectHasWarning;
+                shell.ErrorRedirectHasWarning = false;
 
                 try
                 {
@@ -507,6 +509,7 @@ internal class CommandStatement : Statement
                     shell.AppendOutRedirection = savedAppendOut;
                     shell.ErrOutRedirect = savedErrOut;
                     shell.AppendErrRedirection = savedAppendErr;
+                    shell.ErrorRedirectHasWarning = savedErrorRedirectHasWarning;
                 }
             }
         }

@@ -150,7 +150,7 @@ internal class ImportCommand : CosmosCommand
 
             return doc.RootElement.Clone();
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
         {
             throw new CommandException(
                 "import",
@@ -775,11 +775,21 @@ internal class ImportCommand : CosmosCommand
         }
         finally
         {
-            // Drain every started write before returning or releasing the source, even on parse errors.
-            var results = await Task.WhenAll(pending);
-            foreach (var result in results)
+            try
             {
-                Record(result);
+                // Drain every started write before returning or releasing the source, even on parse errors.
+                var results = await Task.WhenAll(pending);
+                foreach (var result in results)
+                {
+                    Record(result);
+                }
+            }
+            finally
+            {
+                if (undefinedPartitionKeyWarning != null)
+                {
+                    warningShell?.RenderUpdatedWarnings(commandState);
+                }
             }
         }
 
@@ -814,7 +824,23 @@ internal class ImportCommand : CosmosCommand
             }
 
             using var body = new MemoryStream(Encoding.UTF8.GetBytes(item.GetRawText()));
-            TryCreatePartitionKeyFromItem(item, partitionKeyPaths, out _, out var partitionKey);
+            PartitionKey partitionKey;
+            try
+            {
+                TryCreatePartitionKeyFromItem(item, partitionKeyPaths, out _, out partitionKey);
+            }
+            catch (JsonException ex)
+            {
+                return (0, MessageService.GetArgsString(
+                    "command-import-error-item_failed",
+                    "line",
+                    lineNumber,
+                    "status",
+                    "Invalid partition key",
+                    "message",
+                    ex.Message));
+            }
+
             using var response = mode == ImportMode.Upsert
                 ? await container.UpsertItemStreamAsync(body, partitionKey, options, token)
                 : await container.CreateItemStreamAsync(body, partitionKey, options, token);

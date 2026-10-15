@@ -9,4 +9,8 @@ internal sealed class CommandWarning(string message)
     public string Message { get; set; } = message;
 
     public bool IsRendered { get; set; }
+
+    public string? LastRenderedMessage { get; set; }
+
+    public string? RenderedErrorRedirect { get; set; }
 }
