@@ -479,6 +479,7 @@ internal class CommandStatement : Statement
                         {
                             shell.ErrOutRedirect = this.ErrorRedirect;
                             shell.AppendErrRedirection = this.AppendError;
+                            shell.ErrorRedirectWarnings = savedErrorRedirectWarnings;
                         }
 
                         currentState = shell.PrintState(currentState, markAsRendered: true);

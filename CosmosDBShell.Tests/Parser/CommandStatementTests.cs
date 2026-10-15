@@ -843,6 +843,47 @@ public class CommandStatementTests
         }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MachineMode_ScriptErrorRedirectKeepsWarningsAcrossStatementRedirects(bool innerRedirectFirst)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var factory));
+        shell.App.Commands["warning-output-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var script = Path.GetTempFileName();
+        var outer = Path.GetTempFileName();
+        var inner = Path.GetTempFileName();
+        try
+        {
+            var redirected = $"warning-output-test 2> {ShellLiteral.Quote(inner.Replace('\\', '/'))}";
+            await File.WriteAllTextAsync(
+                script,
+                innerRedirectFirst ? $"{redirected}\nwarning-output-test" : $"warning-output-test\n{redirected}",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length))
+            {
+                ErrRedirectToken = new Token(TokenType.RedirectError, "2>", 0, 2),
+                ErrRedirectDestToken = new Token(TokenType.Identifier, outer, 0, outer.Length),
+            };
+
+            var result = await command.RunAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal(
+                $"script warning{Environment.NewLine}script warning{Environment.NewLine}",
+                await File.ReadAllTextAsync(outer, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(script);
+            File.Delete(outer);
+            File.Delete(inner);
+        }
+    }
+
     [Fact]
     public async Task Script_MachineErrorKeepsEarlierRedirectedWarnings()
     {

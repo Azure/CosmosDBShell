@@ -481,18 +481,11 @@ internal class ImportCommand : CosmosCommand
                 throw new NotConnectedException("import");
             }
 
-            var (databaseName, containerName, resolvedContainer) = await ResolveContainerAsync(
-                connectedState.Client,
-                shell.State,
+            (_, _, container, partitionKeyPaths) = await ResolveContainerWithPartitionKeyPathsAsync(
+                connectedState,
                 this.Database,
                 this.Container,
                 "import",
-                token);
-            container = resolvedContainer;
-            partitionKeyPaths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(
-                connectedState,
-                databaseName!,
-                containerName!,
                 token);
         }
 

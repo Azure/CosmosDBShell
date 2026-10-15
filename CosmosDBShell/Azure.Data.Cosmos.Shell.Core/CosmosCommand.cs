@@ -97,6 +97,43 @@ internal abstract class CosmosCommand
     }
 
     /// <summary>
+    /// Resolves a container and reads its partition-key paths. The metadata read doubles as
+    /// the existence check, so a successful call costs one request; only when the read
+    /// reports not-found are the existence checks run to report which resource is missing.
+    /// </summary>
+    /// <param name="connectedState">The connected shell state.</param>
+    /// <param name="databaseOption">The database name from command option (--database), or null.</param>
+    /// <param name="containerOption">The container name from command option (--container), or null.</param>
+    /// <param name="commandName">The name of the command (for error reporting).</param>
+    /// <param name="token">Cancellation token.</param>
+    /// <returns>The resolved names, container reference, and partition-key paths.</returns>
+    protected static async Task<(string DatabaseName, string ContainerName, Container Container, IReadOnlyList<string> PartitionKeyPaths)> ResolveContainerWithPartitionKeyPathsAsync(
+        ConnectedState connectedState,
+        string? databaseOption,
+        string? containerOption,
+        string commandName,
+        CancellationToken token)
+    {
+        var (databaseName, containerName, container) = ResolveContainerReference(
+            connectedState.Client,
+            connectedState,
+            databaseOption,
+            containerOption,
+            commandName);
+        try
+        {
+            var paths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(connectedState, databaseName, containerName, token);
+            return (databaseName, containerName, container, paths);
+        }
+        catch (Exception ex) when (ex is CosmosException { StatusCode: System.Net.HttpStatusCode.NotFound }
+            or global::Azure.RequestFailedException { Status: 404 })
+        {
+            await ValidateContainerExistsAsync(connectedState, databaseName, containerName, commandName, token);
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Resolves and validates a database based on command options and current shell state.
     /// </summary>
     /// <param name="client">The Cosmos client.</param>

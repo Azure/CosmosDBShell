@@ -50,18 +50,12 @@ internal class MakeItemCommand : CosmosCommand
             throw new NotConnectedException("mkitem");
         }
 
-        // Resolve container using the helper
-        var (databaseName, containerName, container) = await ResolveContainerAsync(
-            connectedState.Client,
-            shell.State,
+        // Reading the partition-key paths also validates that the container exists.
+        var (_, _, container, partitionKeyPaths) = await ResolveContainerWithPartitionKeyPathsAsync(
+            connectedState,
             this.Database,
             this.Container,
             "mkitem",
-            token);
-        var partitionKeyPaths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(
-            connectedState,
-            databaseName!,
-            containerName!,
             token);
 
         var summary = await WriteItemAsync(shell, container, partitionKeyPaths, jsonOpt, this.Force == true, commandState, token);
