@@ -39,30 +39,81 @@ public class MachineModeConsoleWarningTests
         Assert.Equal($"script warning{Environment.NewLine}script warning{Environment.NewLine}", stderr);
     }
 
+    [Fact]
+    public async Task ConsoleWarning_IsNotCapturedByLaterStatementRedirect()
+    {
+        var file = Path.GetTempFileName();
+        try
+        {
+            var (stderr, result) = await RunCommandAsync(
+                $"warning-render-test\nwarning-render-test 2> {ShellLiteral.Quote(file.Replace('\\', '/'))}");
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal($"rendered warning{Environment.NewLine}", stderr);
+            Assert.Equal($"rendered warning{Environment.NewLine}", await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public async Task ConsoleWarning_StaysOnConsoleWhenErrorEnvelopeIsRedirected()
+    {
+        var file = Path.GetTempFileName();
+        try
+        {
+            var (stderr, result) = await RunCommandAsync(
+                $"warning-render-test\nwarning-failure-test 2> {ShellLiteral.Quote(file.Replace('\\', '/'))}");
+
+            Assert.True(result.IsError);
+            Assert.Equal($"rendered warning{Environment.NewLine}", stderr);
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+            Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+            Assert.False(document.RootElement.TryGetProperty("warnings", out _));
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
     private static async Task<(string Stderr, CommandState Result)> RunScriptAsync(string scriptContent)
+    {
+        var script = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(script, scriptContent, TestContext.Current.CancellationToken);
+            return await RunCommandAsync($"exec {ShellLiteral.Quote(script.Replace('\\', '/'))}");
+        }
+        finally
+        {
+            File.Delete(script);
+        }
+    }
+
+    private static async Task<(string Stderr, CommandState Result)> RunCommandAsync(string command)
     {
         using var shell = ShellInterpreter.CreateInstance();
         Assert.True(CommandFactory.TryCreateFactory(typeof(CommandStatementTests.WarningOutputTestCommand), out var warningFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(CommandStatementTests.WarningRenderTestCommand), out var renderFactory));
         Assert.True(CommandFactory.TryCreateFactory(typeof(CommandStatementTests.WarningFailureTestCommand), out var failureFactory));
         shell.App.Commands["warning-output-test"] = warningFactory;
+        shell.App.Commands["warning-render-test"] = renderFactory;
         shell.App.Commands["warning-failure-test"] = failureFactory;
         shell.Options = new Program.CosmosShellOptions { Output = "json" };
-        var script = Path.GetTempFileName();
         var originalError = Console.Error;
         using var error = new StringWriter();
         try
         {
-            await File.WriteAllTextAsync(script, scriptContent, TestContext.Current.CancellationToken);
             Console.SetError(error);
-            var result = await shell.ExecuteCommandAsync(
-                $"exec {ShellLiteral.Quote(script.Replace('\\', '/'))}",
-                TestContext.Current.CancellationToken);
+            var result = await shell.ExecuteCommandAsync(command, TestContext.Current.CancellationToken);
             return (error.ToString(), result);
         }
         finally
         {
             Console.SetError(originalError);
-            File.Delete(script);
         }
     }
 }

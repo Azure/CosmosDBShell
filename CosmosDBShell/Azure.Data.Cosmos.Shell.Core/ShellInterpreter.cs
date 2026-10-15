@@ -1987,7 +1987,7 @@ public partial class ShellInterpreter : IDisposable
             // Warnings are flushed even for already-rendered states because later statements
             // (for example a false condition) can add warnings to a state they return unchanged.
             var deferWarnings = state is StructuredErrorCommandState
-                || (deferMachineModeWarnings && this.ErrOutRedirect == null);
+                || (deferMachineModeWarnings && this.DeferMachineModeConsoleWarnings(state));
             this.RenderWarnings(state, redirected, inMachineMode, deferToErrorEnvelope: deferWarnings);
 
             if (state.OutputRendered)
@@ -2160,7 +2160,7 @@ public partial class ShellInterpreter : IDisposable
 
     internal void RenderWarnings(CommandState state)
     {
-        if (this.IsMachineMode || this.McpPort.HasValue)
+        if (this.McpPort.HasValue || this.DeferMachineModeConsoleWarnings(state))
         {
             return;
         }
@@ -2170,12 +2170,34 @@ public partial class ShellInterpreter : IDisposable
 
     internal void RenderUpdatedWarnings(CommandState state)
     {
-        if (this.IsMachineMode || this.McpPort.HasValue)
+        if (this.McpPort.HasValue || this.DeferMachineModeConsoleWarnings(state))
         {
             return;
         }
 
         this.RenderWarnings(state, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, renderUpdates: true);
+    }
+
+    /// <summary>
+    /// In machine mode, console stderr must remain a single JSON payload if the command later
+    /// fails, so warnings for the console are held until the command completes. They are marked
+    /// as console-bound so a later statement's <c>2&gt;</c> cannot capture them. Warnings for a
+    /// redirected stderr are not deferred and are written to their file immediately.
+    /// </summary>
+    /// <returns><see langword="true"/> when the warnings were deferred.</returns>
+    private bool DeferMachineModeConsoleWarnings(CommandState state)
+    {
+        if (!this.IsMachineMode || this.ErrOutRedirect != null)
+        {
+            return false;
+        }
+
+        foreach (var warning in state.Warnings.Where(warning => !warning.IsRendered))
+        {
+            warning.DeferredToConsole = true;
+        }
+
+        return true;
     }
 
     private void RenderWarnings(
@@ -2198,7 +2220,11 @@ public partial class ShellInterpreter : IDisposable
                 continue;
             }
 
-            if (this.ErrOutRedirect != null)
+            if (warning.DeferredToConsole)
+            {
+                Console.Error.WriteLine(warning.Message);
+            }
+            else if (this.ErrOutRedirect != null)
             {
                 this.WriteErrorRedirect(warning.Message + Environment.NewLine);
                 this.ErrorRedirectWarnings.HasWarning = true;
@@ -2214,7 +2240,7 @@ public partial class ShellInterpreter : IDisposable
 
             warning.IsRendered = true;
             warning.LastRenderedMessage = warning.Message;
-            warning.RenderedErrorRedirect = this.ErrOutRedirect == null
+            warning.RenderedErrorRedirect = warning.DeferredToConsole || this.ErrOutRedirect == null
                 ? null
                 : Path.GetFullPath(this.ErrOutRedirect);
         }
@@ -2946,6 +2972,18 @@ public partial class ShellInterpreter : IDisposable
             ["status"] = "error",
             ["error"] = errorMessage,
         };
+
+        if (this.ErrOutRedirect != null && warnings != null)
+        {
+            // Warnings deferred while stderr was the console belong there, not in this file.
+            foreach (var warning in warnings.Where(warning => !warning.IsRendered && warning.DeferredToConsole))
+            {
+                Console.Error.WriteLine(warning.Message);
+                warning.IsRendered = true;
+                warning.LastRenderedMessage = warning.Message;
+            }
+        }
+
         var replacedRedirectPath = this.ErrOutRedirect != null && !this.AppendErrRedirection
             ? Path.GetFullPath(this.ErrOutRedirect)
             : null;

@@ -885,6 +885,63 @@ public class CommandStatementTests
     }
 
     [Fact]
+    public async Task MachineMode_WarningsKeepTheirOwnRedirectDestinations()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningRenderTestCommand), out var factory));
+        shell.App.Commands["warning-render-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var first = Path.GetTempFileName();
+        var second = Path.GetTempFileName();
+        try
+        {
+            var result = await shell.ExecuteCommandAsync(
+                $"warning-render-test 2> {ShellLiteral.Quote(first.Replace('\\', '/'))}\n"
+                    + $"warning-render-test 2> {ShellLiteral.Quote(second.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal($"rendered warning{Environment.NewLine}", await File.ReadAllTextAsync(first, TestContext.Current.CancellationToken));
+            Assert.Equal($"rendered warning{Environment.NewLine}", await File.ReadAllTextAsync(second, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(first);
+            File.Delete(second);
+        }
+    }
+
+    [Fact]
+    public async Task MachineMode_RedirectedFailureKeepsSingleJsonPayloadWithEarlierWarnings()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningRenderTestCommand), out var warningFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningFailureTestCommand), out var failureFactory));
+        shell.App.Commands["warning-render-test"] = warningFactory;
+        shell.App.Commands["warning-failure-test"] = failureFactory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            var result = await shell.ExecuteCommandAsync(
+                "warning-render-test\nwarning-failure-test",
+                TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+            Assert.Equal(
+                "rendered warning",
+                Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(stderr);
+        }
+    }
+
+    [Fact]
     public async Task Script_MachineErrorKeepsEarlierRedirectedWarnings()
     {
         using var shell = ShellInterpreter.CreateInstance();
