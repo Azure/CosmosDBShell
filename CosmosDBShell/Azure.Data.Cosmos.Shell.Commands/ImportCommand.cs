@@ -230,8 +230,8 @@ internal class ImportCommand : CosmosCommand
             return null;
         }
 
-        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return segments.Length == 0 ? null : segments;
+        var segments = SplitPartitionKeyPath(path.Trim());
+        return segments.Count == 0 ? null : [.. segments];
     }
 
     /// <summary>

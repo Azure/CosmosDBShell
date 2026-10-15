@@ -733,6 +733,72 @@ public class CommandStatementTests
     }
 
     [Fact]
+    public async Task MachineMode_RendersWarningsFromCommandsInsideFilters()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var warningFactory));
+        shell.App.Commands["warning-output-test"] = warningFactory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            var result = await shell.ExecuteCommandAsync(
+                "echo [1] | filter 'map((warning-output-test))'",
+                TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal(
+                $"script warning{Environment.NewLine}",
+                await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(stderr);
+        }
+    }
+
+    [Fact]
+    public async Task MachineMode_NestedExecParserErrorKeepsEarlierWarnings()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var warningFactory));
+        shell.App.Commands["warning-output-test"] = warningFactory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var parent = Path.GetTempFileName();
+        var child = Path.GetTempFileName();
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            await File.WriteAllTextAsync(child, "{ { ls   }", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(
+                parent,
+                $"warning-output-test\nexec {ShellLiteral.Quote(child.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+
+            var result = await shell.ExecuteCommandAsync(
+                $"exec {ShellLiteral.Quote(parent.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+
+            Assert.IsType<ParserErrorCommandState>(result);
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+            Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+            Assert.Equal(
+                "script warning",
+                Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(parent);
+            File.Delete(child);
+            File.Delete(stderr);
+        }
+    }
+
+    [Fact]
     public async Task Script_MachineErrorKeepsEarlierRedirectedWarnings()
     {
         using var shell = ShellInterpreter.CreateInstance();

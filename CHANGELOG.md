@@ -14,6 +14,7 @@
 - Emit inferred-key warnings before bulk mutations and retain them across partial failures, MCP responses, expressions, and pipelines; wildcard `rm *` also matches items with missing partition-key paths.
 - Route inferred-key warnings through stderr redirection and include pending warnings in machine-readable errors; import and scan-based `rm` counts reflect only scheduled writes and selected delete candidates.
 - Report invalid import partition-key values as per-item failures with `--continue-on-error`, show the final scheduled-write count in bulk warnings, and preserve prior warnings in script machine-mode errors.
+- Partition-key paths with quoted property names, such as `/"tenant id"`, are now resolved correctly when inferring keys from item content and when matching items or typing CSV import columns.
 - `print` now reads items with typed scalar and complete hierarchical partition keys, for example `print customer-1001 '[1001,"customer-1001"]'`. Invalid keys are distinguished from missing items. Shared argument parsing rejects object/nested-array components and non-finite numbers instead of coercing them. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
 - Avoid accessing an expired HTTP request during MCP session teardown, preventing disposal errors while releasing location subscriptions and legacy SSE admission state. ([#249](https://github.com/Azure/CosmosDBShell/issues/249))
 

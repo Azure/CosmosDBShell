@@ -232,6 +232,24 @@ public class CosmosCommandTests
     }
 
     [Theory]
+    [InlineData("/\"tenant id\"", """{"tenant id":"tenant-1"}""")]
+    [InlineData("/\"a/b\"/c", """{"a/b":{"c":"tenant-1"}}""")]
+    public void TryCreatePartitionKeyFromItem_ParsesQuotedPathSegments(string path, string json)
+    {
+        using var item = JsonDocument.Parse(json);
+
+        var created = CosmosCommand.TryCreatePartitionKeyFromItem(
+            item.RootElement,
+            [path],
+            out var hasUndefinedComponent,
+            out var partitionKey);
+
+        Assert.True(created);
+        Assert.False(hasUndefinedComponent);
+        Assert.Equal(new PartitionKey("tenant-1").ToString(), partitionKey.ToString());
+    }
+
+    [Theory]
     [InlineData("command-print-error-invalid_pk_json")]
     [InlineData("command-patch-error-invalid_pk_json")]
     [InlineData("command-rm-error-invalid_pk_json")]

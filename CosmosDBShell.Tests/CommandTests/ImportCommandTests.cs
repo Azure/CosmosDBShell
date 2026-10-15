@@ -262,6 +262,9 @@ public class ImportCommandTests
     [InlineData("/city", new[] { "city" })]
     [InlineData("/address/city", new[] { "address", "city" })]
     [InlineData("  /a/b/c  ", new[] { "a", "b", "c" })]
+    [InlineData("/\"tenant id\"", new[] { "tenant id" })]
+    [InlineData("/\"a/b\"/c", new[] { "a/b", "c" })]
+    [InlineData("/\"say \\\"hi\\\"\"", new[] { "say \"hi\"" })]
     public void ParsePartitionKeySegments_SplitsPath(string path, string[] expected)
     {
         Assert.Equal(expected, ImportCommand.ParsePartitionKeySegments(path));

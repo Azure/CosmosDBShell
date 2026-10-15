@@ -435,7 +435,9 @@ internal class CommandStatement : Statement
             var parser = StatementParser.ScriptParseResult.Parse(scriptContent, allowReturn: true);
             if (parser.Errors.HasErrors)
             {
-                return new ParserErrorCommandState(parser.Errors, fileName, scriptContent);
+                var parserError = new ParserErrorCommandState(parser.Errors, fileName, scriptContent);
+                parserError.ShareWarningsFrom(commandState);
+                return parserError;
             }
 
             foreach (var statement in parser.Statements)

@@ -629,15 +629,8 @@ internal abstract class CosmosCommand
         value = default;
         var current = element;
 
-        // Handle paths like "nested/prop" or just "prop"
-        var segments = path.Split('/');
-        foreach (var segment in segments)
+        foreach (var segment in SplitPartitionKeyPath(path))
         {
-            if (string.IsNullOrEmpty(segment))
-            {
-                continue;
-            }
-
             if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(segment, out var next))
             {
                 return false;
@@ -648,5 +641,62 @@ internal abstract class CosmosCommand
 
         value = current;
         return true;
+    }
+
+    /// <summary>
+    /// Splits a Cosmos DB property path such as <c>/address/city</c> or <c>/"tenant id"</c>
+    /// into property names. Quoted segments may contain <c>/</c>, and <c>\"</c> or <c>\\</c>
+    /// inside quotes escape a literal quote or backslash.
+    /// </summary>
+    /// <param name="path">The property path.</param>
+    /// <returns>The unquoted, non-empty property names.</returns>
+    internal static List<string> SplitPartitionKeyPath(string path)
+    {
+        var segments = new List<string>();
+        var builder = new System.Text.StringBuilder();
+        var i = 0;
+        while (i < path.Length)
+        {
+            if (path[i] == '/')
+            {
+                i++;
+                continue;
+            }
+
+            builder.Clear();
+            if (path[i] == '"')
+            {
+                i++;
+                while (i < path.Length && path[i] != '"')
+                {
+                    if (path[i] == '\\' && i + 1 < path.Length)
+                    {
+                        i++;
+                    }
+
+                    builder.Append(path[i]);
+                    i++;
+                }
+
+                // Skip the closing quote and anything up to the next separator.
+                while (i < path.Length && path[i] != '/')
+                {
+                    i++;
+                }
+
+                segments.Add(builder.ToString());
+                continue;
+            }
+
+            while (i < path.Length && path[i] != '/')
+            {
+                builder.Append(path[i]);
+                i++;
+            }
+
+            segments.Add(builder.ToString());
+        }
+
+        return segments;
     }
 }
