@@ -756,12 +756,21 @@ internal class ImportCommand : CosmosCommand
                 if (items.Current.Item.ValueKind == JsonValueKind.Object
                     && HasUndefinedPartitionKeyComponent(items.Current.Item, partitionKeyPaths))
                 {
+                    if (undefinedPartitionKeyWarning is null)
+                    {
+                        undefinedPartitionKeyWarning = commandState.AddWarning(
+                            MessageService.GetString("warning-undefined-partition-key-pending"));
+                        if (warningShell is { IsMachineMode: false })
+                        {
+                            warningShell.RenderWarnings(commandState);
+                        }
+                    }
+
                     undefinedPartitionKeyMutationCount++;
                     undefinedPartitionKeyWarning = AddUndefinedPartitionKeyWarning(
                         commandState,
                         undefinedPartitionKeyMutationCount,
                         undefinedPartitionKeyWarning);
-                    warningShell?.RenderWarnings(commandState);
                 }
 
                 pending.Add(WriteItemAsync(
@@ -788,7 +797,10 @@ internal class ImportCommand : CosmosCommand
             {
                 if (undefinedPartitionKeyWarning != null)
                 {
-                    warningShell?.RenderUpdatedWarnings(commandState);
+                    if (warningShell is { IsMachineMode: false })
+                    {
+                        warningShell.RenderUpdatedWarnings(commandState);
+                    }
                 }
             }
         }

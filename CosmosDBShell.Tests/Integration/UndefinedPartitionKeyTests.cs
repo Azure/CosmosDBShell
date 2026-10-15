@@ -95,6 +95,53 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
         }
     }
 
+    [Fact]
+    public async Task BulkItemCommands_ContinueAfterInvalidPartitionKey()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(EmulatorEndpoint);
+        using var client = new CosmosClient(connectionString, CreateClientOptions());
+        var database = (await client.CreateDatabaseAsync($"InvalidKeys_{Guid.NewGuid():N}", cancellationToken: token)).Database;
+        var container = (await database.CreateContainerAsync(
+            new ContainerProperties("Items", "/pk"),
+            cancellationToken: token)).Container;
+
+        try
+        {
+            Shell.State = new ConnectedState(new CosmosClient(connectionString, CreateClientOptions()));
+
+            var createPayload = """[{"id":"mk-invalid","pk":[]},{"id":"mk-valid","pk":"tenant"}]""";
+            var create = await RunScriptAsync(
+                $"mkitem '{createPayload}' --database={database.Id} --container={container.Id}");
+            Assert.True(create.IsError);
+            Assert.Contains("Failed to write 1 of 2 items.", FormatError(create));
+
+            var createdItem = await RunScriptAsync(
+                $"print mk-valid tenant --database={database.Id} --container={container.Id}");
+            Assert.False(createdItem.IsError, FormatError(createdItem));
+            Assert.Equal("mk-valid", GetJson(createdItem).GetProperty("id").GetString());
+
+            var seed = await RunScriptAsync(
+                $"mkitem '{{\"id\":\"replace-valid\",\"pk\":\"tenant\",\"value\":1}}' --database={database.Id} --container={container.Id}");
+            Assert.False(seed.IsError, FormatError(seed));
+
+            var replacePayload = """[{"id":"replace-invalid","pk":[]},{"id":"replace-valid","pk":"tenant","value":2}]""";
+            var replace = await RunScriptAsync(
+                $"replace '{replacePayload}' --database={database.Id} --container={container.Id}");
+            Assert.True(replace.IsError);
+            Assert.Contains("Failed to replace 1 of 2 items.", FormatError(replace));
+
+            var replacedItem = await RunScriptAsync(
+                $"print replace-valid tenant --database={database.Id} --container={container.Id}");
+            Assert.False(replacedItem.IsError, FormatError(replacedItem));
+            Assert.Equal(2, GetJson(replacedItem).GetProperty("value").GetInt32());
+        }
+        finally
+        {
+            await database.DeleteAsync(cancellationToken: CancellationToken.None);
+        }
+    }
+
     private static CosmosClientOptions CreateClientOptions() => new()
     {
         ConnectionMode = ConnectionMode.Gateway,

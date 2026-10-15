@@ -201,6 +201,17 @@ internal class MakeItemCommand : CosmosCommand
                                     "message",
                                     CommandException.GetDisplayMessage(ce)));
                         }
+                        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
+                        {
+                            failCount++;
+                            ShellInterpreter.WriteLine(
+                                MessageService.GetArgsString(
+                                    "command-mkitem-error-creation-failed",
+                                    "status",
+                                    "Invalid partition key",
+                                    "message",
+                                    ex.Message));
+                        }
                     }
 
                     if (force)

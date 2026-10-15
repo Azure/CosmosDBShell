@@ -114,6 +114,17 @@ public partial class CommandState
 
     internal void ShareWarningsFrom(CommandState source)
     {
+        if (!ReferenceEquals(this.warnings, source.warnings))
+        {
+            foreach (var warning in this.warnings)
+            {
+                if (!source.warnings.Contains(warning))
+                {
+                    source.warnings.Add(warning);
+                }
+            }
+        }
+
         this.warnings = source.warnings;
     }
 

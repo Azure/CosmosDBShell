@@ -1561,6 +1561,7 @@
   "theme-registry-warning-shadow-builtin": "Theme \u0027{0}\u0027 shadows the built-in profile.",
   "warning-session-request-charge-threshold-reached": "Session request charge {0} RUs has reached the configured warning threshold of {1} RUs.",
   "warning-undefined-partition-key-mutation": "Warning: {0} item(s) use an implicitly inferred undefined partition-key value. Use a present, stable, high-cardinality partition key for new data.",
+  "warning-undefined-partition-key-pending": "Warning: This import includes items with an implicitly inferred undefined partition-key value; a final count will follow.",
   "warning-unknown-theme": "Unknown theme \u0027{0}\u0027. Available themes: {1}. Falling back to default.",
   "yes_char": "Y"
 }

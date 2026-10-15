@@ -178,13 +178,29 @@ internal class ReplaceCommand : CosmosCommand
         }
 
         var id = idElement.GetString();
-        if (!TryCreatePartitionKeyFromItem(item, partitionKeyPaths, out _, out var partitionKey))
+        PartitionKey partitionKey;
+        try
+        {
+            if (!TryCreatePartitionKeyFromItem(item, partitionKeyPaths, out _, out partitionKey))
+            {
+                throw new CommandException(
+                    "replace",
+                    MessageService.GetString(
+                        "command-replace-error-missing_partition_key",
+                        new Dictionary<string, object> { { "path", string.Join(", ", partitionKeyPaths) } }));
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
         {
             throw new CommandException(
                 "replace",
-                MessageService.GetString(
-                    "command-replace-error-missing_partition_key",
-                    new Dictionary<string, object> { { "path", string.Join(", ", partitionKeyPaths) } }));
+                MessageService.GetArgsString(
+                    "command-replace-error-replace-failed",
+                    "status",
+                    "Invalid partition key",
+                    "message",
+                    ex.Message),
+                ex);
         }
 
         var requestOptions = string.IsNullOrEmpty(etag)

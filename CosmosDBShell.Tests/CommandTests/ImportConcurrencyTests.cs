@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests.CommandTests;
 
 using System.Net;
+using System.Reactive.Disposables;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
@@ -266,7 +267,7 @@ public class ImportConcurrencyTests
         using var timeout = CreateTimeout();
         using var shell = ShellInterpreter.CreateInstance();
         var container = Substitute.For<Container>();
-        var responses = new List<ResponseMessage>();
+        using var responses = new CompositeDisposable();
         var stderrFile = Path.GetTempFileName();
         shell.ErrOutRedirect = stderrFile;
         container.CreateItemStreamAsync(
@@ -305,16 +306,12 @@ public class ImportConcurrencyTests
             Assert.Equal((expectedSuccess, expectedFailed, 0.0), result);
             var warning = Assert.Single(commandState.Warnings);
             Assert.Contains("3", warning.Message);
-            Assert.Contains(warning.Message, await File.ReadAllTextAsync(stderrFile, timeout.Token));
+            var stderr = await File.ReadAllTextAsync(stderrFile, timeout.Token);
+            Assert.Equal(1, stderr.Split(warning.Message, StringSplitOptions.None).Length - 1);
         }
         finally
         {
             shell.ErrOutRedirect = null;
-            foreach (var response in responses)
-            {
-                response.Dispose();
-            }
-
             File.Delete(stderrFile);
         }
     }

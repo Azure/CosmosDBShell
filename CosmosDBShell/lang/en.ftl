@@ -272,6 +272,7 @@ command-rm-error-etag_mismatch = Item '{ $id }' was modified since it was last r
 command-rm-dry-run-item = Item '{ $id }' in partition { $partitionKey } has ETag { $etag }.
 command-rm-warning-missing-partition-key = Warning: Cannot delete item with id '{ $id }' - missing partition key '{ $partitionKey }'
 warning-undefined-partition-key-mutation = Warning: { $count } item(s) use an implicitly inferred undefined partition-key value. Use a present, stable, high-cardinality partition key for new data.
+warning-undefined-partition-key-pending = Warning: This import includes items with an implicitly inferred undefined partition-key value; a final count will follow.
 command-rm-no-matches = No items matched the pattern '{ $pattern }' for key '{ $key }'
 
 command-query-description = Executes a query and returns matching results

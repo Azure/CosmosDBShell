@@ -4,6 +4,8 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
@@ -338,98 +340,57 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 : null;
 
             using var feedIterator = container.GetItemQueryStreamIterator("SELECT * FROM c", requestOptions: queryOptions);
-            FileStream? planStream = null;
-            StreamWriter? planWriter = null;
+            await using var planStream = needsDeletionPlan ? this.CreateDeletionPlanStream() : null;
+            await using var planWriter = planStream is null
+                ? null
+                : new StreamWriter(planStream, new System.Text.UTF8Encoding(false), 4096, leaveOpen: true);
             var undefinedPartitionKeyCount = 0;
 
-            try
+            while (feedIterator.HasMoreResults)
             {
-                if (needsDeletionPlan)
-                {
-                    var planPath = Path.Combine(Path.GetTempPath(), $"cosmosdbshell-rm-{Guid.NewGuid():N}.jsonl");
-                    planStream = new FileStream(
-                        planPath,
-                        FileMode.CreateNew,
-                        FileAccess.ReadWrite,
-                        FileShare.None,
-                        4096,
-                        FileOptions.Asynchronous | FileOptions.DeleteOnClose | FileOptions.SequentialScan);
-                    planWriter = new StreamWriter(planStream, new System.Text.UTF8Encoding(false), 4096, leaveOpen: true);
-                }
-
-                while (feedIterator.HasMoreResults)
-                {
-                    token.ThrowIfCancellationRequested();
-                    using var response = await feedIterator.ReadNextAsync(token);
-
-                    // The scan pages that locate matching items consume RUs regardless of whether
-                    // any item is ultimately deleted (including in --dry-run), so include each
-                    // page's request charge from the response headers.
-                    totalCharge += response.Headers.RequestCharge;
-
-                    using var streamReader = new StreamReader(response.Content);
-                    using var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync(token));
-
-                    foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
-                    {
-                        if (!element.TryGetProperty(IdPropertyName, out var idElement)
-                            || idElement.ValueKind != JsonValueKind.String
-                            || idElement.GetString() is not string id
-                            || !ShouldDelete(element))
-                        {
-                            continue;
-                        }
-
-                        TryCreatePartitionKeyFromItem(
-                            element,
-                            partitionKeyPropertyNames,
-                            out var hasUndefinedComponent,
-                            out var itemPartitionKey);
-
-                        if (planWriter != null)
-                        {
-                            if (hasUndefinedComponent)
-                            {
-                                undefinedPartitionKeyCount++;
-                            }
-
-                            var partitionKeyJson = itemPartitionKey.Equals(PartitionKey.None)
-                                ? "{}"
-                                : itemPartitionKey.ToString();
-                            var candidate = new DeletionCandidate(id, partitionKeyJson);
-                            await planWriter.WriteLineAsync(JsonSerializer.Serialize(candidate).AsMemory(), token);
-                        }
-                        else
-                        {
-                            var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
-                            totalCharge += deleteResult.RequestCharge;
-                            if (deleteResult.Counted)
-                            {
-                                totalCount++;
-                            }
-                        }
-                    }
-                }
-
                 token.ThrowIfCancellationRequested();
-                if (planWriter != null)
+                using var response = await feedIterator.ReadNextAsync(token);
+
+                // The scan pages that locate matching items consume RUs regardless of whether
+                // any item is ultimately deleted (including in --dry-run), so include each
+                // page's request charge from the response headers.
+                totalCharge += response.Headers.RequestCharge;
+
+                using var streamReader = new StreamReader(response.Content);
+                using var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync(token));
+
+                foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
                 {
-                    await planWriter.FlushAsync(token);
-                    await planWriter.DisposeAsync();
-                    planWriter = null;
-                    planStream!.Position = 0;
-
-                    AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
-                    this.shell!.RenderWarnings(commandState);
-
-                    using var planReader = new StreamReader(planStream, System.Text.Encoding.UTF8, false, 4096, leaveOpen: true);
-                    while (await planReader.ReadLineAsync(token) is { } line)
+                    if (!element.TryGetProperty(IdPropertyName, out var idElement)
+                        || idElement.ValueKind != JsonValueKind.String
+                        || idElement.GetString() is not string id
+                        || !ShouldDelete(element))
                     {
-                        token.ThrowIfCancellationRequested();
-                        var candidate = JsonSerializer.Deserialize<DeletionCandidate>(line)
-                            ?? throw new JsonException("Unable to read a delete candidate from the temporary plan.");
-                        var itemPartitionKey = CreatePartitionKeyFromArgument(candidate.PartitionKeyJson);
-                        var deleteResult = await TryDeleteAsync(candidate.Id, itemPartitionKey);
+                        continue;
+                    }
+
+                    TryCreatePartitionKeyFromItem(
+                        element,
+                        partitionKeyPropertyNames,
+                        out var hasUndefinedComponent,
+                        out var itemPartitionKey);
+
+                    if (planWriter != null)
+                    {
+                        if (hasUndefinedComponent)
+                        {
+                            undefinedPartitionKeyCount++;
+                        }
+
+                        var partitionKeyJson = itemPartitionKey.Equals(PartitionKey.None)
+                            ? "{}"
+                            : itemPartitionKey.ToString();
+                        var candidate = new DeletionCandidate(id, partitionKeyJson);
+                        await planWriter.WriteLineAsync(JsonSerializer.Serialize(candidate).AsMemory(), token);
+                    }
+                    else
+                    {
+                        var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
                         totalCharge += deleteResult.RequestCharge;
                         if (deleteResult.Counted)
                         {
@@ -438,16 +399,29 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                     }
                 }
             }
-            finally
-            {
-                if (planWriter != null)
-                {
-                    await planWriter.DisposeAsync();
-                }
 
-                if (planStream != null)
+            token.ThrowIfCancellationRequested();
+            if (planWriter != null)
+            {
+                await planWriter.FlushAsync(token);
+                planStream!.Position = 0;
+
+                AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
+                this.shell!.RenderWarnings(commandState);
+
+                using var planReader = new StreamReader(planStream, System.Text.Encoding.UTF8, false, 4096, leaveOpen: true);
+                while (await planReader.ReadLineAsync(token) is { } line)
                 {
-                    await planStream.DisposeAsync();
+                    token.ThrowIfCancellationRequested();
+                    var candidate = JsonSerializer.Deserialize<DeletionCandidate>(line)
+                        ?? throw new JsonException("Unable to read a delete candidate from the temporary plan.");
+                    var itemPartitionKey = CreatePartitionKeyFromArgument(candidate.PartitionKeyJson);
+                    var deleteResult = await TryDeleteAsync(candidate.Id, itemPartitionKey);
+                    totalCharge += deleteResult.RequestCharge;
+                    if (deleteResult.Counted)
+                    {
+                        totalCount++;
+                    }
                 }
             }
         }
@@ -634,6 +608,37 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         }
 
         return result;
+    }
+
+    private FileStream CreateDeletionPlanStream()
+    {
+        var path = Path.Join(Path.GetTempPath(), $"cosmosdbshell-rm-{Guid.NewGuid():N}.jsonl");
+        const FileOptions options = FileOptions.Asynchronous | FileOptions.DeleteOnClose | FileOptions.SequentialScan;
+
+        if (OperatingSystem.IsWindows())
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            var owner = identity.User ?? throw new UnauthorizedAccessException("The current Windows user SID is unavailable.");
+            var security = new FileSecurity();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            security.AddAccessRule(new FileSystemAccessRule(owner, FileSystemRights.FullControl, AccessControlType.Allow));
+            return new FileInfo(path).Create(
+                FileMode.CreateNew,
+                FileSystemRights.FullControl,
+                FileShare.None,
+                4096,
+                options,
+                security);
+        }
+
+        return new FileStream(path, new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.ReadWrite,
+            Share = FileShare.None,
+            Options = options,
+            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
+        });
     }
 
     private sealed record DeletionCandidate(string Id, string PartitionKeyJson);

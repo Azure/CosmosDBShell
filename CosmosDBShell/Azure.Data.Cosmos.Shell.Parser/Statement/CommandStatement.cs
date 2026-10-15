@@ -163,6 +163,7 @@ internal class CommandStatement : Statement
         {
             shell.ErrOutRedirect = this.ErrorRedirect;
             shell.AppendErrRedirection = this.AppendError;
+            shell.ErrorRedirectHasWarning = false;
         }
 
         if (shell.Functions.TryGetValue(this.Name, out var function))
@@ -445,7 +446,8 @@ internal class CommandStatement : Statement
                 var savedErrOut = shell.ErrOutRedirect;
                 var savedAppendErr = shell.AppendErrRedirection;
                 var savedErrorRedirectHasWarning = shell.ErrorRedirectHasWarning;
-                shell.ErrorRedirectHasWarning = false;
+                var establishesErrorRedirectScope =
+                    statement is CommandStatement commandStatement && commandStatement.ErrRedirectToken != null;
 
                 try
                 {
@@ -509,7 +511,10 @@ internal class CommandStatement : Statement
                     shell.AppendOutRedirection = savedAppendOut;
                     shell.ErrOutRedirect = savedErrOut;
                     shell.AppendErrRedirection = savedAppendErr;
-                    shell.ErrorRedirectHasWarning = savedErrorRedirectHasWarning;
+                    if (establishesErrorRedirectScope)
+                    {
+                        shell.ErrorRedirectHasWarning = savedErrorRedirectHasWarning;
+                    }
                 }
             }
         }
