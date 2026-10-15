@@ -114,6 +114,17 @@ public class CommandStatementTests
         }
     }
 
+    [CosmosCommand("warning-false-test")]
+    internal sealed class WarningFalseTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            commandState.AddWarning("condition warning");
+            commandState.Result = new ShellBool(false);
+            return Task.FromResult(commandState);
+        }
+    }
+
     [CosmosCommand("plain-error-test")]
     internal sealed class PlainErrorTestCommand : CosmosCommand
     {
@@ -794,6 +805,40 @@ public class CommandStatementTests
             shell.ErrOutRedirect = null;
             File.Delete(parent);
             File.Delete(child);
+            File.Delete(stderr);
+        }
+    }
+
+    [Fact]
+    public async Task MachineMode_FlushesWarningsAddedToAlreadyRenderedState()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningFalseTestCommand), out var factory));
+        shell.App.Commands["warning-false-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var script = Path.GetTempFileName();
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            await File.WriteAllTextAsync(
+                script,
+                "echo ready\nif (warning-false-test) { echo unexpected }",
+                TestContext.Current.CancellationToken);
+
+            var result = await shell.ExecuteCommandAsync(
+                $"exec {ShellLiteral.Quote(script.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal(
+                $"condition warning{Environment.NewLine}",
+                await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(script);
             File.Delete(stderr);
         }
     }

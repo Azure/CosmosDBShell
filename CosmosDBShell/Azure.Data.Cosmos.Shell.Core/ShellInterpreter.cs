@@ -1973,17 +1973,30 @@ public partial class ShellInterpreter : IDisposable
 
     internal CommandState PrintState(CommandState state, bool markAsRendered = false)
     {
-        if (state.OutputRendered)
-        {
-            // Once rendered, stay rendered: a later PrintState call with the default
-            // markAsRendered:false (e.g. ExecuteCommandAsync's final call) must not
-            // unmark it, or a subsequent PrintState call on the same state would
-            // re-render output that was already shown.
-            return state;
-        }
-
         try
         {
+            var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
+            var inMachineMode = this.IsMachineMode;
+
+            // Machine mode includes warnings in the structured error envelope instead of
+            // writing them separately, which would leave stderr without a single JSON payload.
+            // Warnings are flushed even for already-rendered states because later statements
+            // (for example a false condition) can add warnings to a state they return unchanged.
+            this.RenderWarnings(
+                state,
+                redirected,
+                inMachineMode,
+                deferToErrorEnvelope: state is StructuredErrorCommandState);
+
+            if (state.OutputRendered)
+            {
+                // Once rendered, stay rendered: a later PrintState call with the default
+                // markAsRendered:false (e.g. ExecuteCommandAsync's final call) must not
+                // unmark it, or a subsequent PrintState call on the same state would
+                // re-render output that was already shown.
+                return state;
+            }
+
             // Apply the session default format when the command did not choose one itself.
             // This is the single place the global format (from --output) is applied, so
             // commands never need to read it and new commands inherit it automatically.
@@ -1991,17 +2004,6 @@ public partial class ShellInterpreter : IDisposable
             {
                 state.OutputFormat = this.DefaultOutputFormat;
             }
-
-            var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
-            var inMachineMode = this.IsMachineMode;
-
-            // Machine mode includes warnings in the structured error envelope instead of
-            // writing them separately, which would leave stderr without a single JSON payload.
-            this.RenderWarnings(
-                state,
-                redirected,
-                inMachineMode,
-                deferToErrorEnvelope: state is StructuredErrorCommandState);
 
             // Structured failures bypass ReportExecutionError, so the script location the
             // statement attached would otherwise be dropped from the human-readable output.
