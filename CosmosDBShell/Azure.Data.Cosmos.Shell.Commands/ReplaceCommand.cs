@@ -53,7 +53,7 @@ internal class ReplaceCommand : CosmosCommand
 
         var partitionKeyPaths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(connectedState, databaseName!, containerName!, token);
 
-        var summary = await ReplaceItemsAsync(container, partitionKeyPaths, jsonOpt, this.ETag, token);
+        var summary = await ReplaceItemsAsync(shell, container, partitionKeyPaths, jsonOpt, this.ETag, commandState, token);
 
         var resultState = new CommandState
         {
@@ -66,11 +66,17 @@ internal class ReplaceCommand : CosmosCommand
             })),
             RequestCharge = summary.RequestCharge,
         };
-        AddUndefinedPartitionKeyWarning(resultState, summary.UndefinedPartitionKeyCount);
         return resultState;
     }
 
-    private static async Task<ReplaceSummary> ReplaceItemsAsync(Container container, IReadOnlyList<string> partitionKeyPaths, string jsonInput, string? etag, CancellationToken token)
+    private static async Task<ReplaceSummary> ReplaceItemsAsync(
+        ShellInterpreter shell,
+        Container container,
+        IReadOnlyList<string> partitionKeyPaths,
+        string jsonInput,
+        string? etag,
+        CommandState commandState,
+        CancellationToken token)
     {
         try
         {
@@ -88,16 +94,19 @@ internal class ReplaceCommand : CosmosCommand
                     root.EnumerateArray().Count(
                         item => item.ValueKind == JsonValueKind.Object
                             && HasUndefinedPartitionKeyComponent(item, partitionKeyPaths));
-                var summary = await ReplaceArrayAsync(container, partitionKeyPaths, root, token);
-                return summary with { UndefinedPartitionKeyCount = undefinedPartitionKeyCount };
+                AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
+                shell.RenderWarnings(commandState);
+                return await ReplaceArrayAsync(container, partitionKeyPaths, root, token);
             }
 
             var undefinedCount = root.ValueKind == JsonValueKind.Object
                 && HasUndefinedPartitionKeyComponent(root, partitionKeyPaths)
                 ? 1
                 : 0;
+            AddUndefinedPartitionKeyWarning(commandState, undefinedCount);
+            shell.RenderWarnings(commandState);
             var singleCharge = await ReplaceOneAsync(container, partitionKeyPaths, root, etag, token, printSuccess: true);
-            return new ReplaceSummary(1, 0, singleCharge, undefinedCount);
+            return new ReplaceSummary(1, 0, singleCharge);
         }
         catch (JsonException ex)
         {
@@ -153,7 +162,7 @@ internal class ReplaceCommand : CosmosCommand
                     successCount + failCount));
         }
 
-        return new ReplaceSummary(successCount, failCount, charge, 0);
+        return new ReplaceSummary(successCount, failCount, charge);
     }
 
     private static async Task<double> ReplaceOneAsync(Container container, IReadOnlyList<string> partitionKeyPaths, JsonElement item, string? etag, CancellationToken token, bool printSuccess)
@@ -227,5 +236,5 @@ internal class ReplaceCommand : CosmosCommand
         }
     }
 
-    private readonly record struct ReplaceSummary(int Replaced, int Failed, double RequestCharge, int UndefinedPartitionKeyCount);
+    private readonly record struct ReplaceSummary(int Replaced, int Failed, double RequestCharge);
 }

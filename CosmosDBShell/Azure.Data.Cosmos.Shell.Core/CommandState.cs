@@ -15,6 +15,7 @@ using Azure.Data.Cosmos.Shell.Util;
 public partial class CommandState
 {
     private OutputFormat outputFormat;
+    private List<CommandWarning> warnings = [];
 
     /// <summary>
     /// Gets a value indicating whether this <see cref="CommandState"/> represents an error state.
@@ -50,7 +51,7 @@ public partial class CommandState
 
     internal ShellObject? Result { get; set; }
 
-    internal List<string> Warnings { get; } = [];
+    internal List<CommandWarning> Warnings => this.warnings;
 
     internal bool OutputRendered { get; set; }
 
@@ -103,6 +104,18 @@ public partial class CommandState
     internal bool ReturnFunc { get; set; } = false;
 
     internal ShellObject? ReturnValue { get; set; } = null;
+
+    internal CommandWarning AddWarning(string message)
+    {
+        var warning = new CommandWarning(message);
+        this.warnings.Add(warning);
+        return warning;
+    }
+
+    internal void ShareWarningsFrom(CommandState source)
+    {
+        this.warnings = source.warnings;
+    }
 
     internal void ResetOutputFormat()
     {

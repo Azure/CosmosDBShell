@@ -667,6 +667,8 @@ public partial class ShellInterpreter : IDisposable
             {
                 wasCancelled = true;
                 result = new CommandState();
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
                 return result;
             }
             catch (OperationCanceledException e) when (isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested)
@@ -674,23 +676,28 @@ public partial class ShellInterpreter : IDisposable
                 var shellException = new ShellException(
                     CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, e.Message),
                     e);
+                result = new ErrorCommandState(shellException);
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
                 this.ReportExecutionError(shellException, command);
                 this.Disconnect();
-                result = new ErrorCommandState(shellException);
                 return result;
             }
             catch (TaskCanceledException e)
             {
                 var shellException = new ShellException(CommandException.GetDisplayMessage(e), e);
+                result = new ErrorCommandState(shellException);
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
                 this.ReportExecutionError(shellException, command);
                 this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
-                result = new ErrorCommandState(shellException);
                 return result;
             }
             catch (Exception e)
             {
                 if (FindException<CommandState.FailureException>(e)?.State is StructuredErrorCommandState structuredError)
                 {
+                    structuredError.ShareWarningsFrom(state);
                     if (e is PositionalException)
                     {
                         structuredError.Exception = e;
@@ -700,12 +707,14 @@ public partial class ShellInterpreter : IDisposable
                     return result;
                 }
 
-                this.ReportExecutionError(e, command);
-                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 result = new ErrorCommandState(e)
                 {
                     RequestCharge = RequestChargeContext.GetExceptionCharge(e),
                 };
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
+                this.ReportExecutionError(e, command);
+                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 return result;
             }
 
@@ -1161,6 +1170,7 @@ public partial class ShellInterpreter : IDisposable
         try
         {
             var result = await command.ExecuteAsync(this, commandState, commandText, token);
+            result.ShareWarningsFrom(commandState);
             if (requestChargeScope.RequestCharge > 0)
             {
                 result.RequestCharge = (result.RequestCharge ?? 0) + requestChargeScope.RequestCharge;
@@ -1968,17 +1978,7 @@ public partial class ShellInterpreter : IDisposable
             var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
             var inMachineMode = this.IsMachineMode;
 
-            foreach (var warning in state.Warnings)
-            {
-                if (!redirected && !inMachineMode)
-                {
-                    AnsiConsole.MarkupLine(Theme.FormatWarning(Markup.Escape(warning)));
-                }
-                else
-                {
-                    Console.Error.WriteLine(warning);
-                }
-            }
+            this.RenderWarnings(state, redirected, inMachineMode);
 
             // Structured failures bypass ReportExecutionError, so the script location the
             // statement attached would otherwise be dropped from the human-readable output.
@@ -2128,6 +2128,32 @@ public partial class ShellInterpreter : IDisposable
         }
 
         return state;
+    }
+
+    internal void RenderWarnings(CommandState state)
+    {
+        this.RenderWarnings(state, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
+    }
+
+    private void RenderWarnings(CommandState state, bool redirected, bool inMachineMode)
+    {
+        foreach (var warning in state.Warnings)
+        {
+            if (warning.IsRendered)
+            {
+                continue;
+            }
+
+            warning.IsRendered = true;
+            if (!redirected && !inMachineMode)
+            {
+                AnsiConsole.MarkupLine(Theme.FormatWarning(Markup.Escape(warning.Message)));
+            }
+            else
+            {
+                Console.Error.WriteLine(warning.Message);
+            }
+        }
     }
 
     internal void DeclareFunction(DefStatement defStatement)

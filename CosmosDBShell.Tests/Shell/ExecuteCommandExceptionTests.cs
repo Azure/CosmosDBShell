@@ -142,6 +142,32 @@ public class ExecuteCommandExceptionTests
     }
 
     [Fact]
+    public void PrintState_SharedWarning_IsRenderedOnlyOnce()
+    {
+        using var interpreter = CreateInterpreter();
+        interpreter.Options = new Program.CosmosShellOptions { Quiet = true };
+        var sourceState = new CommandState();
+        var warning = sourceState.AddWarning("warning");
+        var resultState = new CommandState();
+        resultState.ShareWarningsFrom(sourceState);
+        var originalError = Console.Error;
+        using var errorOutput = new StringWriter();
+        Console.SetError(errorOutput);
+        try
+        {
+            interpreter.PrintState(resultState);
+            interpreter.PrintState(sourceState);
+
+            Assert.True(warning.IsRendered);
+            Assert.Equal($"warning{Environment.NewLine}", errorOutput.ToString());
+        }
+        finally
+        {
+            Console.SetError(originalError);
+        }
+    }
+
+    [Fact]
     public void PrintState_StructuredErrorWithScriptLocationInUserMode_ReportsLocationAndKeepsRenderer()
     {
         using var interpreter = CreateInterpreter();

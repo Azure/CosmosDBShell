@@ -82,6 +82,11 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
             Assert.False(bulkUpsert.IsError, FormatError(bulkUpsert));
             Assert.Equal(2, GetJson(bulkUpsert).GetProperty("replaced").GetInt32());
             Assert.Equal(0, GetJson(bulkUpsert).GetProperty("failed").GetInt32());
+
+            var removeAll = await RunScriptAsync(
+                $"rm * --database={database.Id} --container={container.Id}");
+            Assert.False(removeAll.IsError, FormatError(removeAll));
+            Assert.Equal(2, GetJson(removeAll).GetProperty("count").GetInt32());
         }
         finally
         {

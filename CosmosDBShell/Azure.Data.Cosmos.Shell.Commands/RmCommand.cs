@@ -179,9 +179,124 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
 
         var totalCount = 0;
-        var undefinedPartitionKeyMutationCount = 0;
         double totalCharge = 0;
         bool dryRun = this.DryRun == true;
+
+        bool ShouldDelete(JsonElement element)
+        {
+            return this.matcher == null
+                || MatchesAnyPath(element, matchKeyPropertyNames, this.matcher)
+                || this.Pattern == "*";
+        }
+
+        int CountUndefinedPartitionKeyItems(JsonElement input)
+        {
+            IEnumerable<JsonElement> EnumerateItems()
+            {
+                if (input.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var element in input.EnumerateArray())
+                    {
+                        yield return element;
+                    }
+                }
+                else if (input.ValueKind == JsonValueKind.Object
+                    && input.TryGetProperty("items", out var items)
+                    && items.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var element in items.EnumerateArray())
+                    {
+                        yield return element;
+                    }
+                }
+                else
+                {
+                    yield return input;
+                }
+            }
+
+            var count = 0;
+            foreach (var element in EnumerateItems())
+            {
+                if (element.ValueKind == JsonValueKind.Object
+                    && element.TryGetProperty(IdPropertyName, out var id)
+                    && id.ValueKind == JsonValueKind.String
+                    && id.GetString() is not null
+                    && ShouldDelete(element)
+                    && TryCreatePartitionKeyFromItem(
+                        element,
+                        partitionKeyPropertyNames,
+                        out var hasUndefinedComponent,
+                        out _)
+                    && hasUndefinedComponent)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        async Task<(int Count, double RequestCharge)> CountUndefinedPartitionKeyItemsAsync()
+        {
+            var count = 0;
+            var requestCharge = 0.0;
+            var queryOptions = this.partitionKey is PartitionKey scope
+                ? new QueryRequestOptions { PartitionKey = scope }
+                : null;
+            using var feedIterator = container.GetItemQueryStreamIterator(
+                "SELECT * FROM c",
+                requestOptions: queryOptions);
+
+            while (feedIterator.HasMoreResults)
+            {
+                token.ThrowIfCancellationRequested();
+                using var response = await feedIterator.ReadNextAsync(token);
+                requestCharge += response.Headers.RequestCharge;
+
+                using var streamReader = new StreamReader(response.Content);
+                using var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync());
+                foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
+                {
+                    if (element.ValueKind != JsonValueKind.Object
+                        || !element.TryGetProperty(IdPropertyName, out var id)
+                        || id.ValueKind != JsonValueKind.String
+                        || id.GetString() is null
+                        || !ShouldDelete(element)
+                        || !TryCreatePartitionKeyFromItem(
+                            element,
+                            partitionKeyPropertyNames,
+                            out var hasUndefinedComponent,
+                            out _)
+                        || !hasUndefinedComponent)
+                    {
+                        continue;
+                    }
+
+                    count++;
+                }
+            }
+
+            return (count, requestCharge);
+        }
+
+        if (!dryRun && this.partitionKey == null && partitionKeyPropertyNames.Length > 0)
+        {
+            var undefinedPartitionKeyCount = 0;
+            if (hasPipeInput && commandState.Result is ShellJson pipeJson)
+            {
+                undefinedPartitionKeyCount = CountUndefinedPartitionKeyItems(pipeJson.Value);
+            }
+            else if (this.matcher != null)
+            {
+                var (count, requestCharge) = await CountUndefinedPartitionKeyItemsAsync();
+                undefinedPartitionKeyCount = count;
+                totalCharge += requestCharge;
+            }
+
+            AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
+            this.shell!.RenderWarnings(commandState);
+        }
 
         // In dry-run mode, count what would be deleted without issuing any delete.
         async Task<(bool Counted, double RequestCharge)> TryDeleteAsync(string id, PartitionKey itemPartitionKey)
@@ -233,33 +348,17 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 foreach (var item in itemsArray.EnumerateArray())
                 {
                     if (item.TryGetProperty("id", out var idElement) &&
-                        TryCreatePartitionKeyFromItem(item, partitionKeyPropertyNames, out var hasUndefinedComponent, out var itemPartitionKey))
+                        TryCreatePartitionKeyFromItem(item, partitionKeyPropertyNames, out _, out var itemPartitionKey))
                     {
                         var id = idElement.GetString();
 
-                        // Check if pattern matches (if matcher is set)
-                        bool shouldDelete = this.matcher == null; // No pattern = delete all
-                        if (!shouldDelete && MatchesAnyPath(item, matchKeyPropertyNames, this.matcher!))
-                        {
-                            shouldDelete = true;
-                        }
-                        else if (!shouldDelete && this.Pattern == "*")
-                        {
-                            // Wildcard "*" should match everything, even if match key is missing
-                            shouldDelete = true;
-                        }
-
-                        if (id != null && shouldDelete)
+                        if (id != null && ShouldDelete(item))
                         {
                             var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
                             totalCharge += deleteResult.RequestCharge;
                             if (deleteResult.Counted)
                             {
                                 totalCount++;
-                                if (!dryRun && hasUndefinedComponent)
-                                {
-                                    undefinedPartitionKeyMutationCount++;
-                                }
                             }
                         }
                     }
@@ -269,21 +368,9 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             {
                 // Single item from pipe
                 if (itemsArray.TryGetProperty("id", out var idElement) &&
-                    TryCreatePartitionKeyFromItem(itemsArray, partitionKeyPropertyNames, out var hasUndefinedComponent, out var itemPartitionKey))
+                    TryCreatePartitionKeyFromItem(itemsArray, partitionKeyPropertyNames, out _, out var itemPartitionKey))
                 {
-                    // Check if pattern matches (if matcher is set)
-                    bool shouldDelete = this.matcher == null; // No pattern = delete all
-                    if (!shouldDelete && MatchesAnyPath(itemsArray, matchKeyPropertyNames, this.matcher!))
-                    {
-                        shouldDelete = true;
-                    }
-                    else if (!shouldDelete && this.Pattern == "*")
-                    {
-                        // Wildcard "*" should match everything
-                        shouldDelete = true;
-                    }
-
-                    if (shouldDelete)
+                    if (ShouldDelete(itemsArray))
                     {
                         var id = idElement.GetString();
                         if (id != null)
@@ -293,10 +380,6 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                             if (deleteResult.Counted)
                             {
                                 totalCount++;
-                                if (!dryRun && hasUndefinedComponent)
-                                {
-                                    undefinedPartitionKeyMutationCount++;
-                                }
                             }
                         }
                     }
@@ -343,22 +426,15 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         continue;
                     }
 
-                    TryCreatePartitionKeyFromItem(element, partitionKeyPropertyNames, out var hasUndefinedComponent, out var itemPartitionKey);
+                    TryCreatePartitionKeyFromItem(element, partitionKeyPropertyNames, out _, out var itemPartitionKey);
 
-                    // Check if pattern matches
-                    bool shouldDelete = MatchesAnyPath(element, matchKeyPropertyNames, this.matcher);
-
-                    if (shouldDelete)
+                    if (ShouldDelete(element))
                     {
                         var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
                         totalCharge += deleteResult.RequestCharge;
                         if (deleteResult.Counted)
                         {
                             totalCount++;
-                            if (!dryRun && hasUndefinedComponent)
-                            {
-                                undefinedPartitionKeyMutationCount++;
-                            }
                         }
                     }
                 }
@@ -378,11 +454,6 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 });
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(this.CreateResult(totalCount, dryRun)));
-        if (this.partitionKey == null)
-        {
-            AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyMutationCount);
-        }
-
         commandState.RenderUser = () =>
         {
             AnsiConsole.MarkupLine(renderMessage);

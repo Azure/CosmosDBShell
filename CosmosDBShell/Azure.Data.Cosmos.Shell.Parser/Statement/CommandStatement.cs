@@ -174,7 +174,9 @@ internal class CommandStatement : Statement
                 args.Add(evaluated);
             }
 
-            return await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
+            var functionResult = await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
+            functionResult.ShareWarningsFrom(commandState);
+            return functionResult;
         }
 
         if (shell.App.Commands.TryGetValue(this.Name, out var factory))
@@ -182,7 +184,9 @@ internal class CommandStatement : Statement
             bool showHelp = this.Arguments.OfType<CommandOption>().Any(arg => arg.Name == "help" || arg.Name == "?");
             if (showHelp)
             {
-                return HelpCommand.PrintCommandHelp(this.Name, shell.App, false);
+                var helpResult = HelpCommand.PrintCommandHelp(this.Name, shell.App, false);
+                helpResult.ShareWarningsFrom(commandState);
+                return helpResult;
             }
 
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
@@ -205,7 +209,9 @@ internal class CommandStatement : Statement
 
         if (File.Exists(this.Name))
         {
-            return await this.RunScriptAsync(shell, commandState, token);
+            var scriptResult = await this.RunScriptAsync(shell, commandState, token);
+            scriptResult.ShareWarningsFrom(commandState);
+            return scriptResult;
         }
 
         throw new CommandNotFoundException(this.Name, SuggestCommand(shell, this.Name), this.Start, this.CommandToken.Length);

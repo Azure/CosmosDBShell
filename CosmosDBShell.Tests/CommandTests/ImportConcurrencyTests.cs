@@ -194,6 +194,35 @@ public class ImportConcurrencyTests
     }
 
     [Fact]
+    public async Task ParseFailureAfterUndefinedKeyWrite_PreservesWarning()
+    {
+        using var timeout = CreateTimeout();
+        var container = Substitute.For<Container>();
+        container.CreateItemStreamAsync(
+                Arg.Any<Stream>(),
+                Arg.Any<PartitionKey>(),
+                Arg.Any<ItemRequestOptions>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(new ResponseMessage(HttpStatusCode.Created)));
+        using var reader = new StringReader("{\"id\":\"missing-pk\"}\nnot-json\n");
+        var commandState = new CommandState();
+        var import = ImportCommand.WriteItemsAsync(
+            ImportCommand.EnumerateJsonLinesAsync(reader, timeout.Token),
+            container,
+            ImportMode.Insert,
+            1,
+            false,
+            ["pk"],
+            commandState,
+            timeout.Token);
+
+        await Assert.ThrowsAsync<CommandException>(() => import.WaitAsync(timeout.Token));
+
+        var warning = Assert.Single(commandState.Warnings);
+        Assert.Contains("1", warning.Message);
+    }
+
+    [Fact]
     public async Task Cancellation_PropagatesToWritesAndDrainsThem()
     {
         using var timeout = CreateTimeout();

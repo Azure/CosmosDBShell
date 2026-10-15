@@ -690,6 +690,7 @@ Options:
 Examples:
 
 - `rm test-*` deletes every item whose partition key starts with `test-`.
+- `rm *` also matches items whose configured partition-key path is missing.
 - `rm test-* --dry-run` reports how many items match without deleting anything.
 - `rm tmp-* --key=id --partition-key=customer-42 --dry-run` counts matching items only in the `customer-42` logical partition.
 

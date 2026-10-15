@@ -580,13 +580,23 @@ internal abstract class CosmosCommand
         return partitionKeyPaths.Any(path => !TryGetNestedProperty(item, path, out _));
     }
 
-    protected static void AddUndefinedPartitionKeyWarning(CommandState commandState, int count)
+    protected static CommandWarning? AddUndefinedPartitionKeyWarning(
+        CommandState commandState,
+        int count,
+        CommandWarning? warning = null)
     {
         if (count > 0)
         {
-            commandState.Warnings.Add(
-                MessageService.GetArgsString("warning-undefined-partition-key-mutation", "count", count));
+            var message = MessageService.GetArgsString("warning-undefined-partition-key-mutation", "count", count);
+            if (warning is null)
+            {
+                return commandState.AddWarning(message);
+            }
+
+            warning.Message = message;
         }
+
+        return warning;
     }
 
     private static bool LooksLikeJsonLiteral(string trimmed)
