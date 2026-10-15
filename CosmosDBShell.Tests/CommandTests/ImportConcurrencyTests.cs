@@ -10,6 +10,7 @@ using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 using NSubstitute;
 
@@ -309,6 +310,57 @@ public class ImportConcurrencyTests
             Assert.Contains("3", warning.Message);
             var stderr = await File.ReadAllTextAsync(stderrFile, timeout.Token);
             Assert.Equal(1, stderr.Split(warning.Message, StringSplitOptions.None).Length - 1);
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(stderrFile);
+        }
+    }
+
+    [Fact]
+    public async Task MachineModeRedirectedWarning_IsWrittenBeforeFirstWrite()
+    {
+        using var timeout = CreateTimeout();
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var container = Substitute.For<Container>();
+        using var responses = new CompositeDisposable();
+        var stderrFile = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderrFile;
+        string? stderrAtFirstWrite = null;
+        container.CreateItemStreamAsync(
+                Arg.Any<Stream>(),
+                Arg.Any<PartitionKey>(),
+                Arg.Any<ItemRequestOptions>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                stderrAtFirstWrite ??= File.ReadAllText(stderrFile);
+                var response = new ResponseMessage(HttpStatusCode.Created);
+                responses.Add(response);
+                return Task.FromResult(response);
+            });
+        var commandState = new CommandState();
+        using var reader = NewReader(2);
+        try
+        {
+            var result = await ImportCommand.WriteItemsAsync(
+                ImportCommand.EnumerateJsonLinesAsync(reader, timeout.Token),
+                container,
+                ImportMode.Insert,
+                1,
+                continueOnError: false,
+                ["pk"],
+                commandState,
+                timeout.Token,
+                shell);
+
+            Assert.Equal((2, 0, 0.0), result);
+            Assert.Contains(MessageService.GetString("warning-undefined-partition-key-pending"), stderrAtFirstWrite);
+            var warning = Assert.Single(commandState.Warnings);
+            Assert.Contains("2", warning.Message);
+            Assert.Contains(warning.Message, await File.ReadAllTextAsync(stderrFile, timeout.Token));
         }
         finally
         {

@@ -753,10 +753,7 @@ internal class ImportCommand : CosmosCommand
                     {
                         undefinedPartitionKeyWarning = commandState.AddWarning(
                             MessageService.GetString("warning-undefined-partition-key-pending"));
-                        if (warningShell is { IsMachineMode: false })
-                        {
-                            warningShell.RenderWarnings(commandState);
-                        }
+                        warningShell?.RenderWarnings(commandState);
                     }
 
                     undefinedPartitionKeyMutationCount++;
