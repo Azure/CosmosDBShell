@@ -237,63 +237,13 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             return count;
         }
 
-        async Task<(int Count, double RequestCharge)> CountUndefinedPartitionKeyItemsAsync()
+        if (!dryRun
+            && this.partitionKey == null
+            && partitionKeyPropertyNames.Length > 0
+            && hasPipeInput
+            && commandState.Result is ShellJson pipeJson)
         {
-            var count = 0;
-            var requestCharge = 0.0;
-            var queryOptions = this.partitionKey is PartitionKey scope
-                ? new QueryRequestOptions { PartitionKey = scope }
-                : null;
-            using var feedIterator = container.GetItemQueryStreamIterator(
-                "SELECT * FROM c",
-                requestOptions: queryOptions);
-
-            while (feedIterator.HasMoreResults)
-            {
-                token.ThrowIfCancellationRequested();
-                using var response = await feedIterator.ReadNextAsync(token);
-                requestCharge += response.Headers.RequestCharge;
-
-                using var streamReader = new StreamReader(response.Content);
-                using var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync());
-                foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
-                {
-                    if (element.ValueKind != JsonValueKind.Object
-                        || !element.TryGetProperty(IdPropertyName, out var id)
-                        || id.ValueKind != JsonValueKind.String
-                        || id.GetString() is null
-                        || !ShouldDelete(element)
-                        || !TryCreatePartitionKeyFromItem(
-                            element,
-                            partitionKeyPropertyNames,
-                            out var hasUndefinedComponent,
-                            out _)
-                        || !hasUndefinedComponent)
-                    {
-                        continue;
-                    }
-
-                    count++;
-                }
-            }
-
-            return (count, requestCharge);
-        }
-
-        if (!dryRun && this.partitionKey == null && partitionKeyPropertyNames.Length > 0)
-        {
-            var undefinedPartitionKeyCount = 0;
-            if (hasPipeInput && commandState.Result is ShellJson pipeJson)
-            {
-                undefinedPartitionKeyCount = CountUndefinedPartitionKeyItems(pipeJson.Value);
-            }
-            else if (this.matcher != null)
-            {
-                var (count, requestCharge) = await CountUndefinedPartitionKeyItemsAsync();
-                undefinedPartitionKeyCount = count;
-                totalCharge += requestCharge;
-            }
-
+            var undefinedPartitionKeyCount = CountUndefinedPartitionKeyItems(pipeJson.Value);
             AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
             this.shell!.RenderWarnings(commandState);
         }
@@ -388,12 +338,13 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         }
         else if (this.matcher != null)
         {
-            string query = $"SELECT * FROM c";
+            // Count and delete from the same candidates so warnings precede mutations without a second scan.
+            var deletionPlan = new List<(string Id, PartitionKey Key, bool HasUndefinedComponent)>();
             var queryOptions = this.partitionKey is PartitionKey scope
                 ? new QueryRequestOptions { PartitionKey = scope }
                 : null;
 
-            using var feedIterator = container.GetItemQueryStreamIterator(query, requestOptions: queryOptions);
+            using var feedIterator = container.GetItemQueryStreamIterator("SELECT * FROM c", requestOptions: queryOptions);
 
             while (feedIterator.HasMoreResults)
             {
@@ -426,17 +377,35 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                         continue;
                     }
 
-                    TryCreatePartitionKeyFromItem(element, partitionKeyPropertyNames, out _, out var itemPartitionKey);
+                    TryCreatePartitionKeyFromItem(
+                        element,
+                        partitionKeyPropertyNames,
+                        out var hasUndefinedComponent,
+                        out var itemPartitionKey);
 
                     if (ShouldDelete(element))
                     {
-                        var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
-                        totalCharge += deleteResult.RequestCharge;
-                        if (deleteResult.Counted)
-                        {
-                            totalCount++;
-                        }
+                        deletionPlan.Add((id, itemPartitionKey, hasUndefinedComponent));
                     }
+                }
+            }
+
+            token.ThrowIfCancellationRequested();
+            if (!dryRun && this.partitionKey == null)
+            {
+                AddUndefinedPartitionKeyWarning(
+                    commandState,
+                    deletionPlan.Count(candidate => candidate.HasUndefinedComponent));
+                this.shell!.RenderWarnings(commandState);
+            }
+
+            foreach (var candidate in deletionPlan)
+            {
+                var deleteResult = await TryDeleteAsync(candidate.Id, candidate.Key);
+                totalCharge += deleteResult.RequestCharge;
+                if (deleteResult.Counted)
+                {
+                    totalCount++;
                 }
             }
         }

@@ -501,19 +501,8 @@ internal class ImportCommand : CosmosCommand
         var continueOnError = this.ContinueOnError == true;
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
 
-        if (!dryRun)
-        {
-            var undefinedPartitionKeyCount = await CountUndefinedPartitionKeyItemsAsync(
-                filePath,
-                format,
-                partitionKeySegments,
-                partitionKeyPaths,
-                token);
-            AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
-            shell.RenderWarnings(commandState);
-        }
-
         var (successCount, failCount, charge) = await ExecuteImportAsync(
+            shell,
             filePath,
             format,
             mode,
@@ -608,64 +597,8 @@ internal class ImportCommand : CosmosCommand
         return DetectFormat(leading);
     }
 
-    private static async Task<int> CountUndefinedPartitionKeyItemsAsync(
-        string filePath,
-        ImportFormat format,
-        string[]? partitionKeySegments,
-        IReadOnlyList<string> partitionKeyPaths,
-        CancellationToken token)
-    {
-        if (partitionKeyPaths.Count == 0)
-        {
-            return 0;
-        }
-
-        FileStream? stream = null;
-        StreamReader? lineReader = null;
-        try
-        {
-            IAsyncEnumerable<(int LineNumber, JsonElement Item)> source;
-            if (format == ImportFormat.Csv)
-            {
-                source = EnumerateCsvAsync(filePath, partitionKeySegments, token);
-            }
-            else
-            {
-                stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                if (format == ImportFormat.Array)
-                {
-                    source = EnumerateArrayAsync(stream, token);
-                }
-                else
-                {
-                    lineReader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-                    source = EnumerateJsonLinesAsync(lineReader, token);
-                }
-            }
-
-            var count = 0;
-            await foreach (var (_, item) in source.WithCancellation(token))
-            {
-                if (item.ValueKind == JsonValueKind.Object
-                    && HasUndefinedPartitionKeyComponent(item, partitionKeyPaths))
-                {
-                    count++;
-                }
-            }
-
-            return count;
-        }
-        finally
-        {
-            lineReader?.Dispose();
-            if (stream != null)
-            {
-                await stream.DisposeAsync();
-            }
-        }
-    }
-
     private static async Task<(int Success, int Failed, double Charge)> ExecuteImportAsync(
+        ShellInterpreter shell,
         string filePath,
         ImportFormat format,
         ImportMode mode,
@@ -722,7 +655,7 @@ internal class ImportCommand : CosmosCommand
                 partitionKeyPaths,
                 commandState,
                 token,
-                recordUndefinedPartitionKeyWarnings: false);
+                warningShell: shell);
         }
         finally
         {
@@ -754,7 +687,7 @@ internal class ImportCommand : CosmosCommand
         IReadOnlyList<string> partitionKeyPaths,
         CommandState commandState,
         CancellationToken token,
-        bool recordUndefinedPartitionKeyWarnings = true)
+        ShellInterpreter? warningShell = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         var pending = new List<Task<(double Charge, string? Error)>>();
@@ -820,8 +753,7 @@ internal class ImportCommand : CosmosCommand
                 }
 
                 token.ThrowIfCancellationRequested();
-                if (recordUndefinedPartitionKeyWarnings
-                    && items.Current.Item.ValueKind == JsonValueKind.Object
+                if (items.Current.Item.ValueKind == JsonValueKind.Object
                     && HasUndefinedPartitionKeyComponent(items.Current.Item, partitionKeyPaths))
                 {
                     undefinedPartitionKeyMutationCount++;
@@ -829,6 +761,7 @@ internal class ImportCommand : CosmosCommand
                         commandState,
                         undefinedPartitionKeyMutationCount,
                         undefinedPartitionKeyWarning);
+                    warningShell?.RenderWarnings(commandState);
                 }
 
                 pending.Add(WriteItemAsync(

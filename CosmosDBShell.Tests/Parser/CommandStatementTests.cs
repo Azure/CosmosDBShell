@@ -36,6 +36,31 @@ public class CommandStatementTests
         }
     }
 
+    [CosmosCommand("warning-source-test")]
+    internal sealed class WarningSourceTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            commandState.AddWarning("source warning");
+            return Task.FromResult(new CommandState
+            {
+                Result = new ShellJson(JsonSerializer.SerializeToElement(new { value = "source" })),
+            });
+        }
+    }
+
+    [CosmosCommand("fresh-state-test")]
+    internal sealed class FreshStateTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            return Task.FromResult(new CommandState
+            {
+                Result = new ShellJson(JsonSerializer.SerializeToElement(new { value = "fresh" })),
+            });
+        }
+    }
+
     [CosmosCommand("render-failure-test")]
     internal sealed class RenderFailureTestCommand : CosmosCommand
     {
@@ -185,6 +210,40 @@ public class CommandStatementTests
         var positional = Assert.IsType<PositionalException>(structured.Exception);
         Assert.Equal("test.csh", positional.FileName);
         Assert.IsType<CommandException>(positional.InnerException);
+    }
+
+    [Fact]
+    public async Task CommandExpressionAssignment_PreservesWarnings()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningSourceTestCommand), out var factory));
+        shell.App.Commands["warning-source-test"] = factory;
+        var state = new CommandState();
+
+        var result = await ParseStatement("$result = (warning-source-test)").RunAsync(
+            shell,
+            state,
+            TestContext.Current.CancellationToken);
+
+        Assert.Same(state, result);
+        Assert.Equal("source warning", Assert.Single(result.Warnings).Message);
+    }
+
+    [Fact]
+    public async Task Pipeline_PreservesWarningsWhenLaterCommandReturnsFreshState()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningSourceTestCommand), out var sourceFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(FreshStateTestCommand), out var freshFactory));
+        shell.App.Commands["warning-source-test"] = sourceFactory;
+        shell.App.Commands["fresh-state-test"] = freshFactory;
+
+        var result = await ParseStatement("warning-source-test | fresh-state-test").RunAsync(
+            shell,
+            new CommandState(),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("source warning", Assert.Single(result.Warnings).Message);
     }
 
     [Fact]
