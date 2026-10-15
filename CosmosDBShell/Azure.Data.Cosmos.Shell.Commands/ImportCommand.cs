@@ -795,12 +795,9 @@ internal class ImportCommand : CosmosCommand
             }
             finally
             {
-                if (undefinedPartitionKeyWarning != null)
+                if (undefinedPartitionKeyWarning != null && warningShell is { IsMachineMode: false })
                 {
-                    if (warningShell is { IsMachineMode: false })
-                    {
-                        warningShell.RenderUpdatedWarnings(commandState);
-                    }
+                    warningShell.RenderUpdatedWarnings(commandState);
                 }
             }
         }

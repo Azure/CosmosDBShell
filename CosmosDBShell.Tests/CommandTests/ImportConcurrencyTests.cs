@@ -304,6 +304,7 @@ public class ImportConcurrencyTests
                 shell);
 
             Assert.Equal((expectedSuccess, expectedFailed, 0.0), result);
+            Assert.Equal(expectedSuccess, responses.Count);
             var warning = Assert.Single(commandState.Warnings);
             Assert.Contains("3", warning.Message);
             var stderr = await File.ReadAllTextAsync(stderrFile, timeout.Token);

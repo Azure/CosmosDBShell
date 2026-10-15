@@ -104,7 +104,6 @@ public partial class ShellInterpreter : IDisposable
     private double sessionRequestChargeWarningThreshold;
     private bool sessionRequestChargeWarningIssued;
     private long sessionRequestChargeGeneration;
-    private bool errorRedirectHasWarning;
 
     internal ShellInterpreter(string? configPath = null)
     {
@@ -328,17 +327,13 @@ public partial class ShellInterpreter : IDisposable
 
     internal string? ErrOutRedirect { get; set; }
 
-    internal bool ErrorRedirectHasWarning
-    {
-        get => this.errorRedirectHasWarning;
-        set => this.errorRedirectHasWarning = value;
-    }
-
     /// <summary>
-    /// Gets or sets a counter incremented whenever a statement establishes its own error
-    /// redirect, so enclosing scopes can detect nested redirects and restore warning tracking.
+    /// Gets or sets the warning tracking for the active error redirect. A statement that
+    /// establishes its own redirect installs a fresh scope; enclosing scopes restore the
+    /// previous instance, so writes made to an inherited destination during nested
+    /// execution are retained.
     /// </summary>
-    internal long ErrorRedirectScopeVersion { get; set; }
+    internal ErrorRedirectWarningScope ErrorRedirectWarnings { get; set; } = new();
 
     internal bool AppendOutRedirection { get; set; }
 
@@ -656,8 +651,8 @@ public partial class ShellInterpreter : IDisposable
         var savedAppendOut = this.AppendOutRedirection;
         var savedErrOut = this.ErrOutRedirect;
         var savedAppendErr = this.AppendErrRedirection;
-        var savedErrorRedirectHasWarning = this.errorRedirectHasWarning;
-        this.errorRedirectHasWarning = false;
+        var savedErrorRedirectWarnings = this.ErrorRedirectWarnings;
+        this.ErrorRedirectWarnings = new ErrorRedirectWarningScope();
 
         var diagnostics = this.Diagnostics;
         var stopwatch = diagnostics is null ? null : System.Diagnostics.Stopwatch.StartNew();
@@ -691,7 +686,7 @@ public partial class ShellInterpreter : IDisposable
                     e);
                 result = new ErrorCommandState(shellException);
                 result.ShareWarningsFrom(state);
-                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, deferToErrorEnvelope: true);
                 this.ReportExecutionError(shellException, command, result.Warnings);
                 this.Disconnect();
                 return result;
@@ -701,7 +696,7 @@ public partial class ShellInterpreter : IDisposable
                 var shellException = new ShellException(CommandException.GetDisplayMessage(e), e);
                 result = new ErrorCommandState(shellException);
                 result.ShareWarningsFrom(state);
-                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, deferToErrorEnvelope: true);
                 this.ReportExecutionError(shellException, command, result.Warnings);
                 this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 return result;
@@ -725,7 +720,11 @@ public partial class ShellInterpreter : IDisposable
                     RequestCharge = RequestChargeContext.GetExceptionCharge(e),
                 };
                 result.ShareWarningsFrom(state);
-                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
+                this.RenderWarnings(
+                    result,
+                    !string.IsNullOrEmpty(this.StdOutRedirect),
+                    this.IsMachineMode,
+                    deferToErrorEnvelope: !ContainsException<CommandReportedException>(e));
                 this.ReportExecutionError(e, command, result.Warnings);
                 this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 return result;
@@ -758,7 +757,7 @@ public partial class ShellInterpreter : IDisposable
             this.AppendOutRedirection = savedAppendOut;
             this.ErrOutRedirect = savedErrOut;
             this.AppendErrRedirection = savedAppendErr;
-            this.errorRedirectHasWarning = savedErrorRedirectHasWarning;
+            this.ErrorRedirectWarnings = savedErrorRedirectWarnings;
 
             if (diagnostics is not null && stopwatch is not null)
             {
@@ -1996,7 +1995,13 @@ public partial class ShellInterpreter : IDisposable
             var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
             var inMachineMode = this.IsMachineMode;
 
-            this.RenderWarnings(state, redirected, inMachineMode);
+            // Machine mode includes warnings in the structured error envelope instead of
+            // writing them separately, which would leave stderr without a single JSON payload.
+            this.RenderWarnings(
+                state,
+                redirected,
+                inMachineMode,
+                deferToErrorEnvelope: state is StructuredErrorCommandState);
 
             // Structured failures bypass ReportExecutionError, so the script location the
             // statement attached would otherwise be dropped from the human-readable output.
@@ -2173,9 +2178,10 @@ public partial class ShellInterpreter : IDisposable
         CommandState state,
         bool redirected,
         bool inMachineMode,
-        bool renderUpdates = false)
+        bool renderUpdates = false,
+        bool deferToErrorEnvelope = false)
     {
-        if (inMachineMode && state.IsError)
+        if (inMachineMode && deferToErrorEnvelope)
         {
             return;
         }
@@ -2191,7 +2197,7 @@ public partial class ShellInterpreter : IDisposable
             if (this.ErrOutRedirect != null)
             {
                 this.WriteErrorRedirect(warning.Message + Environment.NewLine);
-                this.errorRedirectHasWarning = true;
+                this.ErrorRedirectWarnings.HasWarning = true;
             }
             else if (!redirected && !inMachineMode)
             {
@@ -2996,7 +3002,7 @@ public partial class ShellInterpreter : IDisposable
             throw new InvalidOperationException("Cannot redirect error output without an error redirection path.");
         }
 
-        if (this.AppendErrRedirection || this.errorRedirectHasWarning)
+        if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
         {
             File.AppendAllText(this.ErrOutRedirect, text);
         }
@@ -3117,7 +3123,7 @@ public partial class ShellInterpreter : IDisposable
                 : prefix + e.Message
                     + (!string.IsNullOrEmpty(hint) ? Environment.NewLine + hint : string.Empty)
                     + (showInner ? Environment.NewLine + FormatInnerExceptionMessages(e.InnerException) : string.Empty);
-            if (this.AppendErrRedirection || this.errorRedirectHasWarning)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect, errTxt);
             }
@@ -3214,7 +3220,7 @@ public partial class ShellInterpreter : IDisposable
         if (fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection || this.errorRedirectHasWarning)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }
@@ -3256,7 +3262,7 @@ public partial class ShellInterpreter : IDisposable
                 errorMessage += Environment.NewLine + string.Join(Environment.NewLine, callTrace);
             }
 
-            if (this.AppendErrRedirection || this.errorRedirectHasWarning)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect, errorMessage);
             }
@@ -3402,7 +3408,7 @@ public partial class ShellInterpreter : IDisposable
         if (redirected && fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection || this.errorRedirectHasWarning)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }
@@ -3454,7 +3460,7 @@ public partial class ShellInterpreter : IDisposable
         if (fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection || this.errorRedirectHasWarning)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }

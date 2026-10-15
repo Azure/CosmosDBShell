@@ -116,12 +116,9 @@ public partial class CommandState
     {
         if (!ReferenceEquals(this.warnings, source.warnings))
         {
-            foreach (var warning in this.warnings)
+            foreach (var warning in this.warnings.Where(warning => !source.warnings.Contains(warning)))
             {
-                if (!source.warnings.Contains(warning))
-                {
-                    source.warnings.Add(warning);
-                }
+                source.warnings.Add(warning);
             }
         }
 
