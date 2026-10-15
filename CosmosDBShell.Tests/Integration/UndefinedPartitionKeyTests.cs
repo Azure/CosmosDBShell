@@ -4,6 +4,7 @@
 
 namespace CosmosShell.Tests.Integration;
 
+using System.Net;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
@@ -135,6 +136,37 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
                 $"print replace-valid tenant --database={database.Id} --container={container.Id}");
             Assert.False(replacedItem.IsError, FormatError(replacedItem));
             Assert.Equal(2, GetJson(replacedItem).GetProperty("value").GetInt32());
+        }
+        finally
+        {
+            await database.DeleteAsync(cancellationToken: CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task PipedRm_ExcludedItemWithInvalidPartitionKeyDoesNotBlockDeletion()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(EmulatorEndpoint);
+        using var client = new CosmosClient(connectionString, CreateClientOptions());
+        var database = (await client.CreateDatabaseAsync($"PipedRm_{Guid.NewGuid():N}", cancellationToken: token)).Database;
+        var container = (await database.CreateContainerAsync(
+            new ContainerProperties("Items", "/pk"),
+            cancellationToken: token)).Container;
+
+        try
+        {
+            await container.CreateItemAsync(new { id = "target", pk = "tenant" }, new PartitionKey("tenant"), cancellationToken: token);
+            Shell.State = new ConnectedState(new CosmosClient(connectionString, CreateClientOptions()));
+
+            // filter parses the literal into JSON so rm receives structured piped items.
+            var remove = await RunScriptAsync(
+                """echo '[{"id":"skip","pk":[]},{"id":"target","pk":"tenant"}]' | filter '.' | """
+                    + $"rm target --key=id --database={database.Id} --container={container.Id}");
+
+            Assert.False(remove.IsError, FormatError(remove));
+            using var read = await container.ReadItemStreamAsync("target", new PartitionKey("tenant"), cancellationToken: token);
+            Assert.Equal(HttpStatusCode.NotFound, read.StatusCode);
         }
         finally
         {

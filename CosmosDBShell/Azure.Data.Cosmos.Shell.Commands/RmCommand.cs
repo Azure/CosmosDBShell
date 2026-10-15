@@ -291,19 +291,18 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             {
                 foreach (var item in itemsArray.EnumerateArray())
                 {
-                    if (item.TryGetProperty("id", out var idElement) &&
-                        TryCreatePartitionKeyFromItem(item, partitionKeyPropertyNames, out _, out var itemPartitionKey))
+                    // Filter before converting the key so an excluded item with an invalid
+                    // partition-key value cannot block deletion of matching items.
+                    if (item.TryGetProperty("id", out var idElement)
+                        && idElement.GetString() is { } id
+                        && ShouldDelete(item)
+                        && TryCreatePartitionKeyFromItem(item, partitionKeyPropertyNames, out _, out var itemPartitionKey))
                     {
-                        var id = idElement.GetString();
-
-                        if (id != null && ShouldDelete(item))
+                        var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
+                        totalCharge += deleteResult.RequestCharge;
+                        if (deleteResult.Counted)
                         {
-                            var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
-                            totalCharge += deleteResult.RequestCharge;
-                            if (deleteResult.Counted)
-                            {
-                                totalCount++;
-                            }
+                            totalCount++;
                         }
                     }
                 }
@@ -311,21 +310,16 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             else
             {
                 // Single item from pipe
-                if (itemsArray.TryGetProperty("id", out var idElement) &&
-                    TryCreatePartitionKeyFromItem(itemsArray, partitionKeyPropertyNames, out _, out var itemPartitionKey))
+                if (itemsArray.TryGetProperty("id", out var idElement)
+                    && idElement.GetString() is { } id
+                    && ShouldDelete(itemsArray)
+                    && TryCreatePartitionKeyFromItem(itemsArray, partitionKeyPropertyNames, out _, out var itemPartitionKey))
                 {
-                    if (ShouldDelete(itemsArray))
+                    var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
+                    totalCharge += deleteResult.RequestCharge;
+                    if (deleteResult.Counted)
                     {
-                        var id = idElement.GetString();
-                        if (id != null)
-                        {
-                            var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
-                            totalCharge += deleteResult.RequestCharge;
-                            if (deleteResult.Counted)
-                            {
-                                totalCount++;
-                            }
-                        }
+                        totalCount++;
                     }
                 }
             }
