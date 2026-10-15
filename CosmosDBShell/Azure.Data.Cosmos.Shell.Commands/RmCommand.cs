@@ -191,56 +191,11 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 || this.Pattern == "*";
         }
 
-        int CountUndefinedPartitionKeyItems(JsonElement input)
-        {
-            IEnumerable<JsonElement> EnumerateItems()
-            {
-                if (input.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var element in input.EnumerateArray())
-                    {
-                        yield return element;
-                    }
-                }
-                else if (input.ValueKind == JsonValueKind.Object
-                    && input.TryGetProperty("items", out var items)
-                    && items.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var element in items.EnumerateArray())
-                    {
-                        yield return element;
-                    }
-                }
-                else
-                {
-                    yield return input;
-                }
-            }
-
-            return EnumerateItems().Count(element =>
-                element.ValueKind == JsonValueKind.Object
-                    && element.TryGetProperty(IdPropertyName, out var id)
-                    && id.ValueKind == JsonValueKind.String
-                    && id.GetString() is not null
-                    && ShouldDelete(element)
-                    && TryCreatePartitionKeyFromItem(
-                        element,
-                        partitionKeyPropertyNames,
-                        out var hasUndefinedComponent,
-                        out _)
-                    && hasUndefinedComponent);
-        }
-
-        if (!dryRun
-            && this.partitionKey == null
-            && partitionKeyPropertyNames.Length > 0
-            && hasPipeInput
-            && commandState.Result is ShellJson pipeJson)
-        {
-            var undefinedPartitionKeyCount = CountUndefinedPartitionKeyItems(pipeJson.Value);
-            AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
-            this.shell!.RenderWarnings(commandState);
-        }
+        // Piped records may be projections that omit key properties, so a missing key is not
+        // inferred as undefined unless the caller explicitly scoped the delete with --partition-key.
+        bool TryGetPipedItemPartitionKey(JsonElement item, out PartitionKey itemPartitionKey) =>
+            TryCreatePartitionKeyFromItem(item, partitionKeyPropertyNames, out var hasUndefinedComponent, out itemPartitionKey)
+                && (!hasUndefinedComponent || this.partitionKey is not null);
 
         // In dry-run mode, count what would be deleted without issuing any delete.
         async Task<(bool Counted, double RequestCharge)> TryDeleteAsync(string id, PartitionKey itemPartitionKey)
@@ -296,7 +251,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                     if (item.TryGetProperty("id", out var idElement)
                         && idElement.GetString() is { } id
                         && ShouldDelete(item)
-                        && TryCreatePartitionKeyFromItem(item, partitionKeyPropertyNames, out _, out var itemPartitionKey))
+                        && TryGetPipedItemPartitionKey(item, out var itemPartitionKey))
                     {
                         var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
                         totalCharge += deleteResult.RequestCharge;
@@ -313,7 +268,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 if (itemsArray.TryGetProperty("id", out var idElement)
                     && idElement.GetString() is { } id
                     && ShouldDelete(itemsArray)
-                    && TryCreatePartitionKeyFromItem(itemsArray, partitionKeyPropertyNames, out _, out var itemPartitionKey))
+                    && TryGetPipedItemPartitionKey(itemsArray, out var itemPartitionKey))
                 {
                     var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
                     totalCharge += deleteResult.RequestCharge;

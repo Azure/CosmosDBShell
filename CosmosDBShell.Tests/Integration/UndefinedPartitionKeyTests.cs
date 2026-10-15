@@ -174,6 +174,53 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
         }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PipedRm_ProjectionWithoutPartitionKeyDoesNotInferUndefinedPartition(bool arrayInput)
+    {
+        var token = TestContext.Current.CancellationToken;
+        var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(EmulatorEndpoint);
+        using var client = new CosmosClient(connectionString, CreateClientOptions());
+        var database = (await client.CreateDatabaseAsync($"PipedProjection_{Guid.NewGuid():N}", cancellationToken: token)).Database;
+        var container = (await database.CreateContainerAsync(
+            new ContainerProperties("Items", "/pk"),
+            cancellationToken: token)).Container;
+
+        try
+        {
+            await container.CreateItemAsync(new { id = "shared", pk = "tenant" }, new PartitionKey("tenant"), cancellationToken: token);
+            await container.CreateItemAsync(new { id = "shared" }, PartitionKey.None, cancellationToken: token);
+            Shell.State = new ConnectedState(new CosmosClient(connectionString, CreateClientOptions()));
+            var projection = arrayInput ? """[{"id":"shared"}]""" : """{"id":"shared"}""";
+            var target = $"rm shared --key=id --database={database.Id} --container={container.Id}";
+
+            var inferred = await RunScriptAsync($"echo '{projection}' | filter '.' | {target}");
+
+            Assert.False(inferred.IsError, FormatError(inferred));
+            using (var tenantRead = await container.ReadItemStreamAsync("shared", new PartitionKey("tenant"), cancellationToken: token))
+            using (var noneRead = await container.ReadItemStreamAsync("shared", PartitionKey.None, cancellationToken: token))
+            {
+                Assert.Equal(HttpStatusCode.OK, tenantRead.StatusCode);
+                Assert.Equal(HttpStatusCode.OK, noneRead.StatusCode);
+            }
+
+            var explicitNone = await RunScriptAsync($"echo '{projection}' | filter '.' | {target} --partition-key '{{}}'");
+
+            Assert.False(explicitNone.IsError, FormatError(explicitNone));
+            using (var tenantRead = await container.ReadItemStreamAsync("shared", new PartitionKey("tenant"), cancellationToken: token))
+            using (var noneRead = await container.ReadItemStreamAsync("shared", PartitionKey.None, cancellationToken: token))
+            {
+                Assert.Equal(HttpStatusCode.OK, tenantRead.StatusCode);
+                Assert.Equal(HttpStatusCode.NotFound, noneRead.StatusCode);
+            }
+        }
+        finally
+        {
+            await database.DeleteAsync(cancellationToken: CancellationToken.None);
+        }
+    }
+
     private static CosmosClientOptions CreateClientOptions() => new()
     {
         ConnectionMode = ConnectionMode.Gateway,

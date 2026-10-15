@@ -96,6 +96,19 @@ public class MachineModeConsoleWarningTests
     }
 
     [Fact]
+    public async Task VerboseOutputRedirectFailure_StillReportsConsoleWarning()
+    {
+        var missingDirectory = Path.Join(Path.GetTempPath(), $"missing-{Guid.NewGuid():N}");
+        var output = Path.Join(missingDirectory, "out.json").Replace('\\', '/');
+
+        var (stderr, result) = await RunCommandAsync($"warning-output-test > {ShellLiteral.Quote(output)}", verbose: true);
+
+        Assert.True(result.IsError);
+        Assert.Equal("script warning", Assert.Single(result.Warnings).Message);
+        Assert.Contains("script warning", stderr);
+    }
+
+    [Fact]
     public async Task RedirectedWarning_DoesNotFlushEarlierConsoleWarningBeforeFailure()
     {
         var file = Path.GetTempFileName();
@@ -134,7 +147,7 @@ public class MachineModeConsoleWarningTests
         }
     }
 
-    private static async Task<(string Stderr, CommandState Result)> RunCommandAsync(string command)
+    private static async Task<(string Stderr, CommandState Result)> RunCommandAsync(string command, bool verbose = false)
     {
         using var shell = ShellInterpreter.CreateInstance();
         Assert.True(CommandFactory.TryCreateFactory(typeof(CommandStatementTests.WarningOutputTestCommand), out var warningFactory));
@@ -143,7 +156,7 @@ public class MachineModeConsoleWarningTests
         shell.App.Commands["warning-output-test"] = warningFactory;
         shell.App.Commands["warning-render-test"] = renderFactory;
         shell.App.Commands["warning-failure-test"] = failureFactory;
-        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        shell.Options = new Program.CosmosShellOptions { Output = "json", Verbose = verbose };
         var originalError = Console.Error;
         using var error = new StringWriter();
         try

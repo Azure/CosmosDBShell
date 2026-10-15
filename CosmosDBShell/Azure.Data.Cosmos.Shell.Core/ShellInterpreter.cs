@@ -1987,12 +1987,17 @@ public partial class ShellInterpreter : IDisposable
     internal CommandState PrintState(CommandState state, bool markAsRendered = false, bool deferMachineModeWarnings = false)
     {
         var result = this.PrintStateCore(state, markAsRendered);
-
-        // Console-bound machine-mode warnings are written only after output rendering succeeded.
-        // A rendering failure or structured error writes an envelope that carries them instead.
-        if (!deferMachineModeWarnings && ReferenceEquals(result, state) && state is not StructuredErrorCommandState)
+        if (!ReferenceEquals(result, state))
         {
-            this.RenderWarnings(state, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
+            result.ShareWarningsFrom(state);
+        }
+
+        // Console-bound machine-mode warnings are written only once the command's output was
+        // handled. Warnings already carried by an error envelope are marked rendered and skipped;
+        // any still pending (for example after a verbose render failure) are written here.
+        if (!deferMachineModeWarnings)
+        {
+            this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
         }
 
         return result;

@@ -698,6 +698,8 @@ Examples:
 
 `--partition-key` (alias `--pk`) restricts both the dry run and the deletion to a single logical partition. It uses the same typed parsing as `patch` and `batch`: JSON scalars keep their type (`--pk=7` targets the number `7`, `--pk='"7"'` targets the string `"7"`), `{}` targets an undefined value, and hierarchical keys are passed as a JSON array (`--pk='["tenant-1",{}]'`). The value must supply every component of the container's partition key; a prefix of a hierarchical key is rejected. Piped items outside the partition are skipped.
 
+Piped items may be projections, so `rm` does not infer an undefined key for a piped item that omits a partition-key path; such items are skipped. To delete piped items from the undefined partition, scope the command explicitly, for example `--partition-key '{}'`.
+
 #### Deleting a single item safely
 
 When the pattern is an exact id (no `*` or `?`), `--key=id` is set, and `--partition-key` is supplied, `rm` targets exactly one item with a point read or point delete on `(id, partitionKey)` instead of scanning the container. The dry-run result keeps the `count` and adds the item's `id`, `partitionKey`, and current `etag`:
