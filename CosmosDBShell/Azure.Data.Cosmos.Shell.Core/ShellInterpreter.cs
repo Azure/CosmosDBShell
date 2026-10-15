@@ -1968,6 +1968,18 @@ public partial class ShellInterpreter : IDisposable
             var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
             var inMachineMode = this.IsMachineMode;
 
+            foreach (var warning in state.Warnings)
+            {
+                if (!redirected && !inMachineMode)
+                {
+                    AnsiConsole.MarkupLine(Theme.FormatWarning(Markup.Escape(warning)));
+                }
+                else
+                {
+                    Console.Error.WriteLine(warning);
+                }
+            }
+
             // Structured failures bypass ReportExecutionError, so the script location the
             // statement attached would otherwise be dropped from the human-readable output.
             // Emit it here and let the structured result render itself below.

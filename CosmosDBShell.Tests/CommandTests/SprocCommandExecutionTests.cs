@@ -212,6 +212,29 @@ public class SprocCommandExecutionTests
     }
 
     [Fact]
+    public async Task ExecAsync_UsesNoneForExplicitUndefinedPartitionKey()
+    {
+        var (container, scripts) = ScriptMocks.NewContainer();
+        using var execResponse = new ResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("{\"ok\":true}")),
+        };
+        scripts.ExecuteStoredProcedureStreamAsync(
+                Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<dynamic[]>(), Arg.Any<StoredProcedureRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(execResponse));
+
+        var command = new SprocCommand { Subcommand = "exec", Name = "alpha", PartitionKey = "{}" };
+        await command.ExecAsync(container, new CommandState(), CancellationToken.None);
+
+        await scripts.Received(1).ExecuteStoredProcedureStreamAsync(
+            "alpha",
+            Arg.Is<PartitionKey>(key => key.Equals(PartitionKey.None)),
+            Arg.Any<dynamic[]>(),
+            Arg.Any<StoredProcedureRequestOptions>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ExecAsync_MissingPartitionKey_ThrowsCommandException()
     {
         var (container, _) = ScriptMocks.NewContainer();

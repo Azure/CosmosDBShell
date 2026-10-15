@@ -76,6 +76,7 @@ internal class MakeItemCommand : CosmosCommand
             requestCharge = summary.RequestCharge,
         }));
         returnState.RequestCharge = summary.RequestCharge;
+        AddUndefinedPartitionKeyWarning(returnState, summary.UndefinedPartitionKeyCount);
         return returnState;
     }
 
@@ -153,8 +154,8 @@ internal class MakeItemCommand : CosmosCommand
 
                 if (root.ValueKind == JsonValueKind.Array)
                 {
-                    WriteUndefinedPartitionKeyWarning(
-                        root.EnumerateArray().Count(item => HasUndefinedPartitionKeyComponent(item, partitionKeyPaths)));
+                    var undefinedPartitionKeyCount =
+                        root.EnumerateArray().Count(item => HasUndefinedPartitionKeyComponent(item, partitionKeyPaths));
                     int createdCount = 0;
                     int replacedCount = 0;
                     int failCount = 0;
@@ -281,12 +282,11 @@ internal class MakeItemCommand : CosmosCommand
                                 totalCount));
                     }
 
-                    return new WriteSummary(createdCount, replacedCount, failCount, charge);
+                    return new WriteSummary(createdCount, replacedCount, failCount, charge, undefinedPartitionKeyCount);
                 }
                 else
                 {
-                    WriteUndefinedPartitionKeyWarning(
-                        HasUndefinedPartitionKeyComponent(root, partitionKeyPaths) ? 1 : 0);
+                    var undefinedPartitionKeyCount = HasUndefinedPartitionKeyComponent(root, partitionKeyPaths) ? 1 : 0;
                     try
                     {
                         var result = await WriteOneAsync(container, partitionKeyPaths, root, force, token);
@@ -298,7 +298,7 @@ internal class MakeItemCommand : CosmosCommand
                                 key,
                                 "charge",
                                 result.RequestCharge.ToString("F2")));
-                            return new WriteSummary(1, 0, 0, result.RequestCharge);
+                            return new WriteSummary(1, 0, 0, result.RequestCharge, undefinedPartitionKeyCount);
                         }
                         else if (force && result.StatusCode == System.Net.HttpStatusCode.OK)
                         {
@@ -306,7 +306,7 @@ internal class MakeItemCommand : CosmosCommand
                                 "command-mkitem-upserted-replaced",
                                 "charge",
                                 result.RequestCharge.ToString("F2")));
-                            return new WriteSummary(0, 1, 0, result.RequestCharge);
+                            return new WriteSummary(0, 1, 0, result.RequestCharge, undefinedPartitionKeyCount);
                         }
                         else
                         {
@@ -314,7 +314,7 @@ internal class MakeItemCommand : CosmosCommand
                                 "command-mkitem-error-status-returned",
                                 "status",
                                 result.StatusCode.ToString()));
-                            return new WriteSummary(0, 0, 1, result.RequestCharge);
+                            return new WriteSummary(0, 0, 1, result.RequestCharge, undefinedPartitionKeyCount);
                         }
                     }
                     catch (CosmosException ce)
@@ -356,5 +356,5 @@ internal class MakeItemCommand : CosmosCommand
         return (response.StatusCode, response.Headers.RequestCharge);
     }
 
-    private readonly record struct WriteSummary(int Created, int Replaced, int Failed, double RequestCharge);
+    private readonly record struct WriteSummary(int Created, int Replaced, int Failed, double RequestCharge, int UndefinedPartitionKeyCount);
 }

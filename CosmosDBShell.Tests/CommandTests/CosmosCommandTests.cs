@@ -189,6 +189,48 @@ public class CosmosCommandTests
         Assert.Equal(expected.ToString(), partitionKey.ToString());
     }
 
+    [Fact]
+    public void TryCreatePartitionKeyFromItem_EmptyObjectValueIsNotMissing()
+    {
+        using var item = JsonDocument.Parse("""{"pk":{}}""");
+
+        Assert.Throws<JsonException>(() => CosmosCommand.TryCreatePartitionKeyFromItem(
+            item.RootElement,
+            ["pk"],
+            out _,
+            out _));
+    }
+
+    [Fact]
+    public void TryCreatePartitionKeyFromItem_EmptyObjectHierarchicalValueIsNotMissing()
+    {
+        using var item = JsonDocument.Parse("""{"tenant":"tenant-1","user":{}}""");
+
+        Assert.Throws<JsonException>(() => CosmosCommand.TryCreatePartitionKeyFromItem(
+            item.RootElement,
+            ["tenant", "user"],
+            out _,
+            out _));
+    }
+
+    [Theory]
+    [InlineData("""{"tenant":null}""")]
+    [InlineData("""{"tenant":"tenant-1"}""")]
+    public void TryCreatePartitionKeyFromItem_NonObjectIntermediateIsMissing(string json)
+    {
+        using var item = JsonDocument.Parse(json);
+
+        var created = CosmosCommand.TryCreatePartitionKeyFromItem(
+            item.RootElement,
+            ["tenant/id"],
+            out var hasUndefinedComponent,
+            out var partitionKey);
+
+        Assert.True(created);
+        Assert.True(hasUndefinedComponent);
+        Assert.Equal(PartitionKey.None.ToString(), partitionKey.ToString());
+    }
+
     [Theory]
     [InlineData("command-print-error-invalid_pk_json")]
     [InlineData("command-patch-error-invalid_pk_json")]

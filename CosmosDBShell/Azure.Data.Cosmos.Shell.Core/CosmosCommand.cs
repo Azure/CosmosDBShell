@@ -270,7 +270,6 @@ internal abstract class CosmosCommand
     {
         return element.ValueKind switch
         {
-            JsonValueKind.Object when !element.EnumerateObject().Any() => PartitionKey.None,
             JsonValueKind.String => new PartitionKey(element.GetString()),
             JsonValueKind.Number =>
                 element.TryGetInt32(out int intValue) ? new PartitionKey(intValue) :
@@ -279,7 +278,7 @@ internal abstract class CosmosCommand
             JsonValueKind.True => new PartitionKey(true),
             JsonValueKind.False => new PartitionKey(false),
             JsonValueKind.Null => PartitionKey.Null,
-            _ => new PartitionKey(element.GetRawText()),
+            _ => throw new JsonException("Partition key values must be JSON scalars."),
         };
     }
 
@@ -330,12 +329,8 @@ internal abstract class CosmosCommand
             case JsonValueKind.Null:
                 builder.AddNullValue();
                 break;
-            case JsonValueKind.Object when !element.EnumerateObject().Any():
-                builder.AddNoneType();
-                break;
             default:
-                builder.Add(element.GetRawText());
-                break;
+                throw new JsonException("Partition key components must be JSON scalars.");
         }
     }
 
@@ -370,7 +365,14 @@ internal abstract class CosmosCommand
         var builder = new PartitionKeyBuilder();
         foreach (var element in elements)
         {
-            AddPartitionKeyValue(builder, element);
+            if (element.ValueKind == JsonValueKind.Object && !element.EnumerateObject().Any())
+            {
+                builder.AddNoneType();
+            }
+            else
+            {
+                AddPartitionKeyValue(builder, element);
+            }
         }
 
         return builder.Build();
@@ -578,11 +580,12 @@ internal abstract class CosmosCommand
         return partitionKeyPaths.Any(path => !TryGetNestedProperty(item, path, out _));
     }
 
-    protected static void WriteUndefinedPartitionKeyWarning(int count)
+    protected static void AddUndefinedPartitionKeyWarning(CommandState commandState, int count)
     {
         if (count > 0)
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString("warning-undefined-partition-key-mutation", "count", count));
+            commandState.Warnings.Add(
+                MessageService.GetArgsString("warning-undefined-partition-key-mutation", "count", count));
         }
     }
 
@@ -625,7 +628,7 @@ internal abstract class CosmosCommand
                 continue;
             }
 
-            if (!current.TryGetProperty(segment, out var next))
+            if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(segment, out var next))
             {
                 return false;
             }

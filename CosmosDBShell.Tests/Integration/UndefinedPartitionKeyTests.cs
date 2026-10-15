@@ -7,7 +7,6 @@ namespace CosmosShell.Tests.Integration;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
-using Microsoft.Azure.Cosmos.Scripts;
 
 public class UndefinedPartitionKeyTests : EmulatorTestBase
 {
@@ -53,13 +52,6 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
             var batch = await RunScriptAsync(
                 $"batch run '{batchJson}' --partition-key '{{}}' --database={database.Id} --container={container.Id}");
             Assert.False(batch.IsError, FormatError(batch));
-
-            await container.Scripts.CreateStoredProcedureAsync(
-                new StoredProcedureProperties("noneProbe", "function () { return 'ok'; }"),
-                cancellationToken: token);
-            var sproc = await RunScriptAsync(
-                $"sproc exec noneProbe [] --partition-key '{{}}' --database={database.Id} --container={container.Id}");
-            Assert.False(sproc.IsError, FormatError(sproc));
 
             var watchOutput = CaptureOutputFile();
             var watch = await RunScriptAsync(

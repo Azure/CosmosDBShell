@@ -50,6 +50,8 @@ public partial class CommandState
 
     internal ShellObject? Result { get; set; }
 
+    internal List<string> Warnings { get; } = [];
+
     internal bool OutputRendered { get; set; }
 
     /// <summary>

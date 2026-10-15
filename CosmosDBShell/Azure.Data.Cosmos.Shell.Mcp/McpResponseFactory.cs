@@ -91,6 +91,11 @@ internal static class McpResponseFactory
             payload["requestCharge"] = commandState.RequestCharge.Value;
         }
 
+        if (commandState.Warnings.Count > 0)
+        {
+            payload["warnings"] = JsonSerializer.SerializeToNode(commandState.Warnings);
+        }
+
         if (commandState.IsError)
         {
             payload["error"] = GetErrorPayloadMessage(commandState);

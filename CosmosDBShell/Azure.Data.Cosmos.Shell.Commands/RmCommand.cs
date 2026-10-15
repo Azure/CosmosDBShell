@@ -378,17 +378,13 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 });
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(this.CreateResult(totalCount, dryRun)));
+        if (this.partitionKey == null)
+        {
+            AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyMutationCount);
+        }
+
         commandState.RenderUser = () =>
         {
-            if (undefinedPartitionKeyMutationCount > 0)
-            {
-                AnsiConsole.MarkupLine(
-                    MessageService.GetArgsString(
-                        "warning-undefined-partition-key-mutation",
-                        "count",
-                        undefinedPartitionKeyMutationCount));
-            }
-
             AnsiConsole.MarkupLine(renderMessage);
         };
 

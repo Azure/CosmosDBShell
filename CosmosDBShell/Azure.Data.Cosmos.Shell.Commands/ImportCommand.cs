@@ -501,7 +501,7 @@ internal class ImportCommand : CosmosCommand
         var continueOnError = this.ContinueOnError == true;
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
 
-        var (successCount, failCount, charge) = await ExecuteImportAsync(
+        var (successCount, failCount, charge, undefinedPartitionKeyCount) = await ExecuteImportAsync(
             filePath,
             format,
             mode,
@@ -560,7 +560,7 @@ internal class ImportCommand : CosmosCommand
                     successCount + failCount));
         }
 
-        return new CommandState
+        var resultState = new CommandState
         {
             Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {
@@ -573,6 +573,8 @@ internal class ImportCommand : CosmosCommand
             })),
             RequestCharge = charge > 0 ? charge : null,
         };
+        AddUndefinedPartitionKeyWarning(resultState, undefinedPartitionKeyCount);
+        return resultState;
     }
 
     private static async Task<ImportFormat> ResolveFormatAsync(string filePath, ImportFormat requested, CancellationToken token)
@@ -594,7 +596,7 @@ internal class ImportCommand : CosmosCommand
         return DetectFormat(leading);
     }
 
-    private static async Task<(int Success, int Failed, double Charge)> ExecuteImportAsync(
+    private static async Task<(int Success, int Failed, double Charge, int UndefinedPartitionKeyCount)> ExecuteImportAsync(
         string filePath,
         ImportFormat format,
         ImportMode mode,
@@ -637,7 +639,7 @@ internal class ImportCommand : CosmosCommand
                     count++;
                 }
 
-                return (count, 0, 0);
+                return (count, 0, 0, 0);
             }
 
             ArgumentNullException.ThrowIfNull(container);
@@ -668,10 +670,11 @@ internal class ImportCommand : CosmosCommand
         bool continueOnError,
         CancellationToken token)
     {
-        return await WriteItemsAsync(source, container, mode, concurrency, continueOnError, [], token);
+        var (success, failed, charge, _) = await WriteItemsAsync(source, container, mode, concurrency, continueOnError, [], token);
+        return (success, failed, charge);
     }
 
-    private static async Task<(int Success, int Failed, double Charge)> WriteItemsAsync(
+    private static async Task<(int Success, int Failed, double Charge, int UndefinedPartitionKeyCount)> WriteItemsAsync(
         IAsyncEnumerable<(int LineNumber, JsonElement Item)> source,
         Container container,
         ImportMode mode,
@@ -765,12 +768,10 @@ internal class ImportCommand : CosmosCommand
             {
                 Record(result);
             }
-
-            WriteUndefinedPartitionKeyWarning(undefinedPartitionKeyMutationCount);
         }
 
         token.ThrowIfCancellationRequested();
-        return (success, failed, charge);
+        return (success, failed, charge, undefinedPartitionKeyMutationCount);
     }
 
     private static async Task<(double Charge, string? Error)> WriteItemAsync(
