@@ -763,10 +763,19 @@ internal class ToolOperations
                         return McpResponseFactory.CreateError(ContextChangedMessage, shell.State);
                     }
 
-                    shell.PrintCommand(commandLine);
-                    var response = await shell.ExecuteCosmosCommandAsync(cmd, commandState, command.CommandName, cancellationToken);
-                    shell.CancelPrompt();
-                    return McpResponseFactory.CreateSuccess(response, shell.State);
+                    var previousMcpInvocation = shell.IsMcpInvocation;
+                    shell.IsMcpInvocation = true;
+                    try
+                    {
+                        shell.PrintCommand(commandLine);
+                        var response = await shell.ExecuteCosmosCommandAsync(cmd, commandState, command.CommandName, cancellationToken);
+                        shell.CancelPrompt();
+                        return McpResponseFactory.CreateSuccess(response, shell.State);
+                    }
+                    finally
+                    {
+                        shell.IsMcpInvocation = previousMcpInvocation;
+                    }
                 },
                 cancellationToken);
         }

@@ -92,14 +92,16 @@ public class MachineModeConsoleWarningTests
         Assert.Equal($"script warning{Environment.NewLine}script warning{Environment.NewLine}", stderr);
     }
 
-    [Fact]
-    public async Task MutationWarning_IsEmittedAsJsonLineBeforeTheMutation()
+    [Theory]
+    [InlineData(null)]
+    [InlineData(6128)]
+    public async Task MutationWarning_IsEmittedAsJsonLineBeforeTheMutation(int? mcpPort)
     {
         WarningMutationTestCommand.WarningRenderedBeforeMutation = false;
         WarningMutationTestCommand.ShouldFail = false;
         WarningMutationTestCommand.ShouldUpdateWarning = false;
 
-        var (stderr, result) = await RunCommandAsync("warning-mutation-test");
+        var (stderr, result) = await RunCommandAsync("warning-mutation-test", mcpPort: mcpPort);
 
         Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
         Assert.True(WarningMutationTestCommand.WarningRenderedBeforeMutation);
@@ -130,14 +132,16 @@ public class MachineModeConsoleWarningTests
         Assert.False(error.RootElement.TryGetProperty("warnings", out _));
     }
 
-    [Fact]
-    public async Task UpdatedMutationWarning_IsEmittedAsAnotherJsonLine()
+    [Theory]
+    [InlineData(null)]
+    [InlineData(6128)]
+    public async Task UpdatedMutationWarning_IsEmittedAsAnotherJsonLine(int? mcpPort)
     {
         WarningMutationTestCommand.WarningRenderedBeforeMutation = false;
         WarningMutationTestCommand.ShouldFail = false;
         WarningMutationTestCommand.ShouldUpdateWarning = true;
 
-        var (stderr, result) = await RunCommandAsync("warning-mutation-test");
+        var (stderr, result) = await RunCommandAsync("warning-mutation-test", mcpPort: mcpPort);
 
         Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
         var lines = stderr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
@@ -258,7 +262,7 @@ public class MachineModeConsoleWarningTests
         }
     }
 
-    private static async Task<(string Stderr, CommandState Result)> RunCommandAsync(string command, bool verbose = false)
+    private static async Task<(string Stderr, CommandState Result)> RunCommandAsync(string command, bool verbose = false, int? mcpPort = null)
     {
         using var shell = ShellInterpreter.CreateInstance();
         Assert.True(CommandFactory.TryCreateFactory(typeof(CommandStatementTests.WarningOutputTestCommand), out var warningFactory));
@@ -270,6 +274,7 @@ public class MachineModeConsoleWarningTests
         shell.App.Commands["warning-failure-test"] = failureFactory;
         shell.App.Commands["warning-mutation-test"] = mutationFactory;
         shell.Options = new Program.CosmosShellOptions { Output = "json", Verbose = verbose };
+        shell.McpPort = mcpPort;
         var originalError = Console.Error;
         using var error = new StringWriter();
         try

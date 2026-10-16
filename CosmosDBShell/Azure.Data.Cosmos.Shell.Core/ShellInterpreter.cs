@@ -365,6 +365,8 @@ public partial class ShellInterpreter : IDisposable
 
     internal int? McpPort { get; set; }
 
+    internal bool IsMcpInvocation { get; set; }
+
     internal PendingBatchState? CurrentBatch { get; set; }
 
     internal Stack<VariableContainer> VariableContainers { get; } = new();
@@ -2193,7 +2195,7 @@ public partial class ShellInterpreter : IDisposable
 
     internal void RenderWarnings(CommandState state)
     {
-        if (this.McpPort.HasValue || this.DeferMachineModeConsoleWarnings(state))
+        if (this.IsMcpInvocation || this.DeferMachineModeConsoleWarnings(state))
         {
             return;
         }
@@ -2203,7 +2205,7 @@ public partial class ShellInterpreter : IDisposable
 
     internal void RenderMutationWarnings(CommandState state)
     {
-        if (this.McpPort.HasValue)
+        if (this.IsMcpInvocation)
         {
             return;
         }
@@ -2217,7 +2219,7 @@ public partial class ShellInterpreter : IDisposable
 
     internal void RenderUpdatedWarnings(CommandState state)
     {
-        if (this.McpPort.HasValue)
+        if (this.IsMcpInvocation)
         {
             return;
         }
