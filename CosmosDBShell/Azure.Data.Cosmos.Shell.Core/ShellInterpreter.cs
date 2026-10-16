@@ -2249,9 +2249,13 @@ public partial class ShellInterpreter : IDisposable
             return false;
         }
 
-        foreach (var warning in state.Warnings.Where(warning => !warning.IsRendered))
+        foreach (var warning in state.TakePendingWarnings())
         {
-            warning.DeferredToConsole = true;
+            if (!warning.IsRendered)
+            {
+                warning.DeferredToConsole = true;
+                state.DeferWarning(warning);
+            }
         }
 
         return true;
@@ -2271,7 +2275,18 @@ public partial class ShellInterpreter : IDisposable
             return;
         }
 
-        foreach (var warning in state.Warnings)
+        var warnings = state.TakePendingWarnings();
+        if (renderUpdates)
+        {
+            warnings.AddRange(state.TakeUpdatedWarnings());
+        }
+
+        if (flushConsoleWarnings)
+        {
+            warnings.AddRange(state.TakeDeferredWarnings());
+        }
+
+        foreach (var warning in warnings)
         {
             if (warning.IsRendered
                 && (!renderUpdates || string.Equals(warning.LastRenderedMessage, warning.Message, StringComparison.Ordinal)))
@@ -2284,7 +2299,7 @@ public partial class ShellInterpreter : IDisposable
             {
                 Console.Error.WriteLine(JsonSerializer.Serialize(new
                 {
-                    status = renderUpdates ? "warning-update" : "warning",
+                    status = renderUpdates && warning.EmittedAsMachineModeWarningRecord ? "warning-update" : "warning",
                     warning = warning.Message,
                 }));
                 warning.EmittedAsMachineModeWarningRecord = true;

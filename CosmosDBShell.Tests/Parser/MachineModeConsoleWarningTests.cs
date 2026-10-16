@@ -16,6 +16,25 @@ using Azure.Data.Cosmos.Shell.Util;
 [Collection(ConsoleOutputTestCollection.Name)]
 public class MachineModeConsoleWarningTests
 {
+    [Fact]
+    public void CommandState_TracksPendingAndUpdatedWarningsSeparatelyFromHistory()
+    {
+        var state = new CommandState();
+        var warning = state.AddWarning("initial warning");
+
+        Assert.Same(warning, Assert.Single(state.TakePendingWarnings()));
+        Assert.Same(warning, Assert.Single(state.Warnings));
+        Assert.Empty(state.TakePendingWarnings());
+
+        warning.IsRendered = true;
+        state.UpdateWarning(warning, "updated warning");
+
+        Assert.Same(warning, Assert.Single(state.TakeUpdatedWarnings()));
+        Assert.Equal("updated warning", warning.Message);
+        Assert.Empty(state.TakeUpdatedWarnings());
+        Assert.Same(warning, Assert.Single(state.Warnings));
+    }
+
     [CosmosCommand("warning-mutation-test")]
     internal sealed class WarningMutationTestCommand : CosmosCommand
     {
@@ -42,7 +61,7 @@ public class MachineModeConsoleWarningTests
 
             if (ShouldUpdateWarning)
             {
-                warning.Message = "mutation warning for 2 items";
+                commandState.UpdateWarning(warning, "mutation warning for 2 items");
                 shell.RenderUpdatedWarnings(commandState);
             }
 

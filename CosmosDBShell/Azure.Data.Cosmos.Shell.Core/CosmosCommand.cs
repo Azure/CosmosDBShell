@@ -630,7 +630,7 @@ internal abstract class CosmosCommand
                 return commandState.AddWarning(message);
             }
 
-            warning.Message = message;
+            commandState.UpdateWarning(warning, message);
         }
 
         return warning;

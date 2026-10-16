@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests.Integration;
 
 using System.Net;
+using System.Text.Json;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
@@ -92,6 +93,89 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
         finally
         {
             Shell.StdOutRedirect = null;
+            await database.DeleteAsync(cancellationToken: CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task HierarchicalMutations_TargetUndefinedComponentsWithoutTouchingCollisions()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString(EmulatorEndpoint);
+        using var client = new CosmosClient(connectionString, CreateClientOptions());
+        var database = (await client.CreateDatabaseAsync($"UndefinedHpk_{Guid.NewGuid():N}", cancellationToken: token)).Database;
+        var container = (await database.CreateContainerAsync(
+            new ContainerProperties("Items", new[] { "/tenant", "/region" }),
+            cancellationToken: token)).Container;
+
+        var missingFirstKey = new PartitionKeyBuilder().AddNoneType().Add("west").Build();
+        var nullFirstKey = new PartitionKeyBuilder().AddNullValue().Add("west").Build();
+        var stringFirstKey = new PartitionKeyBuilder().Add("undefined").Add("west").Build();
+        var missingLaterKey = new PartitionKeyBuilder().Add("tenant-a").AddNoneType().Build();
+        var nullLaterKey = new PartitionKeyBuilder().Add("tenant-a").AddNullValue().Build();
+        var stringLaterKey = new PartitionKeyBuilder().Add("tenant-a").Add("undefined").Build();
+
+        try
+        {
+            await container.CreateItemAsync(
+                new { id = "same-first", region = "west", marker = "undefined-first" },
+                missingFirstKey,
+                cancellationToken: token);
+            await container.CreateItemAsync(
+                new { id = "same-first", tenant = (string?)null, region = "west", marker = "null-first" },
+                nullFirstKey,
+                cancellationToken: token);
+            await container.CreateItemAsync(
+                new { id = "same-first", tenant = "undefined", region = "west", marker = "string-first" },
+                stringFirstKey,
+                cancellationToken: token);
+            await container.CreateItemAsync(
+                new { id = "same-later", tenant = "tenant-a", marker = "delete-target" },
+                missingLaterKey,
+                cancellationToken: token);
+            await container.CreateItemAsync(
+                new { id = "same-later", tenant = "tenant-a", region = (string?)null, marker = "null-later" },
+                nullLaterKey,
+                cancellationToken: token);
+            await container.CreateItemAsync(
+                new { id = "same-later", tenant = "tenant-a", region = "undefined", marker = "string-later" },
+                stringLaterKey,
+                cancellationToken: token);
+
+            Shell.State = new ConnectedState(new CosmosClient(connectionString, CreateClientOptions()));
+
+            var update = await RunScriptAsync(
+                $"mkitem --force '{{\"id\":\"same-first\",\"region\":\"west\",\"marker\":\"updated-first\"}}' --database={database.Id} --container={container.Id}");
+            Assert.False(update.IsError, FormatError(update));
+            Assert.Equal(
+                "updated-first",
+                await ReadMarkerAsync(container, "same-first", missingFirstKey, token));
+            Assert.Equal(
+                "null-first",
+                await ReadMarkerAsync(container, "same-first", nullFirstKey, token));
+            Assert.Equal(
+                "string-first",
+                await ReadMarkerAsync(container, "same-first", stringFirstKey, token));
+
+            var remove = await RunScriptAsync(
+                $"rm delete-target --key=marker --database={database.Id} --container={container.Id}");
+            Assert.False(remove.IsError, FormatError(remove));
+            Assert.Equal(1, GetJson(remove).GetProperty("count").GetInt32());
+
+            using (var deleted = await container.ReadItemStreamAsync("same-later", missingLaterKey, cancellationToken: token))
+            {
+                Assert.Equal(HttpStatusCode.NotFound, deleted.StatusCode);
+            }
+
+            Assert.Equal(
+                "null-later",
+                await ReadMarkerAsync(container, "same-later", nullLaterKey, token));
+            Assert.Equal(
+                "string-later",
+                await ReadMarkerAsync(container, "same-later", stringLaterKey, token));
+        }
+        finally
+        {
             await database.DeleteAsync(cancellationToken: CancellationToken.None);
         }
     }
@@ -226,4 +310,16 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
         ConnectionMode = ConnectionMode.Gateway,
         ServerCertificateCustomValidationCallback = (_, _, _) => true,
     };
+
+    private static async Task<string?> ReadMarkerAsync(
+        Container container,
+        string id,
+        PartitionKey partitionKey,
+        CancellationToken token)
+    {
+        using var response = await container.ReadItemStreamAsync(id, partitionKey, cancellationToken: token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = await JsonDocument.ParseAsync(response.Content, cancellationToken: token);
+        return document.RootElement.GetProperty("marker").GetString();
+    }
 }

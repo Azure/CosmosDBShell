@@ -6,7 +6,9 @@ namespace Azure.Data.Cosmos.Shell.Core;
 
 internal sealed class CommandWarning(string message)
 {
-    public string Message { get; set; } = message;
+    private string message = message;
+
+    public string Message => this.message;
 
     public bool IsRendered { get; set; }
 
@@ -21,4 +23,6 @@ internal sealed class CommandWarning(string message)
     public bool DeferredToConsole { get; set; }
 
     public bool EmittedAsMachineModeWarningRecord { get; set; }
+
+    internal void UpdateMessage(string value) => this.message = value;
 }
