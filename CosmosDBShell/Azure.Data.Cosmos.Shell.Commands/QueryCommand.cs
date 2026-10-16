@@ -70,7 +70,9 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
     {
         if (this.Bucket.HasValue && !BucketCommand.CheckBucket(this.Bucket.Value))
         {
-            return new CommandState();
+            throw new CommandException(
+                "query",
+                MessageService.GetString("error-invalid_bucket_value", new Dictionary<string, object> { { "bucket", this.Bucket.Value } }));
         }
 
         // Get connected state
@@ -562,11 +564,11 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
 
     private static void RenderExplain(PlanEvaluation evaluation, double requestCharge, IReadOnlyList<string> messages)
     {
-        AnsiConsole.MarkupLine(MessageService.GetString("command-query-explain-header"));
+        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-query-explain-header"));
 
         foreach (var message in messages)
         {
-            AnsiConsole.MarkupLine(Markup.Escape(message));
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Markup.Escape(message));
         }
 
         var table = new Table();
@@ -590,9 +592,9 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
         table.AddRow(
             Theme.FormatHelpName(MessageService.GetString("command-query-explain-charge")),
             Theme.FormatTableValue(requestCharge.ToString(CultureInfo.InvariantCulture)));
-        AnsiConsole.Write(table);
+        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
 
-        AnsiConsole.MarkupLine(MessageService.GetString("command-query-explain-estimate_note"));
+        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-query-explain-estimate_note"));
     }
 
     private async Task ThrowIfRequestFailedAsync(ResponseMessage response, ShellInterpreter shell)
@@ -767,14 +769,14 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                 }
 
                 using var queryDocument = JsonDocument.Parse(responseContent);
-                ShellInterpreter.WriteLine(MessageService.GetString("command-query-fetched", new Dictionary<string, object> { { "count", queryDocument.RootElement.GetProperty("_count").ToString() } }));
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("command-query-fetched", new Dictionary<string, object> { { "count", queryDocument.RootElement.GetProperty("_count").ToString() } }));
 
                 // Cosmos always returns the RU cost in the response headers, whereas query
                 // metrics (and their TotalRequestCharge) can be null when diagnostics are
                 // unavailable. Accumulate and report from the headers so the charge is always
                 // correct; the detailed metrics payload is built separately from the response.
                 totalRequestCharge += pageRequestCharge;
-                AnsiConsole.MarkupLine(MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", pageRequestCharge.ToString("F2", CultureInfo.InvariantCulture) } }));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", pageRequestCharge.ToString("F2", CultureInfo.InvariantCulture) } }));
 
                 if (TryReadContinuationToken(response, out var pageContinuationToken))
                 {
@@ -879,7 +881,7 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
 
                     table.AddRow(MessageService.GetString("command-query-retrieved"), Theme.FormatTableValue(Fmt("Retrieved document count")), Theme.FormatTableValue(Fmt("Retrieved document size")));
                     table.AddRow(MessageService.GetString("command-query-output"), Theme.FormatTableValue(Fmt("Output document count")), Theme.FormatTableValue(Fmt("Output document size")));
-                    AnsiConsole.Write(table);
+                    ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
 
                     table = new Table();
                     table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
@@ -889,13 +891,13 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                     table.AddRow(MessageService.GetString("command-query-vm_execution"), Theme.FormatTableValue(Fmt("VMExecution execution time")));
                     table.AddEmptyRow();
                     table.AddRow(MessageService.GetString("command-query-total"), Theme.FormatTableValue(Fmt("Total time")));
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-query-time_label"));
-                    AnsiConsole.Write(table);
+                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-query-time_label"));
+                    ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
 
                     table = new Table();
                     table.AddColumns(MessageService.GetString("command-query-index_hit_ratio"), MessageService.GetString("command-query-index_lookup_time"));
                     table.AddRow(Theme.FormatTableValue(Fmt("Index hit ratio")), Theme.FormatTableValue(Fmt("Index lookup time")));
-                    AnsiConsole.Write(table);
+                    ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
 
                     if (!string.IsNullOrWhiteSpace(response.IndexMetrics))
                     {
@@ -923,7 +925,7 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                             }
                         }
 
-                        AnsiConsole.Write(indexTable);
+                        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, indexTable);
                     }
                 }
                 else
@@ -949,10 +951,10 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
 
             if (limitReached && effectiveMaxItemCount.HasValue)
             {
-                AnsiConsole.MarkupLine(MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
                 if (!continuationSupported)
                 {
-                    AnsiConsole.MarkupLine(MessageService.GetString("command-query-no_continuation"));
+                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, MessageService.GetString("command-query-no_continuation"));
                 }
             }
 

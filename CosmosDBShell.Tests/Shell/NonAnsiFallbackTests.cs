@@ -11,6 +11,53 @@ using Spectre.Console;
 public class NonAnsiFallbackTests
 {
     [Fact]
+    public void PrintCommand_Quiet_RecordsInExistingEditorHistoryWithoutEcho()
+    {
+        var configPath = CreateConfigPath();
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        var savedError = Console.Error;
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        try
+        {
+            var ansiConsole = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.Yes,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+                Enrichment = new ProfileEnrichment { UseDefaultEnrichers = false },
+            });
+            AnsiConsole.Console = ansiConsole;
+            Console.SetOut(output);
+            Console.SetError(error);
+            using var shell = new ShellInterpreter(configPath)
+            {
+                Options = new Program.CosmosShellOptions { Quiet = true },
+                LineEditorTerminal = ansiConsole,
+            };
+            var editor = shell.Editor;
+            Assert.NotNull(editor);
+            var historyCount = editor.History.Count;
+
+            shell.PrintCommand("echo QUIET_HISTORY");
+
+            Assert.Equal(historyCount + 1, editor.History.Count);
+            Assert.Contains("echo QUIET_HISTORY", shell.History);
+            Assert.Contains("echo QUIET_HISTORY", File.ReadAllText(shell.HistoryFile));
+            Assert.Empty(output.ToString());
+            Assert.Empty(error.ToString());
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            Console.SetError(savedError);
+            AnsiConsole.Console = savedConsole;
+            DeleteConfigPath(configPath);
+        }
+    }
+
+    [Fact]
     public async Task RunAsync_WhenLineEditorCannotBeCreated_UsesPromptFallbackAndExitsOnEof()
     {
         var configPath = CreateConfigPath();
