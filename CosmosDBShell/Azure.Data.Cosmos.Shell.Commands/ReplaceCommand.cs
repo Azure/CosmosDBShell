@@ -92,7 +92,7 @@ internal class ReplaceCommand : CosmosCommand
                         item => item.ValueKind == JsonValueKind.Object
                             && HasUndefinedPartitionKeyComponent(item, partitionKeyPaths));
                 AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
-                shell.RenderWarnings(commandState);
+                shell.RenderMutationWarnings(commandState);
                 return await ReplaceArrayAsync(container, partitionKeyPaths, root, token);
             }
 
@@ -101,7 +101,7 @@ internal class ReplaceCommand : CosmosCommand
                 ? 1
                 : 0;
             AddUndefinedPartitionKeyWarning(commandState, undefinedCount);
-            shell.RenderWarnings(commandState);
+            shell.RenderMutationWarnings(commandState);
             var singleCharge = await ReplaceOneAsync(container, partitionKeyPaths, root, etag, token, printSuccess: true);
             return new ReplaceSummary(1, 0, singleCharge);
         }

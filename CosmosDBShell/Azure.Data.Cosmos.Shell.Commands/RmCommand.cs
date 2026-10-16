@@ -356,7 +356,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 planStream!.Position = 0;
 
                 AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
-                this.shell!.RenderWarnings(commandState);
+                this.shell!.RenderMutationWarnings(commandState);
 
                 using var planReader = new StreamReader(planStream, System.Text.Encoding.UTF8, false, 4096, leaveOpen: true);
                 while (await planReader.ReadLineAsync(token) is { } line)

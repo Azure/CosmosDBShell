@@ -154,7 +154,7 @@ internal class MakeItemCommand : CosmosCommand
                             item => item.ValueKind == JsonValueKind.Object
                                 && HasUndefinedPartitionKeyComponent(item, partitionKeyPaths));
                     AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
-                    shell.RenderWarnings(commandState);
+                    shell.RenderMutationWarnings(commandState);
                     int createdCount = 0;
                     int replacedCount = 0;
                     int failCount = 0;
@@ -299,7 +299,7 @@ internal class MakeItemCommand : CosmosCommand
                     AddUndefinedPartitionKeyWarning(
                         commandState,
                         root.ValueKind == JsonValueKind.Object && HasUndefinedPartitionKeyComponent(root, partitionKeyPaths) ? 1 : 0);
-                    shell.RenderWarnings(commandState);
+                    shell.RenderMutationWarnings(commandState);
                     try
                     {
                         var result = await WriteOneAsync(container, partitionKeyPaths, root, force, token);

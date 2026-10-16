@@ -2010,10 +2010,9 @@ public partial class ShellInterpreter : IDisposable
             var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
             var inMachineMode = this.IsMachineMode;
 
-            // Machine mode includes warnings in the structured error envelope instead of
-            // writing them separately, which would leave stderr without a single JSON payload.
-            // Console-bound machine-mode warnings stay pending here; PrintState flushes them
-            // after output rendering succeeds. File-bound warnings are written immediately.
+            // Console-bound machine-mode warnings stay pending here so failures can include
+            // them in the structured error envelope. Pre-write mutation warnings have already
+            // been emitted as JSON Lines records. File-bound warnings are written immediately.
             // Warnings are flushed even for already-rendered states because later statements
             // (for example a false condition) can add warnings to a state they return unchanged.
             this.DeferMachineModeConsoleWarnings(state);
@@ -2201,21 +2200,46 @@ public partial class ShellInterpreter : IDisposable
         this.RenderWarnings(state, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
     }
 
-    internal void RenderUpdatedWarnings(CommandState state)
+    internal void RenderMutationWarnings(CommandState state)
     {
-        if (this.McpPort.HasValue || this.DeferMachineModeConsoleWarnings(state))
+        if (this.McpPort.HasValue)
         {
             return;
         }
 
-        this.RenderWarnings(state, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, renderUpdates: true);
+        this.RenderWarnings(
+            state,
+            !string.IsNullOrEmpty(this.StdOutRedirect),
+            this.IsMachineMode,
+            machineModeWarningRecords: this.IsMachineMode && this.ErrOutRedirect == null);
+    }
+
+    internal void RenderUpdatedWarnings(CommandState state)
+    {
+        if (this.McpPort.HasValue)
+        {
+            return;
+        }
+
+        var machineModeWarningRecords = this.IsMachineMode && this.ErrOutRedirect == null;
+        if (!machineModeWarningRecords && this.DeferMachineModeConsoleWarnings(state))
+        {
+            return;
+        }
+
+        this.RenderWarnings(
+            state,
+            !string.IsNullOrEmpty(this.StdOutRedirect),
+            this.IsMachineMode,
+            renderUpdates: true,
+            machineModeWarningRecords: machineModeWarningRecords);
     }
 
     /// <summary>
-    /// In machine mode, console stderr must remain a single JSON payload if the command later
-    /// fails, so warnings for the console are held until the command completes. They are marked
-    /// as console-bound so a later statement's <c>2&gt;</c> cannot capture them. Warnings for a
-    /// redirected stderr are not deferred and are written to their file immediately.
+    /// In machine mode, console warnings are held until the command completes so they can be
+    /// included in a single JSON error payload. Pre-write mutation warnings use JSON Lines
+    /// records instead. Deferred warnings are marked as console-bound so a later statement's
+    /// <c>2&gt;</c> cannot capture them. Warnings for redirected stderr are written immediately.
     /// </summary>
     /// <returns><see langword="true"/> when the warnings were deferred.</returns>
     private bool DeferMachineModeConsoleWarnings(CommandState state)
@@ -2239,7 +2263,8 @@ public partial class ShellInterpreter : IDisposable
         bool inMachineMode,
         bool renderUpdates = false,
         bool deferToErrorEnvelope = false,
-        bool flushConsoleWarnings = false)
+        bool flushConsoleWarnings = false,
+        bool machineModeWarningRecords = false)
     {
         if (inMachineMode && deferToErrorEnvelope)
         {
@@ -2254,7 +2279,17 @@ public partial class ShellInterpreter : IDisposable
                 continue;
             }
 
-            if (warning.DeferredToConsole)
+            if (machineModeWarningRecords
+                && (!warning.IsRendered || (renderUpdates && warning.EmittedAsMachineModeWarningRecord)))
+            {
+                Console.Error.WriteLine(JsonSerializer.Serialize(new
+                {
+                    status = renderUpdates ? "warning-update" : "warning",
+                    warning = warning.Message,
+                }));
+                warning.EmittedAsMachineModeWarningRecord = true;
+            }
+            else if (warning.DeferredToConsole)
             {
                 // Held until the top-level command finalizes; see DeferMachineModeConsoleWarnings.
                 if (!flushConsoleWarnings)

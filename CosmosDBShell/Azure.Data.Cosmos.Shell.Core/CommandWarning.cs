@@ -19,4 +19,6 @@ internal sealed class CommandWarning(string message)
     /// was the console, so it is written there even if a later statement redirects stderr.
     /// </summary>
     public bool DeferredToConsole { get; set; }
+
+    public bool EmittedAsMachineModeWarningRecord { get; set; }
 }

@@ -16,6 +16,40 @@ using Azure.Data.Cosmos.Shell.Util;
 [Collection(ConsoleOutputTestCollection.Name)]
 public class MachineModeConsoleWarningTests
 {
+    [CosmosCommand("warning-mutation-test")]
+    internal sealed class WarningMutationTestCommand : CosmosCommand
+    {
+        internal static bool WarningRenderedBeforeMutation { get; set; }
+
+        internal static bool ShouldFail { get; set; }
+
+        internal static bool ShouldUpdateWarning { get; set; }
+
+        public override Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell,
+            CommandState commandState,
+            string commandText,
+            CancellationToken token)
+        {
+            var warning = commandState.AddWarning("mutation warning");
+            shell.RenderMutationWarnings(commandState);
+            WarningRenderedBeforeMutation = warning.IsRendered;
+
+            if (ShouldFail)
+            {
+                throw new CommandException("warning-mutation-test", "mutation failed");
+            }
+
+            if (ShouldUpdateWarning)
+            {
+                warning.Message = "mutation warning for 2 items";
+                shell.RenderUpdatedWarnings(commandState);
+            }
+
+            return Task.FromResult(commandState);
+        }
+    }
+
     [Fact]
     public async Task ScriptFailure_KeepsConsoleStderrAsSingleJsonPayload()
     {
@@ -37,6 +71,64 @@ public class MachineModeConsoleWarningTests
 
         Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
         Assert.Equal($"script warning{Environment.NewLine}script warning{Environment.NewLine}", stderr);
+    }
+
+    [Fact]
+    public async Task MutationWarning_IsEmittedAsJsonLineBeforeTheMutation()
+    {
+        WarningMutationTestCommand.WarningRenderedBeforeMutation = false;
+        WarningMutationTestCommand.ShouldFail = false;
+        WarningMutationTestCommand.ShouldUpdateWarning = false;
+
+        var (stderr, result) = await RunCommandAsync("warning-mutation-test");
+
+        Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+        Assert.True(WarningMutationTestCommand.WarningRenderedBeforeMutation);
+        using var warning = JsonDocument.Parse(Assert.Single(stderr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)));
+        Assert.Equal("warning", warning.RootElement.GetProperty("status").GetString());
+        Assert.Equal("mutation warning", warning.RootElement.GetProperty("warning").GetString());
+    }
+
+    [Fact]
+    public async Task MutationWarningAndFailure_AreSeparateJsonLines()
+    {
+        WarningMutationTestCommand.WarningRenderedBeforeMutation = false;
+        WarningMutationTestCommand.ShouldFail = true;
+        WarningMutationTestCommand.ShouldUpdateWarning = false;
+
+        var (stderr, result) = await RunCommandAsync("warning-mutation-test");
+
+        Assert.True(result.IsError);
+        Assert.True(WarningMutationTestCommand.WarningRenderedBeforeMutation);
+        var lines = stderr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(2, lines.Length);
+        using var warning = JsonDocument.Parse(lines[0]);
+        Assert.Equal("warning", warning.RootElement.GetProperty("status").GetString());
+        Assert.Equal("mutation warning", warning.RootElement.GetProperty("warning").GetString());
+        using var error = JsonDocument.Parse(lines[1]);
+        Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+        Assert.Equal("mutation failed", error.RootElement.GetProperty("error").GetString());
+        Assert.False(error.RootElement.TryGetProperty("warnings", out _));
+    }
+
+    [Fact]
+    public async Task UpdatedMutationWarning_IsEmittedAsAnotherJsonLine()
+    {
+        WarningMutationTestCommand.WarningRenderedBeforeMutation = false;
+        WarningMutationTestCommand.ShouldFail = false;
+        WarningMutationTestCommand.ShouldUpdateWarning = true;
+
+        var (stderr, result) = await RunCommandAsync("warning-mutation-test");
+
+        Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+        var lines = stderr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(2, lines.Length);
+        using var initialWarning = JsonDocument.Parse(lines[0]);
+        Assert.Equal("warning", initialWarning.RootElement.GetProperty("status").GetString());
+        Assert.Equal("mutation warning", initialWarning.RootElement.GetProperty("warning").GetString());
+        using var updatedWarning = JsonDocument.Parse(lines[1]);
+        Assert.Equal("warning-update", updatedWarning.RootElement.GetProperty("status").GetString());
+        Assert.Equal("mutation warning for 2 items", updatedWarning.RootElement.GetProperty("warning").GetString());
     }
 
     [Fact]
@@ -153,9 +245,11 @@ public class MachineModeConsoleWarningTests
         Assert.True(CommandFactory.TryCreateFactory(typeof(CommandStatementTests.WarningOutputTestCommand), out var warningFactory));
         Assert.True(CommandFactory.TryCreateFactory(typeof(CommandStatementTests.WarningRenderTestCommand), out var renderFactory));
         Assert.True(CommandFactory.TryCreateFactory(typeof(CommandStatementTests.WarningFailureTestCommand), out var failureFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningMutationTestCommand), out var mutationFactory));
         shell.App.Commands["warning-output-test"] = warningFactory;
         shell.App.Commands["warning-render-test"] = renderFactory;
         shell.App.Commands["warning-failure-test"] = failureFactory;
+        shell.App.Commands["warning-mutation-test"] = mutationFactory;
         shell.Options = new Program.CosmosShellOptions { Output = "json", Verbose = verbose };
         var originalError = Console.Error;
         using var error = new StringWriter();
