@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Core;
 
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Parser;
@@ -154,36 +155,24 @@ public partial class CommandState
     {
         if (!ReferenceEquals(this.warnings, source.warnings))
         {
-            foreach (var warning in this.warnings)
+            foreach (var warning in this.warnings.Where(warning => source.warningSet.Add(warning)))
             {
-                if (source.warningSet.Add(warning))
-                {
-                    source.warnings.Add(warning);
-                }
+                source.warnings.Add(warning);
             }
 
-            foreach (var warning in this.pendingWarnings)
+            foreach (var warning in this.pendingWarnings.Where(warning => source.pendingWarningSet.Add(warning)))
             {
-                if (source.pendingWarningSet.Add(warning))
-                {
-                    source.pendingWarnings.Enqueue(warning);
-                }
+                source.pendingWarnings.Enqueue(warning);
             }
 
-            foreach (var warning in this.updatedWarnings)
+            foreach (var warning in this.updatedWarnings.Where(warning => source.updatedWarningSet.Add(warning)))
             {
-                if (source.updatedWarningSet.Add(warning))
-                {
-                    source.updatedWarnings.Enqueue(warning);
-                }
+                source.updatedWarnings.Enqueue(warning);
             }
 
-            foreach (var warning in this.deferredWarnings)
+            foreach (var warning in this.deferredWarnings.Where(warning => source.deferredWarningSet.Add(warning)))
             {
-                if (source.deferredWarningSet.Add(warning))
-                {
-                    source.deferredWarnings.Enqueue(warning);
-                }
+                source.deferredWarnings.Enqueue(warning);
             }
         }
 

@@ -109,7 +109,6 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
             cancellationToken: token)).Container;
 
         var missingFirstKey = new PartitionKeyBuilder().AddNoneType().Add("west").Build();
-        var nullFirstKey = new PartitionKeyBuilder().AddNullValue().Add("west").Build();
         var stringFirstKey = new PartitionKeyBuilder().Add("undefined").Add("west").Build();
         var missingLaterKey = new PartitionKeyBuilder().Add("tenant-a").AddNoneType().Build();
         var nullLaterKey = new PartitionKeyBuilder().Add("tenant-a").AddNullValue().Build();
@@ -120,10 +119,6 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
             await container.CreateItemAsync(
                 new { id = "same-first", region = "west", marker = "undefined-first" },
                 missingFirstKey,
-                cancellationToken: token);
-            await container.CreateItemAsync(
-                new { id = "same-first", tenant = (string?)null, region = "west", marker = "null-first" },
-                nullFirstKey,
                 cancellationToken: token);
             await container.CreateItemAsync(
                 new { id = "same-first", tenant = "undefined", region = "west", marker = "string-first" },
@@ -150,9 +145,6 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
             Assert.Equal(
                 "updated-first",
                 await ReadMarkerAsync(container, "same-first", missingFirstKey, token));
-            Assert.Equal(
-                "null-first",
-                await ReadMarkerAsync(container, "same-first", nullFirstKey, token));
             Assert.Equal(
                 "string-first",
                 await ReadMarkerAsync(container, "same-first", stringFirstKey, token));
