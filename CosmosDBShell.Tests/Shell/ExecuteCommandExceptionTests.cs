@@ -9,6 +9,7 @@ using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
 
+[Collection(ConsoleOutputTestCollection.Name)]
 public class ExecuteCommandExceptionTests
 {
     [CosmosCommand("warning-error-test")]

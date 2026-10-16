@@ -129,11 +129,11 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
                 missingLaterKey,
                 cancellationToken: token);
             await container.CreateItemAsync(
-                new { id = "same-later", tenant = "tenant-a", region = (string?)null, marker = "null-later" },
+                new { id = "null-later", tenant = "tenant-a", region = (string?)null, marker = "null-later" },
                 nullLaterKey,
                 cancellationToken: token);
             await container.CreateItemAsync(
-                new { id = "same-later", tenant = "tenant-a", region = "undefined", marker = "string-later" },
+                new { id = "string-later", tenant = "tenant-a", region = "undefined", marker = "string-later" },
                 stringLaterKey,
                 cancellationToken: token);
 
@@ -161,10 +161,10 @@ public class UndefinedPartitionKeyTests : EmulatorTestBase
 
             Assert.Equal(
                 "null-later",
-                await ReadMarkerAsync(container, "same-later", nullLaterKey, token));
+                await ReadMarkerAsync(container, "null-later", nullLaterKey, token));
             Assert.Equal(
                 "string-later",
-                await ReadMarkerAsync(container, "same-later", stringLaterKey, token));
+                await ReadMarkerAsync(container, "string-later", stringLaterKey, token));
         }
         finally
         {
