@@ -33,6 +33,11 @@ public partial class ShellInterpreter : IDisposable
 
     private const string SessionRequestChargeWarningThresholdVariable = "sessionRequestChargeWarningThreshold";
 
+    // Declared before Instance: static initializers run in order and the constructor reads history.
+    private static readonly object HistoryFileLock = new();
+
+    internal static readonly ShellInterpreter Instance = new();
+
     private const int MAXHISTORYITEMS = 60;
 
     private const int HistoryFileOpenRetryCount = 10;
@@ -47,10 +52,6 @@ public partial class ShellInterpreter : IDisposable
     // DecodeHistoryLine can unambiguously tell a value it produced apart from a
     // user command that just happens to start with the prefix string.
     private const string EncodedHistoryLineMarker = "E:";
-
-    private static readonly object HistoryFileLock = new();
-
-    internal static readonly ShellInterpreter Instance = new();
 
     private static readonly TimeSpan HistoryFileOpenRetryDelay = TimeSpan.FromMilliseconds(25);
 

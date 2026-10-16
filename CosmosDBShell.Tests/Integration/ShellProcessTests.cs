@@ -162,13 +162,63 @@ public class ShellProcessTests
             var line = Assert.Single(result.StdErr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
             using var error = JsonDocument.Parse(line);
             Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
-            Assert.DoesNotContain("unknown_warning_slot", result.StdErr);
+            var message = error.RootElement.GetProperty("error").GetString();
+            Assert.NotNull(message);
+            if (strict)
+            {
+                Assert.Contains(Path.Join(path, "a-warning.toml"), message);
+                Assert.Contains("unknown_warning_slot", message);
+            }
+            else
+            {
+                Assert.Contains(Path.Join(path, "z-broken.toml"), message);
+                Assert.Contains("not_a_color", message);
+                Assert.DoesNotContain("unknown_warning_slot", message);
+            }
+
+            Assert.DoesNotContain("\u001b", result.RawStdOut + result.RawStdErr, StringComparison.Ordinal);
         }
         finally
         {
             File.Delete(Path.Join(path, "a-warning.toml"));
             File.Delete(Path.Join(path, "z-broken.toml"));
             Directory.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ThemeValidation_StrictFileFailure_IncludesDiagnosticsInSingleStructuredError(bool quiet)
+    {
+        var file = Path.Join(Path.GetTempPath(), $"cosmosshell-theme-strict-{Guid.NewGuid():N}.toml");
+        try
+        {
+            await File.WriteAllTextAsync(
+                file,
+                "name = \"STRICT_WARNING_TEST\"\n[colors]\nunknown_warning_slot = \"red\"\n[styles]\nunknown_style_slot = \"bold\"\n",
+                TestContext.Current.CancellationToken);
+            var command = $"theme validate '{file}' --strict";
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: quiet ? ["--quiet", "-c", command] : ["--output", "json", "-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            var line = Assert.Single(result.StdErr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+            using var error = JsonDocument.Parse(line);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            var message = error.RootElement.GetProperty("error").GetString();
+            Assert.NotNull(message);
+            Assert.Contains(file, message);
+            Assert.Contains("unknown_warning_slot", message);
+            Assert.Contains("unknown_style_slot", message);
+            Assert.DoesNotContain("\u001b", result.RawStdOut + result.RawStdErr, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(file);
         }
     }
 

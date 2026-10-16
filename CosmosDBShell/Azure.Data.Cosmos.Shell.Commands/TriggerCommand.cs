@@ -551,7 +551,7 @@ internal class TriggerCommand : CosmosCommand
                 // before reading the file back.
                 if (launched.Elapsed < QuickEditorExit)
                 {
-                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("command-trigger-edit-wait"));
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction, MessageService.GetString("command-trigger-edit-wait"));
                     Console.ReadLine();
                 }
             }

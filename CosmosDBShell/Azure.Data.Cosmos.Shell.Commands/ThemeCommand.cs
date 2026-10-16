@@ -429,6 +429,11 @@ internal class ThemeCommand : CosmosCommand
                     result.Name,
                     "count",
                     result.Warnings.Count);
+                if (ShellInterpreter.Instance.IsMachineMode)
+                {
+                    strictMessage += Environment.NewLine + result.Source + ": " + string.Join(Environment.NewLine, result.Warnings);
+                }
+
                 throw new CommandException("theme", strictMessage);
             }
 
@@ -481,6 +486,7 @@ internal class ThemeCommand : CosmosCommand
 
         var fileResults = new List<Dictionary<string, object?>>();
         var pendingWarnings = new List<string>();
+        var validationErrors = new List<string>();
         var validCount = 0;
         var invalidCount = 0;
 
@@ -503,6 +509,7 @@ internal class ThemeCommand : CosmosCommand
                 if (failedStrict)
                 {
                     invalidCount++;
+                    validationErrors.Add(result.Source + ": " + string.Join(Environment.NewLine, result.Warnings));
                     if (presentResults)
                     {
                         ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2717")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
@@ -534,6 +541,7 @@ internal class ThemeCommand : CosmosCommand
                 invalidCount++;
                 entry["valid"] = false;
                 entry["error"] = ex.Message;
+                validationErrors.Add(file + ": " + ex.Message);
                 if (presentResults)
                 {
                     ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2717")} {Markup.Escape(System.IO.Path.GetFileName(file))}");
@@ -546,14 +554,20 @@ internal class ThemeCommand : CosmosCommand
 
         if (invalidCount > 0)
         {
-            throw new CommandException("theme", MessageService.GetArgsString(
+            var message = MessageService.GetArgsString(
                 "command-theme-validate-summary",
                 "valid",
                 validCount,
                 "total",
                 files.Length,
                 "directory",
-                directory));
+                directory);
+            if (!presentResults)
+            {
+                message += Environment.NewLine + string.Join(Environment.NewLine, validationErrors);
+            }
+
+            throw new CommandException("theme", message);
         }
 
         foreach (var warning in pendingWarnings)
