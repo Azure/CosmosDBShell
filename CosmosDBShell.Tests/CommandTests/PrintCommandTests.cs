@@ -48,8 +48,6 @@ public class PrintCommandTests
     }
 
     [Theory]
-    [InlineData("{}")]
-    [InlineData("[{},1]")]
     [InlineData("[[1],2]")]
     [InlineData("[1,]")]
     [InlineData("\"unterminated")]

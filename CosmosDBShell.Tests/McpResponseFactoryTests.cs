@@ -34,6 +34,40 @@ public class McpResponseFactoryTests
     }
 
     [Fact]
+    public void CreateSuccess_IncludesCommandWarnings()
+    {
+        var commandState = new CommandState();
+        commandState.AddWarning("An inferred undefined partition key was used for 2 items.");
+
+        var result = McpResponseFactory.CreateSuccess(commandState, new ConnectedState(null!));
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+
+        using var document = JsonDocument.Parse(text);
+        Assert.Equal(
+            "An inferred undefined partition key was used for 2 items.",
+            Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+    }
+
+    [Fact]
+    public void CreateError_IncludesCommandWarnings()
+    {
+        var commandState = new CommandState();
+        commandState.AddWarning("An inferred undefined partition key was used for 1 item.");
+
+        var result = McpResponseFactory.CreateError(
+            "write failed",
+            new ConnectedState(null!),
+            warnings: commandState.Warnings);
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+
+        using var document = JsonDocument.Parse(text);
+        Assert.True(result.IsError);
+        Assert.Equal(
+            "An inferred undefined partition key was used for 1 item.",
+            Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+    }
+
+    [Fact]
     public void CreateSuccess_IncludesCsvOutputText()
     {
         var commandState = new CommandState
