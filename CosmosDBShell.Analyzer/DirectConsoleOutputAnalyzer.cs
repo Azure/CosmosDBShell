@@ -72,8 +72,8 @@ namespace CosmosShell.Analyzer
         {
             var type = method.ContainingType?.ToDisplayString();
 
-            // Console.Write / Console.WriteLine.
-            if (method.IsStatic && type == "System.Console" && method.Name.StartsWith("Write"))
+            // Console.Write / Console.WriteLine / Console.Clear.
+            if (method.IsStatic && type == "System.Console" && (method.Name.StartsWith("Write") || method.Name == "Clear"))
             {
                 return true;
             }

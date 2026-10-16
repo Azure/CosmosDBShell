@@ -1907,11 +1907,6 @@ public partial class ShellInterpreter : IDisposable
             System.Diagnostics.Debug.WriteLine(ex);
         }
 
-        if (this.Options?.Quiet == true)
-        {
-            return;
-        }
-
         // Echoing and the line editor both need an ANSI terminal, which an MCP host may not
         // provide. Neither may fail the command being announced.
         try

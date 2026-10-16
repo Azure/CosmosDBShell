@@ -15,6 +15,7 @@
 - Avoid accessing an expired HTTP request during MCP session teardown, preventing disposal errors while releasing location subscriptions and legacy SSE admission state. ([#249](https://github.com/Azure/CosmosDBShell/issues/249))
 - Report `theme`, `help`, and `edit` failures once, including a structured error on stderr in machine mode instead of an unexplained failure exit code.
 - Include failing file paths and actionable diagnostics in machine-mode theme validation errors, and keep required script-editor confirmation instructions visible with `--quiet`.
+- Keep quiet command echoes in an existing editor's Up/Down history without printing them.
 
 ### Improvements
 
