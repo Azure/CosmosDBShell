@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Globalization;
+using System.Linq;
 using System.Reflection;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -2249,13 +2250,10 @@ public partial class ShellInterpreter : IDisposable
             return false;
         }
 
-        foreach (var warning in state.TakePendingWarnings())
+        foreach (var warning in state.TakePendingWarnings().Where(warning => !warning.IsRendered))
         {
-            if (!warning.IsRendered)
-            {
-                warning.DeferredToConsole = true;
-                state.DeferWarning(warning);
-            }
+            warning.DeferredToConsole = true;
+            state.DeferWarning(warning);
         }
 
         return true;
