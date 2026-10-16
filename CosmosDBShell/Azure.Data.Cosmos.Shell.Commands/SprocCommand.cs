@@ -248,11 +248,11 @@ internal class SprocCommand : CosmosCommand
         {
             if (rows.Count == 0)
             {
-                AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-sproc-list-empty")));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatMuted(MessageService.GetString("command-sproc-list-empty")));
             }
             else
             {
-                AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-title")));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-title")));
                 var table = new Table();
                 table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-column-id"))));
                 table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-sproc-list-column-modified"))));
@@ -266,7 +266,7 @@ internal class SprocCommand : CosmosCommand
                         Theme.FormatTableValue(row.BodyLength.ToString()));
                 }
 
-                AnsiConsole.Write(table);
+                ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
             }
         };
         return commandState;
@@ -307,7 +307,7 @@ internal class SprocCommand : CosmosCommand
         }
 
         commandState.Result = new ShellBool(exists);
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
             exists ? "command-sproc-exists-yes" : "command-sproc-exists-no",
             "name",
             name));
@@ -363,17 +363,17 @@ internal class SprocCommand : CosmosCommand
 
         if (!string.IsNullOrWhiteSpace(edited))
         {
-            AnsiConsole.Clear();
-            ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-create-preview", "name", name));
-            ShellInterpreter.WriteLine();
-            ShellInterpreter.WriteLine(edited);
-            ShellInterpreter.WriteLine();
+            ShellInterpreter.Instance.Output.ClearScreen();
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction, MessageService.GetArgsString("command-sproc-create-preview", "name", name));
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction);
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction, edited);
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction);
         }
 
         if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-sproc-create-confirm"))
         {
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, created = false }));
-            commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-create-discarded", "name", name));
+            commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString("command-sproc-create-discarded", "name", name));
             return commandState;
         }
 
@@ -420,7 +420,7 @@ internal class SprocCommand : CosmosCommand
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, created = true }));
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
             replaced ? "command-sproc-replaced" : "command-sproc-created",
             "name",
             name,
@@ -449,7 +449,7 @@ internal class SprocCommand : CosmosCommand
                 parameters,
                 cancellationToken: token);
 
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
                 "command-sproc-executed",
                 "name",
                 name,
@@ -475,7 +475,7 @@ internal class SprocCommand : CosmosCommand
             var response = await container.Scripts.DeleteStoredProcedureAsync(name, cancellationToken: token);
             RequestChargeContext.Record(response.RequestCharge);
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, deleted = true }));
-            commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
                 "command-sproc-deleted",
                 "name",
                 name,
@@ -515,7 +515,7 @@ internal class SprocCommand : CosmosCommand
         if (string.Equals(newBody, existingBody, StringComparison.Ordinal))
         {
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, changed = false }));
-            commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-edit-unchanged", "name", name));
+            commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString("command-sproc-edit-unchanged", "name", name));
             return commandState;
         }
 
@@ -524,7 +524,7 @@ internal class SprocCommand : CosmosCommand
         RequestChargeContext.Record(response.RequestCharge);
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, changed = true }));
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
             "command-sproc-replaced",
             "name",
             name,
@@ -554,7 +554,7 @@ internal class SprocCommand : CosmosCommand
         {
             await File.WriteAllTextAsync(tempPath, initialBody, token);
 
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(MessageService.GetArgsString(
                 "command-sproc-edit-launching",
                 "name",
                 name,
@@ -585,7 +585,7 @@ internal class SprocCommand : CosmosCommand
                 // before reading the file back.
                 if (launched.Elapsed < QuickEditorExit)
                 {
-                    ShellInterpreter.WriteLine(MessageService.GetString("command-sproc-edit-wait"));
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("command-sproc-edit-wait"));
                     Console.ReadLine();
                 }
             }

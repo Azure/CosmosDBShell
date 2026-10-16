@@ -65,9 +65,7 @@ internal class HelpCommand : CosmosCommand
             }
 
             // Neither command nor statement
-            AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
-            ShellInterpreter.WriteLine(MessageService.GetString("error-command-not-found", MessageService.Args("command", cmdStr)));
-            return new ErrorCommandState(new CommandException("help", cmdStr + " not found."));
+            throw new CommandException("help", MessageService.GetString("error-command-not-found", MessageService.Args("command", cmdStr)));
         }
 
         if (cmd == null)
@@ -82,69 +80,69 @@ internal class HelpCommand : CosmosCommand
                 // Plain output (no colors, no panels)
                 if (!string.IsNullOrEmpty(cmd.Description))
                 {
-                    ShellInterpreter.WriteLine(cmd.Description);
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, cmd.Description);
                 }
 
-                ShellInterpreter.WriteLine();
-                ShellInterpreter.WriteLine(MessageService.GetString("help-usage", new System.Collections.Generic.Dictionary<string, object> { ["command"] = cmd.CommandName }) + " " + BuildPlainUsage(cmd));
-                ShellInterpreter.WriteLine();
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("help-usage", new System.Collections.Generic.Dictionary<string, object> { ["command"] = cmd.CommandName }) + " " + BuildPlainUsage(cmd));
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
 
                 if (cmd.Aliases.Count > 0)
                 {
-                    ShellInterpreter.WriteLine($"{MessageService.GetString("help-aliases")} {string.Join(", ", cmd.Aliases)}");
-                    ShellInterpreter.WriteLine();
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, $"{MessageService.GetString("help-aliases")} {string.Join(", ", cmd.Aliases)}");
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
                 }
 
                 if (cmd.Parameters.Count > 0)
                 {
-                    ShellInterpreter.WriteLine(MessageService.GetString("help-arguments"));
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("help-arguments"));
                     foreach (var p in cmd.Parameters)
                     {
                         var name = p.Name.FirstOrDefault() ?? string.Empty;
-                        ShellInterpreter.Write("  ");
-                        ShellInterpreter.Write(p.IsRequired ? name : $"[{name}]");
-                        ShellInterpreter.Write(" ");
+                        ShellInterpreter.Instance.Output.Write(ShellMessageKind.Result, "  ");
+                        ShellInterpreter.Instance.Output.Write(ShellMessageKind.Result, p.IsRequired ? name : $"[{name}]");
+                        ShellInterpreter.Instance.Output.Write(ShellMessageKind.Result, " ");
                         var desc = p.GetDescription(cmd.CommandName) ?? string.Empty;
                         if (!p.IsRequired)
                         {
-                            ShellInterpreter.Write($"{MessageService.GetString("help-optional")} ");
+                            ShellInterpreter.Instance.Output.Write(ShellMessageKind.Result, $"{MessageService.GetString("help-optional")} ");
                         }
 
-                        ShellInterpreter.WriteLine(desc);
+                        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, desc);
                     }
 
-                    ShellInterpreter.WriteLine();
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
                 }
 
                 if (cmd.Options.Count > 0)
                 {
-                    ShellInterpreter.WriteLine(MessageService.GetString("help-options"));
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("help-options"));
                     foreach (var opt in cmd.Options)
                     {
                         var names = string.Join(", ", opt.Name.Select(n => "-" + n));
                         var desc = opt.GetDescription(cmd.CommandName) ?? string.Empty;
-                        ShellInterpreter.WriteLine($"  {names} {desc}");
+                        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, $"  {names} {desc}");
                     }
 
-                    ShellInterpreter.WriteLine();
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
                 }
 
                 // Use shared examples collection to avoid shadowing
                 var plainExamples = cmd.ExamplesWithDescriptions;
                 if (plainExamples.Count > 0)
                 {
-                    ShellInterpreter.WriteLine(MessageService.GetString("help-examples"));
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("help-examples"));
                     for (int i = 0; i < plainExamples.Count; i++)
                     {
                         var (ex, desc) = plainExamples[i];
                         if (!string.IsNullOrEmpty(desc))
                         {
-                            ShellInterpreter.WriteLine($"  {i + 1}. {desc}");
-                            ShellInterpreter.WriteLine($"     {ex}");
+                            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, $"  {i + 1}. {desc}");
+                            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, $"     {ex}");
                         }
                         else
                         {
-                            ShellInterpreter.WriteLine($"  {i + 1}. {ex}");
+                            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, $"  {i + 1}. {ex}");
                         }
                     }
                 }
@@ -154,31 +152,31 @@ internal class HelpCommand : CosmosCommand
                 // Styled output
                 if (!string.IsNullOrEmpty(cmd.Description))
                 {
-                    AnsiConsole.MarkupLine($"{INDENT}{Theme.FormatHelpHeader(cmd.Description)}");
+                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, $"{INDENT}{Theme.FormatHelpHeader(cmd.Description)}");
                 }
 
                 if (cmd.Aliases.Count > 0)
                 {
-                    AnsiConsole.MarkupLine($"{INDENT}[dim]{Markup.Escape(MessageService.GetString("help-aliases"))} {Markup.Escape(string.Join(", ", cmd.Aliases))}[/]");
+                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, $"{INDENT}[dim]{Markup.Escape(MessageService.GetString("help-aliases"))} {Markup.Escape(string.Join(", ", cmd.Aliases))}[/]");
                 }
 
-                ShellInterpreter.WriteLine();
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
                 WriteSectionHeader(MessageService.GetString("help-usage-heading"));
-                AnsiConsole.Markup(INDENT + Theme.FormatCommand(cmd.CommandName) + " ");
+                ShellInterpreter.Instance.Output.Markup(ShellMessageKind.Result, INDENT + Theme.FormatCommand(cmd.CommandName) + " ");
             }
 
             if (!plain && cmd?.Options != null)
             {
                 foreach (var p in cmd.Options)
                 {
-                    AnsiConsole.Markup(INDENT + "[[" + Theme.FormatHelpName("-" + (p.Name.FirstOrDefault() ?? string.Empty)));
+                    ShellInterpreter.Instance.Output.Markup(ShellMessageKind.Result, INDENT + "[[" + Theme.FormatHelpName("-" + (p.Name.FirstOrDefault() ?? string.Empty)));
 
                     if (!p.PropertyInfo.PropertyType.IsAssignableFrom(typeof(bool)))
                     {
-                        AnsiConsole.Markup($" [dim]{MessageService.GetString("help-arg")}[/]");
+                        ShellInterpreter.Instance.Output.Markup(ShellMessageKind.Result, $" [dim]{MessageService.GetString("help-arg")}[/]");
                     }
 
-                    AnsiConsole.Markup("]] ");
+                    ShellInterpreter.Instance.Output.Markup(ShellMessageKind.Result, "]] ");
                 }
             }
 
@@ -194,16 +192,16 @@ internal class HelpCommand : CosmosCommand
 
                     if (p.IsRequired)
                     {
-                        AnsiConsole.Markup(INDENT + Theme.FormatHelpName(name) + " ");
+                        ShellInterpreter.Instance.Output.Markup(ShellMessageKind.Result, INDENT + Theme.FormatHelpName(name) + " ");
                     }
                     else
                     {
-                        AnsiConsole.Markup(INDENT + "[[" + Theme.FormatHelpName(name) + "]] ");
+                        ShellInterpreter.Instance.Output.Markup(ShellMessageKind.Result, INDENT + "[[" + Theme.FormatHelpName(name) + "]] ");
                     }
                 }
 
-                ShellInterpreter.WriteLine();
-                ShellInterpreter.WriteLine();
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
 
                 if (cmd.Parameters.Count > 0)
                 {
@@ -241,8 +239,8 @@ internal class HelpCommand : CosmosCommand
                         table.AddRow(INDENT + nameDisplay, descDisplay);
                     }
 
-                    AnsiConsole.Write(table);
-                    ShellInterpreter.WriteLine();
+                    ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
                 }
             }
 
@@ -278,24 +276,24 @@ internal class HelpCommand : CosmosCommand
                     table.AddRow(INDENT + Theme.FormatHelpName(sb.ToString()), descDisplay);
                 }
 
-                AnsiConsole.Write(table);
+                ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
             }
 
             var examples = cmd?.ExamplesWithDescriptions;
             if (!plain && examples != null && examples.Count > 0)
             {
-                ShellInterpreter.WriteLine();
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
                 WriteSectionHeader(MessageService.GetString("help-examples-heading"));
                 for (int i = 0; i < examples.Count; i++)
                 {
                     var (example, description) = examples[i];
                     if (!string.IsNullOrWhiteSpace(description))
                     {
-                        AnsiConsole.MarkupLine(INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}. {Theme.FormatHelpDescription(description)}");
+                        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}. {Theme.FormatHelpDescription(description)}");
                     }
                     else
                     {
-                        AnsiConsole.MarkupLine(INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}.");
+                        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, INDENT + $"{Theme.FormatHelpAccent("\u25b6")} {i + 1}.");
                     }
 
                     var parser = new StatementParser(example);
@@ -328,11 +326,11 @@ internal class HelpCommand : CosmosCommand
                         Border = BoxBorder.None,
                         Padding = new Padding(4, 0, 0, 0),
                     };
-                    AnsiConsole.Write(panel);
+                    ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, panel);
 
                     if (i < examples.Count - 1)
                     {
-                        ShellInterpreter.WriteLine();
+                        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
                     }
                 }
             }
@@ -496,8 +494,8 @@ internal class HelpCommand : CosmosCommand
             return;
         }
 
-        AnsiConsole.MarkupLine(INDENT + Theme.FormatHelpHeader(categoryName));
-        ShellInterpreter.WriteLine();
+        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, INDENT + Theme.FormatHelpHeader(categoryName));
+        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
 
         var table = new Table()
             .Border(TableBorder.None)
@@ -510,8 +508,8 @@ internal class HelpCommand : CosmosCommand
             table.AddRow(INDENT + Theme.FormatCommand(cmd.CommandName), Theme.FormatHelpDescription(cmd.Description ?? string.Empty));
         }
 
-        AnsiConsole.Write(table);
-        ShellInterpreter.WriteLine();
+        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
+        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
     }
 
     private static void PrintSingleStatementHelp((string Name, string Key, string? Description, string? Syntax, string? Example) s, bool plain = false)
@@ -521,21 +519,21 @@ internal class HelpCommand : CosmosCommand
             // Plain text output
             if (!string.IsNullOrWhiteSpace(s.Description))
             {
-                ShellInterpreter.WriteLine(s.Description);
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, s.Description);
             }
 
-            ShellInterpreter.WriteLine();
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
 
             if (!string.IsNullOrWhiteSpace(s.Syntax))
             {
-                ShellInterpreter.WriteLine(MessageService.GetString("help-syntax") + ":");
-                ShellInterpreter.WriteLine($"  {s.Syntax}");
-                ShellInterpreter.WriteLine();
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("help-syntax") + ":");
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, $"  {s.Syntax}");
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
             }
 
             if (!string.IsNullOrWhiteSpace(s.Example))
             {
-                ShellInterpreter.WriteLine(MessageService.GetString("help-example") + ":");
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("help-example") + ":");
                 var lines = s.Example.Split('\n');
                 foreach (var l in lines)
                 {
@@ -544,10 +542,10 @@ internal class HelpCommand : CosmosCommand
                         continue;
                     }
 
-                    ShellInterpreter.WriteLine($"  {l.Trim()}");
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, $"  {l.Trim()}");
                 }
 
-                ShellInterpreter.WriteLine();
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
             }
 
             return;
@@ -556,10 +554,10 @@ internal class HelpCommand : CosmosCommand
         // Use consistent styling with command help
         if (!string.IsNullOrWhiteSpace(s.Description))
         {
-            AnsiConsole.MarkupLine($"{INDENT}{Theme.FormatHelpHeader(s.Description)}");
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, $"{INDENT}{Theme.FormatHelpHeader(s.Description)}");
         }
 
-        ShellInterpreter.WriteLine();
+        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
 
         if (!string.IsNullOrWhiteSpace(s.Syntax))
         {
@@ -591,8 +589,8 @@ internal class HelpCommand : CosmosCommand
 
             // Highlight $ for variables
             highlighted = highlighted.Replace("$", varOpen + "$" + varClose);
-            AnsiConsole.MarkupLine($"{INDENT}{highlighted}");
-            ShellInterpreter.WriteLine();
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, $"{INDENT}{highlighted}");
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
         }
 
         if (!string.IsNullOrWhiteSpace(s.Example))
@@ -637,10 +635,10 @@ internal class HelpCommand : CosmosCommand
                     Border = BoxBorder.None,
                     Padding = new Padding(2, 0, 0, 0),
                 };
-                AnsiConsole.Write(panel);
+                ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, panel);
             }
 
-            ShellInterpreter.WriteLine();
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
         }
     }
 
@@ -658,8 +656,8 @@ internal class HelpCommand : CosmosCommand
             BorderStyle = Theme.GetHelpBorderStyle(),
             Padding = new Padding(1, 0, 1, 0),
         };
-        AnsiConsole.Write(stmtPanel);
-        ShellInterpreter.WriteLine();
+        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, stmtPanel);
+        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
 
         var table = new Table()
             .Border(TableBorder.None)
@@ -676,8 +674,8 @@ internal class HelpCommand : CosmosCommand
             table.AddRow(INDENT + Theme.FormatKeyword(s.Name), desc);
         }
 
-        AnsiConsole.Write(table);
-        AnsiConsole.MarkupLine(string.Empty);
+        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
+        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, string.Empty);
     }
 
     private static void PrintStatementHelps(bool plain)
@@ -690,17 +688,17 @@ internal class HelpCommand : CosmosCommand
 
         if (plain)
         {
-            ShellInterpreter.WriteLine(MessageService.GetString("help-control-flow-statements") + ":");
-            ShellInterpreter.WriteLine();
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("help-control-flow-statements") + ":");
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
             foreach (var s in statements.OrderBy(s => s.Name))
             {
-                ShellInterpreter.WriteLine($"  {s.Name}");
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, $"  {s.Name}");
                 if (!string.IsNullOrWhiteSpace(s.Description))
                 {
-                    ShellInterpreter.WriteLine($"    {s.Description}");
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, $"    {s.Description}");
                 }
 
-                ShellInterpreter.WriteLine();
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
             }
         }
         else
@@ -711,8 +709,8 @@ internal class HelpCommand : CosmosCommand
                 BorderStyle = Theme.GetHelpBorderStyle(),
                 Padding = new Padding(1, 0, 1, 0),
             };
-            AnsiConsole.Write(stmtPanel);
-            ShellInterpreter.WriteLine();
+            ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, stmtPanel);
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
 
             var table = new Table()
                 .Border(TableBorder.None)
@@ -729,8 +727,8 @@ internal class HelpCommand : CosmosCommand
                 table.AddRow(INDENT + Theme.FormatKeyword(s.Name), desc);
             }
 
-            AnsiConsole.Write(table);
-            AnsiConsole.MarkupLine(string.Empty);
+            ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, string.Empty);
         }
     }
 
@@ -783,7 +781,7 @@ internal class HelpCommand : CosmosCommand
             Justification = Justify.Left,
             Style = Theme.GetMutedStyle(),
         };
-        AnsiConsole.Write(rule);
+        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, rule);
     }
 
     private static string BuildPlainUsage(CommandFactory cmd)
@@ -827,21 +825,21 @@ internal class HelpCommand : CosmosCommand
             return;
         }
 
-        ShellInterpreter.WriteLine(title + ":");
+        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, title + ":");
         foreach (var c in commands)
         {
-            ShellInterpreter.WriteLine("  " + c.CommandName + " - " + (c.Description ?? string.Empty));
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, "  " + c.CommandName + " - " + (c.Description ?? string.Empty));
         }
 
-        ShellInterpreter.WriteLine();
+        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
     }
 
     private void RenderCommandList(CommandRunner app)
     {
         if (this.Plain)
         {
-            ShellInterpreter.WriteLine(MessageService.GetString("help-available-commands"));
-            ShellInterpreter.WriteLine();
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("help-available-commands"));
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
         }
         else
         {
@@ -852,8 +850,8 @@ internal class HelpCommand : CosmosCommand
                 BorderStyle = Theme.GetHelpBorderStyle(),
                 Padding = new Padding(1, 0, 1, 0),
             };
-            AnsiConsole.Write(headerPanel);
-            ShellInterpreter.WriteLine();
+            ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, headerPanel);
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
         }
 
         // Group commands by category (basic heuristic based on name patterns)

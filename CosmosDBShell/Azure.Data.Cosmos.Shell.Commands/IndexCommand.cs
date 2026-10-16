@@ -418,7 +418,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
             throw new CommandException("index", MessageService.GetString("command-index-error-invalid_policy"), ex);
         }
 
-        ShellInterpreter.WriteLine(MessageService.GetString("command-index-updated"));
+        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("command-index-updated"));
         return BuildResult(updatedJson);
     }
 }

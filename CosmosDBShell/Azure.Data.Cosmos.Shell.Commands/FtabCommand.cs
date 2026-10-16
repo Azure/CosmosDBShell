@@ -409,7 +409,7 @@ internal class FtabCommand : CosmosCommand
             table.AddRow(row.Select((cell, index) => FormatStyledCell(headers[index], cell, colorizeRules)).ToArray());
         }
 
-        AnsiConsole.Write(table);
+        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
     }
 
     private static string RenderPlainText(IReadOnlyList<string> headers, IReadOnlyList<IReadOnlyList<string>> rows)

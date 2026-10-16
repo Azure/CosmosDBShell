@@ -99,16 +99,16 @@ public class BucketCommandTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_InDatabase_InvalidValue_ReturnsEmptyState()
+    public async Task ExecuteAsync_InDatabase_InvalidValue_ThrowsCommandException()
     {
         var client = CreateTestClient();
         using var shell = ShellInterpreter.CreateInstance();
         shell.State = new DatabaseState("TestDatabase", client);
         var command = new BucketCommand { Action = "99" };
 
-        var state = await command.ExecuteAsync(shell, new CommandState(), "bucket 99", CancellationToken.None);
+        await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "bucket 99", CancellationToken.None));
 
-        Assert.False(state.IsError);
         Assert.Null(client.ClientOptions.ThroughputBucket);
     }
 

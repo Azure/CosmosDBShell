@@ -221,11 +221,11 @@ internal class TriggerCommand : CosmosCommand
         {
             if (rows.Count == 0)
             {
-                AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("command-trigger-list-empty")));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatMuted(MessageService.GetString("command-trigger-list-empty")));
             }
             else
             {
-                AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-trigger-list-title")));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatSectionHeader(MessageService.GetString("command-trigger-list-title")));
                 var table = new Table();
                 table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-trigger-list-column-id"))));
                 table.AddColumn(new TableColumn(Theme.FormatSectionHeader(MessageService.GetString("command-trigger-list-column-type"))));
@@ -241,7 +241,7 @@ internal class TriggerCommand : CosmosCommand
                         Theme.FormatTableValue(row.BodyLength.ToString()));
                 }
 
-                AnsiConsole.Write(table);
+                ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
             }
         };
         return commandState;
@@ -282,7 +282,7 @@ internal class TriggerCommand : CosmosCommand
         }
 
         commandState.Result = new ShellBool(exists);
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
             exists ? "command-trigger-exists-yes" : "command-trigger-exists-no",
             "name",
             name));
@@ -346,17 +346,17 @@ internal class TriggerCommand : CosmosCommand
 
         if (!string.IsNullOrWhiteSpace(edited))
         {
-            AnsiConsole.Clear();
-            ShellInterpreter.WriteLine(MessageService.GetArgsString("command-trigger-create-preview", "name", name));
-            ShellInterpreter.WriteLine();
-            ShellInterpreter.WriteLine(edited);
-            ShellInterpreter.WriteLine();
+            ShellInterpreter.Instance.Output.ClearScreen();
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction, MessageService.GetArgsString("command-trigger-create-preview", "name", name));
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction);
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction, edited);
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction);
         }
 
         if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-trigger-create-confirm"))
         {
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "trigger", id = name, created = false }));
-            commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-trigger-create-discarded", "name", name));
+            commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString("command-trigger-create-discarded", "name", name));
             return commandState;
         }
 
@@ -416,7 +416,7 @@ internal class TriggerCommand : CosmosCommand
             triggerType = triggerType.ToString(),
             triggerOperation = triggerOperation.ToString(),
         }));
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
             replaced ? "command-trigger-replaced" : "command-trigger-created",
             "name",
             name,
@@ -434,7 +434,7 @@ internal class TriggerCommand : CosmosCommand
             var response = await container.Scripts.DeleteTriggerAsync(name, cancellationToken: token);
             RequestChargeContext.Record(response.RequestCharge);
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "trigger", id = name, deleted = true }));
-            commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
                 "command-trigger-deleted",
                 "name",
                 name,
@@ -475,7 +475,7 @@ internal class TriggerCommand : CosmosCommand
         if (string.Equals(newBody, existingBody, StringComparison.Ordinal))
         {
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "trigger", id = name, changed = false }));
-            commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-trigger-edit-unchanged", "name", name));
+            commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString("command-trigger-edit-unchanged", "name", name));
             return commandState;
         }
 
@@ -490,7 +490,7 @@ internal class TriggerCommand : CosmosCommand
         RequestChargeContext.Record(response.RequestCharge);
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "trigger", id = name, changed = true }));
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
             "command-trigger-replaced",
             "name",
             name,
@@ -520,7 +520,7 @@ internal class TriggerCommand : CosmosCommand
         {
             await File.WriteAllTextAsync(tempPath, initialBody, token);
 
-            AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(MessageService.GetArgsString(
                 "command-trigger-edit-launching",
                 "name",
                 name,
@@ -551,7 +551,7 @@ internal class TriggerCommand : CosmosCommand
                 // before reading the file back.
                 if (launched.Elapsed < QuickEditorExit)
                 {
-                    ShellInterpreter.WriteLine(MessageService.GetString("command-trigger-edit-wait"));
+                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("command-trigger-edit-wait"));
                     Console.ReadLine();
                 }
             }

@@ -30,7 +30,7 @@ internal class DisconnectCommand : CosmosCommand
                 ["endpoint"] = endpoint,
             };
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonResult));
-            commandState.RenderUser = () => AnsiConsole.MarkupLine(MessageService.GetArgsString("command-disconnect-success", "endpoint", endpoint));
+            commandState.RenderUser = () => ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetArgsString("command-disconnect-success", "endpoint", endpoint));
         }
         else
         {
@@ -40,7 +40,7 @@ internal class DisconnectCommand : CosmosCommand
                 ["disconnected"] = false,
             };
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(jsonResult));
-            commandState.RenderUser = () => AnsiConsole.MarkupLine(MessageService.GetString("command-disconnect-not_connected"));
+            commandState.RenderUser = () => ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-disconnect-not_connected"));
         }
 
         return Task.FromResult(commandState);

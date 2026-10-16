@@ -94,7 +94,7 @@ internal class ExportCommand : CosmosCommand
 
         var (count, charge) = await ExecuteExportAsync(container, query, max, format, filePath, this.Force == true, token);
 
-        ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
             "command-export-success",
             "count",
             count,

@@ -13,6 +13,20 @@ namespace Azure.Data.Cosmos.Shell.Core;
 /// </summary>
 internal static class OutputPolicy
 {
+    // Command code presents results only for interactive users. Machine-mode results are
+    // emitted once by the interpreter through ShellOutput.WriteResult.
+    internal static bool ShouldPresent(ShellMessageKind kind, bool quiet, bool machineMode)
+        => kind switch
+        {
+            ShellMessageKind.Information or ShellMessageKind.Progress => !quiet && !machineMode,
+            ShellMessageKind.Result => !machineMode,
+            ShellMessageKind.Warning or ShellMessageKind.Error or ShellMessageKind.RequiredInstruction => true,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
+
+    internal static bool UseStandardError(ShellMessageKind kind, bool machineMode)
+        => machineMode && kind is ShellMessageKind.Warning or ShellMessageKind.Error or ShellMessageKind.RequiredInstruction;
+
     /// <summary>
     /// Determines whether the given format is a structured, machine-consumable format.
     /// <see cref="OutputFormat.JSon"/> and <see cref="OutputFormat.CSV"/> are structured

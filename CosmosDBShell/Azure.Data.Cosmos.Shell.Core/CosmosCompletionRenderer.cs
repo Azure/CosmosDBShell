@@ -12,6 +12,7 @@ internal class CosmosCompletionRenderer(ShellInterpreter shellInterpreter) : ILi
 {
     private readonly ShellInterpreter shellInterpreter = shellInterpreter;
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CZ0003:Direct console output", Justification = "Inline completion hints are drawn only inside the interactive RadLine editor.")]
     void ILineDecorationRenderer.RenderLineDecoration(LineBuffer buffer)
     {
         var word = buffer.Content;
