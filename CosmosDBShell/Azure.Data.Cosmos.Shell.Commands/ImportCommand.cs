@@ -495,7 +495,8 @@ internal class ImportCommand : CosmosCommand
         var continueOnError = this.ContinueOnError == true;
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
 
-        var (successCount, failCount, charge) = await ExecuteImportAsync(filePath, format, mode, container, continueOnError, dryRun, partitionKeySegments, concurrency, token);
+        var errors = new List<string>();
+        var (successCount, failCount, charge) = await ExecuteImportAsync(filePath, format, mode, container, continueOnError, dryRun, partitionKeySegments, concurrency, errors, token);
 
         if (!shell.IsMachineMode)
         {
@@ -537,14 +538,18 @@ internal class ImportCommand : CosmosCommand
 
         if (failCount > 0)
         {
-            throw new CommandException(
-                "import",
-                MessageService.GetArgsString(
-                    "command-import-error-some_failed",
-                    "failed",
-                    failCount,
-                    "total",
-                    successCount + failCount));
+            var message = MessageService.GetArgsString(
+                "command-import-error-some_failed",
+                "failed",
+                failCount,
+                "total",
+                successCount + failCount);
+            if (shell.IsMachineMode)
+            {
+                message += Environment.NewLine + string.Join(Environment.NewLine, errors);
+            }
+
+            throw new CommandException("import", message);
         }
 
         return new CommandState
@@ -590,6 +595,7 @@ internal class ImportCommand : CosmosCommand
         bool dryRun,
         string[]? partitionKeySegments,
         int concurrency,
+        List<string> errors,
         CancellationToken token)
     {
         FileStream? stream = null;
@@ -627,7 +633,11 @@ internal class ImportCommand : CosmosCommand
             }
 
             ArgumentNullException.ThrowIfNull(container);
-            return await WriteItemsAsync(source, container, mode, concurrency, continueOnError, token);
+            return await WriteItemsAsync(source, container, mode, concurrency, continueOnError, token, errors);
+        }
+        catch (CommandException ex) when (ShellInterpreter.Instance.IsMachineMode && errors.Count > 0)
+        {
+            throw new CommandException("import", ex.Message + Environment.NewLine + string.Join(Environment.NewLine, errors), ex);
         }
         finally
         {
@@ -645,7 +655,8 @@ internal class ImportCommand : CosmosCommand
         ImportMode mode,
         int concurrency,
         bool continueOnError,
-        CancellationToken token)
+        CancellationToken token,
+        ICollection<string>? errors = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         var pending = new List<Task<(double Charge, string? Error)>>();
@@ -663,7 +674,11 @@ internal class ImportCommand : CosmosCommand
             else
             {
                 failed++;
-                if (!ShellInterpreter.Instance.IsMachineMode)
+                if (ShellInterpreter.Instance.IsMachineMode)
+                {
+                    errors?.Add(result.Error);
+                }
+                else
                 {
                     ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, result.Error);
                 }

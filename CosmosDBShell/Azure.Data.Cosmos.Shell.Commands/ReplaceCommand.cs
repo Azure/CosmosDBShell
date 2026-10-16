@@ -99,9 +99,12 @@ internal class ReplaceCommand : CosmosCommand
         int failCount = 0;
         double charge = 0.0;
         var presentResults = !ShellInterpreter.Instance.IsMachineMode;
+        var errors = new List<string>();
+        var itemIndex = 0;
 
         foreach (var element in arrayRoot.EnumerateArray())
         {
+            itemIndex++;
             try
             {
                 var itemCharge = await ReplaceOneAsync(container, partitionKeyPaths, element, etag: null, token, printSuccess: false);
@@ -112,6 +115,7 @@ internal class ReplaceCommand : CosmosCommand
             {
                 RequestChargeContext.Record(RequestChargeContext.GetCosmosExceptionCharge(ex));
                 failCount++;
+                errors.Add(MessageService.GetArgsString("error-bulk-item", "index", itemIndex, "message", ex.Message));
                 if (presentResults)
                 {
                     ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, ex.Message);
@@ -138,14 +142,18 @@ internal class ReplaceCommand : CosmosCommand
         if (failCount > 0)
         {
             RequestChargeContext.Record(charge);
-            throw new CommandException(
-                "replace",
-                MessageService.GetArgsString(
-                    "command-replace-error-array_failed",
-                    "failed",
-                    failCount,
-                    "total",
-                    successCount + failCount));
+            var message = MessageService.GetArgsString(
+                "command-replace-error-array_failed",
+                "failed",
+                failCount,
+                "total",
+                successCount + failCount);
+            if (!presentResults)
+            {
+                message += Environment.NewLine + string.Join(Environment.NewLine, errors);
+            }
+
+            throw new CommandException("replace", message);
         }
 
         return new ReplaceSummary(successCount, failCount, charge);

@@ -177,6 +177,7 @@ error-database_not_found = Database '{ $database }' not found.
 error-container_not_found = Container '{ $container }' not found in database '{ $database }'.
     Use 'ls --database { $database }' to see available containers.
 error-no_input_data = No input data.
+error-bulk-item = Item { $index }: { $message }
 error-argument_parse_redirect = Invalid redirection
 error-param_parse = Invalid value for '{ $name }' valid values: { $values }
 error-too_many_arguments = Too many arguments ({$expected} expected)

@@ -25,6 +25,48 @@ public class ShellProcessTests
     private static readonly Regex AnsiEscape = new("\x1b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task MachineMode_OutputFailure_RemainsStructuredAndHonorsStderrRedirection(bool verbose, bool redirectError)
+    {
+        var directory = Path.Join(Path.GetTempPath(), $"cosmosshell-output-errors-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var outputFile = Path.Join(directory, "missing", "out.txt");
+        var errorFile = Path.Join(directory, "error.json");
+        try
+        {
+            var command = $"echo ok > '{outputFile}'" + (redirectError ? $" 2> '{errorFile}'" : string.Empty);
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: verbose ? ["--verbose", "-c", command] : ["-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            var errors = redirectError
+                ? await File.ReadAllTextAsync(errorFile, TestContext.Current.CancellationToken)
+                : result.StdErr;
+            if (redirectError)
+            {
+                Assert.Empty(result.StdErr);
+            }
+
+            var line = Assert.Single(errors.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+            using var error = JsonDocument.Parse(line);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            Assert.Contains(outputFile, error.RootElement.GetProperty("error").GetString());
+            Assert.DoesNotContain("\u001b", errors + result.RawStdOut + result.RawStdErr, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(errorFile);
+            Directory.Delete(directory);
+        }
+    }
+
+    [Theory]
     [InlineData("theme use MACHINE_NOPE", "MACHINE_NOPE")]
     [InlineData("help MACHINE_MISSING", "MACHINE_MISSING")]
     [InlineData("edit machine.txt", "interactive terminal")]

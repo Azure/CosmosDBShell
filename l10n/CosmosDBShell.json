@@ -1195,6 +1195,7 @@
   "error-arm-context-endpoint-mismatch": "The Azure Resource Manager account endpoint \u0027{0}\u0027 does not match the connected Cosmos DB endpoint \u0027{1}\u0027. Reconnect with the subscription and resource group that own the connected account.",
   "error-arm-context-incomplete": "Provide subscription and resource group together to use an explicit Azure Resource Manager account context. The account name is inferred from the endpoint.",
   "error-arm-context-required": "Database and container resource operations require Azure Resource Manager context. Reconnect with Entra ID and provide --subscription and --resource-group, or use --connect-subscription and --connect-resource-group at startup. Alternatively, use an identity that can discover the Cosmos DB account through ARM.",
+  "error-bulk-item": "Item {0}: {1}",
   "error-command-not-found": "\u0027{0}\u0027 is not recognized as an internal or external command, operable program or batch file.",
   "error-command-not-found-connection-string": "This looks like part of a connection string. The shell treats \u0027;\u0027 as a command separator, so wrap the whole value in quotes, e.g. connect \u0022AccountEndpoint=https://localhost:8081/;AccountKey=...;\u0022.",
   "error-command-not-found-suggestion": "Did you mean \u0027{0}\u0027?",

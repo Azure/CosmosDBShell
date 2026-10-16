@@ -2034,7 +2034,7 @@ public partial class ShellInterpreter : IDisposable
         }
         catch (Exception e)
         {
-            if (this.Options?.Verbose == true)
+            if (this.Options?.Verbose == true && !this.IsMachineMode)
             {
                 this.Output.WriteException(ShellMessageKind.Error, e);
                 return new ErrorCommandState(e);

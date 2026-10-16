@@ -16,6 +16,7 @@
 - Report `theme`, `help`, and `edit` failures once, including a structured error on stderr in machine mode instead of an unexplained failure exit code.
 - Include failing file paths and actionable diagnostics in machine-mode theme validation errors, and keep required script-editor confirmation instructions visible with `--quiet`.
 - Keep quiet command echoes in an existing editor's Up/Down history without printing them.
+- Preserve per-item failure diagnostics in machine-mode import, bulk insert/upsert, and replacement errors. Verbose output-formatting and file-redirection failures also retain structured stderr output and `2>` redirection.
 
 ### Improvements
 

@@ -311,6 +311,10 @@ Quiet is not a universal mute: warnings, errors, and required instructions (such
 authentication prompts and previews shown before a confirmation) remain visible on
 `STDERR`, without ANSI styling. Explicit diagnostic logging is unaffected.
 Command results are separate from informational messages and remain on `STDOUT`.
+Bulk-write errors include per-item diagnostics in that single structured error:
+imports identify source lines, and item-array writes identify 1-based item positions.
+`--verbose` does not replace machine-mode errors with raw stack traces; shell `2>`
+redirection still applies.
 
 Bare piped stdin (for example `echo "..." | cosmosdbshell`) is **not** implicitly machine
 mode; pass `-c`, `--output json`, or `--quiet` to opt into structured output.
