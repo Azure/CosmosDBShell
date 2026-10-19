@@ -135,12 +135,14 @@ public class CommandStatusOutputTests
     }
 
     [Theory]
-    [InlineData("json")]
-    [InlineData("csv")]
-    [InlineData("table")]
-    public async Task ExportCommandLine_FormatDoesNotChangeJsonFile(string format)
+    [InlineData("json", ".json")]
+    [InlineData("csv", ".json")]
+    [InlineData("table", ".json")]
+    [InlineData("json", ".csv")]
+    [InlineData("csv", ".csv")]
+    public async Task ExportCommandLine_ExtensionSelectsFileAndFormatSelectsResult(string format, string extension)
     {
-        var file = Path.Join(Path.GetTempPath(), $"cosmos-export-{Guid.NewGuid():N}.csv");
+        var file = Path.Join(Path.GetTempPath(), $"cosmos-export-{Guid.NewGuid():N}{extension}");
         var redirect = Path.GetTempFileName();
         using var shell = CreateShell();
         shell.StdOutRedirect = redirect;
@@ -152,9 +154,18 @@ public class CommandStatusOutputTests
             Assert.False(state.IsError);
             Assert.True(OutputFormats.TryParse(format, out var expectedFormat));
             Assert.Equal(expectedFormat, state.OutputFormat);
-            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
-            Assert.Equal(JsonValueKind.Array, document.RootElement.ValueKind);
-            Assert.Equal("a", document.RootElement[0].GetProperty("id").GetString());
+            var exported = await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken);
+            if (extension == ".csv")
+            {
+                Assert.Equal("\"id\"\n\"a\"\n", exported);
+            }
+            else
+            {
+                using var document = JsonDocument.Parse(exported);
+                Assert.Equal(JsonValueKind.Array, document.RootElement.ValueKind);
+                Assert.Equal("a", document.RootElement[0].GetProperty("id").GetString());
+            }
+
             var summary = await File.ReadAllTextAsync(redirect, TestContext.Current.CancellationToken);
             Assert.Contains("exported", summary);
             Assert.DoesNotContain("RU charge:", summary);

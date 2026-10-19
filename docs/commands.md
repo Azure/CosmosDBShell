@@ -724,9 +724,9 @@ The condition is enforced by Cosmos DB (`If-Match`). If the item was updated or 
 
 ### export
 
-Stream items from a container to a local file as a single indented JSON array, the same document shape the Azure Databases extension for VS Code imports and exports. Exported data is always JSON, regardless of the filename or `--format` setting. JSON Lines and CSV file exports are not supported. Documents are written incrementally without loading the complete result into memory.
+Stream items from a container to a local file. A `.csv` file name (case-insensitive) writes CSV; any other file name writes a single indented JSON array, the same document shape the Azure Databases extension for VS Code imports and exports. `--format` does not change the file contents. JSON Lines output is not supported. JSON export streams incrementally. CSV spools documents to a private temporary file to compute the complete column set, keeping only the column names and current record in memory. Allow enough temporary disk space for the JSON spool as well as the destination export. The CSV separator follows the `COSMOSDB_SHELL_CSVSEP` environment variable (default `;`). Non-object query results are written to a column with an empty header by default; set `COSMOSDB_SHELL_CSV_SCALAR_COLUMN` to name it. Mixed object and non-object results include both object property columns and the scalar column. If its header conflicts with an object property, export fails instead of combining their values. Scalar CSV exports cannot be imported as items without supplying item IDs and any required partition keys.
 
-Exports write to a temporary file in the destination directory and move it into place only after successful completion. An existing destination requires `--force` and is preserved if reading, writing, or cancellation interrupts the export. Temporary files are removed on normal completion and handled failures; an abrupt process termination can leave an unfinished destination-directory temporary file. Once `--max` items have been emitted, no further query pages are requested.
+All formats write to a temporary file in the destination directory and move it into place only after successful completion. An existing destination requires `--force` and is preserved if reading, writing, or cancellation interrupts the export. Temporary files are removed on normal completion and handled failures; an abrupt process termination can leave an unfinished destination-directory temporary file. Once `--max` items have been emitted, no further query pages are requested.
 
 ```text
 Usage: export <file> [options]
@@ -740,7 +740,7 @@ Options:
     --query, -q          SELECT query whose results are exported (default: SELECT * FROM c).
     --max, -m            Maximum number of items to export. 0 means no limit.
     --format, -f         Command result format: user, json, csv, or table.
-                         Does not change the exported JSON file.
+                         Does not change the exported file.
     --force              Overwrite the destination file if it already exists.
 ```
 
@@ -749,6 +749,7 @@ Examples:
 - `export items.json` exports every item in the current container as a JSON array.
 - `export active.json --query="SELECT * FROM c WHERE c.status = 'active'"` exports a filtered subset.
 - `export snapshot.json --force` replaces any existing file.
+- `export items.csv` exports as CSV with one column per top-level property (nested values are written as compact JSON).
 - `export items.json --format=csv` writes a JSON array file and presents the export summary as CSV.
 
 Normal output shows a readable summary with the number of items written and the total RU charge. `--format=json`, `--format=csv`, and `--format=table` change only this command result, not the exported data. When `--format` is omitted, the result inherits the shell's output settings.

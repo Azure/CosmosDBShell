@@ -460,13 +460,13 @@ command-batch-error-not_active = No batch is in progress. Start one with 'batch 
 command-batch-error-failed = Batch failed with status { $status } and was rolled back (RU charge: { $charge })
 command-batch-error-execution_failed = Failed to execute batch: { $status } - { $message }
 
-command-export-description = Exports items from a container to a JSON array file.
+command-export-description = Exports items from a container to a JSON array file, or to a CSV file when the file name ends in .csv.
 command-export-description-file = Destination file path.
 command-export-description-database = The database to read from.
 command-export-description-container = The container to read from.
 command-export-description-query = SELECT query whose results are exported (default: SELECT * FROM c).
 command-export-description-max = Maximum number of items to export. 0 means no limit.
-command-export-description-format = Command result format: user, json, csv, or table. Does not change the exported JSON file.
+command-export-description-format = Command result format: user, json, csv, or table. Does not change the exported file, which is CSV for .csv file names and a JSON array otherwise.
 command-export-description-force = Overwrite the destination file if it already exists.
 command-export-success = Exported { $count } { $count ->
     [one] item
@@ -476,6 +476,7 @@ command-export-error-missing_file = A destination file path is required.
 command-export-error-file_exists = File '{ $file }' already exists. Use --force to overwrite.
 command-export-error-destination_directory = Destination '{ $file }' is a directory. Specify a file path instead.
 command-export-error-query_failed = Export query failed: { $status } - { $message }
+command-export-error-scalar_column_conflict = CSV scalar column '{ $column }' conflicts with an object property. Set COSMOSDB_SHELL_CSV_SCALAR_COLUMN to a different name.
 
 command-import-description = Imports items into a container from a JSON, JSON Lines, or CSV file.
 command-import-description-file = Source file path.
@@ -1620,7 +1621,7 @@ command-exit-example-1 = Exit the Cosmos DB Shell
 command-export-example-1 = Export every item in the current container as a JSON array
 command-export-example-2 = Export the results of a query
 command-export-example-3 = Export, overwriting an existing file
-command-export-example-4 = Export items as JSON and show the command result as CSV
+command-export-example-4 = Export items as CSV (one column per top-level property)
 command-export-example-5 = Export up to 1000 items from a specific database and container
 command-filter-example-1 = Extract the first query result
 command-filter-example-2 = Project selected fields from query results
