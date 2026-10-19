@@ -134,6 +134,18 @@ public class CommandStatementTests
         }
     }
 
+    [CosmosCommand("interactive-diagnostic-test")]
+    internal sealed class InteractiveDiagnosticTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            shell.Output.WriteLine(ShellMessageKind.Warning, "first warning");
+            shell.Output.MarkupLine(ShellMessageKind.Error, "second [bold]error[/]");
+            shell.Output.WriteLine(ShellMessageKind.RequiredInstruction, "terminal prompt");
+            return Task.FromResult(commandState);
+        }
+    }
+
     [CosmosCommand("warning-false-test")]
     internal sealed class WarningFalseTestCommand : CosmosCommand
     {
@@ -603,6 +615,42 @@ public class CommandStatementTests
 
             Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
             var expected = $"first warning{Environment.NewLine}second instruction{Environment.NewLine}";
+            Assert.Equal(
+                (append ? "existing" + Environment.NewLine : string.Empty) + expected,
+                await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(stderr);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Interactive_ShellOutputDiagnosticsHonorErrorRedirect(bool append)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(InteractiveDiagnosticTestCommand), out var factory));
+        shell.App.Commands["interactive-diagnostic-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions();
+        Assert.False(shell.IsMachineMode);
+        var script = Path.GetTempFileName();
+        var stderr = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(stderr, "existing" + Environment.NewLine, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(
+                script,
+                $"interactive-diagnostic-test {(append ? "2>>" : "2>")} {ShellLiteral.Quote(stderr.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length));
+
+            var result = await command.RunScriptAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            var expected = $"first warning{Environment.NewLine}second error{Environment.NewLine}";
             Assert.Equal(
                 (append ? "existing" + Environment.NewLine : string.Empty) + expected,
                 await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));

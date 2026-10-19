@@ -267,7 +267,14 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             WriteClientSelection(client.ClientOptions.ThroughputBucket);
         }
 
-        return new CommandState();
+        return new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new JsonObject
+            {
+                ["clientBucket"] = client.ClientOptions.ThroughputBucket,
+            })),
+            RenderUser = () => { },
+        };
     }
 
     private async Task<CommandState> ExecuteServerAsync(ConnectedState state, ShellInterpreter shell, string databaseName, string? containerName, CancellationToken token)

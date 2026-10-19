@@ -22,7 +22,8 @@ internal sealed class ShellOutput(
     Func<bool> machineMode,
     Func<TextWriter>? standardOutput = null,
     Func<TextWriter>? standardError = null,
-    Func<IAnsiConsole>? console = null)
+    Func<IAnsiConsole>? console = null,
+    Func<bool>? errorRedirected = null)
 {
     private readonly object consoleCacheLock = new();
 
@@ -185,14 +186,17 @@ internal sealed class ShellOutput(
     private bool ShouldPresent(ShellMessageKind kind)
         => OutputPolicy.ShouldPresent(kind, quiet(), machineMode());
 
+    private bool UseStandardError(ShellMessageKind kind)
+        => OutputPolicy.UseStandardError(kind, machineMode(), errorRedirected?.Invoke() == true);
+
     private TextWriter GetWriter(ShellMessageKind kind)
-        => OutputPolicy.UseStandardError(kind, machineMode())
+        => this.UseStandardError(kind)
             ? standardError?.Invoke() ?? Console.Error
             : standardOutput?.Invoke() ?? Console.Out;
 
     private IAnsiConsole GetConsole(ShellMessageKind kind)
     {
-        if (!machineMode() && !OutputPolicy.UseStandardError(kind, machineMode()))
+        if (!machineMode() && !this.UseStandardError(kind))
         {
             return console?.Invoke() ?? AnsiConsole.Console;
         }

@@ -115,7 +115,8 @@ public partial class ShellInterpreter : IDisposable
         this.Output = new ShellOutput(
             () => this.Options?.Quiet == true,
             () => this.IsMachineMode,
-            standardError: () => this.ErrOutRedirect != null ? this.errorRedirectWriter : Console.Error);
+            standardError: () => this.ErrOutRedirect != null ? this.errorRedirectWriter : Console.Error,
+            errorRedirected: () => this.ErrOutRedirect != null);
 
         // editor.KeyBindings.Add<ClearInputCommand>(ConsoleKey.Escape);
         // TODO: Support selection commands?

@@ -4,8 +4,10 @@
 
 namespace CosmosShell.Tests.CommandTests;
 
+using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
@@ -68,6 +70,7 @@ public class BucketCommandTests
 
         Assert.False(state.IsError);
         Assert.Equal(3, client.ClientOptions.ThroughputBucket);
+        Assert.Equal(3, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("clientBucket").GetInt32());
     }
 
     [Fact]
@@ -83,12 +86,14 @@ public class BucketCommandTests
 
         Assert.False(state.IsError);
         Assert.Null(client.ClientOptions.ThroughputBucket);
+        Assert.Equal(JsonValueKind.Null, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("clientBucket").ValueKind);
     }
 
     [Fact]
     public async Task ExecuteAsync_InContainer_NoArgs_ShowsCurrent()
     {
         var client = CreateTestClient();
+        client.ClientOptions.ThroughputBucket = 2;
         using var shell = ShellInterpreter.CreateInstance();
         shell.State = new ContainerState("TestContainer", "TestDatabase", client);
         var command = new BucketCommand();
@@ -96,6 +101,7 @@ public class BucketCommandTests
         var state = await command.ExecuteAsync(shell, new CommandState(), "bucket", CancellationToken.None);
 
         Assert.False(state.IsError);
+        Assert.Equal(2, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("clientBucket").GetInt32());
     }
 
     [Fact]

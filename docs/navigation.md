@@ -318,6 +318,8 @@ imports identify source lines, and item-array writes identify 1-based item posit
 Up to 100 item diagnostics are listed, followed by a count of any omitted ones.
 `--verbose` does not replace machine-mode errors with raw stack traces; shell `2>`
 and `2>>` redirection still applies and also captures warnings and required instructions.
+Outside machine mode, `2>` and `2>>` capture warnings and errors, while confirmation
+prompts and other required instructions stay on the terminal.
 
 Bare piped stdin (for example `echo "..." | cosmosdbshell`) is **not** implicitly machine
 mode; pass `-c`, `--output json`, or `--quiet` to opt into structured output.

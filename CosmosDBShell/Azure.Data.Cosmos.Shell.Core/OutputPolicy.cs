@@ -24,8 +24,10 @@ internal static class OutputPolicy
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
 
-    internal static bool UseStandardError(ShellMessageKind kind, bool machineMode)
-        => machineMode && kind is ShellMessageKind.Warning or ShellMessageKind.Error or ShellMessageKind.RequiredInstruction;
+    // Interactive confirmation prompts stay on the terminal even when 2> is active.
+    internal static bool UseStandardError(ShellMessageKind kind, bool machineMode, bool errorRedirected = false)
+        => (machineMode && kind is ShellMessageKind.Warning or ShellMessageKind.Error or ShellMessageKind.RequiredInstruction)
+            || (errorRedirected && kind is ShellMessageKind.Warning or ShellMessageKind.Error);
 
     /// <summary>
     /// Determines whether the given format is a structured, machine-consumable format.
