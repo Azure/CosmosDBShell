@@ -276,7 +276,8 @@ public class MachineModeWriteErrorTests
             using var document = JsonDocument.Parse(body);
             if (document.RootElement.GetProperty("id").GetString() == "bad-status")
             {
-                return Task.FromResult(new ResponseMessage(HttpStatusCode.BadRequest));
+                return Task.FromException<ResponseMessage>(
+                    new CosmosException("bad status", HttpStatusCode.BadRequest, 0, "test", 0));
             }
 
             return Task.FromException<ResponseMessage>(

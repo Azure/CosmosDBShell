@@ -90,7 +90,7 @@ public class ThemeCommandTests
     public async Task Validate_DirectoryUsesExecutingShellMachineMode()
     {
         using var dir = new TempDirectory();
-        var broken = Path.Combine(dir.Path, "broken.toml");
+        var broken = Path.Join(dir.Path, "broken.toml");
         File.WriteAllText(broken,
             """
             name = "broken"
