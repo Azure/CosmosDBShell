@@ -39,7 +39,7 @@ internal class PwdCommand : CosmosCommand
             container = shell.State is ContainerState current ? current.ContainerName : null,
             currentLocation,
         }));
-        commandState.RenderUser = () => AnsiConsole.MarkupLine(ShellLocation.GetCurrentLocationMarkup(shell.State));
+        commandState.RenderUser = () => ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, ShellLocation.GetCurrentLocationMarkup(shell.State));
         return Task.FromResult(commandState);
     }
 }

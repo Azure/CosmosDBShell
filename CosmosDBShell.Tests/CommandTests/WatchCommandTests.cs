@@ -4,9 +4,14 @@
 
 namespace CosmosShell.Tests.CommandTests;
 
+using System.Net;
+using System.Text;
+using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.States;
+using Microsoft.Azure.Cosmos;
+using NSubstitute;
 
 /// <summary>
 /// Unit tests for <see cref="WatchCommand"/>. Covers the pure helpers that
@@ -14,8 +19,76 @@ using Azure.Data.Cosmos.Shell.States;
 /// plus the option-validation and not-connected guards, all of which can be
 /// exercised without a live Cosmos DB connection.
 /// </summary>
+[Collection(ConsoleOutputTestCollection.Name)]
 public class WatchCommandTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteAsync_BoundedMachineWatch_ReturnsExactlyMaxChangesOnce(bool quiet)
+    {
+        var client = Substitute.For<CosmosClient>();
+        var database = Substitute.For<Database>();
+        var container = Substitute.For<Container>();
+        client.GetDatabase("db").Returns(database);
+        database.GetContainer("items").Returns(container);
+        container.Id.Returns("items");
+        var databaseResponse = Substitute.For<DatabaseResponse>();
+        databaseResponse.StatusCode.Returns(HttpStatusCode.OK);
+        database.ReadAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(databaseResponse));
+        var containerResponse = Substitute.For<ContainerResponse>();
+        containerResponse.StatusCode.Returns(HttpStatusCode.OK);
+        container.ReadContainerAsync(Arg.Any<ContainerRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(containerResponse));
+
+        using var firstPage = new ResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new MemoryStream(Encoding.UTF8.GetBytes("{\"Documents\":[{\"id\":\"1\"},{\"id\":\"2\"}]}")),
+        };
+        using var secondPage = new ResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new MemoryStream(Encoding.UTF8.GetBytes("{\"Documents\":[{\"id\":\"3\"},{\"id\":\"4\"}]}")),
+        };
+        var iterator = Substitute.For<FeedIterator>();
+        iterator.ReadNextAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(firstPage), Task.FromResult(secondPage));
+        container.GetChangeFeedStreamIterator(
+            Arg.Any<ChangeFeedStartFrom>(), ChangeFeedMode.Incremental, Arg.Any<ChangeFeedRequestOptions>())
+            .Returns(iterator);
+
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Quiet = quiet, Output = "json" };
+        shell.State = new ContainerState("items", "db", client);
+        var command = new WatchCommand { Max = 3 };
+        var savedOut = Console.Out;
+        var savedError = Console.Error;
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        try
+        {
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            var state = await command.ExecuteAsync(shell, new CommandState(), "watch --max=3", TestContext.Current.CancellationToken);
+            Assert.Empty(stdout.ToString());
+            Assert.Empty(stderr.ToString());
+
+            shell.PrintState(state);
+            using var json = JsonDocument.Parse(stdout.ToString());
+            Assert.Equal("item", json.RootElement.GetProperty("type").GetString());
+            Assert.Equal(
+                ["1", "2", "3"],
+                json.RootElement.GetProperty("values").EnumerateArray().Select(item => item.GetProperty("id").GetString()));
+            Assert.Empty(stderr.ToString());
+            await iterator.Received(2).ReadNextAsync(Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            Console.SetError(savedError);
+        }
+    }
+
     [Fact]
     public void ParseChangeFeedDocuments_ReturnsAllDocuments()
     {
@@ -114,6 +187,61 @@ public class WatchCommandTests
         using var shell = ShellInterpreter.CreateInstance();
         shell.State = new DisconnectedState();
         var command = new WatchCommand();
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "watch", TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData(true, null, null)]
+    [InlineData(true, null, 0)]
+    [InlineData(true, null, -1)]
+    [InlineData(false, "json", null)]
+    [InlineData(false, "json", 0)]
+    [InlineData(false, "csv", -1)]
+    public async Task ExecuteAsync_UnboundedMachineWatch_RejectsBeforeConnection(bool quiet, string? output, int? max)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Quiet = quiet, Output = output };
+        shell.State = new DisconnectedState();
+        var command = new WatchCommand { Max = max };
+
+        var error = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "watch", TestContext.Current.CancellationToken));
+
+        Assert.Contains("positive --max", error.Message);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("changes.json")]
+    public async Task ExecuteAsync_UnboundedExecuteAndQuitWatch_RejectsIncludingRedirection(string? redirectedPath)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { ExecuteAndQuit = "watch" };
+        shell.StdOutRedirect = redirectedPath;
+        shell.State = new DisconnectedState();
+        var command = new WatchCommand();
+
+        var error = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "watch", TestContext.Current.CancellationToken));
+
+        Assert.Contains("positive --max", error.Message);
+    }
+
+    [Theory]
+    [InlineData(true, null, 1)]
+    [InlineData(false, "json", 100)]
+    [InlineData(false, "csv", 1)]
+    [InlineData(false, "user", null)]
+    [InlineData(false, "table", 0)]
+    [InlineData(false, null, -1)]
+    public async Task ExecuteAsync_BoundedMachineOrInteractiveWatch_PreservesConnectionGuard(bool quiet, string? output, int? max)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Quiet = quiet, Output = output };
+        shell.State = new DisconnectedState();
+        var command = new WatchCommand { Max = max };
 
         await Assert.ThrowsAsync<NotConnectedException>(
             () => command.ExecuteAsync(shell, new CommandState(), "watch", TestContext.Current.CancellationToken));

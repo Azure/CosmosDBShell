@@ -114,6 +114,38 @@ public class CommandStatementTests
         }
     }
 
+    [CosmosCommand("output-warning-test")]
+    internal sealed class OutputWarningTestCommand : CosmosCommand
+    {
+        [CosmosOption("fail")]
+        public bool? Fail { get; init; }
+
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            shell.Output.WriteLine(ShellMessageKind.Warning, "first warning");
+            shell.Output.MarkupLine(ShellMessageKind.RequiredInstruction, "second [bold]instruction[/]");
+            if (this.Fail == true)
+            {
+                throw new CommandException("output-warning-test", "output failure");
+            }
+
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { value = "ok" }));
+            return Task.FromResult(commandState);
+        }
+    }
+
+    [CosmosCommand("interactive-diagnostic-test")]
+    internal sealed class InteractiveDiagnosticTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            shell.Output.WriteLine(ShellMessageKind.Warning, "first warning");
+            shell.Output.MarkupLine(ShellMessageKind.Error, "second [bold]error[/]");
+            shell.Output.WriteLine(ShellMessageKind.RequiredInstruction, "terminal prompt");
+            return Task.FromResult(commandState);
+        }
+    }
+
     [CosmosCommand("warning-false-test")]
     internal sealed class WarningFalseTestCommand : CosmosCommand
     {
@@ -556,6 +588,107 @@ public class CommandStatementTests
             File.Delete(script);
             File.Delete(firstOutput);
             File.Delete(secondOutput);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MachineMode_ShellOutputStandardErrorHonorsErrorRedirect(bool append)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(OutputWarningTestCommand), out var factory));
+        shell.App.Commands["output-warning-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var script = Path.GetTempFileName();
+        var stderr = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(stderr, "existing" + Environment.NewLine, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(
+                script,
+                $"output-warning-test {(append ? "2>>" : "2>")} {ShellLiteral.Quote(stderr.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length));
+
+            var result = await command.RunScriptAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            var expected = $"first warning{Environment.NewLine}second instruction{Environment.NewLine}";
+            Assert.Equal(
+                (append ? "existing" + Environment.NewLine : string.Empty) + expected,
+                await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(stderr);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Interactive_ShellOutputDiagnosticsHonorErrorRedirect(bool append)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(InteractiveDiagnosticTestCommand), out var factory));
+        shell.App.Commands["interactive-diagnostic-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions();
+        Assert.False(shell.IsMachineMode);
+        var script = Path.GetTempFileName();
+        var stderr = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(stderr, "existing" + Environment.NewLine, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(
+                script,
+                $"interactive-diagnostic-test {(append ? "2>>" : "2>")} {ShellLiteral.Quote(stderr.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length));
+
+            var result = await command.RunScriptAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            var expected = $"first warning{Environment.NewLine}second error{Environment.NewLine}";
+            Assert.Equal(
+                (append ? "existing" + Environment.NewLine : string.Empty) + expected,
+                await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(stderr);
+        }
+    }
+
+    [Fact]
+    public async Task MachineMode_ErrorAfterShellOutputWarningAppendsToErrorRedirect()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(OutputWarningTestCommand), out var factory));
+        shell.App.Commands["output-warning-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            var result = await shell.ExecuteCommandAsync("output-warning-test --fail", TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            var lines = (await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken))
+                .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+            Assert.Equal(3, lines.Length);
+            Assert.Equal("first warning", lines[0]);
+            Assert.Equal("second instruction", lines[1]);
+            using var document = JsonDocument.Parse(lines[2]);
+            Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+            Assert.Contains("output failure", document.RootElement.GetProperty("error").GetString());
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(stderr);
         }
     }
 

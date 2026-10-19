@@ -478,7 +478,7 @@ internal sealed class DoctorCommand : CosmosCommand
 
             if (this.IncludeIdentity)
             {
-                AnsiConsole.MarkupLine(Theme.FormatSectionHeader(Message("who-heading")));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatSectionHeader(Message("who-heading")));
             }
 
             var grid = new Grid();
@@ -506,9 +506,9 @@ internal sealed class DoctorCommand : CosmosCommand
                 }
             }
 
-            AnsiConsole.Write(grid);
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine($"{Theme.FormatSectionHeader(Message("summary"))}: {summary.pass} {FormatStatus("PASS")} | {summary.warn} {FormatStatus("WARN")} | {summary.fail} {FormatStatus("FAIL")} | {summary.skip} {FormatStatus("SKIP")} | {durationMs.ToString(CultureInfo.InvariantCulture)} ms | {FormatCharge(result.RequestCharge)} RU");
+            ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, grid);
+            ShellInterpreter.Instance.Output.RenderLine(ShellMessageKind.Result);
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, $"{Theme.FormatSectionHeader(Message("summary"))}: {summary.pass} {FormatStatus("PASS")} | {summary.warn} {FormatStatus("WARN")} | {summary.fail} {FormatStatus("FAIL")} | {summary.skip} {FormatStatus("SKIP")} | {durationMs.ToString(CultureInfo.InvariantCulture)} ms | {FormatCharge(result.RequestCharge)} RU");
         };
         return result;
     }

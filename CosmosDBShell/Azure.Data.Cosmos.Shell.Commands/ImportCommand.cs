@@ -494,6 +494,7 @@ internal class ImportCommand : CosmosCommand
         var continueOnError = this.ContinueOnError == true;
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
 
+        var errors = shell.IsMachineMode ? new BulkWriteDiagnostics() : null;
         var (successCount, failCount, charge) = await ExecuteImportAsync(
             shell,
             filePath,
@@ -506,53 +507,61 @@ internal class ImportCommand : CosmosCommand
             partitionKeyPaths,
             concurrency,
             commandState,
+            errors,
             token);
 
-        if (dryRun)
+        if (!shell.IsMachineMode)
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                "command-import-dry-run-success",
-                "count",
-                successCount));
-        }
-        else if (failCount == 0)
-        {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                "command-import-success",
-                "count",
-                successCount,
-                "charge",
-                charge.ToString("F2", CultureInfo.InvariantCulture)));
-        }
-        else if (successCount > 0)
-        {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                "command-import-success-partial",
-                "success",
-                successCount,
-                "failed",
-                failCount,
-                "charge",
-                charge.ToString("F2", CultureInfo.InvariantCulture)));
-        }
-        else
-        {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                "command-import-all-failed",
-                "count",
-                failCount));
+            if (dryRun)
+            {
+                shell.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                    "command-import-dry-run-success",
+                    "count",
+                    successCount));
+            }
+            else if (failCount == 0)
+            {
+                shell.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                    "command-import-success",
+                    "count",
+                    successCount,
+                    "charge",
+                    charge.ToString("F2", CultureInfo.InvariantCulture)));
+            }
+            else if (successCount > 0)
+            {
+                shell.Output.WriteLine(ShellMessageKind.Warning, MessageService.GetArgsString(
+                    "command-import-success-partial",
+                    "success",
+                    successCount,
+                    "failed",
+                    failCount,
+                    "charge",
+                    charge.ToString("F2", CultureInfo.InvariantCulture)));
+            }
+            else
+            {
+                shell.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString(
+                    "command-import-all-failed",
+                    "count",
+                    failCount));
+            }
         }
 
         if (failCount > 0)
         {
-            throw new CommandException(
-                "import",
-                MessageService.GetArgsString(
-                    "command-import-error-some_failed",
-                    "failed",
-                    failCount,
-                    "total",
-                    successCount + failCount));
+            var message = MessageService.GetArgsString(
+                "command-import-error-some_failed",
+                "failed",
+                failCount,
+                "total",
+                successCount + failCount);
+            if (errors != null)
+            {
+                message += Environment.NewLine + errors.GetMessage();
+            }
+
+            throw new CommandException("import", message);
         }
 
         var resultState = new CommandState
@@ -602,6 +611,7 @@ internal class ImportCommand : CosmosCommand
         IReadOnlyList<string> partitionKeyPaths,
         int concurrency,
         CommandState commandState,
+        BulkWriteDiagnostics? errors,
         CancellationToken token)
     {
         FileStream? stream = null;
@@ -648,7 +658,13 @@ internal class ImportCommand : CosmosCommand
                 partitionKeyPaths,
                 commandState,
                 token,
-                warningShell: shell);
+                warningShell: shell,
+                errors: errors);
+        }
+        catch (Exception ex) when ((ex is CommandException or JsonException)
+            && errors is { Count: > 0 })
+        {
+            throw new CommandException("import", ex.Message + Environment.NewLine + errors.GetMessage(), ex);
         }
         finally
         {
@@ -666,9 +682,10 @@ internal class ImportCommand : CosmosCommand
         ImportMode mode,
         int concurrency,
         bool continueOnError,
-        CancellationToken token)
+        CancellationToken token,
+        BulkWriteDiagnostics? errors = null)
     {
-        return await WriteItemsAsync(source, container, mode, concurrency, continueOnError, [], new CommandState(), token);
+        return await WriteItemsAsync(source, container, mode, concurrency, continueOnError, [], new CommandState(), token, errors: errors);
     }
 
     internal static async Task<(int Success, int Failed, double Charge)> WriteItemsAsync(
@@ -680,7 +697,8 @@ internal class ImportCommand : CosmosCommand
         IReadOnlyList<string> partitionKeyPaths,
         CommandState commandState,
         CancellationToken token,
-        ShellInterpreter? warningShell = null)
+        ShellInterpreter? warningShell = null,
+        BulkWriteDiagnostics? errors = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         var pending = new List<Task<(double Charge, string? Error)>>();
@@ -700,7 +718,14 @@ internal class ImportCommand : CosmosCommand
             else
             {
                 failed++;
-                ShellInterpreter.WriteLine(result.Error);
+                if (errors != null)
+                {
+                    errors.Add(result.Error);
+                }
+                else
+                {
+                    (warningShell ?? ShellInterpreter.Instance).Output.WriteLine(ShellMessageKind.Error, result.Error);
+                }
             }
         }
 

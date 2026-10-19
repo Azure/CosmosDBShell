@@ -177,6 +177,9 @@ error-database_not_found = Database '{ $database }' not found.
 error-container_not_found = Container '{ $container }' not found in database '{ $database }'.
     Use 'ls --database { $database }' to see available containers.
 error-no_input_data = No input data.
+error-bulk-item = Item { $index }: { $message }
+error-bulk-diagnostic_truncated = [diagnostic truncated]
+error-bulk-diagnostics_omitted = { $count } additional item diagnostics omitted.
 error-argument_parse_redirect = Invalid redirection
 error-param_parse = Invalid value for '{ $name }' valid values: { $values }
 error-too_many_arguments = Too many arguments ({$expected} expected)
@@ -212,7 +215,7 @@ help-examples = Examples:
 help-examples-heading = Examples
 help-aliases = Aliases:
 help-OutputFormat = The output format to use (user, json, table, csv).
-help-Quiet = Suppresses standard informational output.
+help-Quiet = Suppress informational messages, progress, banners, and command echoes. Preserve results, warnings, errors, and required authentication instructions.
 
 command-help-description = Shows help information for commands
 command-welcome-description = Displays the welcome screen
@@ -805,7 +808,7 @@ command-results-limit_reached =
 command-watch-description = Tail the change feed of a container, streaming new and modified items as they arrive.
 command-watch-description-from-beginning = Start from the beginning of the change feed instead of from now.
 command-watch-description-partition-key = Scope the change feed to a single partition key value. Use { "{" }{ "}" } for an undefined value.
-command-watch-description-max = Stop after receiving this many changes. Omit, or use 0 or a negative value, to follow until Ctrl+C.
+command-watch-description-max = Stop after receiving this many changes. Required and positive in machine mode. In interactive mode, omit or use 0 or a negative value to follow until Ctrl+C.
 command-watch-description-interval = Seconds to wait between change feed polls once caught up. Defaults to 1; values below 0.1 are clamped.
 command-watch-description-format = { command-query-description-format }
 command-watch-description-database = The database containing the container to watch.
@@ -814,6 +817,7 @@ command-watch-started = Watching changes in { $container }. Press Ctrl+C to stop
 command-watch-stopped = Stopped watching after { $count } changes.
 command-watch-error-request_failed = Change feed request failed with status code { $statusCode } ({ $status }).
 command-watch-error-invalid_interval = Interval value '{ $interval }' is invalid. Specify a finite number of seconds.
+command-watch-error-machine_max_required = Machine-mode watch requires a positive --max value. Use interactive mode to follow changes without a limit.
 
 command-jq-description = Commandline JSON processor
 command-jq-description-args = Arguments for the jq command

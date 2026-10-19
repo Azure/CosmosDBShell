@@ -235,7 +235,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         }
 
         var view = await CosmosResourceFacade.ReplaceConflictResolutionPolicyAsync(state, databaseName, containerName, update, token);
-        ShellInterpreter.WriteLine(MessageService.GetString("command-conflict-updated"));
+        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("command-conflict-updated"));
         return BuildResult(containerName, view);
     }
 }

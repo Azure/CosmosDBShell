@@ -5,6 +5,7 @@
 ### Breaking changes
 
 - `print <id> <key>` now parses the key with the same typed syntax as `patch`, so `print item-1 680` reads numeric key `680` instead of string `"680"`. To address a string key that looks like a number, boolean, null, or JSON array, quote it as a JSON string: `print item-1 '"680"'`. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
+- Machine-mode `watch` now requires a positive `--max` and returns collected changes as a bounded final result. Interactive watches can still follow until Ctrl+C.
 
 ### New features
 
@@ -19,11 +20,17 @@
 - `sproc exec` now returns `null` for a stored procedure that completes without setting a response body, instead of reporting a failure after the procedure's writes have committed.
 - `print` now reads items with typed scalar and complete hierarchical partition keys, for example `print customer-1001 '[1001,"customer-1001"]'`. Invalid keys are distinguished from missing items. Shared argument parsing rejects object/nested-array components and non-finite numbers instead of coercing them. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
 - Avoid accessing an expired HTTP request during MCP session teardown, preventing disposal errors while releasing location subscriptions and legacy SSE admission state. ([#249](https://github.com/Azure/CosmosDBShell/issues/249))
+- Report `theme`, `help`, and `edit` failures once, including a structured error on stderr in machine mode instead of an unexplained failure exit code.
+- Include failing file paths and actionable diagnostics in machine-mode theme validation errors, and keep required script-editor confirmation instructions visible with `--quiet`.
+- Keep quiet command echoes in an existing editor's Up/Down history without printing them.
+- Preserve per-item failure diagnostics in machine-mode import, bulk insert/upsert, and replacement errors, listing up to 100 items and reporting how many more were omitted. Verbose output-formatting and file-redirection failures also retain structured stderr output and `2>` redirection, and `2>`/`2>>` now also capture warnings and required instructions from successful commands. Interactive `2>`/`2>>` now also capture command warnings and errors, while confirmation prompts stay on the terminal.
 - Keep CLI inferred-key warnings visible before writes when the MCP listener is enabled; MCP calls continue to return warnings in their responses.
+- `bucket`, `bucket <n>`, and `bucket 0` return the current client bucket selection as a structured `clientBucket` result in machine mode.
 
 ### Improvements
 
 - `import` now streams documents with up to 16 concurrent writes by default. Use `--concurrency` to tune the limit or `--concurrency=1` for sequential, file-order writes. On a failure, imports stop scheduling new writes and wait for in-flight writes; `--continue-on-error` continues after per-item write failures.
+- Apply a consistent output policy: `--quiet` suppresses informational messages, progress, banners, and command echoes while preserving results, warnings, errors, and required authentication or confirmation instructions. Machine-mode stdout carries only command results; diagnostics use stderr without ANSI styling.
 
 ## 1.1.280 — 2026-10-09
 

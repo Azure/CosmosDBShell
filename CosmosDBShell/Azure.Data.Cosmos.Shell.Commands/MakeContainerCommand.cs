@@ -180,7 +180,7 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
             id = containerName,
             created = true,
         }));
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-mkcon-CreatedContainer", new Dictionary<string, object> { { "container", containerName } }));
+        commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-mkcon-CreatedContainer", new Dictionary<string, object> { { "container", containerName } }));
         return commandState;
     }
 

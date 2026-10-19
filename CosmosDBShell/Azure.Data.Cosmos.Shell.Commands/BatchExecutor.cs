@@ -92,7 +92,7 @@ internal static class BatchExecutor
         {
             RequestCharge = response.RequestCharge,
         };
-        errorState.RenderUser = () => ShellInterpreter.WriteLine(errorMessage);
+        errorState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, errorMessage);
         return errorState;
     }
 
@@ -103,7 +103,7 @@ internal static class BatchExecutor
             Result = new ShellJson(summary),
             RequestCharge = requestCharge,
         };
-        state.RenderUser = () => ShellInterpreter.WriteLine(message);
+        state.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, message);
         return state;
     }
 
