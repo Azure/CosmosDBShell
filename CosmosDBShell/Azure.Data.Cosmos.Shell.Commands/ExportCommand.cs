@@ -16,24 +16,23 @@ using global::Azure.Data.Cosmos.Shell.States;
 
 internal enum ExportFormat
 {
-    Jsonl = 0,
-    JsonLines = 0,
-    Array = 1,
-    Csv = 2,
+    Json = 0,
+    Array = 0,
+    Csv = 1,
 }
 
 [CosmosCommand("export")]
-[CosmosExample("export items.jsonl", DescriptionKey = "command-export-example-1")]
-[CosmosExample("export items.jsonl --query=\"SELECT * FROM c WHERE c.status = 'active'\"", DescriptionKey = "command-export-example-2")]
-[CosmosExample("export items.json --format=array --force", DescriptionKey = "command-export-example-3")]
+[CosmosExample("export items.json", DescriptionKey = "command-export-example-1")]
+[CosmosExample("export items.json --query=\"SELECT * FROM c WHERE c.status = 'active'\"", DescriptionKey = "command-export-example-2")]
+[CosmosExample("export items.json --force", DescriptionKey = "command-export-example-3")]
 [CosmosExample("export items.csv --format=csv", DescriptionKey = "command-export-example-4")]
-[CosmosExample("export items.jsonl --db=MyDB --con=Products --max=1000", DescriptionKey = "command-export-example-5")]
+[CosmosExample("export items.json --db=MyDB --con=Products --max=1000", DescriptionKey = "command-export-example-5")]
 [McpAnnotation(
     Title = "Export Container Items",
     ReadOnly = false,
     Idempotent = false,
     OpenWorld = true,
-    Description = "Streams items from a Cosmos container into a local JSON Lines, JSON array, or CSV file.")]
+    Description = "Streams items from a Cosmos container into a local JSON array or CSV file.")]
 internal class ExportCommand : CosmosCommand
 {
     private const string DefaultQuery = "SELECT * FROM c";
@@ -54,7 +53,7 @@ internal class ExportCommand : CosmosCommand
     [CosmosOption("max", "m")]
     public int? Max { get; init; }
 
-    [CosmosOption("format", "f", DefaultValue = ExportFormat.JsonLines)]
+    [CosmosOption("format", "f", DefaultValue = ExportFormat.Json)]
     public ExportFormat? Format { get; init; }
 
     [CosmosOption("force")]
@@ -90,7 +89,7 @@ internal class ExportCommand : CosmosCommand
 
         var query = string.IsNullOrWhiteSpace(this.Query) ? DefaultQuery : this.Query!;
         var max = ResultLimit.ResolveMaxItemCount(this.Max, defaultMaxItemCount: null);
-        var format = this.Format ?? ExportFormat.JsonLines;
+        var format = this.Format ?? ExportFormat.Json;
 
         var (count, charge) = await ExecuteExportAsync(container, query, max, format, filePath, this.Force == true, token);
 
@@ -135,28 +134,8 @@ internal class ExportCommand : CosmosCommand
     }
 
     /// <summary>
-    /// Writes a sequence of items to <paramref name="writer"/> as JSON Lines (one compact
-    /// JSON document per line) and returns the number of items written.
-    /// </summary>
-    /// <param name="items">The items to write.</param>
-    /// <param name="writer">The destination writer.</param>
-    /// <param name="token">Cancellation token.</param>
-    /// <returns>The number of items written.</returns>
-    internal static async Task<int> WriteJsonLinesAsync(IAsyncEnumerable<JsonElement> items, TextWriter writer, CancellationToken token)
-    {
-        var count = 0;
-        await foreach (var item in items.WithCancellation(token))
-        {
-            await writer.WriteLineAsync(SerializeJsonLine(item).AsMemory(), token);
-            count++;
-        }
-
-        await writer.FlushAsync(token);
-        return count;
-    }
-
-    /// <summary>
-    /// Writes a sequence of items to <paramref name="stream"/> as a single JSON array and
+    /// Writes a sequence of items to <paramref name="stream"/> as a single indented JSON array,
+    /// the document shape the Azure Databases VS Code extension imports and exports, and
     /// returns the number of items written. Items are streamed; the entire array is never
     /// materialized in memory.
     /// </summary>
@@ -167,7 +146,7 @@ internal class ExportCommand : CosmosCommand
     internal static async Task<int> WriteArrayAsync(IAsyncEnumerable<JsonElement> items, Stream stream, CancellationToken token)
     {
         var count = 0;
-        await using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false });
+        await using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true, IndentSize = 4, NewLine = "\n" });
         writer.WriteStartArray();
         await foreach (var item in items.WithCancellation(token))
         {
@@ -387,17 +366,15 @@ internal class ExportCommand : CosmosCommand
 
             await using (var stream = new FileStream(temporary, fileOptions))
             {
-                if (format == ExportFormat.Array)
-                {
-                    count = await WriteArrayAsync(items, stream, token);
-                }
-                else
+                if (format == ExportFormat.Csv)
                 {
                     using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
                     writer.NewLine = "\n";
-                    count = format == ExportFormat.Csv
-                        ? await WriteCsvAsync(items, writer, ShellInterpreter.CSVSeparator, token)
-                        : await WriteJsonLinesAsync(items, writer, token);
+                    count = await WriteCsvAsync(items, writer, ShellInterpreter.CSVSeparator, token);
+                }
+                else
+                {
+                    count = await WriteArrayAsync(items, stream, token);
                 }
             }
 

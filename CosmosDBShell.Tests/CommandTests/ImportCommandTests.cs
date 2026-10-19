@@ -15,26 +15,103 @@ using Azure.Data.Cosmos.Shell.Core;
 public class ImportCommandTests
 {
     [Theory]
-    [InlineData("[", (int)ImportFormat.Array)]
-    [InlineData("  [", (int)ImportFormat.Array)]
-    [InlineData("\n\n[", (int)ImportFormat.Array)]
-    [InlineData("\uFEFF[", (int)ImportFormat.Array)]
-    [InlineData("{", (int)ImportFormat.JsonLines)]
-    [InlineData("  {", (int)ImportFormat.JsonLines)]
-    [InlineData("\uFEFF{", (int)ImportFormat.JsonLines)]
-    [InlineData("", (int)ImportFormat.JsonLines)]
-    [InlineData("   \n\t  ", (int)ImportFormat.JsonLines)]
-    public void DetectFormat_ChoosesBasedOnFirstNonWhitespaceChar(string leading, int expected)
+    [InlineData("items.json", (int)ImportFormat.Auto, (int)ImportFormat.Json)]
+    [InlineData("items.jsonl", (int)ImportFormat.Auto, (int)ImportFormat.Json)]
+    [InlineData("items", (int)ImportFormat.Auto, (int)ImportFormat.Json)]
+    [InlineData("items.csv", (int)ImportFormat.Auto, (int)ImportFormat.Csv)]
+    [InlineData("items.CSV", (int)ImportFormat.Auto, (int)ImportFormat.Csv)]
+    [InlineData("items.jsonl", (int)ImportFormat.JsonLines, (int)ImportFormat.JsonLines)]
+    [InlineData("items.csv", (int)ImportFormat.Json, (int)ImportFormat.Json)]
+    public void ResolveFormat_ReadsJsonUnlessCsvOrRequested(string file, int requested, int expected)
     {
-        Assert.Equal((ImportFormat)expected, ImportCommand.DetectFormat(leading));
+        Assert.Equal((ImportFormat)expected, ImportCommand.ResolveFormat(file, (ImportFormat)requested));
+    }
+
+    [Theory]
+    [InlineData("[{\"id\":\"a\"},{\"id\":\"b\"}]")]
+    [InlineData("\uFEFF  \r\n[\n    {\n        \"id\": \"a\"\n    },\n    {\n        \"id\": \"b\"\n    }\n]")]
+    public async Task EnumerateJsonDocumentAsync_Array_YieldsItems(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var ids = new List<string>();
+        await foreach (var (_, element) in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
+        {
+            ids.Add(element.GetProperty("id").GetString()!);
+        }
+
+        Assert.Equal(["a", "b"], ids);
+    }
+
+    [Theory]
+    [InlineData("{\"id\":\"a\",\"pk\":\"x\"}")]
+    [InlineData("\uFEFF{\n    \"id\": \"a\",\n    \"pk\": \"x\"\n}\n")]
+    public async Task EnumerateJsonDocumentAsync_SingleObject_YieldsOneItem(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var items = new List<(int Index, JsonElement Item)>();
+        await foreach (var item in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
+        {
+            items.Add(item);
+        }
+
+        var (index, element) = Assert.Single(items);
+        Assert.Equal(1, index);
+        Assert.Equal("a", element.GetProperty("id").GetString());
+        Assert.Equal("x", element.GetProperty("pk").GetString());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  \n\t ")]
+    [InlineData("\uFEFF")]
+    public async Task EnumerateJsonDocumentAsync_EmptyInput_YieldsNothing(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var count = 0;
+        await foreach (var _ in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
+        {
+            count++;
+        }
+
+        Assert.Equal(0, count);
+    }
+
+    [Theory]
+    [InlineData("42")]
+    [InlineData("\"text\"")]
+    [InlineData("null")]
+    public async Task EnumerateJsonDocumentAsync_ScalarDocument_Throws(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var ex = await Assert.ThrowsAsync<CommandException>(async () =>
+        {
+            await foreach (var _ in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
+            {
+            }
+        });
+
+        Assert.Contains("--format=jsonl", ex.Message);
     }
 
     [Fact]
-    public void DetectFormat_WithNull_ReturnsJsonLines()
+    public async Task EnumerateJsonDocumentAsync_JsonLinesInput_SuggestsJsonLinesFormat()
     {
-        Assert.Equal(ImportFormat.JsonLines, ImportCommand.DetectFormat(null!));
-    }
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{\"id\":\"1\"}\n{\"id\":\"2\"}\n"));
 
+        var ex = await Assert.ThrowsAsync<CommandException>(async () =>
+        {
+            await foreach (var _ in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
+            {
+            }
+        });
+
+        Assert.Contains("--format=jsonl", ex.Message);
+        Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+    }
     [Theory]
     [InlineData("auto")]
     [InlineData("Auto")]
@@ -42,6 +119,8 @@ public class ImportCommandTests
     [InlineData("JSONL")]
     [InlineData("jsonlines")]
     [InlineData("JsonLines")]
+    [InlineData("json")]
+    [InlineData("JSON")]
     [InlineData("array")]
     [InlineData("Array")]
     public void ImportFormat_ParsesDocumentedAliases(string value)
@@ -202,36 +281,6 @@ public class ImportCommandTests
     }
 
     [Fact]
-    public async Task ExportThenImport_JsonLines_RoundTripsContent()
-    {
-        var items = new[]
-        {
-            JsonSerializer.SerializeToElement(new { id = "1", name = "first" }),
-            JsonSerializer.SerializeToElement(new { id = "2", name = "second" }),
-            JsonSerializer.SerializeToElement(new { id = "3", name = "third" }),
-        };
-
-        using var writer = new StringWriter();
-        writer.NewLine = "\n";
-        var written = await ExportCommand.WriteJsonLinesAsync(ToAsyncEnumerableAsync(items), writer, CancellationToken.None);
-        Assert.Equal(3, written);
-
-        using var reader = new StringReader(writer.ToString());
-        var readItems = new List<JsonElement>();
-        await foreach (var (_, item) in ImportCommand.EnumerateJsonLinesAsync(reader, CancellationToken.None))
-        {
-            readItems.Add(item);
-        }
-
-        Assert.Equal(3, readItems.Count);
-        for (var i = 0; i < items.Length; i++)
-        {
-            Assert.Equal(items[i].GetProperty("id").GetString(), readItems[i].GetProperty("id").GetString());
-            Assert.Equal(items[i].GetProperty("name").GetString(), readItems[i].GetProperty("name").GetString());
-        }
-    }
-
-    [Fact]
     public async Task ExportThenImport_Array_RoundTripsContent()
     {
         var items = new[]
@@ -246,7 +295,7 @@ public class ImportCommandTests
 
         buffer.Position = 0;
         var readItems = new List<JsonElement>();
-        await foreach (var (_, item) in ImportCommand.EnumerateArrayAsync(buffer, CancellationToken.None))
+        await foreach (var (_, item) in ImportCommand.EnumerateJsonDocumentAsync(buffer, CancellationToken.None))
         {
             readItems.Add(item);
         }

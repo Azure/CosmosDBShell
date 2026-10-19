@@ -5,6 +5,7 @@
 ### Breaking changes
 
 - `print <id> <key>` now parses the key with the same typed syntax as `patch`, so `print item-1 680` reads numeric key `680` instead of string `"680"`. To address a string key that looks like a number, boolean, null, or JSON array, quote it as a JSON string: `print item-1 '"680"'`. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
+- `import` and `export` now use the JSON format of the Azure Databases extension for VS Code. `export` writes an indented JSON array by default and no longer supports JSON Lines (`--format=jsonl`). `import` reads non-CSV files as a single JSON document, either an array of items or one item; JSON Lines files now require `--format=jsonl`.
 
 ### New features
 

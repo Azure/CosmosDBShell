@@ -21,9 +21,10 @@ using global::Azure.Data.Cosmos.Shell.States;
 internal enum ImportFormat
 {
     Auto = 0,
-    Jsonl = 1,
-    JsonLines = 1,
-    Array = 2,
+    Json = 1,
+    Array = 1,
+    Jsonl = 2,
+    JsonLines = 2,
     Csv = 3,
 }
 
@@ -34,23 +35,25 @@ internal enum ImportMode
 }
 
 [CosmosCommand("import")]
-[CosmosExample("import items.jsonl", DescriptionKey = "command-import-example-1")]
-[CosmosExample("import items.json --format=array", DescriptionKey = "command-import-example-2")]
+[CosmosExample("import items.json", DescriptionKey = "command-import-example-1")]
+[CosmosExample("import items.jsonl --format=jsonl", DescriptionKey = "command-import-example-2")]
 [CosmosExample("import items.csv", DescriptionKey = "command-import-example-3")]
 [CosmosExample("import items.csv --partition-key=/address/city", DescriptionKey = "command-import-example-4")]
-[CosmosExample("import items.jsonl --mode=upsert", DescriptionKey = "command-import-example-5")]
-[CosmosExample("import items.jsonl --continue-on-error", DescriptionKey = "command-import-example-6")]
-[CosmosExample("import items.jsonl --dry-run", DescriptionKey = "command-import-example-7")]
-[CosmosExample("import items.jsonl --concurrency=32", DescriptionKey = "command-import-example-8")]
+[CosmosExample("import items.json --mode=upsert", DescriptionKey = "command-import-example-5")]
+[CosmosExample("import items.json --continue-on-error", DescriptionKey = "command-import-example-6")]
+[CosmosExample("import items.json --dry-run", DescriptionKey = "command-import-example-7")]
+[CosmosExample("import items.json --concurrency=32", DescriptionKey = "command-import-example-8")]
 [McpAnnotation(
     Title = "Import Container Items",
     ReadOnly = false,
     Idempotent = false,
     OpenWorld = true,
-    Description = "Bulk-loads items into a Cosmos container from a local JSON Lines, JSON array, or CSV file.")]
+    Description = "Bulk-loads items into a Cosmos container from a local JSON file (an array of items or a single item), a JSON Lines file with format jsonl, or a CSV file.")]
 internal class ImportCommand : CosmosCommand
 {
     internal const int DefaultConcurrency = 16;
+
+    private static readonly byte[] Utf8ByteOrderMark = [0xEF, 0xBB, 0xBF];
 
     [CosmosParameter("file", RequiredErrorKey = "command-import-error-missing_file")]
     public string? File { get; init; }
@@ -80,38 +83,22 @@ internal class ImportCommand : CosmosCommand
     public bool? DryRun { get; init; }
 
     /// <summary>
-    /// Inspects a leading chunk of file content and infers whether it is a JSON array or a
-    /// JSON Lines stream. Whitespace (including comments-style BOM) is ignored. If the first
-    /// non-whitespace character is '[' the file is treated as a JSON array, otherwise as
-    /// JSON Lines.
+    /// Resolves the effective input format. Auto selects CSV for a <c>.csv</c> extension and
+    /// otherwise a single JSON document; JSON Lines must be requested explicitly.
     /// </summary>
-    /// <param name="leadingChunk">A prefix of the file content (UTF-8 decoded).</param>
-    /// <returns>The detected format.</returns>
-    internal static ImportFormat DetectFormat(string leadingChunk)
+    /// <param name="filePath">The source file path.</param>
+    /// <param name="requested">The requested format.</param>
+    /// <returns>The effective format.</returns>
+    internal static ImportFormat ResolveFormat(string filePath, ImportFormat requested)
     {
-        if (leadingChunk == null)
+        if (requested != ImportFormat.Auto)
         {
-            return ImportFormat.JsonLines;
+            return requested;
         }
 
-        var startIndex = 0;
-        if (leadingChunk.Length > 0 && leadingChunk[0] == '\uFEFF')
-        {
-            startIndex = 1;
-        }
-
-        for (var i = startIndex; i < leadingChunk.Length; i++)
-        {
-            var c = leadingChunk[i];
-            if (char.IsWhiteSpace(c))
-            {
-                continue;
-            }
-
-            return c == '[' ? ImportFormat.Array : ImportFormat.JsonLines;
-        }
-
-        return ImportFormat.JsonLines;
+        return string.Equals(Path.GetExtension(filePath), ".csv", StringComparison.OrdinalIgnoreCase)
+            ? ImportFormat.Csv
+            : ImportFormat.Json;
     }
 
     /// <summary>
@@ -214,6 +201,88 @@ internal class ImportCommand : CosmosCommand
             }
 
             yield return (index, element.Clone());
+        }
+    }
+
+    /// <summary>
+    /// Enumerates items from a JSON document: a top-level array of objects is streamed,
+    /// and a single top-level object is imported as one item. Empty input yields no items.
+    /// </summary>
+    /// <param name="stream">The seekable source stream.</param>
+    /// <param name="token">Cancellation token.</param>
+    /// <returns>An async sequence of (1-based item index, item) tuples.</returns>
+    internal static async IAsyncEnumerable<(int LineNumber, JsonElement Item)> EnumerateJsonDocumentAsync(
+        Stream stream,
+        [EnumeratorCancellation] CancellationToken token)
+    {
+        var first = await PeekFirstSignificantByteAsync(stream, token);
+        if (first < 0)
+        {
+            yield break;
+        }
+
+        if (first == '[')
+        {
+            await foreach (var item in EnumerateArrayAsync(stream, token))
+            {
+                yield return item;
+            }
+
+            yield break;
+        }
+
+        JsonDocument document;
+        try
+        {
+            document = await JsonDocument.ParseAsync(stream, cancellationToken: token);
+        }
+        catch (JsonException ex)
+        {
+            throw new CommandException(
+                "import",
+                MessageService.GetArgsString("command-import-error-invalid_document", "message", ex.Message),
+                ex);
+        }
+
+        using (document)
+        {
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new CommandException("import", MessageService.GetString("command-import-error-not_document"));
+            }
+
+            yield return (1, document.RootElement.Clone());
+        }
+    }
+
+    private static async Task<int> PeekFirstSignificantByteAsync(Stream stream, CancellationToken token)
+    {
+        var start = stream.Position;
+        var buffer = new byte[4096];
+        var position = 0L;
+        try
+        {
+            int read;
+            while ((read = await stream.ReadAsync(buffer.AsMemory(), token)) > 0)
+            {
+                for (var i = 0; i < read; i++, position++)
+                {
+                    var value = buffer[i];
+                    if ((position < Utf8ByteOrderMark.Length && value == Utf8ByteOrderMark[position])
+                        || value is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')
+                    {
+                        continue;
+                    }
+
+                    return value;
+                }
+            }
+
+            return -1;
+        }
+        finally
+        {
+            stream.Position = start;
         }
     }
 
@@ -489,7 +558,7 @@ internal class ImportCommand : CosmosCommand
                 token);
         }
 
-        var format = await ResolveFormatAsync(filePath, this.Format ?? ImportFormat.Auto, token);
+        var format = ResolveFormat(filePath, this.Format ?? ImportFormat.Auto);
         var mode = this.Mode ?? ImportMode.Insert;
         var continueOnError = this.ContinueOnError == true;
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
@@ -571,25 +640,6 @@ internal class ImportCommand : CosmosCommand
         return resultState;
     }
 
-    private static async Task<ImportFormat> ResolveFormatAsync(string filePath, ImportFormat requested, CancellationToken token)
-    {
-        if (requested != ImportFormat.Auto)
-        {
-            return requested;
-        }
-
-        if (string.Equals(Path.GetExtension(filePath), ".csv", StringComparison.OrdinalIgnoreCase))
-        {
-            return ImportFormat.Csv;
-        }
-
-        await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        var buffer = new byte[1024];
-        var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), token);
-        var leading = Encoding.UTF8.GetString(buffer, 0, read);
-        return DetectFormat(leading);
-    }
-
     private static async Task<(int Success, int Failed, double Charge)> ExecuteImportAsync(
         ShellInterpreter shell,
         string filePath,
@@ -616,9 +666,9 @@ internal class ImportCommand : CosmosCommand
             else
             {
                 stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                if (format == ImportFormat.Array)
+                if (format == ImportFormat.Json)
                 {
-                    source = EnumerateArrayAsync(stream, token);
+                    source = EnumerateJsonDocumentAsync(stream, token);
                 }
                 else
                 {

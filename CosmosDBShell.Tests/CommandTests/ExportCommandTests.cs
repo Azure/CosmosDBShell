@@ -46,40 +46,6 @@ public class ExportCommandTests
     }
 
     [Fact]
-    public async Task WriteJsonLinesAsync_WritesOneItemPerLine()
-    {
-        var items = ToAsyncEnumerableAsync(
-            JsonSerializer.SerializeToElement(new { id = "1" }),
-            JsonSerializer.SerializeToElement(new { id = "2" }),
-            JsonSerializer.SerializeToElement(new { id = "3" }));
-
-        using var writer = new StringWriter();
-        writer.NewLine = "\n";
-
-        var count = await ExportCommand.WriteJsonLinesAsync(items, writer, CancellationToken.None);
-
-        Assert.Equal(3, count);
-        var output = writer.ToString();
-        var lines = output.TrimEnd('\n').Split('\n');
-        Assert.Equal(3, lines.Length);
-        Assert.Equal("{\"id\":\"1\"}", lines[0]);
-        Assert.Equal("{\"id\":\"2\"}", lines[1]);
-        Assert.Equal("{\"id\":\"3\"}", lines[2]);
-    }
-
-    [Fact]
-    public async Task WriteJsonLinesAsync_WithNoItems_ProducesEmptyOutput()
-    {
-        var items = ToAsyncEnumerableAsync();
-
-        using var writer = new StringWriter();
-        var count = await ExportCommand.WriteJsonLinesAsync(items, writer, CancellationToken.None);
-
-        Assert.Equal(0, count);
-        Assert.Equal(string.Empty, writer.ToString());
-    }
-
-    [Fact]
     public async Task WriteArrayAsync_WritesValidStreamingArray()
     {
         var items = ToAsyncEnumerableAsync(
@@ -111,37 +77,9 @@ public class ExportCommandTests
         Assert.Equal("[]", text);
     }
 
-    [Fact]
-    public async Task WriteJsonLinesAsync_RoundTripsExoticValues()
-    {
-        var items = ToAsyncEnumerableAsync(
-            JsonSerializer.SerializeToElement(new { id = "1", text = "line\nwith\nnewlines" }),
-            JsonSerializer.SerializeToElement(new { id = "2", numbers = new[] { 1, 2, 3 } }),
-            JsonSerializer.SerializeToElement(new { id = "3", flag = (object?)null }));
-
-        using var writer = new StringWriter();
-        writer.NewLine = "\n";
-
-        var count = await ExportCommand.WriteJsonLinesAsync(items, writer, CancellationToken.None);
-        Assert.Equal(3, count);
-
-        var lines = writer.ToString().TrimEnd('\n').Split('\n');
-        Assert.Equal(3, lines.Length);
-
-        // Each line must parse as a standalone JSON document.
-        foreach (var line in lines)
-        {
-            using var doc = JsonDocument.Parse(line);
-            Assert.Equal(JsonValueKind.Object, doc.RootElement.ValueKind);
-        }
-    }
-
     [Theory]
-    [InlineData("jsonl")]
-    [InlineData("JSONL")]
-    [InlineData("Jsonl")]
-    [InlineData("jsonlines")]
-    [InlineData("JsonLines")]
+    [InlineData("json")]
+    [InlineData("JSON")]
     [InlineData("array")]
     [InlineData("Array")]
     public void ExportFormat_ParsesDocumentedAliases(string value)
@@ -149,6 +87,28 @@ public class ExportCommandTests
         Assert.True(Enum.TryParse<ExportFormat>(value, ignoreCase: true, out _));
     }
 
+    [Theory]
+    [InlineData("jsonl")]
+    [InlineData("jsonlines")]
+    public void ExportFormat_NoLongerAcceptsJsonLines(string value)
+    {
+        Assert.False(Enum.TryParse<ExportFormat>(value, ignoreCase: true, out _));
+    }
+
+    [Fact]
+    public async Task WriteArrayAsync_WritesIndentedArrayLikeVsCodeExport()
+    {
+        var items = ToAsyncEnumerableAsync(
+            JsonSerializer.SerializeToElement(new { id = "a", nested = new { pk = "x" } }),
+            JsonSerializer.SerializeToElement(new { id = "b" }));
+        using var buffer = new MemoryStream();
+
+        await ExportCommand.WriteArrayAsync(items, buffer, CancellationToken.None);
+
+        Assert.Equal(
+            "[\n    {\n        \"id\": \"a\",\n        \"nested\": {\n            \"pk\": \"x\"\n        }\n    },\n    {\n        \"id\": \"b\"\n    }\n]",
+            Encoding.UTF8.GetString(buffer.ToArray()));
+    }
     [Fact]
     public async Task WriteCsvAsync_WritesHeaderUnionAndRows()
     {
@@ -366,11 +326,11 @@ public class ExportCommandTests
             await File.WriteAllTextAsync(path, "previous export", TestContext.Current.CancellationToken);
             Task<int> ExportAsync() => ExportCommand.WriteFileAsync(
                 ToAsyncEnumerableAsync(JsonSerializer.SerializeToElement(new { id = "1" })),
-                ExportFormat.JsonLines, path, overwrite, CancellationToken.None);
+                ExportFormat.Json, path, overwrite, CancellationToken.None);
             if (overwrite)
             {
                 Assert.Equal(1, await ExportAsync());
-                Assert.Equal("{\"id\":\"1\"}\n", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+                Assert.Equal("[\n    {\n        \"id\": \"1\"\n    }\n]", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
             }
             else
             {
@@ -380,7 +340,7 @@ public class ExportCommandTests
                     exception.Message);
                 var items = Substitute.For<IAsyncEnumerable<JsonElement>>();
                 await Assert.ThrowsAsync<IOException>(() => ExportCommand.WriteFileAsync(
-                    items, ExportFormat.JsonLines, path, false, TestContext.Current.CancellationToken));
+                    items, ExportFormat.Json, path, false, TestContext.Current.CancellationToken));
                 items.DidNotReceive().GetAsyncEnumerator(Arg.Any<CancellationToken>());
                 Assert.Equal("previous export", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
             }
@@ -404,7 +364,7 @@ public class ExportCommandTests
             var items = Substitute.For<IAsyncEnumerable<JsonElement>>();
 
             var exception = await Assert.ThrowsAsync<IOException>(() => ExportCommand.WriteFileAsync(
-                items, ExportFormat.JsonLines, directory.FullName, overwrite, TestContext.Current.CancellationToken));
+                items, ExportFormat.Json, directory.FullName, overwrite, TestContext.Current.CancellationToken));
 
             Assert.Equal(
                 MessageService.GetArgsString("command-export-error-destination_directory", "file", Path.GetFullPath(directory.FullName)),

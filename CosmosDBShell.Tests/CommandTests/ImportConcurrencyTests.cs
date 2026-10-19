@@ -476,23 +476,24 @@ public class ImportConcurrencyTests
     }
 
     [Theory]
-    [InlineData("jsonl", "{\"id\":\"a\"}\n{\"id\":\"b\"}\n")]
-    [InlineData("json", "[{\"id\":\"a\"},{\"id\":\"b\"}]")]
-    [InlineData("csv", "id\na\nb\n")]
-    public async Task DryRun_WithConcurrencyValidatesWithoutConnectionAndPreservesResult(string extension, string content)
+    [InlineData("jsonl", "{\"id\":\"a\"}\n{\"id\":\"b\"}\n", (int)ImportFormat.JsonLines, 2)]
+    [InlineData("json", "[{\"id\":\"a\"},{\"id\":\"b\"}]", (int)ImportFormat.Auto, 2)]
+    [InlineData("json", "{\n    \"id\": \"a\"\n}\n", (int)ImportFormat.Auto, 1)]
+    [InlineData("csv", "id\na\nb\n", (int)ImportFormat.Auto, 2)]
+    public async Task DryRun_WithConcurrencyValidatesWithoutConnectionAndPreservesResult(string extension, string content, int format, int expected)
     {
         var fileName = $"cosmos-import-{Guid.NewGuid():N}.{Path.GetFileName(extension).TrimStart('.')}";
         var path = Path.Join(Path.GetTempPath(), fileName);
         try
         {
             await File.WriteAllTextAsync(path, content, TestContext.Current.CancellationToken);
-            var command = new ImportCommand { File = path, DryRun = true, Concurrency = 32 };
+            var command = new ImportCommand { File = path, DryRun = true, Concurrency = 32, Format = (ImportFormat)format };
             var state = await command.ExecuteAsync(
                 ShellInterpreter.Instance, new CommandState(), "import", TestContext.Current.CancellationToken);
             var result = Assert.IsType<ShellJson>(state.Result).Value;
 
             Assert.Equal("import", result.GetProperty("type").GetString());
-            Assert.Equal(2, result.GetProperty("imported").GetInt32());
+            Assert.Equal(expected, result.GetProperty("imported").GetInt32());
             Assert.Equal(0, result.GetProperty("failed").GetInt32());
             Assert.Equal(0, result.GetProperty("requestCharge").GetDouble());
             Assert.True(result.GetProperty("dryRun").GetBoolean());
