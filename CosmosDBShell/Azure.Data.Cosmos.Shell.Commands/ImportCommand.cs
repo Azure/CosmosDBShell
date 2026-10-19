@@ -494,7 +494,7 @@ internal class ImportCommand : CosmosCommand
         var continueOnError = this.ContinueOnError == true;
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
 
-        var errors = new BulkWriteDiagnostics();
+        var errors = shell.IsMachineMode ? new BulkWriteDiagnostics() : null;
         var (successCount, failCount, charge) = await ExecuteImportAsync(
             shell,
             filePath,
@@ -514,14 +514,14 @@ internal class ImportCommand : CosmosCommand
         {
             if (dryRun)
             {
-                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                shell.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
                     "command-import-dry-run-success",
                     "count",
                     successCount));
             }
             else if (failCount == 0)
             {
-                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                shell.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
                     "command-import-success",
                     "count",
                     successCount,
@@ -530,7 +530,7 @@ internal class ImportCommand : CosmosCommand
             }
             else if (successCount > 0)
             {
-                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Warning, MessageService.GetArgsString(
+                shell.Output.WriteLine(ShellMessageKind.Warning, MessageService.GetArgsString(
                     "command-import-success-partial",
                     "success",
                     successCount,
@@ -541,7 +541,7 @@ internal class ImportCommand : CosmosCommand
             }
             else
             {
-                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString(
+                shell.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString(
                     "command-import-all-failed",
                     "count",
                     failCount));
@@ -556,7 +556,7 @@ internal class ImportCommand : CosmosCommand
                 failCount,
                 "total",
                 successCount + failCount);
-            if (shell.IsMachineMode)
+            if (errors != null)
             {
                 message += Environment.NewLine + errors.GetMessage();
             }
@@ -611,7 +611,7 @@ internal class ImportCommand : CosmosCommand
         IReadOnlyList<string> partitionKeyPaths,
         int concurrency,
         CommandState commandState,
-        BulkWriteDiagnostics errors,
+        BulkWriteDiagnostics? errors,
         CancellationToken token)
     {
         FileStream? stream = null;
@@ -662,7 +662,7 @@ internal class ImportCommand : CosmosCommand
                 errors: errors);
         }
         catch (Exception ex) when ((ex is CommandException or JsonException)
-            && ShellInterpreter.Instance.IsMachineMode && errors.Count > 0)
+            && errors is { Count: > 0 })
         {
             throw new CommandException("import", ex.Message + Environment.NewLine + errors.GetMessage(), ex);
         }
@@ -718,13 +718,13 @@ internal class ImportCommand : CosmosCommand
             else
             {
                 failed++;
-                if (ShellInterpreter.Instance.IsMachineMode)
+                if (errors != null)
                 {
-                    errors?.Add(result.Error);
+                    errors.Add(result.Error);
                 }
                 else
                 {
-                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, result.Error);
+                    (warningShell ?? ShellInterpreter.Instance).Output.WriteLine(ShellMessageKind.Error, result.Error);
                 }
             }
         }

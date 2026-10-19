@@ -93,7 +93,7 @@ internal class ReplaceCommand : CosmosCommand
                             && HasUndefinedPartitionKeyComponent(item, partitionKeyPaths));
                 AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
                 shell.RenderMutationWarnings(commandState);
-                return await ReplaceArrayAsync(container, partitionKeyPaths, root, token);
+                return await ReplaceArrayAsync(shell, container, partitionKeyPaths, root, token);
             }
 
             var undefinedCount = root.ValueKind == JsonValueKind.Object
@@ -102,7 +102,7 @@ internal class ReplaceCommand : CosmosCommand
                 : 0;
             AddUndefinedPartitionKeyWarning(commandState, undefinedCount);
             shell.RenderMutationWarnings(commandState);
-            var singleCharge = await ReplaceOneAsync(container, partitionKeyPaths, root, etag, token, printSuccess: true);
+            var singleCharge = await ReplaceOneAsync(shell, container, partitionKeyPaths, root, etag, token, printSuccess: true);
             return new ReplaceSummary(1, 0, singleCharge);
         }
         catch (JsonException ex)
@@ -111,12 +111,12 @@ internal class ReplaceCommand : CosmosCommand
         }
     }
 
-    private static async Task<ReplaceSummary> ReplaceArrayAsync(Container container, IReadOnlyList<string> partitionKeyPaths, JsonElement arrayRoot, CancellationToken token)
+    private static async Task<ReplaceSummary> ReplaceArrayAsync(ShellInterpreter shell, Container container, IReadOnlyList<string> partitionKeyPaths, JsonElement arrayRoot, CancellationToken token)
     {
         int successCount = 0;
         int failCount = 0;
         double charge = 0.0;
-        var presentResults = !ShellInterpreter.Instance.IsMachineMode;
+        var presentResults = !shell.IsMachineMode;
         var errors = presentResults ? null : new BulkWriteDiagnostics();
         var itemIndex = 0;
 
@@ -125,7 +125,7 @@ internal class ReplaceCommand : CosmosCommand
             itemIndex++;
             try
             {
-                var itemCharge = await ReplaceOneAsync(container, partitionKeyPaths, element, etag: null, token, printSuccess: false);
+                var itemCharge = await ReplaceOneAsync(shell, container, partitionKeyPaths, element, etag: null, token, printSuccess: false);
                 charge += itemCharge;
                 successCount++;
             }
@@ -136,7 +136,7 @@ internal class ReplaceCommand : CosmosCommand
                 errors?.Add(MessageService.GetArgsString("error-bulk-item", "index", itemIndex, "message", ex.Message));
                 if (presentResults)
                 {
-                    ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, ex.Message);
+                    shell.Output.WriteLine(ShellMessageKind.Error, ex.Message);
                 }
             }
         }
@@ -145,15 +145,15 @@ internal class ReplaceCommand : CosmosCommand
         {
             if (successCount > 0 && failCount == 0)
             {
-                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString("command-replace-success-multiple", "count", successCount, "charge", charge.ToString("F2")));
+                shell.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString("command-replace-success-multiple", "count", successCount, "charge", charge.ToString("F2")));
             }
             else if (successCount > 0)
             {
-                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Warning, MessageService.GetArgsString("command-replace-success-partial", "success", successCount, "failed", failCount, "charge", charge.ToString("F2")));
+                shell.Output.WriteLine(ShellMessageKind.Warning, MessageService.GetArgsString("command-replace-success-partial", "success", successCount, "failed", failCount, "charge", charge.ToString("F2")));
             }
             else
             {
-                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString("command-replace-all-failed", "count", failCount));
+                shell.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString("command-replace-all-failed", "count", failCount));
             }
         }
 
@@ -177,7 +177,7 @@ internal class ReplaceCommand : CosmosCommand
         return new ReplaceSummary(successCount, failCount, charge);
     }
 
-    private static async Task<double> ReplaceOneAsync(Container container, IReadOnlyList<string> partitionKeyPaths, JsonElement item, string? etag, CancellationToken token, bool printSuccess)
+    private static async Task<double> ReplaceOneAsync(ShellInterpreter shell, Container container, IReadOnlyList<string> partitionKeyPaths, JsonElement item, string? etag, CancellationToken token, bool printSuccess)
     {
         if (item.ValueKind != JsonValueKind.Object)
         {
@@ -231,7 +231,7 @@ internal class ReplaceCommand : CosmosCommand
 
             if (printSuccess)
             {
-                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString("command-replace-success-single", "charge", response.Headers.RequestCharge.ToString("F2")));
+                shell.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString("command-replace-success-single", "charge", response.Headers.RequestCharge.ToString("F2")));
             }
 
             return response.Headers.RequestCharge;

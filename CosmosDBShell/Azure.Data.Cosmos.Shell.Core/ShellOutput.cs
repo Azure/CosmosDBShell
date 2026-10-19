@@ -209,6 +209,9 @@ internal sealed class ShellOutput(
                     ColorSystem = ColorSystemSupport.NoColors,
                     Interactive = InteractionSupport.No,
                     Out = new AnsiConsoleOutput(writer),
+
+                    // CI enrichers (e.g. GitHub Actions) would otherwise re-enable ANSI escapes.
+                    Enrichment = new ProfileEnrichment { UseDefaultEnrichers = false },
                 });
             }
 

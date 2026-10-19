@@ -49,16 +49,16 @@ internal class ThemeCommand : CosmosCommand
 
         return action switch
         {
-            "current" => Task.FromResult(this.RunCurrent(commandState)),
-            "list" => Task.FromResult(this.RunList(commandState)),
-            "show" => Task.FromResult(this.RunShow(commandState)),
-            "use" or "set" => Task.FromResult(this.RunUse(commandState)),
-            "load" => Task.FromResult(this.RunLoad(commandState)),
-            "validate" => Task.FromResult(this.RunValidate(commandState)),
-            "save" => Task.FromResult(this.RunSave(commandState)),
-            "edit" => Task.FromResult(this.RunEdit(commandState)),
-            "open" => Task.FromResult(this.RunOpen(commandState)),
-            "reload" => Task.FromResult(this.RunReload(commandState)),
+            "current" => Task.FromResult(this.RunCurrent(shell, commandState)),
+            "list" => Task.FromResult(this.RunList(shell, commandState)),
+            "show" => Task.FromResult(this.RunShow(shell, commandState)),
+            "use" or "set" => Task.FromResult(this.RunUse(shell, commandState)),
+            "load" => Task.FromResult(this.RunLoad(shell, commandState)),
+            "validate" => Task.FromResult(this.RunValidate(shell, commandState)),
+            "save" => Task.FromResult(this.RunSave(shell, commandState)),
+            "edit" => Task.FromResult(this.RunEdit(shell, commandState)),
+            "open" => Task.FromResult(this.RunOpen(shell, commandState)),
+            "reload" => Task.FromResult(this.RunReload(shell, commandState)),
             _ => throw UnknownAction(action),
         };
     }
@@ -143,13 +143,13 @@ internal class ThemeCommand : CosmosCommand
         });
     }
 
-    private static void RenderThemeSample(ThemeOptions profile, string profileName)
+    private static void RenderThemeSample(ShellInterpreter shell, ThemeOptions profile, string profileName)
     {
         var saved = Theme.Current;
         try
         {
             Theme.Apply(profile);
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetArgsString("command-theme-sample-heading", "name", Markup.Escape(profileName.ToLowerInvariant())));
+            shell.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetArgsString("command-theme-sample-heading", "name", Markup.Escape(profileName.ToLowerInvariant())));
 
             var table = new Table().HideHeaders();
             table.AddColumn(string.Empty);
@@ -184,7 +184,7 @@ internal class ThemeCommand : CosmosCommand
             Row(MessageService.GetString("command-theme-role-help-description"), Theme.FormatHelpDescription(MessageService.GetString("command-theme-sample-description")));
             Row(MessageService.GetString("command-theme-role-brackets"), string.Concat(Theme.FormatBracket("{", 0), Theme.FormatBracket("[", 1), Theme.FormatBracket("(", 2), Theme.FormatBracket(")", 2), Theme.FormatBracket("]", 1), Theme.FormatBracket("}", 0)));
 
-            ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
+            shell.Output.Render(ShellMessageKind.Result, table);
         }
         finally
         {
@@ -192,15 +192,15 @@ internal class ThemeCommand : CosmosCommand
         }
     }
 
-    private CommandState RunCurrent(CommandState commandState)
+    private CommandState RunCurrent(ShellInterpreter shell, CommandState commandState)
     {
         var name = ResolveActiveName();
-        commandState.RenderUser = () => ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetArgsString("command-theme-active", "name", Markup.Escape(name)));
+        commandState.RenderUser = () => shell.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetArgsString("command-theme-active", "name", Markup.Escape(name)));
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "theme", id = name, active = true }));
         return commandState;
     }
 
-    private CommandState RunList(CommandState commandState)
+    private CommandState RunList(ShellInterpreter shell, CommandState commandState)
     {
         var active = ResolveActiveName();
         var items = new List<Dictionary<string, object?>>();
@@ -229,14 +229,14 @@ internal class ThemeCommand : CosmosCommand
         {
             foreach (var (marker, name, source) in rows)
             {
-                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, $"  {marker} {Markup.Escape(name)}  {Theme.FormatMuted(source)}");
+                shell.Output.MarkupLine(ShellMessageKind.Result, $"  {marker} {Markup.Escape(name)}  {Theme.FormatMuted(source)}");
             }
         };
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "theme", values = items }));
         return commandState;
     }
 
-    private CommandState RunShow(CommandState commandState)
+    private CommandState RunShow(ShellInterpreter shell, CommandState commandState)
     {
         var profileName = string.IsNullOrWhiteSpace(this.Name) ? ResolveActiveName() : this.Name;
         if (!ThemeProfiles.TryGet(profileName, out var profile))
@@ -244,12 +244,12 @@ internal class ThemeCommand : CosmosCommand
             throw UnknownTheme(profileName);
         }
 
-        commandState.RenderUser = () => RenderThemeSample(profile, profileName);
+        commandState.RenderUser = () => RenderThemeSample(shell, profile, profileName);
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "theme", id = profileName.ToLowerInvariant(), previewed = true }));
         return commandState;
     }
 
-    private CommandState RunUse(CommandState commandState)
+    private CommandState RunUse(ShellInterpreter shell, CommandState commandState)
     {
         if (string.IsNullOrWhiteSpace(this.Name))
         {
@@ -263,12 +263,12 @@ internal class ThemeCommand : CosmosCommand
 
         Theme.Apply(profile);
         var name = this.Name.ToLowerInvariant();
-        commandState.RenderUser = () => ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetArgsString("command-theme-applied", "name", Markup.Escape(name)));
+        commandState.RenderUser = () => shell.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetArgsString("command-theme-applied", "name", Markup.Escape(name)));
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "theme", id = name, applied = true }));
         return commandState;
     }
 
-    private CommandState RunLoad(CommandState commandState)
+    private CommandState RunLoad(ShellInterpreter shell, CommandState commandState)
     {
         var requested = string.IsNullOrWhiteSpace(this.Name) ? this.Path : this.Name;
         if (string.IsNullOrWhiteSpace(requested))
@@ -283,7 +283,7 @@ internal class ThemeCommand : CosmosCommand
         {
             var result = ThemeRegistry.Instance.LoadFile(path);
             Theme.Apply(result.Options);
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
+            shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
                 "command-theme-loaded",
                 "name",
                 Markup.Escape(result.Name),
@@ -291,7 +291,7 @@ internal class ThemeCommand : CosmosCommand
                 Markup.Escape(result.Source)));
             foreach (var warning in result.Warnings)
             {
-                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
+                shell.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
             }
 
             commandState.RenderUser = () => { };
@@ -316,7 +316,7 @@ internal class ThemeCommand : CosmosCommand
         }
     }
 
-    private CommandState RunSave(CommandState commandState)
+    private CommandState RunSave(ShellInterpreter shell, CommandState commandState)
     {
         if (string.IsNullOrWhiteSpace(this.Name))
         {
@@ -355,13 +355,13 @@ internal class ThemeCommand : CosmosCommand
         try
         {
             ThemeFile.Save(this.Name, Theme.Current, path);
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
+            shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
                 "command-theme-saved",
                 "name",
                 Markup.Escape(this.Name),
                 "path",
                 Markup.Escape(System.IO.Path.GetFullPath(path))));
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(MessageService.GetArgsString("command-theme-save-hint-reload", "name", this.Name)));
+            shell.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(MessageService.GetArgsString("command-theme-save-hint-reload", "name", this.Name)));
             commandState.RenderUser = () => { };
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {
@@ -379,37 +379,37 @@ internal class ThemeCommand : CosmosCommand
         }
     }
 
-    private CommandState RunValidate(CommandState commandState)
+    private CommandState RunValidate(ShellInterpreter shell, CommandState commandState)
     {
         var requested = string.IsNullOrWhiteSpace(this.Name) ? this.Path : this.Name;
         if (string.IsNullOrWhiteSpace(requested))
         {
-            return this.RunValidateDirectory(commandState, ThemeFile.DefaultUserThemesDirectory());
+            return this.RunValidateDirectory(shell, commandState, ThemeFile.DefaultUserThemesDirectory());
         }
 
         if (Directory.Exists(requested))
         {
-            return this.RunValidateDirectory(commandState, requested);
+            return this.RunValidateDirectory(shell, commandState, requested);
         }
 
         var path = ResolveThemePath(requested);
         if (Directory.Exists(path))
         {
-            return this.RunValidateDirectory(commandState, path);
+            return this.RunValidateDirectory(shell, commandState, path);
         }
 
-        return this.RunValidateFile(commandState, path);
+        return this.RunValidateFile(shell, commandState, path);
     }
 
-    private CommandState RunValidateFile(CommandState commandState, string path)
+    private CommandState RunValidateFile(ShellInterpreter shell, CommandState commandState, string path)
     {
         try
         {
             var result = ThemeRegistry.Instance.ValidateFile(path);
             var strictFailure = this.Strict && result.Warnings.Count > 0;
-            if (!ShellInterpreter.Instance.IsMachineMode || !strictFailure)
+            if (!shell.IsMachineMode || !strictFailure)
             {
-                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
                     "command-theme-validated",
                     "name",
                     Markup.Escape(result.Name),
@@ -417,7 +417,7 @@ internal class ThemeCommand : CosmosCommand
                     Markup.Escape(result.Source)));
                 foreach (var warning in result.Warnings)
                 {
-                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
+                    shell.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
                 }
             }
 
@@ -429,7 +429,7 @@ internal class ThemeCommand : CosmosCommand
                     result.Name,
                     "count",
                     result.Warnings.Count);
-                if (ShellInterpreter.Instance.IsMachineMode)
+                if (shell.IsMachineMode)
                 {
                     strictMessage += Environment.NewLine + result.Source + ": " + string.Join(Environment.NewLine, result.Warnings);
                 }
@@ -460,16 +460,16 @@ internal class ThemeCommand : CosmosCommand
         }
     }
 
-    private CommandState RunValidateDirectory(CommandState commandState, string directory)
+    private CommandState RunValidateDirectory(ShellInterpreter shell, CommandState commandState, string directory)
     {
         var files = ThemeFile.EnumerateThemeFiles(directory);
-        var presentResults = !ShellInterpreter.Instance.IsMachineMode;
+        var presentResults = !shell.IsMachineMode;
         if (files.Length == 0)
         {
             var emptyMessage = MessageService.GetArgsString("command-theme-validate-no-files", "directory", directory);
             if (presentResults)
             {
-                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(emptyMessage));
+                shell.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(emptyMessage));
             }
 
             commandState.RenderUser = () => { };
@@ -512,7 +512,7 @@ internal class ThemeCommand : CosmosCommand
                     validationErrors.Add(result.Source + ": " + string.Join(Environment.NewLine, result.Warnings));
                     if (presentResults)
                     {
-                        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2717")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
+                        shell.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2717")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
                     }
                 }
                 else
@@ -520,7 +520,7 @@ internal class ThemeCommand : CosmosCommand
                     validCount++;
                     if (presentResults)
                     {
-                        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, $"  {Theme.FormatHelpAccent("\u2713")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
+                        shell.Output.MarkupLine(ShellMessageKind.Information, $"  {Theme.FormatHelpAccent("\u2713")} {Markup.Escape(result.Name)} {Theme.FormatMuted("(" + System.IO.Path.GetFileName(file) + ")")}");
                     }
                 }
 
@@ -528,7 +528,7 @@ internal class ThemeCommand : CosmosCommand
                 {
                     foreach (var warning in result.Warnings)
                     {
-                        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, "    " + Theme.FormatWarning(warning));
+                        shell.Output.MarkupLine(ShellMessageKind.Warning, "    " + Theme.FormatWarning(warning));
                     }
                 }
                 else
@@ -544,8 +544,8 @@ internal class ThemeCommand : CosmosCommand
                 validationErrors.Add(file + ": " + ex.Message);
                 if (presentResults)
                 {
-                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2717")} {Markup.Escape(System.IO.Path.GetFileName(file))}");
-                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Error, "    " + Theme.FormatError(ex.Message));
+                    shell.Output.MarkupLine(ShellMessageKind.Error, $"  {Theme.FormatError("\u2717")} {Markup.Escape(System.IO.Path.GetFileName(file))}");
+                    shell.Output.MarkupLine(ShellMessageKind.Error, "    " + Theme.FormatError(ex.Message));
                 }
             }
 
@@ -572,12 +572,12 @@ internal class ThemeCommand : CosmosCommand
 
         foreach (var warning in pendingWarnings)
         {
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, "    " + Theme.FormatWarning(warning));
+            shell.Output.MarkupLine(ShellMessageKind.Warning, "    " + Theme.FormatWarning(warning));
         }
 
         if (presentResults)
         {
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
+            shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
                 "command-theme-validate-summary",
                 "valid",
                 validCount,
@@ -600,7 +600,7 @@ internal class ThemeCommand : CosmosCommand
         return commandState;
     }
 
-    private CommandState RunOpen(CommandState commandState)
+    private CommandState RunOpen(ShellInterpreter shell, CommandState commandState)
     {
         // 'theme open' always targets the user themes directory. We deliberately
         // do not accept a name or path argument here: handing arbitrary paths to
@@ -626,7 +626,7 @@ internal class ThemeCommand : CosmosCommand
             throw new CommandException("theme", message, ex);
         }
 
-        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
+        shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
             "command-theme-opened",
             "path",
             Markup.Escape(targetPath)));
@@ -636,7 +636,7 @@ internal class ThemeCommand : CosmosCommand
         return commandState;
     }
 
-    private CommandState RunEdit(CommandState commandState)
+    private CommandState RunEdit(ShellInterpreter shell, CommandState commandState)
     {
         // Resolve target. Empty -> active theme; otherwise treat as theme name
         // or path (same rules as load/validate).
@@ -704,7 +704,7 @@ internal class ThemeCommand : CosmosCommand
                     }
 
                     targetPath = seedPath;
-                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                    shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
                         "command-theme-edit-seeded",
                         "name",
                         Markup.Escape(registration.Name),
@@ -725,7 +725,7 @@ internal class ThemeCommand : CosmosCommand
             throw new CommandException("theme", message);
         }
 
-        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(MessageService.GetArgsString(
+        shell.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(MessageService.GetArgsString(
             "command-theme-edit-launching",
             "path",
             targetPath!,
@@ -779,7 +779,7 @@ internal class ThemeCommand : CosmosCommand
             // Re-scan the directory too so other files stay in sync with disk.
             registry.LoadFromDirectory(ThemeFile.DefaultUserThemesDirectory());
 
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
+            shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
                 "command-theme-edit-applied",
                 "name",
                 Markup.Escape(result.Name),
@@ -788,7 +788,7 @@ internal class ThemeCommand : CosmosCommand
 
             foreach (var warning in result.Warnings)
             {
-                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
+                shell.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
             }
 
             commandState.RenderUser = () => { };
@@ -814,14 +814,14 @@ internal class ThemeCommand : CosmosCommand
         }
     }
 
-    private CommandState RunReload(CommandState commandState)
+    private CommandState RunReload(ShellInterpreter shell, CommandState commandState)
     {
         var registry = ThemeRegistry.Instance;
         registry.ResetToBuiltIns();
         var directory = ThemeFile.DefaultUserThemesDirectory();
         var loaded = registry.LoadFromDirectory(directory);
 
-        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
+        shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString(
             "command-theme-reloaded",
             "count",
             loaded,
@@ -829,7 +829,7 @@ internal class ThemeCommand : CosmosCommand
             Markup.Escape(directory)));
         foreach (var warning in registry.Warnings)
         {
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
+            shell.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(warning));
         }
 
         commandState.RenderUser = () => { };

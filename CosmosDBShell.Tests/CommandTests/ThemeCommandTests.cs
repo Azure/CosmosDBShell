@@ -87,6 +87,41 @@ public class ThemeCommandTests
     }
 
     [Fact]
+    public async Task Validate_DirectoryUsesExecutingShellMachineMode()
+    {
+        using var dir = new TempDirectory();
+        var broken = Path.Combine(dir.Path, "broken.toml");
+        File.WriteAllText(broken,
+            """
+            name = "broken"
+
+            [colors]
+            literal = "lightyellow3"
+            """);
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var command = new ThemeCommand
+        {
+            Action = "validate",
+            Name = dir.Path,
+        };
+        var savedOut = Console.Out;
+        using var stdout = new StringWriter();
+        try
+        {
+            Console.SetOut(stdout);
+            var error = await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(shell, new CommandState(), "", CancellationToken.None));
+
+            Assert.Contains(broken, error.Message);
+            Assert.Empty(stdout.ToString());
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+        }
+    }
+
+    [Fact]
     public async Task Validate_StrictTreatsWarningsAsErrors()
     {
         var name = $"strict-{Guid.NewGuid():N}";

@@ -293,14 +293,12 @@ public class MachineModeWriteErrorTests
 
     private static async Task<string> CaptureMachineErrorAsync(ShellInterpreter shell, string command)
     {
-        var savedOptions = ShellInterpreter.Instance.Options;
         var savedOut = Console.Out;
         var savedError = Console.Error;
         using var stdout = new StringWriter();
         using var stderr = new StringWriter();
         try
         {
-            ShellInterpreter.Instance.Options = shell.Options;
             Console.SetOut(stdout);
             Console.SetError(stderr);
             var state = await shell.ExecuteCommandAsync(command, TestContext.Current.CancellationToken);
@@ -317,7 +315,6 @@ public class MachineModeWriteErrorTests
         {
             Console.SetOut(savedOut);
             Console.SetError(savedError);
-            ShellInterpreter.Instance.Options = savedOptions;
         }
     }
 }
