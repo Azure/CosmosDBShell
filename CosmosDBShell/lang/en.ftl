@@ -522,6 +522,7 @@ command-import-error-blank_line = Line { $line } is blank.
 command-import-error-not_object = Line { $line } is not a JSON object.
 command-import-error-not_document = The file must contain a JSON object or an array of JSON objects. Use --format=jsonl for JSON Lines files.
 command-import-error-invalid_document = The file is not a valid JSON document: { $message } Use --format=jsonl for JSON Lines files.
+command-import-error-multiple_documents = The file contains more than one JSON value. Use --format=jsonl for JSON Lines files.
 command-import-error-invalid_line_json = Line { $line } is not valid JSON: { $message }
 command-import-error-item_status = Line { $line }: item returned status { $status }.
 command-import-error-item_failed = Line { $line }: { $status } - { $message }

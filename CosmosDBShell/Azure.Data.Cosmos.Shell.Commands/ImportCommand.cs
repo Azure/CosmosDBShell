@@ -53,8 +53,6 @@ internal class ImportCommand : CosmosCommand
 {
     internal const int DefaultConcurrency = 16;
 
-    private static readonly byte[] Utf8ByteOrderMark = [0xEF, 0xBB, 0xBF];
-
     [CosmosParameter("file", RequiredErrorKey = "command-import-error-missing_file")]
     public string? File { get; init; }
 
@@ -223,18 +221,45 @@ internal class ImportCommand : CosmosCommand
 
         if (first == '[')
         {
-            await foreach (var item in EnumerateArrayAsync(stream, token))
+            await using var items = EnumerateArrayAsync(stream, token).GetAsyncEnumerator(token);
+            while (await MoveNextDocumentAsync(items))
             {
-                yield return item;
+                yield return items.Current;
             }
 
             yield break;
         }
 
-        JsonDocument document;
+        // Reads top-level values incrementally so trailing content, such as a second JSON Lines
+        // record, is rejected without buffering the rest of the file.
+        await using var values = JsonSerializer.DeserializeAsyncEnumerable<JsonElement>(
+            stream,
+            topLevelValues: true,
+            cancellationToken: token).GetAsyncEnumerator(token);
+        if (!await MoveNextDocumentAsync(values))
+        {
+            yield break;
+        }
+
+        var item = values.Current;
+        if (item.ValueKind != JsonValueKind.Object)
+        {
+            throw new CommandException("import", MessageService.GetString("command-import-error-not_document"));
+        }
+
+        if (await MoveNextDocumentAsync(values))
+        {
+            throw new CommandException("import", MessageService.GetString("command-import-error-multiple_documents"));
+        }
+
+        yield return (1, item);
+    }
+
+    private static async Task<bool> MoveNextDocumentAsync<T>(IAsyncEnumerator<T> enumerator)
+    {
         try
         {
-            document = await JsonDocument.ParseAsync(stream, cancellationToken: token);
+            return await enumerator.MoveNextAsync();
         }
         catch (JsonException ex)
         {
@@ -243,49 +268,42 @@ internal class ImportCommand : CosmosCommand
                 MessageService.GetArgsString("command-import-error-invalid_document", "message", ex.Message),
                 ex);
         }
-
-        using (document)
-        {
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                throw new CommandException("import", MessageService.GetString("command-import-error-not_document"));
-            }
-
-            yield return (1, document.RootElement.Clone());
-        }
     }
 
     private static async Task<int> PeekFirstSignificantByteAsync(Stream stream, CancellationToken token)
     {
         var start = stream.Position;
         var buffer = new byte[4096];
-        var position = 0L;
+        var contentStart = start;
         try
         {
-            int read;
-            while ((read = await stream.ReadAsync(buffer.AsMemory(), token)) > 0)
+            // Only a complete UTF-8 byte-order mark is skipped, even when split across reads;
+            // partial prefixes reach the JSON parser and fail there.
+            var read = await stream.ReadAtLeastAsync(buffer, 3, throwOnEndOfStream: false, token);
+            var index = read >= 3 && buffer[0] == 0xEF && buffer[1] == 0xBB && buffer[2] == 0xBF ? 3 : 0;
+            contentStart = start + index;
+            while (read > 0)
             {
-                for (var i = 0; i < read; i++, position++)
+                for (; index < read; index++)
                 {
-                    var value = buffer[i];
-                    if ((position < Utf8ByteOrderMark.Length && value == Utf8ByteOrderMark[position])
-                        || value is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')
+                    var value = buffer[index];
+                    if (value is not ((byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n'))
                     {
-                        continue;
+                        return value;
                     }
-
-                    return value;
                 }
+
+                read = await stream.ReadAsync(buffer, token);
+                index = 0;
             }
 
             return -1;
         }
         finally
         {
-            stream.Position = start;
+            stream.Position = contentStart;
         }
     }
-
     /// <summary>
     /// Parses a partition key path (e.g. <c>/address/city</c>) into its individual
     /// segments. Returns <see langword="null"/> when no usable path is supplied.

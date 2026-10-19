@@ -87,12 +87,7 @@ public class ImportCommandTests
     {
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
 
-        var ex = await Assert.ThrowsAsync<CommandException>(async () =>
-        {
-            await foreach (var _ in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
-            {
-            }
-        });
+        var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
 
         Assert.Contains("--format=jsonl", ex.Message);
     }
@@ -102,15 +97,67 @@ public class ImportCommandTests
     {
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{\"id\":\"1\"}\n{\"id\":\"2\"}\n"));
 
-        var ex = await Assert.ThrowsAsync<CommandException>(async () =>
-        {
-            await foreach (var _ in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
-            {
-            }
-        });
+        var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
 
         Assert.Contains("--format=jsonl", ex.Message);
+    }
+
+    [Fact]
+    public async Task EnumerateJsonDocumentAsync_LargeJsonLinesInput_FailsWithoutReadingRestOfFile()
+    {
+        var content = new StringBuilder();
+        for (var i = 0; i < 200_000; i++)
+        {
+            content.Append("{\"id\":\"").Append(i).Append("\",\"value\":\"padding\"}\n");
+        }
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content.ToString()));
+
+        var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+
+        Assert.Contains("--format=jsonl", ex.Message);
+        Assert.True(stream.Position < 1024 * 1024, $"Read {stream.Position} of {stream.Length} bytes.");
+    }
+
+    [Theory]
+    [InlineData("[{\"id\":\"a\"},")]
+    [InlineData("[{\"id\":\"a\"}")]
+    [InlineData("[{\"id\":\"a\"}]]")]
+    [InlineData("[{\"id\":\"a\"},{\"id\":}]")]
+    [InlineData("{\"id\":\"a\"")]
+    public async Task EnumerateJsonDocumentAsync_MalformedDocument_ReportsDocumentError(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+
+        Assert.Contains("not a valid JSON document", ex.Message);
+        Assert.Contains("--format=jsonl", ex.Message);
         Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+    }
+
+    [Theory]
+    [InlineData(new byte[] { 0xEF })]
+    [InlineData(new byte[] { 0xEF, 0xBB })]
+    [InlineData(new byte[] { 0xEF, 0xBB, (byte)'[', (byte)']' })]
+    [InlineData(new byte[] { (byte)' ', 0xEF, 0xBB, 0xBF })]
+    public async Task EnumerateJsonDocumentAsync_IncompleteOrMisplacedByteOrderMark_Throws(byte[] content)
+    {
+        using var stream = new MemoryStream(content);
+
+        await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+    }
+
+    [Theory]
+    [InlineData("", 0)]
+    [InlineData("  []", 0)]
+    [InlineData("\n[{\"id\":\"a\"},{\"id\":\"b\"}]", 2)]
+    [InlineData(" {\"id\":\"a\"}", 1)]
+    public async Task EnumerateJsonDocumentAsync_ByteOrderMarkSplitAcrossReads_IsSkipped(string json, int expected)
+    {
+        using var stream = new OneByteReadStream([0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes(json)]);
+
+        Assert.Equal(expected, await CountJsonDocumentItemsAsync(stream));
     }
     [Theory]
     [InlineData("auto")]
@@ -623,5 +670,29 @@ public class ImportCommandTests
             yield return item;
             await Task.Yield();
         }
+    }
+
+    private static async Task<int> CountJsonDocumentItemsAsync(Stream stream)
+    {
+        var count = 0;
+        await foreach (var _ in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    private sealed class OneByteReadStream(byte[] content) : MemoryStream(content)
+    {
+        public override int Read(byte[] buffer, int offset, int count) => base.Read(buffer, offset, Math.Min(count, 1));
+
+        public override int Read(Span<byte> buffer) => base.Read(buffer[..Math.Min(buffer.Length, 1)]);
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => base.ReadAsync(buffer, offset, Math.Min(count, 1), cancellationToken);
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            => base.ReadAsync(buffer[..Math.Min(buffer.Length, 1)], cancellationToken);
     }
 }
