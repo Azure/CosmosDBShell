@@ -196,17 +196,17 @@ internal class InfoCommand : CosmosCommand
             var line = lines[i];
             if (i == 0)
             {
-                ShellInterpreter.Instance.Output.Markup(ShellMessageKind.Result, indent + Theme.FormatError(MessageService.GetString("error")) + " ");
-                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, line);
+                ShellInterpreter.Instance.Output.Markup(ShellMessageKind.Error, indent + Theme.FormatError(MessageService.GetString("error")) + " ");
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, line);
             }
             else if (line.Length == 0)
             {
-                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result);
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error);
             }
             else
             {
-                ShellInterpreter.Instance.Output.Markup(ShellMessageKind.Result, indent);
-                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, line);
+                ShellInterpreter.Instance.Output.Markup(ShellMessageKind.Error, indent);
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, line);
             }
         }
     }
