@@ -91,14 +91,7 @@ internal class PrintCommand : CosmosCommand
             throw new CommandException("print", MessageService.GetString("command-print-error-missing_key"));
         }
 
-        try
-        {
-            return CreatePartitionKeyFromArgument(this.PartitionKey);
-        }
-        catch (JsonException ex)
-        {
-            throw new CommandException("print", MessageService.GetString("command-print-error-invalid_pk_json"), ex);
-        }
+        return CreatePartitionKeyFromArgument(this.PartitionKey, "print", "command-print-error-invalid_pk_json");
     }
 
     private async Task<CommandState> PrintItemAsync(Container container, PartitionKey partitionKey, CancellationToken token)

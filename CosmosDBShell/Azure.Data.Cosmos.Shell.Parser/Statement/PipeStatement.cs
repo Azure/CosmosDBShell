@@ -98,7 +98,7 @@ internal class PipeStatement : Statement
             return commandState;
         }
 
-        commandState = shell.PrintState(commandState, markAsRendered: true);
+        commandState = shell.PrintState(commandState, markAsRendered: true, deferMachineModeWarnings: true);
         return commandState;
     }
 

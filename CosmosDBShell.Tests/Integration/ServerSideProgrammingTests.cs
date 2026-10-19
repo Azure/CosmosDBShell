@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests.Integration;
 
 using System.Net;
+using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
 
@@ -90,6 +91,37 @@ public class ServerSideProgrammingTests : ConnectedEmulatorTestBase
 
             var result = IntegrationTestBase.GetJson(exec);
             Assert.Equal("hello", result.GetString());
+        }
+        finally
+        {
+            File.Delete(bodyFile);
+        }
+    }
+
+    [Fact]
+    public async Task Sproc_Exec_WithoutResponseBody_ReturnsNull()
+    {
+        var (dbName, _) = await CreateContainerAsync();
+
+        var bodyFile = WriteTempScript(
+            "sproc",
+            "function noBody() { }");
+
+        try
+        {
+            var create = await ExecuteAsync($"sproc create noBodyProc \"{ShellPath(bodyFile)}\" --database {dbName} --container scripts");
+            Assert.False(create.IsError, FormatError(create));
+
+            var exec = await ExecuteAsync($"sproc exec noBodyProc --partition-key pk1 --database {dbName} --container scripts");
+
+            if (exec is ErrorCommandState { Exception: CosmosException { StatusCode: HttpStatusCode.BadRequest } cosmosEx }
+                && cosmosEx.Message.Contains("Server-side script execution is not supported", StringComparison.Ordinal))
+            {
+                throw SkipException.ForSkip("The Cosmos DB emulator does not support server-side script execution.");
+            }
+
+            Assert.False(exec.IsError, FormatError(exec));
+            Assert.Equal(JsonValueKind.Null, IntegrationTestBase.GetJson(exec).ValueKind);
         }
         finally
         {

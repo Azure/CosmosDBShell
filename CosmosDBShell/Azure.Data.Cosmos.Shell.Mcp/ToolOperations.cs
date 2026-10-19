@@ -752,6 +752,7 @@ internal class ToolOperations
 
         this.logger?.LogTrace($"Requested '{command.CommandName}'.");
 
+        var commandState = new CommandState();
         try
         {
             return await shell.RunSerializedAsync(
@@ -762,10 +763,19 @@ internal class ToolOperations
                         return McpResponseFactory.CreateError(ContextChangedMessage, shell.State);
                     }
 
-                    shell.PrintCommand(commandLine);
-                    var response = await shell.ExecuteCosmosCommandAsync(cmd, new CommandState(), command.CommandName, cancellationToken);
-                    shell.CancelPrompt();
-                    return McpResponseFactory.CreateSuccess(response, shell.State);
+                    var previousMcpInvocation = shell.IsMcpInvocation;
+                    shell.IsMcpInvocation = true;
+                    try
+                    {
+                        shell.PrintCommand(commandLine);
+                        var response = await shell.ExecuteCosmosCommandAsync(cmd, commandState, command.CommandName, cancellationToken);
+                        shell.CancelPrompt();
+                        return McpResponseFactory.CreateSuccess(response, shell.State);
+                    }
+                    finally
+                    {
+                        shell.IsMcpInvocation = previousMcpInvocation;
+                    }
                 },
                 cancellationToken);
         }
@@ -776,7 +786,8 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(
                 $"Error executing command '{command.CommandName}': {ex.Message}",
                 ShellInterpreter.Instance.State,
-                RequestChargeContext.GetExceptionCharge(ex));
+                RequestChargeContext.GetExceptionCharge(ex),
+                commandState.Warnings);
         }
         finally
         {

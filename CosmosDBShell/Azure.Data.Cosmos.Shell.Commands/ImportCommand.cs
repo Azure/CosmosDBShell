@@ -150,7 +150,7 @@ internal class ImportCommand : CosmosCommand
 
             return doc.RootElement.Clone();
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
         {
             throw new CommandException(
                 "import",
@@ -230,8 +230,8 @@ internal class ImportCommand : CosmosCommand
             return null;
         }
 
-        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return segments.Length == 0 ? null : segments;
+        var segments = SplitPartitionKeyPath(path.Trim());
+        return segments.Count == 0 ? null : [.. segments];
     }
 
     /// <summary>
@@ -473,6 +473,7 @@ internal class ImportCommand : CosmosCommand
         var dryRun = this.DryRun == true;
 
         Container? container = null;
+        IReadOnlyList<string> partitionKeyPaths = [];
         if (!dryRun)
         {
             if (shell.State is not ConnectedState connectedState)
@@ -480,14 +481,12 @@ internal class ImportCommand : CosmosCommand
                 throw new NotConnectedException("import");
             }
 
-            var (_, _, resolvedContainer) = await ResolveContainerAsync(
-                connectedState.Client,
-                shell.State,
+            (_, _, container, partitionKeyPaths) = await ResolveContainerWithPartitionKeyPathsAsync(
+                connectedState,
                 this.Database,
                 this.Container,
                 "import",
                 token);
-            container = resolvedContainer;
         }
 
         var format = await ResolveFormatAsync(filePath, this.Format ?? ImportFormat.Auto, token);
@@ -495,7 +494,19 @@ internal class ImportCommand : CosmosCommand
         var continueOnError = this.ContinueOnError == true;
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
 
-        var (successCount, failCount, charge) = await ExecuteImportAsync(filePath, format, mode, container, continueOnError, dryRun, partitionKeySegments, concurrency, token);
+        var (successCount, failCount, charge) = await ExecuteImportAsync(
+            shell,
+            filePath,
+            format,
+            mode,
+            container,
+            continueOnError,
+            dryRun,
+            partitionKeySegments,
+            partitionKeyPaths,
+            concurrency,
+            commandState,
+            token);
 
         if (dryRun)
         {
@@ -544,7 +555,7 @@ internal class ImportCommand : CosmosCommand
                     successCount + failCount));
         }
 
-        return new CommandState
+        var resultState = new CommandState
         {
             Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {
@@ -557,6 +568,7 @@ internal class ImportCommand : CosmosCommand
             })),
             RequestCharge = charge > 0 ? charge : null,
         };
+        return resultState;
     }
 
     private static async Task<ImportFormat> ResolveFormatAsync(string filePath, ImportFormat requested, CancellationToken token)
@@ -579,6 +591,7 @@ internal class ImportCommand : CosmosCommand
     }
 
     private static async Task<(int Success, int Failed, double Charge)> ExecuteImportAsync(
+        ShellInterpreter shell,
         string filePath,
         ImportFormat format,
         ImportMode mode,
@@ -586,7 +599,9 @@ internal class ImportCommand : CosmosCommand
         bool continueOnError,
         bool dryRun,
         string[]? partitionKeySegments,
+        IReadOnlyList<string> partitionKeyPaths,
         int concurrency,
+        CommandState commandState,
         CancellationToken token)
     {
         FileStream? stream = null;
@@ -624,7 +639,16 @@ internal class ImportCommand : CosmosCommand
             }
 
             ArgumentNullException.ThrowIfNull(container);
-            return await WriteItemsAsync(source, container, mode, concurrency, continueOnError, token);
+            return await WriteItemsAsync(
+                source,
+                container,
+                mode,
+                concurrency,
+                continueOnError,
+                partitionKeyPaths,
+                commandState,
+                token,
+                warningShell: shell);
         }
         finally
         {
@@ -644,11 +668,27 @@ internal class ImportCommand : CosmosCommand
         bool continueOnError,
         CancellationToken token)
     {
+        return await WriteItemsAsync(source, container, mode, concurrency, continueOnError, [], new CommandState(), token);
+    }
+
+    internal static async Task<(int Success, int Failed, double Charge)> WriteItemsAsync(
+        IAsyncEnumerable<(int LineNumber, JsonElement Item)> source,
+        Container container,
+        ImportMode mode,
+        int concurrency,
+        bool continueOnError,
+        IReadOnlyList<string> partitionKeyPaths,
+        CommandState commandState,
+        CancellationToken token,
+        ShellInterpreter? warningShell = null)
+    {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         var pending = new List<Task<(double Charge, string? Error)>>();
         var success = 0;
         var failed = 0;
         var charge = 0.0;
+        var undefinedPartitionKeyMutationCount = 0;
+        CommandWarning? undefinedPartitionKeyWarning = null;
 
         void Record((double Charge, string? Error) result)
         {
@@ -706,16 +746,49 @@ internal class ImportCommand : CosmosCommand
                 }
 
                 token.ThrowIfCancellationRequested();
-                pending.Add(WriteItemAsync(container, mode, items.Current.LineNumber, items.Current.Item, token));
+                if (items.Current.Item.ValueKind == JsonValueKind.Object
+                    && HasUndefinedPartitionKeyComponent(items.Current.Item, partitionKeyPaths))
+                {
+                    if (undefinedPartitionKeyWarning is null)
+                    {
+                        undefinedPartitionKeyWarning = commandState.AddWarning(
+                            MessageService.GetString("warning-undefined-partition-key-pending"));
+                        warningShell?.RenderMutationWarnings(commandState);
+                    }
+
+                    undefinedPartitionKeyMutationCount++;
+                    undefinedPartitionKeyWarning = AddUndefinedPartitionKeyWarning(
+                        commandState,
+                        undefinedPartitionKeyMutationCount,
+                        undefinedPartitionKeyWarning);
+                }
+
+                pending.Add(WriteItemAsync(
+                    container,
+                    mode,
+                    items.Current.LineNumber,
+                    items.Current.Item,
+                    partitionKeyPaths,
+                    token));
             }
         }
         finally
         {
-            // Drain every started write before returning or releasing the source, even on parse errors.
-            var results = await Task.WhenAll(pending);
-            foreach (var result in results)
+            try
             {
-                Record(result);
+                // Drain every started write before returning or releasing the source, even on parse errors.
+                var results = await Task.WhenAll(pending);
+                foreach (var result in results)
+                {
+                    Record(result);
+                }
+            }
+            finally
+            {
+                if (undefinedPartitionKeyWarning != null)
+                {
+                    warningShell?.RenderUpdatedWarnings(commandState);
+                }
             }
         }
 
@@ -728,17 +801,52 @@ internal class ImportCommand : CosmosCommand
         ImportMode mode,
         int lineNumber,
         JsonElement item,
+        IReadOnlyList<string> partitionKeyPaths,
         CancellationToken token)
     {
         try
         {
             var options = new ItemRequestOptions { EnableContentResponseOnWrite = false };
-            var response = mode == ImportMode.Upsert
-                ? await container.UpsertItemAsync(item, requestOptions: options, cancellationToken: token)
-                : await container.CreateItemAsync(item, requestOptions: options, cancellationToken: token);
+            if (partitionKeyPaths.Count == 0)
+            {
+                var itemResponse = mode == ImportMode.Upsert
+                    ? await container.UpsertItemAsync(item, requestOptions: options, cancellationToken: token)
+                    : await container.CreateItemAsync(item, requestOptions: options, cancellationToken: token);
+                var itemOk = itemResponse.StatusCode == System.Net.HttpStatusCode.Created ||
+                    (mode == ImportMode.Upsert && itemResponse.StatusCode == System.Net.HttpStatusCode.OK);
+                return (itemResponse.RequestCharge, itemOk ? null : MessageService.GetArgsString(
+                    "command-import-error-item_status",
+                    "line",
+                    lineNumber,
+                    "status",
+                    itemResponse.StatusCode.ToString()));
+            }
+
+            using var body = new MemoryStream(Encoding.UTF8.GetBytes(item.GetRawText()));
+            PartitionKey partitionKey;
+            try
+            {
+                TryCreatePartitionKeyFromItem(item, partitionKeyPaths, out _, out partitionKey);
+            }
+            catch (JsonException ex)
+            {
+                return (0, MessageService.GetArgsString(
+                    "command-import-error-item_failed",
+                    "line",
+                    lineNumber,
+                    "status",
+                    "Invalid partition key",
+                    "message",
+                    ex.Message));
+            }
+
+            using var response = mode == ImportMode.Upsert
+                ? await container.UpsertItemStreamAsync(body, partitionKey, options, token)
+                : await container.CreateItemStreamAsync(body, partitionKey, options, token);
+            response.EnsureSuccessStatusCode();
             var ok = response.StatusCode == System.Net.HttpStatusCode.Created ||
                 (mode == ImportMode.Upsert && response.StatusCode == System.Net.HttpStatusCode.OK);
-            return (response.RequestCharge, ok ? null : MessageService.GetArgsString(
+            return (response.Headers.RequestCharge, ok ? null : MessageService.GetArgsString(
                 "command-import-error-item_status",
                 "line",
                 lineNumber,
