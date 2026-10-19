@@ -523,6 +523,8 @@ command-import-error-invalid_line_json = Line { $line } is not valid JSON: { $me
 command-import-error-item_status = Line { $line }: item returned status { $status }.
 command-import-error-item_failed = Line { $line }: { $status } - { $message }
 command-import-error-some_failed = Failed to import { $failed } of { $total } items.
+command-import-error-diagnostic_truncated = [diagnostic truncated]
+command-import-error-diagnostics_omitted = { $count } additional item diagnostics omitted.
 command-import-error-csv_pk_conflict = CSV column '{ $column }' conflicts with the partition key path '{ $path }': the column holds a scalar value but the path requires it to be a nested object. Rename the column or choose a different partition key path.
 
 

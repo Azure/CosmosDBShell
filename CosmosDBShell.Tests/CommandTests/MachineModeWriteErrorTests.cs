@@ -6,6 +6,7 @@ namespace CosmosShell.Tests.CommandTests;
 
 using System.Net;
 using System.Text.Json;
+using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.States;
 using Microsoft.Azure.Cosmos;
@@ -75,6 +76,74 @@ public class MachineModeWriteErrorTests
                 File.Delete(path);
             }
         }
+    }
+
+    [Fact]
+    public async Task Import_ArrayParseFailure_PreservesEarlierWriteDiagnostics()
+    {
+        var (shell, container) = CreateShell(quiet: true);
+        using (shell)
+        {
+            ConfigureWrites(container);
+            var path = Path.Join(Path.GetTempPath(), $"cosmosshell-import-array-errors-{Guid.NewGuid():N}.json");
+            try
+            {
+                await File.WriteAllTextAsync(
+                    path,
+                    "[{\"id\":\"bad-status\",\"pk\":\"x\"},{\"id\":\"denied\",\"pk\":\"x\"},",
+                    TestContext.Current.CancellationToken);
+                var error = await CaptureMachineErrorAsync(shell, $"import '{path}' --continue-on-error --concurrency=2");
+
+                Assert.Contains("Line 1", error);
+                Assert.Contains("BadRequest", error);
+                Assert.Contains("Line 2", error);
+                Assert.Contains("Forbidden", error);
+                Assert.Contains("bulk service denied", error);
+                Assert.Contains("Expected start of a property name or value", error);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Import_TooManyFailures_BoundsDiagnosticsAndReportsOmittedCount()
+    {
+        var (shell, container) = CreateShell(quiet: true);
+        using (shell)
+        {
+            ConfigureWrites(container);
+            var path = Path.Join(Path.GetTempPath(), $"cosmosshell-import-many-errors-{Guid.NewGuid():N}.jsonl");
+            try
+            {
+                var records = Enumerable.Repeat("{\"id\":\"denied\",\"pk\":\"x\"}", ImportCommand.ImportErrorDiagnostics.MaximumCount + 3);
+                await File.WriteAllLinesAsync(path, records, TestContext.Current.CancellationToken);
+                var error = await CaptureMachineErrorAsync(shell, $"import '{path}' --continue-on-error --concurrency=16");
+
+                Assert.Equal(
+                    ImportCommand.ImportErrorDiagnostics.MaximumCount,
+                    error.Split("Line ", StringSplitOptions.None).Length - 1);
+                Assert.Contains("3 additional item diagnostics omitted", error);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public void ImportErrorDiagnostics_TruncatesLongMessages()
+    {
+        var diagnostics = new ImportCommand.ImportErrorDiagnostics();
+        diagnostics.Add(new string('x', ImportCommand.ImportErrorDiagnostics.MaximumLength + 100));
+
+        var message = diagnostics.GetMessage();
+
+        Assert.True(message.Length <= ImportCommand.ImportErrorDiagnostics.MaximumLength);
+        Assert.Contains("[diagnostic truncated]", message);
     }
 
     [Theory]

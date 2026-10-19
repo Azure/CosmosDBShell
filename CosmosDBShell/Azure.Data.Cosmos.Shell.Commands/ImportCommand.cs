@@ -495,7 +495,7 @@ internal class ImportCommand : CosmosCommand
         var continueOnError = this.ContinueOnError == true;
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
 
-        var errors = new List<string>();
+        var errors = new ImportErrorDiagnostics();
         var (successCount, failCount, charge) = await ExecuteImportAsync(filePath, format, mode, container, continueOnError, dryRun, partitionKeySegments, concurrency, errors, token);
 
         if (!shell.IsMachineMode)
@@ -546,7 +546,7 @@ internal class ImportCommand : CosmosCommand
                 successCount + failCount);
             if (shell.IsMachineMode)
             {
-                message += Environment.NewLine + string.Join(Environment.NewLine, errors);
+                message += Environment.NewLine + errors.GetMessage();
             }
 
             throw new CommandException("import", message);
@@ -595,7 +595,7 @@ internal class ImportCommand : CosmosCommand
         bool dryRun,
         string[]? partitionKeySegments,
         int concurrency,
-        List<string> errors,
+        ImportErrorDiagnostics errors,
         CancellationToken token)
     {
         FileStream? stream = null;
@@ -635,9 +635,10 @@ internal class ImportCommand : CosmosCommand
             ArgumentNullException.ThrowIfNull(container);
             return await WriteItemsAsync(source, container, mode, concurrency, continueOnError, token, errors);
         }
-        catch (CommandException ex) when (ShellInterpreter.Instance.IsMachineMode && errors.Count > 0)
+        catch (Exception ex) when ((ex is CommandException or JsonException)
+            && ShellInterpreter.Instance.IsMachineMode && errors.Count > 0)
         {
-            throw new CommandException("import", ex.Message + Environment.NewLine + string.Join(Environment.NewLine, errors), ex);
+            throw new CommandException("import", ex.Message + Environment.NewLine + errors.GetMessage(), ex);
         }
         finally
         {
@@ -656,7 +657,7 @@ internal class ImportCommand : CosmosCommand
         int concurrency,
         bool continueOnError,
         CancellationToken token,
-        ICollection<string>? errors = null)
+        ImportErrorDiagnostics? errors = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         var pending = new List<Task<(double Charge, string? Error)>>();
@@ -776,6 +777,48 @@ internal class ImportCommand : CosmosCommand
                 ce.StatusCode.ToString(),
                 "message",
                 CommandException.GetDisplayMessage(ce)));
+        }
+    }
+
+    internal sealed class ImportErrorDiagnostics
+    {
+        internal const int MaximumCount = 100;
+        internal const int MaximumLength = 2048;
+
+        private readonly List<string> errors = [];
+        private long omittedCount;
+
+        internal int Count => this.errors.Count;
+
+        internal void Add(string error)
+        {
+            if (this.errors.Count >= MaximumCount)
+            {
+                this.omittedCount++;
+                return;
+            }
+
+            if (error.Length > MaximumLength)
+            {
+                var marker = MessageService.GetString("command-import-error-diagnostic_truncated");
+                error = error[..(MaximumLength - marker.Length)] + marker;
+            }
+
+            this.errors.Add(error);
+        }
+
+        internal string GetMessage()
+        {
+            var message = string.Join(Environment.NewLine, this.errors);
+            if (this.omittedCount > 0)
+            {
+                message += Environment.NewLine + MessageService.GetArgsString(
+                    "command-import-error-diagnostics_omitted",
+                    "count",
+                    this.omittedCount);
+            }
+
+            return message;
         }
     }
 

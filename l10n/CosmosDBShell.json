@@ -417,6 +417,8 @@
   "command-import-dry-run-success.__p1.other": "items",
   "command-import-error-blank_line": "Line {0} is blank.",
   "command-import-error-csv_pk_conflict": "CSV column \u0027{0}\u0027 conflicts with the partition key path \u0027{1}\u0027: the column holds a scalar value but the path requires it to be a nested object. Rename the column or choose a different partition key path.",
+  "command-import-error-diagnostic_truncated": "[diagnostic truncated]",
+  "command-import-error-diagnostics_omitted": "{0} additional item diagnostics omitted.",
   "command-import-error-file_not_found": "File \u0027{0}\u0027 was not found.",
   "command-import-error-invalid_concurrency": "Concurrency must be a positive integer.",
   "command-import-error-invalid_csv": "Invalid CSV record at line {0}.",
