@@ -6,7 +6,6 @@ namespace Azure.Data.Cosmos.Shell.Commands;
 
 using System.Globalization;
 using System.IO;
-using System.Text;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
@@ -14,29 +13,21 @@ using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
-internal enum ExportFormat
-{
-    Json = 0,
-    Array = 0,
-    Csv = 1,
-}
-
 [CosmosCommand("export")]
 [CosmosExample("export items.json", DescriptionKey = "command-export-example-1")]
 [CosmosExample("export items.json --query=\"SELECT * FROM c WHERE c.status = 'active'\"", DescriptionKey = "command-export-example-2")]
 [CosmosExample("export items.json --force", DescriptionKey = "command-export-example-3")]
-[CosmosExample("export items.csv --format=csv", DescriptionKey = "command-export-example-4")]
+[CosmosExample("export items.json --format=csv", DescriptionKey = "command-export-example-4")]
 [CosmosExample("export items.json --db=MyDB --con=Products --max=1000", DescriptionKey = "command-export-example-5")]
 [McpAnnotation(
     Title = "Export Container Items",
     ReadOnly = false,
     Idempotent = false,
     OpenWorld = true,
-    Description = "Streams items from a Cosmos container into a local JSON array or CSV file.")]
+    Description = "Streams items from a Cosmos container into a local JSON array file. The format option controls the command result, not the exported file.")]
 internal class ExportCommand : CosmosCommand
 {
     private const string DefaultQuery = "SELECT * FROM c";
-    private const string ScalarColumnEnvironmentVariable = "COSMOSDB_SHELL_CSV_SCALAR_COLUMN";
 
     [CosmosParameter("file", RequiredErrorKey = "command-export-error-missing_file")]
     public string? File { get; init; }
@@ -53,14 +44,16 @@ internal class ExportCommand : CosmosCommand
     [CosmosOption("max", "m")]
     public int? Max { get; init; }
 
-    [CosmosOption("format", "f", DefaultValue = ExportFormat.Json)]
-    public ExportFormat? Format { get; init; }
+    [CosmosOption("format", "f")]
+    public string? Format { get; init; }
 
     [CosmosOption("force")]
     public bool? Force { get; init; }
 
     public override async Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
+        var resultState = new CommandState();
+        resultState.SetFormat(this.Format);
         if (string.IsNullOrWhiteSpace(this.File))
         {
             throw new CommandException("export", MessageService.GetString("command-export-error-missing_file"));
@@ -89,11 +82,17 @@ internal class ExportCommand : CosmosCommand
 
         var query = string.IsNullOrWhiteSpace(this.Query) ? DefaultQuery : this.Query!;
         var max = ResultLimit.ResolveMaxItemCount(this.Max, defaultMaxItemCount: null);
-        var format = this.Format ?? ExportFormat.Json;
+        var (count, charge) = await ExecuteExportAsync(container, query, max, filePath, this.Force == true, token);
 
-        var (count, charge) = await ExecuteExportAsync(container, query, max, format, filePath, this.Force == true, token);
-
-        ShellInterpreter.WriteLine(MessageService.GetArgsString(
+        resultState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
+        {
+            type = "export",
+            file = filePath,
+            exported = count,
+            requestCharge = charge,
+        }));
+        resultState.RequestCharge = charge;
+        resultState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
             "command-export-success",
             "count",
             count,
@@ -101,36 +100,7 @@ internal class ExportCommand : CosmosCommand
             filePath,
             "charge",
             charge.ToString("F2", CultureInfo.InvariantCulture)));
-
-        return new CommandState
-        {
-            Result = new ShellJson(JsonSerializer.SerializeToElement(new
-            {
-                type = "export",
-                file = filePath,
-                exported = count,
-                requestCharge = charge,
-            })),
-            RequestCharge = charge,
-        };
-    }
-
-    /// <summary>
-    /// Serializes a single JSON element as a single-line UTF-8 JSON string suitable for
-    /// inclusion in a JSON Lines file. The element is fully re-serialized; any whitespace
-    /// or newlines from the source document are stripped.
-    /// </summary>
-    /// <param name="element">The element to serialize.</param>
-    /// <returns>A compact JSON representation without newlines.</returns>
-    internal static string SerializeJsonLine(JsonElement element)
-    {
-        using var buffer = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = false }))
-        {
-            element.WriteTo(writer);
-        }
-
-        return Encoding.UTF8.GetString(buffer.ToArray());
+        return resultState;
     }
 
     /// <summary>
@@ -164,136 +134,10 @@ internal class ExportCommand : CosmosCommand
         return count;
     }
 
-    /// <summary>
-    /// Writes a sequence of items to <paramref name="writer"/> as CSV. The header row is the
-    /// union of all top-level property names (in first-seen order); each subsequent row
-    /// contains the corresponding values. Non-object rows are written in a configurable
-    /// column with an empty header by default. Nested objects and arrays are written as
-    /// compact JSON. Items are spooled to disk to compute the column set.
-    /// </summary>
-    /// <param name="items">The items to write.</param>
-    /// <param name="writer">The destination writer.</param>
-    /// <param name="separator">The field separator.</param>
-    /// <param name="token">Cancellation token.</param>
-    /// <param name="scalarColumnName">The header for non-object rows; defaults to the environment setting.</param>
-    /// <returns>The number of data rows written.</returns>
-    internal static async Task<int> WriteCsvAsync(IAsyncEnumerable<JsonElement> items, TextWriter writer, char separator, CancellationToken token, string? scalarColumnName = null)
-    {
-        scalarColumnName ??= Environment.GetEnvironmentVariable(ScalarColumnEnvironmentVariable) ?? string.Empty;
-        var spoolOptions = new FileStreamOptions
-        {
-            Mode = FileMode.CreateNew,
-            Access = FileAccess.ReadWrite,
-            Share = FileShare.None,
-            Options = FileOptions.Asynchronous | FileOptions.DeleteOnClose,
-        };
-        if (!OperatingSystem.IsWindows())
-        {
-            spoolOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-        }
-
-        await using var spool = new FileStream(Path.Join(Path.GetTempPath(), $"cosmos-csv-{Guid.NewGuid():N}.tmp"), spoolOptions);
-        using var spoolWriter = new StreamWriter(spool, new UTF8Encoding(false), leaveOpen: true);
-        var headers = new List<string>();
-        var headerSet = new HashSet<string>(StringComparer.Ordinal);
-        var objectHeaders = new HashSet<string>(StringComparer.Ordinal);
-        var hasScalarRows = false;
-        await foreach (var item in items.WithCancellation(token))
-        {
-            await spoolWriter.WriteLineAsync(SerializeJsonLine(item).AsMemory(), token);
-            if (item.ValueKind != JsonValueKind.Object)
-            {
-                hasScalarRows = true;
-                if (headerSet.Add(scalarColumnName))
-                {
-                    headers.Add(scalarColumnName);
-                }
-
-                continue;
-            }
-
-            foreach (var prop in item.EnumerateObject())
-            {
-                objectHeaders.Add(prop.Name);
-                if (headerSet.Add(prop.Name))
-                {
-                    headers.Add(prop.Name);
-                }
-            }
-        }
-
-        if (hasScalarRows && objectHeaders.Contains(scalarColumnName))
-        {
-            throw new CommandException(
-                "export",
-                MessageService.GetArgsString("command-export-error-scalar_column_conflict", "column", scalarColumnName));
-        }
-
-        await spoolWriter.FlushAsync(token);
-        spool.Position = 0;
-        using var spoolReader = new StreamReader(spool, leaveOpen: true);
-        var sb = new StringBuilder();
-        if (headers.Count > 0)
-        {
-            for (var i = 0; i < headers.Count; i++)
-            {
-                if (i > 0)
-                {
-                    sb.Append(separator);
-                }
-
-                sb.Append(CommandState.EscapeCSV(headers[i]));
-            }
-
-            await writer.WriteLineAsync(sb.ToString().AsMemory(), token);
-        }
-
-        var count = 0;
-        while (await spoolReader.ReadLineAsync(token) is { } line)
-        {
-            using var document = JsonDocument.Parse(line);
-            var item = document.RootElement;
-            sb.Clear();
-            for (var i = 0; i < headers.Count; i++)
-            {
-                if (i > 0)
-                {
-                    sb.Append(separator);
-                }
-
-                if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty(headers[i], out var value))
-                {
-                    var text = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
-                    sb.Append(CommandState.EscapeCSV(text));
-                }
-                else if (item.ValueKind != JsonValueKind.Object && headers[i] == scalarColumnName)
-                {
-                    sb.Append(CommandState.EscapeCSV(GetScalarCsvValue(item)));
-                }
-                else
-                {
-                    sb.Append(CommandState.EscapeCSV(string.Empty));
-                }
-            }
-
-            await writer.WriteLineAsync(sb.ToString().AsMemory(), token);
-            count++;
-        }
-
-        await writer.FlushAsync(token);
-        return count;
-    }
-
-    private static string GetScalarCsvValue(JsonElement item)
-    {
-        return item.ToString();
-    }
-
     private static async Task<(int Count, double Charge)> ExecuteExportAsync(
         Container container,
         string query,
         int? max,
-        ExportFormat format,
         string filePath,
         bool overwrite,
         CancellationToken token)
@@ -309,7 +153,7 @@ internal class ExportCommand : CosmosCommand
             var totalCharge = 0.0;
             using var iterator = container.GetItemQueryIterator<JsonElement>(query, requestOptions: options);
             var count = await WriteFileAsync(
-                EnumerateAsync(iterator, max, charge => totalCharge += charge, token), format, filePath, overwrite, token);
+                EnumerateAsync(iterator, max, charge => totalCharge += charge, token), filePath, overwrite, token);
             return (count, totalCharge);
         }
         catch (CosmosException ce)
@@ -328,7 +172,6 @@ internal class ExportCommand : CosmosCommand
 
     internal static async Task<int> WriteFileAsync(
         IAsyncEnumerable<JsonElement> items,
-        ExportFormat format,
         string filePath,
         bool overwrite,
         CancellationToken token)
@@ -366,16 +209,7 @@ internal class ExportCommand : CosmosCommand
 
             await using (var stream = new FileStream(temporary, fileOptions))
             {
-                if (format == ExportFormat.Csv)
-                {
-                    using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                    writer.NewLine = "\n";
-                    count = await WriteCsvAsync(items, writer, ShellInterpreter.CSVSeparator, token);
-                }
-                else
-                {
-                    count = await WriteArrayAsync(items, stream, token);
-                }
+                count = await WriteArrayAsync(items, stream, token);
             }
 
             token.ThrowIfCancellationRequested();

@@ -476,18 +476,18 @@ public class ImportConcurrencyTests
     }
 
     [Theory]
-    [InlineData("jsonl", "{\"id\":\"a\"}\n{\"id\":\"b\"}\n", (int)ImportFormat.JsonLines, 2)]
-    [InlineData("json", "[{\"id\":\"a\"},{\"id\":\"b\"}]", (int)ImportFormat.Auto, 2)]
-    [InlineData("json", "{\n    \"id\": \"a\"\n}\n", (int)ImportFormat.Auto, 1)]
-    [InlineData("csv", "id\na\nb\n", (int)ImportFormat.Auto, 2)]
-    public async Task DryRun_WithConcurrencyValidatesWithoutConnectionAndPreservesResult(string extension, string content, int format, int expected)
+    [InlineData("jsonl", "{\"id\":\"a\"}\n{\"id\":\"b\"}\n", true, 2)]
+    [InlineData("json", "[{\"id\":\"a\"},{\"id\":\"b\"}]", false, 2)]
+    [InlineData("json", "{\n    \"id\": \"a\"\n}\n", false, 1)]
+    [InlineData("csv", "id\na\nb\n", false, 2)]
+    public async Task DryRun_WithConcurrencyValidatesWithoutConnectionAndPreservesResult(string extension, string content, bool legacy, int expected)
     {
         var fileName = $"cosmos-import-{Guid.NewGuid():N}.{Path.GetFileName(extension).TrimStart('.')}";
         var path = Path.Join(Path.GetTempPath(), fileName);
         try
         {
             await File.WriteAllTextAsync(path, content, TestContext.Current.CancellationToken);
-            var command = new ImportCommand { File = path, DryRun = true, Concurrency = 32, Format = (ImportFormat)format };
+            var command = new ImportCommand { File = path, DryRun = true, Concurrency = 32, Legacy = legacy };
             var state = await command.ExecuteAsync(
                 ShellInterpreter.Instance, new CommandState(), "import", TestContext.Current.CancellationToken);
             var result = Assert.IsType<ShellJson>(state.Result).Value;

@@ -5,7 +5,7 @@
 ### Breaking changes
 
 - `print <id> <key>` now parses the key with the same typed syntax as `patch`, so `print item-1 680` reads numeric key `680` instead of string `"680"`. To address a string key that looks like a number, boolean, null, or JSON array, quote it as a JSON string: `print item-1 '"680"'`. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
-- `import` and `export` now use the JSON format of the Azure Databases extension for VS Code. `export` writes an indented JSON array by default and no longer supports JSON Lines (`--format=jsonl`). `import` reads non-CSV files as a single JSON document, either an array of items or one item; JSON Lines files now require `--format=jsonl`.
+- `import` and `export` now use the JSON format of the Azure Databases extension for VS Code. `export` always writes an indented JSON array, not JSON Lines or CSV. `import` reads non-CSV files as a single JSON document, either an array of items or one item; JSON Lines files require `--legacy`. On both commands, `--format` / `-f` selects the command-result presentation (`user`, `json`, `csv`, or `table`), not the file contents.
 
 ### New features
 
@@ -22,6 +22,8 @@
 - Avoid accessing an expired HTTP request during MCP session teardown, preventing disposal errors while releasing location subscriptions and legacy SSE admission state. ([#249](https://github.com/Azure/CosmosDBShell/issues/249))
 - Keep CLI inferred-key warnings visible before writes when the MCP listener is enabled; MCP calls continue to return warnings in their responses.
 - Reject trailing content in single-document JSON imports without loading a second value into memory, including large or incomplete values.
+- Show successful imports as a readable summary in normal output mode without appending JSON; structured output modes receive only the result.
+- Keep export, item-write, TTL, conflict-policy, and indexing-policy confirmations readable in normal output mode rather than appending status JSON. Requested structured results retain their existing data.
 
 ### Improvements
 

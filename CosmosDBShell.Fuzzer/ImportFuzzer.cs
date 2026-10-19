@@ -91,7 +91,7 @@ internal static class ImportFuzzer
     private static async Task DriveParsersAsync(string content)
     {
         // Format resolution must never throw, regardless of input.
-        _ = ImportCommand.ResolveFormat(content, ImportFormat.Auto);
+        _ = ImportCommand.ResolveFormat(content, legacy: false);
 
         // JSON Lines path.
         using (var reader = new StringReader(content))

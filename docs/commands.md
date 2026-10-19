@@ -724,9 +724,9 @@ The condition is enforced by Cosmos DB (`If-Match`). If the item was updated or 
 
 ### export
 
-Stream items from a container to a local file. The default format writes a single indented JSON array, the same document shape the Azure Databases extension for VS Code imports and exports; pass `--format=csv` for CSV. JSON Lines output is not supported. JSON export streams incrementally. CSV spools documents to a private temporary file to compute the complete column set, keeping only the column names and current record in memory. Allow enough temporary disk space for the JSON spool as well as the destination export. The CSV separator follows the `COSMOSDB_SHELL_CSVSEP` environment variable (default `;`). Non-object query results are written to a column with an empty header by default; set `COSMOSDB_SHELL_CSV_SCALAR_COLUMN` to name it. Mixed object and non-object results include both object property columns and the scalar column. If its header conflicts with an object property, export fails instead of combining their values. Scalar CSV exports cannot be imported as items without supplying item IDs and any required partition keys.
+Stream items from a container to a local file as a single indented JSON array, the same document shape the Azure Databases extension for VS Code imports and exports. Exported data is always JSON, regardless of the filename or `--format` setting. JSON Lines and CSV file exports are not supported. Documents are written incrementally without loading the complete result into memory.
 
-All formats write to a temporary file in the destination directory and move it into place only after successful completion. An existing destination requires `--force` and is preserved if reading, writing, or cancellation interrupts the export. Temporary files are removed on normal completion and handled failures; an abrupt process termination can leave an unfinished destination-directory temporary file. Once `--max` items have been emitted, no further query pages are requested.
+Exports write to a temporary file in the destination directory and move it into place only after successful completion. An existing destination requires `--force` and is preserved if reading, writing, or cancellation interrupts the export. Temporary files are removed on normal completion and handled failures; an abrupt process termination can leave an unfinished destination-directory temporary file. Once `--max` items have been emitted, no further query pages are requested.
 
 ```text
 Usage: export <file> [options]
@@ -739,7 +739,8 @@ Options:
     --con, --container   Source container (defaults to the current navigation context).
     --query, -q          SELECT query whose results are exported (default: SELECT * FROM c).
     --max, -m            Maximum number of items to export. 0 means no limit.
-    --format, -f         Output format: json (default, an indented JSON array) or csv.
+    --format, -f         Command result format: user, json, csv, or table.
+                         Does not change the exported JSON file.
     --force              Overwrite the destination file if it already exists.
 ```
 
@@ -748,13 +749,15 @@ Examples:
 - `export items.json` exports every item in the current container as a JSON array.
 - `export active.json --query="SELECT * FROM c WHERE c.status = 'active'"` exports a filtered subset.
 - `export snapshot.json --force` replaces any existing file.
-- `export items.csv --format=csv` exports as CSV with one column per top-level property (nested values are written as compact JSON).
+- `export items.json --format=csv` writes a JSON array file and presents the export summary as CSV.
 
-The summary line reports the number of items written and the total RU charge.
+Normal output shows a readable summary with the number of items written and the total RU charge. `--format=json`, `--format=csv`, and `--format=table` change only this command result, not the exported data. When `--format` is omitted, the result inherits the shell's output settings.
 
 ### import
 
-Bulk-load items from a JSON, JSON Lines, or CSV file into a container. By default a `.csv` extension selects CSV and every other file is read as a single JSON document: either an array of items or one item object. This is the format the Azure Databases extension for VS Code imports and exports. JSON Lines files (one JSON object per line) require `--format=jsonl`; `--format` can also force `json` or `csv`. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist. For CSV, the header row defines property names and every value is imported as a string; the CSV separator follows `COSMOSDB_SHELL_CSVSEP` (default `;`). Empty headers with empty cells are ignored; a value under an empty header fails import with its line and column instead of being silently discarded. All formats are read incrementally rather than loading the complete file into memory. CSV supports quoted separators, escaped quotes, and multiline fields; malformed records abort the import with their physical start line. When an imported item omits a configured partition-key path, Cosmos DB infers an undefined value. Interactively and when stderr is redirected, import displays a notice before the first affected write, then reports one final bounded warning counted from writes scheduled. Machine mode with console stderr emits the pre-write notice and final count as JSON Lines warning and `warning-update` records. Invalid partition-key values are reported as per-item failures; `--continue-on-error` continues with subsequent rows. Earlier writes are not rolled back, so use `--dry-run` first when the entire file must be validated before any writes.
+Successful imports display a readable summary in normal output mode. `--format=json`, `--format=csv`, and `--format=table` select the command-result presentation; they do not change how the input file is read. When `--format` is omitted, the result inherits the shell's output settings.
+
+Bulk-load items from a JSON, JSON Lines, or CSV file into a container. By default a `.csv` extension selects CSV and every other file is read as a single JSON document: either an array of items or one item object. This is the format the Azure Databases extension for VS Code imports and exports. JSON Lines files (one JSON object per line) require `--legacy`, regardless of their filename extension. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist. For CSV, the header row defines property names and every value is imported as a string; the CSV separator follows `COSMOSDB_SHELL_CSVSEP` (default `;`). Empty headers with empty cells are ignored; a value under an empty header fails import with its line and column instead of being silently discarded. All formats are read incrementally rather than loading the complete file into memory. CSV supports quoted separators, escaped quotes, and multiline fields; malformed records abort the import with their physical start line. When an imported item omits a configured partition-key path, Cosmos DB infers an undefined value. Interactively and when stderr is redirected, import displays a notice before the first affected write, then reports one final bounded warning counted from writes scheduled. Machine mode with console stderr emits the pre-write notice and final count as JSON Lines warning and `warning-update` records. Invalid partition-key values are reported as per-item failures; `--continue-on-error` continues with subsequent rows. Earlier writes are not rolled back, so use `--dry-run` first when the entire file must be validated before any writes.
 
 ```text
 Usage: import <file> [options]
@@ -766,9 +769,9 @@ Options:
     --db, --database              Target database (defaults to the current navigation context).
     --con, --container            Target container (defaults to the current navigation context).
     --mode                        Write mode: insert (default) or upsert.
-    --format, -f                  Input format: auto (default; CSV for .csv files, otherwise
-                                  JSON), json (an array of items or a single item), jsonl,
-                                  or csv.
+    --format, -f                  Command result format: user, json, csv, or table.
+                                  Does not change how the input file is read.
+    --legacy                      Read legacy JSON Lines input (one JSON object per line).
     --concurrency                 Maximum in-flight writes (default: 16; positive integer).
                                   Use 1 for sequential writes in file order.
     --partition-key, --pk         For CSV import, the partition key path. Nested paths
@@ -783,7 +786,8 @@ Examples:
 - `import items.json` inserts every item from a JSON file containing an array of items or a single item.
 - `import items.json --concurrency=32` allows up to 32 writes in flight.
 - `import items.json --concurrency=1` writes sequentially in file order.
-- `import items.jsonl --format=jsonl` reads a JSON Lines file with one item per line.
+- `import items.jsonl --legacy` reads a JSON Lines file with one item per line.
+- `import items.json --format=csv` reads the JSON input and presents the import summary as CSV.
 - `import items.csv` imports a CSV file, mapping each header column to a string property.
 - `import items.csv --partition-key=/address/city` nests the `city` column under `address` for a nested partition key. If a scalar column already occupies an intermediate path segment (for example an `address` column), the import fails with a conflict error rather than silently overwriting it.
 - `import items.json --mode=upsert --continue-on-error` upserts items and keeps going on per-item failures.

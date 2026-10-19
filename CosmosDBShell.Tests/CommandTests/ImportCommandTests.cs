@@ -11,20 +11,87 @@ using System.Threading;
 using System.Threading.Tasks;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
+using Spectre.Console;
 
+[Collection(ConsoleOutputTestCollection.Name)]
 public class ImportCommandTests
 {
     [Theory]
-    [InlineData("items.json", (int)ImportFormat.Auto, (int)ImportFormat.Json)]
-    [InlineData("items.jsonl", (int)ImportFormat.Auto, (int)ImportFormat.Json)]
-    [InlineData("items", (int)ImportFormat.Auto, (int)ImportFormat.Json)]
-    [InlineData("items.csv", (int)ImportFormat.Auto, (int)ImportFormat.Csv)]
-    [InlineData("items.CSV", (int)ImportFormat.Auto, (int)ImportFormat.Csv)]
-    [InlineData("items.jsonl", (int)ImportFormat.JsonLines, (int)ImportFormat.JsonLines)]
-    [InlineData("items.csv", (int)ImportFormat.Json, (int)ImportFormat.Json)]
-    public void ResolveFormat_ReadsJsonUnlessCsvOrRequested(string file, int requested, int expected)
+    [InlineData(null)]
+    [InlineData("user")]
+    [InlineData("json")]
+    [InlineData("csv")]
+    [InlineData("table")]
+    public async Task ExecuteAsync_DryRun_UsesSelectedOutputFormat(string? format)
     {
-        Assert.Equal((ImportFormat)expected, ImportCommand.ResolveFormat(file, (ImportFormat)requested));
+        var file = Path.GetTempFileName();
+        var originalOut = Console.Out;
+        var originalConsole = AnsiConsole.Console;
+        using var output = new StringWriter();
+        using var shell = ShellInterpreter.CreateInstance();
+        try
+        {
+            await File.WriteAllTextAsync(file, "[{\"id\":\"a\"},{\"id\":\"b\"}]", TestContext.Current.CancellationToken);
+            Console.SetOut(output);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+
+            var command = new ImportCommand { File = file, DryRun = true, Format = format };
+            var state = await command.ExecuteAsync(shell, new CommandState(), string.Empty, TestContext.Current.CancellationToken);
+
+            Assert.Empty(output.ToString());
+            var result = Assert.IsType<ShellJson>(state.Result).Value;
+            Assert.Equal(2, result.GetProperty("imported").GetInt32());
+            Assert.True(result.GetProperty("dryRun").GetBoolean());
+
+            shell.PrintState(state);
+
+            var text = output.ToString();
+            var summary = MessageService.GetArgsString("command-import-dry-run-success", "count", 2);
+            if (format is null or "user")
+            {
+                Assert.Equal(summary + Environment.NewLine, text);
+            }
+            else
+            {
+                Assert.DoesNotContain(summary, text);
+                if (format == "json")
+                {
+                    using var document = JsonDocument.Parse(text);
+                    Assert.Equal(2, document.RootElement.GetProperty("imported").GetInt32());
+                }
+                else
+                {
+                    Assert.Contains("imported", text);
+                    Assert.DoesNotContain("\"type\":", text);
+                }
+            }
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            AnsiConsole.Console = originalConsole;
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
+    [InlineData("items.json", false, (int)ImportFormat.Json)]
+    [InlineData("items.jsonl", false, (int)ImportFormat.Json)]
+    [InlineData("items", false, (int)ImportFormat.Json)]
+    [InlineData("items.csv", false, (int)ImportFormat.Csv)]
+    [InlineData("items.CSV", false, (int)ImportFormat.Csv)]
+    [InlineData("items.jsonl", true, (int)ImportFormat.JsonLines)]
+    [InlineData("items.csv", true, (int)ImportFormat.JsonLines)]
+    public void ResolveFormat_ReadsJsonUnlessCsvOrLegacy(string file, bool legacy, int expected)
+    {
+        Assert.Equal((ImportFormat)expected, ImportCommand.ResolveFormat(file, legacy));
     }
 
     [Theory]
@@ -89,7 +156,7 @@ public class ImportCommandTests
 
         var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
 
-        Assert.Contains("--format=jsonl", ex.Message);
+        Assert.Contains("--legacy", ex.Message);
     }
 
     [Fact]
@@ -99,7 +166,7 @@ public class ImportCommandTests
 
         var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
 
-        Assert.Contains("--format=jsonl", ex.Message);
+        Assert.Contains("--legacy", ex.Message);
     }
 
     [Fact]
@@ -115,7 +182,7 @@ public class ImportCommandTests
 
         var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
 
-        Assert.Contains("--format=jsonl", ex.Message);
+        Assert.Contains("--legacy", ex.Message);
         Assert.True(stream.Position < 1024 * 1024, $"Read {stream.Position} of {stream.Length} bytes.");
     }
 
@@ -131,7 +198,7 @@ public class ImportCommandTests
 
         var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
 
-        Assert.Contains("--format=jsonl", ex.Message);
+        Assert.Contains("--legacy", ex.Message);
         Assert.True(stream.Position < 1024 * 1024, $"Read {stream.Position} of {stream.Length} bytes.");
     }
 
@@ -148,7 +215,7 @@ public class ImportCommandTests
         var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
 
         Assert.Contains("not a valid JSON document", ex.Message);
-        Assert.Contains("--format=jsonl", ex.Message);
+        Assert.Contains("--legacy", ex.Message);
         Assert.IsAssignableFrom<JsonException>(ex.InnerException);
     }
 
@@ -175,22 +242,6 @@ public class ImportCommandTests
 
         Assert.Equal(expected, await CountJsonDocumentItemsAsync(stream));
     }
-    [Theory]
-    [InlineData("auto")]
-    [InlineData("Auto")]
-    [InlineData("jsonl")]
-    [InlineData("JSONL")]
-    [InlineData("jsonlines")]
-    [InlineData("JsonLines")]
-    [InlineData("json")]
-    [InlineData("JSON")]
-    [InlineData("array")]
-    [InlineData("Array")]
-    public void ImportFormat_ParsesDocumentedAliases(string value)
-    {
-        Assert.True(Enum.TryParse<ImportFormat>(value, ignoreCase: true, out _));
-    }
-
     [Fact]
     public void ParseJsonLine_ValidObject_ReturnsClonedElement()
     {

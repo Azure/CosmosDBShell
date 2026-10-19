@@ -18,34 +18,6 @@ using NSubstitute;
 public class ExportCommandTests
 {
     [Fact]
-    public void SerializeJsonLine_ProducesCompactSingleLine()
-    {
-        var element = JsonSerializer.SerializeToElement(new
-        {
-            id = "1",
-            value = 42,
-            nested = new { tag = "a" },
-        });
-
-        var line = ExportCommand.SerializeJsonLine(element);
-
-        Assert.DoesNotContain('\n', line);
-        Assert.DoesNotContain('\r', line);
-        Assert.Equal("{\"id\":\"1\",\"value\":42,\"nested\":{\"tag\":\"a\"}}", line);
-    }
-
-    [Fact]
-    public void SerializeJsonLine_StripsSourceWhitespaceAndNewlines()
-    {
-        using var doc = JsonDocument.Parse("{\n  \"id\":\"1\",\n  \"name\": \"abc\"\n}");
-
-        var line = ExportCommand.SerializeJsonLine(doc.RootElement);
-
-        Assert.DoesNotContain('\n', line);
-        Assert.Equal("{\"id\":\"1\",\"name\":\"abc\"}", line);
-    }
-
-    [Fact]
     public async Task WriteArrayAsync_WritesValidStreamingArray()
     {
         var items = ToAsyncEnumerableAsync(
@@ -77,24 +49,6 @@ public class ExportCommandTests
         Assert.Equal("[]", text);
     }
 
-    [Theory]
-    [InlineData("json")]
-    [InlineData("JSON")]
-    [InlineData("array")]
-    [InlineData("Array")]
-    public void ExportFormat_ParsesDocumentedAliases(string value)
-    {
-        Assert.True(Enum.TryParse<ExportFormat>(value, ignoreCase: true, out _));
-    }
-
-    [Theory]
-    [InlineData("jsonl")]
-    [InlineData("jsonlines")]
-    public void ExportFormat_NoLongerAcceptsJsonLines(string value)
-    {
-        Assert.False(Enum.TryParse<ExportFormat>(value, ignoreCase: true, out _));
-    }
-
     [Fact]
     public async Task WriteArrayAsync_WritesIndentedArrayLikeVsCodeExport()
     {
@@ -110,191 +64,7 @@ public class ExportCommandTests
             Encoding.UTF8.GetString(buffer.ToArray()));
     }
     [Fact]
-    public async Task WriteCsvAsync_WritesHeaderUnionAndRows()
-    {
-        var items = ToAsyncEnumerableAsync(
-            JsonSerializer.SerializeToElement(new { id = "1", name = "Alice" }),
-            JsonSerializer.SerializeToElement(new { id = "2", city = "Seattle" }));
-
-        using var writer = new StringWriter();
-        writer.NewLine = "\n";
-
-        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
-
-        Assert.Equal(2, count);
-        var lines = writer.ToString().TrimEnd('\n').Split('\n');
-        Assert.Equal(3, lines.Length);
-        Assert.Equal("\"id\",\"name\",\"city\"", lines[0]);
-        Assert.Equal("\"1\",\"Alice\",\"\"", lines[1]);
-        Assert.Equal("\"2\",\"\",\"Seattle\"", lines[2]);
-    }
-
-    [Fact]
-    public async Task WriteCsvAsync_EscapesSeparatorsQuotesAndNewlines()
-    {
-        var items = ToAsyncEnumerableAsync(
-            JsonSerializer.SerializeToElement(new { note = "a,b" }),
-            JsonSerializer.SerializeToElement(new { note = "say \"hi\"" }),
-            JsonSerializer.SerializeToElement(new { note = "line1\nline2" }));
-
-        using var writer = new StringWriter();
-        writer.NewLine = "\n";
-
-        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
-
-        Assert.Equal(3, count);
-        var output = writer.ToString();
-        Assert.Contains("\"a,b\"", output);
-        Assert.Contains("\"say \"\"hi\"\"\"", output);
-        Assert.Contains("\"line1\nline2\"", output);
-    }
-
-    [Fact]
-    public async Task WriteCsvAsync_NestedValuesWrittenAsCompactJson()
-    {
-        var items = ToAsyncEnumerableAsync(
-            JsonSerializer.SerializeToElement(new { id = "1", tags = new[] { 1, 2 }, nested = new { a = "b" } }));
-
-        using var writer = new StringWriter();
-        writer.NewLine = "\n";
-
-        await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
-
-        var output = writer.ToString();
-        Assert.Contains("\"[1,2]\"", output);
-        Assert.Contains("\"{\"\"a\"\":\"\"b\"\"}\"", output);
-    }
-
-    [Fact]
-    public async Task WriteCsvAsync_ObjectRowsKeepRawJsonValues()
-    {
-        var items = ToAsyncEnumerableAsync(
-            JsonSerializer.SerializeToElement(new { id = "1", flag = true, missing = (object?)null }));
-
-        using var writer = new StringWriter();
-        writer.NewLine = "\n";
-
-        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
-
-        Assert.Equal(1, count);
-        var lines = writer.ToString().TrimEnd('\n').Split('\n');
-        Assert.Equal("\"id\",\"flag\",\"missing\"", lines[0]);
-        Assert.Equal("\"1\",\"true\",\"null\"", lines[1]);
-    }
-
-    [Fact]
-    public async Task WriteCsvAsync_ScalarStringsUseEmptyHeaderAndEscapeCsv()
-    {
-        var items = ToAsyncEnumerableAsync(
-            JsonSerializer.SerializeToElement("a,\"b"));
-
-        using var writer = new StringWriter();
-        writer.NewLine = "\n";
-
-        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, string.Empty);
-
-        Assert.Equal(1, count);
-        Assert.Equal("\"\"\n\"a,\"\"b\"\n", writer.ToString());
-    }
-
-    [Fact]
-    public async Task WriteCsvAsync_ScalarNumbersBoolsAndNullUseEmptyHeader()
-    {
-        var items = ToAsyncEnumerableAsync(
-            JsonSerializer.SerializeToElement(42),
-            JsonSerializer.SerializeToElement(true),
-            JsonSerializer.SerializeToElement(false),
-            JsonSerializer.SerializeToElement((object?)null));
-
-        using var writer = new StringWriter();
-        writer.NewLine = "\n";
-
-        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, string.Empty);
-
-        Assert.Equal(4, count);
-        Assert.Equal("\"\"\n\"42\"\n\"True\"\n\"False\"\n\"\"\n", writer.ToString());
-    }
-
-    [Fact]
-    public async Task WriteCsvAsync_ArrayRowsUseEmptyHeader()
-    {
-        var items = ToAsyncEnumerableAsync(
-            JsonSerializer.SerializeToElement(new[] { 1, 2 }));
-
-        using var writer = new StringWriter();
-        writer.NewLine = "\n";
-
-        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, string.Empty);
-
-        Assert.Equal(1, count);
-        Assert.Equal("\"\"\n\"[1,2]\"\n", writer.ToString());
-    }
-
-    [Fact]
-    public async Task WriteCsvAsync_MixedObjectAndScalarRowsPreserveScalarValue()
-    {
-        var items = ToAsyncEnumerableAsync(
-            JsonSerializer.SerializeToElement(new { id = "1" }),
-            JsonSerializer.SerializeToElement("a,b"),
-            JsonSerializer.SerializeToElement(new { id = "2", value = 99 }));
-
-        using var writer = new StringWriter();
-        writer.NewLine = "\n";
-
-        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, string.Empty);
-
-        Assert.Equal(3, count);
-        Assert.Equal("\"id\",\"\",\"value\"\n\"1\",\"\",\"\"\n\"\",\"a,b\",\"\"\n\"2\",\"\",\"99\"\n", writer.ToString());
-    }
-
-    [Fact]
-    public async Task WriteCsvAsync_CustomScalarHeaderPreservesObjectValueColumn()
-    {
-        var items = ToAsyncEnumerableAsync(
-            JsonSerializer.SerializeToElement(new { value = 99 }),
-            JsonSerializer.SerializeToElement("text"));
-        using var writer = new StringWriter();
-        writer.NewLine = "\n";
-
-        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, "scalar");
-
-        Assert.Equal(2, count);
-        Assert.Equal("\"value\",\"scalar\"\n\"99\",\"\"\n\"\",\"text\"\n", writer.ToString());
-    }
-
-    [Theory]
-    [InlineData("", "{\"\":1}")]
-    [InlineData("value", "{\"value\":1}")]
-    public async Task WriteCsvAsync_ScalarHeaderConflictingWithObjectPropertyFails(string header, string objectJson)
-    {
-        using var document = JsonDocument.Parse(objectJson);
-        var items = ToAsyncEnumerableAsync(JsonSerializer.SerializeToElement(42), document.RootElement.Clone());
-        using var writer = new StringWriter();
-
-        var error = await Assert.ThrowsAsync<CommandException>(() =>
-            ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, header));
-
-        Assert.Contains("COSMOSDB_SHELL_CSV_SCALAR_COLUMN", error.Message);
-        Assert.Equal(string.Empty, writer.ToString());
-    }
-
-    [Fact]
-    public async Task WriteCsvAsync_WithNoItems_ProducesEmptyOutput()
-    {
-        var items = ToAsyncEnumerableAsync();
-
-        using var writer = new StringWriter();
-        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None);
-
-        Assert.Equal(0, count);
-        Assert.Equal(string.Empty, writer.ToString());
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    [InlineData(2)]
-    public async Task WriteFileAsync_FailurePreservesExistingFileAndRemovesTemporaryFile(int format)
+    public async Task WriteFileAsync_FailurePreservesExistingFileAndRemovesTemporaryFile()
     {
         var directory = Path.Join(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -303,7 +73,7 @@ public class ExportCommandTests
         {
             await File.WriteAllTextAsync(path, "previous export", TestContext.Current.CancellationToken);
             await Assert.ThrowsAsync<IOException>(() => ExportCommand.WriteFileAsync(
-                FailingItemsAsync(), (ExportFormat)format, path, true, CancellationToken.None));
+                FailingItemsAsync(), path, true, CancellationToken.None));
             Assert.Equal("previous export", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
             Assert.Single(Directory.GetFiles(directory));
         }
@@ -326,7 +96,7 @@ public class ExportCommandTests
             await File.WriteAllTextAsync(path, "previous export", TestContext.Current.CancellationToken);
             Task<int> ExportAsync() => ExportCommand.WriteFileAsync(
                 ToAsyncEnumerableAsync(JsonSerializer.SerializeToElement(new { id = "1" })),
-                ExportFormat.Json, path, overwrite, CancellationToken.None);
+                path, overwrite, CancellationToken.None);
             if (overwrite)
             {
                 Assert.Equal(1, await ExportAsync());
@@ -340,7 +110,7 @@ public class ExportCommandTests
                     exception.Message);
                 var items = Substitute.For<IAsyncEnumerable<JsonElement>>();
                 await Assert.ThrowsAsync<IOException>(() => ExportCommand.WriteFileAsync(
-                    items, ExportFormat.Json, path, false, TestContext.Current.CancellationToken));
+                    items, path, false, TestContext.Current.CancellationToken));
                 items.DidNotReceive().GetAsyncEnumerator(Arg.Any<CancellationToken>());
                 Assert.Equal("previous export", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
             }
@@ -364,7 +134,7 @@ public class ExportCommandTests
             var items = Substitute.For<IAsyncEnumerable<JsonElement>>();
 
             var exception = await Assert.ThrowsAsync<IOException>(() => ExportCommand.WriteFileAsync(
-                items, ExportFormat.Json, directory.FullName, overwrite, TestContext.Current.CancellationToken));
+                items, directory.FullName, overwrite, TestContext.Current.CancellationToken));
 
             Assert.Equal(
                 MessageService.GetArgsString("command-export-error-destination_directory", "file", Path.GetFullPath(directory.FullName)),
@@ -392,7 +162,7 @@ public class ExportCommandTests
             await cancellation.CancelAsync();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ExportCommand.WriteFileAsync(
                 ToAsyncEnumerableAsync(JsonSerializer.SerializeToElement(new { id = "1" })),
-                ExportFormat.Array, path, true, cancellation.Token));
+                path, true, cancellation.Token));
             Assert.Equal("previous export", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
             Assert.Single(Directory.GetFiles(directory));
         }
@@ -424,11 +194,12 @@ public class ExportCommandTests
     }
 
     [Fact]
-    public async Task WriteCsvAsync_DoesNotRetainSourceDocuments()
+    public async Task WriteArrayAsync_DoesNotRetainSourceDocuments()
     {
-        using var writer = new StringWriter();
-        Assert.Equal(200, await ExportCommand.WriteCsvAsync(TransientItemsAsync(), writer, ',', TestContext.Current.CancellationToken));
-        Assert.Contains("199", writer.ToString());
+        using var stream = new MemoryStream();
+        Assert.Equal(200, await ExportCommand.WriteArrayAsync(TransientItemsAsync(), stream, TestContext.Current.CancellationToken));
+        using var document = JsonDocument.Parse(stream.ToArray());
+        Assert.Equal(199, document.RootElement[199].GetProperty("id").GetInt32());
     }
 
     [Fact]

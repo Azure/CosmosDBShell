@@ -20,12 +20,9 @@ using global::Azure.Data.Cosmos.Shell.States;
 
 internal enum ImportFormat
 {
-    Auto = 0,
-    Json = 1,
-    Array = 1,
-    Jsonl = 2,
-    JsonLines = 2,
-    Csv = 3,
+    Json,
+    JsonLines,
+    Csv,
 }
 
 internal enum ImportMode
@@ -36,7 +33,7 @@ internal enum ImportMode
 
 [CosmosCommand("import")]
 [CosmosExample("import items.json", DescriptionKey = "command-import-example-1")]
-[CosmosExample("import items.jsonl --format=jsonl", DescriptionKey = "command-import-example-2")]
+[CosmosExample("import items.jsonl --legacy", DescriptionKey = "command-import-example-2")]
 [CosmosExample("import items.csv", DescriptionKey = "command-import-example-3")]
 [CosmosExample("import items.csv --partition-key=/address/city", DescriptionKey = "command-import-example-4")]
 [CosmosExample("import items.json --mode=upsert", DescriptionKey = "command-import-example-5")]
@@ -48,7 +45,7 @@ internal enum ImportMode
     ReadOnly = false,
     Idempotent = false,
     OpenWorld = true,
-    Description = "Bulk-loads items into a Cosmos container from a local JSON file (an array of items or a single item), a JSON Lines file with format jsonl, or a CSV file.")]
+    Description = "Bulk-loads items into a Cosmos container from a local JSON file (an array of items or a single item), a JSON Lines file with --legacy, or a CSV file. The format option controls the command result, not the input file.")]
 internal class ImportCommand : CosmosCommand
 {
     internal const int DefaultConcurrency = 16;
@@ -65,8 +62,11 @@ internal class ImportCommand : CosmosCommand
     [CosmosOption("mode", DefaultValue = ImportMode.Insert)]
     public ImportMode? Mode { get; init; }
 
-    [CosmosOption("format", "f", DefaultValue = ImportFormat.Auto)]
-    public ImportFormat? Format { get; init; }
+    [CosmosOption("format", "f")]
+    public string? Format { get; init; }
+
+    [CosmosOption("legacy")]
+    public bool? Legacy { get; init; }
 
     [CosmosOption("concurrency", DefaultValue = DefaultConcurrency, MinimumValue = 1)]
     public int? Concurrency { get; init; }
@@ -81,17 +81,17 @@ internal class ImportCommand : CosmosCommand
     public bool? DryRun { get; init; }
 
     /// <summary>
-    /// Resolves the effective input format. Auto selects CSV for a <c>.csv</c> extension and
+    /// Resolves the effective input format. Selects CSV for a <c>.csv</c> extension and
     /// otherwise a single JSON document; JSON Lines must be requested explicitly.
     /// </summary>
     /// <param name="filePath">The source file path.</param>
-    /// <param name="requested">The requested format.</param>
+    /// <param name="legacy">Whether to read the legacy JSON Lines format.</param>
     /// <returns>The effective format.</returns>
-    internal static ImportFormat ResolveFormat(string filePath, ImportFormat requested)
+    internal static ImportFormat ResolveFormat(string filePath, bool legacy)
     {
-        if (requested != ImportFormat.Auto)
+        if (legacy)
         {
-            return requested;
+            return ImportFormat.JsonLines;
         }
 
         return string.Equals(Path.GetExtension(filePath), ".csv", StringComparison.OrdinalIgnoreCase)
@@ -536,6 +536,8 @@ internal class ImportCommand : CosmosCommand
 
     public override async Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
+        var resultState = new CommandState();
+        resultState.SetFormat(this.Format);
         var concurrency = this.Concurrency ?? DefaultConcurrency;
         if (concurrency < 1)
         {
@@ -574,7 +576,7 @@ internal class ImportCommand : CosmosCommand
                 token);
         }
 
-        var format = ResolveFormat(filePath, this.Format ?? ImportFormat.Auto);
+        var format = ResolveFormat(filePath, this.Legacy == true);
         var mode = this.Mode ?? ImportMode.Insert;
         var continueOnError = this.ContinueOnError == true;
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
@@ -593,43 +595,45 @@ internal class ImportCommand : CosmosCommand
             commandState,
             token);
 
+        string summary;
         if (dryRun)
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            summary = MessageService.GetArgsString(
                 "command-import-dry-run-success",
                 "count",
-                successCount));
+                successCount);
         }
         else if (failCount == 0)
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            summary = MessageService.GetArgsString(
                 "command-import-success",
                 "count",
                 successCount,
                 "charge",
-                charge.ToString("F2", CultureInfo.InvariantCulture)));
+                charge.ToString("F2", CultureInfo.InvariantCulture));
         }
         else if (successCount > 0)
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            summary = MessageService.GetArgsString(
                 "command-import-success-partial",
                 "success",
                 successCount,
                 "failed",
                 failCount,
                 "charge",
-                charge.ToString("F2", CultureInfo.InvariantCulture)));
+                charge.ToString("F2", CultureInfo.InvariantCulture));
         }
         else
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            summary = MessageService.GetArgsString(
                 "command-import-all-failed",
                 "count",
-                failCount));
+                failCount);
         }
 
         if (failCount > 0)
         {
+            ShellInterpreter.WriteLine(summary);
             throw new CommandException(
                 "import",
                 MessageService.GetArgsString(
@@ -640,19 +644,17 @@ internal class ImportCommand : CosmosCommand
                     successCount + failCount));
         }
 
-        var resultState = new CommandState
+        resultState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
-            Result = new ShellJson(JsonSerializer.SerializeToElement(new
-            {
-                type = "import",
-                file = filePath,
-                imported = successCount,
-                failed = failCount,
-                requestCharge = charge,
-                dryRun,
-            })),
-            RequestCharge = charge > 0 ? charge : null,
-        };
+            type = "import",
+            file = filePath,
+            imported = successCount,
+            failed = failCount,
+            requestCharge = charge,
+            dryRun,
+        }));
+        resultState.RequestCharge = charge > 0 ? charge : null;
+        resultState.RenderUser = () => ShellInterpreter.WriteLine(summary);
         return resultState;
     }
 

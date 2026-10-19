@@ -137,6 +137,12 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
+            RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                "command-ttl-status-" + StatusFor(view.DefaultTimeToLive),
+                "container",
+                containerName,
+                "seconds",
+                view.DefaultTimeToLive ?? 0)),
         };
     }
 
@@ -154,6 +160,16 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
+            RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                view.AnalyticalTimeToLiveSeconds is null or 0
+                    ? "command-ttl-analytical-status-disabled"
+                    : view.AnalyticalTimeToLiveSeconds == -1
+                        ? "command-ttl-analytical-status-indefinite"
+                        : "command-ttl-analytical-status-enabled",
+                "container",
+                containerName,
+                "seconds",
+                view.AnalyticalTimeToLiveSeconds ?? 0)),
         };
     }
 
@@ -201,8 +217,9 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
             }
 
             var analyticalView = await CosmosResourceFacade.ReplaceAnalyticalTimeToLiveAsync(state, databaseName, containerName, targetTtl, token);
-            ShellInterpreter.WriteLine(MessageService.GetString("command-ttl-analytical-updated"));
-            return BuildAnalyticalResult(containerName, analyticalView);
+            var analyticalResult = BuildAnalyticalResult(containerName, analyticalView);
+            analyticalResult.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-ttl-analytical-updated"));
+            return analyticalResult;
         }
 
         if (isShow)
@@ -212,8 +229,9 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
         }
 
         var view = await CosmosResourceFacade.ReplaceTimeToLiveAsync(state, databaseName, containerName, targetTtl, token);
-        ShellInterpreter.WriteLine(MessageService.GetString("command-ttl-updated"));
-        return BuildResult(containerName, view);
+        var result = BuildResult(containerName, view);
+        result.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-ttl-updated"));
+        return result;
     }
 
     private int RequireSeconds()
