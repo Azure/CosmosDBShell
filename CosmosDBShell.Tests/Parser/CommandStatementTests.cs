@@ -36,6 +36,133 @@ public class CommandStatementTests
         }
     }
 
+    [CosmosCommand("warning-source-test")]
+    internal sealed class WarningSourceTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            commandState.AddWarning("source warning");
+            return Task.FromResult(new CommandState
+            {
+                Result = new ShellJson(JsonSerializer.SerializeToElement(new { value = "source" })),
+            });
+        }
+    }
+
+    [CosmosCommand("returned-warning-source-test")]
+    internal sealed class ReturnedWarningSourceTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            var result = new CommandState
+            {
+                Result = new ShellJson(JsonSerializer.SerializeToElement(new { value = "source" })),
+            };
+            result.AddWarning("returned warning");
+            return Task.FromResult(result);
+        }
+    }
+
+    [CosmosCommand("fresh-state-test")]
+    internal sealed class FreshStateTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            return Task.FromResult(new CommandState
+            {
+                Result = new ShellJson(JsonSerializer.SerializeToElement(new { value = "fresh" })),
+            });
+        }
+    }
+
+    [CosmosCommand("warning-output-test")]
+    internal sealed class WarningOutputTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell,
+            CommandState commandState,
+            string commandText,
+            CancellationToken token)
+        {
+            commandState.AddWarning("script warning");
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { value = "ok" }));
+            return Task.FromResult(commandState);
+        }
+    }
+
+    [CosmosCommand("warning-failure-test")]
+    internal sealed class WarningFailureTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell,
+            CommandState commandState,
+            string commandText,
+            CancellationToken token)
+        {
+            throw new CommandException("warning-failure-test", "script failure");
+        }
+    }
+
+    [CosmosCommand("warning-render-test")]
+    internal sealed class WarningRenderTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            commandState.AddWarning("rendered warning");
+            shell.RenderWarnings(commandState);
+            return Task.FromResult(commandState);
+        }
+    }
+
+    [CosmosCommand("output-warning-test")]
+    internal sealed class OutputWarningTestCommand : CosmosCommand
+    {
+        [CosmosOption("fail")]
+        public bool? Fail { get; init; }
+
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            shell.Output.WriteLine(ShellMessageKind.Warning, "first warning");
+            shell.Output.MarkupLine(ShellMessageKind.RequiredInstruction, "second [bold]instruction[/]");
+            if (this.Fail == true)
+            {
+                throw new CommandException("output-warning-test", "output failure");
+            }
+
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { value = "ok" }));
+            return Task.FromResult(commandState);
+        }
+    }
+
+    [CosmosCommand("warning-false-test")]
+    internal sealed class WarningFalseTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            commandState.AddWarning("condition warning");
+            commandState.Result = new ShellBool(false);
+            return Task.FromResult(commandState);
+        }
+    }
+
+    [CosmosCommand("plain-error-test")]
+    internal sealed class PlainErrorTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            return Task.FromResult<CommandState>(new ErrorCommandState(new CommandException("plain-error-test", "plain failure")));
+        }
+    }
+
+    [CosmosCommand("reported-failure-test")]
+    internal sealed class ReportedFailureTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            throw new CommandReportedException("reported-failure-test", "already reported");
+        }
+    }
+
     [CosmosCommand("render-failure-test")]
     internal sealed class RenderFailureTestCommand : CosmosCommand
     {
@@ -185,6 +312,74 @@ public class CommandStatementTests
         var positional = Assert.IsType<PositionalException>(structured.Exception);
         Assert.Equal("test.csh", positional.FileName);
         Assert.IsType<CommandException>(positional.InnerException);
+    }
+
+    [Fact]
+    public async Task CommandExpressionAssignment_PreservesWarnings()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningSourceTestCommand), out var factory));
+        shell.App.Commands["warning-source-test"] = factory;
+        var state = new CommandState();
+
+        var result = await ParseStatement("$result = (warning-source-test)").RunAsync(
+            shell,
+            state,
+            TestContext.Current.CancellationToken);
+
+        Assert.Same(state, result);
+        Assert.Equal("source warning", Assert.Single(result.Warnings).Message);
+    }
+
+    [Fact]
+    public async Task CommandExpressionAssignment_PreservesWarningsFromReturnedState()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(ReturnedWarningSourceTestCommand), out var factory));
+        shell.App.Commands["returned-warning-source-test"] = factory;
+        var state = new CommandState();
+
+        var result = await ParseStatement("$result = (returned-warning-source-test)").RunAsync(
+            shell,
+            state,
+            TestContext.Current.CancellationToken);
+
+        Assert.Same(state, result);
+        Assert.Equal("returned warning", Assert.Single(result.Warnings).Message);
+    }
+
+    [Fact]
+    public async Task Pipeline_PreservesWarningsWhenLaterCommandReturnsFreshState()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningSourceTestCommand), out var sourceFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(FreshStateTestCommand), out var freshFactory));
+        shell.App.Commands["warning-source-test"] = sourceFactory;
+        shell.App.Commands["fresh-state-test"] = freshFactory;
+
+        var result = await ParseStatement("warning-source-test | fresh-state-test").RunAsync(
+            shell,
+            new CommandState(),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("source warning", Assert.Single(result.Warnings).Message);
+    }
+
+    [Fact]
+    public async Task Pipeline_PreservesWarningsFromReturnedStateWhenLaterCommandReturnsFreshState()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(ReturnedWarningSourceTestCommand), out var sourceFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(FreshStateTestCommand), out var freshFactory));
+        shell.App.Commands["returned-warning-source-test"] = sourceFactory;
+        shell.App.Commands["fresh-state-test"] = freshFactory;
+
+        var result = await ParseStatement("returned-warning-source-test | fresh-state-test").RunAsync(
+            shell,
+            new CommandState(),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("returned warning", Assert.Single(result.Warnings).Message);
     }
 
     [Fact]
@@ -348,6 +543,548 @@ public class CommandStatementTests
         {
             File.Delete(script);
             File.Delete(output);
+        }
+    }
+
+    [Fact]
+    public async Task Script_ErrorWarningTrackingIsScopedToEachRedirect()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var factory));
+        shell.App.Commands["warning-output-test"] = factory;
+        var script = Path.GetTempFileName();
+        var firstOutput = Path.GetTempFileName();
+        var secondOutput = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(secondOutput, "existing content", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(
+                script,
+                $"warning-output-test 2> {ShellLiteral.Quote(firstOutput.Replace('\\', '/'))}\n"
+                    + $"warning-output-test 2> {ShellLiteral.Quote(secondOutput.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length));
+
+            var result = await command.RunScriptAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal($"script warning{Environment.NewLine}", await File.ReadAllTextAsync(firstOutput, TestContext.Current.CancellationToken));
+            Assert.Equal($"script warning{Environment.NewLine}", await File.ReadAllTextAsync(secondOutput, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(firstOutput);
+            File.Delete(secondOutput);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MachineMode_ShellOutputStandardErrorHonorsErrorRedirect(bool append)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(OutputWarningTestCommand), out var factory));
+        shell.App.Commands["output-warning-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var script = Path.GetTempFileName();
+        var stderr = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(stderr, "existing" + Environment.NewLine, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(
+                script,
+                $"output-warning-test {(append ? "2>>" : "2>")} {ShellLiteral.Quote(stderr.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length));
+
+            var result = await command.RunScriptAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            var expected = $"first warning{Environment.NewLine}second instruction{Environment.NewLine}";
+            Assert.Equal(
+                (append ? "existing" + Environment.NewLine : string.Empty) + expected,
+                await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(stderr);
+        }
+    }
+
+    [Fact]
+    public async Task MachineMode_ErrorAfterShellOutputWarningAppendsToErrorRedirect()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(OutputWarningTestCommand), out var factory));
+        shell.App.Commands["output-warning-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            var result = await shell.ExecuteCommandAsync("output-warning-test --fail", TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            var lines = (await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken))
+                .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+            Assert.Equal(3, lines.Length);
+            Assert.Equal("first warning", lines[0]);
+            Assert.Equal("second instruction", lines[1]);
+            using var document = JsonDocument.Parse(lines[2]);
+            Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+            Assert.Contains("output failure", document.RootElement.GetProperty("error").GetString());
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(stderr);
+        }
+    }
+
+    [Fact]
+    public async Task Script_PreservesWarningTrackingForInheritedRedirect()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var factory));
+        shell.App.Commands["warning-output-test"] = factory;
+        var script = Path.GetTempFileName();
+        var output = Path.GetTempFileName();
+        shell.ErrOutRedirect = output;
+        try
+        {
+            await File.WriteAllTextAsync(
+                script,
+                "warning-output-test\nwarning-output-test",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length));
+
+            var result = await command.RunScriptAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal(
+                $"script warning{Environment.NewLine}script warning{Environment.NewLine}",
+                await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(script);
+            File.Delete(output);
+        }
+    }
+
+    [Fact]
+    public async Task Script_PreservesInheritedWarningTrackingAcrossRedirectedPipeline()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var warningFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(FreshStateTestCommand), out var freshFactory));
+        shell.App.Commands["warning-output-test"] = warningFactory;
+        shell.App.Commands["fresh-state-test"] = freshFactory;
+        var script = Path.GetTempFileName();
+        var outer = Path.GetTempFileName();
+        var inner = Path.GetTempFileName();
+        shell.ErrOutRedirect = outer;
+        try
+        {
+            await File.WriteAllTextAsync(
+                script,
+                "warning-output-test\n"
+                    + $"fresh-state-test | fresh-state-test 2> {ShellLiteral.Quote(inner.Replace('\\', '/'))}\n"
+                    + "warning-output-test",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length));
+
+            var result = await command.RunScriptAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal(
+                $"script warning{Environment.NewLine}script warning{Environment.NewLine}",
+                await File.ReadAllTextAsync(outer, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(script);
+            File.Delete(outer);
+            File.Delete(inner);
+        }
+    }
+
+    [Fact]
+    public async Task Script_KeepsInheritedWarningsWrittenBeforeRedirectedPipelineStage()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningRenderTestCommand), out var warningFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(FreshStateTestCommand), out var freshFactory));
+        shell.App.Commands["warning-render-test"] = warningFactory;
+        shell.App.Commands["fresh-state-test"] = freshFactory;
+        var script = Path.GetTempFileName();
+        var outer = Path.GetTempFileName();
+        var inner = Path.GetTempFileName();
+        shell.ErrOutRedirect = outer;
+        try
+        {
+            await File.WriteAllTextAsync(
+                script,
+                $"warning-render-test | fresh-state-test 2> {ShellLiteral.Quote(inner.Replace('\\', '/'))}\n"
+                    + "warning-render-test",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length));
+
+            var result = await command.RunScriptAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal(
+                $"rendered warning{Environment.NewLine}rendered warning{Environment.NewLine}",
+                await File.ReadAllTextAsync(outer, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(script);
+            File.Delete(outer);
+            File.Delete(inner);
+        }
+    }
+
+    [Fact]
+    public async Task Script_KeepsInheritedWarningsWrittenByNestedScriptBeforeItsRedirect()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningRenderTestCommand), out var warningFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(FreshStateTestCommand), out var freshFactory));
+        shell.App.Commands["warning-render-test"] = warningFactory;
+        shell.App.Commands["fresh-state-test"] = freshFactory;
+        var script = Path.GetTempFileName();
+        var nested = Path.GetTempFileName();
+        var outer = Path.GetTempFileName();
+        var inner = Path.GetTempFileName();
+        shell.ErrOutRedirect = outer;
+        try
+        {
+            await File.WriteAllTextAsync(
+                nested,
+                "warning-render-test\n"
+                    + $"fresh-state-test 2> {ShellLiteral.Quote(inner.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(
+                script,
+                $"exec {ShellLiteral.Quote(nested.Replace('\\', '/'))}\n"
+                    + "warning-render-test",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length));
+
+            var result = await command.RunScriptAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal(
+                $"rendered warning{Environment.NewLine}rendered warning{Environment.NewLine}",
+                await File.ReadAllTextAsync(outer, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(script);
+            File.Delete(nested);
+            File.Delete(outer);
+            File.Delete(inner);
+        }
+    }
+
+    [Theory]
+    [InlineData("plain-error-test")]
+    [InlineData("reported-failure-test")]
+    public async Task MachineMode_RendersWarningsForFailuresWithoutErrorEnvelope(string failingCommand)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var warningFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(PlainErrorTestCommand), out var plainFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(ReportedFailureTestCommand), out var reportedFactory));
+        shell.App.Commands["warning-output-test"] = warningFactory;
+        shell.App.Commands["plain-error-test"] = plainFactory;
+        shell.App.Commands["reported-failure-test"] = reportedFactory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            var result = await shell.ExecuteCommandAsync(
+                $"warning-output-test | {failingCommand}",
+                TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            Assert.Equal(
+                $"script warning{Environment.NewLine}",
+                await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(stderr);
+        }
+    }
+
+    [Fact]
+    public async Task MachineMode_RendersWarningsFromCommandsInsideFilters()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var warningFactory));
+        shell.App.Commands["warning-output-test"] = warningFactory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            var result = await shell.ExecuteCommandAsync(
+                "echo [1] | filter 'map((warning-output-test))'",
+                TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal(
+                $"script warning{Environment.NewLine}",
+                await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(stderr);
+        }
+    }
+
+    [Fact]
+    public async Task MachineMode_NestedExecParserErrorKeepsEarlierWarnings()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var warningFactory));
+        shell.App.Commands["warning-output-test"] = warningFactory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var parent = Path.GetTempFileName();
+        var child = Path.GetTempFileName();
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            await File.WriteAllTextAsync(child, "{ { ls   }", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(
+                parent,
+                $"warning-output-test\nexec {ShellLiteral.Quote(child.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+
+            var result = await shell.ExecuteCommandAsync(
+                $"exec {ShellLiteral.Quote(parent.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+
+            Assert.IsType<ParserErrorCommandState>(result);
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+            Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+            Assert.Equal(
+                "script warning",
+                Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(parent);
+            File.Delete(child);
+            File.Delete(stderr);
+        }
+    }
+
+    [Fact]
+    public async Task MachineMode_FlushesWarningsAddedToAlreadyRenderedState()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningFalseTestCommand), out var factory));
+        shell.App.Commands["warning-false-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var script = Path.GetTempFileName();
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            await File.WriteAllTextAsync(
+                script,
+                "echo ready\nif (warning-false-test) { echo unexpected }",
+                TestContext.Current.CancellationToken);
+
+            var result = await shell.ExecuteCommandAsync(
+                $"exec {ShellLiteral.Quote(script.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal(
+                $"condition warning{Environment.NewLine}",
+                await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(script);
+            File.Delete(stderr);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MachineMode_ScriptErrorRedirectKeepsWarningsAcrossStatementRedirects(bool innerRedirectFirst)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var factory));
+        shell.App.Commands["warning-output-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var script = Path.GetTempFileName();
+        var outer = Path.GetTempFileName();
+        var inner = Path.GetTempFileName();
+        try
+        {
+            var redirected = $"warning-output-test 2> {ShellLiteral.Quote(inner.Replace('\\', '/'))}";
+            await File.WriteAllTextAsync(
+                script,
+                innerRedirectFirst ? $"{redirected}\nwarning-output-test" : $"warning-output-test\n{redirected}",
+                TestContext.Current.CancellationToken);
+            var command = new CommandStatement(new Token(TokenType.Identifier, script, 0, script.Length))
+            {
+                ErrRedirectToken = new Token(TokenType.RedirectError, "2>", 0, 2),
+                ErrRedirectDestToken = new Token(TokenType.Identifier, outer, 0, outer.Length),
+            };
+
+            var result = await command.RunAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal(
+                $"script warning{Environment.NewLine}script warning{Environment.NewLine}",
+                await File.ReadAllTextAsync(outer, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(script);
+            File.Delete(outer);
+            File.Delete(inner);
+        }
+    }
+
+    [Fact]
+    public async Task MachineMode_WarningsKeepTheirOwnRedirectDestinations()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningRenderTestCommand), out var factory));
+        shell.App.Commands["warning-render-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var first = Path.GetTempFileName();
+        var second = Path.GetTempFileName();
+        try
+        {
+            var result = await shell.ExecuteCommandAsync(
+                $"warning-render-test 2> {ShellLiteral.Quote(first.Replace('\\', '/'))}\n"
+                    + $"warning-render-test 2> {ShellLiteral.Quote(second.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal($"rendered warning{Environment.NewLine}", await File.ReadAllTextAsync(first, TestContext.Current.CancellationToken));
+            Assert.Equal($"rendered warning{Environment.NewLine}", await File.ReadAllTextAsync(second, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(first);
+            File.Delete(second);
+        }
+    }
+
+    [Fact]
+    public async Task MachineMode_RedirectedFailureKeepsSingleJsonPayloadWithEarlierWarnings()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningRenderTestCommand), out var warningFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningFailureTestCommand), out var failureFactory));
+        shell.App.Commands["warning-render-test"] = warningFactory;
+        shell.App.Commands["warning-failure-test"] = failureFactory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            var result = await shell.ExecuteCommandAsync(
+                "warning-render-test\nwarning-failure-test",
+                TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+            Assert.Equal(
+                "rendered warning",
+                Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(stderr);
+        }
+    }
+
+    [Fact]
+    public async Task Script_MachineErrorKeepsEarlierRedirectedWarnings()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var warningFactory));
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningFailureTestCommand), out var failureFactory));
+        shell.App.Commands["warning-output-test"] = warningFactory;
+        shell.App.Commands["warning-failure-test"] = failureFactory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var script = Path.GetTempFileName();
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            await File.WriteAllTextAsync(
+                script,
+                "warning-output-test\nwarning-failure-test",
+                TestContext.Current.CancellationToken);
+
+            var result = await shell.ExecuteCommandAsync(
+                $"exec {ShellLiteral.Quote(script.Replace('\\', '/'))}",
+                TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+            Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+            Assert.Contains("script failure", document.RootElement.GetProperty("error").GetString());
+            Assert.Equal(
+                "script warning",
+                Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(script);
+            File.Delete(stderr);
+        }
+    }
+
+    [Fact]
+    public async Task MachineMode_RendersSuccessfulWarningsToStderr()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var factory));
+        shell.App.Commands["warning-output-test"] = factory;
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var stderr = Path.GetTempFileName();
+        shell.ErrOutRedirect = stderr;
+        try
+        {
+            var result = await shell.ExecuteCommandAsync("warning-output-test", TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+            Assert.Equal($"script warning{Environment.NewLine}", await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            shell.ErrOutRedirect = null;
+            File.Delete(stderr);
         }
     }
 

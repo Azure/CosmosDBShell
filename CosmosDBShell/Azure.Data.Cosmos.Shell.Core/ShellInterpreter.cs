@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Globalization;
+using System.Linq;
 using System.Reflection;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -75,6 +76,8 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly SemaphoreSlim executionGate = new(1, 1);
 
+    private readonly TextWriter errorRedirectWriter;
+
     private long stateVersion;
 
     private int callDepth;
@@ -102,17 +105,17 @@ public partial class ShellInterpreter : IDisposable
     private long sessionChargedOperationCount;
 
     private double sessionRequestChargeWarningThreshold;
-
     private bool sessionRequestChargeWarningIssued;
-
     private long sessionRequestChargeGeneration;
 
     internal ShellInterpreter(string? configPath = null)
     {
         this.State = new DisconnectedState();
+        this.errorRedirectWriter = new ErrorRedirectWriter(this);
         this.Output = new ShellOutput(
             () => this.Options?.Quiet == true,
-            () => this.IsMachineMode);
+            () => this.IsMachineMode,
+            standardError: () => this.ErrOutRedirect != null ? this.errorRedirectWriter : Console.Error);
 
         // editor.KeyBindings.Add<ClearInputCommand>(ConsoleKey.Escape);
         // TODO: Support selection commands?
@@ -334,6 +337,14 @@ public partial class ShellInterpreter : IDisposable
 
     internal string? ErrOutRedirect { get; set; }
 
+    /// <summary>
+    /// Gets or sets the warning tracking for the active error redirect. A statement that
+    /// establishes its own redirect installs a fresh scope; enclosing scopes restore the
+    /// previous instance, so writes made to an inherited destination during nested
+    /// execution are retained.
+    /// </summary>
+    internal ErrorRedirectWarningScope ErrorRedirectWarnings { get; set; } = new();
+
     internal bool AppendOutRedirection { get; set; }
 
     internal bool AppendErrRedirection { get; set; }
@@ -362,6 +373,8 @@ public partial class ShellInterpreter : IDisposable
     internal DiagnosticLog? Diagnostics { get; private set; }
 
     internal int? McpPort { get; set; }
+
+    internal bool IsMcpInvocation { get; set; }
 
     internal PendingBatchState? CurrentBatch { get; set; }
 
@@ -625,6 +638,8 @@ public partial class ShellInterpreter : IDisposable
         var savedAppendOut = this.AppendOutRedirection;
         var savedErrOut = this.ErrOutRedirect;
         var savedAppendErr = this.AppendErrRedirection;
+        var savedErrorRedirectWarnings = this.ErrorRedirectWarnings;
+        this.ErrorRedirectWarnings = new ErrorRedirectWarningScope();
 
         var diagnostics = this.Diagnostics;
         var stopwatch = diagnostics is null ? null : System.Diagnostics.Stopwatch.StartNew();
@@ -647,6 +662,8 @@ public partial class ShellInterpreter : IDisposable
             {
                 wasCancelled = true;
                 result = new CommandState();
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
                 return result;
             }
             catch (OperationCanceledException e) when (isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested)
@@ -654,23 +671,28 @@ public partial class ShellInterpreter : IDisposable
                 var shellException = new ShellException(
                     CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, e.Message),
                     e);
-                this.ReportExecutionError(shellException, command);
-                this.Disconnect();
                 result = new ErrorCommandState(shellException);
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, deferToErrorEnvelope: true);
+                this.ReportExecutionError(shellException, command, result.Warnings);
+                this.Disconnect();
                 return result;
             }
             catch (TaskCanceledException e)
             {
                 var shellException = new ShellException(CommandException.GetDisplayMessage(e), e);
-                this.ReportExecutionError(shellException, command);
-                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 result = new ErrorCommandState(shellException);
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, deferToErrorEnvelope: true);
+                this.ReportExecutionError(shellException, command, result.Warnings);
+                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 return result;
             }
             catch (Exception e)
             {
                 if (FindException<CommandState.FailureException>(e)?.State is StructuredErrorCommandState structuredError)
                 {
+                    structuredError.ShareWarningsFrom(state);
                     if (e is PositionalException)
                     {
                         structuredError.Exception = e;
@@ -680,12 +702,19 @@ public partial class ShellInterpreter : IDisposable
                     return result;
                 }
 
-                this.ReportExecutionError(e, command);
-                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 result = new ErrorCommandState(e)
                 {
                     RequestCharge = RequestChargeContext.GetExceptionCharge(e),
                 };
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(
+                    result,
+                    !string.IsNullOrEmpty(this.StdOutRedirect),
+                    this.IsMachineMode,
+                    deferToErrorEnvelope: !ContainsException<CommandReportedException>(e),
+                    flushConsoleWarnings: true);
+                this.ReportExecutionError(e, command, result.Warnings);
+                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 return result;
             }
 
@@ -693,12 +722,17 @@ public partial class ShellInterpreter : IDisposable
             {
                 wasCancelled = true;
                 result = state;
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
                 return result;
             }
 
             if (state is ParserErrorCommandState parserErrorState)
             {
-                this.ReportParserErrors(parserErrorState.Errors, parserErrorState.SourceText ?? command, parserErrorState.SourceName);
+                this.ReportParserErrors(
+                    parserErrorState.Errors,
+                    parserErrorState.SourceText ?? command,
+                    parserErrorState.SourceName,
+                    parserErrorState.Warnings);
                 result = state;
                 return result;
             }
@@ -712,6 +746,7 @@ public partial class ShellInterpreter : IDisposable
             this.AppendOutRedirection = savedAppendOut;
             this.ErrOutRedirect = savedErrOut;
             this.AppendErrRedirection = savedAppendErr;
+            this.ErrorRedirectWarnings = savedErrorRedirectWarnings;
 
             if (diagnostics is not null && stopwatch is not null)
             {
@@ -1139,6 +1174,7 @@ public partial class ShellInterpreter : IDisposable
         try
         {
             var result = await command.ExecuteAsync(this, commandState, commandText, token);
+            result.ShareWarningsFrom(commandState);
             if (requestChargeScope.RequestCharge > 0)
             {
                 result.RequestCharge = (result.RequestCharge ?? 0) + requestChargeScope.RequestCharge;
@@ -1922,19 +1958,64 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
-    internal CommandState PrintState(CommandState state, bool markAsRendered = false)
+    /// <summary>
+    /// Renders a command state's output and pending warnings.
+    /// </summary>
+    /// <param name="state">The state to render.</param>
+    /// <param name="markAsRendered">Whether to mark the state's output as rendered.</param>
+    /// <param name="deferMachineModeWarnings">
+    /// Whether this is an intermediate render inside one top-level command (a script, block,
+    /// or pipeline). Machine-mode warnings bound for the console are then left pending so a
+    /// later failure can still report them in its single JSON error payload.
+    /// </param>
+    /// <returns>The rendered state, or an error state when rendering failed.</returns>
+    internal CommandState PrintState(CommandState state, bool markAsRendered = false, bool deferMachineModeWarnings = false)
     {
-        if (state.OutputRendered)
+        var result = this.PrintStateCore(state, markAsRendered);
+        if (!ReferenceEquals(result, state))
         {
-            // Once rendered, stay rendered: a later PrintState call with the default
-            // markAsRendered:false (e.g. ExecuteCommandAsync's final call) must not
-            // unmark it, or a subsequent PrintState call on the same state would
-            // re-render output that was already shown.
-            return state;
+            result.ShareWarningsFrom(state);
         }
 
+        // Console-bound machine-mode warnings are written only once the command's output was
+        // handled. Warnings already carried by an error envelope are marked rendered and skipped;
+        // any still pending (for example after a verbose render failure) are written here.
+        if (!deferMachineModeWarnings)
+        {
+            this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
+        }
+
+        return result;
+    }
+
+    private CommandState PrintStateCore(CommandState state, bool markAsRendered)
+    {
         try
         {
+            var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
+            var inMachineMode = this.IsMachineMode;
+
+            // Console-bound machine-mode warnings stay pending here so failures can include
+            // them in the structured error envelope. Pre-write mutation warnings have already
+            // been emitted as JSON Lines records. File-bound warnings are written immediately.
+            // Warnings are flushed even for already-rendered states because later statements
+            // (for example a false condition) can add warnings to a state they return unchanged.
+            this.DeferMachineModeConsoleWarnings(state);
+            this.RenderWarnings(
+                state,
+                redirected,
+                inMachineMode,
+                deferToErrorEnvelope: state is StructuredErrorCommandState);
+
+            if (state.OutputRendered)
+            {
+                // Once rendered, stay rendered: a later PrintState call with the default
+                // markAsRendered:false (e.g. ExecuteCommandAsync's final call) must not
+                // unmark it, or a subsequent PrintState call on the same state would
+                // re-render output that was already shown.
+                return state;
+            }
+
             // Apply the session default format when the command did not choose one itself.
             // This is the single place the global format (from --output) is applied, so
             // commands never need to read it and new commands inherit it automatically.
@@ -1942,9 +2023,6 @@ public partial class ShellInterpreter : IDisposable
             {
                 state.OutputFormat = this.DefaultOutputFormat;
             }
-
-            var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
-            var inMachineMode = this.IsMachineMode;
 
             // Structured failures bypass ReportExecutionError, so the script location the
             // statement attached would otherwise be dropped from the human-readable output.
@@ -1977,7 +2055,8 @@ public partial class ShellInterpreter : IDisposable
                     errorLocation == null
                         ? structuredError.Exception.Message
                         : $"{errorLocation.FileName}:{errorLocation.Line}:{errorLocation.Column}: {structuredError.Exception.Message}",
-                    structuredError.Result);
+                    structuredError.Result,
+                    state.Warnings);
                 return state;
             }
 
@@ -2052,7 +2131,7 @@ public partial class ShellInterpreter : IDisposable
 
                 if (inMachineMode)
                 {
-                    this.WriteMachineError(string.IsNullOrEmpty(canceled) ? e.Message : canceled);
+                    this.WriteMachineError(string.IsNullOrEmpty(canceled) ? e.Message : canceled, warnings: state.Warnings);
                 }
                 else if (!string.IsNullOrEmpty(canceled))
                 {
@@ -2064,7 +2143,7 @@ public partial class ShellInterpreter : IDisposable
 
             if (inMachineMode)
             {
-                this.WriteMachineError(e.Message);
+                this.WriteMachineError(e.Message, warnings: state.Warnings);
             }
             else
             {
@@ -2094,6 +2173,149 @@ public partial class ShellInterpreter : IDisposable
         }
 
         return state;
+    }
+
+    internal void RenderWarnings(CommandState state)
+    {
+        if (this.IsMcpInvocation || this.DeferMachineModeConsoleWarnings(state))
+        {
+            return;
+        }
+
+        this.RenderWarnings(state, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
+    }
+
+    internal void RenderMutationWarnings(CommandState state)
+    {
+        if (this.IsMcpInvocation)
+        {
+            return;
+        }
+
+        this.RenderWarnings(
+            state,
+            !string.IsNullOrEmpty(this.StdOutRedirect),
+            this.IsMachineMode,
+            machineModeWarningRecords: this.IsMachineMode && this.ErrOutRedirect == null);
+    }
+
+    internal void RenderUpdatedWarnings(CommandState state)
+    {
+        if (this.IsMcpInvocation)
+        {
+            return;
+        }
+
+        var machineModeWarningRecords = this.IsMachineMode && this.ErrOutRedirect == null;
+        if (!machineModeWarningRecords && this.DeferMachineModeConsoleWarnings(state))
+        {
+            return;
+        }
+
+        this.RenderWarnings(
+            state,
+            !string.IsNullOrEmpty(this.StdOutRedirect),
+            this.IsMachineMode,
+            renderUpdates: true,
+            machineModeWarningRecords: machineModeWarningRecords);
+    }
+
+    /// <summary>
+    /// In machine mode, console warnings are held until the command completes so they can be
+    /// included in a single JSON error payload. Pre-write mutation warnings use JSON Lines
+    /// records instead. Deferred warnings are marked as console-bound so a later statement's
+    /// <c>2&gt;</c> cannot capture them. Warnings for redirected stderr are written immediately.
+    /// </summary>
+    /// <returns><see langword="true"/> when the warnings were deferred.</returns>
+    private bool DeferMachineModeConsoleWarnings(CommandState state)
+    {
+        if (!this.IsMachineMode || this.ErrOutRedirect != null)
+        {
+            return false;
+        }
+
+        foreach (var warning in state.TakePendingWarnings().Where(warning => !warning.IsRendered))
+        {
+            warning.DeferredToConsole = true;
+            state.DeferWarning(warning);
+        }
+
+        return true;
+    }
+
+    private void RenderWarnings(
+        CommandState state,
+        bool redirected,
+        bool inMachineMode,
+        bool renderUpdates = false,
+        bool deferToErrorEnvelope = false,
+        bool flushConsoleWarnings = false,
+        bool machineModeWarningRecords = false)
+    {
+        if (inMachineMode && deferToErrorEnvelope)
+        {
+            return;
+        }
+
+        var warnings = state.TakePendingWarnings();
+        if (renderUpdates)
+        {
+            warnings.AddRange(state.TakeUpdatedWarnings());
+        }
+
+        if (flushConsoleWarnings)
+        {
+            warnings.AddRange(state.TakeDeferredWarnings());
+        }
+
+        foreach (var warning in warnings)
+        {
+            if (warning.IsRendered
+                && (!renderUpdates || string.Equals(warning.LastRenderedMessage, warning.Message, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            if (machineModeWarningRecords
+                && (!warning.IsRendered || (renderUpdates && warning.EmittedAsMachineModeWarningRecord)))
+            {
+                ShellOutput.StandardError.WriteLine(ShellMessageKind.Warning, JsonSerializer.Serialize(new
+                {
+                    status = renderUpdates && warning.EmittedAsMachineModeWarningRecord ? "warning-update" : "warning",
+                    warning = warning.Message,
+                }));
+                warning.EmittedAsMachineModeWarningRecord = true;
+            }
+            else if (warning.DeferredToConsole)
+            {
+                // Held until the top-level command finalizes; see DeferMachineModeConsoleWarnings.
+                if (!flushConsoleWarnings)
+                {
+                    continue;
+                }
+
+                ShellOutput.StandardError.WriteLine(ShellMessageKind.Warning, warning.Message);
+            }
+            else if (this.ErrOutRedirect != null)
+            {
+                this.WriteErrorRedirect(warning.Message + Environment.NewLine);
+                this.ErrorRedirectWarnings.HasWarning = true;
+            }
+            else if (!redirected && !inMachineMode)
+            {
+                this.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(Markup.Escape(warning.Message)));
+            }
+            else
+            {
+                ShellOutput.StandardError.WriteLine(ShellMessageKind.Warning, warning.Message);
+            }
+
+            warning.IsRendered = true;
+            warning.LastRenderedMessage = warning.Message;
+            warning.RenderedErrorRedirect = warning.DeferredToConsole || this.ErrOutRedirect == null
+                ? null
+                : Path.GetFullPath(this.ErrOutRedirect);
+        }
     }
 
     internal void DeclareFunction(DefStatement defStatement)
@@ -2812,13 +3034,41 @@ public partial class ShellInterpreter : IDisposable
     // redirection (`ErrOutRedirect` / `2>` / `2>>`) so scripts that redirect
     // stderr still capture errors in --quiet / --output json modes; otherwise
     // the object is written to the process stderr.
-    private void WriteMachineError(string errorMessage, ShellObject? result = null)
+    private void WriteMachineError(
+        string errorMessage,
+        ShellObject? result = null,
+        IEnumerable<CommandWarning>? warnings = null)
     {
         var error = new Dictionary<string, object?>
         {
             ["status"] = "error",
             ["error"] = errorMessage,
         };
+
+        if (this.ErrOutRedirect != null && warnings != null)
+        {
+            // Warnings deferred while stderr was the console belong there, not in this file.
+            foreach (var warning in warnings.Where(warning => !warning.IsRendered && warning.DeferredToConsole))
+            {
+                ShellOutput.StandardError.WriteLine(ShellMessageKind.Warning, warning.Message);
+                warning.IsRendered = true;
+                warning.LastRenderedMessage = warning.Message;
+            }
+        }
+
+        var appendToErrorRedirect = this.AppendErrRedirection || this.ErrorRedirectWarnings.HasOutput;
+        var replacedRedirectPath = this.ErrOutRedirect != null && !appendToErrorRedirect
+            ? Path.GetFullPath(this.ErrOutRedirect)
+            : null;
+        var outputWarnings = warnings?.Where(warning =>
+            !warning.IsRendered
+            || (replacedRedirectPath != null
+                && warning.RenderedErrorRedirect != null
+                && this.PathsEqual(warning.RenderedErrorRedirect, replacedRedirectPath))).ToArray() ?? [];
+        if (outputWarnings.Length > 0)
+        {
+            error["warnings"] = outputWarnings.Select(warning => warning.Message).ToArray();
+        }
 
         if (result?.ConvertShellObject(Parser.DataType.Json) is JsonElement resultElement)
         {
@@ -2830,7 +3080,7 @@ public partial class ShellInterpreter : IDisposable
         if (this.ErrOutRedirect != null)
         {
             var payload = json + Environment.NewLine;
-            if (this.AppendErrRedirection)
+            if (appendToErrorRedirect)
             {
                 File.AppendAllText(this.ErrOutRedirect, payload);
             }
@@ -2842,6 +3092,38 @@ public partial class ShellInterpreter : IDisposable
         else
         {
             this.Output.WriteLine(ShellMessageKind.Error, json);
+        }
+
+        foreach (var warning in outputWarnings)
+        {
+            warning.IsRendered = true;
+            warning.LastRenderedMessage = warning.Message;
+            warning.RenderedErrorRedirect = this.ErrOutRedirect == null
+                ? null
+                : Path.GetFullPath(this.ErrOutRedirect);
+        }
+    }
+
+    private bool PathsEqual(string first, string second) =>
+        string.Equals(
+            first,
+            second,
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+    private void WriteErrorRedirect(string text)
+    {
+        if (this.ErrOutRedirect == null)
+        {
+            throw new InvalidOperationException("Cannot redirect error output without an error redirection path.");
+        }
+
+        if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasContent)
+        {
+            File.AppendAllText(this.ErrOutRedirect, text);
+        }
+        else
+        {
+            File.WriteAllText(this.ErrOutRedirect, text);
         }
     }
 
@@ -2898,7 +3180,10 @@ public partial class ShellInterpreter : IDisposable
         Instance.Output.MarkupLine(ShellMessageKind.Error, Theme.FormatMuted(MessageService.GetString("shell-connect-verbose-hint")));
     }
 
-    private void ReportExecutionError(Exception e, string? sourceText = null)
+    private void ReportExecutionError(
+        Exception e,
+        string? sourceText = null,
+        IEnumerable<CommandWarning>? warnings = null)
     {
         // The command already emitted a friendly diagnostic; do not print again.
         if (ContainsException<CommandReportedException>(e))
@@ -2908,7 +3193,11 @@ public partial class ShellInterpreter : IDisposable
 
         if (FindException<CommandState.FailureException>(e)?.State is ParserErrorCommandState parserError)
         {
-            this.ReportParserErrors(parserError.Errors, parserError.SourceText ?? sourceText ?? string.Empty, parserError.SourceName);
+            this.ReportParserErrors(
+                parserError.Errors,
+                parserError.SourceText ?? sourceText ?? string.Empty,
+                parserError.SourceName,
+                warnings);
             return;
         }
 
@@ -2916,7 +3205,9 @@ public partial class ShellInterpreter : IDisposable
         {
             var sourceTrace = PositionalException.GetSourceTrace(e);
             var location = sourceTrace.FirstOrDefault();
-            this.WriteMachineError(location == null ? e.Message : $"{location.FileName}:{location.Line}:{location.Column}: {e.Message}");
+            this.WriteMachineError(
+                location == null ? e.Message : $"{location.FileName}:{location.Line}:{location.Column}: {e.Message}",
+                warnings: warnings);
             return;
         }
 
@@ -2947,7 +3238,7 @@ public partial class ShellInterpreter : IDisposable
                 : prefix + e.Message
                     + (!string.IsNullOrEmpty(hint) ? Environment.NewLine + hint : string.Empty)
                     + (showInner ? Environment.NewLine + FormatInnerExceptionMessages(e.InnerException) : string.Empty);
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasContent)
             {
                 File.AppendAllText(this.ErrOutRedirect, errTxt);
             }
@@ -3044,7 +3335,7 @@ public partial class ShellInterpreter : IDisposable
         if (fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasContent)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }
@@ -3086,7 +3377,7 @@ public partial class ShellInterpreter : IDisposable
                 errorMessage += Environment.NewLine + string.Join(Environment.NewLine, callTrace);
             }
 
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasContent)
             {
                 File.AppendAllText(this.ErrOutRedirect, errorMessage);
             }
@@ -3155,7 +3446,11 @@ public partial class ShellInterpreter : IDisposable
         return (line, column);
     }
 
-    private void ReportParserErrors(ErrorList errors, string commandText, string? sourceName = null)
+    private void ReportParserErrors(
+        ErrorList errors,
+        string commandText,
+        string? sourceName = null,
+        IEnumerable<CommandWarning>? warnings = null)
     {
         if (this.IsMachineMode
             && errors != null && errors.Count > 0)
@@ -3172,7 +3467,7 @@ public partial class ShellInterpreter : IDisposable
 
             if (errorStrings.Count > 0)
             {
-                this.WriteMachineError(string.Join("; ", errorStrings));
+                this.WriteMachineError(string.Join("; ", errorStrings), warnings: warnings);
                 return;
             }
         }
@@ -3228,7 +3523,7 @@ public partial class ShellInterpreter : IDisposable
         if (redirected && fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasContent)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }
@@ -3280,7 +3575,7 @@ public partial class ShellInterpreter : IDisposable
         if (fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasContent)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }
@@ -3424,6 +3719,30 @@ public partial class ShellInterpreter : IDisposable
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Routes <see cref="ShellOutput"/> stderr writes to the active <c>2&gt;</c>/<c>2&gt;&gt;</c>
+    /// target. The first write in a redirect scope honors overwrite; later writes append.
+    /// </summary>
+    private sealed class ErrorRedirectWriter(ShellInterpreter shell) : TextWriter
+    {
+        public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
+
+        public override void Write(char value) => this.Write(value.ToString());
+
+        public override void Write(char[] buffer, int index, int count) => this.Write(new string(buffer, index, count));
+
+        public override void Write(string? value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return;
+            }
+
+            shell.WriteErrorRedirect(value);
+            shell.ErrorRedirectWarnings.HasOutput = true;
+        }
     }
 
     /*

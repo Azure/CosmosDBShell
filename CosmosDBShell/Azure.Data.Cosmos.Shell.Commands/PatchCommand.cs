@@ -101,15 +101,7 @@ internal class PatchCommand : CosmosCommand
 
         try
         {
-            PartitionKey partitionKey;
-            try
-            {
-                partitionKey = CreatePartitionKeyFromArgument(this.Key);
-            }
-            catch (JsonException ex)
-            {
-                throw new CommandException("patch", MessageService.GetString("command-patch-error-invalid_pk_json"), ex);
-            }
+            var partitionKey = CreatePartitionKeyFromArgument(this.Key, "patch", "command-patch-error-invalid_pk_json");
 
             var response = await container.PatchItemAsync<JsonElement>(
                 this.Id,

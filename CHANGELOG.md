@@ -11,12 +11,20 @@
 
 ### Fixes
 
+- Item commands now support undefined partition-key values (`PartitionKey.None`) with the explicit `{}` syntax, including missing components in hierarchical keys. Mutations that infer undefined keys from item content emit bounded warnings. ([#251](https://github.com/Azure/CosmosDBShell/issues/251))
+- Emit inferred-key warnings before bulk mutations and retain them across partial failures, MCP responses, expressions, and pipelines; wildcard `rm *` also matches items with missing partition-key paths.
+- Route inferred-key warnings through stderr redirection and include pending warnings in machine-readable errors; import and scan-based `rm` counts reflect only scheduled writes and selected delete candidates.
+- Emit machine-readable warnings for inferred partition-key mutations before the writes as JSON Lines records on console stderr.
+- Report invalid import partition-key values as per-item failures with `--continue-on-error`, show the final scheduled-write count in bulk warnings, and preserve prior warnings in script machine-mode errors.
+- Partition-key paths with quoted property names, such as `/"tenant id"`, are now resolved correctly when inferring keys from item content and when matching items or typing CSV import columns.
+- `sproc exec` now returns `null` for a stored procedure that completes without setting a response body, instead of reporting a failure after the procedure's writes have committed.
 - `print` now reads items with typed scalar and complete hierarchical partition keys, for example `print customer-1001 '[1001,"customer-1001"]'`. Invalid keys are distinguished from missing items. Shared argument parsing rejects object/nested-array components and non-finite numbers instead of coercing them. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
 - Avoid accessing an expired HTTP request during MCP session teardown, preventing disposal errors while releasing location subscriptions and legacy SSE admission state. ([#249](https://github.com/Azure/CosmosDBShell/issues/249))
 - Report `theme`, `help`, and `edit` failures once, including a structured error on stderr in machine mode instead of an unexplained failure exit code.
 - Include failing file paths and actionable diagnostics in machine-mode theme validation errors, and keep required script-editor confirmation instructions visible with `--quiet`.
 - Keep quiet command echoes in an existing editor's Up/Down history without printing them.
-- Preserve per-item failure diagnostics in machine-mode import, bulk insert/upsert, and replacement errors. Verbose output-formatting and file-redirection failures also retain structured stderr output and `2>` redirection.
+- Preserve per-item failure diagnostics in machine-mode import, bulk insert/upsert, and replacement errors, listing up to 100 items and reporting how many more were omitted. Verbose output-formatting and file-redirection failures also retain structured stderr output and `2>` redirection, and `2>`/`2>>` now also capture warnings and required instructions from successful commands.
+- Keep CLI inferred-key warnings visible before writes when the MCP listener is enabled; MCP calls continue to return warnings in their responses.
 
 ### Improvements
 

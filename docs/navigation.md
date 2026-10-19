@@ -304,7 +304,9 @@ In machine mode the shell disables ANSI colors, suppresses connection/informatio
 banners, emits command results as the selected structured format (JSON or CSV) on `STDOUT`,
 and writes parser, connection, and command failures as a structured `{ "status": "error", "error": ... }`
 object on `STDERR`. `STDOUT` carries only the command result; tables and other interactive
-views are not rendered. The human-facing `user` and `table` formats are not machine mode; `user`
+views are not rendered. Inferred partition-key mutation warnings are emitted before writes as
+JSON Lines records on console stderr; a later error is emitted as a separate JSON record.
+The human-facing `user` and `table` formats are not machine mode; `user`
 falls back to JSON whenever output is redirected, piped, or run in machine mode.
 
 Quiet is not a universal mute: warnings, errors, and required instructions (such as
@@ -313,8 +315,9 @@ authentication prompts and previews shown before a confirmation) remain visible 
 Command results are separate from informational messages and remain on `STDOUT`.
 Bulk-write errors include per-item diagnostics in that single structured error:
 imports identify source lines, and item-array writes identify 1-based item positions.
+Up to 100 item diagnostics are listed, followed by a count of any omitted ones.
 `--verbose` does not replace machine-mode errors with raw stack traces; shell `2>`
-redirection still applies.
+and `2>>` redirection still applies and also captures warnings and required instructions.
 
 Bare piped stdin (for example `echo "..." | cosmosdbshell`) is **not** implicitly machine
 mode; pass `-c`, `--output json`, or `--quiet` to opt into structured output.

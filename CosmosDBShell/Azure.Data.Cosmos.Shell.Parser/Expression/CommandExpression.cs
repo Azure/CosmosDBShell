@@ -161,7 +161,9 @@ internal class CommandExpression : Expression
                 args.Add(evaluated);
             }
 
-            return await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
+            var functionResult = await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
+            functionResult.ShareWarningsFrom(commandState);
+            return functionResult;
         }
 
         // Check for built-in commands
@@ -174,7 +176,9 @@ internal class CommandExpression : Expression
         // Check for script files
         if (File.Exists(this.Name))
         {
-            return await this.RunScriptAsync(shell, commandState, token);
+            var scriptResult = await this.RunScriptAsync(shell, commandState, token);
+            scriptResult.ShareWarningsFrom(commandState);
+            return scriptResult;
         }
 
         throw new CommandNotFoundException(this.Name, SuggestCommand(shell, this.Name), this.Start, this.CommandToken.Length);

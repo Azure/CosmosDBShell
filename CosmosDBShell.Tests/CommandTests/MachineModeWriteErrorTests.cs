@@ -118,12 +118,12 @@ public class MachineModeWriteErrorTests
             var path = Path.Join(Path.GetTempPath(), $"cosmosshell-import-many-errors-{Guid.NewGuid():N}.jsonl");
             try
             {
-                var records = Enumerable.Repeat("{\"id\":\"denied\",\"pk\":\"x\"}", ImportCommand.ImportErrorDiagnostics.MaximumCount + 3);
+                var records = Enumerable.Repeat("{\"id\":\"denied\",\"pk\":\"x\"}", BulkWriteDiagnostics.MaximumCount + 3);
                 await File.WriteAllLinesAsync(path, records, TestContext.Current.CancellationToken);
                 var error = await CaptureMachineErrorAsync(shell, $"import '{path}' --continue-on-error --concurrency=16");
 
                 Assert.Equal(
-                    ImportCommand.ImportErrorDiagnostics.MaximumCount,
+                    BulkWriteDiagnostics.MaximumCount,
                     error.Split("Line ", StringSplitOptions.None).Length - 1);
                 Assert.Contains("3 additional item diagnostics omitted", error);
             }
@@ -135,14 +135,14 @@ public class MachineModeWriteErrorTests
     }
 
     [Fact]
-    public void ImportErrorDiagnostics_TruncatesLongMessages()
+    public void BulkWriteDiagnostics_TruncatesLongMessages()
     {
-        var diagnostics = new ImportCommand.ImportErrorDiagnostics();
-        diagnostics.Add(new string('x', ImportCommand.ImportErrorDiagnostics.MaximumLength + 100));
+        var diagnostics = new BulkWriteDiagnostics();
+        diagnostics.Add(new string('x', BulkWriteDiagnostics.MaximumLength + 100));
 
         var message = diagnostics.GetMessage();
 
-        Assert.True(message.Length <= ImportCommand.ImportErrorDiagnostics.MaximumLength);
+        Assert.True(message.Length <= BulkWriteDiagnostics.MaximumLength);
         Assert.Contains("[diagnostic truncated]", message);
     }
 
@@ -194,7 +194,7 @@ public class MachineModeWriteErrorTests
             ConfigureWrites(container);
             var error = await CaptureMachineErrorAsync(
                 shell,
-                "replace '[{},{\"id\":\"bad-status\",\"pk\":\"x\"},{\"id\":\"denied\",\"pk\":\"x\"}]'");
+                "replace '[{\"pk\":\"x\"},{\"id\":\"bad-status\",\"pk\":\"x\"},{\"id\":\"denied\",\"pk\":\"x\"}]'");
 
             Assert.Contains("Item 1", error);
             Assert.Contains("non-empty 'id'", error);
@@ -203,6 +203,25 @@ public class MachineModeWriteErrorTests
             Assert.Contains("Item 3", error);
             Assert.Contains("Forbidden", error);
             Assert.Contains("bulk service denied", error);
+        }
+    }
+
+    [Theory]
+    [InlineData("mkitem")]
+    [InlineData("replace")]
+    public async Task BulkWrite_TooManyFailures_BoundsDiagnosticsAndReportsOmittedCount(string commandName)
+    {
+        var (shell, container) = CreateShell(quiet: true);
+        using (shell)
+        {
+            ConfigureWrites(container);
+            var items = string.Join(',', Enumerable.Repeat("{\"id\":\"denied\",\"pk\":\"x\"}", BulkWriteDiagnostics.MaximumCount + 3));
+            var error = await CaptureMachineErrorAsync(shell, $"{commandName} '[{items}]'");
+
+            Assert.Equal(
+                BulkWriteDiagnostics.MaximumCount,
+                error.Split("Item ", StringSplitOptions.None).Length - 1);
+            Assert.Contains("3 additional item diagnostics omitted", error);
         }
     }
 
@@ -251,6 +270,25 @@ public class MachineModeWriteErrorTests
             .Returns(call => Write(call.ArgAt<JsonElement>(0)));
         container.ReplaceItemAsync(Arg.Any<JsonElement>(), Arg.Any<string>(), Arg.Any<PartitionKey?>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
             .Returns(call => Write(call.ArgAt<JsonElement>(0)));
+
+        static Task<ResponseMessage> WriteStream(Stream body)
+        {
+            using var document = JsonDocument.Parse(body);
+            if (document.RootElement.GetProperty("id").GetString() == "bad-status")
+            {
+                return Task.FromResult(new ResponseMessage(HttpStatusCode.BadRequest));
+            }
+
+            return Task.FromException<ResponseMessage>(
+                new CosmosException("bulk service denied", HttpStatusCode.Forbidden, 0, "test", 0));
+        }
+
+        container.CreateItemStreamAsync(Arg.Any<Stream>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(call => WriteStream(call.ArgAt<Stream>(0)));
+        container.UpsertItemStreamAsync(Arg.Any<Stream>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(call => WriteStream(call.ArgAt<Stream>(0)));
+        container.ReplaceItemStreamAsync(Arg.Any<Stream>(), Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(call => WriteStream(call.ArgAt<Stream>(0)));
     }
 
     private static async Task<string> CaptureMachineErrorAsync(ShellInterpreter shell, string command)
