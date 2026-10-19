@@ -304,6 +304,7 @@ internal class ImportCommand : CosmosCommand
             stream.Position = contentStart;
         }
     }
+
     /// <summary>
     /// Parses a partition key path (e.g. <c>/address/city</c>) into its individual
     /// segments. Returns <see langword="null"/> when no usable path is supplied.
