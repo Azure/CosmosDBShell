@@ -425,7 +425,6 @@
   "command-import-error-item_failed": "Line {0}: {1} - {2}",
   "command-import-error-item_status": "Line {0}: item returned status {1}.",
   "command-import-error-missing_file": "A source file path is required.",
-  "command-import-error-multiple_documents": "The file contains more than one JSON value. Use --format=jsonl for JSON Lines files.",
   "command-import-error-not_document": "The file must contain a JSON object or an array of JSON objects. Use --format=jsonl for JSON Lines files.",
   "command-import-error-not_object": "Line {0} is not a JSON object.",
   "command-import-error-some_failed": "Failed to import {0} of {1} items.",

@@ -230,26 +230,23 @@ internal class ImportCommand : CosmosCommand
             yield break;
         }
 
-        // Reads top-level values incrementally so trailing content, such as a second JSON Lines
-        // record, is rejected without buffering the rest of the file.
-        await using var values = JsonSerializer.DeserializeAsyncEnumerable<JsonElement>(
-            stream,
-            topLevelValues: true,
-            cancellationToken: token).GetAsyncEnumerator(token);
-        if (!await MoveNextDocumentAsync(values))
+        JsonElement item;
+        try
         {
-            yield break;
+            // Single-document deserialization rejects trailing content without materializing a second value.
+            item = await JsonSerializer.DeserializeAsync<JsonElement>(stream, cancellationToken: token);
+        }
+        catch (JsonException ex)
+        {
+            throw new CommandException(
+                "import",
+                MessageService.GetArgsString("command-import-error-invalid_document", "message", ex.Message),
+                ex);
         }
 
-        var item = values.Current;
         if (item.ValueKind != JsonValueKind.Object)
         {
             throw new CommandException("import", MessageService.GetString("command-import-error-not_document"));
-        }
-
-        if (await MoveNextDocumentAsync(values))
-        {
-            throw new CommandException("import", MessageService.GetString("command-import-error-multiple_documents"));
         }
 
         yield return (1, item);

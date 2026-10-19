@@ -120,6 +120,22 @@ public class ImportCommandTests
     }
 
     [Theory]
+    [InlineData("{\"data\":\"", "\"}")]
+    [InlineData("[\"", "\"]")]
+    [InlineData("\"", "\"")]
+    [InlineData("{\"data\":\"", "")]
+    public async Task EnumerateJsonDocumentAsync_LargeTrailingValue_FailsWithoutReadingValue(string prefix, string suffix)
+    {
+        var content = "{\"id\":\"first\"}\n" + prefix + new string('x', 4 * 1024 * 1024) + suffix;
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+
+        Assert.Contains("--format=jsonl", ex.Message);
+        Assert.True(stream.Position < 1024 * 1024, $"Read {stream.Position} of {stream.Length} bytes.");
+    }
+
+    [Theory]
     [InlineData("[{\"id\":\"a\"},")]
     [InlineData("[{\"id\":\"a\"}")]
     [InlineData("[{\"id\":\"a\"}]]")]
