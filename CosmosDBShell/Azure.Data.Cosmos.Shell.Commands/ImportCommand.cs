@@ -224,6 +224,7 @@ internal class ImportCommand : CosmosCommand
         [EnumeratorCancellation] CancellationToken token)
     {
         var buffer = new byte[16 * 1024];
+        var offset = 0;
         var length = 0;
         var final = false;
         var line = 1;
@@ -231,30 +232,28 @@ internal class ImportCommand : CosmosCommand
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            var whitespace = 0;
+            var whitespace = offset;
             while (whitespace < length && buffer[whitespace] is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')
             {
                 whitespace++;
             }
 
-            AdvanceLines(buffer.AsSpan(0, whitespace), ref line, ref previousCarriageReturn);
-            buffer.AsSpan(whitespace, length - whitespace).CopyTo(buffer);
-            length -= whitespace;
-            if (length > 0)
+            AdvanceLines(buffer.AsSpan(offset, whitespace - offset), ref line, ref previousCarriageReturn);
+            offset = whitespace;
+            if (offset < length)
             {
-                if (buffer[0] != (byte)'{')
+                if (buffer[offset] != (byte)'{')
                 {
                     throw new CommandException(
                         "import",
                         MessageService.GetArgsString("command-import-error-not_object", "line", line));
                 }
 
-                if (TryReadObject(buffer.AsSpan(0, length), final, out var item, out var consumed))
+                if (TryReadObject(buffer.AsSpan(offset, length - offset), final, line, out var item, out var consumed))
                 {
                     var startLine = line;
-                    AdvanceLines(buffer.AsSpan(0, consumed), ref line, ref previousCarriageReturn);
-                    buffer.AsSpan(consumed, length - consumed).CopyTo(buffer);
-                    length -= consumed;
+                    AdvanceLines(buffer.AsSpan(offset, consumed), ref line, ref previousCarriageReturn);
+                    offset += consumed;
                     yield return (startLine, item);
                     continue;
                 }
@@ -262,6 +261,13 @@ internal class ImportCommand : CosmosCommand
             else if (final)
             {
                 yield break;
+            }
+
+            if (offset > 0)
+            {
+                buffer.AsSpan(offset, length - offset).CopyTo(buffer);
+                length -= offset;
+                offset = 0;
             }
 
             if (length == buffer.Length)
@@ -275,18 +281,28 @@ internal class ImportCommand : CosmosCommand
         }
     }
 
-    private static bool TryReadObject(ReadOnlySpan<byte> buffer, bool final, out JsonElement item, out int consumed)
+    private static bool TryReadObject(ReadOnlySpan<byte> buffer, bool final, int line, out JsonElement item, out int consumed)
     {
-        var reader = new Utf8JsonReader(buffer, final, default);
-        if (JsonDocument.TryParseValue(ref reader, out var document))
+        try
         {
-            using (document)
+            var reader = new Utf8JsonReader(buffer, final, default);
+            if (JsonDocument.TryParseValue(ref reader, out var document))
             {
-                item = document.RootElement.Clone();
-            }
+                using (document)
+                {
+                    item = document.RootElement.Clone();
+                }
 
-            consumed = checked((int)reader.BytesConsumed);
-            return true;
+                consumed = checked((int)reader.BytesConsumed);
+                return true;
+            }
+        }
+        catch (JsonException ex)
+        {
+            throw new CommandException(
+                "import",
+                MessageService.GetArgsString("command-import-error-invalid_line_json", "line", line, "message", ex.Message),
+                ex);
         }
 
         item = default;

@@ -244,8 +244,40 @@ public class ImportCommandTests
 
         var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
 
-        Assert.Contains("not a valid JSON document", ex.Message);
+        Assert.Contains(content.StartsWith('[') ? "not a valid JSON document" : "not valid JSON", ex.Message);
         Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+    }
+
+    [Theory]
+    [InlineData("{\"id\":\"first\"}\n\n{\"id\":}", 3)]
+    [InlineData("{\n\"id\":\"first\"\n}\r\n\r\n{\n\"id\":\n}", 5)]
+    public async Task EnumerateJsonDocumentAsync_MalformedSequenceObject_ReportsPhysicalStartLine(string content, int expectedLine)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var error = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+
+        Assert.Contains($"Line {expectedLine} is not valid JSON", error.Message);
+        Assert.IsAssignableFrom<JsonException>(error.InnerException);
+    }
+
+    [Fact]
+    public async Task EnumerateJsonDocumentAsync_LargeObjectThenSmallObjects_YieldsAllItems()
+    {
+        var content = new StringBuilder("{\"data\":\"").Append('x', 2 * 1024 * 1024).Append("\"}\n");
+        for (var index = 0; index < 20_000; index++)
+        {
+            content.Append("{\"id\":\"").Append(index).Append("\"}\n");
+        }
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content.ToString()));
+        var count = 0;
+        await foreach (var (line, _) in ImportCommand.EnumerateJsonDocumentAsync(stream, TestContext.Current.CancellationToken))
+        {
+            Assert.Equal(++count, line);
+        }
+
+        Assert.Equal(20_001, count);
     }
 
     [Theory]
