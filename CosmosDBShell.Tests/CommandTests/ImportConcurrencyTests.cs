@@ -494,7 +494,8 @@ public class ImportConcurrencyTests
             var result = Assert.IsType<ShellJson>(state.Result).Value;
 
             Assert.Equal("import", result.GetProperty("type").GetString());
-            Assert.Equal(expected, result.GetProperty("imported").GetInt32());
+            Assert.Equal(0, result.GetProperty("imported").GetInt32());
+            Assert.Equal(expected, result.GetProperty("validated").GetInt32());
             Assert.Equal(0, result.GetProperty("failed").GetInt32());
             Assert.Equal(0, result.GetProperty("requestCharge").GetDouble());
             Assert.True(result.GetProperty("dryRun").GetBoolean());

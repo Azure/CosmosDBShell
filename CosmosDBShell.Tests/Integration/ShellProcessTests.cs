@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 
@@ -23,6 +24,35 @@ using Xunit.Sdk;
 public class ShellProcessTests
 {
     private static readonly Regex AnsiEscape = new("\x1b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
+
+    [Theory]
+    [InlineData("{\"name\":\"missing-id\"}")]
+    [InlineData("{\"id\":42}")]
+    public async Task ImportDryRun_InvalidId_ReturnsUsageExitCodeAndOfflineResult(string content)
+    {
+        var file = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(file, content, TestContext.Current.CancellationToken);
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: ["--output", "json", "-c", $"import {JsonSerializer.Serialize(file)} --dry-run"],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellExitCode.UsageError, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            using var error = JsonDocument.Parse(result.StdErr);
+            var import = error.RootElement.GetProperty("result");
+            Assert.Equal(0, import.GetProperty("imported").GetInt32());
+            Assert.Equal(0, import.GetProperty("validated").GetInt32());
+            Assert.Equal("offline", import.GetProperty("validationScope").GetString());
+            Assert.False(import.GetProperty("targetValidated").GetBoolean());
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
 
     [Theory]
     [InlineData("value", "identity", "1 argument, got 0")]

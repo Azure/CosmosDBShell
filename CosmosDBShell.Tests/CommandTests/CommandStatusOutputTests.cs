@@ -121,7 +121,8 @@ public class CommandStatusOutputTests
 
             Assert.False(state.IsError);
             var result = Assert.IsType<ShellJson>(state.Result).Value;
-            Assert.Equal(2, result.GetProperty("imported").GetInt32());
+            Assert.Equal(0, result.GetProperty("imported").GetInt32());
+            Assert.Equal(2, result.GetProperty("validated").GetInt32());
             Assert.True(OutputFormats.TryParse(format, out var expectedFormat));
             Assert.Equal(expectedFormat, state.OutputFormat);
             Assert.NotEmpty(await File.ReadAllTextAsync(redirect, TestContext.Current.CancellationToken));
@@ -197,7 +198,9 @@ public class CommandStatusOutputTests
             Assert.True(state.OutputFormatExplicitlySet);
             Assert.True(OutputFormats.TryParse(localFormat, out var expectedFormat));
             Assert.Equal(expectedFormat, state.OutputFormat);
-            Assert.Equal(1, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("imported").GetInt32());
+            var result = Assert.IsType<ShellJson>(state.Result).Value;
+            Assert.Equal(0, result.GetProperty("imported").GetInt32());
+            Assert.Equal(1, result.GetProperty("validated").GetInt32());
         }
         finally
         {
@@ -217,7 +220,9 @@ public class CommandStatusOutputTests
 
             var state = await command.ExecuteAsync(shell, new CommandState(), string.Empty, TestContext.Current.CancellationToken);
 
-            Assert.Equal(2, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("imported").GetInt32());
+            var result = Assert.IsType<ShellJson>(state.Result).Value;
+            Assert.Equal(0, result.GetProperty("imported").GetInt32());
+            Assert.Equal(2, result.GetProperty("validated").GetInt32());
         }
         finally
         {

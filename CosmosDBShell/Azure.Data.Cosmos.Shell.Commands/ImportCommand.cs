@@ -44,10 +44,12 @@ internal enum ImportMode
     ReadOnly = false,
     Idempotent = false,
     OpenWorld = true,
-    Description = "Bulk-loads items into a Cosmos container from a local JSON array, a single JSON object, an automatically detected sequence of JSON objects (including JSON Lines), or a CSV file. The format option controls the command result, not the input file.")]
+    Description = "Bulk-loads items into a Cosmos container from a local JSON array, a single JSON object, an automatically detected sequence of JSON objects (including JSON Lines), or a CSV file. The format option controls the command result, not the input file. Dry runs validate input and item IDs offline, without accessing the target container; they do not verify partition keys, permissions, conflicts, or other service constraints.")]
 internal class ImportCommand : CosmosCommand
 {
     internal const int DefaultConcurrency = 16;
+
+    private const int MaxItemIdByteLength = 1023;
 
     [CosmosParameter("file", RequiredErrorKey = "command-import-error-missing_file")]
     public string? File { get; init; }
@@ -573,7 +575,14 @@ internal class ImportCommand : CosmosCommand
         var (successCount, failCount, charge) = (progress.Success, progress.Failed, progress.Charge);
 
         string summary;
-        if (failure != null && failCount == 0)
+        if (dryRun)
+        {
+            summary = MessageService.GetArgsString(
+                failure == null ? "command-import-dry-run-success" : "command-import-dry-run-stopped",
+                "count",
+                progress.Validated);
+        }
+        else if (failure != null && failCount == 0)
         {
             summary = MessageService.GetArgsString(
                 "command-import-stopped",
@@ -581,13 +590,6 @@ internal class ImportCommand : CosmosCommand
                 successCount,
                 "charge",
                 charge.ToString("F2", CultureInfo.InvariantCulture));
-        }
-        else if (dryRun)
-        {
-            summary = MessageService.GetArgsString(
-                "command-import-dry-run-success",
-                "count",
-                successCount);
         }
         else if (failCount == 0)
         {
@@ -626,6 +628,13 @@ internal class ImportCommand : CosmosCommand
             requestCharge = charge,
             dryRun,
         })!.AsObject();
+        if (dryRun)
+        {
+            payload["validated"] = progress.Validated;
+            payload["validationScope"] = "offline";
+            payload["targetValidated"] = false;
+        }
+
         CommandState resultState;
         if (failure != null)
         {
@@ -687,7 +696,8 @@ internal class ImportCommand : CosmosCommand
             {
                 await foreach (var item in source.WithCancellation(token))
                 {
-                    progress.Success++;
+                    ValidateDryRunItem(item.Item, item.LineNumber);
+                    progress.Validated++;
                 }
 
                 return;
@@ -713,6 +723,22 @@ internal class ImportCommand : CosmosCommand
                 await stream.DisposeAsync();
             }
         }
+    }
+
+    private static void ValidateDryRunItem(JsonElement item, int lineNumber)
+    {
+        if (item.TryGetProperty("id", out var idElement)
+            && idElement.ValueKind == JsonValueKind.String
+            && idElement.GetString() is { Length: > 0 } id
+            && Encoding.UTF8.GetByteCount(id) <= MaxItemIdByteLength
+            && !id.Contains('/')
+            && !id.Contains('\\'))
+        {
+            return;
+        }
+
+        var message = MessageService.GetArgsString("command-import-error-invalid_id", "line", lineNumber);
+        throw new CommandException("import", message, new ArgumentException(message));
     }
 
     internal static async Task<(int Success, int Failed, double Charge)> WriteItemsAsync(
@@ -934,6 +960,8 @@ internal class ImportCommand : CosmosCommand
 
     internal sealed class ImportProgress
     {
+        internal int Validated { get; set; }
+
         internal int Success { get; set; }
 
         internal int Failed { get; set; }

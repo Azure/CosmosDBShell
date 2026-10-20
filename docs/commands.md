@@ -778,7 +778,9 @@ Options:
                                   (e.g. /address/city) nest the matching column.
     --continue, --continue-on-error
                                   Continue importing after individual item failures.
-    --dry-run                     Parse the file without writing any items (validation only).
+    --dry-run                     Validate file syntax and item IDs offline; no writes or target access.
+                                  Does not check target partition keys, permissions, conflicts,
+                                  or other service constraints.
 ```
 
 Examples:
@@ -791,13 +793,21 @@ Examples:
 - `import items.csv` imports a CSV file, mapping each header column to a string property.
 - `import items.csv --partition-key=/address/city` nests the `city` column under `address` for a nested partition key. If a scalar column already occupies an intermediate path segment (for example an `address` column), the import fails with a conflict error rather than silently overwriting it.
 - `import items.json --mode=upsert --continue-on-error` upserts items and keeps going on per-item failures.
-- `import items.json --dry-run` validates the file without writing anything; useful before a real run.
+- `import items.json --dry-run` validates file syntax and item IDs offline without writing anything; useful before a real run, but not a guarantee that the target will accept the items.
 
 Imports keep up to 16 writes in flight by default without loading the entire file. `--concurrency` controls this bound; it must be a positive integer. Completion order is not guaranteed when concurrency exceeds 1. Use `--concurrency=1` when repeated IDs must be processed in file order (especially with upsert), or when exact sequential stop-on-error behavior is required. Higher concurrency can hide network latency but does not increase provisioned RU/s or avoid throttling; Cosmos SDK retry handling remains unchanged. Dry runs only validate input and do not start writes.
 
 By default, the first observed write failure stops scheduling new writes. Already-started writes are awaited and included in the final success/failure counts and request charge; they may succeed after the failure. With `--continue-on-error` the command keeps going after per-item *write* failures (for example a Cosmos write that throws) and the final summary reports how many items succeeded and how many failed. Parse and validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) always stop scheduling writes, even with `--continue-on-error`, and in-flight writes are awaited before the error is returned. Cancellation is passed to both input reads and writes, and the command waits for started writes to settle before returning. Earlier writes are never rolled back. The command exits with an error status if any items failed.
 
-Write failures and input parse/read failures retain a structured import result, including `imported`, `failed`, and observed write `requestCharge`. `failed` counts failed writes, not unread or malformed records. Failed results also include `error` and `exitCode`, classified from the input failure that stopped the import or, otherwise, the first observed write failure. Only that representative error is retained, keeping results bounded for large imports. In machine mode the result is carried in the JSON error envelope on stderr; MCP returns it as `result` with `isError: true`. Human-readable output reports the summary and representative error. A failed dry run's `imported` count denotes objects parsed before the failure, not writes.
+Write failures and input parse/read failures retain a structured import result, including `imported`, `failed`, and observed write `requestCharge`. `failed` counts failed writes, not unread or malformed records. Failed results also include `error` and `exitCode`, classified from the input failure that stopped the import or, otherwise, the first observed write failure. Only that representative error is retained, keeping results bounded for large imports. In machine mode the result is carried in the JSON error envelope on stderr; MCP returns it as `result` with `isError: true`. Human-readable output reports the summary and representative error.
+
+#### Dry-run validation scope
+
+`--dry-run` is always offline, even when connected or given `--database`/`--container`. It makes no target requests and performs no writes. It checks input syntax, object records, CSV structure/mapping, and each item's `id`: a non-empty string of at most 1023 UTF-8 bytes containing neither `/` nor `\`. Unicode IDs are allowed; the limit is measured in bytes, not characters. Local validation failures stop the dry run with a non-zero exit status, even with `--continue-on-error`.
+
+Dry runs do **not** validate the target container's partition-key definition or values, permissions, existing-ID conflicts, or other service constraints such as item-size limits. In particular, a property named `pk` cannot be validated as a partition key without knowing the target definition. Missing partition-key properties are not necessarily invalid because Cosmos DB supports undefined keys. Passing the dry run is not a promise that a real import will succeed.
+
+Dry-run results set `imported: 0`, `failed: 0`, `requestCharge: 0`, and `dryRun: true`. The additional `validated` field counts records that passed local validation before completion or the first error; `validationScope: "offline"` and `targetValidated: false` state the limits explicitly. These fields are also present in failed dry-run results and MCP responses. Normal imports retain their existing result shape.
 
 ### watch
 

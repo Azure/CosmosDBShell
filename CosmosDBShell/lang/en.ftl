@@ -487,7 +487,7 @@ command-import-description-format = Command result format: user, json, csv, or t
 command-import-description-concurrency = Maximum in-flight writes (default: 16). Must be positive. Use 1 for sequential writes and file-order processing.
 command-import-description-partition-key = For CSV import, the partition key path. Nested paths (e.g. /address/city) place the matching column under that path.
 command-import-description-continue-on-error = Continue importing after individual item write failures. Otherwise stop scheduling writes on the first observed failure and wait for in-flight writes. Parse or validation errors still abort the import.
-command-import-description-dry-run = Parse the file without writing any items.
+command-import-description-dry-run = Validate file syntax and item IDs offline without writing items or accessing the target. Does not check target partition keys, permissions, conflicts, or other service constraints.
 command-import-success = Imported { $count } { $count ->
     [one] item
     *[other] items
@@ -498,10 +498,12 @@ command-import-success-partial = Imported { $success } { $success ->
 }, { $failed } failed (RU charge: { $charge })
 command-import-all-failed = Failed to import all { $count } items
 command-import-stopped = Import stopped after { $success } items (RU charge: { $charge }).
-command-import-dry-run-success = Dry run: { $count } valid { $count ->
+command-import-dry-run-success = Dry run: { $count } { $count ->
     [one] item
     *[other] items
-}
+} passed offline validation; no items were written. Target partition keys, permissions, conflicts, and other service constraints were not checked.
+command-import-dry-run-stopped = Dry run stopped after { $count } items passed offline validation; no items were written. The target container was not checked.
+command-import-error-invalid_id = Line { $line }: 'id' must be a non-empty string of at most 1023 UTF-8 bytes and must not contain slash or backslash characters.
 command-import-error-missing_file = A source file path is required.
 command-import-error-invalid_concurrency = Concurrency must be a positive integer.
 command-import-error-invalid_csv = Invalid CSV record at line { $line }.

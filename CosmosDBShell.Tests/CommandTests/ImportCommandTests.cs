@@ -47,7 +47,8 @@ public class ImportCommandTests
 
             Assert.Empty(output.ToString());
             var result = Assert.IsType<ShellJson>(state.Result).Value;
-            Assert.Equal(2, result.GetProperty("imported").GetInt32());
+            Assert.Equal(0, result.GetProperty("imported").GetInt32());
+            Assert.Equal(2, result.GetProperty("validated").GetInt32());
             Assert.True(result.GetProperty("dryRun").GetBoolean());
 
             shell.PrintState(state);
@@ -64,11 +65,21 @@ public class ImportCommandTests
                 if (format == "json")
                 {
                     using var document = JsonDocument.Parse(text);
-                    Assert.Equal(2, document.RootElement.GetProperty("imported").GetInt32());
+                    Assert.Equal(0, document.RootElement.GetProperty("imported").GetInt32());
+                    Assert.Equal(2, document.RootElement.GetProperty("validated").GetInt32());
                 }
                 else
                 {
-                    Assert.Contains("imported", text);
+                    if (format == "csv")
+                    {
+                        Assert.Contains("imported", text);
+                    }
+                    else
+                    {
+                        Assert.Equal(OutputFormat.Table, state.OutputFormat);
+                        Assert.Equal(state.GenerateOutputText() + Environment.NewLine, text);
+                    }
+
                     Assert.DoesNotContain("\"type\":", text);
                 }
             }
