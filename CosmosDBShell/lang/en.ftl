@@ -484,7 +484,6 @@ command-import-description-database = The database to write to.
 command-import-description-container = The container to write to.
 command-import-description-mode = Write mode: insert (default) or upsert.
 command-import-description-format = Command result format: user, json, csv, or table. Does not change how the input file is read.
-command-import-description-legacy = Read legacy JSON Lines input (one JSON object per line) instead of a single JSON document.
 command-import-description-concurrency = Maximum in-flight writes (default: 16). Must be positive. Use 1 for sequential writes and file-order processing.
 command-import-description-partition-key = For CSV import, the partition key path. Nested paths (e.g. /address/city) place the matching column under that path.
 command-import-description-continue-on-error = Continue importing after individual item write failures. Otherwise stop scheduling writes on the first observed failure and wait for in-flight writes. Parse or validation errors still abort the import.
@@ -498,6 +497,7 @@ command-import-success-partial = Imported { $success } { $success ->
     *[other] items
 }, { $failed } failed (RU charge: { $charge })
 command-import-all-failed = Failed to import all { $count } items
+command-import-stopped = Import stopped after { $success } items (RU charge: { $charge }).
 command-import-dry-run-success = Dry run: { $count } valid { $count ->
     [one] item
     *[other] items
@@ -521,8 +521,7 @@ script-error-expression-depth = Maximum expression tree depth of { $limit } exce
 command-import-error-file_not_found = File '{ $file }' was not found.
 command-import-error-blank_line = Line { $line } is blank.
 command-import-error-not_object = Line { $line } is not a JSON object.
-command-import-error-not_document = The file must contain a JSON object or an array of JSON objects. Use --legacy for JSON Lines files.
-command-import-error-invalid_document = The file is not a valid JSON document: { $message } Use --legacy for JSON Lines files.
+command-import-error-invalid_document = The file is not a valid JSON document or sequence of JSON objects: { $message }
 command-import-error-invalid_line_json = Line { $line } is not valid JSON: { $message }
 command-import-error-item_status = Line { $line }: item returned status { $status }.
 command-import-error-item_failed = Line { $line }: { $status } - { $message }

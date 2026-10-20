@@ -104,7 +104,7 @@ public class CommandStatusOutputTests
     [InlineData("user", false)]
     [InlineData("json", true)]
     [InlineData("csv", true)]
-    public async Task ImportCommandLine_FormatControlsSummaryAndLegacyControlsInput(string format, bool legacy)
+    public async Task ImportCommandLine_FormatControlsSummaryAndInputIsDetected(string format, bool legacy)
     {
         var file = Path.GetTempFileName();
         using var shell = CreateShell();
@@ -116,7 +116,7 @@ public class CommandStatusOutputTests
             await File.WriteAllTextAsync(file, content, TestContext.Current.CancellationToken);
 
             var state = await shell.ExecuteCommandAsync(
-                $"import {JsonSerializer.Serialize(file)} --dry-run --format={format}" + (legacy ? " --legacy" : string.Empty),
+                $"import {JsonSerializer.Serialize(file)} --dry-run --format={format}",
                 TestContext.Current.CancellationToken);
 
             Assert.False(state.IsError);
@@ -206,7 +206,7 @@ public class CommandStatusOutputTests
     }
 
     [Fact]
-    public async Task Import_JsonFormatDoesNotEnableLegacyInput()
+    public async Task Import_JsonFormatAutomaticallyReadsLegacyInput()
     {
         var file = Path.GetTempFileName();
         using var shell = CreateShell();
@@ -215,10 +215,9 @@ public class CommandStatusOutputTests
             await File.WriteAllTextAsync(file, "{\"id\":\"a\"}\n{\"id\":\"b\"}", TestContext.Current.CancellationToken);
             var command = new ImportCommand { File = file, DryRun = true, Format = "json" };
 
-            var exception = await Assert.ThrowsAsync<CommandException>(() =>
-                command.ExecuteAsync(shell, new CommandState(), string.Empty, TestContext.Current.CancellationToken));
+            var state = await command.ExecuteAsync(shell, new CommandState(), string.Empty, TestContext.Current.CancellationToken);
 
-            Assert.Contains("--legacy", exception.Message);
+            Assert.Equal(2, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("imported").GetInt32());
         }
         finally
         {

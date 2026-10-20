@@ -82,16 +82,14 @@ public class ImportCommandTests
     }
 
     [Theory]
-    [InlineData("items.json", false, (int)ImportFormat.Json)]
-    [InlineData("items.jsonl", false, (int)ImportFormat.Json)]
-    [InlineData("items", false, (int)ImportFormat.Json)]
-    [InlineData("items.csv", false, (int)ImportFormat.Csv)]
-    [InlineData("items.CSV", false, (int)ImportFormat.Csv)]
-    [InlineData("items.jsonl", true, (int)ImportFormat.JsonLines)]
-    [InlineData("items.csv", true, (int)ImportFormat.JsonLines)]
-    public void ResolveFormat_ReadsJsonUnlessCsvOrLegacy(string file, bool legacy, int expected)
+    [InlineData("items.json", (int)ImportFormat.Json)]
+    [InlineData("items.jsonl", (int)ImportFormat.Json)]
+    [InlineData("items", (int)ImportFormat.Json)]
+    [InlineData("items.csv", (int)ImportFormat.Csv)]
+    [InlineData("items.CSV", (int)ImportFormat.Csv)]
+    public void ResolveFormat_ReadsJsonUnlessCsv(string file, int expected)
     {
-        Assert.Equal((ImportFormat)expected, ImportCommand.ResolveFormat(file, legacy));
+        Assert.Equal((ImportFormat)expected, ImportCommand.ResolveFormat(file));
     }
 
     [Theory]
@@ -156,21 +154,28 @@ public class ImportCommandTests
 
         var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
 
-        Assert.Contains("--legacy", ex.Message);
+        Assert.Contains("not a JSON object", ex.Message);
     }
 
-    [Fact]
-    public async Task EnumerateJsonDocumentAsync_JsonLinesInput_SuggestsJsonLinesFormat()
+    [Theory]
+    [InlineData("{\"id\":\"1\"}\n{\"id\":\"2\"}\n")]
+    [InlineData("{\"id\":\"1\"} {\"id\":\"2\"}")]
+    [InlineData("{\"id\":\"1\"}{\"id\":\"2\"}")]
+    [InlineData("\uFEFF \r\n{\n\"id\":\"1\"\n}\n\n{\n\"id\":\"2\"\n}\n")]
+    public async Task EnumerateJsonDocumentAsync_ObjectSequence_YieldsItems(string content)
     {
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{\"id\":\"1\"}\n{\"id\":\"2\"}\n"));
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+        var items = new List<(int Index, string? Id)>();
+        await foreach (var (index, item) in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
+        {
+            items.Add((index, item.GetProperty("id").GetString()));
+        }
 
-        var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
-
-        Assert.Contains("--legacy", ex.Message);
+        Assert.Equal([(1, "1"), (2, "2")], items);
     }
 
     [Fact]
-    public async Task EnumerateJsonDocumentAsync_LargeJsonLinesInput_FailsWithoutReadingRestOfFile()
+    public async Task EnumerateJsonDocumentAsync_LargeJsonLinesInput_YieldsBeforeReadingRestOfFile()
     {
         var content = new StringBuilder();
         for (var i = 0; i < 200_000; i++)
@@ -180,26 +185,32 @@ public class ImportCommandTests
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content.ToString()));
 
-        var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
-
-        Assert.Contains("--legacy", ex.Message);
+        await using var items = ImportCommand.EnumerateJsonDocumentAsync(stream, TestContext.Current.CancellationToken)
+            .GetAsyncEnumerator(TestContext.Current.CancellationToken);
+        Assert.True(await items.MoveNextAsync());
+        Assert.Equal("0", items.Current.Item.GetProperty("id").GetString());
         Assert.True(stream.Position < 1024 * 1024, $"Read {stream.Position} of {stream.Length} bytes.");
     }
 
     [Theory]
-    [InlineData("{\"data\":\"", "\"}")]
     [InlineData("[\"", "\"]")]
     [InlineData("\"", "\"")]
     [InlineData("{\"data\":\"", "")]
-    public async Task EnumerateJsonDocumentAsync_LargeTrailingValue_FailsWithoutReadingValue(string prefix, string suffix)
+    public async Task EnumerateJsonDocumentAsync_InvalidTrailingValue_Throws(string prefix, string suffix)
     {
         var content = "{\"id\":\"first\"}\n" + prefix + new string('x', 4 * 1024 * 1024) + suffix;
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
 
-        var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+        await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+    }
 
-        Assert.Contains("--legacy", ex.Message);
-        Assert.True(stream.Position < 1024 * 1024, $"Read {stream.Position} of {stream.Length} bytes.");
+    [Fact]
+    public async Task EnumerateJsonDocumentAsync_LargeTrailingObject_IsImported()
+    {
+        var content = "{\"id\":\"first\"}\n{\"data\":\"" + new string('x', 4 * 1024 * 1024) + "\"}";
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        Assert.Equal(2, await CountJsonDocumentItemsAsync(stream));
     }
 
     [Theory]
@@ -208,6 +219,10 @@ public class ImportCommandTests
     [InlineData("[{\"id\":\"a\"}]]")]
     [InlineData("[{\"id\":\"a\"},{\"id\":}]")]
     [InlineData("{\"id\":\"a\"")]
+    [InlineData("{\"id\":\"a\"},\n{\"id\":\"b\"}")]
+    [InlineData("{\"id\":\"a\"}\n{\"id\":}")]
+    [InlineData("{\"id\":\"a\"}\ntrailing garbage")]
+    [InlineData("[{\"id\":\"a\"}]\n{\"id\":\"b\"}")]
     public async Task EnumerateJsonDocumentAsync_MalformedDocument_ReportsDocumentError(string content)
     {
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
@@ -215,7 +230,6 @@ public class ImportCommandTests
         var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
 
         Assert.Contains("not a valid JSON document", ex.Message);
-        Assert.Contains("--legacy", ex.Message);
         Assert.IsAssignableFrom<JsonException>(ex.InnerException);
     }
 
@@ -236,6 +250,7 @@ public class ImportCommandTests
     [InlineData("  []", 0)]
     [InlineData("\n[{\"id\":\"a\"},{\"id\":\"b\"}]", 2)]
     [InlineData(" {\"id\":\"a\"}", 1)]
+    [InlineData("{\"id\":\"a\"}\n{\"id\":\"b\"}", 2)]
     public async Task EnumerateJsonDocumentAsync_ByteOrderMarkSplitAcrossReads_IsSkipped(string json, int expected)
     {
         using var stream = new OneByteReadStream([0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes(json)]);

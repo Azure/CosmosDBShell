@@ -21,7 +21,6 @@ using global::Azure.Data.Cosmos.Shell.States;
 internal enum ImportFormat
 {
     Json,
-    JsonLines,
     Csv,
 }
 
@@ -33,7 +32,7 @@ internal enum ImportMode
 
 [CosmosCommand("import")]
 [CosmosExample("import items.json", DescriptionKey = "command-import-example-1")]
-[CosmosExample("import items.jsonl --legacy", DescriptionKey = "command-import-example-2")]
+[CosmosExample("import items.jsonl", DescriptionKey = "command-import-example-2")]
 [CosmosExample("import items.csv", DescriptionKey = "command-import-example-3")]
 [CosmosExample("import items.csv --partition-key=/address/city", DescriptionKey = "command-import-example-4")]
 [CosmosExample("import items.json --mode=upsert", DescriptionKey = "command-import-example-5")]
@@ -45,7 +44,7 @@ internal enum ImportMode
     ReadOnly = false,
     Idempotent = false,
     OpenWorld = true,
-    Description = "Bulk-loads items into a Cosmos container from a local JSON file (an array of items or a single item), a JSON Lines file with --legacy, or a CSV file. The format option controls the command result, not the input file.")]
+    Description = "Bulk-loads items into a Cosmos container from a local JSON array, a single JSON object, an automatically detected sequence of JSON objects (including JSON Lines), or a CSV file. The format option controls the command result, not the input file.")]
 internal class ImportCommand : CosmosCommand
 {
     internal const int DefaultConcurrency = 16;
@@ -65,9 +64,6 @@ internal class ImportCommand : CosmosCommand
     [CosmosOption("format", "f")]
     public string? Format { get; init; }
 
-    [CosmosOption("legacy")]
-    public bool? Legacy { get; init; }
-
     [CosmosOption("concurrency", DefaultValue = DefaultConcurrency, MinimumValue = 1)]
     public int? Concurrency { get; init; }
 
@@ -82,18 +78,12 @@ internal class ImportCommand : CosmosCommand
 
     /// <summary>
     /// Resolves the effective input format. Selects CSV for a <c>.csv</c> extension and
-    /// otherwise a single JSON document; JSON Lines must be requested explicitly.
+    /// otherwise JSON whose structure is detected from its contents.
     /// </summary>
     /// <param name="filePath">The source file path.</param>
-    /// <param name="legacy">Whether to read the legacy JSON Lines format.</param>
     /// <returns>The effective format.</returns>
-    internal static ImportFormat ResolveFormat(string filePath, bool legacy)
+    internal static ImportFormat ResolveFormat(string filePath)
     {
-        if (legacy)
-        {
-            return ImportFormat.JsonLines;
-        }
-
         return string.Equals(Path.GetExtension(filePath), ".csv", StringComparison.OrdinalIgnoreCase)
             ? ImportFormat.Csv
             : ImportFormat.Json;
@@ -174,18 +164,20 @@ internal class ImportCommand : CosmosCommand
     }
 
     /// <summary>
-    /// Enumerates items from a JSON array stream using a streaming deserializer that does
-    /// not materialize the whole array.
+    /// Enumerates objects from a JSON array or a sequence of top-level values without
+    /// materializing the whole input.
     /// </summary>
     /// <param name="stream">The source stream.</param>
     /// <param name="token">Cancellation token.</param>
+    /// <param name="topLevelValues">Whether to read successive root values instead of array elements.</param>
     /// <returns>An async sequence of (1-based item index, item) tuples.</returns>
     internal static async IAsyncEnumerable<(int LineNumber, JsonElement Item)> EnumerateArrayAsync(
         Stream stream,
-        [EnumeratorCancellation] CancellationToken token)
+        [EnumeratorCancellation] CancellationToken token,
+        bool topLevelValues = false)
     {
         var index = 0;
-        await foreach (var element in JsonSerializer.DeserializeAsyncEnumerable<JsonElement>(stream, cancellationToken: token))
+        await foreach (var element in JsonSerializer.DeserializeAsyncEnumerable<JsonElement>(stream, topLevelValues: topLevelValues, cancellationToken: token))
         {
             index++;
             if (element.ValueKind != JsonValueKind.Object)
@@ -203,8 +195,8 @@ internal class ImportCommand : CosmosCommand
     }
 
     /// <summary>
-    /// Enumerates items from a JSON document: a top-level array of objects is streamed,
-    /// and a single top-level object is imported as one item. Empty input yields no items.
+    /// Detects a JSON array or a sequence of top-level objects, including a single object
+    /// and JSON Lines. Empty input yields no items.
     /// </summary>
     /// <param name="stream">The seekable source stream.</param>
     /// <param name="token">Cancellation token.</param>
@@ -219,37 +211,11 @@ internal class ImportCommand : CosmosCommand
             yield break;
         }
 
-        if (first == '[')
+        await using var items = EnumerateArrayAsync(stream, token, topLevelValues: first != '[').GetAsyncEnumerator(token);
+        while (await MoveNextDocumentAsync(items))
         {
-            await using var items = EnumerateArrayAsync(stream, token).GetAsyncEnumerator(token);
-            while (await MoveNextDocumentAsync(items))
-            {
-                yield return items.Current;
-            }
-
-            yield break;
+            yield return items.Current;
         }
-
-        JsonElement item;
-        try
-        {
-            // Single-document deserialization rejects trailing content without materializing a second value.
-            item = await JsonSerializer.DeserializeAsync<JsonElement>(stream, cancellationToken: token);
-        }
-        catch (JsonException ex)
-        {
-            throw new CommandException(
-                "import",
-                MessageService.GetArgsString("command-import-error-invalid_document", "message", ex.Message),
-                ex);
-        }
-
-        if (item.ValueKind != JsonValueKind.Object)
-        {
-            throw new CommandException("import", MessageService.GetString("command-import-error-not_document"));
-        }
-
-        yield return (1, item);
     }
 
     private static async Task<bool> MoveNextDocumentAsync<T>(IAsyncEnumerator<T> enumerator)
@@ -536,8 +502,6 @@ internal class ImportCommand : CosmosCommand
 
     public override async Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
-        var resultState = new CommandState();
-        resultState.SetFormat(this.Format);
         var concurrency = this.Concurrency ?? DefaultConcurrency;
         if (concurrency < 1)
         {
@@ -576,27 +540,49 @@ internal class ImportCommand : CosmosCommand
                 token);
         }
 
-        var format = ResolveFormat(filePath, this.Legacy == true);
+        var format = ResolveFormat(filePath);
         var mode = this.Mode ?? ImportMode.Insert;
         var continueOnError = this.ContinueOnError == true;
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
 
-        var (successCount, failCount, charge) = await ExecuteImportAsync(
-            shell,
-            filePath,
-            format,
-            mode,
-            container,
-            continueOnError,
-            dryRun,
-            partitionKeySegments,
-            partitionKeyPaths,
-            concurrency,
-            commandState,
-            token);
+        var progress = new ImportProgress();
+        Exception? failure = null;
+        try
+        {
+            await ExecuteImportAsync(
+                shell,
+                filePath,
+                format,
+                mode,
+                container,
+                continueOnError,
+                dryRun,
+                partitionKeySegments,
+                partitionKeyPaths,
+                concurrency,
+                commandState,
+                progress,
+                token);
+        }
+        catch (Exception ex) when (ex is CommandException or JsonException or IOException or UnauthorizedAccessException)
+        {
+            failure = ex;
+        }
+
+        failure ??= progress.FirstFailure;
+        var (successCount, failCount, charge) = (progress.Success, progress.Failed, progress.Charge);
 
         string summary;
-        if (dryRun)
+        if (failure != null && failCount == 0)
+        {
+            summary = MessageService.GetArgsString(
+                "command-import-stopped",
+                "success",
+                successCount,
+                "charge",
+                charge.ToString("F2", CultureInfo.InvariantCulture));
+        }
+        else if (dryRun)
         {
             summary = MessageService.GetArgsString(
                 "command-import-dry-run-success",
@@ -631,20 +617,7 @@ internal class ImportCommand : CosmosCommand
                 failCount);
         }
 
-        if (failCount > 0)
-        {
-            ShellInterpreter.WriteLine(summary);
-            throw new CommandException(
-                "import",
-                MessageService.GetArgsString(
-                    "command-import-error-some_failed",
-                    "failed",
-                    failCount,
-                    "total",
-                    successCount + failCount));
-        }
-
-        resultState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
+        var payload = JsonSerializer.SerializeToNode(new
         {
             type = "import",
             file = filePath,
@@ -652,13 +625,36 @@ internal class ImportCommand : CosmosCommand
             failed = failCount,
             requestCharge = charge,
             dryRun,
-        }));
+        })!.AsObject();
+        CommandState resultState;
+        if (failure != null)
+        {
+            payload["error"] = failure.Message;
+            payload["exitCode"] = ShellExitCode.FromException(failure);
+            resultState = new StructuredErrorCommandState(
+                new CommandException("import", $"{summary} {failure.Message}", failure),
+                new ShellJson(JsonSerializer.SerializeToElement(payload)));
+        }
+        else
+        {
+            resultState = new CommandState { Result = new ShellJson(JsonSerializer.SerializeToElement(payload)) };
+        }
+
+        resultState.SetFormat(this.Format);
+        resultState.ShareWarningsFrom(commandState);
         resultState.RequestCharge = charge > 0 ? charge : null;
-        resultState.RenderUser = () => ShellInterpreter.WriteLine(summary);
+        resultState.RenderUser = () =>
+        {
+            ShellInterpreter.WriteLine(summary);
+            if (failure != null)
+            {
+                ShellInterpreter.WriteLine(failure.Message);
+            }
+        };
         return resultState;
     }
 
-    private static async Task<(int Success, int Failed, double Charge)> ExecuteImportAsync(
+    private static async Task ExecuteImportAsync(
         ShellInterpreter shell,
         string filePath,
         ImportFormat format,
@@ -670,10 +666,10 @@ internal class ImportCommand : CosmosCommand
         IReadOnlyList<string> partitionKeyPaths,
         int concurrency,
         CommandState commandState,
+        ImportProgress progress,
         CancellationToken token)
     {
         FileStream? stream = null;
-        StreamReader? lineReader = null;
         IAsyncEnumerable<(int LineNumber, JsonElement Item)> source;
         try
         {
@@ -684,30 +680,21 @@ internal class ImportCommand : CosmosCommand
             else
             {
                 stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                if (format == ImportFormat.Json)
-                {
-                    source = EnumerateJsonDocumentAsync(stream, token);
-                }
-                else
-                {
-                    lineReader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-                    source = EnumerateJsonLinesAsync(lineReader, token);
-                }
+                source = EnumerateJsonDocumentAsync(stream, token);
             }
 
             if (dryRun)
             {
-                var count = 0;
                 await foreach (var item in source.WithCancellation(token))
                 {
-                    count++;
+                    progress.Success++;
                 }
 
-                return (count, 0, 0);
+                return;
             }
 
             ArgumentNullException.ThrowIfNull(container);
-            return await WriteItemsAsync(
+            await WriteItemsAsync(
                 source,
                 container,
                 mode,
@@ -716,11 +703,11 @@ internal class ImportCommand : CosmosCommand
                 partitionKeyPaths,
                 commandState,
                 token,
-                warningShell: shell);
+                warningShell: shell,
+                progress: progress);
         }
         finally
         {
-            lineReader?.Dispose();
             if (stream != null)
             {
                 await stream.DisposeAsync();
@@ -748,27 +735,26 @@ internal class ImportCommand : CosmosCommand
         IReadOnlyList<string> partitionKeyPaths,
         CommandState commandState,
         CancellationToken token,
-        ShellInterpreter? warningShell = null)
+        ShellInterpreter? warningShell = null,
+        ImportProgress? progress = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
-        var pending = new List<Task<(double Charge, string? Error)>>();
-        var success = 0;
-        var failed = 0;
-        var charge = 0.0;
+        progress ??= new ImportProgress();
+        var pending = new List<Task<(double Charge, Exception? Error)>>();
         var undefinedPartitionKeyMutationCount = 0;
         CommandWarning? undefinedPartitionKeyWarning = null;
 
-        void Record((double Charge, string? Error) result)
+        void Record((double Charge, Exception? Error) result)
         {
-            charge += result.Charge;
+            progress.Charge += result.Charge;
             if (result.Error is null)
             {
-                success++;
+                progress.Success++;
             }
             else
             {
-                failed++;
-                ShellInterpreter.WriteLine(result.Error);
+                progress.Failed++;
+                progress.FirstFailure ??= result.Error;
             }
         }
 
@@ -790,7 +776,7 @@ internal class ImportCommand : CosmosCommand
             while (true)
             {
                 await DrainCompletedAsync();
-                if (failed > 0 && !continueOnError)
+                if (progress.Failed > 0 && !continueOnError)
                 {
                     break;
                 }
@@ -808,7 +794,7 @@ internal class ImportCommand : CosmosCommand
                 }
 
                 await DrainCompletedAsync();
-                if (failed > 0 && !continueOnError)
+                if (progress.Failed > 0 && !continueOnError)
                 {
                     break;
                 }
@@ -861,10 +847,10 @@ internal class ImportCommand : CosmosCommand
         }
 
         token.ThrowIfCancellationRequested();
-        return (success, failed, charge);
+        return (progress.Success, progress.Failed, progress.Charge);
     }
 
-    private static async Task<(double Charge, string? Error)> WriteItemAsync(
+    private static async Task<(double Charge, Exception? Error)> WriteItemAsync(
         Container container,
         ImportMode mode,
         int lineNumber,
@@ -882,12 +868,15 @@ internal class ImportCommand : CosmosCommand
                     : await container.CreateItemAsync(item, requestOptions: options, cancellationToken: token);
                 var itemOk = itemResponse.StatusCode == System.Net.HttpStatusCode.Created ||
                     (mode == ImportMode.Upsert && itemResponse.StatusCode == System.Net.HttpStatusCode.OK);
-                return (itemResponse.RequestCharge, itemOk ? null : MessageService.GetArgsString(
-                    "command-import-error-item_status",
-                    "line",
-                    lineNumber,
-                    "status",
-                    itemResponse.StatusCode.ToString()));
+                return (itemResponse.RequestCharge, itemOk ? null : new CommandException(
+                    "import",
+                    MessageService.GetArgsString(
+                        "command-import-error-item_status",
+                        "line",
+                        lineNumber,
+                        "status",
+                        itemResponse.StatusCode.ToString()),
+                    new global::Azure.RequestFailedException((int)itemResponse.StatusCode, itemResponse.StatusCode.ToString())));
             }
 
             using var body = new MemoryStream(Encoding.UTF8.GetBytes(item.GetRawText()));
@@ -898,14 +887,17 @@ internal class ImportCommand : CosmosCommand
             }
             catch (JsonException ex)
             {
-                return (0, MessageService.GetArgsString(
-                    "command-import-error-item_failed",
-                    "line",
-                    lineNumber,
-                    "status",
-                    "Invalid partition key",
-                    "message",
-                    ex.Message));
+                return (0, new CommandException(
+                    "import",
+                    MessageService.GetArgsString(
+                        "command-import-error-item_failed",
+                        "line",
+                        lineNumber,
+                        "status",
+                        "Invalid partition key",
+                        "message",
+                        ex.Message),
+                    ex));
             }
 
             using var response = mode == ImportMode.Upsert
@@ -914,24 +906,41 @@ internal class ImportCommand : CosmosCommand
             response.EnsureSuccessStatusCode();
             var ok = response.StatusCode == System.Net.HttpStatusCode.Created ||
                 (mode == ImportMode.Upsert && response.StatusCode == System.Net.HttpStatusCode.OK);
-            return (response.Headers.RequestCharge, ok ? null : MessageService.GetArgsString(
-                "command-import-error-item_status",
-                "line",
-                lineNumber,
-                "status",
-                response.StatusCode.ToString()));
+            return (response.Headers.RequestCharge, ok ? null : new CommandException(
+                "import",
+                MessageService.GetArgsString(
+                    "command-import-error-item_status",
+                    "line",
+                    lineNumber,
+                    "status",
+                    response.StatusCode.ToString()),
+                new global::Azure.RequestFailedException((int)response.StatusCode, response.StatusCode.ToString())));
         }
         catch (CosmosException ce)
         {
-            return (ce.RequestCharge, MessageService.GetArgsString(
-                "command-import-error-item_failed",
-                "line",
-                lineNumber,
-                "status",
-                ce.StatusCode.ToString(),
-                "message",
-                CommandException.GetDisplayMessage(ce)));
+            return (ce.RequestCharge, new CommandException(
+                "import",
+                MessageService.GetArgsString(
+                    "command-import-error-item_failed",
+                    "line",
+                    lineNumber,
+                    "status",
+                    ce.StatusCode.ToString(),
+                    "message",
+                    CommandException.GetDisplayMessage(ce)),
+                ce));
         }
+    }
+
+    internal sealed class ImportProgress
+    {
+        internal int Success { get; set; }
+
+        internal int Failed { get; set; }
+
+        internal double Charge { get; set; }
+
+        internal Exception? FirstFailure { get; set; }
     }
 
     private sealed class CancellationAwareTextReader(TextReader inner, CancellationToken token) : TextReader

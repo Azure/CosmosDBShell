@@ -313,7 +313,9 @@ not JSON status objects. Commands that display document or policy data can still
 that data as JSON. Where supported, a command's `--format` / `-f` selects its result
 presentation and overrides the shell default. On `import` and `export`, it formats
 the summary, not file contents: a `.csv` export file name writes CSV and any other name
-writes a JSON array, and `import --legacy` reads JSON Lines input.
+writes a JSON array. Import automatically detects JSON arrays, single objects, and
+sequences of objects (including JSON Lines and multiple objects on one line); no
+input-format flag is needed.
 
 Bare piped stdin (for example `echo "..." | cosmosdbshell`) is **not** implicitly machine
 mode; pass `-c`, `--output json`, or `--quiet` to opt into structured output.
