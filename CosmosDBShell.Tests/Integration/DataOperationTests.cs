@@ -40,6 +40,39 @@ public class DataOperationTests : EmulatorFixtureTestBase
             item.GetProperty("name").GetString() == "test-item");
     }
 
+    [Theory]
+    [InlineData("mkitem")]
+    [InlineData("replace")]
+    [InlineData("import")]
+    public async Task ItemWrites_ReportMissingContainerAndDatabase(string commandName)
+    {
+        string payload;
+        if (commandName == "import")
+        {
+            var file = CreateTempFile(".jsonl");
+            await File.WriteAllTextAsync(file, "{\"id\":\"missing-target\"}\n", TestContext.Current.CancellationToken);
+            payload = $"'{file.Replace('\\', '/')}'";
+        }
+        else
+        {
+            payload = "'{\"id\":\"missing-target\"}'";
+        }
+
+        var missingContainer = $"missing-{Guid.NewGuid():N}";
+        var containerState = await ExecuteAsync(
+            $"{commandName} {payload} --database={Fixture.DatabaseName} --container={missingContainer}");
+        Assert.True(containerState.IsError);
+        Assert.Contains(
+            $"Container '{missingContainer}' not found in database '{Fixture.DatabaseName}'.",
+            FormatError(containerState));
+
+        var missingDatabase = $"missing-{Guid.NewGuid():N}";
+        var databaseState = await ExecuteAsync(
+            $"{commandName} {payload} --database={missingDatabase} --container={Fixture.ContainerName}");
+        Assert.True(databaseState.IsError);
+        Assert.Contains($"Database '{missingDatabase}' not found.", FormatError(databaseState));
+    }
+
     [Fact]
     public async Task MkItem_Force_ReplacesExistingItem()
     {

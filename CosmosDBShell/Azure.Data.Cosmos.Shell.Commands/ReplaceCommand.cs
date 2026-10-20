@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Text;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
@@ -42,19 +43,16 @@ internal class ReplaceCommand : CosmosCommand
             throw new NotConnectedException("replace");
         }
 
-        var (databaseName, containerName, container) = await ResolveContainerAsync(
-            connectedState.Client,
-            shell.State,
+        var (_, _, container, partitionKeyPaths) = await ResolveContainerWithPartitionKeyPathsAsync(
+            connectedState,
             this.Database,
             this.Container,
             "replace",
             token);
 
-        var partitionKeyPaths = await CosmosResourceFacade.GetPartitionKeyPathsAsync(connectedState, databaseName!, containerName!, token);
+        var summary = await ReplaceItemsAsync(shell, container, partitionKeyPaths, jsonOpt, this.ETag, commandState, token);
 
-        var summary = await ReplaceItemsAsync(container, partitionKeyPaths, jsonOpt, this.ETag, token);
-
-        return new CommandState
+        var resultState = new CommandState
         {
             Result = new ShellJson(JsonSerializer.SerializeToElement(new
             {
@@ -65,9 +63,17 @@ internal class ReplaceCommand : CosmosCommand
             })),
             RequestCharge = summary.RequestCharge,
         };
+        return resultState;
     }
 
-    private static async Task<ReplaceSummary> ReplaceItemsAsync(Container container, IReadOnlyList<string> partitionKeyPaths, string jsonInput, string? etag, CancellationToken token)
+    private static async Task<ReplaceSummary> ReplaceItemsAsync(
+        ShellInterpreter shell,
+        Container container,
+        IReadOnlyList<string> partitionKeyPaths,
+        string jsonInput,
+        string? etag,
+        CommandState commandState,
+        CancellationToken token)
     {
         try
         {
@@ -81,9 +87,21 @@ internal class ReplaceCommand : CosmosCommand
                     throw new CommandException("replace", MessageService.GetString("command-replace-error-etag_array_not_supported"));
                 }
 
+                var undefinedPartitionKeyCount =
+                    root.EnumerateArray().Count(
+                        item => item.ValueKind == JsonValueKind.Object
+                            && HasUndefinedPartitionKeyComponent(item, partitionKeyPaths));
+                AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
+                shell.RenderMutationWarnings(commandState);
                 return await ReplaceArrayAsync(container, partitionKeyPaths, root, token);
             }
 
+            var undefinedCount = root.ValueKind == JsonValueKind.Object
+                && HasUndefinedPartitionKeyComponent(root, partitionKeyPaths)
+                ? 1
+                : 0;
+            AddUndefinedPartitionKeyWarning(commandState, undefinedCount);
+            shell.RenderMutationWarnings(commandState);
             var singleCharge = await ReplaceOneAsync(container, partitionKeyPaths, root, etag, token, printSuccess: true);
             return new ReplaceSummary(1, 0, singleCharge);
         }
@@ -157,13 +175,29 @@ internal class ReplaceCommand : CosmosCommand
         }
 
         var id = idElement.GetString();
-        if (!TryCreatePartitionKeyFromItem(item, partitionKeyPaths, out var missingPath, out var partitionKey))
+        PartitionKey partitionKey;
+        try
+        {
+            if (!TryCreatePartitionKeyFromItem(item, partitionKeyPaths, out _, out partitionKey))
+            {
+                throw new CommandException(
+                    "replace",
+                    MessageService.GetString(
+                        "command-replace-error-missing_partition_key",
+                        new Dictionary<string, object> { { "path", string.Join(", ", partitionKeyPaths) } }));
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
         {
             throw new CommandException(
                 "replace",
-                MessageService.GetString(
-                    "command-replace-error-missing_partition_key",
-                    new Dictionary<string, object> { { "path", missingPath ?? string.Join(", ", partitionKeyPaths) } }));
+                MessageService.GetArgsString(
+                    "command-replace-error-replace-failed",
+                    "status",
+                    "Invalid partition key",
+                    "message",
+                    ex.Message),
+                ex);
         }
 
         var requestOptions = string.IsNullOrEmpty(etag)
@@ -172,7 +206,9 @@ internal class ReplaceCommand : CosmosCommand
 
         try
         {
-            var response = await container.ReplaceItemAsync(item, id, partitionKey, requestOptions, token);
+            using var body = new MemoryStream(Encoding.UTF8.GetBytes(item.GetRawText()));
+            using var response = await container.ReplaceItemStreamAsync(body, id, partitionKey, requestOptions, token);
+            response.EnsureSuccessStatusCode();
             if (response.StatusCode != System.Net.HttpStatusCode.OK)
             {
                 throw new CommandException("replace", MessageService.GetArgsString("command-replace-error-status-returned", "status", response.StatusCode.ToString()));
@@ -180,10 +216,10 @@ internal class ReplaceCommand : CosmosCommand
 
             if (printSuccess)
             {
-                ShellInterpreter.WriteLine(MessageService.GetArgsString("command-replace-success-single", "charge", response.RequestCharge.ToString("F2")));
+                ShellInterpreter.WriteLine(MessageService.GetArgsString("command-replace-success-single", "charge", response.Headers.RequestCharge.ToString("F2")));
             }
 
-            return response.RequestCharge;
+            return response.Headers.RequestCharge;
         }
         catch (CosmosException ce) when (ce.StatusCode == System.Net.HttpStatusCode.NotFound)
         {

@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Core;
 
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Parser;
@@ -15,6 +16,14 @@ using Azure.Data.Cosmos.Shell.Util;
 public partial class CommandState
 {
     private OutputFormat outputFormat;
+    private List<CommandWarning> warnings = [];
+    private HashSet<CommandWarning> warningSet = [];
+    private Queue<CommandWarning> pendingWarnings = [];
+    private HashSet<CommandWarning> pendingWarningSet = [];
+    private Queue<CommandWarning> updatedWarnings = [];
+    private HashSet<CommandWarning> updatedWarningSet = [];
+    private Queue<CommandWarning> deferredWarnings = [];
+    private HashSet<CommandWarning> deferredWarningSet = [];
 
     /// <summary>
     /// Gets a value indicating whether this <see cref="CommandState"/> represents an error state.
@@ -49,6 +58,8 @@ public partial class CommandState
     internal bool OutputFormatExplicitlySet { get; private set; }
 
     internal ShellObject? Result { get; set; }
+
+    internal List<CommandWarning> Warnings => this.warnings;
 
     internal bool OutputRendered { get; set; }
 
@@ -101,6 +112,91 @@ public partial class CommandState
     internal bool ReturnFunc { get; set; } = false;
 
     internal ShellObject? ReturnValue { get; set; } = null;
+
+    internal CommandWarning AddWarning(string message)
+    {
+        var warning = new CommandWarning(message);
+        this.warnings.Add(warning);
+        this.warningSet.Add(warning);
+        this.pendingWarnings.Enqueue(warning);
+        this.pendingWarningSet.Add(warning);
+        return warning;
+    }
+
+    internal void UpdateWarning(CommandWarning warning, string message)
+    {
+        if (string.Equals(warning.Message, message, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        warning.UpdateMessage(message);
+        if (warning.IsRendered && this.updatedWarningSet.Add(warning))
+        {
+            this.updatedWarnings.Enqueue(warning);
+        }
+    }
+
+    internal List<CommandWarning> TakePendingWarnings() => this.TakeWarnings(this.pendingWarnings, this.pendingWarningSet);
+
+    internal List<CommandWarning> TakeUpdatedWarnings() => this.TakeWarnings(this.updatedWarnings, this.updatedWarningSet);
+
+    internal List<CommandWarning> TakeDeferredWarnings() => this.TakeWarnings(this.deferredWarnings, this.deferredWarningSet);
+
+    internal void DeferWarning(CommandWarning warning)
+    {
+        if (this.deferredWarningSet.Add(warning))
+        {
+            this.deferredWarnings.Enqueue(warning);
+        }
+    }
+
+    internal void ShareWarningsFrom(CommandState source)
+    {
+        if (!ReferenceEquals(this.warnings, source.warnings))
+        {
+            foreach (var warning in this.warnings.Where(warning => source.warningSet.Add(warning)))
+            {
+                source.warnings.Add(warning);
+            }
+
+            foreach (var warning in this.pendingWarnings.Where(warning => source.pendingWarningSet.Add(warning)))
+            {
+                source.pendingWarnings.Enqueue(warning);
+            }
+
+            foreach (var warning in this.updatedWarnings.Where(warning => source.updatedWarningSet.Add(warning)))
+            {
+                source.updatedWarnings.Enqueue(warning);
+            }
+
+            foreach (var warning in this.deferredWarnings.Where(warning => source.deferredWarningSet.Add(warning)))
+            {
+                source.deferredWarnings.Enqueue(warning);
+            }
+        }
+
+        this.warnings = source.warnings;
+        this.warningSet = source.warningSet;
+        this.pendingWarnings = source.pendingWarnings;
+        this.pendingWarningSet = source.pendingWarningSet;
+        this.updatedWarnings = source.updatedWarnings;
+        this.updatedWarningSet = source.updatedWarningSet;
+        this.deferredWarnings = source.deferredWarnings;
+        this.deferredWarningSet = source.deferredWarningSet;
+    }
+
+    private List<CommandWarning> TakeWarnings(Queue<CommandWarning> queue, HashSet<CommandWarning> set)
+    {
+        var result = new List<CommandWarning>(queue.Count);
+        while (queue.TryDequeue(out var warning))
+        {
+            set.Remove(warning);
+            result.Add(warning);
+        }
+
+        return result;
+    }
 
     internal void ResetOutputFormat()
     {

@@ -365,6 +365,7 @@ public class ToolOperationsTests
         Assert.Equal("string", partitionKey.GetProperty("type").GetString());
         Assert.Contains("Aliases: pk", partitionKey.GetProperty("description").GetString());
         Assert.Contains("logical partition key", partitionKey.GetProperty("description").GetString());
+        Assert.Contains("{}", partitionKey.GetProperty("description").GetString());
 
         var etag = properties.GetProperty("etag");
         Assert.Equal("string", etag.GetProperty("type").GetString());
@@ -398,6 +399,7 @@ public class ToolOperationsTests
         var key = properties.GetProperty("key");
         Assert.Equal("string", key.GetProperty("type").GetString());
         Assert.Contains("JSON", key.GetProperty("description").GetString());
+        Assert.Contains("{}", key.GetProperty("description").GetString());
         Assert.Equal(["id", "key"], tool.InputSchema.GetProperty("required").EnumerateArray().Select(value => value.GetString()));
     }
 

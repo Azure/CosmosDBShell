@@ -248,7 +248,7 @@ command-rm-description-database = The database containing the items to remove
 command-rm-description-container = The container containing the items to remove
 command-rm-description-key = The property name to match the pattern against (defaults to partition key)
 command-rm-description-dry-run = Preview how many items would be deleted without deleting them.
-command-rm-description-partition-key = Restrict removal to one complete logical partition key. Use a JSON array for hierarchical partition keys.
+command-rm-description-partition-key = Restrict removal to one complete logical partition key. Use { "{" }{ "}" } for an undefined value or a JSON array for hierarchical partition keys.
 command-rm-description-etag = Delete only if the item's current ETag matches. Requires an exact id with --key=id and --partition-key.
 command-rm-deleted_items = Deleted { $count } { $count ->
     [one] item
@@ -259,7 +259,7 @@ command-rm-dry-run-plan = Dry run: Would delete { $count } { $count ->
     *[other] items
 }. No changes were made.
 command-rm-error-no_filter = Filter is missing.
-command-rm-error-invalid_pk_json = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
+command-rm-error-invalid_pk_json = Invalid partition key JSON. Use { "{" }{ "}" }, a JSON scalar, or an array of one to three string, finite number, boolean, null, or { "{" }{ "}" } components. Non-empty objects and nested arrays are not supported.
 command-rm-error-partition_key_components = The partition key must specify all { $expected } components of the container's partition key, but { $actual } { $actual ->
     [one] was
     *[other] were
@@ -271,6 +271,8 @@ command-rm-error-etag_requires_partition_key = The --etag option requires --part
 command-rm-error-etag_mismatch = Item '{ $id }' was modified since it was last read (ETag mismatch). The item was not deleted.
 command-rm-dry-run-item = Item '{ $id }' in partition { $partitionKey } has ETag { $etag }.
 command-rm-warning-missing-partition-key = Warning: Cannot delete item with id '{ $id }' - missing partition key '{ $partitionKey }'
+warning-undefined-partition-key-mutation = Warning: { $count } item(s) use an implicitly inferred undefined partition-key value. Use a present, stable, high-cardinality partition key for new data.
+warning-undefined-partition-key-pending = Warning: This import includes items with an implicitly inferred undefined partition-key value; a final count will follow.
 command-rm-no-matches = No items matched the pattern '{ $pattern }' for key '{ $key }'
 
 command-query-description = Executes a query and returns matching results
@@ -323,7 +325,7 @@ command-query-error-empty_content = Query response content is empty.
 
 command-print-description = Read an item by ID and its complete partition key.
 command-print-description-id = The ID of the item to print
-command-print-description-key = Complete partition key: a JSON scalar or an ordered JSON array of all hierarchical components. For example, 680 is a number, '"680"' is a string, and '[1001,"customer-1001"]' is hierarchical. Other plain text is a string.
+command-print-description-key = Complete partition key: { "{" }{ "}" } for undefined, a JSON scalar, or an ordered JSON array of all hierarchical components. For example, 680 is a number, '"680"' is a string, and '[1001,{ "{" }{ "}" }]' is hierarchical. Other plain text is a string.
 command-print-description-format = Output format (json, table)
 command-print-description-database = The database containing the item to print
 command-print-description-container = The container containing the item to print
@@ -333,7 +335,7 @@ command-print-error-reading_item = Error reading item: { $message }
 command-print-error-missing_id = Specify the ID of the item to print.
 command-print-error-missing_key = Specify the item's partition key. Use null for a null partition key (MCP: pass the string "null", not JSON null).
 command-print-error-reading_container = Error reading container metadata: { $message }
-command-print-error-invalid_pk_json = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
+command-print-error-invalid_pk_json = Invalid partition key JSON. Use { "{" }{ "}" }, a JSON scalar, or an array of one to three string, finite number, boolean, null, or { "{" }{ "}" } components. Non-empty objects and nested arrays are not supported.
 command-print-error-partition_key_components = The partition key must contain all { $expected } components in container path order; received { $actual }. Supply the complete key as a JSON array.
 
 command-mkitem-description = Creates items in container
@@ -388,7 +390,7 @@ command-replace-error-array_failed = Failed to replace { $failed } of { $total }
 command-patch-description = Applies a single patch operation to an item
 command-patch-description-id = The ID of the item to patch
 command-patch-description-op = Patch operation: set, add, replace, remove, or incr
-command-patch-description-pk = The partition key of the item to patch
+command-patch-description-pk = The partition key of the item to patch. Use { "{" }{ "}" } for an undefined value.
 command-patch-description-path = JSON path to the field to patch (must start with '/')
 command-patch-description-value = Value for the operation (omit for 'remove')
 command-patch-description-database = The database containing the item to patch
@@ -397,7 +399,7 @@ command-patch-description-etag = Optional ETag for optimistic concurrency contro
 command-patch-success = Successfully patched item (RU charge: { $charge })
 command-patch-error-missing_id = Item ID is required.
 command-patch-error-missing_pk = Partition key is required.
-command-patch-error-invalid_pk_json = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
+command-patch-error-invalid_pk_json = Invalid partition key JSON. Use { "{" }{ "}" }, a JSON scalar, or an array of one to three string, finite number, boolean, null, or { "{" }{ "}" } components. Non-empty objects and nested arrays are not supported.
 command-patch-error-missing_op = Patch operation is required. Supported: set, add, replace, remove, incr.
 command-patch-error-missing_path = Patch path is required.
 command-patch-error-invalid_path = Patch path must start with '/'.
@@ -413,7 +415,7 @@ command-patch-error-etag_mismatch = Item '{ $id }' was modified since it was las
 command-batch-description = Executes multiple write operations against a single partition key as one atomic transactional batch, either in a single call (run) or as a stateful batch (begin, add, execute, cancel, status, show).
 command-batch-description-subcommand = The action to perform: run, begin, add, execute, cancel, status, or show.
 command-batch-description-data = The batch operations as a JSON array, or a single operation as a JSON object.
-command-batch-description-partition-key = The partition key shared by every operation in the batch.
+command-batch-description-partition-key = The partition key shared by every operation in the batch. Use { "{" }{ "}" } for an undefined value.
 command-batch-description-database = The database containing the target container.
 command-batch-description-container = The target container for the batch.
 command-batch-success = Batch of { $count } { $count ->
@@ -439,7 +441,7 @@ command-batch-status-column-id = Item ID
 command-batch-error-missing_subcommand = Missing subcommand. Use one of: run, begin, add, execute, cancel, status, show.
 command-batch-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: run, begin, add, execute, cancel, status, show.
 command-batch-error-missing_pk = A partition key is required. Specify it with --partition-key.
-command-batch-error-invalid_pk_json = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
+command-batch-error-invalid_pk_json = Invalid partition key JSON. Use { "{" }{ "}" }, a JSON scalar, or an array of one to three string, finite number, boolean, null, or { "{" }{ "}" } components. Non-empty objects and nested arrays are not supported.
 command-batch-error-missing_data = Batch operations are required. Provide a JSON array of operations, or a single operation object.
 command-batch-error-invalid_json = The batch operations are not valid JSON: { $message }
 command-batch-error-not_object = Each batch operation must be a JSON object, and the batch itself must be a JSON object or an array of objects.
@@ -738,7 +740,7 @@ command-sproc-description = Manages stored procedures on a container via list, s
 command-sproc-description-subcommand = The action to perform: list, show, exists, create, exec, edit, or delete.
 command-sproc-description-name = The stored procedure id.
 command-sproc-description-value = The JavaScript file to read for create, or the JSON array of arguments for exec.
-command-sproc-description-partition-key = The partition key used to target a partition when executing a stored procedure.
+command-sproc-description-partition-key = The partition key used to target a partition when executing a stored procedure. Use { "{" }{ "}" } for an undefined value.
 command-sproc-description-force = Replace the stored procedure if it already exists.
 command-sproc-description-database = The database containing the container.
 command-sproc-description-container = The container that owns the stored procedures.
@@ -768,7 +770,7 @@ command-sproc-error-file_not_found = File not found: '{ $file }'.
 command-sproc-error-already_exists = Stored procedure '{ $name }' already exists. Use --force to replace it.
 command-sproc-error-not_found = Stored procedure '{ $name }' was not found.
 command-sproc-error-invalid_params = Invalid parameters. Provide a JSON array of arguments, for example: '["a", 1, true]'.
-command-sproc-error-invalid_pk = Invalid partition key JSON. Use a JSON scalar or an array of one to three string, finite number, boolean, or null components. Objects and nested arrays are not supported.
+command-sproc-error-invalid_pk = Invalid partition key JSON. Use { "{" }{ "}" }, a JSON scalar, or an array of one to three string, finite number, boolean, null, or { "{" }{ "}" } components. Non-empty objects and nested arrays are not supported.
 command-sproc-error-missing_partition_key = A partition key is required to execute a stored procedure. Use --partition-key.
 command-sproc-error-not_interactive = 'sproc edit' needs an interactive terminal and cannot run from a script or piped input.
 command-sproc-error-no_editor = No editor found. Set $VISUAL or $EDITOR to your preferred editor.
@@ -887,7 +889,7 @@ command-results-limit_reached =
 
 command-watch-description = Tail the change feed of a container, streaming new and modified items as they arrive.
 command-watch-description-from-beginning = Start from the beginning of the change feed instead of from now.
-command-watch-description-partition-key = Scope the change feed to a single partition key value.
+command-watch-description-partition-key = Scope the change feed to a single partition key value. Use { "{" }{ "}" } for an undefined value.
 command-watch-description-max = Stop after receiving this many changes. Omit, or use 0 or a negative value, to follow until Ctrl+C.
 command-watch-description-interval = Seconds to wait between change feed polls once caught up. Defaults to 1; values below 0.1 are clamped.
 command-watch-description-format = { command-query-description-format }

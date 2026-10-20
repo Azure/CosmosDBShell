@@ -163,6 +163,7 @@ internal class CommandStatement : Statement
         {
             shell.ErrOutRedirect = this.ErrorRedirect;
             shell.AppendErrRedirection = this.AppendError;
+            shell.ErrorRedirectWarnings = new ErrorRedirectWarningScope();
         }
 
         if (shell.Functions.TryGetValue(this.Name, out var function))
@@ -174,7 +175,9 @@ internal class CommandStatement : Statement
                 args.Add(evaluated);
             }
 
-            return await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
+            var functionResult = await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
+            functionResult.ShareWarningsFrom(commandState);
+            return functionResult;
         }
 
         if (shell.App.Commands.TryGetValue(this.Name, out var factory))
@@ -182,7 +185,9 @@ internal class CommandStatement : Statement
             bool showHelp = this.Arguments.OfType<CommandOption>().Any(arg => arg.Name == "help" || arg.Name == "?");
             if (showHelp)
             {
-                return HelpCommand.PrintCommandHelp(this.Name, shell.App, false);
+                var helpResult = HelpCommand.PrintCommandHelp(this.Name, shell.App, false);
+                helpResult.ShareWarningsFrom(commandState);
+                return helpResult;
             }
 
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
@@ -205,7 +210,9 @@ internal class CommandStatement : Statement
 
         if (File.Exists(this.Name))
         {
-            return await this.RunScriptAsync(shell, commandState, token);
+            var scriptResult = await this.RunScriptAsync(shell, commandState, token);
+            scriptResult.ShareWarningsFrom(commandState);
+            return scriptResult;
         }
 
         throw new CommandNotFoundException(this.Name, SuggestCommand(shell, this.Name), this.Start, this.CommandToken.Length);
@@ -428,7 +435,9 @@ internal class CommandStatement : Statement
             var parser = StatementParser.ScriptParseResult.Parse(scriptContent, allowReturn: true);
             if (parser.Errors.HasErrors)
             {
-                return new ParserErrorCommandState(parser.Errors, fileName, scriptContent);
+                var parserError = new ParserErrorCommandState(parser.Errors, fileName, scriptContent);
+                parserError.ShareWarningsFrom(commandState);
+                return parserError;
             }
 
             foreach (var statement in parser.Statements)
@@ -438,6 +447,7 @@ internal class CommandStatement : Statement
                 var savedAppendOut = shell.AppendOutRedirection;
                 var savedErrOut = shell.ErrOutRedirect;
                 var savedAppendErr = shell.AppendErrRedirection;
+                var savedErrorRedirectWarnings = shell.ErrorRedirectWarnings;
 
                 try
                 {
@@ -469,9 +479,10 @@ internal class CommandStatement : Statement
                         {
                             shell.ErrOutRedirect = this.ErrorRedirect;
                             shell.AppendErrRedirection = this.AppendError;
+                            shell.ErrorRedirectWarnings = savedErrorRedirectWarnings;
                         }
 
-                        currentState = shell.PrintState(currentState, markAsRendered: true);
+                        currentState = shell.PrintState(currentState, markAsRendered: true, deferMachineModeWarnings: true);
                     }
 
                     if (currentState.IsError)
@@ -501,6 +512,7 @@ internal class CommandStatement : Statement
                     shell.AppendOutRedirection = savedAppendOut;
                     shell.ErrOutRedirect = savedErrOut;
                     shell.AppendErrRedirection = savedAppendErr;
+                    shell.ErrorRedirectWarnings = savedErrorRedirectWarnings;
                 }
             }
         }

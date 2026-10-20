@@ -115,7 +115,6 @@ public class CosmosCommandTests
     }
 
     [Theory]
-    [InlineData("[{}]")]
     [InlineData("[[1]]")]
     [InlineData("[]")]
     [InlineData("[1,2,3,4]")]
@@ -124,6 +123,130 @@ public class CosmosCommandTests
     public void CreatePartitionKeyFromArgument_RejectsUnsupportedComponents(string value)
     {
         Assert.Throws<JsonException>(() => TestCosmosCommand.CreatePartitionKeyFromArgumentForTest(value));
+    }
+
+    [Fact]
+    public void CreatePartitionKeyFromArgument_EmptyObjectCreatesNone()
+    {
+        Assert.Equal(
+            PartitionKey.None.ToString(),
+            TestCosmosCommand.CreatePartitionKeyFromArgumentForTest("{}").ToString());
+    }
+
+    [Fact]
+    public void CreatePartitionKeyFromArgument_EmptyObjectComponentsCreateHierarchicalNone()
+    {
+        var expected = new PartitionKeyBuilder()
+            .Add("tenant")
+            .AddNoneType()
+            .Build();
+
+        Assert.Equal(
+            expected.ToString(),
+            TestCosmosCommand.CreatePartitionKeyFromArgumentForTest("""["tenant",{}]""").ToString());
+    }
+
+    [Fact]
+    public void CreatePartitionKeyFromArgument_HierarchicalNumericComponentsMatchBuilderOutput()
+    {
+        var expected = new PartitionKeyBuilder()
+            .Add(42)
+            .Add(9007199254740993L)
+            .Build();
+
+        Assert.Equal(
+            expected.ToString(),
+            TestCosmosCommand.CreatePartitionKeyFromArgumentForTest("[42,9007199254740993]").ToString());
+    }
+
+    [Theory]
+    [InlineData("none")]
+    [InlineData("undefined")]
+    public void CreatePartitionKeyFromArgument_SentinelLikeWordsRemainStrings(string value)
+    {
+        Assert.Equal(
+            new PartitionKey(value).ToString(),
+            TestCosmosCommand.CreatePartitionKeyFromArgumentForTest(value).ToString());
+    }
+
+    [Fact]
+    public void TryCreatePartitionKeyFromItem_MissingComponentsCreateNone()
+    {
+        using var item = JsonDocument.Parse("""{"tenant":"tenant-1"}""");
+        var expected = new PartitionKeyBuilder()
+            .Add("tenant-1")
+            .AddNoneType()
+            .Build();
+
+        var created = CosmosCommand.TryCreatePartitionKeyFromItem(
+            item.RootElement,
+            ["tenant", "user"],
+            out var hasUndefinedComponent,
+            out var partitionKey);
+
+        Assert.True(created);
+        Assert.True(hasUndefinedComponent);
+        Assert.Equal(expected.ToString(), partitionKey.ToString());
+    }
+
+    [Fact]
+    public void TryCreatePartitionKeyFromItem_EmptyObjectValueIsNotMissing()
+    {
+        using var item = JsonDocument.Parse("""{"pk":{}}""");
+
+        Assert.Throws<JsonException>(() => CosmosCommand.TryCreatePartitionKeyFromItem(
+            item.RootElement,
+            ["pk"],
+            out _,
+            out _));
+    }
+
+    [Fact]
+    public void TryCreatePartitionKeyFromItem_EmptyObjectHierarchicalValueIsNotMissing()
+    {
+        using var item = JsonDocument.Parse("""{"tenant":"tenant-1","user":{}}""");
+
+        Assert.Throws<JsonException>(() => CosmosCommand.TryCreatePartitionKeyFromItem(
+            item.RootElement,
+            ["tenant", "user"],
+            out _,
+            out _));
+    }
+
+    [Theory]
+    [InlineData("""{"tenant":null}""")]
+    [InlineData("""{"tenant":"tenant-1"}""")]
+    public void TryCreatePartitionKeyFromItem_NonObjectIntermediateIsMissing(string json)
+    {
+        using var item = JsonDocument.Parse(json);
+
+        var created = CosmosCommand.TryCreatePartitionKeyFromItem(
+            item.RootElement,
+            ["tenant/id"],
+            out var hasUndefinedComponent,
+            out var partitionKey);
+
+        Assert.True(created);
+        Assert.True(hasUndefinedComponent);
+        Assert.Equal(PartitionKey.None.ToString(), partitionKey.ToString());
+    }
+
+    [Theory]
+    [InlineData("/\"tenant id\"", """{"tenant id":"tenant-1"}""")]
+    [InlineData("/\"a/b\"/c", """{"a/b":{"c":"tenant-1"}}""")]
+    public void TryCreatePartitionKeyFromItem_ParsesQuotedPathSegments(string path, string json)
+    {
+        using var item = JsonDocument.Parse(json);
+
+        var created = CosmosCommand.TryCreatePartitionKeyFromItem(
+            item.RootElement,
+            [path],
+            out var hasUndefinedComponent,
+            out var partitionKey);
+
+        Assert.True(created);
+        Assert.False(hasUndefinedComponent);
+        Assert.Equal(new PartitionKey("tenant-1").ToString(), partitionKey.ToString());
     }
 
     [Theory]
@@ -138,8 +261,8 @@ public class CosmosCommandTests
 
         Assert.Contains("JSON scalar", message);
         Assert.Contains("one to three", message);
-        Assert.Contains("string, finite number, boolean, or null", message);
-        Assert.Contains("Objects and nested arrays are not supported", message);
+        Assert.Contains("string, finite number, boolean, null, or {} components", message);
+        Assert.Contains("Non-empty objects and nested arrays are not supported", message);
     }
 
     private sealed class TestCosmosCommand : CosmosCommand

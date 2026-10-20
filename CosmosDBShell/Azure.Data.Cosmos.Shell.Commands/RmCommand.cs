@@ -4,6 +4,8 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
@@ -182,6 +184,19 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         double totalCharge = 0;
         bool dryRun = this.DryRun == true;
 
+        bool ShouldDelete(JsonElement element)
+        {
+            return this.matcher == null
+                || MatchesAnyPath(element, matchKeyPropertyNames, this.matcher)
+                || this.Pattern == "*";
+        }
+
+        // Piped records may be projections that omit key properties, so a missing key is not
+        // inferred as undefined unless the caller explicitly scoped the delete with --partition-key.
+        bool TryGetPipedItemPartitionKey(JsonElement item, out PartitionKey itemPartitionKey) =>
+            TryCreatePartitionKeyFromItem(item, partitionKeyPropertyNames, out var hasUndefinedComponent, out itemPartitionKey)
+                && (!hasUndefinedComponent || this.partitionKey is not null);
+
         // In dry-run mode, count what would be deleted without issuing any delete.
         async Task<(bool Counted, double RequestCharge)> TryDeleteAsync(string id, PartitionKey itemPartitionKey)
         {
@@ -231,31 +246,18 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             {
                 foreach (var item in itemsArray.EnumerateArray())
                 {
-                    if (item.TryGetProperty("id", out var idElement) &&
-                        TryGetPartitionKeyElements(item, partitionKeyPropertyNames, out var pkElements))
+                    // Filter before converting the key so an excluded item with an invalid
+                    // partition-key value cannot block deletion of matching items.
+                    if (item.TryGetProperty("id", out var idElement)
+                        && idElement.GetString() is { } id
+                        && ShouldDelete(item)
+                        && TryGetPipedItemPartitionKey(item, out var itemPartitionKey))
                     {
-                        var id = idElement.GetString();
-
-                        // Check if pattern matches (if matcher is set)
-                        bool shouldDelete = this.matcher == null; // No pattern = delete all
-                        if (!shouldDelete && MatchesAnyPath(item, matchKeyPropertyNames, this.matcher!))
+                        var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
+                        totalCharge += deleteResult.RequestCharge;
+                        if (deleteResult.Counted)
                         {
-                            shouldDelete = true;
-                        }
-                        else if (!shouldDelete && this.Pattern == "*")
-                        {
-                            // Wildcard "*" should match everything, even if match key is missing
-                            shouldDelete = true;
-                        }
-
-                        if (id != null && shouldDelete)
-                        {
-                            var deleteResult = await TryDeleteAsync(id, CreateItemPartitionKey(pkElements));
-                            totalCharge += deleteResult.RequestCharge;
-                            if (deleteResult.Counted)
-                            {
-                                totalCount++;
-                            }
+                            totalCount++;
                         }
                     }
                 }
@@ -263,53 +265,39 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             else
             {
                 // Single item from pipe
-                if (itemsArray.TryGetProperty("id", out var idElement) &&
-                    TryGetPartitionKeyElements(itemsArray, partitionKeyPropertyNames, out var pkElements))
+                if (itemsArray.TryGetProperty("id", out var idElement)
+                    && idElement.GetString() is { } id
+                    && ShouldDelete(itemsArray)
+                    && TryGetPipedItemPartitionKey(itemsArray, out var itemPartitionKey))
                 {
-                    // Check if pattern matches (if matcher is set)
-                    bool shouldDelete = this.matcher == null; // No pattern = delete all
-                    if (!shouldDelete && MatchesAnyPath(itemsArray, matchKeyPropertyNames, this.matcher!))
+                    var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
+                    totalCharge += deleteResult.RequestCharge;
+                    if (deleteResult.Counted)
                     {
-                        shouldDelete = true;
-                    }
-                    else if (!shouldDelete && this.Pattern == "*")
-                    {
-                        // Wildcard "*" should match everything
-                        shouldDelete = true;
-                    }
-
-                    if (shouldDelete)
-                    {
-                        var id = idElement.GetString();
-                        if (id != null)
-                        {
-                            var deleteResult = await TryDeleteAsync(id, CreateItemPartitionKey(pkElements));
-                            totalCharge += deleteResult.RequestCharge;
-                            if (deleteResult.Counted)
-                            {
-                                totalCount++;
-                            }
-                        }
+                        totalCount++;
                     }
                 }
             }
         }
         else if (this.matcher != null)
         {
-            string query = $"SELECT * FROM c";
+            var needsDeletionPlan = !dryRun
+                && this.partitionKey == null
+                && partitionKeyPropertyNames.Length > 0;
             var queryOptions = this.partitionKey is PartitionKey scope
                 ? new QueryRequestOptions { PartitionKey = scope }
                 : null;
 
-            using var feedIterator = container.GetItemQueryStreamIterator(query, requestOptions: queryOptions);
+            using var feedIterator = container.GetItemQueryStreamIterator("SELECT * FROM c", requestOptions: queryOptions);
+            await using var planStream = needsDeletionPlan ? this.CreateDeletionPlanStream() : null;
+            await using var planWriter = planStream is null
+                ? null
+                : new StreamWriter(planStream, new System.Text.UTF8Encoding(false), 4096, leaveOpen: true);
+            var undefinedPartitionKeyCount = 0;
 
             while (feedIterator.HasMoreResults)
             {
-                if (token.IsCancellationRequested)
-                {
-                    break;
-                }
-
+                token.ThrowIfCancellationRequested();
                 using var response = await feedIterator.ReadNextAsync(token);
 
                 // The scan pages that locate matching items consume RUs regardless of whether
@@ -318,46 +306,70 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 totalCharge += response.Headers.RequestCharge;
 
                 using var streamReader = new StreamReader(response.Content);
-                using var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync());
+                using var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync(token));
 
                 foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
                 {
-                    // Get id and partition key first - these are required for deletion
-                    if (!element.TryGetProperty("id", out var idElement))
+                    if (!element.TryGetProperty(IdPropertyName, out var idElement)
+                        || idElement.ValueKind != JsonValueKind.String
+                        || idElement.GetString() is not string id
+                        || !ShouldDelete(element))
                     {
                         continue;
                     }
 
-                    var id = idElement.GetString();
-                    if (id == null)
+                    TryCreatePartitionKeyFromItem(
+                        element,
+                        partitionKeyPropertyNames,
+                        out var hasUndefinedComponent,
+                        out var itemPartitionKey);
+
+                    if (planWriter != null)
                     {
-                        continue;
+                        if (hasUndefinedComponent)
+                        {
+                            undefinedPartitionKeyCount++;
+                        }
+
+                        var partitionKeyJson = itemPartitionKey.Equals(PartitionKey.None)
+                            ? "{}"
+                            : itemPartitionKey.ToString();
+                        var candidate = new DeletionCandidate(id, partitionKeyJson);
+                        await planWriter.WriteLineAsync(JsonSerializer.Serialize(candidate).AsMemory(), token);
                     }
-
-                    if (!TryGetPartitionKeyElements(element, partitionKeyPropertyNames, out var pkElements))
+                    else
                     {
-                        AnsiConsole.MarkupLine(
-                            MessageService.GetString(
-                                "command-rm-warning-missing-partition-key",
-                                new Dictionary<string, object>
-                                {
-                                    { "id", id },
-                                    { "partitionKey", string.Join(',', partitionKeyPropertyNames) },
-                                }));
-                        continue;
-                    }
-
-                    // Check if pattern matches
-                    bool shouldDelete = MatchesAnyPath(element, matchKeyPropertyNames, this.matcher);
-
-                    if (shouldDelete)
-                    {
-                        var deleteResult = await TryDeleteAsync(id, CreateItemPartitionKey(pkElements));
+                        var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
                         totalCharge += deleteResult.RequestCharge;
                         if (deleteResult.Counted)
                         {
                             totalCount++;
                         }
+                    }
+                }
+            }
+
+            token.ThrowIfCancellationRequested();
+            if (planWriter != null)
+            {
+                await planWriter.FlushAsync(token);
+                planStream!.Position = 0;
+
+                AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
+                this.shell!.RenderMutationWarnings(commandState);
+
+                using var planReader = new StreamReader(planStream, System.Text.Encoding.UTF8, false, 4096, leaveOpen: true);
+                while (await planReader.ReadLineAsync(token) is { } line)
+                {
+                    token.ThrowIfCancellationRequested();
+                    var candidate = JsonSerializer.Deserialize<DeletionCandidate>(line)
+                        ?? throw new JsonException("Unable to read a delete candidate from the temporary plan.");
+                    var itemPartitionKey = CreatePartitionKeyFromArgument(candidate.PartitionKeyJson);
+                    var deleteResult = await TryDeleteAsync(candidate.Id, itemPartitionKey);
+                    totalCharge += deleteResult.RequestCharge;
+                    if (deleteResult.Counted)
+                    {
+                        totalCount++;
                     }
                 }
             }
@@ -376,85 +388,17 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 });
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(this.CreateResult(totalCount, dryRun)));
-        commandState.RenderUser = () => AnsiConsole.MarkupLine(renderMessage);
+        commandState.RenderUser = () =>
+        {
+            AnsiConsole.MarkupLine(renderMessage);
+        };
 
         commandState.RequestCharge = totalCharge > 0 ? totalCharge : null;
         return new ExitCode(0);
     }
 
-    internal static PartitionKey CreateItemPartitionKey(IReadOnlyList<JsonElement> elements) => CreatePartitionKey(elements);
-
-    internal static JsonElement ToPartitionKeyJson(PartitionKey partitionKey)
-    {
-        using var document = JsonDocument.Parse(partitionKey.ToString());
-        var root = document.RootElement;
-        var value = root.ValueKind == JsonValueKind.Array && root.GetArrayLength() == 1 ? root[0] : root;
-
-        // The SDK serializes numeric components as doubles (for example 7.0); render
-        // integral values the way users supply them.
-        using var buffer = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(buffer))
-        {
-            WriteNormalizedPartitionKeyValue(writer, value);
-        }
-
-        using var normalized = JsonDocument.Parse(buffer.ToArray());
-        return normalized.RootElement.Clone();
-    }
-
-    private static void WriteNormalizedPartitionKeyValue(Utf8JsonWriter writer, JsonElement value)
-    {
-        switch (value.ValueKind)
-        {
-            case JsonValueKind.Array:
-                writer.WriteStartArray();
-                foreach (var component in value.EnumerateArray())
-                {
-                    WriteNormalizedPartitionKeyValue(writer, component);
-                }
-
-                writer.WriteEndArray();
-                break;
-            case JsonValueKind.Number when value.TryGetDecimal(out var number)
-                && number == decimal.Truncate(number)
-                && number >= long.MinValue
-                && number <= long.MaxValue:
-                writer.WriteNumberValue((long)number);
-                break;
-            default:
-                value.WriteTo(writer);
-                break;
-        }
-    }
-
-    internal static PartitionKey ParsePartitionKey(string rawValue)
-    {
-        try
-        {
-            return CreatePartitionKeyFromArgument(rawValue);
-        }
-        catch (JsonException ex)
-        {
-            throw new CommandException("rm", MessageService.GetString("command-rm-error-invalid_pk_json"), ex);
-        }
-    }
-
-    internal static bool TryGetPartitionKeyElements(JsonElement element, IEnumerable<string> partitionKeyPropertyNames, out List<JsonElement> partitionKeyElements)
-    {
-        partitionKeyElements = [];
-        foreach (var partitionKeyPropertyName in partitionKeyPropertyNames)
-        {
-            if (!TryGetNestedProperty(element, partitionKeyPropertyName, out var partitionKeyElement))
-            {
-                partitionKeyElements = [];
-                return false;
-            }
-
-            partitionKeyElements.Add(partitionKeyElement);
-        }
-
-        return partitionKeyElements.Count > 0;
-    }
+    internal static PartitionKey ParsePartitionKey(string rawValue) =>
+        CreatePartitionKeyFromArgument(rawValue, "rm", "command-rm-error-invalid_pk_json");
 
     private static bool HasWildcard(string pattern) => pattern.IndexOfAny(['*', '?']) >= 0;
 
@@ -614,4 +558,37 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
         return result;
     }
+
+    private FileStream CreateDeletionPlanStream()
+    {
+        var path = Path.Join(Path.GetTempPath(), $"cosmosdbshell-rm-{Guid.NewGuid():N}.jsonl");
+        const FileOptions options = FileOptions.Asynchronous | FileOptions.DeleteOnClose | FileOptions.SequentialScan;
+
+        if (OperatingSystem.IsWindows())
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            var owner = identity.User ?? throw new UnauthorizedAccessException("The current Windows user SID is unavailable.");
+            var security = new FileSecurity();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            security.AddAccessRule(new FileSystemAccessRule(owner, FileSystemRights.FullControl, AccessControlType.Allow));
+            return new FileInfo(path).Create(
+                FileMode.CreateNew,
+                FileSystemRights.FullControl,
+                FileShare.None,
+                4096,
+                options,
+                security);
+        }
+
+        return new FileStream(path, new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.ReadWrite,
+            Share = FileShare.None,
+            Options = options,
+            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
+        });
+    }
+
+    private sealed record DeletionCandidate(string Id, string PartitionKeyJson);
 }
