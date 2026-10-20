@@ -169,11 +169,13 @@ public class ImportCommandTests
     }
 
     [Theory]
-    [InlineData("{\"id\":\"1\"}\n{\"id\":\"2\"}\n")]
-    [InlineData("{\"id\":\"1\"} {\"id\":\"2\"}")]
-    [InlineData("{\"id\":\"1\"}{\"id\":\"2\"}")]
-    [InlineData("\uFEFF \r\n{\n\"id\":\"1\"\n}\n\n{\n\"id\":\"2\"\n}\n")]
-    public async Task EnumerateJsonDocumentAsync_ObjectSequence_YieldsItems(string content)
+    [InlineData("{\"id\":\"1\"}\n{\"id\":\"2\"}\n", 1, 2)]
+    [InlineData("{\"id\":\"1\"} {\"id\":\"2\"}", 1, 1)]
+    [InlineData("{\"id\":\"1\"}{\"id\":\"2\"}", 1, 1)]
+    [InlineData("\uFEFF \r\n{\n\"id\":\"1\"\n}\n\n{\n\"id\":\"2\"\n}\n", 2, 6)]
+    [InlineData("{\"id\":\"1\"}\r\n\r\n{\"id\":\"2\"}", 1, 3)]
+    [InlineData("{\"id\":\"1\"}\r\r{\"id\":\"2\"}", 1, 3)]
+    public async Task EnumerateJsonDocumentAsync_ObjectSequence_YieldsItems(string content, int firstLine, int secondLine)
     {
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
         var items = new List<(int Index, string? Id)>();
@@ -182,7 +184,7 @@ public class ImportCommandTests
             items.Add((index, item.GetProperty("id").GetString()));
         }
 
-        Assert.Equal([(1, "1"), (2, "2")], items);
+        Assert.Equal([(firstLine, "1"), (secondLine, "2")], items);
     }
 
     [Fact]
@@ -213,6 +215,10 @@ public class ImportCommandTests
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
 
         await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+        if (prefix != "{\"data\":\"")
+        {
+            Assert.True(stream.Position < 64 * 1024, $"Read {stream.Position} of {stream.Length} bytes.");
+        }
     }
 
     [Fact]
@@ -230,9 +236,7 @@ public class ImportCommandTests
     [InlineData("[{\"id\":\"a\"}]]")]
     [InlineData("[{\"id\":\"a\"},{\"id\":}]")]
     [InlineData("{\"id\":\"a\"")]
-    [InlineData("{\"id\":\"a\"},\n{\"id\":\"b\"}")]
     [InlineData("{\"id\":\"a\"}\n{\"id\":}")]
-    [InlineData("{\"id\":\"a\"}\ntrailing garbage")]
     [InlineData("[{\"id\":\"a\"}]\n{\"id\":\"b\"}")]
     public async Task EnumerateJsonDocumentAsync_MalformedDocument_ReportsDocumentError(string content)
     {
@@ -242,6 +246,18 @@ public class ImportCommandTests
 
         Assert.Contains("not a valid JSON document", ex.Message);
         Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+    }
+
+    [Theory]
+    [InlineData("{\"id\":\"a\"},\n{\"id\":\"b\"}")]
+    [InlineData("{\"id\":\"a\"}\ntrailing garbage")]
+    [InlineData("{\"id\":\"a\"}\n42")]
+    [InlineData("{\"id\":\"a\"}\nnull")]
+    public async Task EnumerateJsonDocumentAsync_NonObjectSequenceEntry_Throws(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
     }
 
     [Theory]

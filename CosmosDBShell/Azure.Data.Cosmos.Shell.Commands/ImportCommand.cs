@@ -171,15 +171,13 @@ internal class ImportCommand : CosmosCommand
     /// </summary>
     /// <param name="stream">The source stream.</param>
     /// <param name="token">Cancellation token.</param>
-    /// <param name="topLevelValues">Whether to read successive root values instead of array elements.</param>
     /// <returns>An async sequence of (1-based item index, item) tuples.</returns>
     internal static async IAsyncEnumerable<(int LineNumber, JsonElement Item)> EnumerateArrayAsync(
         Stream stream,
-        [EnumeratorCancellation] CancellationToken token,
-        bool topLevelValues = false)
+        [EnumeratorCancellation] CancellationToken token)
     {
         var index = 0;
-        await foreach (var element in JsonSerializer.DeserializeAsyncEnumerable<JsonElement>(stream, topLevelValues: topLevelValues, cancellationToken: token))
+        await foreach (var element in JsonSerializer.DeserializeAsyncEnumerable<JsonElement>(stream, cancellationToken: token))
         {
             index++;
             if (element.ValueKind != JsonValueKind.Object)
@@ -202,7 +200,7 @@ internal class ImportCommand : CosmosCommand
     /// </summary>
     /// <param name="stream">The seekable source stream.</param>
     /// <param name="token">Cancellation token.</param>
-    /// <returns>An async sequence of (1-based item index, item) tuples.</returns>
+    /// <returns>Items with 1-based array indexes or physical start lines for object sequences.</returns>
     internal static async IAsyncEnumerable<(int LineNumber, JsonElement Item)> EnumerateJsonDocumentAsync(
         Stream stream,
         [EnumeratorCancellation] CancellationToken token)
@@ -213,10 +211,99 @@ internal class ImportCommand : CosmosCommand
             yield break;
         }
 
-        await using var items = EnumerateArrayAsync(stream, token, topLevelValues: first != '[').GetAsyncEnumerator(token);
+        var source = first == '[' ? EnumerateArrayAsync(stream, token) : EnumerateObjectsAsync(stream, token);
+        await using var items = source.GetAsyncEnumerator(token);
         while (await MoveNextDocumentAsync(items))
         {
             yield return items.Current;
+        }
+    }
+
+    private static async IAsyncEnumerable<(int LineNumber, JsonElement Item)> EnumerateObjectsAsync(
+        Stream stream,
+        [EnumeratorCancellation] CancellationToken token)
+    {
+        var buffer = new byte[16 * 1024];
+        var length = 0;
+        var final = false;
+        var line = 1;
+        var previousCarriageReturn = false;
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            var whitespace = 0;
+            while (whitespace < length && buffer[whitespace] is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')
+            {
+                whitespace++;
+            }
+
+            AdvanceLines(buffer.AsSpan(0, whitespace), ref line, ref previousCarriageReturn);
+            buffer.AsSpan(whitespace, length - whitespace).CopyTo(buffer);
+            length -= whitespace;
+            if (length > 0)
+            {
+                if (buffer[0] != (byte)'{')
+                {
+                    throw new CommandException(
+                        "import",
+                        MessageService.GetArgsString("command-import-error-not_object", "line", line));
+                }
+
+                if (TryReadObject(buffer.AsSpan(0, length), final, out var item, out var consumed))
+                {
+                    var startLine = line;
+                    AdvanceLines(buffer.AsSpan(0, consumed), ref line, ref previousCarriageReturn);
+                    buffer.AsSpan(consumed, length - consumed).CopyTo(buffer);
+                    length -= consumed;
+                    yield return (startLine, item);
+                    continue;
+                }
+            }
+            else if (final)
+            {
+                yield break;
+            }
+
+            if (length == buffer.Length)
+            {
+                Array.Resize(ref buffer, checked(buffer.Length * 2));
+            }
+
+            var read = await stream.ReadAsync(buffer.AsMemory(length), token);
+            length += read;
+            final = read == 0;
+        }
+    }
+
+    private static bool TryReadObject(ReadOnlySpan<byte> buffer, bool final, out JsonElement item, out int consumed)
+    {
+        var reader = new Utf8JsonReader(buffer, final, default);
+        if (JsonDocument.TryParseValue(ref reader, out var document))
+        {
+            using (document)
+            {
+                item = document.RootElement.Clone();
+            }
+
+            consumed = checked((int)reader.BytesConsumed);
+            return true;
+        }
+
+        item = default;
+        consumed = 0;
+        return false;
+    }
+
+    private static void AdvanceLines(ReadOnlySpan<byte> bytes, ref int line, ref bool previousCarriageReturn)
+    {
+        foreach (var value in bytes)
+        {
+            if (value == '\r' || (value == '\n' && !previousCarriageReturn))
+            {
+                line++;
+            }
+
+            previousCarriageReturn = value == '\r';
         }
     }
 
@@ -504,6 +591,8 @@ internal class ImportCommand : CosmosCommand
 
     public override async Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
     {
+        var selectedFormat = new CommandState();
+        selectedFormat.SetFormat(this.Format);
         var concurrency = this.Concurrency ?? DefaultConcurrency;
         if (concurrency < 1)
         {
@@ -646,10 +735,15 @@ internal class ImportCommand : CosmosCommand
         }
         else
         {
-            resultState = new CommandState { Result = new ShellJson(JsonSerializer.SerializeToElement(payload)) };
+            selectedFormat.Result = new ShellJson(JsonSerializer.SerializeToElement(payload));
+            resultState = selectedFormat;
         }
 
-        resultState.SetFormat(this.Format);
+        if (selectedFormat.OutputFormatExplicitlySet)
+        {
+            resultState.OutputFormat = selectedFormat.OutputFormat;
+        }
+
         resultState.ShareWarningsFrom(commandState);
         resultState.RequestCharge = charge > 0 ? charge : null;
         resultState.RenderUser = () =>

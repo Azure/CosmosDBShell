@@ -35,15 +35,15 @@ public class ImportFailureResultTests
         shell.Options = new Program.CosmosShellOptions { Output = "json", Quiet = true };
         shell.StdOutRedirect = stdout;
         shell.ErrOutRedirect = stderr;
+        using var streamFailureResponse = new ResponseMessage((HttpStatusCode)status);
+        streamFailureResponse.Headers.Add("x-ms-request-charge", "3.5");
         container.CreateItemStreamAsync(Arg.Any<Stream>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {
                 using var item = JsonDocument.Parse(call.ArgAt<Stream>(0));
                 if (streamFailure && item.RootElement.GetProperty("id").GetString() == "bad")
                 {
-                    var response = new ResponseMessage((HttpStatusCode)status);
-                    response.Headers.Add("x-ms-request-charge", "3.5");
-                    return Task.FromResult(response);
+                    return Task.FromResult(streamFailureResponse);
                 }
 
                 return item.RootElement.GetProperty("id").GetString() == "bad"
@@ -58,7 +58,7 @@ public class ImportFailureResultTests
             var state = Assert.IsType<StructuredErrorCommandState>(await shell.ExecuteCommandAsync(script, TestContext.Current.CancellationToken));
 
             var imported = continueOnError ? 2 : 1;
-            var charge = (imported * 2) + 3.5;
+            var charge = (imported * 2.0) + 3.5;
             var result = Assert.IsType<ShellJson>(state.Result).Value;
             Assert.Equal(imported, result.GetProperty("imported").GetInt32());
             Assert.Equal(1, result.GetProperty("failed").GetInt32());
@@ -180,6 +180,64 @@ public class ImportFailureResultTests
             Assert.Equal(0, result.GetProperty("failed").GetInt32());
             Assert.Equal(0, result.GetProperty("requestCharge").GetDouble());
             Assert.True(state.IsError);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
+    [InlineData("array")]
+    [InlineData("jsonl")]
+    [InlineData("invalid")]
+    public async Task InvalidFormat_DoesNotAccessContainerOrWriteItems(string format)
+    {
+        var file = Path.GetTempFileName();
+        using var shell = CreateShell(out var container);
+        container.ClearReceivedCalls();
+        try
+        {
+            await File.WriteAllTextAsync(file, """[{"id":"first","pk":"x"}]""", TestContext.Current.CancellationToken);
+            var command = new ImportCommand { File = file, Format = format };
+
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                command.ExecuteAsync(shell, new CommandState(), "import", TestContext.Current.CancellationToken));
+
+            Assert.Empty(container.ReceivedCalls());
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
+    [InlineData("{\"id\":\"first\",\"pk\":\"x\"}\n\n{\n\"id\":\"bad\",\"pk\":\"x\"\n}", false)]
+    [InlineData("{\"id\":\"first\",\"pk\":\"x\"}\n\n{\n\"pk\":\"x\"\n}", true)]
+    public async Task ObjectSequenceFailure_ReportsPhysicalStartLineAndPreservesFormat(string content, bool invalidId)
+    {
+        var file = Path.GetTempFileName();
+        using var shell = CreateShell(out var container);
+        container.CreateItemStreamAsync(Arg.Any<Stream>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                using var item = JsonDocument.Parse(call.ArgAt<Stream>(0));
+                return item.RootElement.GetProperty("id").GetString() == "bad"
+                    ? Task.FromException<ResponseMessage>(new CosmosException("write failed", HttpStatusCode.Conflict, 0, "test", 0))
+                    : Task.FromResult(Response(2));
+            });
+        try
+        {
+            await File.WriteAllTextAsync(file, content, TestContext.Current.CancellationToken);
+            var command = new ImportCommand { File = file, Format = "csv", Concurrency = 1, DryRun = invalidId };
+
+            var state = Assert.IsType<StructuredErrorCommandState>(
+                await command.ExecuteAsync(shell, new CommandState(), "import", TestContext.Current.CancellationToken));
+
+            Assert.Equal(OutputFormat.CSV, state.OutputFormat);
+            Assert.True(state.OutputFormatExplicitlySet);
+            Assert.Contains("Line 3", Assert.IsType<ShellJson>(state.Result).Value.GetProperty("error").GetString());
         }
         finally
         {
