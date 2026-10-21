@@ -61,23 +61,19 @@ internal class Program
             }
 
             var (rootCommand, optionMap) = BuildRootCommand();
-            var configuration = new System.CommandLine.CommandLineConfiguration(
-                rootCommand,
-                resources: new LocalizedCliResources());
-            var parser = new System.CommandLine.Parsing.Parser(configuration);
-            var parseResult = parser.Parse(args);
+            var parseResult = rootCommand.Parse(args);
 
             if (parseResult.Errors.Count > 0)
             {
-                var outputMode = parseResult.GetValueForOption(optionMap.Output);
-                var quiet = parseResult.GetValueForOption(optionMap.Quiet);
+                var outputMode = parseResult.GetValue(optionMap.Output);
+                var quiet = parseResult.GetValue(optionMap.Quiet);
                 var isNonInteractive = !string.IsNullOrWhiteSpace(
-                    parseResult.GetValueForOption(optionMap.ExecuteAndQuit));
+                    parseResult.GetValue(optionMap.ExecuteAndQuit));
 
                 var isMachineMode = OutputPolicy.IsMachineMode(outputMode, quiet, isNonInteractive);
                 if (isMachineMode)
                 {
-                    var errorStrings = parseResult.Errors.Select(e => e.Message).ToList();
+                    var errorStrings = GetParseErrorMessages(parseResult);
                     var errObj = new
                     {
                         status = "error",
@@ -87,9 +83,9 @@ internal class Program
                 }
                 else
                 {
-                    foreach (var error in parseResult.Errors)
+                    foreach (var error in GetParseErrorMessages(parseResult))
                     {
-                        ShellInterpreter.WriteLine(error.Message);
+                        ShellInterpreter.WriteLine(error);
                     }
 
                     ShellInterpreter.WriteLine(BuildHelpText());
@@ -101,57 +97,57 @@ internal class Program
 
             var o = new CosmosShellOptions
             {
-                Output = parseResult.GetValueForOption(optionMap.Output),
-                Quiet = parseResult.GetValueForOption(optionMap.Quiet),
-                ColorSystem = parseResult.GetValueForOption(optionMap.ColorSystem),
-                ExecuteAndQuit = parseResult.GetValueForOption(optionMap.ExecuteAndQuit),
-                ExecuteAndContinue = parseResult.GetValueForOption(optionMap.ExecuteAndContinue),
-                ClearHistory = parseResult.GetValueForOption(optionMap.ClearHistory),
-                ConnectionString = parseResult.GetValueForOption(optionMap.ConnectionString),
-                ConnectionMode = parseResult.GetValueForOption(optionMap.ConnectionMode),
-                ConnectTenant = parseResult.GetValueForOption(optionMap.ConnectTenant),
-                ConnectHint = parseResult.GetValueForOption(optionMap.ConnectHint),
-                ConnectAuthorityHost = parseResult.GetValueForOption(optionMap.ConnectAuthorityHost),
-                ConnectManagedIdentity = parseResult.GetValueForOption(optionMap.ConnectManagedIdentity),
-                ConnectSubscription = parseResult.GetValueForOption(optionMap.ConnectSubscription),
-                ConnectResourceGroup = parseResult.GetValueForOption(optionMap.ConnectResourceGroup),
-                ConnectVSCodeCredential = parseResult.GetValueForOption(optionMap.ConnectVSCodeCredential),
-                ConnectAzureCli = parseResult.GetValueForOption(optionMap.ConnectAzureCli),
-                Database = parseResult.GetValueForOption(optionMap.Database),
-                Container = parseResult.GetValueForOption(optionMap.Container),
-                StartLspServer = parseResult.GetValueForOption(optionMap.StartLspServer),
-                LspStdio = parseResult.GetValueForOption(optionMap.LspStdio),
-                Verbose = parseResult.GetValueForOption(optionMap.Verbose),
-                Theme = parseResult.GetValueForOption(optionMap.Theme),
+                Output = parseResult.GetValue(optionMap.Output),
+                Quiet = parseResult.GetValue(optionMap.Quiet),
+                ColorSystem = parseResult.GetValue(optionMap.ColorSystem),
+                ExecuteAndQuit = parseResult.GetValue(optionMap.ExecuteAndQuit),
+                ExecuteAndContinue = parseResult.GetValue(optionMap.ExecuteAndContinue),
+                ClearHistory = parseResult.GetValue(optionMap.ClearHistory),
+                ConnectionString = parseResult.GetValue(optionMap.ConnectionString),
+                ConnectionMode = parseResult.GetValue(optionMap.ConnectionMode),
+                ConnectTenant = parseResult.GetValue(optionMap.ConnectTenant),
+                ConnectHint = parseResult.GetValue(optionMap.ConnectHint),
+                ConnectAuthorityHost = parseResult.GetValue(optionMap.ConnectAuthorityHost),
+                ConnectManagedIdentity = parseResult.GetValue(optionMap.ConnectManagedIdentity),
+                ConnectSubscription = parseResult.GetValue(optionMap.ConnectSubscription),
+                ConnectResourceGroup = parseResult.GetValue(optionMap.ConnectResourceGroup),
+                ConnectVSCodeCredential = parseResult.GetValue(optionMap.ConnectVSCodeCredential),
+                ConnectAzureCli = parseResult.GetValue(optionMap.ConnectAzureCli),
+                Database = parseResult.GetValue(optionMap.Database),
+                Container = parseResult.GetValue(optionMap.Container),
+                StartLspServer = parseResult.GetValue(optionMap.StartLspServer),
+                LspStdio = parseResult.GetValue(optionMap.LspStdio),
+                Verbose = parseResult.GetValue(optionMap.Verbose),
+                Theme = parseResult.GetValue(optionMap.Theme),
             };
 
             // --mcp supports an optional value: when the option is present without
             // an integer, fall back to the default port.
-            var mcpResult = parseResult.FindResultFor(optionMap.McpPort);
+            var mcpResult = parseResult.GetResult(optionMap.McpPort);
             if (mcpResult is not null)
             {
-                var mcpValue = parseResult.GetValueForOption(optionMap.McpPort);
+                var mcpValue = parseResult.GetValue(optionMap.McpPort);
                 o.McpPort = mcpValue ?? DefaultMcpPort;
             }
 
             // --diagnostics supports an optional value: when present without a path,
             // logging is written to a timestamped file in the config directory.
-            var diagnosticsResult = parseResult.FindResultFor(optionMap.Diagnostics);
+            var diagnosticsResult = parseResult.GetResult(optionMap.Diagnostics);
             if (diagnosticsResult is not null)
             {
                 o.EnableDiagnostics = true;
-                var diagnosticsValue = parseResult.GetValueForOption(optionMap.Diagnostics);
+                var diagnosticsValue = parseResult.GetValue(optionMap.Diagnostics);
                 o.DiagnosticsPath = string.IsNullOrWhiteSpace(diagnosticsValue) ? null : diagnosticsValue;
             }
 
             // --otel supports an optional value: when present without an endpoint,
             // tracing is still enabled (emitting a sampled traceparent) and the
             // OTLP endpoint, if any, falls back to the standard environment variable.
-            var otelResult = parseResult.FindResultFor(optionMap.Otel);
+            var otelResult = parseResult.GetResult(optionMap.Otel);
             if (otelResult is not null)
             {
                 o.EnableTracing = true;
-                var otelValue = parseResult.GetValueForOption(optionMap.Otel);
+                var otelValue = parseResult.GetValue(optionMap.Otel);
                 o.OtlpEndpoint = string.IsNullOrWhiteSpace(otelValue)
                     ? Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT")
                     : otelValue;
@@ -605,16 +601,17 @@ internal class Program
         return args;
     }
 
-    private static (RootCommand Command, OptionMap Map) BuildRootCommand()
+    internal static (RootCommand Command, OptionMap Map) BuildRootCommand()
     {
-        var colorSystem = new Option<int>(
-            aliases: ["--color-system", "--cs"],
-            getDefaultValue: () => 2,
-            description: MessageService.GetString("help-ColorSystem"));
+        var colorSystem = new Option<int>("--color-system", "--cs")
+        {
+            DefaultValueFactory = _ => 2,
+            Description = MessageService.GetString("help-ColorSystem"),
+        };
 
-        var output = new Option<string?>(
-            aliases: ["--output", "-o"],
-            parseArgument: argResult =>
+        var output = new Option<string?>("--output", "-o")
+        {
+            CustomParser = argResult =>
             {
                 if (argResult.Tokens.Count == 0)
                 {
@@ -633,27 +630,30 @@ internal class Program
                     };
                 }
 
-                argResult.ErrorMessage = MessageService.GetString(
+                argResult.AddError(MessageService.GetString(
                     "error-invalid_output_format",
-                    new Dictionary<string, object> { { "format", token } });
+                    new Dictionary<string, object> { { "format", token } }));
                 return null;
             },
-            description: MessageService.GetString("help-OutputFormat"));
-        var quiet = new Option<bool>(
-            aliases: ["--quiet", "-q"],
-            description: MessageService.GetString("help-Quiet"));
+            Description = MessageService.GetString("help-OutputFormat"),
+        };
+        var quiet = new Option<bool>("--quiet", "-q")
+        {
+            Description = MessageService.GetString("help-Quiet"),
+        };
 
-        var executeAndQuit = new Option<string?>("-c", MessageService.GetString("help-ExecuteAndQuit"));
-        var executeAndContinue = new Option<string?>("-k", MessageService.GetString("help-ExecuteAndContinue"));
+        var executeAndQuit = new Option<string?>("-c") { Description = MessageService.GetString("help-ExecuteAndQuit") };
+        var executeAndContinue = new Option<string?>("-k") { Description = MessageService.GetString("help-ExecuteAndContinue") };
 
-        var clearHistory = new Option<bool>(
-            aliases: ["--clear-history", "--clearhistory"],
-            description: MessageService.GetString("help-ClearHistory"));
-        var connectionString = new Option<string?>("--connect", MessageService.GetString("help-ConnectionString"));
+        var clearHistory = new Option<bool>("--clear-history", "--clearhistory")
+        {
+            Description = MessageService.GetString("help-ClearHistory"),
+        };
+        var connectionString = new Option<string?>("--connect") { Description = MessageService.GetString("help-ConnectionString") };
 
-        var connectionMode = new Option<ConnectionMode?>(
-            "--connect-mode",
-            parseArgument: argResult =>
+        var connectionMode = new Option<ConnectionMode?>("--connect-mode")
+        {
+            CustomParser = argResult =>
             {
                 if (argResult.Tokens.Count == 0)
                 {
@@ -666,52 +666,60 @@ internal class Program
                     return mode;
                 }
 
-                argResult.ErrorMessage = MessageService.GetArgsString(
+                argResult.AddError(MessageService.GetArgsString(
                     "help-error-BadFormatConversionError2",
                     "option",
-                    "--connect-mode");
+                    "--connect-mode"));
                 return null;
             },
-            description: MessageService.GetString("help-ConnectionMode"));
-
-        var connectTenant = new Option<string?>("--connect-tenant", MessageService.GetString("help-ConnectTenant"));
-        var connectHint = new Option<string?>("--connect-hint", MessageService.GetString("help-ConnectHint"));
-        var connectAuthorityHost = new Option<string?>("--connect-authority-host", MessageService.GetString("help-ConnectAuthorityHost"));
-        var connectManagedIdentity = new Option<string?>("--connect-managed-identity", MessageService.GetString("help-ConnectManagedIdentity"));
-        var connectSubscription = new Option<string?>("--connect-subscription", MessageService.GetString("help-ConnectSubscription"));
-        var connectResourceGroup = new Option<string?>("--connect-resource-group", MessageService.GetString("help-ConnectResourceGroup"));
-        var connectVSCodeCredential = new Option<bool>("--connect-vscode-credential", MessageService.GetString("help-ConnectVSCodeCredential"))
-        {
-            IsHidden = true,
+            Description = MessageService.GetString("help-ConnectionMode"),
         };
-        var connectAzureCli = new Option<bool>("--connect-azure-cli", MessageService.GetString("help-ConnectAzureCli"));
-        var database = new Option<string?>("--database", MessageService.GetString("help-StartupDatabase"));
-        var container = new Option<string?>("--container", MessageService.GetString("help-StartupContainer"));
 
-        var mcpPort = new Option<int?>("--mcp", MessageService.GetString("help-McpPort"))
+        var connectTenant = new Option<string?>("--connect-tenant") { Description = MessageService.GetString("help-ConnectTenant") };
+        var connectHint = new Option<string?>("--connect-hint") { Description = MessageService.GetString("help-ConnectHint") };
+        var connectAuthorityHost = new Option<string?>("--connect-authority-host") { Description = MessageService.GetString("help-ConnectAuthorityHost") };
+        var connectManagedIdentity = new Option<string?>("--connect-managed-identity") { Description = MessageService.GetString("help-ConnectManagedIdentity") };
+        var connectSubscription = new Option<string?>("--connect-subscription") { Description = MessageService.GetString("help-ConnectSubscription") };
+        var connectResourceGroup = new Option<string?>("--connect-resource-group") { Description = MessageService.GetString("help-ConnectResourceGroup") };
+        var connectVSCodeCredential = new Option<bool>("--connect-vscode-credential")
         {
+            Description = MessageService.GetString("help-ConnectVSCodeCredential"),
+            Hidden = true,
+        };
+        var connectAzureCli = new Option<bool>("--connect-azure-cli") { Description = MessageService.GetString("help-ConnectAzureCli") };
+        var database = new Option<string?>("--database") { Description = MessageService.GetString("help-StartupDatabase") };
+        var container = new Option<string?>("--container") { Description = MessageService.GetString("help-StartupContainer") };
+
+        var mcpPort = new Option<int?>("--mcp")
+        {
+            Description = MessageService.GetString("help-McpPort"),
             Arity = ArgumentArity.ZeroOrOne,
         };
 
-        var startLspServer = new Option<bool>("--lsp", MessageService.GetString("help-EnableLspServer"));
-        var lspStdio = new Option<bool>("--stdio", MessageService.GetString("help-EnableLspServer"))
+        var startLspServer = new Option<bool>("--lsp") { Description = MessageService.GetString("help-EnableLspServer") };
+        var lspStdio = new Option<bool>("--stdio")
         {
-            IsHidden = true,
+            Description = MessageService.GetString("help-EnableLspServer"),
+            Hidden = true,
         };
-        var verbose = new Option<bool>("--verbose", MessageService.GetString("help-Verbose"));
-        var theme = new Option<string?>("--theme", MessageService.GetString("help-Theme"));
-        var diagnostics = new Option<string?>("--diagnostics", MessageService.GetString("help-Diagnostics"))
+        var verbose = new Option<bool>("--verbose") { Description = MessageService.GetString("help-Verbose") };
+        var theme = new Option<string?>("--theme") { Description = MessageService.GetString("help-Theme") };
+        var diagnostics = new Option<string?>("--diagnostics")
         {
+            Description = MessageService.GetString("help-Diagnostics"),
             Arity = ArgumentArity.ZeroOrOne,
         };
 
-        var otel = new Option<string?>("--otel", MessageService.GetString("help-Otel"))
+        var otel = new Option<string?>("--otel")
         {
+            Description = MessageService.GetString("help-Otel"),
             Arity = ArgumentArity.ZeroOrOne,
         };
 
         var root = new RootCommand("Cosmos DB Shell")
         {
+            Options =
+            {
             output,
             quiet,
             colorSystem,
@@ -737,7 +745,14 @@ internal class Program
             theme,
             diagnostics,
             otel,
+            },
         };
+
+        // Startup help/version are handled before parsing, not by built-in actions.
+        foreach (var option in root.Options.Where(option => option is System.CommandLine.Help.HelpOption or VersionOption).ToArray())
+        {
+            root.Options.Remove(option);
+        }
 
         var map = new OptionMap(
             output,
@@ -767,6 +782,31 @@ internal class Program
             otel);
 
         return (root, map);
+    }
+
+    internal static IReadOnlyList<string> GetParseErrorMessages(System.CommandLine.ParseResult result)
+    {
+        var messages = result.UnmatchedTokens.Select(arg => arg.StartsWith('-')
+            ? MessageService.GetArgsString("help-error-UnknownOptionError", "option", arg)
+            : MessageService.GetArgsString("help-error-UnknownArgumentError", "argument", arg)).ToList();
+        foreach (var error in result.Errors)
+        {
+            var option = error.SymbolResult as OptionResult ?? error.SymbolResult?.Parent as OptionResult;
+            if (option != null)
+            {
+                messages.Add(option.Tokens.Count == 0 && option.Option.Arity.MinimumNumberOfValues > 0
+                    ? MessageService.GetArgsString("help-error-MissingValueOptionError", "option", option.Option.Name)
+                    : option.Option.ValueType != typeof(string)
+                        ? MessageService.GetArgsString("help-error-BadFormatConversionError2", "option", option.Option.Name)
+                        : error.Message);
+            }
+            else if (error.SymbolResult is not System.CommandLine.Parsing.CommandResult || result.UnmatchedTokens.Count == 0)
+            {
+                messages.Add(error.Message);
+            }
+        }
+
+        return messages;
     }
 
     private static void WriteErrorLine(string message)
@@ -804,12 +844,12 @@ internal class Program
         var rows = new List<(string Label, string? Description)>();
         foreach (var option in rootCommand.Options)
         {
-            if (option.IsHidden)
+            if (option.Hidden || option is System.CommandLine.Help.HelpOption or VersionOption)
             {
                 continue;
             }
 
-            var label = string.Join(", ", option.Aliases);
+            var label = string.Join(", ", new[] { option.Name }.Concat(option.Aliases));
             if (placeholders.TryGetValue((System.CommandLine.Option)option, out var placeholder))
             {
                 label = $"{label} {placeholder}";
@@ -890,72 +930,6 @@ internal class Program
         Theme.Apply(profile);
     }
 
-    private sealed record OptionMap(
-        Option<string?> Output,
-        Option<bool> Quiet,
-        Option<int> ColorSystem,
-        Option<string?> ExecuteAndQuit,
-        Option<string?> ExecuteAndContinue,
-        Option<bool> ClearHistory,
-        Option<string?> ConnectionString,
-        Option<ConnectionMode?> ConnectionMode,
-        Option<string?> ConnectTenant,
-        Option<string?> ConnectHint,
-        Option<string?> ConnectAuthorityHost,
-        Option<string?> ConnectManagedIdentity,
-        Option<string?> ConnectSubscription,
-        Option<string?> ConnectResourceGroup,
-        Option<bool> ConnectVSCodeCredential,
-        Option<bool> ConnectAzureCli,
-        Option<string?> Database,
-        Option<string?> Container,
-        Option<int?> McpPort,
-        Option<bool> StartLspServer,
-        Option<bool> LspStdio,
-        Option<bool> Verbose,
-        Option<string?> Theme,
-        Option<string?> Diagnostics,
-        Option<string?> Otel);
-
-    /// <summary>
-    /// Maps the most common <c>System.CommandLine</c> parse error messages
-    /// to the existing <c>help-error-*</c> entries in <c>en.ftl</c> so the
-    /// localized help/error strings authored for the previous parser are not
-    /// silently lost. Anything not overridden falls back to the default
-    /// English text from <see cref="System.CommandLine.LocalizationResources"/>.
-    /// </summary>
-    private sealed class LocalizedCliResources : System.CommandLine.LocalizationResources
-    {
-        public override string UnrecognizedCommandOrArgument(string arg) =>
-            arg.StartsWith('-')
-                ? MessageService.GetArgsString("help-error-UnknownOptionError", "option", arg)
-                : MessageService.GetArgsString("help-error-UnknownArgumentError", "argument", arg);
-
-        public override string UnrecognizedArgument(string unrecognizedArg, IReadOnlyCollection<string> allowedValues) =>
-            unrecognizedArg.StartsWith('-')
-                ? MessageService.GetArgsString("help-error-UnknownOptionError", "option", unrecognizedArg)
-                : MessageService.GetArgsString("help-error-UnknownArgumentError", "argument", unrecognizedArg);
-
-        public override string ExpectsOneArgument(System.CommandLine.Parsing.SymbolResult symbolResult) =>
-            MessageService.GetArgsString("help-error-MissingValueOptionError", "option", GetDisplayName(symbolResult));
-
-        public override string NoArgumentProvided(System.CommandLine.Parsing.SymbolResult symbolResult) =>
-            MessageService.GetArgsString("help-error-MissingValueOptionError", "option", GetDisplayName(symbolResult));
-
-        public override string RequiredArgumentMissing(System.CommandLine.Parsing.SymbolResult symbolResult) =>
-            MessageService.GetArgsString("help-error-MissingRequiredOptionError2", "option", GetDisplayName(symbolResult));
-
-        public override string ArgumentConversionCannotParseForOption(string value, string optionName, Type expectedType) =>
-            MessageService.GetArgsString("help-error-BadFormatConversionError2", "option", optionName);
-
-        private static string GetDisplayName(System.CommandLine.Parsing.SymbolResult symbolResult)
-        {
-            return symbolResult.Symbol is System.CommandLine.Option option && option.Aliases.Count > 0
-                ? option.Aliases.First()
-                : symbolResult.Symbol.Name;
-        }
-    }
-
     public class CosmosShellOptions
     {
         public string? Output { get; set; }
@@ -1012,4 +986,31 @@ internal class Program
 
         public string? OtlpEndpoint { get; set; }
     }
+
+    internal sealed record OptionMap(
+        Option<string?> Output,
+        Option<bool> Quiet,
+        Option<int> ColorSystem,
+        Option<string?> ExecuteAndQuit,
+        Option<string?> ExecuteAndContinue,
+        Option<bool> ClearHistory,
+        Option<string?> ConnectionString,
+        Option<ConnectionMode?> ConnectionMode,
+        Option<string?> ConnectTenant,
+        Option<string?> ConnectHint,
+        Option<string?> ConnectAuthorityHost,
+        Option<string?> ConnectManagedIdentity,
+        Option<string?> ConnectSubscription,
+        Option<string?> ConnectResourceGroup,
+        Option<bool> ConnectVSCodeCredential,
+        Option<bool> ConnectAzureCli,
+        Option<string?> Database,
+        Option<string?> Container,
+        Option<int?> McpPort,
+        Option<bool> StartLspServer,
+        Option<bool> LspStdio,
+        Option<bool> Verbose,
+        Option<string?> Theme,
+        Option<string?> Diagnostics,
+        Option<string?> Otel);
 }

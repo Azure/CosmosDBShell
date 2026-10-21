@@ -24,10 +24,12 @@
 - Keep CLI inferred-key warnings visible before writes when the MCP listener is enabled; MCP calls continue to return warnings in their responses.
 - Preserve partial bulk results after execution errors or cancellation, decode quoted partition-key paths consistently, and prevent retries from replaying newer journal outcomes or reordering writes after a failure.
 - Remove incomplete bulk saved plans when the final file flush fails, so a truncated plan cannot be mistaken for a complete job.
+- Restore actionable missing-value diagnostics for startup options such as `--connect` and keep literal help/version command tails separate from startup handling.
 
 ### Improvements
 
 - `import` now streams documents with up to 16 concurrent writes by default. Use `--concurrency` to tune the limit or `--concurrency=1` for sequential, file-order writes. On a failure, imports stop scheduling new writes and wait for in-flight writes; `--continue-on-error` continues after per-item write failures.
+- Refresh dependencies, including the stable Cosmos DB client SDK, .NET 10 hosting libraries, command-line parsing, theme loading, editor/LSP support, authentication, diagnostics, serialization, and test/build tooling. Preserve existing CLI options and theme files while migrating to the current library APIs.
 
 ## 1.1.280 — 2026-10-09
 
