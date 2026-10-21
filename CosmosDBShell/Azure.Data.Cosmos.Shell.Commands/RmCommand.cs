@@ -53,7 +53,11 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
     [CosmosOption("partition-key", "pk")]
     public string? PartitionKeyArgument
     {
-        get => this.partitionKeyArgument;
+        get
+        {
+            return this.partitionKeyArgument;
+        }
+
         init
         {
             this.partitionKeyArgument = value;
@@ -64,7 +68,11 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
     [CosmosOption("etag")]
     public string? ETag
     {
-        get => this.etag;
+        get
+        {
+            return this.etag;
+        }
+
         init
         {
             this.etag = value;

@@ -2,3 +2,7 @@ root = true
 
 [*]
 trim_trailing_whitespace = true
+
+[CosmosDBShell/**/*.cs]
+# Keep descriptive parameter names when implementing generic interfaces.
+dotnet_diagnostic.SA1315.severity = none

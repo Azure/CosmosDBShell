@@ -27,10 +27,12 @@
 - Preserve import counts and observed write RUs in structured CLI and MCP errors after partial imports or invalid input. Import failures retain the underlying error classification and report a bounded representative error.
 - Validate item IDs during import dry runs and report local validation failures with usage exit code `2`. Help and results clarify that dry runs do not check target partition keys, permissions, conflicts, or other service constraints.
 - Reject non-object values in JSON object sequences before buffering their bodies, report physical start lines for sequence items, and validate import result formats before accessing the target container or writing items.
+- Restore actionable missing-value diagnostics for startup options such as `--connect` and keep literal help/version command tails separate from startup handling.
 
 ### Improvements
 
 - `import` now streams documents with up to 16 concurrent writes by default. Use `--concurrency` to tune the limit or `--concurrency=1` for sequential, file-order writes. On a failure, imports stop scheduling new writes and wait for in-flight writes; `--continue-on-error` continues after per-item write failures.
+- Refresh dependencies, including the stable Cosmos DB client SDK, .NET 10 hosting libraries, command-line parsing, theme loading, editor/LSP support, authentication, diagnostics, serialization, and test/build tooling. Preserve existing CLI options and theme files while migrating to the current library APIs.
 
 ## 1.1.280 — 2026-10-09
 

@@ -117,14 +117,19 @@ internal static class ThemeFile
         var warnings = new List<string>();
         var errors = new List<string>();
 
-        if (!Toml.TryToModel(text, out TomlTable? model, out var diagnostics))
+        TomlTable model;
+        try
+        {
+            model = TomlSerializer.Deserialize<TomlTable>(text)!;
+        }
+        catch (TomlException ex)
         {
             throw new ThemeLoadException(MessageService.GetArgsString(
                 "theme-file-error-parse",
                 "source",
                 sourceLabel,
                 "details",
-                string.Join("; ", diagnostics.Select(d => d.Message))));
+                ex.Message));
         }
 
         var name = ReadString(model, "name") ?? Path.GetFileNameWithoutExtension(sourceLabel);

@@ -302,7 +302,7 @@ public class ShellProcessTests
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.ExitCode);
-        Assert.Contains("Required option '--connect' is missing", result.StdOut + result.StdErr);
+        Assert.Contains("Option '--connect' has no value.", result.StdOut + result.StdErr);
     }
 
     [Fact]
