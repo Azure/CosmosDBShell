@@ -22,6 +22,7 @@
 - `print` now reads items with typed scalar and complete hierarchical partition keys, for example `print customer-1001 '[1001,"customer-1001"]'`. Invalid keys are distinguished from missing items. Shared argument parsing rejects object/nested-array components and non-finite numbers instead of coercing them. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
 - Avoid accessing an expired HTTP request during MCP session teardown, preventing disposal errors while releasing location subscriptions and legacy SSE admission state. ([#249](https://github.com/Azure/CosmosDBShell/issues/249))
 - Keep CLI inferred-key warnings visible before writes when the MCP listener is enabled; MCP calls continue to return warnings in their responses.
+- Preserve partial bulk results after execution errors or cancellation, decode quoted partition-key paths consistently, and prevent retries from replaying newer journal outcomes or reordering writes after a failure.
 
 ### Improvements
 

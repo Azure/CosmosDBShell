@@ -282,7 +282,7 @@ internal static class BulkOperationNormalizer
             {
                 var current = item;
                 var found = true;
-                foreach (var segment in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
+                foreach (var segment in CosmosCommand.SplitPartitionKeyPath(path))
                 {
                     if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(segment, out current))
                     {

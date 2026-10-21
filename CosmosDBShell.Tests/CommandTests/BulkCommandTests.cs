@@ -76,6 +76,21 @@ public class BulkCommandTests
         Assert.Equal(PartitionKey.None, BulkOperationNormalizer.ParseKey(missingKey.PartitionKey));
     }
 
+    [Theory]
+    [InlineData("create")]
+    [InlineData("upsert")]
+    [InlineData("replace")]
+    public void ItemOperationsDecodeQuotedPartitionKeyPaths(string op)
+    {
+        var operation = BulkOperationNormalizer.Normalize(
+            Json($$$$"""{"op":"{{{{op}}}}","item":{"id":"1","tenant id":"tenant","a/b":{"c":42}}}"""),
+            ["/\"tenant id\"", "/\"a/b\"/c"],
+            null,
+            0);
+
+        Assert.Equal("""["tenant",42]""", operation.PartitionKey);
+    }
+
     [Fact]
     public void DefaultPartitionKeyAppliesToAddressedOperationsAndIsCheckedForItems()
     {
@@ -317,6 +332,14 @@ public class BulkCommandTests
         Assert.Equal("""SELECT c.id, c._etag, c["tenant"]["id"] AS __pk0, c["re\"gion"] AS __pk1 FROM c WHERE (c.expired = true)""", query);
     }
 
+    [Fact]
+    public void SelectionQueryDecodesQuotedSegmentsAndEmbeddedSlashes()
+    {
+        var query = BulkCommand.BuildSelectionQuery("true", ["/\"tenant id\"", "/\"a/b\"/c"]);
+
+        Assert.Equal("""SELECT c.id, c._etag, c["tenant id"] AS __pk0, c["a/b"]["c"] AS __pk1 FROM c WHERE (true)""", query);
+    }
+
     // Writes.
     [Theory]
     [InlineData("create")]
@@ -442,6 +465,72 @@ public class BulkCommandTests
         Assert.Equal(attempted, summary.Failed);
         Assert.Equal(!continueOnError, summary.ResultIncomplete);
         Assert.False(summary.Success);
+    }
+
+    [Theory]
+    [InlineData(false, BulkOutcome.Failed)]
+    [InlineData(true, BulkOutcome.Failed)]
+    [InlineData(false, BulkOutcome.Uncertain)]
+    [InlineData(true, BulkOutcome.Uncertain)]
+    public async Task FailedWriteBlocksLaterWritesToSameItemUntilRetry(bool retryUncertain, string failureStatus)
+    {
+        var operations = new[]
+        {
+            new BulkOperation(0, "patch", "same", "[1]", """{"value":1}"""),
+            new BulkOperation(1, "patch", "same", "[1.0]", """{"value":2}"""),
+            new BulkOperation(2, "patch", "other", "[1]", """{"value":3}"""),
+        };
+        async IAsyncEnumerable<BulkOperation> OperationsAsync()
+        {
+            foreach (var operation in operations)
+            {
+                yield return operation;
+            }
+
+            await Task.CompletedTask;
+        }
+
+        var outcomes = new Dictionary<long, BulkOutcome>();
+        var attempted = new List<long>();
+        var fail = true;
+        var value = 0;
+        Task<BulkOutcome> WriteAsync(BulkOperation operation, CancellationToken token)
+        {
+            attempted.Add(operation.Index);
+            if (operation.Index == 0 && fail)
+            {
+                return Task.FromResult(BulkOutcome.Create(operation, failureStatus, statusCode: failureStatus == BulkOutcome.Failed ? 429 : 503));
+            }
+
+            if (operation.Id == "same")
+            {
+                value = Json(operation.Json).GetProperty("value").GetInt32();
+            }
+
+            return Task.FromResult(BulkOutcome.Create(operation, BulkOutcome.Succeeded));
+        }
+
+        Task RecordAsync(BulkOutcome outcome)
+        {
+            outcomes[outcome.Index] = outcome;
+            return Task.CompletedTask;
+        }
+
+        var first = new BulkSummary();
+        await BulkExecutor.ExecuteAsync(OperationsAsync(), WriteAsync, RecordAsync, new Dictionary<long, BulkOutcome>(), first, 3, null, true, retryUncertain, TestContext.Current.CancellationToken);
+        Assert.Equal([0L, 2L], attempted);
+        Assert.Equal(0, value);
+        Assert.Equal(1, first.Failed);
+        Assert.Equal(1, first.Skipped);
+        Assert.True(first.ResultIncomplete);
+
+        fail = false;
+        attempted.Clear();
+        var retry = new BulkSummary();
+        await BulkExecutor.ExecuteAsync(OperationsAsync(), WriteAsync, RecordAsync, new Dictionary<long, BulkOutcome>(outcomes), retry, 3, null, true, true, TestContext.Current.CancellationToken);
+        Assert.Equal([0L, 1L], attempted);
+        Assert.Equal(2, value);
+        Assert.True(retry.Success);
     }
 
     [Fact]
@@ -993,6 +1082,62 @@ public class BulkCommandTests
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task ExecutionFailuresKeepPartialResultsAndOriginalClassification(bool cancel, bool throughShell)
+    {
+        using var fixture = new Fixture();
+        using var cancellation = Timeout();
+        Exception expected = cancel
+            ? new OperationCanceledException(cancellation.Token)
+            : new HttpRequestException("write transport failed");
+        fixture.Container.DeleteItemAsync<JsonElement>("1", Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                if (cancel)
+                {
+                    await cancellation.CancelAsync();
+                }
+
+                return await Task.FromException<ItemResponse<JsonElement>>(expected);
+            });
+
+        var command = new BulkCommand
+        {
+            Subcommand = "run",
+            Data = """[{"op":"delete","id":"0","partitionKey":"a"},{"op":"delete","id":"1","partitionKey":"a"},{"op":"delete","id":"2","partitionKey":"a"}]""",
+            Database = "db",
+            Container = "items",
+            Yes = true,
+            Concurrency = 1,
+        };
+        var state = throughShell
+            ? await fixture.Shell.ExecuteCommandAsync(
+                $"bulk run '{command.Data}' --db db --con items --concurrency 1 --yes",
+                cancellation.Token)
+            : await command.ExecuteAsync(fixture.Shell, new CommandState(), string.Empty, cancellation.Token);
+        var error = Assert.IsType<StructuredErrorCommandState>(state);
+        Assert.Same(expected, error.Exception.GetBaseException());
+        Assert.Equal(ShellExitCode.FromException(expected), error.ExitCode);
+        var result = Assert.IsType<ShellJson>(state.Result).Value;
+        Assert.True(state.IsError);
+        Assert.False(result.GetProperty("success").GetBoolean());
+        Assert.True(result.GetProperty("resultIncomplete").GetBoolean());
+        Assert.Equal(1, result.GetProperty("succeeded").GetInt64());
+        Assert.Equal(1, result.GetProperty("uncertain").GetInt64());
+        Assert.Equal(2, result.GetProperty("attempted").GetInt64());
+        Assert.Equal(7, state.RequestCharge);
+        var mcp = McpResponseFactory.CreateSuccess(state, fixture.Shell.State);
+        Assert.True(mcp.IsError);
+        var payload = JsonSerializer.SerializeToElement(mcp.StructuredContent);
+        Assert.Equal(1, payload.GetProperty("result").GetProperty("succeeded").GetInt64());
+        Assert.Equal(1, payload.GetProperty("result").GetProperty("uncertain").GetInt64());
+        Assert.Equal(7, payload.GetProperty("requestCharge").GetDouble());
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task RunRejectsConditionalUpsertsBeforeAnyWrites(bool dryRun)
@@ -1003,6 +1148,20 @@ public class BulkCommandTests
             $$"""bulk run '[{"op":"delete","id":"1","partitionKey":"a"},{"op":"upsert","item":{"id":"2","pk":"a"},"ifMatch":"tag"}]' {{option}} --db db --con items"""));
         Assert.Contains("Use replace for conditional item updates", error.Message);
         Assert.Empty(fixture.Writes());
+    }
+
+    [Fact]
+    public async Task InvalidJournalRemainsAPreExecutionValidationError()
+    {
+        using var fixture = new Fixture();
+        var path = fixture.Directory.PathFor("invalid.jsonl");
+        await File.WriteAllTextAsync(path, "not a journal\n", TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<CommandException>(() => fixture.RunAsync(
+            $"bulk run '{Operation(0).Json}' --journal '{path}' --yes --db db --con items"));
+
+        Assert.Empty(fixture.Writes());
+        Assert.Equal("not a journal\n", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -1325,6 +1484,61 @@ public class BulkCommandTests
             Assert.Equal(BulkOutcome.Succeeded, reopened.Previous[0].Status);
             Assert.Equal(BulkOutcome.Succeeded, reopened.Previous[1].Status);
         }
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.OK)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task StatefulRetryDoesNotOverwriteAnotherShellsNewerJournalOutcome(HttpStatusCode status)
+    {
+        using var first = new Fixture();
+        using var second = new Fixture();
+        var path = first.Directory.PathFor("shared.jsonl");
+        const string operation = """{"op":"patch","id":"1","partitionKey":"a","operations":[{"op":"incr","path":"/n","value":1}]}""";
+        await first.RunAsync("bulk begin --db db --con items");
+        await first.RunAsync($"bulk add '{operation}'");
+        first.FailPatchFor("1", HttpStatusCode.PreconditionFailed);
+        Assert.True((await first.RunAsync($"bulk execute --journal '{path}' --yes")).IsError);
+        Assert.Equal(BulkOutcome.Failed, first.Shell.CurrentBulk!.Outcomes[0].Status);
+
+        if (status != HttpStatusCode.OK)
+        {
+            second.FailPatchFor("1", status);
+        }
+
+        await second.RunAsync($"bulk run '{operation}' --journal '{path}' --yes --db db --con items");
+        first.FailPatchFor(null, HttpStatusCode.OK);
+        var retry = await first.RunAsync($"bulk execute --journal '{path}' --yes");
+
+        Assert.Single(first.Writes());
+        Assert.Single(second.Writes());
+        var result = Assert.IsType<ShellJson>(retry.Result).Value;
+        Assert.Equal(0, result.GetProperty("attempted").GetInt64());
+        Assert.Equal(1, result.GetProperty("skipped").GetInt64());
+        Assert.Equal(status != HttpStatusCode.OK, retry.IsError);
+        Assert.Equal(status == HttpStatusCode.OK ? 0 : 1, result.GetProperty("uncertain").GetInt64());
+    }
+
+    [Fact]
+    public async Task StatefulRetryRetainsSuccessMissingFromDurableJournal()
+    {
+        using var fixture = new Fixture();
+        var path = fixture.Directory.PathFor("journal.jsonl");
+        await fixture.RunAsync("bulk begin --db db --con items");
+        await fixture.RunAsync($"bulk add '{Operation(0).Json}'");
+        var bulk = fixture.Shell.CurrentBulk!;
+        bulk.JournalPath = path;
+        bulk.Outcomes[0] = Succeeded(0);
+        using (var journal = BulkJournal.Open(path, "https://unit-test.documents.azure.com/", "rid", BulkSpool.ComputeHash([Operation(0).Json]), 1))
+        {
+            await journal.RecordAsync(Succeeded(0) with { Status = BulkOutcome.Started });
+        }
+
+        var result = await fixture.RunAsync($"bulk execute --journal '{path}' --yes");
+
+        Assert.False(result.IsError);
+        Assert.Empty(fixture.Writes());
+        Assert.Equal(1, Assert.IsType<ShellJson>(result.Result).Value.GetProperty("skipped").GetInt64());
     }
 
     [Theory]

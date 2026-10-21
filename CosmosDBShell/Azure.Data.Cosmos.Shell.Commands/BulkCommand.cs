@@ -219,7 +219,7 @@ internal sealed class BulkCommand : CosmosCommand
         for (var i = 0; i < partitionKeyPaths.Count; i++)
         {
             query.Append(", c");
-            foreach (var segment in partitionKeyPaths[i].Split('/', StringSplitOptions.RemoveEmptyEntries))
+            foreach (var segment in SplitPartitionKeyPath(partitionKeyPaths[i]))
             {
                 query.Append('[').Append(JsonSerializer.Serialize(segment, JsonOptions)).Append(']');
             }
@@ -459,7 +459,7 @@ internal sealed class BulkCommand : CosmosCommand
         return JsonSerializer.SerializeToElement(operation);
     }
 
-    private static CommandState CreateResult(BulkSummary summary)
+    private static CommandState CreateResult(BulkSummary summary, Exception? executionError = null)
     {
         var result = new ShellJson(JsonSerializer.SerializeToElement(summary, JsonOptions));
         var charge = summary.RequestCharge.ToString("F2", CultureInfo.InvariantCulture);
@@ -476,11 +476,13 @@ internal sealed class BulkCommand : CosmosCommand
             };
         }
 
-        var error = summary.BudgetExceeded
+        var error = executionError is OperationCanceledException
+            ? MessageService.GetString("runtime-error-canceled")
+            : executionError?.Message ?? (summary.BudgetExceeded
             ? MessageService.GetArgsString("command-bulk-error-budget", "succeeded", summary.Succeeded, "count", summary.OperationCount, "charge", charge)
-            : MessageService.GetArgsString("command-bulk-error-failed", "succeeded", summary.Succeeded, "failed", summary.Failed, "uncertain", summary.Uncertain, "charge", charge);
+            : MessageService.GetArgsString("command-bulk-error-failed", "succeeded", summary.Succeeded, "failed", summary.Failed, "uncertain", summary.Uncertain, "charge", charge));
         var state = new StructuredErrorCommandState(
-            new CommandException("bulk", error, new RequestFailedException(summary.BudgetExceeded ? 429 : 400, error)),
+            executionError ?? new CommandException("bulk", error, new RequestFailedException(summary.BudgetExceeded ? 429 : 400, error)),
             result)
         {
             RequestCharge = summary.RequestCharge,
@@ -919,11 +921,24 @@ internal sealed class BulkCommand : CosmosCommand
         }
 
         var previous = new Dictionary<long, BulkOutcome>();
-        foreach (var source in new[] { journal?.Previous, memory })
+        if (memory is not null)
         {
-            foreach (var (index, outcome) in source ?? Enumerable.Empty<KeyValuePair<long, BulkOutcome>>())
+            foreach (var (index, outcome) in memory)
             {
                 previous[index] = outcome;
+            }
+        }
+
+        if (journal is not null)
+        {
+            foreach (var (index, outcome) in journal.Previous)
+            {
+                // Durable records may have advanced in another shell. Retain local successes
+                // only when their journal write failed; they must never be replayed.
+                if (!previous.TryGetValue(index, out var local) || local.Status != BulkOutcome.Succeeded)
+                {
+                    previous[index] = outcome;
+                }
             }
         }
 
@@ -964,17 +979,26 @@ internal sealed class BulkCommand : CosmosCommand
             }
         }
 
-        await BulkExecutor.ExecuteAsync(
-            operations,
-            (operation, cancellation) => WriteAsync(target.Container, operation, cancellation),
-            RecordAsync,
-            previous,
-            summary,
-            this.Concurrency ?? DefaultConcurrency,
-            this.MaxRu,
-            this.ContinueOnError == true,
-            this.RetryUncertain == true,
-            token);
+        try
+        {
+            await BulkExecutor.ExecuteAsync(
+                operations,
+                (operation, cancellation) => WriteAsync(target.Container, operation, cancellation),
+                RecordAsync,
+                previous,
+                summary,
+                this.Concurrency ?? DefaultConcurrency,
+                this.MaxRu,
+                this.ContinueOnError == true,
+                this.RetryUncertain == true,
+                token);
+        }
+        catch (Exception ex)
+        {
+            summary.ResultIncomplete = true;
+            return CreateResult(summary, ex);
+        }
+
         return CreateResult(summary);
     }
 
