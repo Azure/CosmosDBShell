@@ -1119,7 +1119,16 @@ public class BulkCommandTests
                 cancellation.Token)
             : await command.ExecuteAsync(fixture.Shell, new CommandState(), string.Empty, cancellation.Token);
         var error = Assert.IsType<StructuredErrorCommandState>(state);
-        Assert.Same(expected, error.Exception.GetBaseException());
+        if (cancel)
+        {
+            var canceled = Assert.IsAssignableFrom<OperationCanceledException>(error.Exception.GetBaseException());
+            Assert.True(canceled.CancellationToken.IsCancellationRequested);
+        }
+        else
+        {
+            Assert.Same(expected, error.Exception.GetBaseException());
+        }
+
         Assert.Equal(ShellExitCode.FromException(expected), error.ExitCode);
         var result = Assert.IsType<ShellJson>(state.Result).Value;
         Assert.True(state.IsError);
