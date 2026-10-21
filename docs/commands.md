@@ -769,7 +769,7 @@ bulk patch --where "c.tenantId = 'supplier-42' AND c.schemaVersion = 1" --operat
 bulk run migration.jsonl --journal migration.journal --yes
 ```
 
-The saved file is the reviewed snapshot: rerunning it targets the same items even after earlier writes change which items match the predicate. With `--etag`, any item changed after selection fails with `412` instead of being overwritten. `--save` never overwrites an existing file, and an incomplete selection deletes the partial file.
+The saved file is the reviewed snapshot: rerunning it targets the same items even after earlier writes change which items match the predicate. With `--etag`, any item changed after selection fails with `412` instead of being overwritten. `--save` never overwrites an existing file, and an incomplete selection or failed final flush deletes the partial file.
 
 #### Journals and resuming
 

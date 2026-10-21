@@ -1204,6 +1204,33 @@ public class BulkCommandTests
         Assert.Equal("not a journal\n", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task SavedPlanIsRetainedOnlyAfterCompleteSelectionAndSuccessfulFlush(bool complete, bool flushFails)
+    {
+        using var directory = new TempDirectory();
+        var path = directory.PathFor("plan.jsonl");
+        await File.WriteAllTextAsync(path, Operation(0).Json + "\n", TestContext.Current.CancellationToken);
+        var save = Substitute.For<IAsyncDisposable>();
+        var expected = new IOException("final flush failed");
+        save.DisposeAsync().Returns(flushFails ? new ValueTask(Task.FromException(expected)) : ValueTask.CompletedTask);
+
+        var finish = BulkCommand.CompleteSaveAsync(save, path, complete);
+        if (flushFails)
+        {
+            Assert.Same(expected, await Assert.ThrowsAsync<IOException>(() => finish));
+        }
+        else
+        {
+            await finish;
+        }
+
+        Assert.Equal(complete && !flushFails, File.Exists(path));
+    }
+
     [Fact]
     public async Task StatefulAddRejectsConditionalUpsertsAtomically()
     {

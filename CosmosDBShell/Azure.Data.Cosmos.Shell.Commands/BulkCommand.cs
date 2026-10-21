@@ -230,6 +230,23 @@ internal sealed class BulkCommand : CosmosCommand
         return query.Append(" FROM c WHERE (").Append(where).Append(')').ToString();
     }
 
+    internal static async Task CompleteSaveAsync(IAsyncDisposable save, string path, bool complete)
+    {
+        var saved = false;
+        try
+        {
+            await save.DisposeAsync();
+            saved = complete;
+        }
+        finally
+        {
+            if (!saved)
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
     internal void Validate(string subcommand)
     {
         if (subcommand.Length == 0)
@@ -785,11 +802,7 @@ internal sealed class BulkCommand : CosmosCommand
         {
             if (save != null)
             {
-                await save.DisposeAsync();
-                if (!complete)
-                {
-                    File.Delete(savePath!);
-                }
+                await CompleteSaveAsync(save, savePath!, complete);
             }
         }
 
