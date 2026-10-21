@@ -108,7 +108,7 @@ Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an expli
 
 The prompt is sent as a multi-round-trip request: the tool call returns an input-required result, and the client shows the prompt and retries the call with the answer. For clients that use the `initialize` handshake, the server sends a standard `elicitation/create` request on the session and retries the call itself, so those clients see the same prompt as before. The retry carries a server-signed state that ties the answer to the exact command line and shell context. Each state can be answered once and expires after 10 minutes. At most 1,024 confirmations are tracked at a time; beyond that the oldest pending one is dropped and must be confirmed again. An answer for a different command, a reused or expired state, or a missing or altered state is refused without executing. Argument order does not matter: the command line is built with positionals in shell order and options in declaration order.
 
-This replaces any opt-in write flag: destructive commands are always allowed to be invoked, but always require confirmation.
+This replaces any opt-in write flag: destructive writes are allowed to be invoked, but always require confirmation. The `bulk` tool's `dry-run: true` mode is exempt only without `save`; saving a plan creates a server-local file and requires confirmation.
 
 Confirmation includes the connected account endpoint and current navigation location alongside the command and its explicit target arguments. If the connection or navigation state changes while confirmation is pending, the approved command is refused without executing; retry it to confirm the new context. Even navigating away and back invalidates the pending confirmation. A pending confirmation also expires when the MCP server restarts.
 
@@ -125,6 +125,14 @@ On serverless accounts, `mkdb`, `mkcon`, and their `create` aliases omit through
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.
 
 MCP `import` uses the same bounded concurrency as the CLI: up to 16 writes in flight by default, configurable with the `concurrency` argument. Its schema requires a positive integer (`minimum: 1`). Use `concurrency: 1` for sequential, file-order writes. In-flight writes may complete after an error; imports are not transactional. See [import](commands.md#import) for error and cancellation behavior.
+
+### Bulk Operations
+
+The `bulk` tool exposes the stateless `run`, `patch`, and `delete` subcommands, with the same operation schema, selection, journal, and reporting semantics as the [CLI command](commands.md#bulk). Stateful subcommands (`begin`, `add`, `execute`, `cancel`, `status`, and `show`) are restricted to the interactive shell, like stateful batches. Writes always require MCP elicitation, even with `yes: true`; once approved, no second terminal prompt is shown. `dry-run: true` validates or selects without database writes, but selection reads consume RUs. Only dry runs without `save` skip elicitation: saving a plan creates a server-local file and requires confirmation.
+
+Pass operations as JSON text or a file path in `data`, or use `where` with `operations` for query-driven patches. `concurrency` defaults to 16 and must be positive; optional `max-items` and `max-ru` must also be positive. Explicit `false` boolean values still count as supplied arguments and are rejected when the subcommand does not support them. File paths for `data`, `save`, and `journal` are local to the shell server.
+
+These are independent writes, **not** transactions across partitions. Failed or incomplete runs include their summary alongside the MCP error. The command-level `result.resultIncomplete` and `result.budgetExceeded` flags describe job execution and are distinct from the envelope's query-paging `resultIncomplete`. Resume only with the same journal from the original run; adding a new journal cannot prevent replaying earlier successes. Without the original journal, reconcile completed writes before retrying. A journal never automatically retries a write whose outcome is unknown unless `retry-uncertain` is set; later writes for the same item ID and partition key are also held back.
 
 ### Shell Location Updates
 
