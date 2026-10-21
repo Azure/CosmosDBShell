@@ -25,6 +25,7 @@
 - Preserve partial bulk results after execution errors or cancellation, decode quoted partition-key paths consistently, and prevent retries from replaying newer journal outcomes or reordering writes after a failure.
 - Remove incomplete bulk saved plans when the final file flush fails, so a truncated plan cannot be mistaken for a complete job.
 - Restore actionable missing-value diagnostics for startup options such as `--connect` and keep literal help/version command tails separate from startup handling.
+- Release bulk temporary files promptly after a final spool flush fails, preventing retained disk space from hindering recovery.
 
 ### Improvements
 

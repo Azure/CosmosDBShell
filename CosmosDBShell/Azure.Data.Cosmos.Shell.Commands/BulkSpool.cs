@@ -20,7 +20,7 @@ internal sealed class BulkSpool : IDisposable
     private readonly StreamWriter writer;
     private readonly IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
-    private BulkSpool(FileStream stream)
+    internal BulkSpool(FileStream stream)
     {
         this.stream = stream;
         this.writer = new StreamWriter(stream, new UTF8Encoding(false), 65536, leaveOpen: true) { NewLine = "\n" };
@@ -81,8 +81,20 @@ internal sealed class BulkSpool : IDisposable
 
     public void Dispose()
     {
-        this.writer.Dispose();
-        this.stream.Dispose();
-        this.hash.Dispose();
+        try
+        {
+            this.writer.Dispose();
+        }
+        finally
+        {
+            try
+            {
+                this.stream.Dispose();
+            }
+            finally
+            {
+                this.hash.Dispose();
+            }
+        }
     }
 }

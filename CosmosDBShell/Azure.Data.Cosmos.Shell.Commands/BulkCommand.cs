@@ -496,8 +496,8 @@ internal sealed class BulkCommand : CosmosCommand
         var error = executionError is OperationCanceledException
             ? MessageService.GetString("runtime-error-canceled")
             : executionError?.Message ?? (summary.BudgetExceeded
-            ? MessageService.GetArgsString("command-bulk-error-budget", "succeeded", summary.Succeeded, "count", summary.OperationCount, "charge", charge)
-            : MessageService.GetArgsString("command-bulk-error-failed", "succeeded", summary.Succeeded, "failed", summary.Failed, "uncertain", summary.Uncertain, "charge", charge));
+                ? MessageService.GetArgsString("command-bulk-error-budget", "succeeded", summary.Succeeded, "count", summary.OperationCount, "charge", charge)
+                : MessageService.GetArgsString("command-bulk-error-failed", "succeeded", summary.Succeeded, "failed", summary.Failed, "uncertain", summary.Uncertain, "charge", charge));
         var state = new StructuredErrorCommandState(
             executionError ?? new CommandException("bulk", error, new RequestFailedException(summary.BudgetExceeded ? 429 : 400, error)),
             result)

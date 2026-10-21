@@ -1867,6 +1867,45 @@ public class BulkCommandTests
         Assert.Contains("Available through MCP", help.GetProperty("isRestricted").GetString());
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task SpoolDisposesStreamAndHashEvenWhenCleanupFails(bool failFlush, bool failDispose)
+    {
+        using var directory = new TempDirectory();
+        var path = directory.PathFor("spool.jsonl");
+        var stream = new FailingSpoolFileStream(path);
+        var spool = new BulkSpool(stream);
+        try
+        {
+            await spool.AddAsync(Operation(0).Json);
+            stream.FailFlush = failFlush;
+            stream.FailDispose = failDispose;
+
+            if (failFlush || failDispose)
+            {
+                var error = Assert.Throws<IOException>(() => spool.Dispose());
+                Assert.Same(failDispose ? stream.DisposeFailure : stream.FlushFailure, error);
+            }
+            else
+            {
+                spool.Dispose();
+            }
+
+            Assert.False(stream.CanWrite);
+            Assert.False(File.Exists(path));
+            Assert.Throws<ObjectDisposedException>(() => spool.GetHash());
+        }
+        finally
+        {
+            stream.FailFlush = false;
+            stream.FailDispose = false;
+            stream.Dispose();
+        }
+    }
+
     private static JsonElement Json(string value) => JsonSerializer.Deserialize<JsonElement>(value);
 
     private static BulkOperation Operation(long index) =>
@@ -1890,6 +1929,42 @@ public class BulkCommandTests
         {
             token.ThrowIfCancellationRequested();
             yield return Operation(index);
+        }
+    }
+
+    private sealed class FailingSpoolFileStream(string path) : FileStream(path, new FileStreamOptions
+    {
+        Mode = FileMode.CreateNew,
+        Access = FileAccess.ReadWrite,
+        Share = FileShare.None,
+        Options = FileOptions.DeleteOnClose,
+    })
+    {
+        public bool FailFlush { get; set; }
+
+        public bool FailDispose { get; set; }
+
+        public IOException FlushFailure { get; } = new("spool final flush failed");
+
+        public IOException DisposeFailure { get; } = new("spool stream disposal failed");
+
+        public override void Flush()
+        {
+            if (this.FailFlush)
+            {
+                throw this.FlushFailure;
+            }
+
+            base.Flush();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing && this.FailDispose)
+            {
+                throw this.DisposeFailure;
+            }
         }
     }
 
