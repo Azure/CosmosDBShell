@@ -1218,14 +1218,13 @@ public class BulkCommandTests
         var expected = new IOException("final flush failed");
         save.DisposeAsync().Returns(flushFails ? new ValueTask(Task.FromException(expected)) : ValueTask.CompletedTask);
 
-        var finish = BulkCommand.CompleteSaveAsync(save, path, complete);
         if (flushFails)
         {
-            Assert.Same(expected, await Assert.ThrowsAsync<IOException>(() => finish));
+            Assert.Same(expected, await Assert.ThrowsAsync<IOException>(() => BulkCommand.CompleteSaveAsync(save, path, complete)));
         }
         else
         {
-            await finish;
+            await BulkCommand.CompleteSaveAsync(save, path, complete);
         }
 
         Assert.Equal(complete && !flushFails, File.Exists(path));
