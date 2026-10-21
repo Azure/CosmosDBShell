@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -21,7 +22,9 @@ internal sealed class BulkJournal : IDisposable
 
     private readonly FileStream stream;
 
-    private BulkJournal(FileStream stream, Dictionary<long, BulkOutcome> previous)
+    private ExceptionDispatchInfo? appendFailure;
+
+    internal BulkJournal(FileStream stream, Dictionary<long, BulkOutcome> previous)
     {
         this.stream = stream;
         this.Previous = previous;
@@ -86,10 +89,20 @@ internal sealed class BulkJournal : IDisposable
 
     public async Task RecordAsync(BulkOutcome outcome)
     {
+        this.appendFailure?.Throw();
         var entry = new Entry(outcome, ComputeChecksum(outcome));
         var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(entry, BulkCommand.JsonOptions) + "\n");
-        await this.stream.WriteAsync(bytes);
-        await this.stream.FlushAsync();
+        try
+        {
+            await this.stream.WriteAsync(bytes);
+            await this.stream.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            // No later record may turn a torn tail into an invalid complete line.
+            this.appendFailure = ExceptionDispatchInfo.Capture(ex);
+            throw;
+        }
     }
 
     public async Task ValidateAsync(IAsyncEnumerable<BulkOperation> operations, CancellationToken token)

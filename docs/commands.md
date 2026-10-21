@@ -783,6 +783,8 @@ A torn final journal line from a crash is discarded only after the complete head
 
 If another shell resumes the same journal between stateful execution attempts, subsequent retries respect its newer recorded successes and uncertain outcomes rather than replaying them. Successful writes retained by the original shell after a journal write failure are persisted on retry before later operations run or the job is cleared. Recovery matches the original write attempt and does not overwrite a newer unresolved attempt from another shell.
 
+After a journal write or flush fails, no further records are appended during that execution. Started writes are still settled and stateful outcomes retained, so reopening the original journal can recover its torn tail before retrying.
+
 #### Limits, failures, and output
 
 - All input is validated before any write. `run`, `patch`, and `delete` spool operations to a private temporary file that is deleted when the command ends. Stateful `begin`/`add` jobs retain operations in memory and are limited to 10,000 operations and 64 MiB of canonical UTF-8 JSON. An `add` that exceeds either limit is rejected in full, leaving the existing job unchanged. Use `bulk run <file>` for larger jobs.

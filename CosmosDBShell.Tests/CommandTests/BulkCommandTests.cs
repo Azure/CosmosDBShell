@@ -824,6 +824,89 @@ public class BulkCommandTests
     }
 
     [Fact]
+    public async Task PartialJournalAppendFailureLatchesWhileWritesSettleAndAllowsRecovery()
+    {
+        using var fixture = new Fixture();
+        using var timeout = Timeout();
+        var path = fixture.Directory.PathFor("partial.jsonl");
+        var operations = new[] { Operation(0), Operation(1) };
+        var hash = BulkSpool.ComputeHash(operations.Select(operation => operation.Json));
+        using (BulkJournal.Open(path, "https://unit-test.documents.azure.com/", "rid", hash, 2))
+        {
+        }
+
+        var outcomes = new Dictionary<long, BulkOutcome>();
+        var summary = new BulkSummary();
+        var gates = operations.Select(_ => new TaskCompletionSource<BulkOutcome>(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+        var started = operations.Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+        using (var stream = new PartialWriteFileStream(path))
+        using (var journal = new BulkJournal(stream, new Dictionary<long, BulkOutcome>()))
+        {
+            stream.Position = stream.Length;
+            var run = BulkExecutor.ExecuteAsync(
+                SourceAsync(2, timeout.Token),
+                (operation, _) =>
+                {
+                    started[(int)operation.Index].SetResult();
+                    return gates[(int)operation.Index].Task;
+                },
+                async outcome =>
+                {
+                    outcomes[outcome.Index] = outcome;
+                    await journal.RecordAsync(outcome);
+                },
+                new Dictionary<long, BulkOutcome>(),
+                summary,
+                2,
+                null,
+                true,
+                false,
+                timeout.Token);
+            try
+            {
+                await Task.WhenAll(started.Select(gate => gate.Task)).WaitAsync(timeout.Token);
+                stream.FailNextWrite = true;
+                gates[0].SetResult(Succeeded(0));
+                await stream.FailureObserved.Task.WaitAsync(timeout.Token);
+                Assert.False(run.IsCompleted);
+            }
+            finally
+            {
+                gates[0].TrySetResult(Succeeded(0));
+                gates[1].TrySetResult(Succeeded(1));
+            }
+
+            var error = await Assert.ThrowsAsync<IOException>(async () => await run.WaitAsync(timeout.Token));
+            Assert.Same(stream.Failure, error);
+            Assert.Equal(3, stream.WriteAttempts);
+            Assert.Equal(2, summary.Succeeded);
+            Assert.All(outcomes.Values, outcome => Assert.Equal(BulkOutcome.Succeeded, outcome.Status));
+        }
+
+        using (var reopened = BulkJournal.Open(path, "https://unit-test.documents.azure.com/", "rid", hash, 2))
+        {
+            Assert.Equal(2, reopened.Previous.Count);
+            Assert.All(reopened.Previous.Values, outcome => Assert.Equal(BulkOutcome.Started, outcome.Status));
+        }
+
+        await fixture.RunAsync("bulk begin --db db --con items");
+        await fixture.RunAsync($"bulk add '[{string.Join(",", operations.Select(operation => operation.Json))}]'");
+        var bulk = fixture.Shell.CurrentBulk!;
+        bulk.JournalPath = path;
+        foreach (var (index, outcome) in outcomes)
+        {
+            bulk.Outcomes[index] = outcome;
+        }
+
+        var recovered = await fixture.RunAsync($"bulk execute --journal '{path}' --yes");
+        Assert.False(recovered.IsError);
+        Assert.Empty(fixture.Writes());
+        Assert.Null(fixture.Shell.CurrentBulk);
+        using var completed = BulkJournal.Open(path, "https://unit-test.documents.azure.com/", "rid", hash, 2);
+        Assert.All(completed.Previous.Values, outcome => Assert.Equal(BulkOutcome.Succeeded, outcome.Status));
+    }
+
+    [Fact]
     public async Task ResumeSkipsSucceededRetriesFailedAndHoldsBackUncertain()
     {
         var previous = new Dictionary<long, BulkOutcome>
@@ -1807,6 +1890,32 @@ public class BulkCommandTests
         {
             token.ThrowIfCancellationRequested();
             yield return Operation(index);
+        }
+    }
+
+    private sealed class PartialWriteFileStream(string path) : FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None)
+    {
+        public int WriteAttempts { get; private set; }
+
+        public bool FailNextWrite { get; set; }
+
+        public IOException Failure { get; } = new("partial journal append");
+
+        public TaskCompletionSource FailureObserved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            this.WriteAttempts++;
+            if (this.FailNextWrite)
+            {
+                this.FailNextWrite = false;
+                await base.WriteAsync(buffer[..(buffer.Length / 2)], cancellationToken);
+                await base.FlushAsync(cancellationToken);
+                this.FailureObserved.TrySetResult();
+                throw this.Failure;
+            }
+
+            await base.WriteAsync(buffer, cancellationToken);
         }
     }
 
