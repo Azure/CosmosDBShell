@@ -476,10 +476,12 @@ public class ImportConcurrencyTests
     }
 
     [Theory]
-    [InlineData("jsonl", "{\"id\":\"a\"}\n{\"id\":\"b\"}\n")]
-    [InlineData("json", "[{\"id\":\"a\"},{\"id\":\"b\"}]")]
-    [InlineData("csv", "id\na\nb\n")]
-    public async Task DryRun_WithConcurrencyValidatesWithoutConnectionAndPreservesResult(string extension, string content)
+    [InlineData("jsonl", "{\"id\":\"a\"}\n{\"id\":\"b\"}\n", 2)]
+    [InlineData("json", "{\"id\":\"a\"} {\"id\":\"b\"}", 2)]
+    [InlineData("json", "[{\"id\":\"a\"},{\"id\":\"b\"}]", 2)]
+    [InlineData("json", "{\n    \"id\": \"a\"\n}\n", 1)]
+    [InlineData("csv", "id\na\nb\n", 2)]
+    public async Task DryRun_WithConcurrencyValidatesWithoutConnectionAndPreservesResult(string extension, string content, int expected)
     {
         var fileName = $"cosmos-import-{Guid.NewGuid():N}.{Path.GetFileName(extension).TrimStart('.')}";
         var path = Path.Join(Path.GetTempPath(), fileName);
@@ -492,7 +494,8 @@ public class ImportConcurrencyTests
             var result = Assert.IsType<ShellJson>(state.Result).Value;
 
             Assert.Equal("import", result.GetProperty("type").GetString());
-            Assert.Equal(2, result.GetProperty("imported").GetInt32());
+            Assert.Equal(0, result.GetProperty("imported").GetInt32());
+            Assert.Equal(expected, result.GetProperty("validated").GetInt32());
             Assert.Equal(0, result.GetProperty("failed").GetInt32());
             Assert.Equal(0, result.GetProperty("requestCharge").GetDouble());
             Assert.True(result.GetProperty("dryRun").GetBoolean());

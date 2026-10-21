@@ -460,13 +460,13 @@ command-batch-error-not_active = No batch is in progress. Start one with 'batch 
 command-batch-error-failed = Batch failed with status { $status } and was rolled back (RU charge: { $charge })
 command-batch-error-execution_failed = Failed to execute batch: { $status } - { $message }
 
-command-export-description = Exports items from a container to a JSON Lines, JSON array, or CSV file.
+command-export-description = Exports items from a container to a JSON array file, or to a CSV file when the file name ends in .csv.
 command-export-description-file = Destination file path.
 command-export-description-database = The database to read from.
 command-export-description-container = The container to read from.
 command-export-description-query = SELECT query whose results are exported (default: SELECT * FROM c).
 command-export-description-max = Maximum number of items to export. 0 means no limit.
-command-export-description-format = Output format: jsonl (default), array, or csv.
+command-export-description-format = Command result format: user, json, csv, or table. Does not change the exported file, which is CSV for .csv file names and a JSON array otherwise.
 command-export-description-force = Overwrite the destination file if it already exists.
 command-export-success = Exported { $count } { $count ->
     [one] item
@@ -478,16 +478,16 @@ command-export-error-destination_directory = Destination '{ $file }' is a direct
 command-export-error-query_failed = Export query failed: { $status } - { $message }
 command-export-error-scalar_column_conflict = CSV scalar column '{ $column }' conflicts with an object property. Set COSMOSDB_SHELL_CSV_SCALAR_COLUMN to a different name.
 
-command-import-description = Imports items into a container from a JSON Lines, JSON array, or CSV file.
+command-import-description = Imports items into a container from a JSON, JSON Lines, or CSV file.
 command-import-description-file = Source file path.
 command-import-description-database = The database to write to.
 command-import-description-container = The container to write to.
 command-import-description-mode = Write mode: insert (default) or upsert.
-command-import-description-format = Input format: auto (default), jsonl, array, or csv.
+command-import-description-format = Command result format: user, json, csv, or table. Does not change how the input file is read.
 command-import-description-concurrency = Maximum in-flight writes (default: 16). Must be positive. Use 1 for sequential writes and file-order processing.
 command-import-description-partition-key = For CSV import, the partition key path. Nested paths (e.g. /address/city) place the matching column under that path.
 command-import-description-continue-on-error = Continue importing after individual item write failures. Otherwise stop scheduling writes on the first observed failure and wait for in-flight writes. Parse or validation errors still abort the import.
-command-import-description-dry-run = Parse the file without writing any items.
+command-import-description-dry-run = Validate file syntax and item IDs offline without writing items or accessing the target. Does not check target partition keys, permissions, conflicts, or other service constraints.
 command-import-success = Imported { $count } { $count ->
     [one] item
     *[other] items
@@ -497,10 +497,13 @@ command-import-success-partial = Imported { $success } { $success ->
     *[other] items
 }, { $failed } failed (RU charge: { $charge })
 command-import-all-failed = Failed to import all { $count } items
-command-import-dry-run-success = Dry run: { $count } valid { $count ->
+command-import-stopped = Import stopped after { $success } items (RU charge: { $charge }).
+command-import-dry-run-success = Dry run: { $count } { $count ->
     [one] item
     *[other] items
-}
+} passed offline validation; no items were written. Target partition keys, permissions, conflicts, and other service constraints were not checked.
+command-import-dry-run-stopped = Dry run stopped after { $count } items passed offline validation; no items were written. The target container was not checked.
+command-import-error-invalid_id = Line { $line }: 'id' must be a non-empty string of at most 1023 UTF-8 bytes and must not contain slash or backslash characters.
 command-import-error-missing_file = A source file path is required.
 command-import-error-invalid_concurrency = Concurrency must be a positive integer.
 command-import-error-invalid_csv = Invalid CSV record at line { $line }.
@@ -520,6 +523,7 @@ script-error-expression-depth = Maximum expression tree depth of { $limit } exce
 command-import-error-file_not_found = File '{ $file }' was not found.
 command-import-error-blank_line = Line { $line } is blank.
 command-import-error-not_object = Line { $line } is not a JSON object.
+command-import-error-invalid_document = The file is not a valid JSON document or sequence of JSON objects: { $message }
 command-import-error-invalid_line_json = Line { $line } is not valid JSON: { $message }
 command-import-error-item_status = Line { $line }: item returned status { $status }.
 command-import-error-item_failed = Line { $line }: { $status } - { $message }
@@ -579,6 +583,12 @@ command-ttl-description-database = The database containing the container.
 command-ttl-description-container = The container to read/update the TTL for.
 command-ttl-updated = Time-to-live updated successfully.
 command-ttl-analytical-updated = Analytical store time-to-live updated successfully.
+command-ttl-status-disabled = Time-to-live for { $container }: disabled.
+command-ttl-status-no-default = Time-to-live for { $container }: enabled, with expiration set per item.
+command-ttl-status-enabled = Time-to-live for { $container }: items expire after { $seconds } seconds.
+command-ttl-analytical-status-disabled = Analytical store time-to-live for { $container }: disabled.
+command-ttl-analytical-status-indefinite = Analytical store time-to-live for { $container }: indefinite retention.
+command-ttl-analytical-status-enabled = Analytical store time-to-live for { $container }: data retained for { $seconds } seconds.
 command-ttl-error-missing_subcommand = Missing subcommand. Use one of: show, set, on, off.
 command-ttl-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set, on, off.
 command-ttl-error-missing_seconds = No seconds value provided. Specify a positive number of seconds, for example: ttl set 86400.
@@ -594,6 +604,8 @@ command-conflict-description-procedure = The stored procedure id that resolves c
 command-conflict-description-database = The database containing the container.
 command-conflict-description-container = The container to read/update the conflict resolution policy for.
 command-conflict-updated = Conflict resolution policy updated successfully.
+command-conflict-status-lww = Conflict resolution for { $container }: last writer wins, using path { $value }.
+command-conflict-status-custom = Conflict resolution for { $container }: custom, using procedure { $value }.
 command-conflict-error-missing_subcommand = Missing subcommand. Use one of: show, set.
 command-conflict-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set.
 command-conflict-error-missing_set_args = Nothing to set. Provide --mode, --path, or --procedure.
@@ -1607,9 +1619,9 @@ command-echo-example-3 = Output JSON data
 command-echo-example-4 = Pipe text output to jq for processing
 command-edit-example-1 = Open deploy.csh in $EDITOR, creating it if needed
 command-exit-example-1 = Exit the Cosmos DB Shell
-command-export-example-1 = Export every item in the current container as JSON Lines
+command-export-example-1 = Export every item in the current container as a JSON array
 command-export-example-2 = Export the results of a query
-command-export-example-3 = Export as a JSON array, overwriting an existing file
+command-export-example-3 = Export, overwriting an existing file
 command-export-example-4 = Export items as CSV (one column per top-level property)
 command-export-example-5 = Export up to 1000 items from a specific database and container
 command-filter-example-1 = Extract the first query result
@@ -1626,8 +1638,8 @@ command-ftab-example-7 = Display list results as a table
 command-help-example-1 = Display list of all available commands
 command-help-example-2 = Show detailed help for the query command
 command-help-example-3 = Show detailed help for all commands
-command-import-example-1 = Import items from a JSON Lines file (one JSON object per line)
-command-import-example-2 = Import items from a JSON array file
+command-import-example-1 = Import items from a JSON file containing an array of items or a single item
+command-import-example-2 = Import items from a JSON Lines file (one JSON object per line)
 command-import-example-3 = Import items from a CSV file (the header row defines property names)
 command-import-example-4 = Import CSV and nest the matching column under a nested partition key path
 command-import-example-5 = Insert new items and replace any existing items with the same id

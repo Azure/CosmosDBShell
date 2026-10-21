@@ -724,7 +724,7 @@ The condition is enforced by Cosmos DB (`If-Match`). If the item was updated or 
 
 ### export
 
-Stream items from a container to a local file. Default format is JSON Lines (one compact JSON object per line); pass `--format=array` for a single JSON array, or `--format=csv` for CSV. JSON formats stream incrementally. CSV spools documents to a private temporary file to compute the complete column set, keeping only the column names and current record in memory. Allow enough temporary disk space for the JSON spool as well as the destination export. The CSV separator follows the `COSMOSDB_SHELL_CSVSEP` environment variable (default `;`). Non-object query results are written to a column with an empty header by default; set `COSMOSDB_SHELL_CSV_SCALAR_COLUMN` to name it. Mixed object and non-object results include both object property columns and the scalar column. If its header conflicts with an object property, export fails instead of combining their values. Scalar CSV exports cannot be imported as items without supplying item IDs and any required partition keys.
+Stream items from a container to a local file. A `.csv` file name (case-insensitive) writes CSV; any other file name writes a single indented JSON array, the same document shape the Azure Databases extension for VS Code imports and exports. `--format` does not change the file contents. JSON Lines output is not supported. JSON export streams incrementally. CSV spools documents to a private temporary file to compute the complete column set, keeping only the column names and current record in memory. Allow enough temporary disk space for the JSON spool as well as the destination export. The CSV separator follows the `COSMOSDB_SHELL_CSVSEP` environment variable (default `;`). Non-object query results are written to a column with an empty header by default; set `COSMOSDB_SHELL_CSV_SCALAR_COLUMN` to name it. Mixed object and non-object results include both object property columns and the scalar column. If its header conflicts with an object property, export fails instead of combining their values. Scalar CSV exports cannot be imported as items without supplying item IDs and any required partition keys.
 
 All formats write to a temporary file in the destination directory and move it into place only after successful completion. An existing destination requires `--force` and is preserved if reading, writing, or cancellation interrupts the export. Temporary files are removed on normal completion and handled failures; an abrupt process termination can leave an unfinished destination-directory temporary file. Once `--max` items have been emitted, no further query pages are requested.
 
@@ -739,22 +739,28 @@ Options:
     --con, --container   Source container (defaults to the current navigation context).
     --query, -q          SELECT query whose results are exported (default: SELECT * FROM c).
     --max, -m            Maximum number of items to export. 0 means no limit.
-    --format, -f         Output format: jsonl (default), array, or csv.
+    --format, -f         Command result format: user, json, csv, or table.
+                         Does not change the exported file.
     --force              Overwrite the destination file if it already exists.
 ```
 
 Examples:
 
-- `export items.jsonl` exports every item in the current container.
-- `export active.jsonl --query="SELECT * FROM c WHERE c.status = 'active'"` exports a filtered subset.
-- `export snapshot.json --format=array --force` exports as a JSON array, replacing any existing file.
-- `export items.csv --format=csv` exports as CSV with one column per top-level property (nested values are written as compact JSON).
+- `export items.json` exports every item in the current container as a JSON array.
+- `export active.json --query="SELECT * FROM c WHERE c.status = 'active'"` exports a filtered subset.
+- `export snapshot.json --force` replaces any existing file.
+- `export items.csv` exports as CSV with one column per top-level property (nested values are written as compact JSON).
+- `export items.json --format=csv` writes a JSON array file and presents the export summary as CSV.
 
-The summary line reports the number of items written and the total RU charge.
+Normal output shows a readable summary with the number of items written and the total RU charge. `--format=json`, `--format=csv`, and `--format=table` change only this command result, not the exported data. When `--format` is omitted, the result inherits the shell's output settings.
 
 ### import
 
-Bulk-load items from a JSON Lines, JSON array, or CSV file into a container. Format is auto-detected: a `.csv` extension selects CSV, otherwise the first non-whitespace character is inspected (`[` ⇒ array, otherwise JSON Lines). It can be forced with `--format`. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist. For CSV, the header row defines property names and every value is imported as a string; the CSV separator follows `COSMOSDB_SHELL_CSVSEP` (default `;`). Empty headers with empty cells are ignored; a value under an empty header fails import with its line and column instead of being silently discarded. All formats are read incrementally rather than loading the complete file into memory. CSV supports quoted separators, escaped quotes, and multiline fields; malformed records abort the import with their physical start line. When an imported item omits a configured partition-key path, Cosmos DB infers an undefined value. Interactively and when stderr is redirected, import displays a notice before the first affected write, then reports one final bounded warning counted from writes scheduled. Machine mode with console stderr emits the pre-write notice and final count as JSON Lines warning and `warning-update` records. Invalid partition-key values are reported as per-item failures; `--continue-on-error` continues with subsequent rows. Earlier writes are not rolled back, so use `--dry-run` first when the entire file must be validated before any writes.
+Successful imports display a readable summary in normal output mode. `--format=json`, `--format=csv`, and `--format=table` select the command-result presentation; they do not change how the input file is read. When `--format` is omitted, the result inherits the shell's output settings.
+
+Invalid result formats are rejected before accessing the target container or writing items. Diagnostics for JSON object sequences and CSV records use physical start-line numbers; JSON arrays use 1-based item indexes. Non-object roots in an object sequence are rejected before their contents are loaded.
+
+Bulk-load items from a JSON, JSON Lines, or CSV file into a container. A `.csv` extension selects CSV. For every other file, import detects the structure from its contents: a top-level `[` selects an array of items (the format the Azure Databases extension for VS Code imports and exports); otherwise it reads a single object or a sequence of objects. Sequences support JSON Lines, multiple objects on one line, and objects spanning several lines, without commas between objects or an enclosing array. No `--legacy` flag is needed, regardless of the filename extension. Malformed JSON, non-object items, and trailing garbage still fail import. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist. For CSV, the header row defines property names and every value is imported as a string; the CSV separator follows `COSMOSDB_SHELL_CSVSEP` (default `;`). Empty headers with empty cells are ignored; a value under an empty header fails import with its line and column instead of being silently discarded. All formats are read incrementally rather than loading the complete file into memory. CSV supports quoted separators, escaped quotes, and multiline fields; malformed records abort the import with their physical start line. When an imported item omits a configured partition-key path, Cosmos DB infers an undefined value. Interactively and when stderr is redirected, import displays a notice before the first affected write, then reports one final bounded warning counted from writes scheduled. Machine mode with console stderr emits the pre-write notice and final count as JSON Lines warning and `warning-update` records. Invalid partition-key values are reported as per-item failures; `--continue-on-error` continues with subsequent rows. Earlier writes are not rolled back, so use `--dry-run` first when the entire file must be validated before any writes.
 
 ```text
 Usage: import <file> [options]
@@ -766,30 +772,44 @@ Options:
     --db, --database              Target database (defaults to the current navigation context).
     --con, --container            Target container (defaults to the current navigation context).
     --mode                        Write mode: insert (default) or upsert.
-    --format, -f                  Input format: auto (default), jsonl, array, or csv.
+    --format, -f                  Command result format: user, json, csv, or table.
+                                  Does not change how the input file is read.
     --concurrency                 Maximum in-flight writes (default: 16; positive integer).
                                   Use 1 for sequential writes in file order.
     --partition-key, --pk         For CSV import, the partition key path. Nested paths
                                   (e.g. /address/city) nest the matching column.
     --continue, --continue-on-error
                                   Continue importing after individual item failures.
-    --dry-run                     Parse the file without writing any items (validation only).
+    --dry-run                     Validate file syntax and item IDs offline; no writes or target access.
+                                  Does not check target partition keys, permissions, conflicts,
+                                  or other service constraints.
 ```
 
 Examples:
 
-- `import items.jsonl` inserts every item from a JSON Lines file.
-- `import items.jsonl --concurrency=32` allows up to 32 writes in flight.
-- `import items.jsonl --concurrency=1` writes sequentially in file order.
-- `import items.json --format=array` reads a JSON array file.
+- `import items.json` inserts every item from a JSON file containing an array of items or a single item.
+- `import items.json --concurrency=32` allows up to 32 writes in flight.
+- `import items.json --concurrency=1` writes sequentially in file order.
+- `import items.jsonl` automatically reads a JSON Lines file; multiple objects per line are also accepted.
+- `import items.json --format=csv` reads the JSON input and presents the import summary as CSV.
 - `import items.csv` imports a CSV file, mapping each header column to a string property.
 - `import items.csv --partition-key=/address/city` nests the `city` column under `address` for a nested partition key. If a scalar column already occupies an intermediate path segment (for example an `address` column), the import fails with a conflict error rather than silently overwriting it.
-- `import items.jsonl --mode=upsert --continue-on-error` upserts items and keeps going on per-item failures.
-- `import items.jsonl --dry-run` validates the file without writing anything; useful before a real run.
+- `import items.json --mode=upsert --continue-on-error` upserts items and keeps going on per-item failures.
+- `import items.json --dry-run` validates file syntax and item IDs offline without writing anything; useful before a real run, but not a guarantee that the target will accept the items.
 
 Imports keep up to 16 writes in flight by default without loading the entire file. `--concurrency` controls this bound; it must be a positive integer. Completion order is not guaranteed when concurrency exceeds 1. Use `--concurrency=1` when repeated IDs must be processed in file order (especially with upsert), or when exact sequential stop-on-error behavior is required. Higher concurrency can hide network latency but does not increase provisioned RU/s or avoid throttling; Cosmos SDK retry handling remains unchanged. Dry runs only validate input and do not start writes.
 
 By default, the first observed write failure stops scheduling new writes. Already-started writes are awaited and included in the final success/failure counts and request charge; they may succeed after the failure. With `--continue-on-error` the command keeps going after per-item *write* failures (for example a Cosmos write that throws) and the final summary reports how many items succeeded and how many failed. Parse and validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) always stop scheduling writes, even with `--continue-on-error`, and in-flight writes are awaited before the error is returned. Cancellation is passed to both input reads and writes, and the command waits for started writes to settle before returning. Earlier writes are never rolled back. The command exits with an error status if any items failed.
+
+Write failures and input parse/read failures retain a structured import result, including `imported`, `failed`, and observed write `requestCharge`. `failed` counts failed writes, not unread or malformed records. Failed results also include `error` and `exitCode`, classified from the input failure that stopped the import or, otherwise, the first observed write failure. Only that representative error is retained, keeping results bounded for large imports. In machine mode the result is carried in the JSON error envelope on stderr; MCP returns it as `result` with `isError: true`. Human-readable output reports the summary and representative error.
+
+#### Dry-run validation scope
+
+`--dry-run` is always offline, even when connected or given `--database`/`--container`. It makes no target requests and performs no writes. It checks input syntax, object records, CSV structure/mapping, and each item's `id`: a non-empty string of at most 1023 UTF-8 bytes containing neither `/` nor `\`. Unicode IDs are allowed; the limit is measured in bytes, not characters. Local validation failures stop the dry run with a non-zero exit status, even with `--continue-on-error`.
+
+Dry runs do **not** validate the target container's partition-key definition or values, permissions, existing-ID conflicts, or other service constraints such as item-size limits. In particular, a property named `pk` cannot be validated as a partition key without knowing the target definition. Missing partition-key properties are not necessarily invalid because Cosmos DB supports undefined keys. Passing the dry run is not a promise that a real import will succeed.
+
+Dry-run results set `imported: 0`, `failed: 0`, `requestCharge: 0`, and `dryRun: true`. The additional `validated` field counts records that passed local validation before completion or the first error; `validationScope: "offline"` and `targetValidated: false` state the limits explicitly. These fields are also present in failed dry-run results and MCP responses. Normal imports retain their existing result shape.
 
 ### watch
 
