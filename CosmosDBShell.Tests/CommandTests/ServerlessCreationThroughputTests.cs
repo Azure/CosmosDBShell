@@ -431,16 +431,15 @@ public class ServerlessCreationThroughputTests
         return (context, containers);
     }
 
-    private static CosmosDBAccountData ServerlessByCapability() => ArmCosmosDBModelFactory.CosmosDBAccountData(
-        location: AzureLocation.WestUS,
-        capabilities: [new CosmosDBAccountCapability { Name = "EnableServerless" }]);
+    private static CosmosDBAccountData ServerlessByCapability() =>
+        System.ClientModel.Primitives.ModelReaderWriter.Read<CosmosDBAccountData>(
+            BinaryData.FromString("""{"location":"westus","properties":{"capabilities":[{"name":"EnableServerless"}]}}"""))!;
 
-    private static CosmosDBAccountData ServerlessByCapacityMode() => ArmCosmosDBModelFactory.CosmosDBAccountData(
-        location: AzureLocation.WestUS,
-        capacityMode: CapacityMode.Serverless);
+    private static CosmosDBAccountData ServerlessByCapacityMode() =>
+        System.ClientModel.Primitives.ModelReaderWriter.Read<CosmosDBAccountData>(
+            BinaryData.FromString("""{"location":"westus","properties":{"capacityMode":"Serverless"}}"""))!;
 
-    private static CosmosDBAccountData Provisioned() => ArmCosmosDBModelFactory.CosmosDBAccountData(
-        location: AzureLocation.WestUS,
-        capabilities: [new CosmosDBAccountCapability { Name = "EnableServerlessLike" }],
-        capacityMode: CapacityMode.Provisioned);
+    private static CosmosDBAccountData Provisioned() =>
+        System.ClientModel.Primitives.ModelReaderWriter.Read<CosmosDBAccountData>(
+            BinaryData.FromString("""{"location":"westus","properties":{"capabilities":[{"name":"EnableServerlessLike"}],"capacityMode":"Provisioned"}}"""))!;
 }

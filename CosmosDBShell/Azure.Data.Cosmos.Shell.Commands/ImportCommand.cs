@@ -814,12 +814,8 @@ internal class ImportCommand : CosmosCommand
                     : await container.CreateItemAsync(item, requestOptions: options, cancellationToken: token);
                 var itemOk = itemResponse.StatusCode == System.Net.HttpStatusCode.Created ||
                     (mode == ImportMode.Upsert && itemResponse.StatusCode == System.Net.HttpStatusCode.OK);
-                return (itemResponse.RequestCharge, itemOk ? null : MessageService.GetArgsString(
-                    "command-import-error-item_status",
-                    "line",
-                    lineNumber,
-                    "status",
-                    itemResponse.StatusCode.ToString()));
+                var itemFailure = itemOk ? null : MessageService.GetArgsString("command-import-error-item_status", "line", lineNumber, "status", itemResponse.StatusCode.ToString());
+                return (itemResponse.RequestCharge, itemFailure);
             }
 
             using var body = new MemoryStream(Encoding.UTF8.GetBytes(item.GetRawText()));
@@ -846,12 +842,8 @@ internal class ImportCommand : CosmosCommand
             response.EnsureSuccessStatusCode();
             var ok = response.StatusCode == System.Net.HttpStatusCode.Created ||
                 (mode == ImportMode.Upsert && response.StatusCode == System.Net.HttpStatusCode.OK);
-            return (response.Headers.RequestCharge, ok ? null : MessageService.GetArgsString(
-                "command-import-error-item_status",
-                "line",
-                lineNumber,
-                "status",
-                response.StatusCode.ToString()));
+            var failure = ok ? null : MessageService.GetArgsString("command-import-error-item_status", "line", lineNumber, "status", response.StatusCode.ToString());
+            return (response.Headers.RequestCharge, failure);
         }
         catch (CosmosException ce)
         {

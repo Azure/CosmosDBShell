@@ -102,6 +102,7 @@
     <PackageReference Include="OpenTelemetry" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
     <PackageReference Include="RadLine" />
+    <PackageReference Include="Spectre.Console" />
     <PackageReference Include="Azure.Core" />
     <PackageReference Include="System.ClientModel" />
     <PackageReference Include="Tomlyn" />
