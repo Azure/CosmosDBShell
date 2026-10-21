@@ -17,7 +17,8 @@ internal sealed record BulkOutcome(
     string Status,
     double RequestCharge = 0,
     int? StatusCode = null,
-    string? Error = null)
+    string? Error = null,
+    Guid? AttemptId = null)
 {
     public const string Started = "started";
 

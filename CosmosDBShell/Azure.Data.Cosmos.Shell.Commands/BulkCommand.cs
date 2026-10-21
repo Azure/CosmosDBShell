@@ -933,9 +933,10 @@ internal sealed class BulkCommand : CosmosCommand
         {
             foreach (var (index, outcome) in journal.Previous)
             {
-                // Durable records may have advanced in another shell. Retain local successes
-                // only when their journal write failed; they must never be replayed.
-                if (!previous.TryGetValue(index, out var local) || local.Status != BulkOutcome.Succeeded)
+                // Only reconcile a local success with its own durable attempt.
+                // Another shell may have recorded a newer unresolved attempt.
+                if (!previous.TryGetValue(index, out var local) || local.Status != BulkOutcome.Succeeded ||
+                    local.AttemptId is null || local.AttemptId != outcome.AttemptId)
                 {
                     previous[index] = outcome;
                 }
@@ -958,7 +959,10 @@ internal sealed class BulkCommand : CosmosCommand
                 memory[outcome.Index] = outcome;
             }
 
-            if (journal != null)
+            if (journal != null &&
+                !(outcome.Status == BulkOutcome.Succeeded &&
+                  journal.Previous.TryGetValue(outcome.Index, out var durable) &&
+                  durable.Status == BulkOutcome.Succeeded && durable.AttemptId == outcome.AttemptId))
             {
                 await journal.RecordAsync(outcome);
             }

@@ -21,14 +21,14 @@ internal static class BulkExecutor
         CancellationToken token)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
-        var pending = new List<(BulkOperation Operation, PartitionKey Key, Task<BulkOutcome> Task)>();
+        var pending = new List<(BulkOperation Operation, PartitionKey Key, Task<BulkOutcome> Task, Guid AttemptId)>();
         var blockedItems = new HashSet<(string Id, PartitionKey Key)>();
         var newFailures = 0;
         ExceptionDispatchInfo? failure = null;
 
         async Task SettleAsync(int index)
         {
-            var (operation, key, task) = pending[index];
+            var (operation, key, task, attemptId) = pending[index];
             pending.RemoveAt(index);
             BulkOutcome result;
             try
@@ -43,6 +43,7 @@ internal static class BulkExecutor
                 result = BulkOutcome.Create(operation, BulkOutcome.Uncertain, error: ex.Message);
             }
 
+            result = result with { AttemptId = attemptId };
             summary.RequestCharge += result.RequestCharge;
             summary.Processed++;
             if (result.Status == BulkOutcome.Succeeded)
@@ -101,6 +102,7 @@ internal static class BulkExecutor
                     {
                         summary.Skipped++;
                         summary.Processed++;
+                        await record(old);
                         continue;
                     }
 
@@ -129,9 +131,10 @@ internal static class BulkExecutor
                     break;
                 }
 
-                await record(BulkOutcome.Create(operation, BulkOutcome.Started));
+                var attemptId = Guid.NewGuid();
+                await record(BulkOutcome.Create(operation, BulkOutcome.Started) with { AttemptId = attemptId });
                 summary.Attempted++;
-                pending.Add((operation, key, write(operation, token)));
+                pending.Add((operation, key, write(operation, token), attemptId));
             }
         }
         catch (Exception ex)

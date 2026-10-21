@@ -580,7 +580,8 @@ public class BulkCommandTests
             previous, summary, 1, 1, true, false, TestContext.Current.CancellationToken);
 
         Assert.Empty(writes);
-        Assert.Empty(records);
+        Assert.Equal(status == BulkOutcome.Succeeded ? 3 : 0, records.Count);
+        Assert.All(records, outcome => Assert.Equal(BulkOutcome.Succeeded, outcome.Status));
         Assert.Equal(3, summary.Skipped);
         Assert.Equal(3, summary.Processed);
         Assert.Equal(0, summary.Attempted);
@@ -721,6 +722,36 @@ public class BulkCommandTests
         Assert.Equal(1, summary.Attempted);
         Assert.Equal(1, summary.Uncertain);
         Assert.Equal([BulkOutcome.Started, BulkOutcome.Uncertain], records.Select(record => record.Status));
+        Assert.NotNull(records[0].AttemptId);
+        Assert.Equal(records[0].AttemptId, records[1].AttemptId);
+    }
+
+    [Fact]
+    public async Task FailedSuccessReconciliationBlocksSuccessors()
+    {
+        var expected = new IOException("journal repair failed");
+        var writes = new List<long>();
+        var summary = new BulkSummary();
+        var actual = await Assert.ThrowsAsync<IOException>(() => BulkExecutor.ExecuteAsync(
+            SourceAsync(2, TestContext.Current.CancellationToken),
+            (operation, _) =>
+            {
+                writes.Add(operation.Index);
+                return Task.FromResult(Succeeded(operation.Index));
+            },
+            outcome => throw expected,
+            new Dictionary<long, BulkOutcome> { [0] = Succeeded(0) with { AttemptId = Guid.NewGuid() } },
+            summary,
+            1,
+            null,
+            true,
+            false,
+            TestContext.Current.CancellationToken));
+
+        Assert.Same(expected, actual);
+        Assert.Empty(writes);
+        Assert.Equal(1, summary.Skipped);
+        Assert.Equal(0, summary.Attempted);
     }
 
     [Fact]
@@ -1537,10 +1568,11 @@ public class BulkCommandTests
         await fixture.RunAsync($"bulk add '{Operation(0).Json}'");
         var bulk = fixture.Shell.CurrentBulk!;
         bulk.JournalPath = path;
-        bulk.Outcomes[0] = Succeeded(0);
+        var success = Succeeded(0) with { AttemptId = Guid.NewGuid() };
+        bulk.Outcomes[0] = success;
         using (var journal = BulkJournal.Open(path, "https://unit-test.documents.azure.com/", "rid", BulkSpool.ComputeHash([Operation(0).Json]), 1))
         {
-            await journal.RecordAsync(Succeeded(0) with { Status = BulkOutcome.Started });
+            await journal.RecordAsync(success with { Status = BulkOutcome.Started });
         }
 
         var result = await fixture.RunAsync($"bulk execute --journal '{path}' --yes");
@@ -1548,6 +1580,48 @@ public class BulkCommandTests
         Assert.False(result.IsError);
         Assert.Empty(fixture.Writes());
         Assert.Equal(1, Assert.IsType<ShellJson>(result.Result).Value.GetProperty("skipped").GetInt64());
+        Assert.Null(fixture.Shell.CurrentBulk);
+        using (var journal = BulkJournal.Open(path, "https://unit-test.documents.azure.com/", "rid", BulkSpool.ComputeHash([Operation(0).Json]), 1))
+        {
+            Assert.Equal(BulkOutcome.Succeeded, journal.Previous[0].Status);
+            Assert.Equal(success.AttemptId, journal.Previous[0].AttemptId);
+        }
+
+        using var resumed = new Fixture();
+        var fresh = await resumed.RunAsync(
+            $"bulk run '{Operation(0).Json}' --journal '{path}' --retry-uncertain --yes --db db --con items");
+        Assert.False(fresh.IsError);
+        Assert.Empty(resumed.Writes());
+        Assert.Equal(1, Assert.IsType<ShellJson>(fresh.Result).Value.GetProperty("skipped").GetInt64());
+    }
+
+    [Theory]
+    [InlineData(BulkOutcome.Started)]
+    [InlineData(BulkOutcome.Uncertain)]
+    public async Task LocalSuccessDoesNotOverwriteAnotherShellsUnresolvedAttempt(string status)
+    {
+        using var fixture = new Fixture();
+        var path = fixture.Directory.PathFor("journal.jsonl");
+        await fixture.RunAsync("bulk begin --db db --con items");
+        await fixture.RunAsync($"bulk add '{Operation(0).Json}'");
+        var bulk = fixture.Shell.CurrentBulk!;
+        bulk.JournalPath = path;
+        bulk.Outcomes[0] = Succeeded(0) with { AttemptId = Guid.NewGuid() };
+        var newer = Succeeded(0) with { Status = status, AttemptId = Guid.NewGuid() };
+        using (var journal = BulkJournal.Open(path, "https://unit-test.documents.azure.com/", "rid", BulkSpool.ComputeHash([Operation(0).Json]), 1))
+        {
+            await journal.RecordAsync(newer);
+        }
+
+        var result = await fixture.RunAsync($"bulk execute --journal '{path}' --yes");
+
+        Assert.True(result.IsError);
+        Assert.NotNull(fixture.Shell.CurrentBulk);
+        Assert.Empty(fixture.Writes());
+        Assert.Equal(1, Assert.IsType<ShellJson>(result.Result).Value.GetProperty("uncertain").GetInt64());
+        using var reopened = BulkJournal.Open(path, "https://unit-test.documents.azure.com/", "rid", BulkSpool.ComputeHash([Operation(0).Json]), 1);
+        Assert.Equal(status, reopened.Previous[0].Status);
+        Assert.Equal(newer.AttemptId, reopened.Previous[0].AttemptId);
     }
 
     [Theory]
