@@ -8,6 +8,7 @@ using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.KeyBindings;
 using RadLine;
 using Spectre.Console;
+using Spectre.Console.Rendering;
 
 [Collection(ThemeStateTestCollection.Name)]
 public class HotkeyCommandTests

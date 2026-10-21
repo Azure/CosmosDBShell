@@ -13,6 +13,6 @@
   <!-- CosmosDBShell.Fuzzer opts out of central package management, so the
        version must be pinned directly on the PackageReference. -->
   <ItemGroup Condition="'$(ManagePackageVersionsCentrally)' == 'false'">
-    <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" Version="3.9.50" />
+    <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" Version="3.10.94" />
   </ItemGroup>
 </Project>

@@ -86,7 +86,7 @@ internal static class McpResponseFactory
                 new TextContentBlock
                 {
                     Text = structuredContent.GetRawText(),
-                }
+                },
             ],
             IsError = isError,
         };

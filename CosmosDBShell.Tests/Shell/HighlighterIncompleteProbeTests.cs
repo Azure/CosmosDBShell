@@ -8,6 +8,7 @@ using Azure.Data.Cosmos.Shell.Core;
 
 using RadLine;
 using Spectre.Console;
+using Spectre.Console.Rendering;
 
 /// <summary>
 /// Coverage for the tolerant-highlighting work: drives the highlighter with

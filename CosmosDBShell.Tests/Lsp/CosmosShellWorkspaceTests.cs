@@ -80,7 +80,7 @@ public class CosmosShellWorkspaceTests
         this.workspace.OpenDocument(this.uri, source, 1);
         var document = this.workspace.GetDocument(this.uri)!;
         var diagnostic = Assert.Single(document.Diagnostics);
-        Assert.Contains("Unknown option '-not_an_option_xyz'", diagnostic.Message);
+        Assert.Contains("Unknown option '-not_an_option_xyz'", diagnostic.Message.String);
         Assert.True(diagnostic.Range.Start.Character < call.Length);
         var calls = document.SemanticModel!.References.Where(reference => !reference.IsDefinition && reference.Symbol is Azure.Data.Cosmos.Shell.Lsp.Semantics.FunctionSymbol).ToArray();
         Assert.Single(calls);
@@ -117,7 +117,7 @@ public class CosmosShellWorkspaceTests
     public void NestedBuiltinOptions_StillReceiveValidation(string source)
     {
         this.workspace.OpenDocument(this.uri, source, 1);
-        Assert.Contains(this.workspace.GetDocument(this.uri)!.Diagnostics, diagnostic => diagnostic.Message.Contains("Unknown option '-not_an_option_xyz'"));
+        Assert.Contains(this.workspace.GetDocument(this.uri)!.Diagnostics, diagnostic => diagnostic.Message.String?.Contains("Unknown option '-not_an_option_xyz'") == true);
     }
 
     [Fact]
@@ -402,7 +402,7 @@ public class CosmosShellWorkspaceTests
         this.workspace.OpenDocument(this.uri, "$value = " + string.Join(" + ", Enumerable.Repeat("1", 10001)), 1);
         var document = this.workspace.GetDocument(this.uri)!;
         Assert.False(document.LastParseResult!.Success);
-        Assert.Contains(document.Diagnostics, diagnostic => diagnostic.Message.Contains("expression tree depth"));
+        Assert.Contains(document.Diagnostics, diagnostic => diagnostic.Message.String?.Contains("expression tree depth") == true);
         this.workspace.UpdateDocument(this.uri, "$value = 1", 2);
         Assert.True(document.LastParseResult!.Success);
         Assert.Empty(document.Diagnostics);

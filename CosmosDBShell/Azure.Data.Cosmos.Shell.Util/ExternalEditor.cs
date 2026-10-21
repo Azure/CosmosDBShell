@@ -48,12 +48,6 @@ internal static class ExternalEditor
     {
         public string DisplayName => string.IsNullOrEmpty(this.PrefixArgs) ? this.FileName : $"{this.FileName} {this.PrefixArgs}";
 
-        public string BuildArguments(string path)
-        {
-            var quoted = path.Contains(' ') ? $"\"{path}\"" : path;
-            return string.IsNullOrEmpty(this.PrefixArgs) ? quoted : $"{this.PrefixArgs} {quoted}";
-        }
-
         public static EditorInvocation? Parse(string? raw)
         {
             if (string.IsNullOrWhiteSpace(raw))
@@ -82,6 +76,12 @@ internal static class ExternalEditor
             }
 
             return new EditorInvocation(raw[..firstSpace], raw[(firstSpace + 1)..].Trim());
+        }
+
+        public string BuildArguments(string path)
+        {
+            var quoted = path.Contains(' ') ? $"\"{path}\"" : path;
+            return string.IsNullOrEmpty(this.PrefixArgs) ? quoted : $"{this.PrefixArgs} {quoted}";
         }
     }
 }

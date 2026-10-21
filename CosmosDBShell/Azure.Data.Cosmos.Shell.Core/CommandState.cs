@@ -42,7 +42,11 @@ public partial class CommandState
     /// </summary>
     public OutputFormat OutputFormat
     {
-        get => this.outputFormat;
+        get
+        {
+            return this.outputFormat;
+        }
+
         set
         {
             this.outputFormat = value;
