@@ -28,6 +28,7 @@
 - Validate item IDs during import dry runs and report local validation failures with usage exit code `2`. Help and results clarify that dry runs do not check target partition keys, permissions, conflicts, or other service constraints.
 - Reject non-object values in JSON object sequences before buffering their bodies, report physical start lines for sequence items, and validate import result formats before accessing the target container or writing items.
 - Restore actionable missing-value diagnostics for startup options such as `--connect` and keep literal help/version command tails separate from startup handling.
+- Include requested CSV result text in MCP responses for failed imports and other structured failures, alongside the error and partial results.
 
 ### Improvements
 

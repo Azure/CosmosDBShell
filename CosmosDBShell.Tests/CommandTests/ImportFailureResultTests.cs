@@ -238,6 +238,22 @@ public class ImportFailureResultTests
             Assert.Equal(OutputFormat.CSV, state.OutputFormat);
             Assert.True(state.OutputFormatExplicitlySet);
             Assert.Contains("Line 3", Assert.IsType<ShellJson>(state.Result).Value.GetProperty("error").GetString());
+
+            var mcp = McpResponseFactory.CreateSuccess(state, shell.State);
+            Assert.True(mcp.IsError);
+            var payload = Assert.IsType<JsonElement>(mcp.StructuredContent);
+            Assert.True(JsonElement.DeepEquals(Assert.IsType<ShellJson>(state.Result).Value, payload.GetProperty("result")));
+            Assert.Equal(state.Exception.Message, payload.GetProperty("error").GetString());
+            Assert.Equal(state.GenerateOutputText(), payload.GetProperty("outputText").GetString());
+            Assert.Contains("imported", payload.GetProperty("outputText").GetString());
+            Assert.Equal(state.RequestCharge.HasValue, payload.TryGetProperty("requestCharge", out var requestCharge));
+            if (state.RequestCharge.HasValue)
+            {
+                Assert.Equal(state.RequestCharge.Value, requestCharge.GetDouble());
+            }
+            Assert.Equal(
+                payload.GetRawText(),
+                Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(mcp.Content)).Text);
         }
         finally
         {

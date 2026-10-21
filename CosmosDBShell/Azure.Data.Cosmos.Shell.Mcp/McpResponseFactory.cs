@@ -107,6 +107,15 @@ internal static class McpResponseFactory
                 commandState.Warnings.Select(warning => warning.Message));
         }
 
+        if (commandState.OutputFormat == OutputFormat.CSV)
+        {
+            var outputText = commandState.GenerateOutputText();
+            if (!string.IsNullOrWhiteSpace(outputText))
+            {
+                payload["outputText"] = outputText;
+            }
+        }
+
         if (commandState.IsError)
         {
             payload["error"] = GetErrorPayloadMessage(commandState);
@@ -134,15 +143,6 @@ internal static class McpResponseFactory
         if (commandState.IncompleteWithoutContinuation)
         {
             payload["resultIncomplete"] = true;
-        }
-
-        if (commandState.OutputFormat == OutputFormat.CSV)
-        {
-            var outputText = commandState.GenerateOutputText();
-            if (!string.IsNullOrWhiteSpace(outputText))
-            {
-                payload["outputText"] = outputText;
-            }
         }
 
         return payload;
