@@ -10,6 +10,8 @@
 
 ### New features
 
+- **Non-transactional `bulk` command.** Run unlimited independent `create`, `upsert`, `replace`, `delete`, and `patch` operations across partition keys with bounded concurrency (default 16). It uses the batch operation schema, plus optional per-operation `partitionKey` and `ifMatch`, and the same `run`/`begin`/`add`/`execute`/`cancel`/`status`/`show` subcommands. `bulk patch --where` and `bulk delete --where` select items by predicate, including complete hierarchical partition keys. Add `--save` to write a reviewable plan for `bulk run`. Safeguards include dry-run, confirmation, item and observed-RU limits, and ETag checks. Journals skip succeeded writes on rerun, retry failed writes, and hold back writes with unknown outcomes. MCP exposes `run`, `patch`, and `delete`. ([#107](https://github.com/Azure/CosmosDBShell/issues/107))
+
 ### Fixes
 
 - Item commands now support undefined partition-key values (`PartitionKey.None`) with the explicit `{}` syntax, including missing components in hierarchical keys. Mutations that infer undefined keys from item content emit bounded warnings. ([#251](https://github.com/Azure/CosmosDBShell/issues/251))
@@ -29,6 +31,10 @@
 - Reject non-object values in JSON object sequences before buffering their bodies, report physical start lines for sequence items, and validate import result formats before accessing the target container or writing items.
 - Restore actionable missing-value diagnostics for startup options such as `--connect` and keep literal help/version command tails separate from startup handling.
 - Include requested CSV result text in MCP responses for failed imports and other structured failures, alongside the error and partial results.
+- Preserve partial bulk results after execution errors or cancellation, decode quoted partition-key paths consistently, and prevent retries from replaying newer journal outcomes or reordering writes after a failure.
+- Remove incomplete bulk saved plans when the final file flush fails, so a truncated plan cannot be mistaken for a complete job.
+- Restore actionable missing-value diagnostics for startup options such as `--connect` and keep literal help/version command tails separate from startup handling.
+- Release bulk temporary files promptly after a final spool flush fails, preventing retained disk space from hindering recovery.
 
 ### Improvements
 

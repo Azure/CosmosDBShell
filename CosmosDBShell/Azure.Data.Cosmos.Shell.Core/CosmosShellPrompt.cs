@@ -65,13 +65,20 @@ internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IS
             basePrompt += " " + Theme.FormatMuted($"[batch:{batch.Operations.Count}]");
         }
 
+        var bulk = this.shell.CurrentBulk;
+        if (bulk is not null)
+        {
+            basePrompt += " " + Theme.FormatMuted($"[bulk:{bulk.Operations.Count}]");
+        }
+
         return basePrompt;
     }
 
     private string GetBatchSignature()
     {
         var batch = this.shell.CurrentBatch;
-        return batch is null ? string.Empty : batch.Operations.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var bulk = this.shell.CurrentBulk;
+        return $"{batch?.Operations.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)}|{bulk?.Operations.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
     }
 
     Task<string> IStateVisitor<string, object?>.VisitConnectedStateAsync(ConnectedState state, object? data, CancellationToken token)
