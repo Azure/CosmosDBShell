@@ -395,22 +395,22 @@ internal class ImportCommand : CosmosCommand
 
         if (bytes.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xFE, 0x00, 0x00]))
         {
-            return (Encoding.UTF32, 4);
+            return (new UTF32Encoding(bigEndian: false, byteOrderMark: true, throwOnInvalidCharacters: true), 4);
         }
 
         if (bytes.StartsWith((ReadOnlySpan<byte>)[0x00, 0x00, 0xFE, 0xFF]))
         {
-            return (new UTF32Encoding(bigEndian: true, byteOrderMark: true), 4);
+            return (new UTF32Encoding(bigEndian: true, byteOrderMark: true, throwOnInvalidCharacters: true), 4);
         }
 
         if (bytes.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xFE]))
         {
-            return (Encoding.Unicode, 2);
+            return (new UnicodeEncoding(bigEndian: false, byteOrderMark: true, throwOnInvalidBytes: true), 2);
         }
 
         if (bytes.StartsWith((ReadOnlySpan<byte>)[0xFE, 0xFF]))
         {
-            return (Encoding.BigEndianUnicode, 2);
+            return (new UnicodeEncoding(bigEndian: true, byteOrderMark: true, throwOnInvalidBytes: true), 2);
         }
 
         return (null, 0);
@@ -713,6 +713,13 @@ internal class ImportCommand : CosmosCommand
                 commandState,
                 progress,
                 token);
+        }
+        catch (DecoderFallbackException ex)
+        {
+            failure = new CommandException(
+                "import",
+                MessageService.GetArgsString("command-import-error-invalid_document", "message", ex.Message),
+                ex);
         }
         catch (Exception ex) when (ex is CommandException or JsonException or IOException or UnauthorizedAccessException)
         {

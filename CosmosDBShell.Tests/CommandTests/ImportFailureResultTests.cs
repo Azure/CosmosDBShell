@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests.CommandTests;
 
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
@@ -275,6 +276,80 @@ public class ImportFailureResultTests
             {
                 Assert.Equal(state.GenerateOutputText(), payload.GetProperty("outputText").GetString());
             }
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
+    [InlineData(1200, false)]
+    [InlineData(1200, true)]
+    [InlineData(1201, false)]
+    [InlineData(1201, true)]
+    [InlineData(12000, false)]
+    [InlineData(12000, true)]
+    [InlineData(12001, false)]
+    [InlineData(12001, true)]
+    public async Task DryRunFailure_MalformedBomUnicode_PreservesStructuredInputError(int codePage, bool afterValidItem)
+    {
+        var encoding = Encoding.GetEncoding(codePage);
+        byte[] malformed = codePage switch
+        {
+            1200 => [0x00, 0xD8],
+            1201 => [0xD8, 0x00],
+            12000 => [0x00, 0xD8, 0x00, 0x00],
+            12001 => [0x00, 0x00, 0xD8, 0x00],
+            _ => throw new ArgumentOutOfRangeException(nameof(codePage)),
+        };
+        var prefix = afterValidItem ? """{"id":"first"}""" + "\n" + new string(' ', 40_000) : string.Empty;
+        var file = Path.GetTempFileName();
+        using var shell = ShellInterpreter.CreateInstance();
+        try
+        {
+            await File.WriteAllBytesAsync(
+                file,
+                [.. encoding.GetPreamble(), .. encoding.GetBytes(prefix + "{\"id\":\""), .. malformed, .. encoding.GetBytes("\"}")],
+                TestContext.Current.CancellationToken);
+
+            var state = Assert.IsType<StructuredErrorCommandState>(
+                await new ImportCommand { File = file, DryRun = true, Format = "csv" }
+                    .ExecuteAsync(shell, new CommandState(), "import", TestContext.Current.CancellationToken));
+
+            var result = Assert.IsType<ShellJson>(state.Result).Value;
+            Assert.Equal(afterValidItem ? 1 : 0, result.GetProperty("validated").GetInt32());
+            Assert.Equal(0, result.GetProperty("imported").GetInt32());
+            Assert.Equal(0, result.GetProperty("requestCharge").GetDouble());
+            Assert.Equal(ShellExitCode.UsageError, state.ExitCode);
+            Assert.Equal(ShellExitCode.UsageError, result.GetProperty("exitCode").GetInt32());
+            Assert.Equal(OutputFormat.CSV, state.OutputFormat);
+            Assert.IsType<DecoderFallbackException>(state.Exception.InnerException?.InnerException);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public async Task WriteFailure_MalformedBomUnicode_DoesNotWriteAlteredId()
+    {
+        var file = Path.GetTempFileName();
+        using var shell = CreateShell(out var container);
+        try
+        {
+            await File.WriteAllBytesAsync(
+                file,
+                [.. Encoding.Unicode.GetPreamble(), .. Encoding.Unicode.GetBytes("{\"id\":\""), 0x00, 0xD8, .. Encoding.Unicode.GetBytes("\"}")],
+                TestContext.Current.CancellationToken);
+
+            var state = Assert.IsType<StructuredErrorCommandState>(
+                await new ImportCommand { File = file }.ExecuteAsync(shell, new CommandState(), "import", TestContext.Current.CancellationToken));
+
+            Assert.Equal(ShellExitCode.UsageError, state.ExitCode);
+            Assert.Equal(0, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("imported").GetInt32());
+            Assert.DoesNotContain(container.ReceivedCalls(), call => call.GetMethodInfo().Name == nameof(Container.CreateItemStreamAsync));
         }
         finally
         {

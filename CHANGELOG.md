@@ -36,6 +36,7 @@
 - Restore actionable missing-value diagnostics for startup options such as `--connect` and keep literal help/version command tails separate from startup handling.
 - Release bulk temporary files promptly after a final spool flush fails, preventing retained disk space from hindering recovery.
 - Report invalid Unicode item IDs in import dry runs as validation errors, preserving the validated count, selected result format, and usage exit code.
+- Reject malformed BOM-encoded UTF-16/UTF-32 import files instead of silently replacing characters in item IDs; retain partial results and the requested result format when decoding fails.
 
 ### Improvements
 
