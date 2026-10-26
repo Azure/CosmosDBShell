@@ -4,6 +4,16 @@
 
 ### Breaking changes
 
+### New features
+
+### Fixes
+
+### Improvements
+
+## 1.1.291 — 2026-10-26
+
+### Breaking changes
+
 - `print <id> <key>` now parses the key with the same typed syntax as `patch`, so `print item-1 680` reads numeric key `680` instead of string `"680"`. To address a string key that looks like a number, boolean, null, or JSON array, quote it as a JSON string: `print item-1 '"680"'`. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
 - `import` and `export` now use the JSON format of the Azure Databases extension for VS Code. `export` writes an indented JSON array, or CSV when the file name ends in `.csv`; JSON Lines output is no longer supported. `import` automatically detects JSON arrays, single objects, and sequences of objects (including JSON Lines) in non-CSV files; no `--legacy` flag is needed. On both commands, `--format` / `-f` selects the command-result presentation (`user`, `json`, `csv`, or `table`), not the file contents.
 - `import --dry-run` now reports locally validated records in `validated` and always sets `imported` to `0`. Dry-run results explicitly identify offline validation and an unchecked target.
@@ -41,6 +51,11 @@
 - Describe existing custom conflict policies without a stored procedure as requiring manual resolution rather than displaying an empty procedure name.
 - Validate UTF-8 throughout JSON import files, including non-ID fields, and retain structured partial results when malformed bytes are found.
 - Avoid repeatedly parsing incomplete JSON objects during import when large records arrive in short reads.
+- Preserve completed import writes, observed request charges, and structured partial results when an SDK request timeout occurs alongside other in-flight writes; explicit caller cancellation still stops the import.
+- Restore BOM-aware UTF-16/UTF-32 JSON import support, including JSON Lines, while streaming the input.
+- Honor `2>` and `2>>` for structured command failure diagnostics in normal output mode, including import dry-run validation errors.
+- Reject malformed JSON object prefixes before growing the import buffer, preventing invalid input followed by a large whitespace tail from exhausting memory, including during dry runs.
+- Keep terminal JSON output valid on narrow consoles by avoiding inserted line breaks inside long JSON strings. Shorter JSON output remains syntax-highlighted.
 
 ### Improvements
 
