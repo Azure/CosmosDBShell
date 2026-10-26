@@ -40,6 +40,7 @@
 - Count invalid Unicode partition-key strings as per-item import failures without losing concurrent write results or the selected output format.
 - Describe existing custom conflict policies without a stored procedure as requiring manual resolution rather than displaying an empty procedure name.
 - Validate UTF-8 throughout JSON import files, including non-ID fields, and retain structured partial results when malformed bytes are found.
+- Avoid repeatedly parsing incomplete JSON objects during import when large records arrive in short reads.
 
 ### Improvements
 

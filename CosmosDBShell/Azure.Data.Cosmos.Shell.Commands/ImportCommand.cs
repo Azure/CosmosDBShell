@@ -234,6 +234,7 @@ internal class ImportCommand : CosmosCommand
         var final = false;
         var line = 1;
         var previousCarriageReturn = false;
+        ObjectBoundaryScanner scanner = default;
         while (true)
         {
             token.ThrowIfCancellationRequested();
@@ -254,11 +255,12 @@ internal class ImportCommand : CosmosCommand
                         MessageService.GetArgsString("command-import-error-not_object", "line", line));
                 }
 
-                if (TryReadObject(buffer.AsSpan(offset, length - offset), final, line, out var item, out var consumed))
+                if (TryReadObject(buffer.AsSpan(offset, length - offset), final, line, ref scanner, out var item, out var consumed))
                 {
                     var startLine = line;
                     AdvanceLines(buffer.AsSpan(offset, consumed), ref line, ref previousCarriageReturn);
                     offset += consumed;
+                    scanner = default;
                     yield return (startLine, item);
                     continue;
                 }
@@ -286,11 +288,19 @@ internal class ImportCommand : CosmosCommand
         }
     }
 
-    private static bool TryReadObject(ReadOnlySpan<byte> buffer, bool final, int line, out JsonElement item, out int consumed)
+    private static bool TryReadObject(ReadOnlySpan<byte> buffer, bool final, int line, ref ObjectBoundaryScanner scanner, out JsonElement item, out int consumed)
     {
         try
         {
-            var reader = new Utf8JsonReader(buffer, final, default);
+            var complete = scanner.Scan(buffer);
+            if (!complete && !final)
+            {
+                item = default;
+                consumed = 0;
+                return false;
+            }
+
+            var reader = new Utf8JsonReader(complete ? buffer[..scanner.BytesScanned] : buffer, isFinalBlock: true, default);
             if (JsonDocument.TryParseValue(ref reader, out var document))
             {
                 using (document)
@@ -1158,6 +1168,59 @@ internal class ImportCommand : CosmosCommand
                     "message",
                     CommandException.GetDisplayMessage(ex)),
                 ex));
+        }
+    }
+
+    internal struct ObjectBoundaryScanner
+    {
+        private int depth;
+        private bool inString;
+        private bool escaped;
+
+        internal int BytesScanned { get; private set; }
+
+        internal bool Scan(ReadOnlySpan<byte> buffer)
+        {
+            // Retain framing progress across refills; Utf8JsonReader validates the complete object.
+            while (this.BytesScanned < buffer.Length)
+            {
+                var value = buffer[this.BytesScanned++];
+                if (this.inString)
+                {
+                    if (this.escaped)
+                    {
+                        this.escaped = false;
+                    }
+                    else if (value == '\\')
+                    {
+                        this.escaped = true;
+                    }
+                    else if (value == '"')
+                    {
+                        this.inString = false;
+                    }
+                }
+                else if (value == '"')
+                {
+                    this.inString = true;
+                }
+                else if (value is (byte)'{' or (byte)'[')
+                {
+                    if (++this.depth > 64)
+                    {
+                        throw new JsonException("The maximum JSON depth of 64 has been exceeded.");
+                    }
+                }
+                else if (value is (byte)'}' or (byte)']')
+                {
+                    if (--this.depth == 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
     }
 

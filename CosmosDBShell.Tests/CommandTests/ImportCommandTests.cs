@@ -231,6 +231,73 @@ public class ImportCommandTests
     }
 
     [Theory]
+    [InlineData(31)]
+    [InlineData(127)]
+    [InlineData(4096)]
+    public async Task EnumerateJsonDocumentAsync_LargeObjectInShortReads_PreservesContents(int chunkSize)
+    {
+        var text = new string('x', 2 * 1024 * 1024);
+        var json = "{\"id\":\"first\",\"data\":\"" + text + "\"}\n{\"id\":\"last\"}";
+        using var stream = new ChunkLimitedReadStream(Encoding.UTF8.GetBytes(json), chunkSize);
+        var items = new List<JsonElement>();
+
+        await foreach (var (_, item) in ImportCommand.EnumerateJsonDocumentAsync(stream, TestContext.Current.CancellationToken))
+        {
+            items.Add(item);
+        }
+
+        Assert.Equal(2, items.Count);
+        Assert.Equal(text, items[0].GetProperty("data").GetString());
+        Assert.Equal("last", items[1].GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void ObjectBoundaryScanner_LargeObject_AdvancesOnlyAcrossNewBytes()
+    {
+        var bytes = Encoding.UTF8.GetBytes("{\"data\":\"" + new string('x', 2 * 1024 * 1024) + "\"}");
+        ImportCommand.ObjectBoundaryScanner scanner = default;
+        for (var length = 127; length < bytes.Length; length += 127)
+        {
+            Assert.False(scanner.Scan(bytes.AsSpan(0, length)));
+            Assert.Equal(length, scanner.BytesScanned);
+        }
+
+        Assert.True(scanner.Scan(bytes));
+        Assert.Equal(bytes.Length, scanner.BytesScanned);
+    }
+
+    [Theory]
+    [InlineData("""{"a":"\"}","nested":[{}]}""")]
+    [InlineData("""{"a":"\\","nested":{}}""")]
+    [InlineData("""{"a":"\\\"{}[]","nested":[{"b":"x"}]}""")]
+    [InlineData("""{"a":"\u0022}","nested":[]}""")]
+    public async Task EnumerateJsonDocumentAsync_EscapesAndNestingAcrossReads_FindCorrectBoundary(string json)
+    {
+        using var stream = new ChunkLimitedReadStream(Encoding.UTF8.GetBytes(json + "\n{\"id\":\"last\"}"));
+
+        Assert.Equal(2, await CountJsonDocumentItemsAsync(stream));
+    }
+
+    [Theory]
+    [InlineData(63, true)]
+    [InlineData(64, false)]
+    public async Task EnumerateJsonDocumentAsync_ShortReads_PreservesDefaultDepthLimit(int arrayDepth, bool valid)
+    {
+        var json = "{\"nested\":" + new string('[', arrayDepth) + "0" + new string(']', arrayDepth) + "}";
+        using var stream = new ChunkLimitedReadStream(Encoding.UTF8.GetBytes(json));
+        if (valid)
+        {
+            Assert.Equal(1, await CountJsonDocumentItemsAsync(stream));
+        }
+        else
+        {
+            var error = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+            Assert.Contains("Line 1", error.Message);
+            Assert.IsType<JsonException>(error.InnerException);
+        }
+    }
+
+    [Theory]
     [InlineData("[{\"id\":\"a\"},")]
     [InlineData("[{\"id\":\"a\"}")]
     [InlineData("[{\"id\":\"a\"}]]")]
@@ -312,7 +379,7 @@ public class ImportCommandTests
     [InlineData("{\"id\":\"a\"}\n{\"id\":\"b\"}", 2)]
     public async Task EnumerateJsonDocumentAsync_ByteOrderMarkSplitAcrossReads_IsSkipped(string json, int expected)
     {
-        using var stream = new OneByteReadStream([0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes(json)]);
+        using var stream = new ChunkLimitedReadStream([0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes(json)]);
 
         Assert.Equal(expected, await CountJsonDocumentItemsAsync(stream));
     }
@@ -326,7 +393,7 @@ public class ImportCommandTests
     public async Task EnumerateJsonDocumentAsync_UnicodeByteOrderMark_IsTranscoded(string encodingName, string json, int expected)
     {
         var encoding = Encoding.GetEncoding(encodingName);
-        using var stream = new OneByteReadStream([.. encoding.GetPreamble(), .. encoding.GetBytes(json)]);
+        using var stream = new ChunkLimitedReadStream([.. encoding.GetPreamble(), .. encoding.GetBytes(json)]);
 
         var items = new List<(int Line, JsonElement Item)>();
         await foreach (var item in ImportCommand.EnumerateJsonDocumentAsync(stream, TestContext.Current.CancellationToken))
@@ -855,16 +922,16 @@ public class ImportCommandTests
         return count;
     }
 
-    private sealed class OneByteReadStream(byte[] content) : MemoryStream(content)
+    private sealed class ChunkLimitedReadStream(byte[] content, int chunkSize = 1) : MemoryStream(content)
     {
-        public override int Read(byte[] buffer, int offset, int count) => base.Read(buffer, offset, Math.Min(count, 1));
+        public override int Read(byte[] buffer, int offset, int count) => base.Read(buffer, offset, Math.Min(count, chunkSize));
 
-        public override int Read(Span<byte> buffer) => base.Read(buffer[..Math.Min(buffer.Length, 1)]);
+        public override int Read(Span<byte> buffer) => base.Read(buffer[..Math.Min(buffer.Length, chunkSize)]);
 
         public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-            => base.ReadAsync(buffer, offset, Math.Min(count, 1), cancellationToken);
+            => base.ReadAsync(buffer, offset, Math.Min(count, chunkSize), cancellationToken);
 
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-            => base.ReadAsync(buffer[..Math.Min(buffer.Length, 1)], cancellationToken);
+            => base.ReadAsync(buffer[..Math.Min(buffer.Length, chunkSize)], cancellationToken);
     }
 }
