@@ -135,6 +135,62 @@ public class ImportFailureResultTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InvalidUnicodePartitionKey_PreservesConcurrentWritesAndSelectedFormat(bool continueOnError)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        var file = Path.GetTempFileName();
+        using var shell = CreateShell(out var container);
+        var first = new TaskCompletionSource<ResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var second = new TaskCompletionSource<ResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        container.CreateItemStreamAsync(Arg.Any<Stream>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                using var item = JsonDocument.Parse(call.ArgAt<Stream>(0));
+                return item.RootElement.GetProperty("id").GetString() switch
+                {
+                    "first" => first.Task,
+                    "second" => second.Task,
+                    _ => Task.FromResult(Response(2)),
+                };
+            });
+        try
+        {
+            await File.WriteAllTextAsync(
+                file,
+                """[{"id":"first","pk":"x"},{"id":"second","pk":"x"},{"id":"bad","pk":"\uD800"},{"id":"last","pk":"x"}]""",
+                timeout.Token);
+            var command = new ImportCommand { File = file, Concurrency = 3, ContinueOnError = continueOnError, Format = "csv" };
+
+            var import = command.ExecuteAsync(shell, new CommandState(), "import", timeout.Token);
+            Assert.False(import.IsCompleted);
+            first.SetResult(Response(2));
+            second.SetResult(Response(2));
+            var state = Assert.IsType<StructuredErrorCommandState>(await import.WaitAsync(timeout.Token));
+
+            var result = Assert.IsType<ShellJson>(state.Result).Value;
+            var imported = continueOnError ? 3 : 2;
+            Assert.Equal(imported, result.GetProperty("imported").GetInt32());
+            Assert.Equal(1, result.GetProperty("failed").GetInt32());
+            Assert.Equal(imported * 2.0, result.GetProperty("requestCharge").GetDouble());
+            Assert.Equal(imported * 2.0, state.RequestCharge);
+            Assert.Equal(ShellExitCode.UsageError, state.ExitCode);
+            Assert.Equal(OutputFormat.CSV, state.OutputFormat);
+            Assert.Contains("Line 3", result.GetProperty("error").GetString());
+            Assert.Contains("Invalid partition key", result.GetProperty("error").GetString());
+            Assert.Equal(imported, container.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(Container.CreateItemStreamAsync)));
+        }
+        finally
+        {
+            first.TrySetResult(Response(2));
+            second.TrySetResult(Response(2));
+            File.Delete(file);
+        }
+    }
+
     [Fact]
     public async Task AllWritesFail_ResultRetainsChargeAndFirstObservedFailure()
     {

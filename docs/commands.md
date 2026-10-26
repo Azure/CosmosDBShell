@@ -1403,6 +1403,8 @@ The command operates on a container. By default it targets the current container
 
 Conflict resolution policies only take effect on accounts configured for multi-region writes.
 
+When an existing custom policy has no resolution stored procedure, `conflict show` reports that conflicts require manual resolution.
+
 #### Examples
 
 ```bash

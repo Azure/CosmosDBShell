@@ -244,6 +244,7 @@
   "command-conflict-example-2": "Use last-writer-wins resolution based on the /_ts path",
   "command-conflict-example-3": "Use a stored procedure to resolve conflicts",
   "command-conflict-status-custom": "Conflict resolution for {0}: custom, using procedure {1}.",
+  "command-conflict-status-custom-manual": "Conflict resolution for {0}: custom, conflicts require manual resolution.",
   "command-conflict-status-lww": "Conflict resolution for {0}: last writer wins, using path {1}.",
   "command-conflict-updated": "Conflict resolution policy updated successfully.",
   "command-connect-connected": "Connected to account \u0027{0}\u0027",

@@ -1087,7 +1087,7 @@ internal class ImportCommand : CosmosCommand
             {
                 TryCreatePartitionKeyFromItem(item, partitionKeyPaths, out _, out partitionKey);
             }
-            catch (JsonException ex)
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException)
             {
                 return (0, new CommandException(
                     "import",
@@ -1099,7 +1099,7 @@ internal class ImportCommand : CosmosCommand
                         "Invalid partition key",
                         "message",
                         ex.Message),
-                    ex));
+                    ex is JsonException ? ex : new JsonException(ex.Message, ex)));
             }
 
             using var response = mode == ImportMode.Upsert

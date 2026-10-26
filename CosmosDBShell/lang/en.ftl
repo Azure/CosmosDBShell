@@ -691,6 +691,7 @@ command-conflict-description-container = The container to read/update the confli
 command-conflict-updated = Conflict resolution policy updated successfully.
 command-conflict-status-lww = Conflict resolution for { $container }: last writer wins, using path { $value }.
 command-conflict-status-custom = Conflict resolution for { $container }: custom, using procedure { $value }.
+command-conflict-status-custom-manual = Conflict resolution for { $container }: custom, conflicts require manual resolution.
 command-conflict-error-missing_subcommand = Missing subcommand. Use one of: show, set.
 command-conflict-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set.
 command-conflict-error-missing_set_args = Nothing to set. Provide --mode, --path, or --procedure.

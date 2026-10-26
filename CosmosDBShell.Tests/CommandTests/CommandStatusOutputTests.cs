@@ -98,6 +98,55 @@ public class CommandStatusOutputTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("resolveConflicts")]
+    public async Task ConflictShow_CustomPolicy_DescribesProcedureOrManualResolution(string? procedure)
+    {
+        var originalOut = Console.Out;
+        var originalConsole = AnsiConsole.Console;
+        using var output = new StringWriter();
+        using var shell = CreateShell(conflictPolicy: new ConflictResolutionPolicy
+        {
+            Mode = ConflictResolutionMode.Custom,
+            ResolutionProcedure = procedure,
+        });
+        try
+        {
+            Console.SetOut(output);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+
+            var state = await new ConflictCommand { Subcommand = "show" }
+                .ExecuteAsync(shell, new CommandState(), "conflict show", TestContext.Current.CancellationToken);
+            shell.PrintState(state);
+
+            var expected = string.IsNullOrEmpty(procedure)
+                ? MessageService.GetArgsString("command-conflict-status-custom-manual", "container", "items")
+                : MessageService.GetArgsString("command-conflict-status-custom", "container", "items", "value", procedure);
+            Assert.Equal(expected + Environment.NewLine, output.ToString());
+            var result = Assert.IsType<ShellJson>(state.Result).Value;
+            if (string.IsNullOrEmpty(procedure))
+            {
+                Assert.Equal(JsonValueKind.Null, result.GetProperty("resolutionProcedure").ValueKind);
+            }
+            else
+            {
+                Assert.Equal(procedure, result.GetProperty("resolutionProcedure").GetString());
+            }
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            AnsiConsole.Console = originalConsole;
+        }
+    }
+
+    [Theory]
     [InlineData("json", false)]
     [InlineData("csv", false)]
     [InlineData("table", false)]
@@ -284,7 +333,7 @@ public class CommandStatusOutputTests
         };
     }
 
-    private static ShellInterpreter CreateShell(int? ttl = 3600)
+    private static ShellInterpreter CreateShell(int? ttl = 3600, ConflictResolutionPolicy? conflictPolicy = null)
     {
         var client = Substitute.For<CosmosClient>();
         client.Endpoint.Returns(new Uri("https://example.documents.azure.com"));
@@ -299,7 +348,7 @@ public class CommandStatusOutputTests
         {
             DefaultTimeToLive = ttl,
             AnalyticalStoreTimeToLiveInSeconds = ttl,
-            ConflictResolutionPolicy = new ConflictResolutionPolicy
+            ConflictResolutionPolicy = conflictPolicy ?? new ConflictResolutionPolicy
             {
                 Mode = ConflictResolutionMode.LastWriterWins,
                 ResolutionPath = "/_ts",

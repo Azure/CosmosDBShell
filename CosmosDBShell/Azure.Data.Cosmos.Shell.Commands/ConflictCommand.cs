@@ -130,11 +130,14 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         };
 
         using var jsonDoc = JsonDocument.Parse(root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        var messageId = IsCustom(view.Mode)
+            ? string.IsNullOrEmpty(view.ResolutionProcedure) ? "command-conflict-status-custom-manual" : "command-conflict-status-custom"
+            : "command-conflict-status-lww";
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
             RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                IsCustom(view.Mode) ? "command-conflict-status-custom" : "command-conflict-status-lww",
+                messageId,
                 "container",
                 containerName,
                 "value",
