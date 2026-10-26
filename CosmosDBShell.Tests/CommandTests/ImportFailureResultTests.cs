@@ -11,6 +11,7 @@ using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
+using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 using NSubstitute;
 
@@ -184,6 +185,50 @@ public class ImportFailureResultTests
         finally
         {
             File.Delete(file);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DryRunFailure_UserMode_HonorsErrorRedirection(bool append)
+    {
+        var file = Path.GetTempFileName();
+        var stderr = Path.GetTempFileName();
+        var originalOut = Console.Out;
+        var originalConsole = Spectre.Console.AnsiConsole.Console;
+        using var output = new StringWriter();
+        using var shell = ShellInterpreter.CreateInstance();
+        try
+        {
+            await File.WriteAllTextAsync(file, """{"id":"first"} garbage""", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(stderr, "previous" + Environment.NewLine, TestContext.Current.CancellationToken);
+            Console.SetOut(output);
+            Spectre.Console.AnsiConsole.Console = Spectre.Console.AnsiConsole.Create(new Spectre.Console.AnsiConsoleSettings
+            {
+                Ansi = Spectre.Console.AnsiSupport.No,
+                ColorSystem = Spectre.Console.ColorSystemSupport.NoColors,
+                Out = new Spectre.Console.AnsiConsoleOutput(output),
+            });
+
+            var script = $"import {JsonSerializer.Serialize(file)} --dry-run {(append ? "2>>" : "2>")}{JsonSerializer.Serialize(stderr)}";
+            var state = Assert.IsType<StructuredErrorCommandState>(await shell.ExecuteCommandAsync(script, TestContext.Current.CancellationToken));
+
+            Assert.True(Assert.IsType<ShellJson>(state.Result).Value.GetProperty("dryRun").GetBoolean());
+            var errorText = await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken);
+            Assert.Contains(state.Exception.Message, errorText);
+            Assert.Equal(append, errorText.StartsWith("previous", StringComparison.Ordinal));
+            var text = output.ToString();
+            Assert.Contains(MessageService.GetArgsString("command-import-dry-run-stopped", "count", 1), text);
+            Assert.DoesNotContain("Line 1", text);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Spectre.Console.AnsiConsole.Console = originalConsole;
+            shell.ErrOutRedirect = null;
+            File.Delete(file);
+            File.Delete(stderr);
         }
     }
 

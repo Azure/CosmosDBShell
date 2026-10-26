@@ -123,6 +123,44 @@ public class ImportConcurrencyTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SdkTimeout_IsRecordedPerItemWithoutLosingSettledWrites(bool continueOnError)
+    {
+        using var timeout = CreateTimeout();
+        var container = Substitute.For<Container>();
+        var first = new TaskCompletionSource<ItemResponse<JsonElement>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var second = new TaskCompletionSource<ItemResponse<JsonElement>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ConfigureWrites(container, (item, _) => item.GetProperty("id").GetInt32() switch
+        {
+            0 => first.Task,
+            1 => second.Task,
+            _ => Task.FromResult(Response(HttpStatusCode.Created, 2)),
+        });
+        using var reader = NewReader(3);
+        var progress = new ImportCommand.ImportProgress();
+        var import = ImportCommand.WriteItemsAsync(
+            ImportCommand.EnumerateJsonLinesAsync(reader, timeout.Token),
+            container,
+            ImportMode.Insert,
+            3,
+            continueOnError,
+            [],
+            new CommandState(),
+            timeout.Token,
+            progress: progress);
+
+        second.SetException(new OperationCanceledException("The operation was canceled. Cancellation Token has expired: True."));
+        first.SetResult(Response(HttpStatusCode.Created, 2));
+
+        var result = await import.WaitAsync(timeout.Token);
+        Assert.Equal((2, 1, 4.0), result);
+        var failure = Assert.IsType<CommandException>(progress.FirstFailure);
+        Assert.IsType<OperationCanceledException>(failure.InnerException);
+        Assert.Contains(nameof(HttpStatusCode.RequestTimeout), failure.Message);
+    }
+
+    [Theory]
     [InlineData(0, HttpStatusCode.Created, 1)]
     [InlineData(0, HttpStatusCode.OK, 0)]
     [InlineData(1, HttpStatusCode.Created, 1)]

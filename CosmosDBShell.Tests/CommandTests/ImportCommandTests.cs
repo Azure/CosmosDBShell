@@ -316,6 +316,37 @@ public class ImportCommandTests
 
         Assert.Equal(expected, await CountJsonDocumentItemsAsync(stream));
     }
+
+    [Theory]
+    [InlineData("utf-16", "{\"id\":\"a\",\"name\":\"\u00e9\"}\r\n{\"id\":\"b\"}\n", 2)]
+    [InlineData("utf-16BE", "{\"id\":\"a\"}\n{\"id\":\"b\"}\n{\"id\":\"c\"}", 3)]
+    [InlineData("utf-32", " [{\"id\":\"a\"},{\"id\":\"b\"}]", 2)]
+    [InlineData("utf-32BE", "{\"id\":\"a\"}", 1)]
+    [InlineData("utf-16", "", 0)]
+    public async Task EnumerateJsonDocumentAsync_UnicodeByteOrderMark_IsTranscoded(string encodingName, string json, int expected)
+    {
+        var encoding = Encoding.GetEncoding(encodingName);
+        using var stream = new OneByteReadStream([.. encoding.GetPreamble(), .. encoding.GetBytes(json)]);
+
+        var items = new List<(int Line, JsonElement Item)>();
+        await foreach (var item in ImportCommand.EnumerateJsonDocumentAsync(stream, TestContext.Current.CancellationToken))
+        {
+            items.Add(item);
+        }
+
+        Assert.Equal(expected, items.Count);
+        if (expected > 0)
+        {
+            Assert.Equal("a", items[0].Item.GetProperty("id").GetString());
+        }
+
+        if (encodingName == "utf-16" && expected > 0)
+        {
+            Assert.Equal("\u00e9", items[0].Item.GetProperty("name").GetString());
+            Assert.Equal(2, items[1].Line);
+        }
+    }
+
     [Fact]
     public void ParseJsonLine_ValidObject_ReturnsClonedElement()
     {

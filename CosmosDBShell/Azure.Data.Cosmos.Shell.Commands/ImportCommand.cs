@@ -205,13 +205,17 @@ internal class ImportCommand : CosmosCommand
         Stream stream,
         [EnumeratorCancellation] CancellationToken token)
     {
-        var first = await PeekFirstSignificantByteAsync(stream, token);
+        var (first, sourceEncoding) = await PeekFirstSignificantCharAsync(stream, token);
         if (first < 0)
         {
             yield break;
         }
 
-        var source = first == '[' ? EnumerateArrayAsync(stream, token) : EnumerateObjectsAsync(stream, token);
+        await using var transcoded = sourceEncoding is null
+            ? null
+            : Encoding.CreateTranscodingStream(stream, sourceEncoding, Encoding.UTF8, leaveOpen: true);
+        var input = transcoded ?? stream;
+        var source = first == '[' ? EnumerateArrayAsync(input, token) : EnumerateObjectsAsync(input, token);
         await using var items = source.GetAsyncEnumerator(token);
         while (await MoveNextDocumentAsync(items))
         {
@@ -338,39 +342,78 @@ internal class ImportCommand : CosmosCommand
         }
     }
 
-    private static async Task<int> PeekFirstSignificantByteAsync(Stream stream, CancellationToken token)
+    private static async Task<(int First, Encoding? SourceEncoding)> PeekFirstSignificantCharAsync(Stream stream, CancellationToken token)
     {
         var start = stream.Position;
         var buffer = new byte[4096];
         var contentStart = start;
         try
         {
-            // Only a complete UTF-8 byte-order mark is skipped, even when split across reads;
-            // partial prefixes reach the JSON parser and fail there.
-            var read = await stream.ReadAtLeastAsync(buffer, 3, throwOnEndOfStream: false, token);
-            var index = read >= 3 && buffer[0] == 0xEF && buffer[1] == 0xBB && buffer[2] == 0xBF ? 3 : 0;
-            contentStart = start + index;
-            while (read > 0)
+            // Only complete byte-order marks are recognized, even when split across reads;
+            // partial prefixes reach the JSON parser and fail there. UTF-16/UTF-32 input is
+            // transcoded to UTF-8 by the caller.
+            var read = await stream.ReadAtLeastAsync(buffer, 4, throwOnEndOfStream: false, token);
+            var (sourceEncoding, preambleLength) = DetectByteOrderMark(buffer.AsSpan(0, read));
+            contentStart = start + preambleLength;
+            var encoding = sourceEncoding ?? Encoding.UTF8;
+            var decoder = encoding.GetDecoder();
+            var chars = new char[encoding.GetMaxCharCount(buffer.Length)];
+            var index = preambleLength;
+            while (true)
             {
-                for (; index < read; index++)
+                var final = read == 0;
+                var count = decoder.GetChars(buffer, index, read - index, chars, 0, flush: final);
+                for (var i = 0; i < count; i++)
                 {
-                    var value = buffer[index];
-                    if (value is not ((byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n'))
+                    if (chars[i] is not (' ' or '\t' or '\r' or '\n'))
                     {
-                        return value;
+                        return (chars[i], sourceEncoding);
                     }
+                }
+
+                if (final)
+                {
+                    return (-1, sourceEncoding);
                 }
 
                 read = await stream.ReadAsync(buffer, token);
                 index = 0;
             }
-
-            return -1;
         }
         finally
         {
             stream.Position = contentStart;
         }
+    }
+
+    private static (Encoding? Encoding, int PreambleLength) DetectByteOrderMark(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]))
+        {
+            return (null, 3);
+        }
+
+        if (bytes.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xFE, 0x00, 0x00]))
+        {
+            return (Encoding.UTF32, 4);
+        }
+
+        if (bytes.StartsWith((ReadOnlySpan<byte>)[0x00, 0x00, 0xFE, 0xFF]))
+        {
+            return (new UTF32Encoding(bigEndian: true, byteOrderMark: true), 4);
+        }
+
+        if (bytes.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xFE]))
+        {
+            return (Encoding.Unicode, 2);
+        }
+
+        if (bytes.StartsWith((ReadOnlySpan<byte>)[0xFE, 0xFF]))
+        {
+            return (Encoding.BigEndianUnicode, 2);
+        }
+
+        return (null, 0);
     }
 
     /// <summary>
@@ -765,7 +808,7 @@ internal class ImportCommand : CosmosCommand
         resultState.RenderUser = () =>
         {
             ShellInterpreter.WriteLine(summary);
-            if (failure != null)
+            if (failure != null && shell.ErrOutRedirect == null)
             {
                 ShellInterpreter.WriteLine(failure.Message);
             }
@@ -1071,6 +1114,22 @@ internal class ImportCommand : CosmosCommand
                     "message",
                     CommandException.GetDisplayMessage(ce)),
                 ce));
+        }
+        catch (Exception ex) when (!token.IsCancellationRequested && CommandException.IsConnectivityFailure(ex))
+        {
+            // SDK request timeouts can surface as OperationCanceledException while the caller's
+            // token is still active; record them per item so settled writes are not lost.
+            return (0, new CommandException(
+                "import",
+                MessageService.GetArgsString(
+                    "command-import-error-item_failed",
+                    "line",
+                    lineNumber,
+                    "status",
+                    ex is OperationCanceledException ? System.Net.HttpStatusCode.RequestTimeout.ToString() : ex.GetType().Name,
+                    "message",
+                    CommandException.GetDisplayMessage(ex)),
+                ex));
         }
     }
 
