@@ -388,6 +388,72 @@ public class ImportFailureResultTests
         }
     }
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public async Task InvalidUtf8InNonIdField_RetainsStructuredProgress(bool bom, bool afterValidItem, bool dryRun)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        var file = Path.GetTempFileName();
+        using var shell = CreateShell(out var container);
+        var write = new TaskCompletionSource<ResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        container.CreateItemStreamAsync(Arg.Any<Stream>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                started.TrySetResult();
+                return write.Task;
+            });
+        try
+        {
+            var prefix = afterValidItem ? """{"id":"first","pk":"x"}""" + "\n" + new string(' ', 40_000) : string.Empty;
+            byte[] preamble = bom ? Encoding.UTF8.GetPreamble() : [];
+            await File.WriteAllBytesAsync(
+                file,
+                [.. preamble, .. Encoding.UTF8.GetBytes(prefix + "{\"id\":\"bad\",\"pk\":\"x\",\"name\":\""), 0xFF, .. Encoding.UTF8.GetBytes("\"}")],
+                timeout.Token);
+
+            var import = new ImportCommand { File = file, DryRun = dryRun, Format = "csv" }
+                .ExecuteAsync(shell, new CommandState(), "import", timeout.Token);
+            if (afterValidItem && !dryRun)
+            {
+                await started.Task.WaitAsync(timeout.Token);
+                Assert.False(import.IsCompleted);
+                write.SetResult(Response(2));
+            }
+
+            var state = Assert.IsType<StructuredErrorCommandState>(await import.WaitAsync(timeout.Token));
+            var result = Assert.IsType<ShellJson>(state.Result).Value;
+            var imported = afterValidItem && !dryRun ? 1 : 0;
+            Assert.Equal(imported, result.GetProperty("imported").GetInt32());
+            Assert.Equal(0, result.GetProperty("failed").GetInt32());
+            Assert.Equal(imported * 2.0, result.GetProperty("requestCharge").GetDouble());
+            Assert.Equal(ShellExitCode.UsageError, state.ExitCode);
+            Assert.Equal(OutputFormat.CSV, state.OutputFormat);
+            if (dryRun)
+            {
+                Assert.Equal(afterValidItem ? 1 : 0, result.GetProperty("validated").GetInt32());
+            }
+
+            Assert.Equal(imported, container.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(Container.CreateItemStreamAsync)));
+        }
+        finally
+        {
+            if (!write.Task.IsCompleted)
+            {
+                write.TrySetResult(Response(2));
+            }
+            File.Delete(file);
+        }
+    }
+
     [Fact]
     public async Task WriteFailure_MalformedBomUnicode_DoesNotWriteAlteredId()
     {

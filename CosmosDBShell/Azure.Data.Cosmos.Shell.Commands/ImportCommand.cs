@@ -211,10 +211,11 @@ internal class ImportCommand : CosmosCommand
             yield break;
         }
 
-        await using var transcoded = sourceEncoding is null
-            ? null
-            : Encoding.CreateTranscodingStream(stream, sourceEncoding, Encoding.UTF8, leaveOpen: true);
-        var input = transcoded ?? stream;
+        await using var input = Encoding.CreateTranscodingStream(
+            stream,
+            sourceEncoding ?? new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true),
+            Encoding.UTF8,
+            leaveOpen: true);
         var source = first == '[' ? EnumerateArrayAsync(input, token) : EnumerateObjectsAsync(input, token);
         await using var items = source.GetAsyncEnumerator(token);
         while (await MoveNextDocumentAsync(items))
@@ -333,7 +334,7 @@ internal class ImportCommand : CosmosCommand
         {
             return await enumerator.MoveNextAsync();
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or DecoderFallbackException)
         {
             throw new CommandException(
                 "import",
@@ -350,12 +351,12 @@ internal class ImportCommand : CosmosCommand
         try
         {
             // Only complete byte-order marks are recognized, even when split across reads;
-            // partial prefixes reach the JSON parser and fail there. UTF-16/UTF-32 input is
-            // transcoded to UTF-8 by the caller.
+            // partial prefixes fail strict decoding. Input is transcoded to validated UTF-8
+            // by the caller.
             var read = await stream.ReadAtLeastAsync(buffer, 4, throwOnEndOfStream: false, token);
             var (sourceEncoding, preambleLength) = DetectByteOrderMark(buffer.AsSpan(0, read));
             contentStart = start + preambleLength;
-            var encoding = sourceEncoding ?? Encoding.UTF8;
+            var encoding = sourceEncoding ?? new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
             var decoder = encoding.GetDecoder();
             var chars = new char[encoding.GetMaxCharCount(buffer.Length)];
             var index = preambleLength;
@@ -379,6 +380,13 @@ internal class ImportCommand : CosmosCommand
                 read = await stream.ReadAsync(buffer, token);
                 index = 0;
             }
+        }
+        catch (DecoderFallbackException ex)
+        {
+            throw new CommandException(
+                "import",
+                MessageService.GetArgsString("command-import-error-invalid_document", "message", ex.Message),
+                ex);
         }
         finally
         {

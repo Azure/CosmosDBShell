@@ -39,6 +39,7 @@
 - Reject malformed BOM-encoded UTF-16/UTF-32 import files instead of silently replacing characters in item IDs; retain partial results and the requested result format when decoding fails.
 - Count invalid Unicode partition-key strings as per-item import failures without losing concurrent write results or the selected output format.
 - Describe existing custom conflict policies without a stored procedure as requiring manual resolution rather than displaying an empty procedure name.
+- Validate UTF-8 throughout JSON import files, including non-ID fields, and retain structured partial results when malformed bytes are found.
 
 ### Improvements
 
