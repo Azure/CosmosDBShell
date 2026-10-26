@@ -115,7 +115,6 @@ internal class PatchCommand : CosmosCommand
                 throw new CommandException("patch", MessageService.GetArgsString("command-patch-error-status-returned", "status", response.StatusCode.ToString()));
             }
 
-            ShellInterpreter.WriteLine(MessageService.GetArgsString("command-patch-success", "charge", response.RequestCharge.ToString("F2")));
             return new CommandState
             {
                 Result = new ShellJson(JsonSerializer.SerializeToElement(new
@@ -126,6 +125,7 @@ internal class PatchCommand : CosmosCommand
                     requestCharge = response.RequestCharge,
                 })),
                 RequestCharge = response.RequestCharge,
+                RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-patch-success", "charge", response.RequestCharge.ToString("F2"))),
             };
         }
         catch (CosmosException ce) when (ce.StatusCode == System.Net.HttpStatusCode.NotFound)

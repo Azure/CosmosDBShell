@@ -2047,13 +2047,20 @@ public partial class ShellInterpreter : IDisposable
             }
 
             // Structured failures bypass ReportExecutionError, so the script location the
-            // statement attached would otherwise be dropped from the human-readable output.
-            // Emit it here and let the structured result render itself below.
+            // statement attached and any `2>`/`2>>` redirection would otherwise be dropped
+            // from the human-readable output. Emit the diagnostic here and let the
+            // structured result render itself below.
             if (!inMachineMode
                 && state is StructuredErrorCommandState humanStructuredError
                 && humanStructuredError.Exception is PositionalException positionalError)
             {
                 this.ReportPositionalError(positionalError);
+            }
+            else if (!inMachineMode
+                && state is StructuredErrorCommandState redirectedError
+                && this.ErrOutRedirect != null)
+            {
+                this.ReportExecutionError(redirectedError.Exception);
             }
 
             // Interactive, user-facing view: when the command supplied a custom renderer and

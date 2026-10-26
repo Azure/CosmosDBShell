@@ -130,9 +130,18 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         };
 
         using var jsonDoc = JsonDocument.Parse(root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        var messageId = IsCustom(view.Mode)
+            ? string.IsNullOrEmpty(view.ResolutionProcedure) ? "command-conflict-status-custom-manual" : "command-conflict-status-custom"
+            : "command-conflict-status-lww";
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
+            RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                messageId,
+                "container",
+                containerName,
+                "value",
+                IsCustom(view.Mode) ? view.ResolutionProcedure ?? string.Empty : view.ResolutionPath ?? string.Empty)),
         };
     }
 
@@ -235,7 +244,8 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         }
 
         var view = await CosmosResourceFacade.ReplaceConflictResolutionPolicyAsync(state, databaseName, containerName, update, token);
-        ShellInterpreter.WriteLine(MessageService.GetString("command-conflict-updated"));
-        return BuildResult(containerName, view);
+        var result = BuildResult(containerName, view);
+        result.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-conflict-updated"));
+        return result;
     }
 }

@@ -5,6 +5,8 @@
 ### Breaking changes
 
 - `print <id> <key>` now parses the key with the same typed syntax as `patch`, so `print item-1 680` reads numeric key `680` instead of string `"680"`. To address a string key that looks like a number, boolean, null, or JSON array, quote it as a JSON string: `print item-1 '"680"'`. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
+- `import` and `export` now use the JSON format of the Azure Databases extension for VS Code. `export` writes an indented JSON array, or CSV when the file name ends in `.csv`; JSON Lines output is no longer supported. `import` automatically detects JSON arrays, single objects, and sequences of objects (including JSON Lines) in non-CSV files; no `--legacy` flag is needed. On both commands, `--format` / `-f` selects the command-result presentation (`user`, `json`, `csv`, or `table`), not the file contents.
+- `import --dry-run` now reports locally validated records in `validated` and always sets `imported` to `0`. Dry-run results explicitly identify offline validation and an unchecked target.
 
 ### New features
 
@@ -22,10 +24,23 @@
 - `print` now reads items with typed scalar and complete hierarchical partition keys, for example `print customer-1001 '[1001,"customer-1001"]'`. Invalid keys are distinguished from missing items. Shared argument parsing rejects object/nested-array components and non-finite numbers instead of coercing them. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
 - Avoid accessing an expired HTTP request during MCP session teardown, preventing disposal errors while releasing location subscriptions and legacy SSE admission state. ([#249](https://github.com/Azure/CosmosDBShell/issues/249))
 - Keep CLI inferred-key warnings visible before writes when the MCP listener is enabled; MCP calls continue to return warnings in their responses.
+- Show successful imports as a readable summary in normal output mode without appending JSON; structured output modes receive only the result.
+- Keep export, item-write, TTL, conflict-policy, and indexing-policy confirmations readable in normal output mode rather than appending status JSON. Requested structured results retain their existing data.
+- Preserve import counts and observed write RUs in structured CLI and MCP errors after partial imports or invalid input. Import failures retain the underlying error classification and report a bounded representative error.
+- Validate item IDs during import dry runs and report local validation failures with usage exit code `2`. Help and results clarify that dry runs do not check target partition keys, permissions, conflicts, or other service constraints.
+- Reject non-object values in JSON object sequences before buffering their bodies, report physical start lines for sequence items, and validate import result formats before accessing the target container or writing items.
+- Restore actionable missing-value diagnostics for startup options such as `--connect` and keep literal help/version command tails separate from startup handling.
+- Include requested CSV result text in MCP responses for failed imports and other structured failures, alongside the error and partial results.
 - Preserve partial bulk results after execution errors or cancellation, decode quoted partition-key paths consistently, and prevent retries from replaying newer journal outcomes or reordering writes after a failure.
 - Remove incomplete bulk saved plans when the final file flush fails, so a truncated plan cannot be mistaken for a complete job.
 - Restore actionable missing-value diagnostics for startup options such as `--connect` and keep literal help/version command tails separate from startup handling.
 - Release bulk temporary files promptly after a final spool flush fails, preventing retained disk space from hindering recovery.
+- Report invalid Unicode item IDs in import dry runs as validation errors, preserving the validated count, selected result format, and usage exit code.
+- Reject malformed BOM-encoded UTF-16/UTF-32 import files instead of silently replacing characters in item IDs; retain partial results and the requested result format when decoding fails.
+- Count invalid Unicode partition-key strings as per-item import failures without losing concurrent write results or the selected output format.
+- Describe existing custom conflict policies without a stored procedure as requiring manual resolution rather than displaying an empty procedure name.
+- Validate UTF-8 throughout JSON import files, including non-ID fields, and retain structured partial results when malformed bytes are found.
+- Avoid repeatedly parsing incomplete JSON objects during import when large records arrive in short reads.
 
 ### Improvements
 

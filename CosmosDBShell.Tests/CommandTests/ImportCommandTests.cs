@@ -11,42 +11,407 @@ using System.Threading;
 using System.Threading.Tasks;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
+using Spectre.Console;
 
+[Collection(ConsoleOutputTestCollection.Name)]
 public class ImportCommandTests
 {
     [Theory]
-    [InlineData("[", (int)ImportFormat.Array)]
-    [InlineData("  [", (int)ImportFormat.Array)]
-    [InlineData("\n\n[", (int)ImportFormat.Array)]
-    [InlineData("\uFEFF[", (int)ImportFormat.Array)]
-    [InlineData("{", (int)ImportFormat.JsonLines)]
-    [InlineData("  {", (int)ImportFormat.JsonLines)]
-    [InlineData("\uFEFF{", (int)ImportFormat.JsonLines)]
-    [InlineData("", (int)ImportFormat.JsonLines)]
-    [InlineData("   \n\t  ", (int)ImportFormat.JsonLines)]
-    public void DetectFormat_ChoosesBasedOnFirstNonWhitespaceChar(string leading, int expected)
+    [InlineData(null)]
+    [InlineData("user")]
+    [InlineData("json")]
+    [InlineData("csv")]
+    [InlineData("table")]
+    public async Task ExecuteAsync_DryRun_UsesSelectedOutputFormat(string? format)
     {
-        Assert.Equal((ImportFormat)expected, ImportCommand.DetectFormat(leading));
-    }
+        var file = Path.GetTempFileName();
+        var originalOut = Console.Out;
+        var originalConsole = AnsiConsole.Console;
+        using var output = new StringWriter();
+        using var shell = ShellInterpreter.CreateInstance();
+        try
+        {
+            await File.WriteAllTextAsync(file, "[{\"id\":\"a\"},{\"id\":\"b\"}]", TestContext.Current.CancellationToken);
+            Console.SetOut(output);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
 
-    [Fact]
-    public void DetectFormat_WithNull_ReturnsJsonLines()
-    {
-        Assert.Equal(ImportFormat.JsonLines, ImportCommand.DetectFormat(null!));
+            var command = new ImportCommand { File = file, DryRun = true, Format = format };
+            var state = await command.ExecuteAsync(shell, new CommandState(), string.Empty, TestContext.Current.CancellationToken);
+
+            Assert.Empty(output.ToString());
+            var result = Assert.IsType<ShellJson>(state.Result).Value;
+            Assert.Equal(0, result.GetProperty("imported").GetInt32());
+            Assert.Equal(2, result.GetProperty("validated").GetInt32());
+            Assert.True(result.GetProperty("dryRun").GetBoolean());
+
+            shell.PrintState(state);
+
+            var text = output.ToString();
+            var summary = MessageService.GetArgsString("command-import-dry-run-success", "count", 2);
+            if (format is null or "user")
+            {
+                Assert.Equal(summary + Environment.NewLine, text);
+            }
+            else
+            {
+                Assert.DoesNotContain(summary, text);
+                if (format == "json")
+                {
+                    using var document = JsonDocument.Parse(text);
+                    Assert.Equal(0, document.RootElement.GetProperty("imported").GetInt32());
+                    Assert.Equal(2, document.RootElement.GetProperty("validated").GetInt32());
+                }
+                else
+                {
+                    if (format == "csv")
+                    {
+                        Assert.Contains("imported", text);
+                    }
+                    else
+                    {
+                        Assert.Equal(OutputFormat.Table, state.OutputFormat);
+                        Assert.Equal(state.GenerateOutputText() + Environment.NewLine, text);
+                    }
+
+                    Assert.DoesNotContain("\"type\":", text);
+                }
+            }
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            AnsiConsole.Console = originalConsole;
+            File.Delete(file);
+        }
     }
 
     [Theory]
-    [InlineData("auto")]
-    [InlineData("Auto")]
-    [InlineData("jsonl")]
-    [InlineData("JSONL")]
-    [InlineData("jsonlines")]
-    [InlineData("JsonLines")]
-    [InlineData("array")]
-    [InlineData("Array")]
-    public void ImportFormat_ParsesDocumentedAliases(string value)
+    [InlineData("items.json", (int)ImportFormat.Json)]
+    [InlineData("items.jsonl", (int)ImportFormat.Json)]
+    [InlineData("items", (int)ImportFormat.Json)]
+    [InlineData("items.csv", (int)ImportFormat.Csv)]
+    [InlineData("items.CSV", (int)ImportFormat.Csv)]
+    public void ResolveFormat_ReadsJsonUnlessCsv(string file, int expected)
     {
-        Assert.True(Enum.TryParse<ImportFormat>(value, ignoreCase: true, out _));
+        Assert.Equal((ImportFormat)expected, ImportCommand.ResolveFormat(file));
+    }
+
+    [Theory]
+    [InlineData("[{\"id\":\"a\"},{\"id\":\"b\"}]")]
+    [InlineData("\uFEFF  \r\n[\n    {\n        \"id\": \"a\"\n    },\n    {\n        \"id\": \"b\"\n    }\n]")]
+    public async Task EnumerateJsonDocumentAsync_Array_YieldsItems(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var ids = new List<string>();
+        await foreach (var (_, element) in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
+        {
+            ids.Add(element.GetProperty("id").GetString()!);
+        }
+
+        Assert.Equal(["a", "b"], ids);
+    }
+
+    [Theory]
+    [InlineData("{\"id\":\"a\",\"pk\":\"x\"}")]
+    [InlineData("\uFEFF{\n    \"id\": \"a\",\n    \"pk\": \"x\"\n}\n")]
+    public async Task EnumerateJsonDocumentAsync_SingleObject_YieldsOneItem(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var items = new List<(int Index, JsonElement Item)>();
+        await foreach (var item in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
+        {
+            items.Add(item);
+        }
+
+        var (index, element) = Assert.Single(items);
+        Assert.Equal(1, index);
+        Assert.Equal("a", element.GetProperty("id").GetString());
+        Assert.Equal("x", element.GetProperty("pk").GetString());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  \n\t ")]
+    [InlineData("\uFEFF")]
+    public async Task EnumerateJsonDocumentAsync_EmptyInput_YieldsNothing(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var count = 0;
+        await foreach (var _ in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
+        {
+            count++;
+        }
+
+        Assert.Equal(0, count);
+    }
+
+    [Theory]
+    [InlineData("42")]
+    [InlineData("\"text\"")]
+    [InlineData("null")]
+    public async Task EnumerateJsonDocumentAsync_ScalarDocument_Throws(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+
+        Assert.Contains("not a JSON object", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("{\"id\":\"1\"}\n{\"id\":\"2\"}\n", 1, 2)]
+    [InlineData("{\"id\":\"1\"} {\"id\":\"2\"}", 1, 1)]
+    [InlineData("{\"id\":\"1\"}{\"id\":\"2\"}", 1, 1)]
+    [InlineData("\uFEFF \r\n{\n\"id\":\"1\"\n}\n\n{\n\"id\":\"2\"\n}\n", 2, 6)]
+    [InlineData("{\"id\":\"1\"}\r\n\r\n{\"id\":\"2\"}", 1, 3)]
+    [InlineData("{\"id\":\"1\"}\r\r{\"id\":\"2\"}", 1, 3)]
+    public async Task EnumerateJsonDocumentAsync_ObjectSequence_YieldsItems(string content, int firstLine, int secondLine)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+        var items = new List<(int Index, string? Id)>();
+        await foreach (var (index, item) in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
+        {
+            items.Add((index, item.GetProperty("id").GetString()));
+        }
+
+        Assert.Equal([(firstLine, "1"), (secondLine, "2")], items);
+    }
+
+    [Fact]
+    public async Task EnumerateJsonDocumentAsync_LargeJsonLinesInput_YieldsBeforeReadingRestOfFile()
+    {
+        var content = new StringBuilder();
+        for (var i = 0; i < 200_000; i++)
+        {
+            content.Append("{\"id\":\"").Append(i).Append("\",\"value\":\"padding\"}\n");
+        }
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content.ToString()));
+
+        await using var items = ImportCommand.EnumerateJsonDocumentAsync(stream, TestContext.Current.CancellationToken)
+            .GetAsyncEnumerator(TestContext.Current.CancellationToken);
+        Assert.True(await items.MoveNextAsync());
+        Assert.Equal("0", items.Current.Item.GetProperty("id").GetString());
+        Assert.True(stream.Position < 1024 * 1024, $"Read {stream.Position} of {stream.Length} bytes.");
+    }
+
+    [Theory]
+    [InlineData("[\"", "\"]")]
+    [InlineData("\"", "\"")]
+    [InlineData("{\"data\":\"", "")]
+    public async Task EnumerateJsonDocumentAsync_InvalidTrailingValue_Throws(string prefix, string suffix)
+    {
+        var content = "{\"id\":\"first\"}\n" + prefix + new string('x', 4 * 1024 * 1024) + suffix;
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+        if (prefix != "{\"data\":\"")
+        {
+            Assert.True(stream.Position < 64 * 1024, $"Read {stream.Position} of {stream.Length} bytes.");
+        }
+    }
+
+    [Fact]
+    public async Task EnumerateJsonDocumentAsync_LargeTrailingObject_IsImported()
+    {
+        var content = "{\"id\":\"first\"}\n{\"data\":\"" + new string('x', 4 * 1024 * 1024) + "\"}";
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        Assert.Equal(2, await CountJsonDocumentItemsAsync(stream));
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(127)]
+    [InlineData(4096)]
+    public async Task EnumerateJsonDocumentAsync_LargeObjectInShortReads_PreservesContents(int chunkSize)
+    {
+        var text = new string('x', 2 * 1024 * 1024);
+        var json = "{\"id\":\"first\",\"data\":\"" + text + "\"}\n{\"id\":\"last\"}";
+        using var stream = new ChunkLimitedReadStream(Encoding.UTF8.GetBytes(json), chunkSize);
+        var items = new List<JsonElement>();
+
+        await foreach (var (_, item) in ImportCommand.EnumerateJsonDocumentAsync(stream, TestContext.Current.CancellationToken))
+        {
+            items.Add(item);
+        }
+
+        Assert.Equal(2, items.Count);
+        Assert.Equal(text, items[0].GetProperty("data").GetString());
+        Assert.Equal("last", items[1].GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void ObjectBoundaryScanner_LargeObject_AdvancesOnlyAcrossNewBytes()
+    {
+        var bytes = Encoding.UTF8.GetBytes("{\"data\":\"" + new string('x', 2 * 1024 * 1024) + "\"}");
+        ImportCommand.ObjectBoundaryScanner scanner = default;
+        for (var length = 127; length < bytes.Length; length += 127)
+        {
+            Assert.False(scanner.Scan(bytes.AsSpan(0, length)));
+            Assert.Equal(length, scanner.BytesScanned);
+        }
+
+        Assert.True(scanner.Scan(bytes));
+        Assert.Equal(bytes.Length, scanner.BytesScanned);
+    }
+
+    [Theory]
+    [InlineData("""{"a":"\"}","nested":[{}]}""")]
+    [InlineData("""{"a":"\\","nested":{}}""")]
+    [InlineData("""{"a":"\\\"{}[]","nested":[{"b":"x"}]}""")]
+    [InlineData("""{"a":"\u0022}","nested":[]}""")]
+    public async Task EnumerateJsonDocumentAsync_EscapesAndNestingAcrossReads_FindCorrectBoundary(string json)
+    {
+        using var stream = new ChunkLimitedReadStream(Encoding.UTF8.GetBytes(json + "\n{\"id\":\"last\"}"));
+
+        Assert.Equal(2, await CountJsonDocumentItemsAsync(stream));
+    }
+
+    [Theory]
+    [InlineData(63, true)]
+    [InlineData(64, false)]
+    public async Task EnumerateJsonDocumentAsync_ShortReads_PreservesDefaultDepthLimit(int arrayDepth, bool valid)
+    {
+        var json = "{\"nested\":" + new string('[', arrayDepth) + "0" + new string(']', arrayDepth) + "}";
+        using var stream = new ChunkLimitedReadStream(Encoding.UTF8.GetBytes(json));
+        if (valid)
+        {
+            Assert.Equal(1, await CountJsonDocumentItemsAsync(stream));
+        }
+        else
+        {
+            var error = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+            Assert.Contains("Line 1", error.Message);
+            Assert.IsType<JsonException>(error.InnerException);
+        }
+    }
+
+    [Theory]
+    [InlineData("[{\"id\":\"a\"},")]
+    [InlineData("[{\"id\":\"a\"}")]
+    [InlineData("[{\"id\":\"a\"}]]")]
+    [InlineData("[{\"id\":\"a\"},{\"id\":}]")]
+    [InlineData("{\"id\":\"a\"")]
+    [InlineData("{\"id\":\"a\"}\n{\"id\":}")]
+    [InlineData("[{\"id\":\"a\"}]\n{\"id\":\"b\"}")]
+    public async Task EnumerateJsonDocumentAsync_MalformedDocument_ReportsDocumentError(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var ex = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+
+        Assert.Contains(content.StartsWith('[') ? "not a valid JSON document" : "not valid JSON", ex.Message);
+        Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+    }
+
+    [Theory]
+    [InlineData("{\"id\":\"first\"}\n\n{\"id\":}", 3)]
+    [InlineData("{\n\"id\":\"first\"\n}\r\n\r\n{\n\"id\":\n}", 5)]
+    public async Task EnumerateJsonDocumentAsync_MalformedSequenceObject_ReportsPhysicalStartLine(string content, int expectedLine)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var error = await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+
+        Assert.Contains($"Line {expectedLine} is not valid JSON", error.Message);
+        Assert.IsAssignableFrom<JsonException>(error.InnerException);
+    }
+
+    [Fact]
+    public async Task EnumerateJsonDocumentAsync_LargeObjectThenSmallObjects_YieldsAllItems()
+    {
+        var content = new StringBuilder("{\"data\":\"").Append('x', 2 * 1024 * 1024).Append("\"}\n");
+        for (var index = 0; index < 20_000; index++)
+        {
+            content.Append("{\"id\":\"").Append(index).Append("\"}\n");
+        }
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content.ToString()));
+        var count = 0;
+        await foreach (var (line, _) in ImportCommand.EnumerateJsonDocumentAsync(stream, TestContext.Current.CancellationToken))
+        {
+            Assert.Equal(++count, line);
+        }
+
+        Assert.Equal(20_001, count);
+    }
+
+    [Theory]
+    [InlineData("{\"id\":\"a\"},\n{\"id\":\"b\"}")]
+    [InlineData("{\"id\":\"a\"}\ntrailing garbage")]
+    [InlineData("{\"id\":\"a\"}\n42")]
+    [InlineData("{\"id\":\"a\"}\nnull")]
+    public async Task EnumerateJsonDocumentAsync_NonObjectSequenceEntry_Throws(string content)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+    }
+
+    [Theory]
+    [InlineData(new byte[] { 0xEF })]
+    [InlineData(new byte[] { 0xEF, 0xBB })]
+    [InlineData(new byte[] { 0xEF, 0xBB, (byte)'[', (byte)']' })]
+    [InlineData(new byte[] { (byte)' ', 0xEF, 0xBB, 0xBF })]
+    public async Task EnumerateJsonDocumentAsync_IncompleteOrMisplacedByteOrderMark_Throws(byte[] content)
+    {
+        using var stream = new MemoryStream(content);
+
+        await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+    }
+
+    [Theory]
+    [InlineData("", 0)]
+    [InlineData("  []", 0)]
+    [InlineData("\n[{\"id\":\"a\"},{\"id\":\"b\"}]", 2)]
+    [InlineData(" {\"id\":\"a\"}", 1)]
+    [InlineData("{\"id\":\"a\"}\n{\"id\":\"b\"}", 2)]
+    public async Task EnumerateJsonDocumentAsync_ByteOrderMarkSplitAcrossReads_IsSkipped(string json, int expected)
+    {
+        using var stream = new ChunkLimitedReadStream([0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes(json)]);
+
+        Assert.Equal(expected, await CountJsonDocumentItemsAsync(stream));
+    }
+
+    [Theory]
+    [InlineData("utf-16", "{\"id\":\"a\",\"name\":\"\u00e9\"}\r\n{\"id\":\"b\"}\n", 2)]
+    [InlineData("utf-16BE", "{\"id\":\"a\"}\n{\"id\":\"b\"}\n{\"id\":\"c\"}", 3)]
+    [InlineData("utf-32", " [{\"id\":\"a\"},{\"id\":\"b\"}]", 2)]
+    [InlineData("utf-32BE", "{\"id\":\"a\"}", 1)]
+    [InlineData("utf-16", "", 0)]
+    public async Task EnumerateJsonDocumentAsync_UnicodeByteOrderMark_IsTranscoded(string encodingName, string json, int expected)
+    {
+        var encoding = Encoding.GetEncoding(encodingName);
+        using var stream = new ChunkLimitedReadStream([.. encoding.GetPreamble(), .. encoding.GetBytes(json)]);
+
+        var items = new List<(int Line, JsonElement Item)>();
+        await foreach (var item in ImportCommand.EnumerateJsonDocumentAsync(stream, TestContext.Current.CancellationToken))
+        {
+            items.Add(item);
+        }
+
+        Assert.Equal(expected, items.Count);
+        if (expected > 0)
+        {
+            Assert.Equal("a", items[0].Item.GetProperty("id").GetString());
+        }
+
+        if (encodingName == "utf-16" && expected > 0)
+        {
+            Assert.Equal("\u00e9", items[0].Item.GetProperty("name").GetString());
+            Assert.Equal(2, items[1].Line);
+        }
     }
 
     [Fact]
@@ -202,36 +567,6 @@ public class ImportCommandTests
     }
 
     [Fact]
-    public async Task ExportThenImport_JsonLines_RoundTripsContent()
-    {
-        var items = new[]
-        {
-            JsonSerializer.SerializeToElement(new { id = "1", name = "first" }),
-            JsonSerializer.SerializeToElement(new { id = "2", name = "second" }),
-            JsonSerializer.SerializeToElement(new { id = "3", name = "third" }),
-        };
-
-        using var writer = new StringWriter();
-        writer.NewLine = "\n";
-        var written = await ExportCommand.WriteJsonLinesAsync(ToAsyncEnumerableAsync(items), writer, CancellationToken.None);
-        Assert.Equal(3, written);
-
-        using var reader = new StringReader(writer.ToString());
-        var readItems = new List<JsonElement>();
-        await foreach (var (_, item) in ImportCommand.EnumerateJsonLinesAsync(reader, CancellationToken.None))
-        {
-            readItems.Add(item);
-        }
-
-        Assert.Equal(3, readItems.Count);
-        for (var i = 0; i < items.Length; i++)
-        {
-            Assert.Equal(items[i].GetProperty("id").GetString(), readItems[i].GetProperty("id").GetString());
-            Assert.Equal(items[i].GetProperty("name").GetString(), readItems[i].GetProperty("name").GetString());
-        }
-    }
-
-    [Fact]
     public async Task ExportThenImport_Array_RoundTripsContent()
     {
         var items = new[]
@@ -246,7 +581,7 @@ public class ImportCommandTests
 
         buffer.Position = 0;
         var readItems = new List<JsonElement>();
-        await foreach (var (_, item) in ImportCommand.EnumerateArrayAsync(buffer, CancellationToken.None))
+        await foreach (var (_, item) in ImportCommand.EnumerateJsonDocumentAsync(buffer, CancellationToken.None))
         {
             readItems.Add(item);
         }
@@ -574,5 +909,89 @@ public class ImportCommandTests
             yield return item;
             await Task.Yield();
         }
+    }
+
+    private static async Task<int> CountJsonDocumentItemsAsync(Stream stream)
+    {
+        var count = 0;
+        await foreach (var _ in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    [Theory]
+    [InlineData("{\"id\": @ ")]
+    [InlineData("{\"id\":\"a\"}\n{\"id\": @ ")]
+    [InlineData("{\"id\": [1,,")]
+    public async Task EnumerateJsonDocumentAsync_EarlyInvalidObjectPrefix_FailsWithoutUnboundedRead(string prefix)
+    {
+        using var stream = new EndlessWhitespaceStream(Encoding.UTF8.GetBytes(prefix), limit: 16 * 1024 * 1024);
+
+        await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+        Assert.True(stream.Position <= 64 * 1024, $"Read {stream.Position} bytes before failing.");
+    }
+
+    private sealed class EndlessWhitespaceStream(byte[] prefix, long limit) : Stream
+    {
+        public override bool CanRead => true;
+
+        public override bool CanSeek => true;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get; set; }
+
+        public override int Read(byte[] buffer, int offset, int count) => this.Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            if (this.Position >= limit)
+            {
+                throw new InvalidOperationException("Input was read without bound.");
+            }
+
+            for (var i = 0; i < buffer.Length; i++)
+            {
+                var position = this.Position + i;
+                buffer[i] = position < prefix.Length ? prefix[position] : (byte)' ';
+            }
+
+            this.Position += buffer.Length;
+            return buffer.Length;
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            => ValueTask.FromResult(this.Read(buffer.Span));
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => Task.FromResult(this.Read(buffer, offset, count));
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    private sealed class ChunkLimitedReadStream(byte[] content, int chunkSize = 1) : MemoryStream(content)
+    {
+        public override int Read(byte[] buffer, int offset, int count) => base.Read(buffer, offset, Math.Min(count, chunkSize));
+
+        public override int Read(Span<byte> buffer) => base.Read(buffer[..Math.Min(buffer.Length, chunkSize)]);
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => base.ReadAsync(buffer, offset, Math.Min(count, chunkSize), cancellationToken);
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            => base.ReadAsync(buffer[..Math.Min(buffer.Length, chunkSize)], cancellationToken);
     }
 }

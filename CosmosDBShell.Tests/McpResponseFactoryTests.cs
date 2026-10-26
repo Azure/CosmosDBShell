@@ -115,8 +115,11 @@ public class McpResponseFactoryTests
         Assert.Equal("Command execution failed.", document.RootElement.GetProperty("error").GetString());
     }
 
-    [Fact]
-    public void CreateSuccess_StructuredError_IncludesErrorAndResult()
+    [Theory]
+    [InlineData(OutputFormat.User)]
+    [InlineData(OutputFormat.JSon)]
+    [InlineData(OutputFormat.CSV)]
+    public void CreateSuccess_StructuredError_IncludesErrorAndResult(OutputFormat format)
     {
         var state = new StructuredErrorCommandState(
             new CommandException("batch", "Batch failed."),
@@ -124,7 +127,12 @@ public class McpResponseFactoryTests
             {
                 success = false,
                 statusCode = 409,
-            })));
+            })))
+        {
+            OutputFormat = format,
+            RequestCharge = 2.5,
+        };
+        state.AddWarning("One write failed.");
 
         var result = McpResponseFactory.CreateSuccess(state, new ConnectedState(null!));
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
@@ -134,6 +142,33 @@ public class McpResponseFactoryTests
         Assert.Equal("Batch failed.", document.RootElement.GetProperty("error").GetString());
         Assert.False(document.RootElement.GetProperty("result").GetProperty("success").GetBoolean());
         Assert.Equal(409, document.RootElement.GetProperty("result").GetProperty("statusCode").GetInt32());
+        Assert.Equal(2.5, document.RootElement.GetProperty("requestCharge").GetDouble());
+        Assert.Equal("One write failed.", Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+        Assert.Equal(text, result.StructuredContent?.GetRawText());
+        Assert.Equal(format == OutputFormat.CSV, document.RootElement.TryGetProperty("outputText", out var outputText));
+        if (format == OutputFormat.CSV)
+        {
+            Assert.Equal(state.GenerateOutputText(), outputText.GetString());
+            Assert.Contains("statusCode", outputText.GetString());
+            Assert.Contains("409", outputText.GetString());
+        }
+    }
+
+    [Fact]
+    public void CreateSuccess_ErrorWithoutResult_OmitsCsvOutputText()
+    {
+        var state = new ErrorCommandState(new CommandException("import", "Import failed."))
+        {
+            OutputFormat = OutputFormat.CSV,
+        };
+
+        var response = McpResponseFactory.CreateSuccess(state, new ConnectedState(null!));
+
+        Assert.True(response.IsError);
+        var payload = Assert.IsType<JsonElement>(response.StructuredContent);
+        Assert.Equal("Import failed.", payload.GetProperty("error").GetString());
+        Assert.False(payload.TryGetProperty("result", out _));
+        Assert.False(payload.TryGetProperty("outputText", out _));
     }
 
     [Fact]
