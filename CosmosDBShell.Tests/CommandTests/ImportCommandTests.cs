@@ -41,6 +41,7 @@ public class ImportCommandTests
                 ColorSystem = ColorSystemSupport.NoColors,
                 Out = new AnsiConsoleOutput(output),
             });
+            AnsiConsole.Console.Profile.Width = 200;
 
             var command = new ImportCommand { File = file, DryRun = true, Format = format };
             var state = await command.ExecuteAsync(shell, new CommandState(), string.Empty, TestContext.Current.CancellationToken);
