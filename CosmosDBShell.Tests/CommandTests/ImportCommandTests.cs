@@ -922,6 +922,66 @@ public class ImportCommandTests
         return count;
     }
 
+    [Theory]
+    [InlineData("{\"id\": @ ")]
+    [InlineData("{\"id\":\"a\"}\n{\"id\": @ ")]
+    [InlineData("{\"id\": [1,,")]
+    public async Task EnumerateJsonDocumentAsync_EarlyInvalidObjectPrefix_FailsWithoutUnboundedRead(string prefix)
+    {
+        using var stream = new EndlessWhitespaceStream(Encoding.UTF8.GetBytes(prefix), limit: 16 * 1024 * 1024);
+
+        await Assert.ThrowsAsync<CommandException>(() => CountJsonDocumentItemsAsync(stream));
+        Assert.True(stream.Position <= 64 * 1024, $"Read {stream.Position} bytes before failing.");
+    }
+
+    private sealed class EndlessWhitespaceStream(byte[] prefix, long limit) : Stream
+    {
+        public override bool CanRead => true;
+
+        public override bool CanSeek => true;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get; set; }
+
+        public override int Read(byte[] buffer, int offset, int count) => this.Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            if (this.Position >= limit)
+            {
+                throw new InvalidOperationException("Input was read without bound.");
+            }
+
+            for (var i = 0; i < buffer.Length; i++)
+            {
+                var position = this.Position + i;
+                buffer[i] = position < prefix.Length ? prefix[position] : (byte)' ';
+            }
+
+            this.Position += buffer.Length;
+            return buffer.Length;
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            => ValueTask.FromResult(this.Read(buffer.Span));
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => Task.FromResult(this.Read(buffer, offset, count));
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
     private sealed class ChunkLimitedReadStream(byte[] content, int chunkSize = 1) : MemoryStream(content)
     {
         public override int Read(byte[] buffer, int offset, int count) => base.Read(buffer, offset, Math.Min(count, chunkSize));

@@ -279,6 +279,9 @@ internal class ImportCommand : CosmosCommand
 
             if (length == buffer.Length)
             {
+                // Validate the pending object prefix before growing so malformed input fails
+                // instead of being buffered without bound.
+                ValidatePendingObject(buffer.AsSpan(0, length), line, ref scanner);
                 Array.Resize(ref buffer, checked(buffer.Length * 2));
             }
 
@@ -323,6 +326,21 @@ internal class ImportCommand : CosmosCommand
         item = default;
         consumed = 0;
         return false;
+    }
+
+    private static void ValidatePendingObject(ReadOnlySpan<byte> buffer, int line, ref ObjectBoundaryScanner scanner)
+    {
+        try
+        {
+            scanner.ValidatePrefix(buffer);
+        }
+        catch (JsonException ex)
+        {
+            throw new CommandException(
+                "import",
+                MessageService.GetArgsString("command-import-error-invalid_line_json", "line", line, "message", ex.Message),
+                ex);
+        }
     }
 
     private static void AdvanceLines(ReadOnlySpan<byte> bytes, ref int line, ref bool previousCarriageReturn)
@@ -1176,8 +1194,26 @@ internal class ImportCommand : CosmosCommand
         private int depth;
         private bool inString;
         private bool escaped;
+        private JsonReaderState validationState;
 
         internal int BytesScanned { get; private set; }
+
+        internal int BytesValidated { get; private set; }
+
+        internal void ValidatePrefix(ReadOnlySpan<byte> buffer)
+        {
+            var reader = new Utf8JsonReader(buffer[this.BytesValidated..], isFinalBlock: false, this.validationState);
+            while (reader.Read())
+            {
+                if (reader.CurrentDepth == 0 && reader.TokenType == JsonTokenType.EndObject)
+                {
+                    break;
+                }
+            }
+
+            this.BytesValidated += checked((int)reader.BytesConsumed);
+            this.validationState = reader.CurrentState;
+        }
 
         internal bool Scan(ReadOnlySpan<byte> buffer)
         {
