@@ -1206,14 +1206,16 @@ internal class ImportCommand : CosmosCommand
                 }
                 else if (value is (byte)'{' or (byte)'[')
                 {
-                    if (++this.depth > 64)
+                    this.depth++;
+                    if (this.depth > 64)
                     {
                         throw new JsonException("The maximum JSON depth of 64 has been exceeded.");
                     }
                 }
                 else if (value is (byte)'}' or (byte)']')
                 {
-                    if (--this.depth == 0)
+                    this.depth--;
+                    if (this.depth == 0)
                     {
                         return true;
                     }
