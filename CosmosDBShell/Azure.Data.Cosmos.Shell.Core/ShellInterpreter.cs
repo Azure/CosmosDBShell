@@ -369,6 +369,8 @@ public partial class ShellInterpreter : IDisposable
 
     internal PendingBatchState? CurrentBatch { get; set; }
 
+    internal PendingBulkState? CurrentBulk { get; set; }
+
     internal Stack<VariableContainer> VariableContainers { get; } = new();
 
     /// <summary>
@@ -1865,6 +1867,7 @@ public partial class ShellInterpreter : IDisposable
         this.activeCredential = credential;
         this.ActiveCredentialType = credentialTypeOverride ?? credential?.GetType().Name;
         this.CurrentBatch = null;
+        this.CurrentBulk = null;
         CosmosCompleteCommand.ClearDatabases();
         CosmosCompleteCommand.ClearContainers();
         this.Diagnostics?.LogConnect(client.Endpoint, client.ClientOptions.ConnectionMode);
@@ -1932,6 +1935,7 @@ public partial class ShellInterpreter : IDisposable
         this.activeCredential = null;
         this.ActiveCredentialType = null;
         this.CurrentBatch = null;
+        this.CurrentBulk = null;
     }
 
     internal void DisconnectLocalEmulatorAfterConnectivityFailure(Exception exception)

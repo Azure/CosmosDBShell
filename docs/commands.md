@@ -576,7 +576,7 @@ patch set order-42 customer-7 /name "Ada Lovelace" --etag="<etag-from-read>"
 
 ### batch
 
-Execute multiple write operations against a single partition key as one atomic Cosmos DB transactional batch. Either run a batch in a single call, or build one up statefully across several commands. Every operation in a batch must share the same partition key, execution requires between 1 and 100 operations, and if any operation fails the entire batch is rolled back. A pending stateful batch may be empty until operations are added.
+Execute multiple write operations against a single partition key as one atomic Cosmos DB transactional batch. Either run a batch in a single call, or build one up statefully across several commands. Every operation in a batch must share the same partition key, execution requires between 1 and 100 operations, and if any operation fails the entire batch is rolled back. A pending stateful batch may be empty until operations are added. For more than 100 operations, or operations across partition keys that may succeed independently, use [`bulk`](#bulk), which accepts the same operation JSON.
 
 ```text
 Usage: batch subcommand [data] [--partition-key <ARG>] [-database <ARG>] [-container <ARG>]
@@ -665,6 +665,137 @@ batch execute
 - More than 100 operations is rejected before any call to Cosmos DB.
 - A transactional failure prints a one-line message, returns a result summary with `success` set to `false` and per-operation status codes, and rolls back every operation.
 
+### bulk
+
+Execute many **independent** write operations with bounded concurrency. `bulk` uses the same operation JSON and subcommands as [`batch`](#batch), with different execution semantics:
+
+| | `batch` | `bulk` |
+|-|-|-|
+| Partition keys | One per batch (`--partition-key`) | Per operation `partitionKey`, or `--partition-key` as a default |
+| Size | 1-100 operations | Streamed files for `run`; stateful jobs capped at 10,000 operations and 64 MiB of canonical JSON |
+| Atomicity | All operations succeed or all roll back | Each operation succeeds or fails on its own; nothing is rolled back |
+| Execution | One transactional request | Up to `--concurrency` requests in flight |
+
+```text
+Usage: bulk subcommand [data] [options]
+
+Arguments:
+    subcommand  run, patch, delete, begin, add, execute, cancel, status, or show
+    [data]      For run and add: operations as a JSON array or object, or a path
+                to a JSON array or JSON Lines file. Also reads piped input.
+
+Options:
+    --where                       For patch and delete: Cosmos SQL predicate over alias c.
+    --operations                  For patch: JSON array of 1-10 patch operations.
+    --partition-key, --pk         Default partition key for delete and patch operations.
+    --database, --db              Target database (defaults to the navigation context).
+    --container, --con            Target container (defaults to the navigation context).
+    --concurrency, --max-parallelism
+                                  Maximum in-flight writes (default 16, positive integer).
+    --max-items                   For patch and delete: maximum number of selected items.
+    --max-ru                      Positive observed RU budget for this invocation.
+    --dry-run                     Validate or select without sending writes.
+    --yes, -y                     Approve writes; required in scripts and non-interactive use.
+    --continue-on-error           Keep scheduling writes after an operation fails.
+    --etag                        For patch and delete: use each item's _etag as ifMatch.
+    --save                        For patch and delete: write the generated operations to a new file.
+    --journal                     Record attempts and outcomes; resume skips succeeded writes.
+    --retry-uncertain             Also retry writes whose earlier outcome is unknown.
+```
+
+Options are validated by whether they were supplied, even when a boolean value is explicitly `false`. For example, `bulk status --dry-run=false` is rejected because `status` does not support `--dry-run`.
+
+#### Subcommands
+
+|Subcommand|Description|
+|-|-|
+|`run <json-or-file>`|Validate every operation, then execute them. Also reads piped input.|
+|`patch --where <predicate> --operations <json>`|Select matching items and apply the same patch to each item.|
+|`delete --where <predicate>`|Select matching items and delete each item.|
+|`begin [--partition-key <pk>]`|Start a stateful bulk job bound to a database and container, with an optional default partition key.|
+|`add <json-or-file>`|Validate and queue one operation (JSON object) or several (JSON array or file).|
+|`execute` (`exec`, `commit`)|Execute the queued operations. The job is cleared only if every operation succeeds.|
+|`cancel` (`abort`)|Discard the active bulk job.|
+|`status`|Report the target, default partition key, queued operation count, earlier outcomes, and up to 100 operations.|
+|`show`|Print the queued operations in canonical form, which `bulk run` accepts.|
+
+When a stateful job is active, the prompt shows `[bulk:N]`. Connecting or disconnecting discards it, like a pending batch.
+`bulk status` shows succeeded, failed, and uncertain outcome counts in both the interactive table and JSON. Interrupted write intents count as uncertain.
+
+#### Operation schema
+
+Operations use the [batch operation schema](#operation-schema) with two optional additions:
+
+|Field|Description|
+|-|-|
+|`partitionKey`|The item's complete partition key: a scalar, or a JSON array for hierarchical keys. Use `{}` for an undefined component and `null` for a JSON null value. Required for `delete` and `patch` unless `--partition-key` is supplied. For `create`, `upsert`, and `replace`, the key is read from `item`; a supplied value or default must match it.|
+|`ifMatch`|An ETag for `replace`, `delete`, or `patch`. The write fails with `412` if the item changed. Rejected for `create` and `upsert`; use `replace` for conditional item updates so a missing or concurrently deleted item is not recreated.|
+
+```json
+{"op":"upsert","item":{"id":"1","tenantId":"t1","name":"Ada"}}
+{"op":"delete","id":"2","partitionKey":"t2"}
+{"op":"patch","id":"3","partitionKey":["t3","west"],"ifMatch":"\"etag\"","operations":[{"op":"set","path":"/schemaVersion","value":2},{"op":"remove","path":"/legacyField"}]}
+```
+
+IDs must be nonempty strings. Patch operations are limited to 1-10 per item and apply atomically to that item; paths must start with `/`. `remove` fails if the property does not exist. Operations on the same item run in list order; operations on different items can complete in any order.
+
+`--partition-key` defaults beginning with `[`, `{`, or `"` must be valid JSON. Encode a literal string as a JSON string if it starts with one of these characters. Ambiguous scalar values such as `001` remain string keys.
+
+#### Examples
+
+```bash
+bulk run '[{"op":"upsert","item":{"id":"1","pk":"a"}},{"op":"delete","id":"2","partitionKey":"b"}]' --yes
+echo '[{"op":"delete","id":"1"},{"op":"delete","id":"2"}]' | bulk run --partition-key a --yes
+bulk run operations.jsonl --concurrency 32 --journal operations.journal --yes
+
+bulk delete --where "c.expired = true" --dry-run
+bulk delete --where "c.expired = true" --max-items 500 --etag --yes
+
+bulk begin --partition-key supplier-42
+bulk add '{"op":"patch","id":"order-1","operations":[{"op":"set","path":"/status","value":"done"}]}'
+bulk add '{"op":"delete","id":"order-2"}'
+bulk status
+bulk execute --yes
+```
+
+#### Query-driven migrations: plan, review, apply
+
+`patch` and `delete` run `SELECT c.id, c._etag, <partition-key paths> FROM c WHERE (<predicate>)`, generate one operation per row, and validate the whole selection before writing. Missing partition-key components are preserved as undefined, separately from `null`. The predicate is inserted as written; it is a Cosmos SQL predicate, not an `UPDATE` statement.
+
+With `--save`, the generated operations are written to a new JSON Lines file that `bulk run` accepts. This separates planning from applying:
+
+```bash
+bulk patch --where "c.tenantId = 'supplier-42' AND c.schemaVersion = 1" --operations '[{"op":"set","path":"/schemaVersion","value":2},{"op":"remove","path":"/legacyField"}]' --etag --dry-run --save migration.jsonl
+bulk run migration.jsonl --journal migration.journal --yes
+```
+
+The saved file is the reviewed snapshot: rerunning it targets the same items even after earlier writes change which items match the predicate. With `--etag`, any item changed after selection fails with `412` instead of being overwritten. `--save` never overwrites an existing file, and an incomplete selection or failed final flush deletes the partial file.
+
+#### Journals and resuming
+
+`--journal <file>` records each write intent before the write is sent, then its outcome. The journal is bound to the account endpoint, the container's resource ID, and a hash of the canonical operation list, so it cannot be reused with different operations or a recreated container. The journal is opened exclusively for the duration of the run, preventing concurrent use on Windows and Linux. Read or copy it only after the run finishes. Rerunning the same operations with the same journal:
+
+- skips operations that succeeded;
+- retries operations that definitively failed, such as throttled (`429`), conflicting, or missing items;
+- holds back operations whose outcome is unknown — sent before an interruption, a timeout, or a server error — and reports them as failed and `uncertain`. Later writes for that same item ID and partition key are also held back to preserve ordering; unrelated items can continue. Retrying them blindly could, for example, apply an `incr` twice. Inspect or reconcile them, or pass `--retry-uncertain` when the operations are idempotent or use `ifMatch`.
+
+A torn final journal line from a crash is discarded only after the complete header and preceding records have been validated. Unrelated or mismatched files are rejected without modification. Journal format version 2 checksums every outcome and validates resumed outcomes against the operation list before any write; older journal versions are rejected rather than resumed without integrity checks. Other damage is rejected rather than guessed around. For `--where`, `--journal` requires `--save`; resume with `bulk run <saved-file> --journal <file>`, because a new selection can match different items. A stateful job keeps outcomes in memory the same way, so running `bulk execute` again after a partial failure retries only failed operations. Stateful retries must keep the same journal choice as the first execution: if a journal was supplied, reuse its original path; if none was supplied, retries remain in-memory only. Adding, changing, or omitting a journal after writes have started is rejected. After a journaled execution records any outcomes, `bulk add` is rejected to keep the journal's operation list unchanged.
+
+If another shell resumes the same journal between stateful execution attempts, subsequent retries respect its newer recorded successes and uncertain outcomes rather than replaying them. Successful writes retained by the original shell after a journal write failure are persisted on retry before later operations run or the job is cleared. Recovery matches the original write attempt and does not overwrite a newer unresolved attempt from another shell.
+
+After a journal write or flush fails, no further records are appended during that execution. Started writes are still settled and stateful outcomes retained, so reopening the original journal can recover its torn tail before retrying.
+
+#### Limits, failures, and output
+
+- All input is validated before any write. `run`, `patch`, and `delete` spool operations to a private temporary file that is deleted when the command ends. Stateful `begin`/`add` jobs retain operations in memory and are limited to 10,000 operations and 64 MiB of canonical UTF-8 JSON. An `add` that exceeds either limit is rejected in full, leaving the existing job unchanged. Use `bulk run <file>` for larger jobs.
+- By default, the first failed write stops scheduling new writes; `--continue-on-error` keeps unrelated items going, but later writes to the same item ID and partition key wait for a retry after any failed or uncertain write. This preserves operation order across retries. Started writes are always awaited and reported, including after cancellation. Cancellation, journal write errors, and unexpected execution failures return an incomplete summary with settled counts while preserving the original error classification; cancellation never reports success.
+- `--max-ru` counts the container metadata read, selection pages, and completed writes for the current invocation. No new request starts once it is reached; requests already in flight can exceed it. Local journal skips still proceed when the metadata read reaches the budget, so a fully completed journal can be resumed without a budget error or new writes. A budget stop returns exit code `6`. Resume writes only with the same journal supplied to the original run: creating a new journal cannot identify earlier successes and can replay non-idempotent writes. Without the original journal, reconcile completed writes before retrying. If the budget was exhausted during selection before any writes began, no execution journal was opened; increase the budget and select again.
+- `--max-items` limits selected items and caps the requested query page size when below 1,000; `selectionLimited` reports that more items may match.
+- `--dry-run` validates and selects without writing. Selection reads consume RUs. It cannot check service-side conditions such as missing fields or permissions.
+- Writes are individual point operations with response bodies disabled, not transactional batches or SDK bulk execution. SDK retry handling for throttling still applies, and higher concurrency does not add provisioned RU/s.
+- Interactive runs show progress every two seconds. The result contains `operationCount`, `attempted`, `succeeded`, `failed`, `skipped`, `uncertain`, `requestCharge`, `dryRun`, `resultIncomplete`, `budgetExceeded`, `selectionLimited`, `success`, and up to 20 `errors`. Incomplete or failed runs return a nonzero exit code; use `--journal` for every outcome.
+- Saved plans and journals contain item IDs, partition keys, ETags, and operation values (including upsert documents). Store them securely and delete them when no longer needed.
+- Numeric partition keys use the Cosmos SDK's double-precision representation, including when an integer is supplied. Store keys that require exact large-integer precision as strings, and supply a JSON string key. Canonical plans preserve the original JSON digits but cannot override the SDK's numeric precision limits.
 ### rm
 
 Remove items from container.

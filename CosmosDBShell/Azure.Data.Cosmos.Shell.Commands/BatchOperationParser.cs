@@ -52,7 +52,7 @@ internal static class BatchOperationParser
         }
     }
 
-    private static BatchOperationSpec ParseOne(string commandName, JsonElement element)
+    internal static BatchOperationSpec ParseOne(string commandName, JsonElement element)
     {
         if (element.ValueKind != JsonValueKind.Object)
         {
@@ -157,7 +157,7 @@ internal static class BatchOperationParser
         return null;
     }
 
-    private static List<PatchOperation> ParsePatchOperations(string commandName, JsonElement element)
+    internal static List<PatchOperation> ParsePatchOperations(string commandName, JsonElement element)
     {
         if (!element.TryGetProperty("operations", out var operationsElement) || operationsElement.ValueKind != JsonValueKind.Array)
         {
