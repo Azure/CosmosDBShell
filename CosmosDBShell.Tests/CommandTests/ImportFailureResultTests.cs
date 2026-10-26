@@ -233,6 +233,56 @@ public class ImportFailureResultTests
     }
 
     [Theory]
+    [InlineData("\\uD800", "csv")]
+    [InlineData("\\uD800", "json")]
+    [InlineData("\\uDC00", "user")]
+    [InlineData("\\uDC00", "table")]
+    public async Task DryRunFailure_InvalidUnicodeId_PreservesValidationCountAndFormat(string escapedId, string format)
+    {
+        var file = Path.GetTempFileName();
+        using var shell = ShellInterpreter.CreateInstance();
+        try
+        {
+            await File.WriteAllTextAsync(
+                file,
+                """{"id":"first"}""" + "\n{\"id\":\"" + escapedId + "\"}",
+                TestContext.Current.CancellationToken);
+            var command = new ImportCommand { File = file, DryRun = true, Format = format };
+            var selectedFormat = new CommandState();
+            selectedFormat.SetFormat(format);
+
+            var state = Assert.IsType<StructuredErrorCommandState>(
+                await command.ExecuteAsync(shell, new CommandState(), "import", TestContext.Current.CancellationToken));
+
+            var result = Assert.IsType<ShellJson>(state.Result).Value;
+            Assert.Equal(1, result.GetProperty("validated").GetInt32());
+            Assert.Equal(0, result.GetProperty("imported").GetInt32());
+            Assert.Equal(0, result.GetProperty("requestCharge").GetDouble());
+            Assert.True(result.GetProperty("dryRun").GetBoolean());
+            Assert.Equal(ShellExitCode.UsageError, result.GetProperty("exitCode").GetInt32());
+            Assert.Equal(ShellExitCode.UsageError, state.ExitCode);
+            Assert.Equal(selectedFormat.OutputFormat, state.OutputFormat);
+            Assert.True(state.OutputFormatExplicitlySet);
+            Assert.Equal(
+                MessageService.GetArgsString("command-import-error-invalid_id", "line", 2),
+                result.GetProperty("error").GetString());
+
+            var mcp = McpResponseFactory.CreateSuccess(state, shell.State);
+            Assert.True(mcp.IsError);
+            var payload = Assert.IsType<JsonElement>(mcp.StructuredContent);
+            Assert.True(JsonElement.DeepEquals(result, payload.GetProperty("result")));
+            if (format == "csv")
+            {
+                Assert.Equal(state.GenerateOutputText(), payload.GetProperty("outputText").GetString());
+            }
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
     [InlineData("array")]
     [InlineData("jsonl")]
     [InlineData("invalid")]

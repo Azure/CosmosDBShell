@@ -880,9 +880,22 @@ internal class ImportCommand : CosmosCommand
 
     private static void ValidateDryRunItem(JsonElement item, int lineNumber)
     {
+        string? id = null;
+        InvalidOperationException? decodingFailure = null;
         if (item.TryGetProperty("id", out var idElement)
-            && idElement.ValueKind == JsonValueKind.String
-            && idElement.GetString() is { Length: > 0 } id
+            && idElement.ValueKind == JsonValueKind.String)
+        {
+            try
+            {
+                id = idElement.GetString();
+            }
+            catch (InvalidOperationException ex)
+            {
+                decodingFailure = ex;
+            }
+        }
+
+        if (id is { Length: > 0 }
             && Encoding.UTF8.GetByteCount(id) <= MaxItemIdByteLength
             && !id.Contains('/')
             && !id.Contains('\\'))
@@ -891,7 +904,7 @@ internal class ImportCommand : CosmosCommand
         }
 
         var message = MessageService.GetArgsString("command-import-error-invalid_id", "line", lineNumber);
-        throw new CommandException("import", message, new ArgumentException(message));
+        throw new CommandException("import", message, new ArgumentException(message, decodingFailure));
     }
 
     internal static async Task<(int Success, int Failed, double Charge)> WriteItemsAsync(
