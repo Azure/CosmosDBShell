@@ -93,6 +93,40 @@ public class ImportCommandTests
         }
     }
 
+    [Fact]
+    public void PrintState_JsonWithLongLine_DoesNotWrapJsonString()
+    {
+        var originalOut = Console.Out;
+        var originalConsole = AnsiConsole.Console;
+        using var output = new StringWriter();
+        using var shell = ShellInterpreter.CreateInstance();
+        try
+        {
+            Console.SetOut(output);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            AnsiConsole.Console.Profile.Width = 40;
+
+            var value = new string('x', 100);
+            var state = new CommandState { Result = new ShellJson(JsonSerializer.SerializeToElement(new { value })) };
+            state.SetFormat("json");
+
+            shell.PrintState(state);
+
+            using var document = JsonDocument.Parse(output.ToString());
+            Assert.Equal(value, document.RootElement.GetProperty("value").GetString());
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            AnsiConsole.Console = originalConsole;
+        }
+    }
+
     [Theory]
     [InlineData("items.json", (int)ImportFormat.Json)]
     [InlineData("items.jsonl", (int)ImportFormat.Json)]

@@ -2104,7 +2104,32 @@ public partial class ShellInterpreter : IDisposable
                     var element = (JsonElement?)state.Result.ConvertShellObject(Parser.DataType.Json);
                     if (element.HasValue)
                     {
-                        AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
+                        var jsonText = state.GenerateOutputText();
+                        var lineStart = 0;
+                        var hasLongLine = false;
+                        for (var index = 0; index < jsonText.Length; index++)
+                        {
+                            if (jsonText[index] == '\n')
+                            {
+                                if (index - lineStart >= AnsiConsole.Console.Profile.Width)
+                                {
+                                    hasLongLine = true;
+                                    break;
+                                }
+
+                                lineStart = index + 1;
+                            }
+                        }
+
+                        if (hasLongLine || jsonText.Length - lineStart >= AnsiConsole.Console.Profile.Width)
+                        {
+                            Console.Out.WriteLine(jsonText);
+                        }
+                        else
+                        {
+                            AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
+                        }
+
                         return state;
                     }
                 }
