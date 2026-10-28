@@ -149,10 +149,10 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         await ValidateDatabaseExistsAsync(state, databaseName, "mkcon", token);
 
         var partitionKeyPaths = this.GetPartitionKeyPaths();
-        string containerName;
+        ResourceCreationResult creation;
         try
         {
-            containerName = await CosmosResourceFacade.CreateContainerAsync(
+            creation = await CosmosResourceFacade.CreateContainerAsync(
                 state,
                 databaseName,
                 this.Name ?? string.Empty,
@@ -177,10 +177,17 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
             type = "container",
-            id = containerName,
-            created = true,
+            id = creation.Id,
+            created = creation.Created,
+            outcome = creation.Outcome,
         }));
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-mkcon-CreatedContainer", new Dictionary<string, object> { { "container", containerName } }));
+        var messageKey = creation.Created switch
+        {
+            true => "command-mkcon-CreatedContainer",
+            false => "command-mkcon-container_existing",
+            null => "command-mkcon-container_created_or_updated",
+        };
+        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString(messageKey, new Dictionary<string, object> { { "container", creation.Id } }));
         return commandState;
     }
 

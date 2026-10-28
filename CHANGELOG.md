@@ -4,9 +4,13 @@
 
 ### Breaking changes
 
+- On Entra ID (Azure Resource Manager) connections, `mkdb`, `mkcon`, `create database`, and `create container` now return `created: null` with `outcome: "createdOrUpdated"` instead of `created: true`, because the ARM create-or-update API cannot distinguish a new resource from an existing one. Scripts that treat `created` as a boolean should check `outcome` instead. ([#261](https://github.com/Azure/CosmosDBShell/issues/261))
+
 ### New features
 
 ### Fixes
+
+- Database and container creation on key, emulator, and static-token connections now report `created: false` and `outcome: "existing"` when an existing resource is reused, instead of always reporting `created: true`. Human-readable output says "Using existing database/container" in that case. ([#261](https://github.com/Azure/CosmosDBShell/issues/261))
 
 ### Improvements
 

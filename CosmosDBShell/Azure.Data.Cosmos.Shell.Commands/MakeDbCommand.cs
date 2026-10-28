@@ -42,10 +42,10 @@ internal class MakeDbCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitConnectedStateAsync(ConnectedState state, ShellInterpreter shell, CancellationToken token)
     {
-        string databaseName;
+        ResourceCreationResult creation;
         try
         {
-            databaseName = await CosmosResourceFacade.CreateDatabaseAsync(state, this.Name ?? string.Empty, this.Scale, this.MaxRU, token);
+            creation = await CosmosResourceFacade.CreateDatabaseAsync(state, this.Name ?? string.Empty, this.Scale, this.MaxRU, token);
         }
         catch (ServerlessThroughputNotSupportedException ex)
         {
@@ -58,10 +58,17 @@ internal class MakeDbCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
             type = "database",
-            id = databaseName,
-            created = true,
+            id = creation.Id,
+            created = creation.Created,
+            outcome = creation.Outcome,
         }));
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-mkdb-database_created", new Dictionary<string, object> { { "db", databaseName } }));
+        var messageKey = creation.Created switch
+        {
+            true => "command-mkdb-database_created",
+            false => "command-mkdb-database_existing",
+            null => "command-mkdb-database_created_or_updated",
+        };
+        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString(messageKey, new Dictionary<string, object> { { "db", creation.Id } }));
         return commandState;
     }
 
