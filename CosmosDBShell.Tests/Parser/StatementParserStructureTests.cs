@@ -44,6 +44,46 @@ public class StatementParserStructureTests
     }
 
     [Fact]
+    public void IndexPaths_PreserveQuestionMarksAndStatementBoundaries()
+    {
+        const string input = "index add /city/? /docType/?; index remove /city/?";
+        var (statements, errors) = ParseWithErrors(input);
+
+        Assert.Empty(errors);
+        Assert.Equal(2, statements.Count);
+        var add = Assert.IsType<CommandStatement>(statements[0]);
+        Assert.Equal(new[] { "add", "/city/?", "/docType/?" }, add.Arguments.Select(argument => argument.ToString()));
+        Assert.Equal(7, add.Arguments[1].Length);
+        Assert.Equal(input.IndexOf("/city/?", StringComparison.Ordinal), add.Arguments[1].Start);
+        var remove = Assert.IsType<CommandStatement>(statements[1]);
+        Assert.Equal(new[] { "remove", "/city/?" }, remove.Arguments.Select(argument => argument.ToString()));
+    }
+
+    [Theory]
+    [InlineData("index add /city/?")]
+    [InlineData("exec \"index\" add /city/?")]
+    [InlineData("$policy = (index add /city/?)")]
+    [InlineData("index add --paths=/city/?")]
+    public void IndexPaths_PreserveQuestionMarksAcrossCommandForms(string input)
+    {
+        var (statements, errors) = ParseWithErrors(input);
+
+        Assert.Empty(errors);
+        var statement = Assert.Single(statements);
+        var arguments = statement switch
+        {
+            CommandStatement command => command.Arguments,
+            ExecStatement executed => executed.Arguments,
+            AssignmentStatement assignment => Assert.IsType<CommandExpression>(
+                Assert.IsType<ParensExpression>(assignment.Value).InnerExpression).Arguments,
+            _ => throw new InvalidOperationException("Unexpected statement type."),
+        };
+        var path = arguments[^1] is CommandOption option ? option.Value : arguments[^1];
+        Assert.NotNull(path);
+        Assert.Equal("/city/?", path.ToString());
+    }
+
+    [Fact]
     public void AppendOutputRedirect_IsRecognized()
     {
         var cmd = ParseCommand("query \"SELECT * FROM c\" >> results.json");
