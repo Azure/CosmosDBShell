@@ -8,6 +8,8 @@
 
 ### Fixes
 
+- Preserve `?` in unquoted command arguments so scalar indexing paths such as `index add /city/?` and `index remove /city/?` reach Cosmos DB unchanged. ([#260](https://github.com/Azure/CosmosDBShell/issues/260))
+
 ### Improvements
 
 ## 1.1.291 — 2026-10-26

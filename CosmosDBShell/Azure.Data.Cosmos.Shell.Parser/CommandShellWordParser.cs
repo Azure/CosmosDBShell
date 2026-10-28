@@ -147,6 +147,7 @@ internal sealed class CommandShellWordParser
             case TokenType.Or:
             case TokenType.Xor:
             case TokenType.Comma:
+            case TokenType.Question:
                 return true;
             default:
                 return false;
