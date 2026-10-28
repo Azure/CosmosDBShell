@@ -66,7 +66,7 @@ public class ResourceCreationResultTests
         };
         var state = await command.ExecuteAsync(shell, new CommandState(), string.Empty, TestContext.Current.CancellationToken);
         var result = Assert.IsType<ShellJson>(state.Result).Value;
-        var outcome = created switch { true => "created", false => "existing", null => "createdOrUpdated" };
+        var outcome = !created.HasValue ? "createdOrUpdated" : created.Value ? "created" : "existing";
         Assert.Equal(container ? "container" : "database", result.GetProperty("type").GetString());
         Assert.Equal(container ? "Items" : "db", result.GetProperty("id").GetString());
         Assert.Equal(outcome, result.GetProperty("outcome").GetString());

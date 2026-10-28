@@ -62,12 +62,10 @@ internal class MakeDbCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             created = creation.Created,
             outcome = creation.Outcome,
         }));
-        var messageKey = creation.Created switch
-        {
-            true => "command-mkdb-database_created",
-            false => "command-mkdb-database_existing",
-            null => "command-mkdb-database_created_or_updated",
-        };
+        var messageKey = creation.Select(
+            "command-mkdb-database_created",
+            "command-mkdb-database_existing",
+            "command-mkdb-database_created_or_updated");
         commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString(messageKey, new Dictionary<string, object> { { "db", creation.Id } }));
         return commandState;
     }

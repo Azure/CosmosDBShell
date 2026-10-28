@@ -181,12 +181,10 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
             created = creation.Created,
             outcome = creation.Outcome,
         }));
-        var messageKey = creation.Created switch
-        {
-            true => "command-mkcon-CreatedContainer",
-            false => "command-mkcon-container_existing",
-            null => "command-mkcon-container_created_or_updated",
-        };
+        var messageKey = creation.Select(
+            "command-mkcon-CreatedContainer",
+            "command-mkcon-container_existing",
+            "command-mkcon-container_created_or_updated");
         commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString(messageKey, new Dictionary<string, object> { { "container", creation.Id } }));
         return commandState;
     }
