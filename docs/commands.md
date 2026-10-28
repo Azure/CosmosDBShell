@@ -1185,6 +1185,9 @@ Options:
 |`set`|Updates the indexing policy. Pass `--mode` (`consistent` or `none`, case-insensitive) and/or `--automatic` to patch the current policy, or provide a full indexing policy JSON document to replace it.|
 
 Paths use the Cosmos DB indexing path syntax, for example `/address/*` or `/name/?`.
+These paths can be passed unquoted; the trailing `?` is preserved. Successful policy
+readback confirms the configured metadata, not whether an emulator implements the
+corresponding index-performance behavior.
 
 #### Examples
 
