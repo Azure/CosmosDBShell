@@ -84,7 +84,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
                 () => response.Database.ReadThroughputAsync(new RequestOptions(), token));
         }
 
-        return new ResourceCreationResult(response.Database.Id, response.StatusCode == HttpStatusCode.Created);
+        return new ResourceCreationResult(response.Database.Id, ToCreationOutcome(response.StatusCode));
     }
 
     public async Task<ResourceCreationResult> CreateContainerAsync(
@@ -129,7 +129,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
                 () => response.Container.ReadThroughputAsync(new RequestOptions(), token));
         }
 
-        return new ResourceCreationResult(response.Container.Id, response.StatusCode == HttpStatusCode.Created);
+        return new ResourceCreationResult(response.Container.Id, ToCreationOutcome(response.StatusCode));
     }
 
     public async Task DeleteDatabaseAsync(string databaseName, CancellationToken token)
@@ -417,6 +417,9 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     {
         return response.Resource ?? throw new ShellException(MessageService.GetString("error-unable_to_read_container"));
     }
+
+    private static ResourceCreationOutcome ToCreationOutcome(HttpStatusCode status) =>
+        status == HttpStatusCode.Created ? ResourceCreationOutcome.Created : ResourceCreationOutcome.Existing;
 
     internal static IndexingPolicy ParseIndexingPolicy(string indexPolicyJson)
     {

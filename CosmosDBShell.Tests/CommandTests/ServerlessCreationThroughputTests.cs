@@ -344,7 +344,7 @@ public class ServerlessCreationThroughputTests
         var result = await CreateResourceAsync(operations, isContainer, "manual", 400);
 
         Assert.Equal(isContainer ? "Items" : "db", result.Id);
-        Assert.False(result.Created);
+        Assert.Equal(ResourceCreationOutcome.Existing, result.Outcome);
     }
 
     [Theory]

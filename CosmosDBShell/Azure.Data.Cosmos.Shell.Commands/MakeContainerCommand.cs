@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Diagnostics;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
@@ -179,12 +180,15 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
             type = "container",
             id = creation.Id,
             created = creation.Created,
-            outcome = creation.Outcome,
+            outcome = creation.OutcomeName,
         }));
-        var messageKey = creation.Select(
-            "command-mkcon-CreatedContainer",
-            "command-mkcon-container_existing",
-            "command-mkcon-container_created_or_updated");
+        var messageKey = creation.Outcome switch
+        {
+            ResourceCreationOutcome.Created => "command-mkcon-CreatedContainer",
+            ResourceCreationOutcome.Existing => "command-mkcon-container_existing",
+            ResourceCreationOutcome.CreatedOrUpdated => "command-mkcon-container_created_or_updated",
+            _ => throw new UnreachableException(),
+        };
         commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString(messageKey, new Dictionary<string, object> { { "container", creation.Id } }));
         return commandState;
     }

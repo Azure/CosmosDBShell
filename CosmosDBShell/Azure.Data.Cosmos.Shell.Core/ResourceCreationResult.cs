@@ -4,13 +4,18 @@
 
 namespace Azure.Data.Cosmos.Shell.Core;
 
-internal sealed record ResourceCreationResult(string Id, bool? Created)
-{
-    // ARM create-or-update responses do not distinguish creation from update.
-    public string Outcome => this.Select("created", "existing", "createdOrUpdated");
+using System.Diagnostics;
+using System.Text.Json;
 
-    public T Select<T>(T created, T existing, T createdOrUpdated) =>
-        this.Created.HasValue
-            ? (this.Created.Value ? created : existing)
-            : createdOrUpdated;
+internal sealed record ResourceCreationResult(string Id, ResourceCreationOutcome Outcome)
+{
+    public bool? Created => this.Outcome switch
+    {
+        ResourceCreationOutcome.Created => true,
+        ResourceCreationOutcome.Existing => false,
+        ResourceCreationOutcome.CreatedOrUpdated => null,
+        _ => throw new UnreachableException(),
+    };
+
+    public string OutcomeName => JsonNamingPolicy.CamelCase.ConvertName(this.Outcome.ToString());
 }

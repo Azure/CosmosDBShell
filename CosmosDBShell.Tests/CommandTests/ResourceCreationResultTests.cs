@@ -135,8 +135,9 @@ public class ResourceCreationResultTests
                 ? await operations.CreateContainerAsync("db", "Items", ["/pk"], null, null, null, null, TestContext.Current.CancellationToken)
                 : await operations.CreateDatabaseAsync("db", null, null, TestContext.Current.CancellationToken);
             Assert.Equal(container ? "Items" : "db", result.Id);
+            Assert.Equal(ResourceCreationOutcome.CreatedOrUpdated, result.Outcome);
             Assert.Null(result.Created);
-            Assert.Equal("createdOrUpdated", result.Outcome);
+            Assert.Equal("createdOrUpdated", result.OutcomeName);
         }
 
         var databases = context.Account.GetCosmosDBSqlDatabases();

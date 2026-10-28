@@ -59,7 +59,7 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
     public async Task<ResourceCreationResult> CreateDatabaseAsync(string databaseName, string? scale, int? maxRu, CancellationToken token)
     {
         var resource = await CosmosArmResourceProvider.CreateDatabaseAsync(context, databaseName, scale, maxRu, token);
-        return new ResourceCreationResult(resource.Data.Resource.DatabaseName, null);
+        return new ResourceCreationResult(resource.Data.Resource.DatabaseName, ResourceCreationOutcome.CreatedOrUpdated);
     }
 
     public async Task<ResourceCreationResult> CreateContainerAsync(
@@ -86,7 +86,7 @@ internal sealed class ArmCosmosResourceOperations(ArmCosmosContext context) : IC
         }
 
         var resource = await CosmosArmResourceProvider.CreateContainerAsync(context, databaseName, containerName, partitionKeyPaths, uniqueKey, parsedIndex, scale, maxRu, token);
-        return new ResourceCreationResult(resource.Data.Resource.ContainerName, null);
+        return new ResourceCreationResult(resource.Data.Resource.ContainerName, ResourceCreationOutcome.CreatedOrUpdated);
     }
 
     public Task DeleteDatabaseAsync(string databaseName, CancellationToken token)

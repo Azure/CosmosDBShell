@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Diagnostics;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
@@ -60,12 +61,15 @@ internal class MakeDbCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             type = "database",
             id = creation.Id,
             created = creation.Created,
-            outcome = creation.Outcome,
+            outcome = creation.OutcomeName,
         }));
-        var messageKey = creation.Select(
-            "command-mkdb-database_created",
-            "command-mkdb-database_existing",
-            "command-mkdb-database_created_or_updated");
+        var messageKey = creation.Outcome switch
+        {
+            ResourceCreationOutcome.Created => "command-mkdb-database_created",
+            ResourceCreationOutcome.Existing => "command-mkdb-database_existing",
+            ResourceCreationOutcome.CreatedOrUpdated => "command-mkdb-database_created_or_updated",
+            _ => throw new UnreachableException(),
+        };
         commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString(messageKey, new Dictionary<string, object> { { "db", creation.Id } }));
         return commandState;
     }
