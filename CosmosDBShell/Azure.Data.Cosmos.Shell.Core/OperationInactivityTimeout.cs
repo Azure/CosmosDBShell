@@ -14,14 +14,24 @@ internal sealed class OperationInactivityTimeout
 
     private readonly object sync = new();
     private readonly CancellationTokenSource source;
+    private readonly CancellationToken callerToken;
     private readonly TimeSpan timeout;
     private int pauseCount;
 
-    internal OperationInactivityTimeout(CancellationTokenSource source, TimeSpan timeout)
+    internal OperationInactivityTimeout(CancellationTokenSource source, TimeSpan timeout, CancellationToken callerToken = default)
     {
         this.source = source;
+        this.callerToken = callerToken;
         this.timeout = timeout;
         this.Restart(timeout);
+    }
+
+    internal void ThrowIfTimedOut()
+    {
+        if (!this.callerToken.IsCancellationRequested)
+        {
+            this.source.Token.ThrowIfCancellationRequested();
+        }
     }
 
     internal void ReportProgress()

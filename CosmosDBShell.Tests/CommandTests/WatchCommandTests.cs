@@ -7,6 +7,10 @@ namespace CosmosShell.Tests.CommandTests;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.States;
+using System.Net;
+using System.Text;
+using Microsoft.Azure.Cosmos;
+using NSubstitute;
 
 /// <summary>
 /// Unit tests for <see cref="WatchCommand"/>. Covers the pure helpers that
@@ -117,5 +121,75 @@ public class WatchCommandTests
 
         await Assert.ThrowsAsync<NotConnectedException>(
             () => command.ExecuteAsync(shell, new CommandState(), "watch", TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task PollingDelay_IsPausedButStalledRequestsTimeOut(bool stalled, bool callerCancels)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var client = Substitute.For<CosmosClient>();
+        var database = Substitute.For<Database>();
+        var container = Substitute.For<Container>();
+        client.Endpoint.Returns(new Uri("https://localhost:8081"));
+        client.GetDatabase("db").Returns(database);
+        database.GetContainer("items").Returns(container);
+        var databaseResponse = Substitute.For<DatabaseResponse>();
+        databaseResponse.StatusCode.Returns(HttpStatusCode.OK);
+        database.ReadAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).Returns(databaseResponse);
+        var containerResponse = Substitute.For<ContainerResponse>();
+        containerResponse.StatusCode.Returns(HttpStatusCode.OK);
+        container.ReadContainerAsync(Arg.Any<ContainerRequestOptions>(), Arg.Any<CancellationToken>()).Returns(containerResponse);
+        shell.State = new ConnectedState(client);
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        shell.LocalEmulatorInactivityTimeout = callerCancels ? TimeSpan.FromSeconds(30) : TimeSpan.FromMilliseconds(500);
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        if (callerCancels)
+        {
+            caller.CancelAfter(TimeSpan.FromMilliseconds(50));
+        }
+        using var iterator = Substitute.For<FeedIterator>();
+        container.GetChangeFeedStreamIterator(
+            Arg.Any<ChangeFeedStartFrom>(), Arg.Any<ChangeFeedMode>(), Arg.Any<ChangeFeedRequestOptions>()).Returns(iterator);
+        var polls = 0;
+        iterator.ReadNextAsync(Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            if (stalled)
+            {
+                await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, call.Arg<CancellationToken>());
+            }
+
+            return ++polls == 1
+                ? new ResponseMessage(HttpStatusCode.NotModified)
+                : new ResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new MemoryStream(Encoding.UTF8.GetBytes("""{"Documents":[{"id":"1"}]}""")),
+                };
+        });
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var state = await shell.ExecuteCommandAsync(
+            "watch --db db --con items --interval=1 --max=1", caller.Token);
+
+        if (callerCancels)
+        {
+            Assert.False(state.IsError);
+            Assert.IsType<ConnectedState>(shell.State);
+        }
+        else if (stalled)
+        {
+            Assert.True(state.IsError);
+            Assert.Equal(ShellExitCode.ConnectionError, state.ExitCode);
+            Assert.IsType<DisconnectedState>(shell.State);
+        }
+        else
+        {
+            Assert.False(state.IsError);
+            Assert.True(watch.Elapsed > shell.LocalEmulatorInactivityTimeout);
+            Assert.Equal(2, polls);
+            Assert.IsType<ConnectedState>(shell.State);
+        }
     }
 }

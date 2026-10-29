@@ -63,12 +63,7 @@ internal class WatchCommand : CosmosCommand
             "watch",
             token);
 
-        // A tail is long-running and must not be killed by the per-command
-        // timeout. Switch to the interruptible (no-timeout) cancellation source
-        // so the loop runs until the user presses Ctrl+C or --max is reached.
-        var watchToken = ShellInterpreter.UserCancellationTokenSource.Token;
-
-        return await this.WatchAsync(shell, container, watchToken);
+        return await this.WatchAsync(shell, container, token);
     }
 
     /// <summary>
@@ -178,7 +173,11 @@ internal class WatchCommand : CosmosCommand
                 if (response.StatusCode == HttpStatusCode.NotModified)
                 {
                     // Caught up with the feed; wait before polling for more.
-                    await Task.Delay(pollInterval, token);
+                    using (shell.PauseOperationTimeout())
+                    {
+                        await Task.Delay(pollInterval, token);
+                    }
+
                     continue;
                 }
 
@@ -195,6 +194,7 @@ internal class WatchCommand : CosmosCommand
                 var limitReached = false;
                 foreach (var element in documents)
                 {
+                    token.ThrowIfCancellationRequested();
                     if (!redirected)
                     {
                         AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element));
@@ -202,6 +202,7 @@ internal class WatchCommand : CosmosCommand
 
                     collected?.Add(element);
                     count++;
+                    shell.ReportOperationProgress();
 
                     if (max.HasValue && count >= max.Value)
                     {
@@ -216,7 +217,7 @@ internal class WatchCommand : CosmosCommand
                 }
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             // Ctrl+C: stop tailing and report what was seen so far.
         }

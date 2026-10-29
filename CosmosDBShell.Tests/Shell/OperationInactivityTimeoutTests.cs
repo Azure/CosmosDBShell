@@ -10,6 +10,7 @@ using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Microsoft.Azure.Cosmos;
 using NSubstitute;
+using System.Text.Json;
 
 public class OperationInactivityTimeoutTests
 {
@@ -141,10 +142,70 @@ public class OperationInactivityTimeoutTests
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
+                commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { marker = "partial-success-marker" }));
                 return commandState;
             }
 
             throw new InvalidOperationException("The stalled command should be canceled.");
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ConsumedTimeout_DoesNotRenderPartialSuccessInsideScriptOrBlock(bool script, bool callerCancels)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var client = Substitute.For<CosmosClient>();
+        client.Endpoint.Returns(new Uri("https://localhost:8081"));
+        shell.State = new ConnectedState(client);
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        shell.LocalEmulatorInactivityTimeout = callerCancels ? TimeSpan.FromSeconds(30) : TimeSpan.FromMilliseconds(50);
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        if (callerCancels)
+        {
+            caller.CancelAfter(TimeSpan.FromMilliseconds(50));
+        }
+
+        Assert.True(CommandFactory.TryCreateFactory(typeof(ConsumedCancellationCommand), out var factory));
+        shell.App.Commands["consumed-cancellation-test"] = factory;
+        var directory = Directory.CreateTempSubdirectory("cosmos-timeout-render-");
+        var scriptPath = Path.Join(Environment.CurrentDirectory, $"timeout-{Guid.NewGuid():N}.csh");
+        try
+        {
+            var output = Path.Join(directory.FullName, "result.json");
+            var statement = $"consumed-cancellation-test > '{output.Replace("'", "''")}'";
+            string command;
+            if (script)
+            {
+                await File.WriteAllTextAsync(scriptPath, statement, TestContext.Current.CancellationToken);
+                command = Path.GetFileName(scriptPath);
+            }
+            else
+            {
+                command = $"{{ {statement} }}";
+            }
+
+            var state = await shell.ExecuteCommandAsync(command, caller.Token);
+
+            Assert.Equal(!callerCancels, state.IsError);
+            if (!callerCancels)
+            {
+                Assert.Equal(ShellExitCode.ConnectionError, state.ExitCode);
+                Assert.IsType<DisconnectedState>(shell.State);
+                Assert.False(File.Exists(output), "Partial success was written before reporting the timeout.");
+            }
+            else
+            {
+                Assert.IsType<ConnectedState>(shell.State);
+            }
+        }
+        finally
+        {
+            File.Delete(scriptPath);
+            directory.Delete(recursive: true);
         }
     }
 

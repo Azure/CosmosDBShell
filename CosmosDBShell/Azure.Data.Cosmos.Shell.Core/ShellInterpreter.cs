@@ -696,7 +696,7 @@ public partial class ShellInterpreter : IDisposable
         {
             Volatile.Write(
                 ref this.localEmulatorDeadline,
-                new OperationInactivityTimeout(operationTokenSource, this.LocalEmulatorInactivityTimeout));
+                new OperationInactivityTimeout(operationTokenSource, this.LocalEmulatorInactivityTimeout, token));
         }
 
         try
@@ -731,12 +731,10 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 state = await this.RunCommandAsync(state, command, operationTokenSource.Token);
-                if (state is not StructuredErrorCommandState
-                    && isLocalEmulatorOperation
-                    && !token.IsCancellationRequested)
+                if (state is not StructuredErrorCommandState)
                 {
                     // Some commands consume cancellation and return partial results as a normal state.
-                    operationTokenSource.Token.ThrowIfCancellationRequested();
+                    Volatile.Read(ref this.localEmulatorDeadline)?.ThrowIfTimedOut();
                 }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -2151,6 +2149,11 @@ public partial class ShellInterpreter : IDisposable
     /// <returns>The rendered state, or an error state when rendering failed.</returns>
     internal CommandState PrintState(CommandState state, bool markAsRendered = false, bool deferMachineModeWarnings = false)
     {
+        if (deferMachineModeWarnings && state is not StructuredErrorCommandState)
+        {
+            Volatile.Read(ref this.localEmulatorDeadline)?.ThrowIfTimedOut();
+        }
+
         var result = this.PrintStateCore(state, markAsRendered);
         if (!ReferenceEquals(result, state))
         {
