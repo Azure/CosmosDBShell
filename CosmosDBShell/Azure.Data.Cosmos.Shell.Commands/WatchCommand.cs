@@ -224,7 +224,7 @@ internal class WatchCommand : CosmosCommand
 
         AnsiConsole.MarkupLine(MessageService.GetArgsString("command-watch-stopped", "count", count.ToString()));
 
-        var result = new CommandState();
+        var result = new CommandState { UserCancellationHandled = token.IsCancellationRequested };
         result.SetFormat(this.OutputFormat);
         if (collected != null)
         {

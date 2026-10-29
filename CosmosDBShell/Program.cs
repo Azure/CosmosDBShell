@@ -18,10 +18,11 @@ internal class Program
 {
     private const int DefaultMcpPort = 6128;
 
-    internal static async Task<CommandState> ExecuteStartupCommandAsync(ShellInterpreter shell, string command)
+    internal static async Task<(CommandState State, bool Interrupted)> ExecuteStartupCommandAsync(ShellInterpreter shell, string command)
     {
         using var cancellation = ShellInterpreter.UserCancellationTokenSource;
-        return await shell.ExecuteCommandAsync(command, cancellation.Token);
+        var state = await shell.ExecuteCommandAsync(command, cancellation.Token, cancellationIsError: true);
+        return (state, cancellation.IsCancellationRequested && !state.UserCancellationHandled);
     }
 
     public static async Task Main(string[] args)
@@ -451,11 +452,11 @@ internal class Program
                 var script = await Console.In.ReadToEndAsync() + Environment.NewLine;
                 if (!string.IsNullOrWhiteSpace(script))
                 {
-                    var state = await ExecuteStartupCommandAsync(ShellInterpreter.Instance, script);
+                    var (state, interrupted) = await ExecuteStartupCommandAsync(ShellInterpreter.Instance, script);
                     if (state.IsError)
                     {
                         Environment.ExitCode = ShellExitCode.FromCommandState(state);
-                        if (executeAndContinueCommand is null)
+                        if (executeAndContinueCommand is null || interrupted)
                         {
                             await StopHostAsync(host, hostTask);
 
@@ -475,11 +476,11 @@ internal class Program
 
             if (explicitCommand is not null)
             {
-                var state = await ExecuteStartupCommandAsync(ShellInterpreter.Instance, explicitCommand);
+                var (state, interrupted) = await ExecuteStartupCommandAsync(ShellInterpreter.Instance, explicitCommand);
                 if (state.IsError)
                 {
                     Environment.ExitCode = ShellExitCode.FromCommandState(state);
-                    if (executeAndContinueCommand is null)
+                    if (executeAndContinueCommand is null || interrupted)
                     {
                         await StopHostAsync(host, hostTask);
 

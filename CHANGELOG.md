@@ -13,6 +13,7 @@
 - Preserve partial bulk write counts through pipelines on emulator timeouts, report consumed inactivity cancellations as failures, and keep active bulk selection, export, and piped removal scans from timing out during local processing.
 - Prevent scripts from rendering timed-out partial results as successful, pause emulator inactivity deadlines during file/theme editing and change-feed polling intervals, and cancel stalled change-feed requests.
 - Keep Ctrl+C effective for startup commands and redirected scripts, and exclude local external tools such as `jq` from emulator inactivity deadlines.
+- Report interrupted startup commands as failures, retain structured partial write results, and prevent MCP prompt refreshes from canceling queued startup work.
 
 ### Improvements
 

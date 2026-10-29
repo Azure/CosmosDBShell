@@ -35,10 +35,12 @@ public class StartupOptionTests
             command = parsed.GetValue(mode == "-c" ? map.ExecuteAndQuit : map.ExecuteAndContinue)!;
         }
 
-        var state = await Program.ExecuteStartupCommandAsync(shell, command);
+        var (state, interrupted) = await Program.ExecuteStartupCommandAsync(shell, command);
 
-        Assert.False(state.IsError);
-        Assert.True(Assert.IsType<ShellJson>(state.Result).Value.GetBoolean());
+        var error = Assert.IsType<ErrorCommandState>(state);
+        Assert.True(interrupted);
+        Assert.NotEqual(ShellExitCode.Success, error.ExitCode);
+        Assert.True(Assert.IsAssignableFrom<OperationCanceledException>(error.Exception.GetBaseException()).CancellationToken.IsCancellationRequested);
     }
 
     [CosmosCommand("startup-cancel-test")]
@@ -50,6 +52,86 @@ public class StartupOptionTests
             shell.CancelPrompt();
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(token.IsCancellationRequested));
             return Task.FromResult(commandState);
+        }
+    }
+
+    [Fact]
+    public async Task StartupCancellation_RendersStructuredPartialResults()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StartupPartialCancellationCommand), out var factory));
+        shell.App.Commands["startup-partial-test"] = factory;
+        using var output = new StringWriter();
+        using var errors = new StringWriter();
+        var savedOutput = Console.Out;
+        var savedError = Console.Error;
+        try
+        {
+            Console.SetOut(output);
+            Console.SetError(errors);
+
+            var (state, interrupted) = await Program.ExecuteStartupCommandAsync(shell, "startup-partial-test");
+
+            Assert.IsType<StructuredErrorCommandState>(state);
+            Assert.True(interrupted);
+            Assert.True(state.IsError);
+            Assert.Empty(output.ToString());
+            using var payload = JsonDocument.Parse(errors.ToString());
+            Assert.Equal("error", payload.RootElement.GetProperty("status").GetString());
+            var result = payload.RootElement.GetProperty("result");
+            Assert.Equal(1, result.GetProperty("succeeded").GetInt32());
+            Assert.Equal(1, result.GetProperty("uncertain").GetInt32());
+            Assert.True(result.GetProperty("resultIncomplete").GetBoolean());
+        }
+        finally
+        {
+            Console.SetOut(savedOutput);
+            Console.SetError(savedError);
+        }
+    }
+
+    [CosmosCommand("startup-partial-test")]
+    internal sealed class StartupPartialCancellationCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            shell.CancelPrompt();
+            return Task.FromResult<CommandState>(new StructuredErrorCommandState(
+                new OperationCanceledException(token),
+                new ShellJson(JsonSerializer.SerializeToElement(new { succeeded = 1, uncertain = 1, resultIncomplete = true }))));
+        }
+    }
+
+    [Fact]
+    public async Task PromptRefresh_DoesNotCancelQueuedStartupWork()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var holder = shell.RunSerializedAsync(async () =>
+        {
+            await release.Task.WaitAsync(TestContext.Current.CancellationToken);
+            shell.RefreshPrompt();
+            return 0;
+        }, TestContext.Current.CancellationToken);
+        try
+        {
+            var queued = Program.ExecuteStartupCommandAsync(shell, "echo queued");
+            Assert.False(queued.IsCompleted);
+            release.TrySetResult();
+            await holder;
+
+            var (state, interrupted) = await queued;
+
+            Assert.False(interrupted);
+            Assert.False(state.IsError);
+            Assert.Equal("queued", Assert.IsType<ShellText>(state.Result).Text);
+        }
+        finally
+        {
+            release.TrySetResult();
+            await holder;
         }
     }
 

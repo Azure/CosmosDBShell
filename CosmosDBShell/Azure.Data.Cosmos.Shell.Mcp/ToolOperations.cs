@@ -796,7 +796,7 @@ internal class ToolOperations
                         }
 
                         var response = await shell.ExecuteCosmosCommandAsync(cmd, commandState, command.CommandName, cancellationToken);
-                        shell.CancelPrompt();
+                        shell.RefreshPrompt();
                         return McpResponseFactory.CreateSuccess(response, shell.State);
                     }
                     finally

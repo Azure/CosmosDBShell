@@ -630,6 +630,11 @@ public partial class ShellInterpreter : IDisposable
             }
         }
 
+        this.RefreshPrompt();
+    }
+
+    internal void RefreshPrompt()
+    {
         this.editorCancelTokenSource.Cancel();
         this.editorCancelTokenSource = new CancellationTokenSource();
     }
@@ -639,18 +644,31 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     /// <param name="command">The command string to execute.</param>
     /// <param name="token">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <param name="cancellationIsError">Whether unhandled caller cancellation should be reported as a failure.</param>
     /// <returns>A <see cref="CommandState"/> representing the result of the command execution.</returns>
-    public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token)
+    public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token, bool cancellationIsError = false)
     {
         try
         {
-            return await this.RunSerializedAsync(() => this.ExecuteCommandCoreAsync(command, token), token);
+            return await this.RunSerializedAsync(() => this.ExecuteCommandCoreAsync(command, token, cancellationIsError), token);
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        catch (OperationCanceledException e) when (token.IsCancellationRequested)
         {
             this.Diagnostics?.LogCancelled(0, command);
-            return new CommandState();
+            return cancellationIsError ? this.ReportCancellation(e, new CommandState(), command) : new CommandState();
         }
+    }
+
+    private CommandState ReportCancellation(OperationCanceledException exception, CommandState state, string command)
+    {
+        var error = new ErrorCommandState(new ShellException(MessageService.GetString("runtime-error-canceled"), exception))
+        {
+            RequestCharge = state.RequestCharge,
+        };
+        error.ShareWarningsFrom(state);
+        this.RenderWarnings(error, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, deferToErrorEnvelope: true);
+        this.ReportExecutionError(error.Exception, command, error.Warnings);
+        return error;
     }
 
     /// <remarks>
@@ -669,7 +687,7 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
-    private async Task<CommandState> ExecuteCommandCoreAsync(string command, CancellationToken token)
+    private async Task<CommandState> ExecuteCommandCoreAsync(string command, CancellationToken token, bool cancellationIsError)
     {
         using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
         var isLocalEmulatorOperation = this.State is ConnectedState connectedState
@@ -737,9 +755,15 @@ public partial class ShellInterpreter : IDisposable
                     Volatile.Read(ref this.localEmulatorDeadline)?.ThrowIfTimedOut();
                 }
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            catch (OperationCanceledException e) when (token.IsCancellationRequested)
             {
                 wasCancelled = true;
+                if (cancellationIsError)
+                {
+                    result = this.ReportCancellation(e, state, command);
+                    return result;
+                }
+
                 result = new CommandState();
                 result.ShareWarningsFrom(state);
                 this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
@@ -799,6 +823,24 @@ public partial class ShellInterpreter : IDisposable
             if (token.IsCancellationRequested)
             {
                 wasCancelled = true;
+                if (state is StructuredErrorCommandState canceledStructuredError)
+                {
+                    result = PrintStructuredError(canceledStructuredError);
+                    return result;
+                }
+
+                if (state.UserCancellationHandled)
+                {
+                    result = this.PrintState(state);
+                    return result;
+                }
+
+                if (cancellationIsError)
+                {
+                    result = this.ReportCancellation(new OperationCanceledException(token), state, command);
+                    return result;
+                }
+
                 result = state;
                 this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
                 return result;

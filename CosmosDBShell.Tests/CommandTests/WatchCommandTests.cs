@@ -18,6 +18,7 @@ using NSubstitute;
 /// plus the option-validation and not-connected guards, all of which can be
 /// exercised without a live Cosmos DB connection.
 /// </summary>
+[Collection(ConsoleOutputTestCollection.Name)]
 public class WatchCommandTests
 {
     [Fact]
@@ -124,10 +125,11 @@ public class WatchCommandTests
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public async Task PollingDelay_IsPausedButStalledRequestsTimeOut(bool stalled, bool callerCancels)
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public async Task PollingDelay_IsPausedButStalledRequestsTimeOut(bool stalled, bool callerCancels, bool startup)
     {
         using var shell = ShellInterpreter.CreateInstance();
         using var client = Substitute.For<CosmosClient>();
@@ -146,7 +148,7 @@ public class WatchCommandTests
         shell.Options = new Program.CosmosShellOptions { Output = "json" };
         shell.LocalEmulatorInactivityTimeout = callerCancels ? TimeSpan.FromSeconds(30) : TimeSpan.FromMilliseconds(500);
         using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        if (callerCancels)
+        if (callerCancels && !startup)
         {
             caller.CancelAfter(TimeSpan.FromMilliseconds(50));
         }
@@ -158,6 +160,11 @@ public class WatchCommandTests
         {
             if (stalled)
             {
+                if (startup)
+                {
+                    shell.CancelPrompt();
+                }
+
                 await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, call.Arg<CancellationToken>());
             }
 
@@ -170,8 +177,18 @@ public class WatchCommandTests
         });
 
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        var state = await shell.ExecuteCommandAsync(
-            "watch --db db --con items --interval=1 --max=1", caller.Token);
+        const string command = "watch --db db --con items --interval=1 --max=1";
+        CommandState state;
+        if (startup)
+        {
+            var startupResult = await Program.ExecuteStartupCommandAsync(shell, command);
+            state = startupResult.State;
+            Assert.False(startupResult.Interrupted);
+        }
+        else
+        {
+            state = await shell.ExecuteCommandAsync(command, caller.Token);
+        }
 
         if (callerCancels)
         {

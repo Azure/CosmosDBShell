@@ -67,6 +67,8 @@ public partial class CommandState
 
     internal bool OutputRendered { get; set; }
 
+    internal bool UserCancellationHandled { get; set; }
+
     /// <summary>
     /// Gets or sets an optional delegate that renders the result for a human on an
     /// interactive terminal. When set and the effective format is <see cref="OutputFormat.User"/>,
