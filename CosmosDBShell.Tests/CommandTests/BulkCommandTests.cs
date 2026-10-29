@@ -395,13 +395,16 @@ public class BulkCommandTests
 
     // Execution engine.
     [Theory]
-    [InlineData("success")]
-    [InlineData("record")]
-    [InlineData("write")]
-    [InlineData("cancel")]
-    [InlineData("source")]
-    [InlineData("record-and-source")]
-    public async Task PendingSourceReadSettlesCompletedWritesAndFinishesBeforeDisposal(string failureKind)
+    [InlineData("success", false)]
+    [InlineData("record", false)]
+    [InlineData("write", false)]
+    [InlineData("cancel", false)]
+    [InlineData("source", false)]
+    [InlineData("record-and-source", false)]
+    [InlineData("write", true)]
+    [InlineData("source", true)]
+    [InlineData("record-and-source", true)]
+    public async Task PendingSourceReadSettlesCompletedWritesAndFinishesBeforeDisposal(string failureKind, bool applicationException)
     {
         using var timeout = Timeout();
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
@@ -413,8 +416,8 @@ public class BulkCommandTests
             new TaskCompletionSource<BulkOutcome>(TaskCreationOptions.RunContinuationsAsynchronously),
             new TaskCompletionSource<BulkOutcome>(TaskCreationOptions.RunContinuationsAsynchronously),
         };
-        var expected = new IOException(failureKind);
-        var sourceFailure = new IOException("source");
+        Exception expected = applicationException ? new ApplicationException(failureKind) : new IOException(failureKind);
+        Exception sourceFailure = applicationException ? new ApplicationException("source") : new IOException("source");
         var readFinished = false;
         var disposed = false;
         var progressUpdates = 0;
@@ -506,7 +509,7 @@ public class BulkCommandTests
         }
         else if (failureKind != "success")
         {
-            var actual = await Assert.ThrowsAsync<IOException>(() => run.WaitAsync(timeout.Token));
+            var actual = await Assert.ThrowsAnyAsync<Exception>(() => run.WaitAsync(timeout.Token));
             Assert.Same(failureKind == "source" ? sourceFailure : expected, actual);
         }
         else
@@ -1419,12 +1422,13 @@ public class BulkCommandTests
         await File.AppendAllTextAsync(path, "invalid record\n", TestContext.Current.CancellationToken);
         await fixture.RunAsync("bulk begin --db db --con items");
         await fixture.RunAsync($"bulk add '{Operation(0).Json}'");
+        using var response = new ResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new CancelOnDisposeStream(
+                Encoding.UTF8.GetBytes("""{"_rid":"rid","partitionKey":{"paths":["/pk"]}}"""), cancellation),
+        };
         fixture.Container.ReadContainerStreamAsync(Arg.Any<ContainerRequestOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult(new ResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new CancelOnDisposeStream(
-                    Encoding.UTF8.GetBytes("""{"_rid":"rid","partitionKey":{"paths":["/pk"]}}"""), cancellation),
-            }));
+            .Returns(Task.FromResult(response));
         var command = new BulkCommand { Subcommand = "execute", Journal = path, Yes = true };
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>

@@ -84,6 +84,8 @@ public partial class ShellInterpreter : IDisposable
     private OperationInactivityTimeout? localEmulatorDeadline;
     private CancellationToken cancellationErrorToken;
 
+    private int activeInterruptOutputFormat = -1;
+
     private int transientLineLength;
 
     private int callDepth;
@@ -1327,6 +1329,18 @@ public partial class ShellInterpreter : IDisposable
         commandState.RequestCharge = null;
         var generation = this.SessionRequestChargeGeneration;
         using var requestChargeScope = RequestChargeContext.Begin();
+        var previousInterruptFormat = Volatile.Read(ref this.activeInterruptOutputFormat);
+        var formatProperty = command.GetType().GetProperties().FirstOrDefault(property =>
+            property.GetCustomAttribute<CosmosOptionAttribute>()?.Names.Contains("format", StringComparer.OrdinalIgnoreCase) == true);
+        var effectiveFormat = OutputFormats.TryParse(formatProperty?.GetValue(command) as string, out var selectedFormat)
+            ? selectedFormat
+            : commandState.OutputFormatExplicitlySet ? commandState.OutputFormat : this.DefaultOutputFormat;
+
+        // Nested command output must not add terminal markers to an enclosing structured result.
+        var interruptFormat = previousInterruptFormat >= 0 && OutputPolicy.IsStructuredFormat((OutputFormat)previousInterruptFormat)
+            ? previousInterruptFormat
+            : (int)effectiveFormat;
+        Volatile.Write(ref this.activeInterruptOutputFormat, interruptFormat);
         try
         {
             var result = await command.ExecuteAsync(this, commandState, commandText, token);
@@ -1349,6 +1363,10 @@ public partial class ShellInterpreter : IDisposable
             }
 
             throw;
+        }
+        finally
+        {
+            Volatile.Write(ref this.activeInterruptOutputFormat, previousInterruptFormat);
         }
     }
 
@@ -2880,11 +2898,14 @@ public partial class ShellInterpreter : IDisposable
             this.cosmosShellPrompt.InContinuation = false;
         }
 
-        this.CancelPrompt();
-        if (!this.IsMachineMode
-            && !OutputPolicy.IsStructuredFormat(this.DefaultOutputFormat)
+        var activeFormat = Volatile.Read(ref this.activeInterruptOutputFormat);
+        var effectiveFormat = activeFormat >= 0 ? (OutputFormat)activeFormat : this.DefaultOutputFormat;
+        var showMarker = !this.IsMachineMode
+            && !OutputPolicy.IsStructuredFormat(effectiveFormat)
             && this.IsOutputTerminal()
-            && string.IsNullOrEmpty(this.StdOutRedirect))
+            && string.IsNullOrEmpty(this.StdOutRedirect);
+        this.CancelPrompt();
+        if (showMarker)
         {
             WriteLine("^C");
         }

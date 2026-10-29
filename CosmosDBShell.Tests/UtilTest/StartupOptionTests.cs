@@ -91,6 +91,96 @@ public class StartupOptionTests
         }
     }
 
+    [Theory]
+    [InlineData("user", null, "startup-format-test --format=json", false)]
+    [InlineData("user", null, "startup-format-test -f csv", false)]
+    [InlineData("user", null, "startup-format-test --format=user", true)]
+    [InlineData("user", null, "startup-format-test --format=table", true)]
+    [InlineData("user", null, "startup-format-test", true)]
+    [InlineData("json", null, "startup-format-test --format=user", false)]
+    [InlineData("csv", null, "startup-format-test --format=user", false)]
+    [InlineData(null, "json", "startup-format-test --format=user", true)]
+    [InlineData(null, "csv", "startup-format-test --format=table", true)]
+    [InlineData("user", null, "echo (startup-format-test --format=json)", false)]
+    [InlineData("user", null, "$captured = (startup-format-test --format=csv)", false)]
+    [InlineData("user", null, "startup-format-outer-test --format=json --inner-format=user", false)]
+    [InlineData("user", null, "startup-format-outer-test --format=user --inner-format=csv", false)]
+    public async Task ConsoleCancellation_UsesScopedCommandFormat(
+        string? sessionFormat, string? environmentFormat, string command, bool markerExpected)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Output = sessionFormat };
+        shell.IsOutputTerminal = () => true;
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StartupFormatCancellationCommand), out var factory));
+        shell.App.Commands["startup-format-test"] = factory;
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StartupOuterFormatCancellationCommand), out var outerFactory));
+        shell.App.Commands["startup-format-outer-test"] = outerFactory;
+        using var output = new StringWriter();
+        using var errors = new StringWriter();
+        var savedOutput = Console.Out;
+        var savedError = Console.Error;
+        var savedEnvironmentFormat = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+        try
+        {
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", environmentFormat);
+            Console.SetOut(output);
+            Console.SetError(errors);
+
+            var (state, interrupted) = await Program.ExecuteStartupCommandAsync(shell, command);
+
+            Assert.False(state.IsError);
+            Assert.True(interrupted);
+            Assert.True(state.UserCancellationHandled);
+            Assert.Equal(markerExpected ? "^C" + Environment.NewLine : "", output.ToString());
+            Assert.Empty(errors.ToString());
+
+            output.GetStringBuilder().Clear();
+            var (nextState, nextInterrupted) = await Program.ExecuteStartupCommandAsync(
+                shell, "startup-format-test --format=user");
+
+            Assert.False(nextState.IsError);
+            Assert.True(nextInterrupted);
+            Assert.Equal(shell.IsMachineMode ? "" : "^C" + Environment.NewLine, output.ToString());
+            Assert.Empty(errors.ToString());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", savedEnvironmentFormat);
+            Console.SetOut(savedOutput);
+            Console.SetError(savedError);
+        }
+    }
+
+    [CosmosCommand("startup-format-test")]
+    internal sealed class StartupFormatCancellationCommand : CosmosCommand
+    {
+        [CosmosOption("format", "f")]
+        public string? SelectedFormat { get; init; }
+
+        public override async Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            await Task.Run(() => RaiseConsoleCancellation(shell), token);
+            return new CommandState { UserCancellationHandled = true };
+        }
+    }
+
+    [CosmosCommand("startup-format-outer-test")]
+    internal sealed class StartupOuterFormatCancellationCommand : CosmosCommand
+    {
+        [CosmosOption("format", "f")]
+        public string? SelectedFormat { get; init; }
+
+        [CosmosOption("inner-format")]
+        public string? InnerFormat { get; init; }
+
+        public override Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+            => shell.ExecuteCosmosCommandAsync(
+                new StartupFormatCancellationCommand { SelectedFormat = this.InnerFormat },
+                commandState, commandText, token);
+    }
+
     [Fact]
     public async Task RedirectedInput_CancellationAbortsBlockingReadWithoutExecutingLateScript()
     {

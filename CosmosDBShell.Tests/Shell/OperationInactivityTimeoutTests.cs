@@ -169,6 +169,14 @@ public class OperationInactivityTimeoutTests
         using var shell = ShellInterpreter.CreateInstance();
         using var client = Substitute.For<CosmosClient>();
         client.Endpoint.Returns(new Uri("https://localhost:8081"));
+        var database = Substitute.For<Database>();
+        var container = Substitute.For<Container>();
+        client.GetDatabase("db").Returns(database);
+        database.GetContainer("items").Returns(container);
+        using var unavailable = Substitute.For<ResponseMessage>();
+        unavailable.StatusCode.Returns(System.Net.HttpStatusCode.ServiceUnavailable);
+        container.CreateItemStreamAsync(Arg.Any<Stream>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(unavailable));
         shell.State = new ConnectedState(client);
         shell.Options = new Program.CosmosShellOptions { Output = "json" };
         shell.LocalEmulatorInactivityTimeout = TimeSpan.FromMilliseconds(500);
@@ -178,14 +186,15 @@ public class OperationInactivityTimeoutTests
         var state = await shell.ExecuteCommandAsync(
             "import-validation-progress-test" + (localValidation ? " --local" : ""), TestContext.Current.CancellationToken);
 
-        Assert.Equal(!localValidation, state.IsError);
         if (localValidation)
         {
+            Assert.False(state.IsError, state is ErrorCommandState error ? error.Exception.ToString() : state.GetType().Name);
             Assert.IsType<ConnectedState>(shell.State);
             Assert.Equal(20, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("failed").GetInt32());
         }
         else
         {
+            Assert.True(state.IsError);
             Assert.Equal(ShellExitCode.ConnectionError, state.ExitCode);
             Assert.IsType<DisconnectedState>(shell.State);
         }
@@ -200,9 +209,7 @@ public class OperationInactivityTimeoutTests
         public override async Task<CommandState> ExecuteAsync(
             ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
         {
-            var container = Substitute.For<Container>();
-            container.CreateItemStreamAsync(Arg.Any<Stream>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
-                .Returns(_ => Task.FromResult(new ResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable)));
+            var container = ((ConnectedState)shell.State).Client.GetDatabase("db").GetContainer("items");
             async IAsyncEnumerable<(int LineNumber, JsonElement Item)> Items()
             {
                 for (var index = 0; index < 20; index++)
