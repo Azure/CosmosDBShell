@@ -16,6 +16,7 @@
 - Report interrupted startup commands as failures, retain structured partial write results, and prevent MCP prompt refreshes from canceling queued startup work.
 - Retain settled import counts and RUs on cancellation, prevent interrupted startup scripts from writing partial success output, and keep intentional watch stops successful through pipelines, blocks, and scripts.
 - Stop follow-up startup commands after an intentional watch stop in redirected stdin, and align timed-out import result error messages and exit codes with the command failure.
+- Keep import progress counts and observed RUs current when writes finish while the next input record is still being read.
 
 ### Improvements
 

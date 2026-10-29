@@ -16,6 +16,85 @@ using NSubstitute;
 
 public class ImportConcurrencyTests
 {
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task SlowInput_RecordsSettledWritesAndSettlesReadBeforeDisposal(int failure)
+    {
+        using var timeout = CreateTimeout();
+        var container = Substitute.For<Container>();
+        var write = new TaskCompletionSource<ItemResponse<JsonElement>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ConfigureWrites(container, (_, _) => write.Task);
+        var reading = NewGate();
+        var releaseRead = NewGate();
+        var recorded = NewGate();
+        var disposed = false;
+        var progress = new ImportCommand.ImportProgress();
+        async IAsyncEnumerable<(int LineNumber, JsonElement Item)> SlowSource()
+        {
+            try
+            {
+                yield return (1, JsonSerializer.SerializeToElement(new { id = "first" }));
+                reading.TrySetResult();
+                await releaseRead.Task.WaitAsync(timeout.Token);
+            }
+            finally
+            {
+                disposed = true;
+            }
+        }
+
+        var import = ImportCommand.WriteItemsAsync(
+            SlowSource(), container, ImportMode.Insert, 2, false, [], new CommandState(), timeout.Token,
+            progress: progress,
+            progressChanged: () => recorded.TrySetResult());
+        try
+        {
+            await reading.Task.WaitAsync(timeout.Token);
+            if (failure == 1)
+            {
+                write.SetException(new InvalidOperationException("write failed"));
+            }
+            else if (failure == 2)
+            {
+                write.SetCanceled(timeout.Token);
+            }
+            else
+            {
+                write.SetResult(Response(HttpStatusCode.Created, 2.5));
+                await recorded.Task.WaitAsync(timeout.Token);
+                Assert.Equal(1, progress.Success);
+                Assert.Equal(0, progress.Failed);
+                Assert.Equal(2.5, progress.Charge);
+            }
+
+            Assert.False(import.IsCompleted);
+            Assert.False(disposed);
+        }
+        finally
+        {
+            write.TrySetResult(Response(HttpStatusCode.Created, 2.5));
+            releaseRead.TrySetResult();
+        }
+
+        if (failure == 1)
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => import.WaitAsync(timeout.Token));
+            Assert.Equal("write failed", error.Message);
+        }
+        else if (failure == 2)
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => import.WaitAsync(timeout.Token));
+        }
+        else
+        {
+            Assert.Equal((1, 0, 2.5), await import.WaitAsync(timeout.Token));
+        }
+
+        Assert.True(disposed);
+    }
+
     [Fact]
     public async Task FinalDrain_RecordsWritesThatFinishBehindASlowerWrite()
     {

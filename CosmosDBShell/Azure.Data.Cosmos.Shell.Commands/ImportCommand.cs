@@ -1027,6 +1027,32 @@ internal class ImportCommand : CosmosCommand
         }
 
         await using var items = source.GetAsyncEnumerator(token);
+        async ValueTask<bool> ReadNextAsync()
+        {
+            var next = items.MoveNextAsync();
+            if (next.IsCompleted || pending.Count == 0)
+            {
+                return await next;
+            }
+
+            var read = next.AsTask();
+            try
+            {
+                while (!read.IsCompleted && pending.Count > 0)
+                {
+                    await Task.WhenAny(pending.Cast<Task>().Append(read));
+                    await DrainCompletedAsync();
+                }
+
+                return await read;
+            }
+            finally
+            {
+                // Settle the read before disposing its enumerator, even when a write fails.
+                await read;
+            }
+        }
+
         try
         {
             while (true)
@@ -1044,7 +1070,7 @@ internal class ImportCommand : CosmosCommand
                 }
 
                 token.ThrowIfCancellationRequested();
-                if (!await items.MoveNextAsync())
+                if (!await ReadNextAsync())
                 {
                     break;
                 }
