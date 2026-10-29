@@ -191,6 +191,7 @@ internal class CommandStatement : Statement
             }
 
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
+            using var localWorkPause = factory.IsExternal ? shell.PauseOperationTimeout() : null;
             var result = await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token);
             if (result is ErrorCommandState error && shell.CurrentScriptFileName is { } sourceName && shell.CurrentScriptContent is { } sourceText)
             {

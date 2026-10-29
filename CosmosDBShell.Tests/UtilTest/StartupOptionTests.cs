@@ -5,9 +5,54 @@
 namespace CosmosShell.Tests.UtilTest;
 
 using Azure.Data.Cosmos.Shell.Util;
+using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
+using System.Text.Json;
 
+[Collection(ConsoleOutputTestCollection.Name)]
 public class StartupOptionTests
 {
+    [Theory]
+    [InlineData("-c")]
+    [InlineData("-k")]
+    [InlineData("stdin")]
+    public async Task StartupCommands_ObserveConsoleCancellation(string mode)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StartupCancellationCommand), out var factory));
+        shell.App.Commands["startup-cancel-test"] = factory;
+        string command;
+        if (mode == "stdin")
+        {
+            command = "startup-cancel-test\n";
+        }
+        else
+        {
+            var (root, map) = Program.BuildRootCommand();
+            var parsed = root.Parse(Program.NormalizeArguments([mode, "startup-cancel-test"]));
+            Assert.Empty(parsed.Errors);
+            command = parsed.GetValue(mode == "-c" ? map.ExecuteAndQuit : map.ExecuteAndContinue)!;
+        }
+
+        var state = await Program.ExecuteStartupCommandAsync(shell, command);
+
+        Assert.False(state.IsError);
+        Assert.True(Assert.IsType<ShellJson>(state.Result).Value.GetBoolean());
+    }
+
+    [CosmosCommand("startup-cancel-test")]
+    internal sealed class StartupCancellationCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            shell.CancelPrompt();
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(token.IsCancellationRequested));
+            return Task.FromResult(commandState);
+        }
+    }
+
     [Theory]
     [InlineData("--output", "JSON", "json")]
     [InlineData("-o", "csv", "csv")]

@@ -18,6 +18,12 @@ internal class Program
 {
     private const int DefaultMcpPort = 6128;
 
+    internal static async Task<CommandState> ExecuteStartupCommandAsync(ShellInterpreter shell, string command)
+    {
+        using var cancellation = ShellInterpreter.UserCancellationTokenSource;
+        return await shell.ExecuteCommandAsync(command, cancellation.Token);
+    }
+
     public static async Task Main(string[] args)
     {
         // Normalize argv first so that any --lsp/--stdio token that is part
@@ -445,7 +451,7 @@ internal class Program
                 var script = await Console.In.ReadToEndAsync() + Environment.NewLine;
                 if (!string.IsNullOrWhiteSpace(script))
                 {
-                    var state = await ShellInterpreter.Instance.ExecuteCommandAsync(script, default);
+                    var state = await ExecuteStartupCommandAsync(ShellInterpreter.Instance, script);
                     if (state.IsError)
                     {
                         Environment.ExitCode = ShellExitCode.FromCommandState(state);
@@ -469,7 +475,7 @@ internal class Program
 
             if (explicitCommand is not null)
             {
-                var state = await ShellInterpreter.Instance.ExecuteCommandAsync(explicitCommand, default);
+                var state = await ExecuteStartupCommandAsync(ShellInterpreter.Instance, explicitCommand);
                 if (state.IsError)
                 {
                     Environment.ExitCode = ShellExitCode.FromCommandState(state);

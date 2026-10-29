@@ -150,6 +150,35 @@ public class OperationInactivityTimeoutTests
         }
     }
 
+    [CosmosCommand("local-processing-test", External = true)]
+    internal sealed class LocalProcessingCommand : CosmosCommand
+    {
+        public override async Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), token);
+            return commandState;
+        }
+    }
+
+    [Fact]
+    public async Task ExternalPipelineStage_LongerThanDeadline_DoesNotTimeOut()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var client = Substitute.For<CosmosClient>();
+        client.Endpoint.Returns(new Uri("https://localhost:8081"));
+        shell.State = new ConnectedState(client);
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        shell.LocalEmulatorInactivityTimeout = TimeSpan.FromMilliseconds(500);
+        Assert.True(CommandFactory.TryCreateFactory(typeof(LocalProcessingCommand), out var factory));
+        shell.App.Commands["local-processing-test"] = factory;
+
+        var state = await shell.ExecuteCommandAsync("echo data | local-processing-test", TestContext.Current.CancellationToken);
+
+        Assert.False(state.IsError);
+        Assert.IsType<ConnectedState>(shell.State);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]

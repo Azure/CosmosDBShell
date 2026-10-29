@@ -12,6 +12,7 @@
 - Long-running commands and scripts against a local emulator no longer fail with a timeout and disconnect after 10 seconds while the emulator is still responding. The 10-second limit now applies only when nothing makes progress, and it is paused while confirmation prompts and external editors wait for input.
 - Preserve partial bulk write counts through pipelines on emulator timeouts, report consumed inactivity cancellations as failures, and keep active bulk selection, export, and piped removal scans from timing out during local processing.
 - Prevent scripts from rendering timed-out partial results as successful, pause emulator inactivity deadlines during file/theme editing and change-feed polling intervals, and cancel stalled change-feed requests.
+- Keep Ctrl+C effective for startup commands and redirected scripts, and exclude local external tools such as `jq` from emulator inactivity deadlines.
 
 ### Improvements
 
