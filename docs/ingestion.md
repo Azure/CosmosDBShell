@@ -33,7 +33,7 @@ Human-readable import and bulk execution report about every two seconds, even if
 - Bulk execution progress starts **after** validation/selection, confirmation, and journal verification. These preparation steps can add time before the first update.
 - These are cumulative averages, not instantaneous rates. Observed RU charge covers recorded responses, not a billing estimate or a count of internal SDK retries. Unchanged counts can mean input work, pending requests, or SDK retry waits; they do not prove a hang or identify throttling.
 - Streamed imports do not pre-count records, so they have no percentage or ETA. Bulk knows its operation count.
-- Progress appears only when standard output is a terminal. Quiet mode, structured output, shell or operating-system output redirection, pipes, and MCP calls do not emit it. Final structured results retain their existing fields.
+- Progress appears only when standard output is a terminal. Quiet mode, structured output, shell or operating-system output redirection, operating-system pipes, and MCP calls do not emit it. In an in-shell `|` pipeline, an earlier stage still shows progress on the terminal, but the line is erased before the next stage runs and never becomes part of the piped data. Final structured results retain their existing fields.
 
 ## Limits and recovery
 
