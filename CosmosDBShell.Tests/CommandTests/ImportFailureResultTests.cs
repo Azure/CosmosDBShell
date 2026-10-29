@@ -15,6 +15,7 @@ using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 using NSubstitute;
+using CosmosShell.Tests.Integration;
 
 [Collection(ConsoleOutputTestCollection.Name)]
 public class ImportFailureResultTests
@@ -61,6 +62,7 @@ public class ImportFailureResultTests
             Assert.Equal(ShellExitCode.ConnectionError, result.GetProperty("exitCode").GetInt32());
             Assert.Equal(state.Exception.Message, result.GetProperty("error").GetString());
             Assert.Contains("timed out", state.Exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(state.Exception.Message, IntegrationTestBase.GetErrorMessage(state));
             Assert.Equal(1, result.GetProperty("imported").GetInt32());
             Assert.Equal(0, result.GetProperty("failed").GetInt32());
             Assert.Equal(2, result.GetProperty("requestCharge").GetDouble());

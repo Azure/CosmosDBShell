@@ -9,6 +9,7 @@ using System.Globalization;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.States;
+using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Cosmos.Linq;
 
@@ -26,6 +27,11 @@ public class LocalEmulatorInactivityTimeoutTests : ConnectedEmulatorTestBase
         CreatedDatabases.Add(this.databaseName);
         var database = (await this.CosmosClient.CreateDatabaseAsync(this.databaseName, cancellationToken: token)).Database;
         this.container = (await database.CreateContainerAsync("items", "/pk", cancellationToken: token)).Container;
+        var options = ShellInterpreter.CreateClientOptions(ConnectionMode.Gateway, isEmulator: true);
+        options.ServerCertificateCustomValidationCallback = (_, _, _) => true;
+        options.CustomHandlers.Add(new OperationProgressHandler(Shell));
+        options.CustomHandlers.Add(new PacedRequestHandler());
+        Shell.Connect(new CosmosClient(ParsedDocDBConnectionString.BuildEmulatorConnectionString(EmulatorEndpoint), options));
         Shell.Options = new Program.CosmosShellOptions { Output = "json" };
         var navigation = await this.ExecuteAsync($"cd /{this.databaseName}/items");
         Assert.False(navigation.IsError, FormatError(navigation));
@@ -114,5 +120,15 @@ public class LocalEmulatorInactivityTimeoutTests : ConnectedEmulatorTestBase
         Assert.True(state.IsError);
         Assert.Contains("timed out", GetErrorMessage(state), StringComparison.OrdinalIgnoreCase);
         Assert.IsType<DisconnectedState>(Shell.State);
+    }
+
+    private sealed class PacedRequestHandler : RequestHandler
+    {
+        public override async Task<ResponseMessage> SendAsync(RequestMessage request, CancellationToken cancellationToken)
+        {
+            // Make the elapsed-time assertions independent of emulator or CI machine speed.
+            await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken);
+            return await base.SendAsync(request, cancellationToken);
+        }
     }
 }

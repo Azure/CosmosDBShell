@@ -39,7 +39,7 @@ public abstract class IntegrationTestBase : IDisposable
 
     internal static string GetErrorMessage(CommandState state)
     {
-        return Assert.IsType<ErrorCommandState>(state).Exception.Message;
+        return Assert.IsAssignableFrom<ErrorCommandState>(state).Exception.Message;
     }
 
     internal static string FormatError(CommandState state)
