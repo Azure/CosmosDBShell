@@ -2,6 +2,13 @@
 
 Model Context Protocol (MCP) allows AI clients to control CosmosDBShell programmatically.
 
+Database/container creation tools expose `created: true` and `outcome: "created"`
+for a new data-plane resource, or `created: false` and `outcome: "existing"` when
+reusing one. ARM create-or-update returns `created: null` and
+`outcome: "createdOrUpdated"` because the API cannot distinguish the two.
+Do not count that unknown outcome as a confirmed creation.
+See [management result semantics](commands.md#management).
+
 ## Start MCP Server
 
 ```bash

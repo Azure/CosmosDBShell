@@ -630,6 +630,8 @@ command-mkdb-description-name = The database name to create
 command-mkdb-description-scale = Database throughput mode (manual or auto). Not supported on serverless accounts.
 command-mkdb-description-ru = Database max RU/s (default: 1000; omitted on serverless accounts)
 command-mkdb-database_created = Created database { $db }
+command-mkdb-database_existing = Using existing database { $db }
+command-mkdb-database_created_or_updated = Created or updated database { $db }
 command-mkdb-error-only_auto_or_manual_allowed = Only manual or autoscale are allowed. Not both.
 
 command-mkcon-description = Creates a new container in the current database.
@@ -640,6 +642,8 @@ command-mkcon-description-scale = Container throughput mode (manual or auto). No
 command-mkcon-description-ru = Container max RU/s (default: 1000; omitted on serverless accounts)
 command-mkcon-description-database = The database where the container should be created
 command-mkcon-CreatedContainer = Created container { $container }
+command-mkcon-container_existing = Using existing container { $container }
+command-mkcon-container_created_or_updated = Created or updated container { $container }
 command-mkcon-error_partition_key_empty = Partition key path cannot be empty. Provide a path that starts with '/', for example: mkcon name /pk.
 command-mkcon-error_partition_key_slash = Partition key path must start with a forward slash (/), for example: mkcon name /pk.
 command-mkcon-error_invalid_index_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.

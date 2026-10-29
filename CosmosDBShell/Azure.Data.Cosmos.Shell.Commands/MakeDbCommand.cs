@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Diagnostics;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
@@ -42,10 +43,10 @@ internal class MakeDbCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitConnectedStateAsync(ConnectedState state, ShellInterpreter shell, CancellationToken token)
     {
-        string databaseName;
+        ResourceCreationResult creation;
         try
         {
-            databaseName = await CosmosResourceFacade.CreateDatabaseAsync(state, this.Name ?? string.Empty, this.Scale, this.MaxRU, token);
+            creation = await CosmosResourceFacade.CreateDatabaseAsync(state, this.Name ?? string.Empty, this.Scale, this.MaxRU, token);
         }
         catch (ServerlessThroughputNotSupportedException ex)
         {
@@ -58,10 +59,18 @@ internal class MakeDbCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
             type = "database",
-            id = databaseName,
-            created = true,
+            id = creation.Id,
+            created = creation.Created,
+            outcome = creation.OutcomeName,
         }));
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-mkdb-database_created", new Dictionary<string, object> { { "db", databaseName } }));
+        var messageKey = creation.Outcome switch
+        {
+            ResourceCreationOutcome.Created => "command-mkdb-database_created",
+            ResourceCreationOutcome.Existing => "command-mkdb-database_existing",
+            ResourceCreationOutcome.CreatedOrUpdated => "command-mkdb-database_created_or_updated",
+            _ => throw new UnreachableException(),
+        };
+        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString(messageKey, new Dictionary<string, object> { { "db", creation.Id } }));
         return commandState;
     }
 
