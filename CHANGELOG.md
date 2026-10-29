@@ -14,6 +14,7 @@
 - Prevent scripts from rendering timed-out partial results as successful, pause emulator inactivity deadlines during file/theme editing and change-feed polling intervals, and cancel stalled change-feed requests.
 - Keep Ctrl+C effective for startup commands and redirected scripts, and exclude local external tools such as `jq` from emulator inactivity deadlines.
 - Report interrupted startup commands as failures, retain structured partial write results, and prevent MCP prompt refreshes from canceling queued startup work.
+- Retain settled import counts and RUs on cancellation, prevent interrupted startup scripts from writing partial success output, and keep intentional watch stops successful through pipelines, blocks, and scripts.
 
 ### Improvements
 

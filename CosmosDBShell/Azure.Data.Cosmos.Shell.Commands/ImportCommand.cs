@@ -767,6 +767,10 @@ internal class ImportCommand : CosmosCommand
                 MessageService.GetArgsString("command-import-error-invalid_document", "message", ex.Message),
                 ex);
         }
+        catch (OperationCanceledException ex) when (token.IsCancellationRequested)
+        {
+            failure = ex;
+        }
         catch (Exception ex) when (ex is CommandException or JsonException or IOException or UnauthorizedAccessException)
         {
             failure = ex;

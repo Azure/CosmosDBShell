@@ -82,6 +82,7 @@ public partial class ShellInterpreter : IDisposable
     private long stateVersion;
 
     private OperationInactivityTimeout? localEmulatorDeadline;
+    private CancellationToken cancellationErrorToken;
 
     private int transientLineLength;
 
@@ -710,6 +711,8 @@ public partial class ShellInterpreter : IDisposable
         var wasCancelled = false;
         using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
         var previousLocalEmulatorDeadline = this.localEmulatorDeadline;
+        var previousCancellationErrorToken = this.cancellationErrorToken;
+        this.cancellationErrorToken = cancellationIsError ? token : default;
         if (isLocalEmulatorOperation)
         {
             Volatile.Write(
@@ -865,6 +868,7 @@ public partial class ShellInterpreter : IDisposable
         finally
         {
             Volatile.Write(ref this.localEmulatorDeadline, previousLocalEmulatorDeadline);
+            this.cancellationErrorToken = previousCancellationErrorToken;
             this.StdOutRedirect = savedStdOut;
             this.AppendOutRedirection = savedAppendOut;
             this.ErrOutRedirect = savedErrOut;
@@ -2194,6 +2198,10 @@ public partial class ShellInterpreter : IDisposable
         if (deferMachineModeWarnings && state is not StructuredErrorCommandState)
         {
             Volatile.Read(ref this.localEmulatorDeadline)?.ThrowIfTimedOut();
+            if (!state.UserCancellationHandled)
+            {
+                this.cancellationErrorToken.ThrowIfCancellationRequested();
+            }
         }
 
         var result = this.PrintStateCore(state, markAsRendered);

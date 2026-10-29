@@ -55,6 +55,94 @@ public class StartupOptionTests
         }
     }
 
+    [Theory]
+    [InlineData("startup-handled-test | echo downstream")]
+    [InlineData("{ startup-handled-test; echo downstream }")]
+    [InlineData("loop { startup-handled-test }")]
+    [InlineData("while true { startup-handled-test }")]
+    [InlineData("do { startup-handled-test } while true")]
+    [InlineData("for $item in [1,2] { startup-handled-test }")]
+    [InlineData("def stop { startup-handled-test; echo downstream }; stop")]
+    [InlineData("script")]
+    public async Task HandledCancellation_StopsEnclosingRunnersSuccessfully(string command)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StartupHandledCancellationCommand), out var factory));
+        shell.App.Commands["startup-handled-test"] = factory;
+        var script = $"startup-cancel-{Guid.NewGuid():N}.csh";
+        try
+        {
+            if (command == "script")
+            {
+                await File.WriteAllTextAsync(script, "startup-handled-test\necho downstream", TestContext.Current.CancellationToken);
+                command = script;
+            }
+
+            var (state, interrupted) = await Program.ExecuteStartupCommandAsync(shell, command);
+
+            Assert.False(state.IsError);
+            Assert.False(interrupted);
+            Assert.True(state.UserCancellationHandled);
+            Assert.Equal("handled", Assert.IsType<ShellText>(state.Result).Text);
+        }
+        finally
+        {
+            File.Delete(script);
+        }
+    }
+
+    [CosmosCommand("startup-handled-test")]
+    internal sealed class StartupHandledCancellationCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            shell.CancelPrompt();
+            commandState.UserCancellationHandled = true;
+            commandState.Result = new ShellText("handled");
+            return Task.FromResult(commandState);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task UnhandledCancellation_DoesNotRedirectPartialSuccess(bool script, bool pipeline)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Output = "json", Quiet = true };
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StartupCancellationCommand), out var factory));
+        shell.App.Commands["startup-cancel-test"] = factory;
+        var output = Path.GetTempFileName();
+        var file = $"startup-cancel-{Guid.NewGuid():N}.csh";
+        const string sentinel = "previous complete result";
+        try
+        {
+            await File.WriteAllTextAsync(output, sentinel, TestContext.Current.CancellationToken);
+            var inner = "startup-cancel-test" + (pipeline ? " | echo downstream" : "");
+            var command = $"{{ {inner} > {JsonSerializer.Serialize(output)} }}";
+            if (script)
+            {
+                await File.WriteAllTextAsync(file, $"{inner} > {JsonSerializer.Serialize(output)}", TestContext.Current.CancellationToken);
+                command = file;
+            }
+
+            var (state, interrupted) = await Program.ExecuteStartupCommandAsync(shell, command);
+
+            Assert.True(state.IsError);
+            Assert.True(interrupted);
+            Assert.Equal(sentinel, await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
+            Assert.False((await shell.ExecuteCommandAsync("echo next", TestContext.Current.CancellationToken)).IsError);
+        }
+        finally
+        {
+            File.Delete(output);
+            File.Delete(file);
+        }
+    }
+
     [Fact]
     public async Task StartupCancellation_RendersStructuredPartialResults()
     {

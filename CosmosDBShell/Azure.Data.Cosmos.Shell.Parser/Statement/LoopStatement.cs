@@ -95,7 +95,7 @@ internal class LoopStatement : Statement
                 throw;
             }
 
-            if (commandState.IsError || commandState.ReturnFunc)
+            if (commandState.IsError || commandState.UserCancellationHandled || commandState.ReturnFunc)
             {
                 return commandState;
             }

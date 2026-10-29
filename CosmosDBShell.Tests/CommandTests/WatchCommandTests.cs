@@ -129,7 +129,9 @@ public class WatchCommandTests
     [InlineData(true, false, false)]
     [InlineData(true, true, false)]
     [InlineData(true, true, true)]
-    public async Task PollingDelay_IsPausedButStalledRequestsTimeOut(bool stalled, bool callerCancels, bool startup)
+    [InlineData(true, true, true, "{0} | echo downstream")]
+    [InlineData(true, true, true, "{{ {0}; echo downstream }}")]
+    public async Task PollingDelay_IsPausedButStalledRequestsTimeOut(bool stalled, bool callerCancels, bool startup, string commandPattern = "{0}")
     {
         using var shell = ShellInterpreter.CreateInstance();
         using var client = Substitute.For<CosmosClient>();
@@ -177,7 +179,7 @@ public class WatchCommandTests
         });
 
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        const string command = "watch --db db --con items --interval=1 --max=1";
+        var command = string.Format(commandPattern, "watch --db db --con items --interval=1 --max=1");
         CommandState state;
         if (startup)
         {

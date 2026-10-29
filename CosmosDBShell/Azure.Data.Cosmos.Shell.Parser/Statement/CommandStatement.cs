@@ -454,7 +454,7 @@ internal class CommandStatement : Statement
                 {
                     // Run the parsed statements
                     currentState = await statement.RunAsync(shell, currentState, token);
-                    if (currentState.IsError)
+                    if (currentState.IsError || currentState.UserCancellationHandled)
                     {
                         break;
                     }
