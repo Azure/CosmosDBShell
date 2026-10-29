@@ -669,7 +669,7 @@ batch execute
 
 Execute many **independent** write operations with bounded concurrency. `bulk` uses the same operation JSON and subcommands as [`batch`](#batch), with different execution semantics:
 
-During write execution, human-readable output shows progress about every two seconds, including processed/total operations, successes, failures, elapsed seconds, average processing rate, and observed RU charge. Updates continue while writes are waiting; unchanged counts do not by themselves indicate a stalled job. Validation, selection, confirmation, and journal verification happen before this execution progress starts. Quiet mode, structured output, shell stdout redirection, and MCP calls do not emit these terminal updates. See [ingestion sizing and limitations](ingestion.md) for planning guidance and emulator measurements.
+During write execution, human-readable output shows progress about every two seconds, including processed/total operations, successes, failures, elapsed seconds, average processing rate, and observed RU charge. In a terminal the progress line is updated in place and removed when the command finishes; piped output receives one line per update. Updates continue while writes are waiting; unchanged counts do not by themselves indicate a stalled job. Validation, selection, confirmation, and journal verification happen before this execution progress starts. Quiet mode, structured output, shell stdout redirection, and MCP calls do not emit these terminal updates. See [ingestion sizing and limitations](ingestion.md) for planning guidance and emulator measurements.
 
 | | `batch` | `bulk` |
 |-|-|-|
@@ -827,6 +827,8 @@ Examples:
 - `rm test-* --dry-run` reports how many items match without deleting anything.
 - `rm tmp-* --key=id --partition-key=customer-42 --dry-run` counts matching items only in the `customer-42` logical partition.
 
+Pattern-based and piped removals show progress about every two seconds in human-readable output: items scanned, items deleted (or that would be deleted in a dry run), elapsed seconds, and observed RU charge. In a terminal the progress line is updated in place and removed when the command finishes. Unscoped deletes scan the whole container before deleting, so the scanned count stops rising while the deleted count catches up. Items are deleted one at a time. Quiet mode, structured output, shell stdout redirection, and MCP calls suppress progress without changing the result.
+
 #### Partition-key scoping
 
 `--partition-key` (alias `--pk`) restricts both the dry run and the deletion to a single logical partition. It uses the same typed parsing as `patch` and `batch`: JSON scalars keep their type (`--pk=7` targets the number `7`, `--pk='"7"'` targets the string `"7"`), `{}` targets an undefined value, and hierarchical keys are passed as a JSON array (`--pk='["tenant-1",{}]'`). The value must supply every component of the container's partition key; a prefix of a hierarchical key is rejected. Piped items outside the partition are skipped.
@@ -891,7 +893,7 @@ Normal output shows a readable summary with the number of items written and the 
 
 Successful imports display a readable summary in normal output mode. `--format=json`, `--format=csv`, and `--format=table` select the command-result presentation; they do not change how the input file is read. When `--format` is omitted, the result inherits the shell's output settings.
 
-Human-readable output shows progress about every two seconds: completed item counts, imported/failed counts, elapsed seconds, average processing rate, and observed write RU charge. Updates continue while reads or writes are waiting. Dry runs report offline validation counts instead. Because input is streamed without a counting pass, import does not report a total, percentage, or ETA. Quiet mode, structured output, shell stdout redirection, and MCP calls suppress terminal progress without changing the final result. See [ingestion sizing and limitations](ingestion.md) for planning guidance and emulator measurements.
+Human-readable output shows progress about every two seconds: completed item counts, imported/failed counts, elapsed seconds, average processing rate, and observed write RU charge. In a terminal the progress line is updated in place and removed when the command finishes; piped output receives one line per update. Updates continue while reads or writes are waiting. Dry runs report offline validation counts instead. Because input is streamed without a counting pass, import does not report a total, percentage, or ETA. Quiet mode, structured output, shell stdout redirection, and MCP calls suppress terminal progress without changing the final result. See [ingestion sizing and limitations](ingestion.md) for planning guidance and emulator measurements.
 
 Invalid result formats are rejected before accessing the target container or writing items. Diagnostics for JSON object sequences and CSV records use physical start-line numbers; JSON arrays use 1-based item indexes. Non-object roots in an object sequence are rejected before their contents are loaded.
 

@@ -519,6 +519,7 @@ internal class TriggerCommand : CosmosCommand
         try
         {
             await File.WriteAllTextAsync(tempPath, initialBody, token);
+            using var pause = ShellInterpreter.Instance.PauseOperationTimeout();
 
             AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
                 "command-trigger-edit-launching",

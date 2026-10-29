@@ -34,6 +34,8 @@ internal sealed class IngestionProgress(ShellInterpreter shell, CommandState sta
             this.failed = failed;
             this.charge = charge;
         }
+
+        shell.ReportOperationProgress();
     }
 
     internal async Task RunAsync(Func<Task> execute)
@@ -74,14 +76,29 @@ internal sealed class IngestionProgress(ShellInterpreter shell, CommandState sta
                         this.charge.ToString("F2", CultureInfo.InvariantCulture));
                 }
 
-                ShellInterpreter.WriteLine(message);
+                if (shell.IsOutputTerminal())
+                {
+                    shell.WriteTransientLine(message);
+                }
+                else
+                {
+                    ShellInterpreter.WriteLine(message);
+                }
+
                 tick = timer.WaitForNextTickAsync().AsTask();
             }
         }
         finally
         {
-            // Do not let a reporting failure abandon writes that are still settling.
-            await operation;
+            try
+            {
+                // Do not let a reporting failure abandon writes that are still settling.
+                await operation;
+            }
+            finally
+            {
+                shell.ClearTransientLine();
+            }
         }
     }
 }

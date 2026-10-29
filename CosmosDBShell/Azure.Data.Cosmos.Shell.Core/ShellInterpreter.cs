@@ -45,6 +45,9 @@ public partial class ShellInterpreter : IDisposable
 
     private const int OptionalArmDiscoveryTimeoutSeconds = 3;
 
+    // A constant, not a static TimeSpan field: Instance is constructed before later static initializers run.
+    private const int LocalEmulatorOperationTimeoutSeconds = 10;
+
     internal const int MaximumCallDepth = 64;
 
     private const string EncodedHistoryLinePrefix = "CosmosDBShellHistoryV1:";
@@ -55,8 +58,6 @@ public partial class ShellInterpreter : IDisposable
     private const string EncodedHistoryLineMarker = "E:";
 
     private static readonly TimeSpan HistoryFileOpenRetryDelay = TimeSpan.FromMilliseconds(25);
-
-    private static readonly TimeSpan LocalEmulatorOperationTimeout = TimeSpan.FromSeconds(10);
 
     private static CancellationTokenSource? currentTokenSource;
 
@@ -70,6 +71,8 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly object historyLock = new();
 
+    private readonly object transientLineLock = new();
+
     private readonly List<string> pendingHistoryEntries = [];
 
     private readonly object lineEditorLock = new();
@@ -77,6 +80,10 @@ public partial class ShellInterpreter : IDisposable
     private readonly SemaphoreSlim executionGate = new(1, 1);
 
     private long stateVersion;
+
+    private OperationInactivityTimeout? localEmulatorDeadline;
+
+    private int transientLineLength;
 
     private int callDepth;
 
@@ -283,8 +290,20 @@ public partial class ShellInterpreter : IDisposable
 
     internal string WelcomeMarkerFile => this.welcomeMarkerFile;
 
+    /// <summary>
+    /// Gets or sets how long a command connected to a local emulator may run without reporting
+    /// progress before it is canceled. Each <see cref="ReportOperationProgress"/> call restarts it.
+    /// </summary>
+    internal TimeSpan LocalEmulatorInactivityTimeout { get; set; } = TimeSpan.FromSeconds(LocalEmulatorOperationTimeoutSeconds);
+
     internal Func<bool> IsInteractiveSession { get; set; } =
         static () => !Console.IsInputRedirected && !Console.IsOutputRedirected;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether standard output is a terminal that can redraw a
+    /// line in place. Progress falls back to one line per update when it is not.
+    /// </summary>
+    internal Func<bool> IsOutputTerminal { get; set; } = static () => !Console.IsOutputRedirected;
 
     internal Func<bool> IsInputRedirected { get; set; } = static () => Console.IsInputRedirected;
 
@@ -503,6 +522,7 @@ public partial class ShellInterpreter : IDisposable
     /// <returns><c>true</c> if the user confirms; otherwise, <c>false</c>.</returns>
     public static bool Confirm(string message)
     {
+        using var pause = Instance.PauseOperationTimeout();
         var yes = char.ToUpper(MessageService.GetString("yes_char")[0]);
         var no = char.ToUpper(MessageService.GetString("no_char")[0]);
 
@@ -665,9 +685,12 @@ public partial class ShellInterpreter : IDisposable
         CommandState? result = null;
         var wasCancelled = false;
         using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var previousLocalEmulatorDeadline = this.localEmulatorDeadline;
         if (isLocalEmulatorOperation)
         {
-            operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+            Volatile.Write(
+                ref this.localEmulatorDeadline,
+                new OperationInactivityTimeout(operationTokenSource, this.LocalEmulatorInactivityTimeout));
         }
 
         try
@@ -760,6 +783,7 @@ public partial class ShellInterpreter : IDisposable
         }
         finally
         {
+            Volatile.Write(ref this.localEmulatorDeadline, previousLocalEmulatorDeadline);
             this.StdOutRedirect = savedStdOut;
             this.AppendOutRedirection = savedAppendOut;
             this.ErrOutRedirect = savedErrOut;
@@ -1325,13 +1349,18 @@ public partial class ShellInterpreter : IDisposable
             WriteLine(MessageService.GetString("shell-connect-key-auth"));
             var keyMode = mode ?? (isEmulator ? ConnectionMode.Gateway : ConnectionMode.Direct);
             var keyOptions = CreateClientOptions(keyMode, isEmulator);
+            if (isEmulator)
+            {
+                keyOptions.CustomHandlers.Add(new OperationProgressHandler(this));
+            }
+
             client = new CosmosClient(connectionString, keyOptions);
 
             AccountProperties keyProps;
             using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
             if (isEmulator)
             {
-                operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+                operationTokenSource.CancelAfter(TimeSpan.FromSeconds(LocalEmulatorOperationTimeoutSeconds));
             }
 
             try
@@ -1948,6 +1977,70 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    /// <summary>
+    /// Restarts the local-emulator inactivity timeout for the running command, so long-running
+    /// work is canceled only after it stops making progress. Has no effect for other connections.
+    /// </summary>
+    internal void ReportOperationProgress() => Volatile.Read(ref this.localEmulatorDeadline)?.ReportProgress();
+
+    /// <summary>
+    /// Suspends the local-emulator inactivity timeout while waiting for the user, such as at a
+    /// confirmation prompt or in an external editor. Dispose the result to resume it.
+    /// </summary>
+    /// <returns>A scope that resumes the timeout when disposed.</returns>
+    internal IDisposable PauseOperationTimeout() =>
+        Volatile.Read(ref this.localEmulatorDeadline)?.Pause() ?? OperationInactivityTimeout.NoPause;
+
+    /// <summary>
+    /// Draws a status line that replaces the previous one in place, such as command progress.
+    /// The text is truncated to the console width so it never wraps onto a second line.
+    /// </summary>
+    /// <param name="text">The status text, without a line break.</param>
+    internal void WriteTransientLine(string text)
+    {
+        lock (this.transientLineLock)
+        {
+            var width = GetConsoleWidth();
+            if (width > 1 && text.Length >= width)
+            {
+                text = text[..(width - 1)];
+            }
+
+            Write("\r" + text + new string(' ', Math.Max(0, this.transientLineLength - text.Length)));
+            this.transientLineLength = text.Length;
+        }
+    }
+
+    /// <summary>
+    /// Erases the status line drawn by <see cref="WriteTransientLine"/>, if any, so subsequent
+    /// output starts on a clean line.
+    /// </summary>
+    internal void ClearTransientLine()
+    {
+        lock (this.transientLineLock)
+        {
+            if (this.transientLineLength == 0)
+            {
+                return;
+            }
+
+            Write("\r" + new string(' ', this.transientLineLength) + "\r");
+            this.transientLineLength = 0;
+        }
+    }
+
+    private static int GetConsoleWidth()
+    {
+        try
+        {
+            return Console.WindowWidth;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or PlatformNotSupportedException)
+        {
+            return 0;
+        }
+    }
+
     internal void PrintCommand(string cmdString)
     {
         // Print the shell prompt similar to how it appears when typing command
@@ -2320,6 +2413,12 @@ public partial class ShellInterpreter : IDisposable
         if (flushConsoleWarnings)
         {
             warnings.AddRange(state.TakeDeferredWarnings());
+        }
+
+        if (warnings.Count > 0)
+        {
+            // A warning raised mid-command must not be appended to an in-place progress line.
+            this.ClearTransientLine();
         }
 
         foreach (var warning in warnings)

@@ -235,6 +235,7 @@ internal class ListCommand : CosmosCommand, IStateVisitor<CommandState, ShellInt
         while (feedIterator.HasMoreResults)
         {
             using var response = await feedIterator.ReadNextAsync(token);
+            interpreter.ReportOperationProgress();
             AccumulateRequestCharge(returnState, response.Headers.RequestCharge);
             JsonDocument queryDocument;
             try

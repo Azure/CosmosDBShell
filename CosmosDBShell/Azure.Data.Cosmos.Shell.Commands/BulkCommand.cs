@@ -730,6 +730,7 @@ internal sealed class BulkCommand : CosmosCommand
         {
             var operation = BulkOperationNormalizer.Normalize(element, target.PartitionKeyPaths, defaultKey, spool.Count);
             await spool.AddAsync(operation.Json);
+            shell.ReportOperationProgress();
         }
 
         if (spool.Count == 0)
@@ -770,6 +771,7 @@ internal sealed class BulkCommand : CosmosCommand
 
                 var page = await iterator.ReadNextAsync(token);
                 summary.RequestCharge += page.RequestCharge;
+                shell.ReportOperationProgress();
                 foreach (var row in page)
                 {
                     if (this.MaxItems is { } max && spool.Count >= max)

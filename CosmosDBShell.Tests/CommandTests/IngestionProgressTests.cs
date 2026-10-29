@@ -39,6 +39,8 @@ public class IngestionProgressTests
     [InlineData("command-import-progress", "3 items processed", "2 imported", "1 failed", "items/s")]
     [InlineData("command-bulk-progress", "3 of 10 operations processed", "2 succeeded", "1 failed", "operations/s")]
     [InlineData("command-import-validation-progress", "3 items validated offline", "no writes sent", "Dry run:", "items/s")]
+    [InlineData("command-rm-progress", "3 items scanned", "2 deleted", "Remove:", "RU charge")]
+    [InlineData("command-rm-dry-run-progress", "3 items scanned", "2 would be deleted", "Dry run:", "RU charge")]
     public async Task ReportsWhileWorkIsStalledAndStopsBeforeReturning(
         string key, string count, string succeeded, string failed, string rate)
     {
@@ -46,6 +48,7 @@ public class IngestionProgressTests
         timeout.CancelAfter(TimeSpan.FromSeconds(15));
         using var shell = ShellInterpreter.CreateInstance();
         shell.Options = new Program.CosmosShellOptions { Output = "user" };
+        shell.IsOutputTerminal = () => false;
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var output = new CompletingWriter(completion);
         var original = Console.Out;
@@ -103,9 +106,74 @@ public class IngestionProgressTests
         }
     }
 
-    private sealed class CompletingWriter(TaskCompletionSource completion) : StringWriter
+    [Fact]
+    public async Task Terminal_RedrawsOneLineInPlaceAndClearsItBeforeReturning()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Output = "user" };
+        shell.IsOutputTerminal = () => true;
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var output = new CompletingWriter(completion, completeOnWrite: true);
+        var original = Console.Out;
+        try
+        {
+            Console.SetOut(output);
+            var reporter = new IngestionProgress(shell, new CommandState(), "command-import-progress");
+            reporter.Update(3, 2, 1, 7.5);
+
+            await reporter.RunAsync(() => completion.Task.WaitAsync(timeout.Token));
+
+            var text = output.ToString();
+            Assert.StartsWith("\rImport: 3 items processed", text);
+            Assert.DoesNotContain('\n', text);
+            Assert.Equal(0, output.Lines);
+            var drawn = text.IndexOf('\r', 1);
+            Assert.Equal("\r" + new string(' ', drawn - 1) + "\r", text[drawn..]);
+        }
+        finally
+        {
+            completion.TrySetResult();
+            Console.SetOut(original);
+        }
+    }
+
+    [Fact]
+    public void TransientLine_PadsShorterTextAndClearsOnce()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var output = new StringWriter();
+        var original = Console.Out;
+        try
+        {
+            Console.SetOut(output);
+            shell.WriteTransientLine("abcdef");
+            shell.WriteTransientLine("xy");
+            shell.ClearTransientLine();
+            shell.ClearTransientLine();
+
+            // The padding already blanks the longer text, so clearing covers only "xy".
+            Assert.Equal("\rabcdef\rxy    \r  \r", output.ToString());
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+    }
+
+    private sealed class CompletingWriter(TaskCompletionSource completion, bool completeOnWrite = false) : StringWriter
     {
         internal int Lines { get; private set; }
+
+        public override void Write(string? value)
+        {
+            base.Write(value);
+            if (completeOnWrite)
+            {
+                completion.TrySetResult();
+            }
+        }
 
         public override void WriteLine(string? value)
         {

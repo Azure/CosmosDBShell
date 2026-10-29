@@ -92,7 +92,7 @@ internal class ExportCommand : CosmosCommand
         var max = ResultLimit.ResolveMaxItemCount(this.Max, defaultMaxItemCount: null);
         var format = ResolveFormat(filePath);
 
-        var (count, charge) = await ExecuteExportAsync(container, query, max, format, filePath, this.Force == true, token);
+        var (count, charge) = await ExecuteExportAsync(shell, container, query, max, format, filePath, this.Force == true, token);
 
         resultState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
@@ -299,6 +299,7 @@ internal class ExportCommand : CosmosCommand
     }
 
     private static async Task<(int Count, double Charge)> ExecuteExportAsync(
+        ShellInterpreter shell,
         Container container,
         string query,
         int? max,
@@ -318,7 +319,19 @@ internal class ExportCommand : CosmosCommand
             var totalCharge = 0.0;
             using var iterator = container.GetItemQueryIterator<JsonElement>(query, requestOptions: options);
             var count = await WriteFileAsync(
-                EnumerateAsync(iterator, max, charge => totalCharge += charge, token), format, filePath, overwrite, token);
+                EnumerateAsync(
+                    iterator,
+                    max,
+                    charge =>
+                    {
+                        totalCharge += charge;
+                        shell.ReportOperationProgress();
+                    },
+                    token),
+                format,
+                filePath,
+                overwrite,
+                token);
             return (count, totalCharge);
         }
         catch (CosmosException ce)

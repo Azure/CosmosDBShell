@@ -9,10 +9,11 @@
 ### Fixes
 
 - Preserve `?` in unquoted command arguments so scalar indexing paths such as `index add /city/?` and `index remove /city/?` reach Cosmos DB unchanged. ([#260](https://github.com/Azure/CosmosDBShell/issues/260))
+- Long-running commands and scripts against a local emulator no longer fail with a timeout and disconnect after 10 seconds while the emulator is still responding. The 10-second limit now applies only when nothing makes progress, and it is paused while confirmation prompts and external editors wait for input.
 
 ### Improvements
 
-- Show periodic ingestion progress for `import` and `bulk`, including elapsed time, processing rate, counts, and observed RU usage, even while writes are waiting. Structured output and MCP responses remain unchanged.
+- Show periodic progress for `import`, `bulk`, and pattern-based `rm`, including elapsed time, counts, and observed RU usage, even while requests are waiting. In a terminal, a single progress line is updated in place and removed when the command finishes. Structured output and MCP responses remain unchanged.
 
 ## 1.1.291 — 2026-10-26
 

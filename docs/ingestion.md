@@ -26,7 +26,7 @@ bulk run operations.jsonl --concurrency=16 --journal operations.journal --yes
 
 ## Reading progress
 
-Human-readable import and bulk execution report about every two seconds, even if no writes have completed since the previous update:
+Human-readable import and bulk execution report about every two seconds, even if no writes have completed since the previous update. In a terminal, a single progress line is updated in place and removed when the command finishes, leaving the final summary; when output is piped or redirected by the operating system, each update is written on its own line:
 
 - Import shows completed items, imported/failed counts, elapsed seconds, average completed items/second, and observed write RU charge. Offline validation shows validated items instead.
 - Bulk execution shows processed/total operations, succeeded/failed counts, elapsed seconds, average processed operations/second, and observed RU charge. Processed operations can include journal skips, so this is not necessarily a new-write rate. Failures include uncertain outcomes; use the final result/journal to distinguish them.
@@ -37,7 +37,7 @@ Human-readable import and bulk execution report about every two seconds, even if
 
 ## Limits and recovery
 
-- **Emulator CLI deadline:** commands connected to `localhost` or `127.0.0.1` currently have a **10-second command-wide deadline**, independent of per-request timeouts. An import or bulk job can be canceled and disconnected even while it is making progress. Earlier writes remain committed; do not interpret this as an input-size limit or an Azure service limit. The benchmark below deliberately excludes that wrapper and does not demonstrate that equally sized jobs finish through the emulator CLI.
+- **Emulator inactivity timeout:** commands connected to `localhost` or `127.0.0.1` are canceled, and the shell disconnects, after **10 seconds without progress**. Every response the emulator returns counts as progress, as does local import/bulk work such as validating and spooling operations. Long imports, deletes, queries, exports, and scripts therefore complete as long as the emulator keeps answering. The timer is paused while the shell waits for you at a confirmation prompt or in an external editor. A stalled or unreachable emulator still times out. Earlier writes remain committed. This is an emulator-only safeguard, not an input-size limit or an Azure service limit.
 - **Item size:** the NoSQL service limit is **2 MB per item**, measured as the UTF-8 JSON representation, not 2 MB per input file. Import dry runs do not enforce this service limit. See [service limits](https://learn.microsoft.com/azure/cosmos-db/concepts-limits#per-item-limits).
 - **File versus in-memory jobs:** import streams its input. File-based `bulk run` validates into a temporary operation spool before writing, so allow temporary-disk capacity as well as input-file space. Stateful `bulk begin`/`add` jobs are limited to **10,000 operations and 64 MiB of canonical JSON**; use `bulk run <file>` for larger plans.
 - **Partial failure:** by default, new scheduling stops after an observed write failure, but started writes settle and can succeed afterward. `--continue-on-error` allows more writes; it does not make malformed input safe. Always inspect the final result.
@@ -46,7 +46,7 @@ Human-readable import and bulk execution report about every two seconds, even if
 
 ## Local emulator measurements
 
-These are **local command-path measurements, not Azure throughput promises or end-to-end emulator CLI timings**.
+These are **local command-path measurements, not Azure throughput promises**.
 
 Configuration:
 
@@ -55,7 +55,7 @@ Configuration:
 - Gateway connection to the local emulator. Fresh container per case, partition key `/pk`, default indexing, configured manual throughput of 10,000 RU/s.
 - Insert/create only, unique IDs, 1,000 evenly used partition-key values. Each item is exactly 1,024 UTF-8 JSON bytes; JSON Lines adds one LF per item. Bulk input also includes the operation envelope.
 - One sample per combination, sequentially run; no journal, no terminal progress rendering, no deliberate failure injection, and no controlled cold/warm-cache comparison.
-- Timing includes command parsing, metadata access, input parsing, and writes (plus bulk plan validation/spooling). Input generation, container provisioning, independent count verification, and cleanup are outside the timed interval. The parsed command runner is invoked directly to exclude the emulator CLI's 10-second deadline; SDK request/retry behavior is unchanged.
+- Timing includes command parsing, metadata access, input parsing, and writes (plus bulk plan validation/spooling). Input generation, container provisioning, independent count verification, and cleanup are outside the timed interval. The parsed command runner is invoked directly, outside the emulator inactivity timeout; SDK request/retry behavior is unchanged.
 - Each completed case requires zero reported write failures and an independent count matching the requested number of items.
 
 ### Results (2026-10-29)
@@ -76,7 +76,7 @@ All 18 cases completed with matching item counts and zero reported write failure
 
 At 100,000 items, input files were 102,500,000 bytes for import (about 97.75 MiB) and 104,800,000 bytes for bulk (about 99.95 MiB). Import reported 6,620 / 66,200 / 662,000 write RUs for the three sizes; bulk reported 2 additional RUs per case for target metadata. Verification and provisioning RUs are not included in these command results.
 
-On this host, concurrency 16 was about three times faster than 1; 32 showed no consistent improvement over 16. This supports keeping 16 as the initial setting, not advertising 32 as automatically faster. A 100,000-item file completed through the command runner, but that is neither a maximum-size recommendation nor evidence that it can finish through the emulator CLI's 10-second deadline. Do not copy these local rates into Azure customer SLAs.
+On this host, concurrency 16 was about three times faster than 1; 32 showed no consistent improvement over 16. This supports keeping 16 as the initial setting, not advertising 32 as automatically faster. A 100,000-item file completed through the command runner, but that is not a maximum-size recommendation. Do not copy these local rates into Azure customer SLAs.
 
 ### Reproducing the matrix
 

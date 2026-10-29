@@ -57,7 +57,7 @@ public class IngestionBenchmarkTests : ConnectedEmulatorTestBase
                                 ? $"import '{inputPath}' --concurrency={concurrency}"
                                 : $"bulk run '{inputPath}' --concurrency={concurrency} --yes";
                             var watch = Stopwatch.StartNew();
-                            // Measure the command path without the emulator CLI's 10-second wall-clock limit.
+                            // Use the parsed command runner so timings stay comparable with docs/ingestion.md.
                             var state = await Shell.RunCommandAsync(new CommandState(), text, token);
                             watch.Stop();
                             Assert.False(state.IsError, FormatError(state));

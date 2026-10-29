@@ -258,6 +258,8 @@ command-rm-dry-run-plan = Dry run: Would delete { $count } { $count ->
     [one] item
     *[other] items
 }. No changes were made.
+command-rm-progress = Remove: { $processed } items scanned, { $succeeded } deleted; elapsed { $elapsed } s (observed RU charge: { $charge })
+command-rm-dry-run-progress = Dry run: { $processed } items scanned, { $succeeded } would be deleted; elapsed { $elapsed } s (observed RU charge: { $charge })
 command-rm-error-no_filter = Filter is missing.
 command-rm-error-invalid_pk_json = Invalid partition key JSON. Use { "{" }{ "}" }, a JSON scalar, or an array of one to three string, finite number, boolean, null, or { "{" }{ "}" } components. Non-empty objects and nested arrays are not supported.
 command-rm-error-partition_key_components = The partition key must specify all { $expected } components of the container's partition key, but { $actual } { $actual ->
