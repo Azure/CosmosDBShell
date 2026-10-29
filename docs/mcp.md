@@ -126,6 +126,8 @@ For deterministic ARM routing in multi-subscription environments, start the shel
 
 MCP `import` uses the same bounded concurrency as the CLI: up to 16 writes in flight by default, configurable with the `concurrency` argument. Its schema requires a positive integer (`minimum: 1`). Use `concurrency: 1` for sequential, file-order writes. In-flight writes may complete after an error; imports are not transactional. See [import](commands.md#import) for error and cancellation behavior.
 
+The CLI's periodic ingestion messages are terminal-only: MCP `import` and `bulk` calls do not emit them or add progress fields to their final results. See [ingestion sizing and limitations](ingestion.md) before planning large jobs.
+
 ### Bulk Operations
 
 The `bulk` tool exposes the stateless `run`, `patch`, and `delete` subcommands, with the same operation schema, selection, journal, and reporting semantics as the [CLI command](commands.md#bulk). Stateful subcommands (`begin`, `add`, `execute`, `cancel`, `status`, and `show`) are restricted to the interactive shell, like stateful batches. Writes always require MCP elicitation, even with `yes: true`; once approved, no second terminal prompt is shown. `dry-run: true` validates or selects without database writes, but selection reads consume RUs. Only dry runs without `save` skip elicitation: saving a plan creates a server-local file and requires confirmation.

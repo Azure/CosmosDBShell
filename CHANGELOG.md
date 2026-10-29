@@ -12,6 +12,8 @@
 
 ### Improvements
 
+- Show periodic ingestion progress for `import` and `bulk`, including elapsed time, processing rate, counts, and observed RU usage, even while writes are waiting. Structured output and MCP responses remain unchanged.
+
 ## 1.1.291 — 2026-10-26
 
 ### Breaking changes

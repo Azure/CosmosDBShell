@@ -497,7 +497,7 @@ command-bulk-status-succeeded = Succeeded
 command-bulk-status-failed = Failed
 command-bulk-status-uncertain = Uncertain
 command-bulk-status-more = ...and { $count } more
-command-bulk-progress = { $processed } of { $total } operations processed, { $failed } failed (RU charge: { $charge })
+command-bulk-progress = Bulk: { $processed } of { $total } operations processed, { $succeeded } succeeded, { $failed } failed; elapsed { $elapsed } s, { $rate } operations/s (observed RU charge: { $charge })
 command-bulk-success = Bulk completed { $count } { $count ->
     [one] operation
     *[other] operations
@@ -573,6 +573,8 @@ command-import-description-concurrency = Maximum in-flight writes (default: 16).
 command-import-description-partition-key = For CSV import, the partition key path. Nested paths (e.g. /address/city) place the matching column under that path.
 command-import-description-continue-on-error = Continue importing after individual item write failures. Otherwise stop scheduling writes on the first observed failure and wait for in-flight writes. Parse or validation errors still abort the import.
 command-import-description-dry-run = Validate file syntax and item IDs offline without writing items or accessing the target. Does not check target partition keys, permissions, conflicts, or other service constraints.
+command-import-progress = Import: { $processed } items processed, { $succeeded } imported, { $failed } failed; elapsed { $elapsed } s, { $rate } items/s (observed RU charge: { $charge })
+command-import-validation-progress = Dry run: { $processed } items validated offline; elapsed { $elapsed } s, { $rate } items/s; no writes sent
 command-import-success = Imported { $count } { $count ->
     [one] item
     *[other] items

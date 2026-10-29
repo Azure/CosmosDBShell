@@ -732,10 +732,19 @@ internal class ImportCommand : CosmosCommand
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
 
         var progress = new ImportProgress();
+        var reporter = new IngestionProgress(
+            shell,
+            selectedFormat,
+            dryRun ? "command-import-validation-progress" : "command-import-progress");
+        void UpdateProgress() => reporter.Update(
+            dryRun ? progress.Validated : progress.Success + progress.Failed,
+            progress.Success,
+            progress.Failed,
+            progress.Charge);
         Exception? failure = null;
         try
         {
-            await ExecuteImportAsync(
+            await reporter.RunAsync(() => ExecuteImportAsync(
                 shell,
                 filePath,
                 format,
@@ -748,7 +757,8 @@ internal class ImportCommand : CosmosCommand
                 concurrency,
                 commandState,
                 progress,
-                token);
+                token,
+                UpdateProgress));
         }
         catch (DecoderFallbackException ex)
         {
@@ -872,7 +882,8 @@ internal class ImportCommand : CosmosCommand
         int concurrency,
         CommandState commandState,
         ImportProgress progress,
-        CancellationToken token)
+        CancellationToken token,
+        Action progressChanged)
     {
         FileStream? stream = null;
         IAsyncEnumerable<(int LineNumber, JsonElement Item)> source;
@@ -894,6 +905,7 @@ internal class ImportCommand : CosmosCommand
                 {
                     ValidateDryRunItem(item.Item, item.LineNumber);
                     progress.Validated++;
+                    progressChanged();
                 }
 
                 return;
@@ -910,7 +922,8 @@ internal class ImportCommand : CosmosCommand
                 commandState,
                 token,
                 warningShell: shell,
-                progress: progress);
+                progress: progress,
+                progressChanged: progressChanged);
         }
         finally
         {
@@ -971,7 +984,8 @@ internal class ImportCommand : CosmosCommand
         CommandState commandState,
         CancellationToken token,
         ShellInterpreter? warningShell = null,
-        ImportProgress? progress = null)
+        ImportProgress? progress = null,
+        Action? progressChanged = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         progress ??= new ImportProgress();
@@ -991,6 +1005,8 @@ internal class ImportCommand : CosmosCommand
                 progress.Failed++;
                 progress.FirstFailure ??= result.Error;
             }
+
+            progressChanged?.Invoke();
         }
 
         async Task DrainCompletedAsync()

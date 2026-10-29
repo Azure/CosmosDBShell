@@ -564,6 +564,7 @@ public class BulkCommandTests
         var summary = new BulkSummary { RequestCharge = 2 };
         var writes = new List<long>();
         var records = new List<BulkOutcome>();
+        var processed = new List<long>();
 
         await BulkExecutor.ExecuteAsync(
             SourceAsync(3, TestContext.Current.CancellationToken),
@@ -577,9 +578,11 @@ public class BulkCommandTests
                 records.Add(outcome);
                 return Task.CompletedTask;
             },
-            previous, summary, 1, 1, true, false, TestContext.Current.CancellationToken);
+            previous, summary, 1, 1, true, false, TestContext.Current.CancellationToken,
+            progressChanged: () => processed.Add(summary.Processed));
 
         Assert.Empty(writes);
+        Assert.Equal([1L, 2L, 3L], processed);
         Assert.Equal(status == BulkOutcome.Succeeded ? 3 : 0, records.Count);
         Assert.All(records, outcome => Assert.Equal(BulkOutcome.Succeeded, outcome.Status));
         Assert.Equal(3, summary.Skipped);

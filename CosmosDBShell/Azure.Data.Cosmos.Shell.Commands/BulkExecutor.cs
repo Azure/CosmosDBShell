@@ -18,7 +18,8 @@ internal static class BulkExecutor
         double? maxRu,
         bool continueOnError,
         bool retryUncertain,
-        CancellationToken token)
+        CancellationToken token,
+        Action? progressChanged = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         var pending = new List<(BulkOperation Operation, PartitionKey Key, Task<BulkOutcome> Task, Guid AttemptId)>();
@@ -57,6 +58,7 @@ internal static class BulkExecutor
                 blockedItems.Add((operation.Id, key));
             }
 
+            progressChanged?.Invoke();
             await record(result);
         }
 
@@ -102,6 +104,7 @@ internal static class BulkExecutor
                     {
                         summary.Skipped++;
                         summary.Processed++;
+                        progressChanged?.Invoke();
                         await record(old);
                         continue;
                     }
@@ -112,6 +115,7 @@ internal static class BulkExecutor
                         summary.Processed++;
                         summary.AddFailure(old with { Status = BulkOutcome.Uncertain });
                         blockedItems.Add((operation.Id, key));
+                        progressChanged?.Invoke();
                         continue;
                     }
                 }
@@ -121,6 +125,7 @@ internal static class BulkExecutor
                     summary.Skipped++;
                     summary.Processed++;
                     summary.ResultIncomplete = true;
+                    progressChanged?.Invoke();
                     continue;
                 }
 

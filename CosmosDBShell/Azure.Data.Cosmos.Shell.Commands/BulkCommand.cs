@@ -4,7 +4,6 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
-using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Runtime.CompilerServices;
@@ -62,8 +61,6 @@ internal sealed class BulkCommand : CosmosCommand
     private const int SelectionPageSize = 1000;
 
     private const int StatusPreviewCount = 100;
-
-    private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(2);
 
     private static readonly Dictionary<string, string[]> AllowedOptions = new()
     {
@@ -964,7 +961,9 @@ internal sealed class BulkCommand : CosmosCommand
             }
         }
 
-        var progress = Stopwatch.StartNew();
+        var progress = new IngestionProgress(shell, new CommandState(), "command-bulk-progress", count);
+        void UpdateProgress() => progress.Update(summary.Processed, summary.Succeeded, summary.Failed, summary.RequestCharge);
+        UpdateProgress();
         async Task RecordAsync(BulkOutcome outcome)
         {
             if (memory != null)
@@ -979,26 +978,11 @@ internal sealed class BulkCommand : CosmosCommand
             {
                 await journal.RecordAsync(outcome);
             }
-
-            if (outcome.Status != BulkOutcome.Started && progress.Elapsed >= ProgressInterval && !shell.IsMachineMode)
-            {
-                progress.Restart();
-                ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                    "command-bulk-progress",
-                    "processed",
-                    summary.Processed,
-                    "total",
-                    count,
-                    "failed",
-                    summary.Failed,
-                    "charge",
-                    summary.RequestCharge.ToString("F2", CultureInfo.InvariantCulture)));
-            }
         }
 
         try
         {
-            await BulkExecutor.ExecuteAsync(
+            await progress.RunAsync(() => BulkExecutor.ExecuteAsync(
                 operations,
                 (operation, cancellation) => WriteAsync(target.Container, operation, cancellation),
                 RecordAsync,
@@ -1008,7 +992,8 @@ internal sealed class BulkCommand : CosmosCommand
                 this.MaxRu,
                 this.ContinueOnError == true,
                 this.RetryUncertain == true,
-                token);
+                token,
+                UpdateProgress));
         }
         catch (Exception ex)
         {

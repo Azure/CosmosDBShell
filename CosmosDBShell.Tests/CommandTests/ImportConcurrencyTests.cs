@@ -16,6 +16,28 @@ using NSubstitute;
 
 public class ImportConcurrencyTests
 {
+    [Fact]
+    public async Task ProgressUpdatesIncludeEverySettledWriteAndObservedCharge()
+    {
+        using var timeout = CreateTimeout();
+        var container = Substitute.For<Container>();
+        ConfigureWrites(container, (item, _) => Task.FromResult(
+            Response(item.GetProperty("id").GetInt32() == 1 ? HttpStatusCode.Conflict : HttpStatusCode.Created, 2.5)));
+        using var reader = NewReader(3);
+        var progress = new ImportCommand.ImportProgress();
+        var snapshots = new List<(int Success, int Failed, double Charge)>();
+
+        await ImportCommand.WriteItemsAsync(
+            ImportCommand.EnumerateJsonLinesAsync(reader, timeout.Token),
+            container, ImportMode.Insert, 3, true, [], new CommandState(), timeout.Token,
+            progress: progress,
+            progressChanged: () => snapshots.Add((progress.Success, progress.Failed, progress.Charge)));
+
+        Assert.Equal(3, snapshots.Count);
+        Assert.Equal((2, 1, 7.5), snapshots[^1]);
+        Assert.Equal([1, 2, 3], snapshots.Select(snapshot => snapshot.Success + snapshot.Failed));
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(3)]
