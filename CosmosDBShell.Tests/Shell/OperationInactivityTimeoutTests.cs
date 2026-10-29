@@ -5,7 +5,11 @@
 namespace CosmosShell.Tests.Shell;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.States;
+using Microsoft.Azure.Cosmos;
+using NSubstitute;
 
 public class OperationInactivityTimeoutTests
 {
@@ -87,6 +91,61 @@ public class OperationInactivityTimeoutTests
 
         shell.PauseOperationTimeout().Dispose();
         shell.ReportOperationProgress();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConsumedCancellation_OnlyInternalTimeoutFailsAndDisconnects(bool callerCancels)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var client = Substitute.For<CosmosClient>();
+        client.Endpoint.Returns(new Uri("https://localhost:8081"));
+        shell.State = new ConnectedState(client);
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        shell.LocalEmulatorInactivityTimeout = callerCancels ? TimeSpan.FromSeconds(30) : TimeSpan.FromMilliseconds(50);
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        if (callerCancels)
+        {
+            caller.CancelAfter(TimeSpan.FromMilliseconds(50));
+        }
+
+        Assert.True(CommandFactory.TryCreateFactory(typeof(ConsumedCancellationCommand), out var factory));
+        shell.App.Commands["consumed-cancellation-test"] = factory;
+
+        var state = await shell.ExecuteCommandAsync("consumed-cancellation-test", caller.Token);
+
+        if (callerCancels)
+        {
+            Assert.False(state.IsError);
+            Assert.IsType<ConnectedState>(shell.State);
+        }
+        else
+        {
+            var error = Assert.IsType<ErrorCommandState>(state);
+            Assert.Equal(ShellExitCode.ConnectionError, error.ExitCode);
+            Assert.Contains("timed out", error.Exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.IsType<DisconnectedState>(shell.State);
+        }
+    }
+
+    [CosmosCommand("consumed-cancellation-test")]
+    internal sealed class ConsumedCancellationCommand : CosmosCommand
+    {
+        public override async Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            try
+            {
+                await Task.Delay(global::System.Threading.Timeout.InfiniteTimeSpan, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                return commandState;
+            }
+
+            throw new InvalidOperationException("The stalled command should be canceled.");
+        }
     }
 
     [Fact]

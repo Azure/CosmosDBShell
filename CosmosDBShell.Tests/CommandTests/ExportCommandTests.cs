@@ -123,7 +123,7 @@ public class ExportCommandTests
     }
 
     [Fact]
-    public async Task WriteCsvAsync_ReportsEachRowOfTheFinalPass()
+    public async Task WriteCsvAsync_ReportsEachRowOfBothPasses()
     {
         var items = ToAsyncEnumerableAsync(
             JsonSerializer.SerializeToElement(new { id = "1" }),
@@ -135,7 +135,39 @@ public class ExportCommandTests
         var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, onRowWritten: () => rows++);
 
         Assert.Equal(3, count);
-        Assert.Equal(3, rows);
+        Assert.Equal(6, rows);
+    }
+
+    [Theory]
+    [InlineData((int)ExportFormat.Json, 1)]
+    [InlineData((int)ExportFormat.Csv, 2)]
+    public async Task WriteFileAsync_ReportsActivityDuringEveryPass(int format, int passes)
+    {
+        var directory = Directory.CreateTempSubdirectory("cosmos-export-progress-");
+        var rows = 0;
+        try
+        {
+            var count = await ExportCommand.WriteFileAsync(
+                ItemsAsync(), (ExportFormat)format, Path.Join(directory.FullName, "items"), false,
+                TestContext.Current.CancellationToken, () => rows++);
+
+            Assert.Equal(3, count);
+            Assert.Equal(3 * passes, rows);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+
+        async IAsyncEnumerable<JsonElement> ItemsAsync()
+        {
+            for (var index = 0; index < 3; index++)
+            {
+                Assert.Equal(index, rows);
+                yield return JsonSerializer.SerializeToElement(index);
+                await Task.Yield();
+            }
+        }
     }
 
     [Fact]

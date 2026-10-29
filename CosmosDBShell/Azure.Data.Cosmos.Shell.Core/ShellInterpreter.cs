@@ -731,6 +731,13 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 state = await this.RunCommandAsync(state, command, operationTokenSource.Token);
+                if (state is not StructuredErrorCommandState
+                    && isLocalEmulatorOperation
+                    && !token.IsCancellationRequested)
+                {
+                    // Some commands consume cancellation and return partial results as a normal state.
+                    operationTokenSource.Token.ThrowIfCancellationRequested();
+                }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {

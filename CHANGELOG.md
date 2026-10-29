@@ -10,6 +10,7 @@
 
 - Preserve `?` in unquoted command arguments so scalar indexing paths such as `index add /city/?` and `index remove /city/?` reach Cosmos DB unchanged. ([#260](https://github.com/Azure/CosmosDBShell/issues/260))
 - Long-running commands and scripts against a local emulator no longer fail with a timeout and disconnect after 10 seconds while the emulator is still responding. The 10-second limit now applies only when nothing makes progress, and it is paused while confirmation prompts and external editors wait for input.
+- Preserve partial bulk write counts through pipelines on emulator timeouts, report consumed inactivity cancellations as failures, and keep active bulk selection, export, and piped removal scans from timing out during local processing.
 
 ### Improvements
 

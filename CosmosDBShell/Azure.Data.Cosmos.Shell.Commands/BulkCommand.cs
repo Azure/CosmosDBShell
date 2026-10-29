@@ -774,6 +774,7 @@ internal sealed class BulkCommand : CosmosCommand
                 shell.ReportOperationProgress();
                 foreach (var row in page)
                 {
+                    token.ThrowIfCancellationRequested();
                     if (this.MaxItems is { } max && spool.Count >= max)
                     {
                         summary.SelectionLimited = true;
@@ -787,6 +788,8 @@ internal sealed class BulkCommand : CosmosCommand
                     {
                         await save.WriteLineAsync(operation.Json);
                     }
+
+                    shell.ReportOperationProgress();
                 }
 
                 if (this.MaxItems is { } limit && spool.Count >= limit && iterator.HasMoreResults)

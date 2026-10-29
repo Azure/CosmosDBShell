@@ -1230,6 +1230,86 @@ public class BulkCommandTests
     }
 
     // End-to-end command behavior against a substituted container.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EmulatorTimeout_PreservesPartialResultsAndDisconnects(bool piped)
+    {
+        using var fixture = new Fixture(localEmulator: true);
+        fixture.Shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        fixture.Shell.LocalEmulatorInactivityTimeout = TimeSpan.FromMilliseconds(100);
+        fixture.Container.DeleteItemAsync<JsonElement>("1", Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, call.ArgAt<CancellationToken>(3));
+                return await Task.FromException<ItemResponse<JsonElement>>(new InvalidOperationException("The stalled write should be canceled."));
+            });
+        var command = $$"""bulk run '[{{Operation(0).Json}},{{Operation(1).Json}},{{Operation(2).Json}}]' --db db --con items --concurrency 1 --yes""";
+
+        var state = await fixture.Shell.ExecuteCommandAsync(
+            command + (piped ? " | echo" : string.Empty), TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<StructuredErrorCommandState>(state);
+        Assert.True(error.ExitCode == ShellExitCode.ConnectionError, error.Exception.ToString());
+        Assert.Contains("timed out", error.Exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.IsType<DisconnectedState>(fixture.Shell.State);
+        var result = Assert.IsType<ShellJson>(error.Result).Value;
+        Assert.Equal(1, result.GetProperty("succeeded").GetInt64());
+        Assert.Equal(1, result.GetProperty("uncertain").GetInt64());
+        Assert.Equal(2, result.GetProperty("attempted").GetInt64());
+        Assert.True(result.GetProperty("resultIncomplete").GetBoolean());
+        Assert.Equal(7, state.RequestCharge);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WhereSelection_ReportsActivityWhileSpoolingOnePage(bool save)
+    {
+        using var fixture = new Fixture(localEmulator: true);
+        fixture.Shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        fixture.Shell.LocalEmulatorInactivityTimeout = TimeSpan.FromSeconds(1);
+        var rows = Enumerable.Range(0, 10)
+            .Select(index => JsonSerializer.SerializeToElement(new { id = index.ToString(CultureInfo.InvariantCulture), __pk0 = "t" }))
+            .ToArray();
+        using var iterator = Substitute.For<FeedIterator<JsonElement>>();
+        var read = false;
+        iterator.HasMoreResults.Returns(_ => !read);
+        iterator.ReadNextAsync(Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            read = true;
+            var page = Substitute.For<FeedResponse<JsonElement>>();
+            page.GetEnumerator().Returns(_ => SlowRows(call.Arg<CancellationToken>()).GetEnumerator());
+            return Task.FromResult(page);
+        });
+        fixture.Container.GetItemQueryIterator<JsonElement>(
+            Arg.Any<QueryDefinition>(), Arg.Any<string?>(), Arg.Any<QueryRequestOptions>()).Returns(iterator);
+        var savePath = fixture.Directory.PathFor("selection.jsonl");
+        var command = "bulk delete --where true --dry-run --db db --con items"
+            + (save ? $" --save '{savePath}'" : string.Empty);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        var state = await fixture.Shell.ExecuteCommandAsync(command, TestContext.Current.CancellationToken);
+
+        Assert.False(state.IsError);
+        Assert.True(watch.Elapsed > fixture.Shell.LocalEmulatorInactivityTimeout);
+        Assert.IsType<ConnectedState>(fixture.Shell.State);
+        Assert.Equal(rows.Length, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("operationCount").GetInt64());
+        if (save)
+        {
+            Assert.Equal(rows.Length, (await File.ReadAllLinesAsync(savePath, TestContext.Current.CancellationToken)).Length);
+        }
+
+        IEnumerable<JsonElement> SlowRows(CancellationToken token)
+        {
+            foreach (var row in rows)
+            {
+                Assert.False(token.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(200)), "Active selection timed out.");
+                yield return row;
+            }
+        }
+    }
+
     [Fact]
     public async Task RunExecutesMixedOperationsAcrossPartitions()
     {
@@ -2059,11 +2139,11 @@ public class BulkCommandTests
         private string? failingPatchId;
         private HttpStatusCode failingStatus = HttpStatusCode.OK;
 
-        public Fixture()
+        public Fixture(bool localEmulator = false)
         {
             var client = Substitute.For<CosmosClient>();
             var database = Substitute.For<Database>();
-            client.Endpoint.Returns(new Uri("https://unit-test.documents.azure.com"));
+            client.Endpoint.Returns(new Uri(localEmulator ? "https://localhost:8081" : "https://unit-test.documents.azure.com"));
             client.GetDatabase("db").Returns(database);
             database.GetContainer("items").Returns(this.Container);
             this.Shell.State = new ConnectedState(client);

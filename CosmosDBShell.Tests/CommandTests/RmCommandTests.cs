@@ -11,6 +11,7 @@ using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
+using NSubstitute;
 
 public class RmCommandTests
 {
@@ -18,6 +19,49 @@ public class RmCommandTests
     {
         var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");
         return new CosmosClient(connectionString);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task PipedScan_ObservesCancellationBeforeFiltering(bool dryRun, bool singleItem)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var client = Substitute.For<CosmosClient>();
+        var database = Substitute.For<Database>();
+        var container = Substitute.For<Container>();
+        client.GetDatabase("db").Returns(database);
+        database.GetContainer("items").Returns(container);
+        var databaseResponse = Substitute.For<DatabaseResponse>();
+        databaseResponse.StatusCode.Returns(System.Net.HttpStatusCode.OK);
+        database.ReadAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).Returns(databaseResponse);
+        var containerResponse = Substitute.For<ContainerResponse>();
+        containerResponse.StatusCode.Returns(System.Net.HttpStatusCode.OK);
+        containerResponse.Resource.Returns(new ContainerProperties("items", "/pk"));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var reads = 0;
+        container.ReadContainerAsync(Arg.Any<ContainerRequestOptions>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            if (++reads == 2)
+            {
+                cancellation.Cancel();
+            }
+
+            return Task.FromResult(containerResponse);
+        });
+        shell.State = new ConnectedState(client);
+        using var input = JsonDocument.Parse(singleItem ? """{"id":"excluded","pk":"a"}""" : """[{"id":"excluded","pk":"a"}]""");
+        var state = new CommandState
+        {
+            Result = new ShellJson(input.RootElement.Clone()),
+        };
+        var command = new RmCommand { Pattern = "match-*", Key = "id", DryRun = dryRun, Database = "db", Container = "items" };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => command.ExecuteAsync(shell, state, "rm", cancellation.Token));
+        await container.DidNotReceiveWithAnyArgs().DeleteItemAsync<object>(default!, default, default, TestContext.Current.CancellationToken);
     }
 
     [Fact]

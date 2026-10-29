@@ -274,12 +274,9 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 {
                     foreach (var item in itemsArray.EnumerateArray())
                     {
+                        token.ThrowIfCancellationRequested();
                         scannedCount++;
-                        if (dryRun)
-                        {
-                            // A piped dry run sends no requests, so report the local work directly.
-                            this.shell.ReportOperationProgress();
-                        }
+                        this.shell.ReportOperationProgress();
 
                         // Filter before converting the key so an excluded item with an invalid
                         // partition-key value cannot block deletion of matching items.
@@ -299,7 +296,9 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 else
                 {
                     // Single item from pipe
+                    token.ThrowIfCancellationRequested();
                     scannedCount++;
+                    this.shell.ReportOperationProgress();
                     if (itemsArray.TryGetProperty("id", out var idElement)
                         && idElement.GetString() is { } id
                         && ShouldDelete(itemsArray)

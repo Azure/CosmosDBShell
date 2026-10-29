@@ -151,14 +151,16 @@ internal class ExportCommand : CosmosCommand
     /// <param name="items">The items to write.</param>
     /// <param name="stream">The destination stream.</param>
     /// <param name="token">Cancellation token.</param>
+    /// <param name="onRowWritten">Invoked after each item is written.</param>
     /// <returns>The number of items written.</returns>
-    internal static async Task<int> WriteArrayAsync(IAsyncEnumerable<JsonElement> items, Stream stream, CancellationToken token)
+    internal static async Task<int> WriteArrayAsync(IAsyncEnumerable<JsonElement> items, Stream stream, CancellationToken token, Action? onRowWritten = null)
     {
         var count = 0;
         await using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true, IndentSize = 4, NewLine = "\n" });
         writer.WriteStartArray();
         await foreach (var item in items.WithCancellation(token))
         {
+            token.ThrowIfCancellationRequested();
             item.WriteTo(writer);
             if (writer.BytesPending >= 64 * 1024)
             {
@@ -166,6 +168,7 @@ internal class ExportCommand : CosmosCommand
             }
 
             count++;
+            onRowWritten?.Invoke();
         }
 
         writer.WriteEndArray();
@@ -185,7 +188,7 @@ internal class ExportCommand : CosmosCommand
     /// <param name="separator">The field separator.</param>
     /// <param name="token">Cancellation token.</param>
     /// <param name="scalarColumnName">The header for non-object rows; defaults to the environment setting.</param>
-    /// <param name="onRowWritten">Invoked after each row of the final pass, which runs after the last query page.</param>
+    /// <param name="onRowWritten">Invoked after each row is written in both the spooling and final passes.</param>
     /// <returns>The number of data rows written.</returns>
     internal static async Task<int> WriteCsvAsync(IAsyncEnumerable<JsonElement> items, TextWriter writer, char separator, CancellationToken token, string? scalarColumnName = null, Action? onRowWritten = null)
     {
@@ -210,7 +213,9 @@ internal class ExportCommand : CosmosCommand
         var hasScalarRows = false;
         await foreach (var item in items.WithCancellation(token))
         {
+            token.ThrowIfCancellationRequested();
             await spoolWriter.WriteLineAsync(SerializeJsonLine(item).AsMemory(), token);
+            onRowWritten?.Invoke();
             if (item.ValueKind != JsonValueKind.Object)
             {
                 hasScalarRows = true;
@@ -400,7 +405,7 @@ internal class ExportCommand : CosmosCommand
                 }
                 else
                 {
-                    count = await WriteArrayAsync(items, stream, token);
+                    count = await WriteArrayAsync(items, stream, token, onRowWritten);
                 }
             }
 
