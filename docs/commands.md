@@ -1029,6 +1029,21 @@ The editor is resolved from `$VISUAL`, then `$EDITOR`, then a platform default (
 
 Database and container management commands prefer Azure Resource Manager when an ARM context is attached (Entra ID connections, optionally specifying `--subscription` and `--resource-group` for explicit account targeting). The account name is inferred from the endpoint. Account-key, emulator, and static-token connections do not attach ARM context, so these commands automatically fall back to the Cosmos DB data plane and use the connection's existing credentials.
 
+`mkdb` / `create database` and `mkcon` / `create container` return `type`, `id`,
+`created`, and `outcome` in structured results:
+
+| Backend result | `created` | `outcome` | Human-readable status |
+| --- | --- | --- | --- |
+| Data plane: newly created (HTTP 201) | `true` | `created` | Created database/container |
+| Data plane: existing resource reused (HTTP 200) | `false` | `existing` | Using existing database/container |
+| ARM: successful create-or-update | `null` | `createdOrUpdated` | Created or updated database/container |
+
+Data-plane replay preserves the existing resource rather than recreating it; incompatible
+partition keys and other service errors still fail. ARM retains its create-or-update
+behavior and can update an existing resource. Its API does not distinguish creation
+from update, so `null` means unknown, not `false`. The shell does not infer creation
+from a preflight existence check.
+
 ### mkdb
 
 Create database.

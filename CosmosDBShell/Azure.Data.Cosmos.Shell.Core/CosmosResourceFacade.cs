@@ -33,12 +33,12 @@ internal static class CosmosResourceFacade
         return For(state).ContainerExistsAsync(databaseName, containerName, token);
     }
 
-    public static Task<string> CreateDatabaseAsync(ConnectedState state, string databaseName, string? scale, int? maxRu, CancellationToken token)
+    public static Task<ResourceCreationResult> CreateDatabaseAsync(ConnectedState state, string databaseName, string? scale, int? maxRu, CancellationToken token)
     {
         return For(state).CreateDatabaseAsync(databaseName, scale, maxRu, token);
     }
 
-    public static Task<string> CreateContainerAsync(
+    public static Task<ResourceCreationResult> CreateContainerAsync(
         ConnectedState state,
         string databaseName,
         string containerName,

@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Diagnostics;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
@@ -149,10 +150,10 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         await ValidateDatabaseExistsAsync(state, databaseName, "mkcon", token);
 
         var partitionKeyPaths = this.GetPartitionKeyPaths();
-        string containerName;
+        ResourceCreationResult creation;
         try
         {
-            containerName = await CosmosResourceFacade.CreateContainerAsync(
+            creation = await CosmosResourceFacade.CreateContainerAsync(
                 state,
                 databaseName,
                 this.Name ?? string.Empty,
@@ -177,10 +178,18 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
             type = "container",
-            id = containerName,
-            created = true,
+            id = creation.Id,
+            created = creation.Created,
+            outcome = creation.OutcomeName,
         }));
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-mkcon-CreatedContainer", new Dictionary<string, object> { { "container", containerName } }));
+        var messageKey = creation.Outcome switch
+        {
+            ResourceCreationOutcome.Created => "command-mkcon-CreatedContainer",
+            ResourceCreationOutcome.Existing => "command-mkcon-container_existing",
+            ResourceCreationOutcome.CreatedOrUpdated => "command-mkcon-container_created_or_updated",
+            _ => throw new UnreachableException(),
+        };
+        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString(messageKey, new Dictionary<string, object> { { "container", creation.Id } }));
         return commandState;
     }
 

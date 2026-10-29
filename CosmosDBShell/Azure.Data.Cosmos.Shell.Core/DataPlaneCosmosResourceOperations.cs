@@ -71,7 +71,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
         }
     }
 
-    public async Task<string> CreateDatabaseAsync(string databaseName, string? scale, int? maxRu, CancellationToken token)
+    public async Task<ResourceCreationResult> CreateDatabaseAsync(string databaseName, string? scale, int? maxRu, CancellationToken token)
     {
         var response = await CreateWithServerlessFallbackAsync(
             scale,
@@ -84,10 +84,10 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
                 () => response.Database.ReadThroughputAsync(new RequestOptions(), token));
         }
 
-        return response.Database.Id;
+        return new ResourceCreationResult(response.Database.Id, ToCreationOutcome(response.StatusCode));
     }
 
-    public async Task<string> CreateContainerAsync(
+    public async Task<ResourceCreationResult> CreateContainerAsync(
         string databaseName,
         string containerName,
         IReadOnlyList<string> partitionKeyPaths,
@@ -129,7 +129,7 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
                 () => response.Container.ReadThroughputAsync(new RequestOptions(), token));
         }
 
-        return response.Container.Id;
+        return new ResourceCreationResult(response.Container.Id, ToCreationOutcome(response.StatusCode));
     }
 
     public async Task DeleteDatabaseAsync(string databaseName, CancellationToken token)
@@ -417,6 +417,9 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
     {
         return response.Resource ?? throw new ShellException(MessageService.GetString("error-unable_to_read_container"));
     }
+
+    private static ResourceCreationOutcome ToCreationOutcome(HttpStatusCode status) =>
+        status == HttpStatusCode.Created ? ResourceCreationOutcome.Created : ResourceCreationOutcome.Existing;
 
     internal static IndexingPolicy ParseIndexingPolicy(string indexPolicyJson)
     {

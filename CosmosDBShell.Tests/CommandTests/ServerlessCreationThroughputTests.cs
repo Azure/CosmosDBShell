@@ -343,7 +343,8 @@ public class ServerlessCreationThroughputTests
 
         var result = await CreateResourceAsync(operations, isContainer, "manual", 400);
 
-        Assert.Equal(isContainer ? "Items" : "db", result);
+        Assert.Equal(isContainer ? "Items" : "db", result.Id);
+        Assert.Equal(ResourceCreationOutcome.Existing, result.Outcome);
     }
 
     [Theory]
@@ -362,7 +363,7 @@ public class ServerlessCreationThroughputTests
 
         if (status == HttpStatusCode.NotFound)
         {
-            Assert.Equal(isContainer ? "Items" : "db", await CreateResourceAsync(operations, isContainer, null, 400));
+            Assert.Equal(isContainer ? "Items" : "db", (await CreateResourceAsync(operations, isContainer, null, 400)).Id);
         }
         else
         {
@@ -372,7 +373,7 @@ public class ServerlessCreationThroughputTests
         }
     }
 
-    private static Task<string> CreateResourceAsync(DataPlaneCosmosResourceOperations operations, bool isContainer, string? scale, int? ru)
+    private static Task<ResourceCreationResult> CreateResourceAsync(DataPlaneCosmosResourceOperations operations, bool isContainer, string? scale, int? ru)
         => isContainer
             ? operations.CreateContainerAsync("db", "Items", ["/pk"], null, null, scale, ru, TestContext.Current.CancellationToken)
             : operations.CreateDatabaseAsync("db", scale, ru, TestContext.Current.CancellationToken);
