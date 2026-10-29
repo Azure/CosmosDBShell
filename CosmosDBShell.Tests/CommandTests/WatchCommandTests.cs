@@ -185,7 +185,7 @@ public class WatchCommandTests
         {
             var startupResult = await Program.ExecuteStartupCommandAsync(shell, command);
             state = startupResult.State;
-            Assert.False(startupResult.Interrupted);
+            Assert.True(startupResult.Interrupted);
         }
         else
         {

@@ -22,7 +22,7 @@ internal class Program
     {
         using var cancellation = ShellInterpreter.UserCancellationTokenSource;
         var state = await shell.ExecuteCommandAsync(command, cancellation.Token, cancellationIsError: true);
-        return (state, cancellation.IsCancellationRequested && !state.UserCancellationHandled);
+        return (state, cancellation.IsCancellationRequested);
     }
 
     public static async Task Main(string[] args)
@@ -456,12 +456,13 @@ internal class Program
                     if (state.IsError)
                     {
                         Environment.ExitCode = ShellExitCode.FromCommandState(state);
-                        if (executeAndContinueCommand is null || interrupted)
-                        {
-                            await StopHostAsync(host, hostTask);
+                    }
 
-                            return;
-                        }
+                    if (interrupted || (state.IsError && executeAndContinueCommand is null))
+                    {
+                        await StopHostAsync(host, hostTask);
+
+                        return;
                     }
 
                     // If user only wants to execute piped script then quit (unless -k / ExecuteAndContinue)

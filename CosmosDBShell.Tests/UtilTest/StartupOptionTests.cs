@@ -81,7 +81,7 @@ public class StartupOptionTests
             var (state, interrupted) = await Program.ExecuteStartupCommandAsync(shell, command);
 
             Assert.False(state.IsError);
-            Assert.False(interrupted);
+            Assert.True(interrupted);
             Assert.True(state.UserCancellationHandled);
             Assert.Equal("handled", Assert.IsType<ShellText>(state.Result).Text);
         }

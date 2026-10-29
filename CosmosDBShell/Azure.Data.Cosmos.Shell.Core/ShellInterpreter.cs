@@ -730,6 +730,19 @@ public partial class ShellInterpreter : IDisposable
                 if (timedOut)
                 {
                     structuredError.Exception = CreateEmulatorTimeoutException(structuredError.Exception);
+                    if (structuredError.Result is ShellJson json
+                        && json.Value.ValueKind == JsonValueKind.Object
+                        && json.Value.TryGetProperty("exitCode", out _))
+                    {
+                        var payload = JsonSerializer.SerializeToNode(json.Value)!.AsObject();
+                        payload["exitCode"] = structuredError.ExitCode;
+                        if (payload.ContainsKey("error"))
+                        {
+                            payload["error"] = structuredError.Exception.Message;
+                        }
+
+                        structuredError.Result = new ShellJson(JsonSerializer.SerializeToElement(payload));
+                    }
                 }
 
                 var printed = this.PrintState(structuredError);
