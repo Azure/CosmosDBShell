@@ -339,7 +339,10 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
                     foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
                     {
+                        token.ThrowIfCancellationRequested();
                         scannedCount++;
+                        this.shell.ReportOperationProgress();
+                        ReportProgress();
                         if (!element.TryGetProperty(IdPropertyName, out var idElement)
                             || idElement.ValueKind != JsonValueKind.String
                             || idElement.GetString() is not string id

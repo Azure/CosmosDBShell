@@ -19,6 +19,8 @@
 - Retain settled import counts and RUs on cancellation, prevent interrupted startup scripts from writing partial success output, and keep intentional watch stops successful through pipelines, blocks, and scripts.
 - Stop follow-up startup commands after an intentional watch stop in redirected stdin, and align timed-out import result error messages and exit codes with the command failure.
 - Keep import progress counts and observed RUs current when writes finish while the next input record is still being read.
+- Keep bulk completion counts current during slow input reads, allow cancellation while loading resume journals, and recognize active local validation, removal scans, and successful journal recording without treating failed requests as activity.
+- Stop interrupted startup stdin reads, confirmation prompts, and watch expressions before subsequent work; keep machine-readable stdout clean on Ctrl+C and exclude external command expressions from emulator inactivity deadlines.
 - Database and container creation on key, emulator, and static-token connections now report `created: false` and `outcome: "existing"` when an existing resource is reused, instead of always reporting `created: true`. Human-readable output says "Using existing database/container" in that case. ([#261](https://github.com/Azure/CosmosDBShell/issues/261))
 
 ### Improvements

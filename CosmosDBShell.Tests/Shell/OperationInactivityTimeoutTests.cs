@@ -161,8 +161,73 @@ public class OperationInactivityTimeoutTests
         }
     }
 
-    [Fact]
-    public async Task ExternalPipelineStage_LongerThanDeadline_DoesNotTimeOut()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Import_LocalValidationCountsAsActivityButUnavailableResponsesDoNot(bool localValidation)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var client = Substitute.For<CosmosClient>();
+        client.Endpoint.Returns(new Uri("https://localhost:8081"));
+        shell.State = new ConnectedState(client);
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        shell.LocalEmulatorInactivityTimeout = TimeSpan.FromMilliseconds(500);
+        Assert.True(CommandFactory.TryCreateFactory(typeof(ImportValidationProgressCommand), out var factory));
+        shell.App.Commands["import-validation-progress-test"] = factory;
+
+        var state = await shell.ExecuteCommandAsync(
+            "import-validation-progress-test" + (localValidation ? " --local" : ""), TestContext.Current.CancellationToken);
+
+        Assert.Equal(!localValidation, state.IsError);
+        if (localValidation)
+        {
+            Assert.IsType<ConnectedState>(shell.State);
+            Assert.Equal(20, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("failed").GetInt32());
+        }
+        else
+        {
+            Assert.Equal(ShellExitCode.ConnectionError, state.ExitCode);
+            Assert.IsType<DisconnectedState>(shell.State);
+        }
+    }
+
+    [CosmosCommand("import-validation-progress-test")]
+    internal sealed class ImportValidationProgressCommand : CosmosCommand
+    {
+        [CosmosOption("local")]
+        public bool? Local { get; set; }
+
+        public override async Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            var container = Substitute.For<Container>();
+            container.CreateItemStreamAsync(Arg.Any<Stream>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+                .Returns(_ => Task.FromResult(new ResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable)));
+            async IAsyncEnumerable<(int LineNumber, JsonElement Item)> Items()
+            {
+                for (var index = 0; index < 20; index++)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(50), token);
+                    yield return (index + 1, JsonSerializer.SerializeToElement(new
+                    {
+                        id = index.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        pk = this.Local == true ? JsonSerializer.SerializeToElement(Array.Empty<int>()) : JsonSerializer.SerializeToElement("key"),
+                    }));
+                }
+            }
+
+            var result = await ImportCommand.WriteItemsAsync(
+                Items(), container, ImportMode.Insert, 1, true, ["pk"], commandState, token, warningShell: shell);
+            commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { failed = result.Failed }));
+            return commandState;
+        }
+    }
+
+    [Theory]
+    [InlineData("echo data | local-processing-test")]
+    [InlineData("$result = (local-processing-test)")]
+    [InlineData("echo (local-processing-test)")]
+    public async Task ExternalCommand_LongerThanDeadline_DoesNotTimeOut(string command)
     {
         using var shell = ShellInterpreter.CreateInstance();
         using var client = Substitute.For<CosmosClient>();
@@ -173,7 +238,7 @@ public class OperationInactivityTimeoutTests
         Assert.True(CommandFactory.TryCreateFactory(typeof(LocalProcessingCommand), out var factory));
         shell.App.Commands["local-processing-test"] = factory;
 
-        var state = await shell.ExecuteCommandAsync("echo data | local-processing-test", TestContext.Current.CancellationToken);
+        var state = await shell.ExecuteCommandAsync(command, TestContext.Current.CancellationToken);
 
         Assert.False(state.IsError);
         Assert.IsType<ConnectedState>(shell.State);

@@ -6,6 +6,7 @@ namespace CosmosShell.Tests.CommandTests;
 
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using System.Net;
 using System.Text;
@@ -131,6 +132,10 @@ public class WatchCommandTests
     [InlineData(true, true, true)]
     [InlineData(true, true, true, "{0} | echo downstream")]
     [InlineData(true, true, true, "{{ {0}; echo downstream }}")]
+    [InlineData(true, true, true, "$capture = ({0}); echo downstream")]
+    [InlineData(true, true, true, "echo ({0})")]
+    [InlineData(true, true, true, "def stop {{ {0} }}; $capture = (stop)")]
+    [InlineData(true, false, false, "$capture = ({0})")]
     public async Task PollingDelay_IsPausedButStalledRequestsTimeOut(bool stalled, bool callerCancels, bool startup, string commandPattern = "{0}")
     {
         using var shell = ShellInterpreter.CreateInstance();
@@ -179,6 +184,7 @@ public class WatchCommandTests
         });
 
         var watch = System.Diagnostics.Stopwatch.StartNew();
+        shell.SetVariable("capture", new ShellText("unchanged"));
         var command = string.Format(commandPattern, "watch --db db --con items --interval=1 --max=1");
         CommandState state;
         if (startup)
@@ -195,6 +201,8 @@ public class WatchCommandTests
         if (callerCancels)
         {
             Assert.False(state.IsError);
+            Assert.True(state.UserCancellationHandled);
+            Assert.Equal("unchanged", Assert.IsType<ShellText>(shell.GetVariable("capture")).Text);
             Assert.IsType<ConnectedState>(shell.State);
         }
         else if (stalled)

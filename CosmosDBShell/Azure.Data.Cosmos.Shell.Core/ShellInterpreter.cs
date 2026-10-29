@@ -528,13 +528,16 @@ public partial class ShellInterpreter : IDisposable
     /// <param name="shell">The interpreter executing the command, whose inactivity timeout is paused while waiting for the answer. Defaults to <see cref="Instance"/>.</param>
     /// <returns><c>true</c> if the user confirms; otherwise, <c>false</c>.</returns>
     public static bool Confirm(string message, ShellInterpreter? shell = null)
+        => Confirm(message, shell ?? Instance, static () => Console.ReadKey(intercept: true));
+
+    internal static bool Confirm(string message, ShellInterpreter shell, Func<ConsoleKeyInfo> readKey)
     {
-        using var pause = (shell ?? Instance).PauseOperationTimeout();
+        using var pause = shell.PauseOperationTimeout();
         var yes = char.ToUpper(MessageService.GetString("yes_char")[0]);
         var no = char.ToUpper(MessageService.GetString("no_char")[0]);
 
         // Take over Ctrl+C handling for the lifetime of the prompt so it cancels the
-        // question (returns false) instead of being swallowed by the global cancel-key
+        // operation instead of being swallowed by the global cancel-key
         // handler, which would leave this blocking ReadKey loop spinning forever.
         var restoreControlC = TrySetTreatControlCAsInput(true, out var originalTreatControlCAsInput);
         try
@@ -546,7 +549,7 @@ public partial class ShellInterpreter : IDisposable
                 ConsoleKeyInfo key;
                 try
                 {
-                    key = Console.ReadKey(intercept: true);
+                    key = readKey();
                 }
                 catch (InvalidOperationException)
                 {
@@ -558,8 +561,8 @@ public partial class ShellInterpreter : IDisposable
 
                 if (key.Key == ConsoleKey.C && key.Modifiers.HasFlag(ConsoleModifiers.Control))
                 {
-                    WriteLine("^C");
-                    return false;
+                    shell.CancelPrompt();
+                    throw new OperationCanceledException();
                 }
 
                 if (key.Key == ConsoleKey.Escape)
@@ -770,6 +773,13 @@ public partial class ShellInterpreter : IDisposable
                     // Some commands consume cancellation and return partial results as a normal state.
                     Volatile.Read(ref this.localEmulatorDeadline)?.ThrowIfTimedOut();
                 }
+            }
+            catch (CommandState.HandledCancellationException e) when (token.IsCancellationRequested)
+            {
+                wasCancelled = true;
+                e.State.ShareWarningsFrom(state);
+                result = this.PrintState(e.State);
+                return result;
             }
             catch (OperationCanceledException e) when (token.IsCancellationRequested)
             {
@@ -1299,15 +1309,19 @@ public partial class ShellInterpreter : IDisposable
         CosmosCommand command,
         CommandState commandState,
         string commandText,
-        CancellationToken token)
-        => this.ExecuteCosmosCommandCoreAsync(command, commandState, commandText, token);
+        CancellationToken token,
+        bool isExternal = false)
+        => this.ExecuteCosmosCommandCoreAsync(command, commandState, commandText, token, isExternal);
 
     private async Task<CommandState> ExecuteCosmosCommandCoreAsync(
         CosmosCommand command,
         CommandState commandState,
         string commandText,
-        CancellationToken token)
+        CancellationToken token,
+        bool isExternal)
     {
+        using var localWorkPause = isExternal ? this.PauseOperationTimeout() : null;
+
         // CommandState is intentionally reused by pipelines and expressions. Clear the
         // previous command's charge so an uninstrumented command cannot count it again.
         commandState.RequestCharge = null;
@@ -2867,7 +2881,13 @@ public partial class ShellInterpreter : IDisposable
         }
 
         this.CancelPrompt();
-        WriteLine("̂C");
+        if (!this.IsMachineMode
+            && !OutputPolicy.IsStructuredFormat(this.DefaultOutputFormat)
+            && this.IsOutputTerminal()
+            && string.IsNullOrEmpty(this.StdOutRedirect))
+        {
+            WriteLine("^C");
+        }
     }
 
     private void SaveHistory()

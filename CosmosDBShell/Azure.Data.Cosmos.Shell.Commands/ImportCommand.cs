@@ -1105,7 +1105,8 @@ internal class ImportCommand : CosmosCommand
                     items.Current.LineNumber,
                     items.Current.Item,
                     partitionKeyPaths,
-                    token));
+                    token,
+                    warningShell));
             }
         }
         finally
@@ -1154,7 +1155,8 @@ internal class ImportCommand : CosmosCommand
         int lineNumber,
         JsonElement item,
         IReadOnlyList<string> partitionKeyPaths,
-        CancellationToken token)
+        CancellationToken token,
+        ShellInterpreter? shell)
     {
         try
         {
@@ -1188,6 +1190,7 @@ internal class ImportCommand : CosmosCommand
             }
             catch (Exception ex) when (ex is JsonException or InvalidOperationException)
             {
+                shell?.ReportOperationProgress();
                 return (0, new CommandException(
                     "import",
                     MessageService.GetArgsString(

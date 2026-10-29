@@ -75,8 +75,50 @@ internal static class BulkExecutor
 
         try
         {
-            await foreach (var operation in source.WithCancellation(token))
+            await using var items = source.GetAsyncEnumerator(token);
+            async ValueTask<bool> ReadNextAsync()
             {
+                var next = items.MoveNextAsync();
+                if (next.IsCompleted || pending.Count == 0)
+                {
+                    return await next;
+                }
+
+                var read = next.AsTask();
+                try
+                {
+                    while (!read.IsCompleted && pending.Count > 0)
+                    {
+#pragma warning disable VSTHRD003 // All pending tasks were started by this invocation.
+                        await Task.WhenAny(pending.Select(entry => (Task)entry.Task).Append(read)).WaitAsync(token);
+#pragma warning restore VSTHRD003
+                        await SettleCompletedAsync();
+                    }
+
+                    return await read;
+                }
+                catch (Exception ex)
+                {
+                    failure ??= ExceptionDispatchInfo.Capture(ex);
+                    throw;
+                }
+                finally
+                {
+                    // Finish the read before disposing its enumerator, retaining the original failure.
+                    try
+                    {
+                        await read;
+                    }
+                    catch (Exception ex)
+                    {
+                        failure ??= ExceptionDispatchInfo.Capture(ex);
+                    }
+                }
+            }
+
+            while (await ReadNextAsync())
+            {
+                var operation = items.Current;
                 var key = BulkOperationNormalizer.ParseKey(operation.PartitionKey);
                 await SettleCompletedAsync();
 

@@ -929,7 +929,11 @@ internal sealed class BulkCommand : CosmosCommand
         this.Confirm(shell, count, target);
         using var journal = this.Journal is null
             ? null
-            : BulkJournal.Open(this.Journal, target.Endpoint, target.ContainerRid, hash, count, shell.ReportOperationProgress);
+            : BulkJournal.Open(this.Journal, target.Endpoint, target.ContainerRid, hash, count, () =>
+            {
+                token.ThrowIfCancellationRequested();
+                shell.ReportOperationProgress();
+            });
         if (journal is not null)
         {
             await journal.ValidateAsync(operations, token, shell.ReportOperationProgress);
@@ -968,14 +972,16 @@ internal sealed class BulkCommand : CosmosCommand
 
         var progress = new IngestionProgress(shell, new CommandState(), "command-bulk-progress", count);
         var reportedSkips = summary.Skipped;
+        var reportedSuccesses = summary.Succeeded;
         void UpdateProgress()
         {
             progress.Update(summary.Processed, summary.Succeeded, summary.Failed, summary.RequestCharge);
 
-            // Journal skips are local work with no emulator response to restart the inactivity timeout.
-            if (summary.Skipped != reportedSkips)
+            // Only successful writes and local skips restart inactivity, not synthetic SDK errors.
+            if (summary.Skipped != reportedSkips || summary.Succeeded != reportedSuccesses)
             {
                 reportedSkips = summary.Skipped;
+                reportedSuccesses = summary.Succeeded;
                 shell.ReportOperationProgress();
             }
         }

@@ -115,6 +115,11 @@ internal class CommandExpression : Expression
             throw failure;
         }
 
+        if (resultState.UserCancellationHandled)
+        {
+            throw new CommandState.HandledCancellationException(resultState, cancellationToken);
+        }
+
         // Return the result from the command state
         if (resultState.Result != null)
         {
@@ -170,7 +175,7 @@ internal class CommandExpression : Expression
         if (shell.App.Commands.TryGetValue(this.Name, out var factory))
         {
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
-            return await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token);
+            return await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token, factory.IsExternal);
         }
 
         // Check for script files

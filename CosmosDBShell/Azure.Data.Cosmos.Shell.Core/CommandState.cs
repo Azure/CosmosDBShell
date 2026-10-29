@@ -298,6 +298,11 @@ public partial class CommandState
         }
     }
 
+    internal sealed class HandledCancellationException(CommandState state, CancellationToken token) : OperationCanceledException(token)
+    {
+        internal CommandState State { get; } = state;
+    }
+
     internal sealed class FailureException : Exception
     {
         public FailureException(CommandState state)

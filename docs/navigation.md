@@ -337,6 +337,8 @@ These values are a public contract. See the [CI/CD guide](ci.md#exit-code-contra
 
 Ctrl+C interrupts commands started with `-c`, `-k`, or redirected stdin. An interrupted startup command returns a nonzero exit code and stops any following startup command; structured partial write results, including settled import counts and observed RUs, remain visible. Canceled partial results are not written as successful redirected output. Successful writes are not rolled back, and canceled in-flight writes may require reconciliation before retrying. Stopping `watch` with Ctrl+C is intentional and remains successful; enclosing pipelines, blocks, and scripts stop without running subsequent work. An interrupted stdin script also skips any separately supplied `-c` or `-k` command, even when `watch` handled the interruption successfully.
 
+Interruption also applies while stdin is still being read and while a confirmation prompt is waiting. At a confirmation, `n` or Escape declines normally; Ctrl+C interrupts the operation. Stopping a `watch` expression stops its enclosing assignment or command before it changes a variable or performs subsequent work. Interrupt markers are not written to machine-readable or redirected stdout.
+
 Scripted `bulk` writes require `--yes`; use `--dry-run` to preview first. Bulk operations are not transactional, and an exhausted observed RU budget returns exit code `6`. Supply `--journal` on the original run and reuse that same journal to resume; without it, reconcile completed writes before retrying. See [bulk operations](commands.md#bulk) for recovery and partial-success semantics.
 
 ### Environment Variables

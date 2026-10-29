@@ -8,11 +8,185 @@ using Azure.Data.Cosmos.Shell.Util;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using System.Reflection;
 using System.Text.Json;
 
 [Collection(ConsoleOutputTestCollection.Name)]
 public class StartupOptionTests
 {
+    [Theory]
+    [InlineData(ConsoleKey.C, true, true)]
+    [InlineData(ConsoleKey.N, false, false)]
+    [InlineData(ConsoleKey.Escape, false, false)]
+    public async Task Confirmation_InterruptStopsFollowingCommandsButDeclineDoesNot(ConsoleKey key, bool control, bool interrupted)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StartupConfirmationCommand), out var factory));
+        shell.App.Commands["startup-confirm-test"] = factory;
+        StartupConfirmationCommand.Key = new ConsoleKeyInfo(
+            key == ConsoleKey.N ? 'n' : '\0', key, false, false, control);
+        var output = Path.GetFullPath($"startup-following-{Guid.NewGuid():N}.txt");
+        try
+        {
+            var (state, wasInterrupted) = await Program.ExecuteStartupCommandAsync(
+                shell, $"{{ startup-confirm-test; echo downstream > {JsonSerializer.Serialize(output)} }}");
+
+            Assert.Equal(interrupted, wasInterrupted);
+            Assert.Equal(interrupted, state.IsError);
+            Assert.Equal(!interrupted, File.Exists(output));
+            Assert.False((await shell.ExecuteCommandAsync("echo next", TestContext.Current.CancellationToken)).IsError);
+        }
+        finally
+        {
+            File.Delete(output);
+        }
+    }
+
+    [CosmosCommand("startup-confirm-test")]
+    internal sealed class StartupConfirmationCommand : CosmosCommand
+    {
+        internal static ConsoleKeyInfo Key { get; set; }
+
+        public override Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            ShellInterpreter.Confirm("yes_char", shell, () => Key);
+            return Task.FromResult(commandState);
+        }
+    }
+
+    [Theory]
+    [InlineData("json", false, true, false, false)]
+    [InlineData("csv", false, true, false, false)]
+    [InlineData("user", false, false, false, false)]
+    [InlineData("table", false, true, true, false)]
+    [InlineData("user", true, true, false, false)]
+    [InlineData("user", false, true, false, true)]
+    public void ConsoleCancellation_KeepsMachineOutputClean(
+        string format, bool quiet, bool terminal, bool redirected, bool markerExpected)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Output = format, Quiet = quiet };
+        shell.IsOutputTerminal = () => terminal;
+        shell.StdOutRedirect = redirected ? "not-written.txt" : null;
+        using var cancellation = ShellInterpreter.UserCancellationTokenSource;
+        using var output = new StringWriter();
+        using var errors = new StringWriter();
+        var savedOutput = Console.Out;
+        var savedError = Console.Error;
+        try
+        {
+            Console.SetOut(output);
+            Console.SetError(errors);
+            RaiseConsoleCancellation(shell);
+
+            Assert.True(cancellation.IsCancellationRequested);
+            Assert.Equal(markerExpected ? "^C" + Environment.NewLine : "", output.ToString());
+            Assert.Empty(errors.ToString());
+        }
+        finally
+        {
+            Console.SetOut(savedOutput);
+            Console.SetError(savedError);
+        }
+    }
+
+    [Fact]
+    public async Task RedirectedInput_CancellationAbortsBlockingReadWithoutExecutingLateScript()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Quiet = true };
+        using var input = new BlockingStartupReader();
+        var output = Path.GetFullPath($"startup-stdin-{Guid.NewGuid():N}.txt");
+        input.Script = $"echo should-not-run > {JsonSerializer.Serialize(output)}";
+        try
+        {
+            var startup = Program.ExecuteStartupInputAsync(shell, input);
+            await input.Started.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            RaiseConsoleCancellation(shell);
+            var (state, interrupted) = await startup.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+            Assert.True(interrupted);
+            Assert.True(Assert.IsType<ErrorCommandState>(state).IsError);
+            Assert.True(input.ReadToken.IsCancellationRequested);
+            input.Release.Set();
+            await input.Finished.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.False(File.Exists(output));
+            Assert.False((await shell.ExecuteCommandAsync("echo next", TestContext.Current.CancellationToken)).IsError);
+        }
+        finally
+        {
+            input.Release.Set();
+            File.Delete(output);
+        }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" \r\n")]
+    public async Task RedirectedInput_EmptyInputPreservesInteractiveStartup(string text)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var input = new StringReader(text);
+
+        var (state, interrupted) = await Program.ExecuteStartupInputAsync(shell, input);
+
+        Assert.Null(state);
+        Assert.False(interrupted);
+    }
+
+    [Fact]
+    public async Task RedirectedInput_HandledCancellationRemainsSuccessfulAndStopsScript()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StartupHandledCancellationCommand), out var factory));
+        shell.App.Commands["startup-handled-test"] = factory;
+        using var input = new StringReader("startup-handled-test\necho downstream");
+
+        var (state, interrupted) = await Program.ExecuteStartupInputAsync(shell, input);
+
+        Assert.True(interrupted);
+        Assert.NotNull(state);
+        Assert.False(state.IsError);
+        Assert.True(state.UserCancellationHandled);
+        Assert.Equal("handled", Assert.IsType<ShellText>(state.Result).Text);
+    }
+
+    private static void RaiseConsoleCancellation(ShellInterpreter shell)
+    {
+        var args = (ConsoleCancelEventArgs)Activator.CreateInstance(
+            typeof(ConsoleCancelEventArgs), BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null, args: [ConsoleSpecialKey.ControlC], culture: null)!;
+        typeof(ShellInterpreter).GetMethod("Console_CancelKeyPress", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(shell, [null, args]);
+        Assert.True(args.Cancel);
+    }
+
+    private sealed class BlockingStartupReader : TextReader
+    {
+        internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Finished { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal ManualResetEventSlim Release { get; } = new();
+        internal string Script { get; set; } = "";
+        internal CancellationToken ReadToken { get; private set; }
+
+        public override Task<string> ReadToEndAsync(CancellationToken cancellationToken)
+        {
+            this.ReadToken = cancellationToken;
+            this.Started.SetResult();
+            this.Release.Wait();
+            this.Finished.SetResult();
+            return Task.FromResult(this.Script);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            this.Release.Set();
+            base.Dispose(disposing);
+        }
+    }
+
     [Theory]
     [InlineData("-c")]
     [InlineData("-k")]
