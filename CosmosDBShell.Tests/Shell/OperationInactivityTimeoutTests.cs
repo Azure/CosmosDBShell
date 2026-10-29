@@ -8,54 +8,64 @@ using Azure.Data.Cosmos.Shell.Core;
 
 public class OperationInactivityTimeoutTests
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
     [Fact]
-    public async Task WithoutProgress_CancelsAfterTimeout()
+    public void WithoutProgress_CancelsAfterTimeout()
     {
-        using var source = new CancellationTokenSource();
+        var clock = new ManualTimeProvider();
+        using var source = new CancellationTokenSource(global::System.Threading.Timeout.InfiniteTimeSpan, clock);
         _ = new OperationInactivityTimeout(source, Timeout);
 
-        await WaitForCancellationAsync(source);
+        clock.Advance(Timeout - TimeSpan.FromMilliseconds(1));
+        Assert.False(source.IsCancellationRequested);
+
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.True(source.IsCancellationRequested);
     }
 
     [Fact]
-    public async Task Progress_RestartsTimeout()
+    public void Progress_RestartsTimeout()
     {
-        var timeout = TimeSpan.FromSeconds(1);
-        using var source = new CancellationTokenSource();
-        var deadline = new OperationInactivityTimeout(source, timeout);
+        var clock = new ManualTimeProvider();
+        using var source = new CancellationTokenSource(global::System.Threading.Timeout.InfiniteTimeSpan, clock);
+        var deadline = new OperationInactivityTimeout(source, Timeout);
 
-        // Four 400 ms gaps exceed the timeout in total while leaving slack for a busy machine.
-        for (var i = 0; i < 4; i++)
+        // Three gaps of 0.9x the timeout exceed it in total, but each restarts the period.
+        for (var i = 0; i < 3; i++)
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(400), TestContext.Current.CancellationToken);
+            clock.Advance(Timeout * 0.9);
             deadline.ReportProgress();
         }
 
         Assert.False(source.IsCancellationRequested);
-        await WaitForCancellationAsync(source);
+        clock.Advance(Timeout);
+        Assert.True(source.IsCancellationRequested);
     }
 
     [Fact]
-    public async Task NestedPauses_SuspendUntilLastResume_AndIgnoreProgress()
+    public void NestedPauses_SuspendUntilLastResume_AndIgnoreProgress()
     {
-        using var source = new CancellationTokenSource();
+        var clock = new ManualTimeProvider();
+        using var source = new CancellationTokenSource(global::System.Threading.Timeout.InfiniteTimeSpan, clock);
         var deadline = new OperationInactivityTimeout(source, Timeout);
 
         var outer = deadline.Pause();
         var inner = deadline.Pause();
         deadline.ReportProgress();
-        await Task.Delay(Timeout * 3, TestContext.Current.CancellationToken);
+        clock.Advance(Timeout * 3);
         Assert.False(source.IsCancellationRequested);
 
         inner.Dispose();
         inner.Dispose();
-        await Task.Delay(Timeout * 3, TestContext.Current.CancellationToken);
+        clock.Advance(Timeout * 3);
         Assert.False(source.IsCancellationRequested);
 
         outer.Dispose();
-        await WaitForCancellationAsync(source);
+        clock.Advance(Timeout - TimeSpan.FromMilliseconds(1));
+        Assert.False(source.IsCancellationRequested);
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.True(source.IsCancellationRequested);
     }
 
     [Fact]
@@ -78,13 +88,54 @@ public class OperationInactivityTimeoutTests
         shell.ReportOperationProgress();
     }
 
-    private static async Task WaitForCancellationAsync(CancellationTokenSource source)
+    /// <summary>
+    /// A deterministic clock: timers fire only when <see cref="Advance"/> moves time past them.
+    /// </summary>
+    private sealed class ManualTimeProvider : TimeProvider
     {
-        await Task.Delay(Timeout * 10, source.Token).ContinueWith(
-            _ => { },
-            TestContext.Current.CancellationToken,
-            TaskContinuationOptions.None,
-            TaskScheduler.Default);
-        Assert.True(source.IsCancellationRequested, "The inactivity timeout did not cancel the operation.");
+        private readonly List<ManualTimer> timers = [];
+        private TimeSpan now;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = new ManualTimer(this, callback, state);
+            timer.Change(dueTime, period);
+            this.timers.Add(timer);
+            return timer;
+        }
+
+        public void Advance(TimeSpan delta)
+        {
+            this.now += delta;
+            foreach (var timer in this.timers.ToArray())
+            {
+                if (timer.DueAt is { } due && due <= this.now)
+                {
+                    timer.DueAt = null;
+                    timer.Fire();
+                }
+            }
+        }
+
+        private sealed class ManualTimer(ManualTimeProvider owner, TimerCallback callback, object? state) : ITimer
+        {
+            public TimeSpan? DueAt { get; set; }
+
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                this.DueAt = dueTime == global::System.Threading.Timeout.InfiniteTimeSpan ? null : owner.now + dueTime;
+                return true;
+            }
+
+            public void Fire() => callback(state);
+
+            public void Dispose() => this.DueAt = null;
+
+            public ValueTask DisposeAsync()
+            {
+                this.Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
     }
 }

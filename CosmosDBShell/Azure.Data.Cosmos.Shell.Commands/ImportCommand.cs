@@ -1081,11 +1081,27 @@ internal class ImportCommand : CosmosCommand
         {
             try
             {
-                // Drain every started write before returning or releasing the source, even on parse errors.
-                var results = await Task.WhenAll(pending);
-                foreach (var result in results)
+                // Drain every started write before returning or releasing the source, even on parse
+                // errors. Record each write as it completes so progress does not wait for the slowest one.
+                Task<(double Charge, Exception? Error)>? firstUnsuccessful = null;
+                while (pending.Count > 0)
                 {
-                    Record(result);
+                    var completed = await Task.WhenAny(pending);
+                    pending.Remove(completed);
+                    if (completed.IsCompletedSuccessfully)
+                    {
+                        Record(await completed);
+                    }
+                    else if (firstUnsuccessful is null || (firstUnsuccessful.IsCanceled && completed.IsFaulted))
+                    {
+                        firstUnsuccessful = completed;
+                    }
+                }
+
+                if (firstUnsuccessful != null)
+                {
+                    // Matches Task.WhenAll: a fault takes precedence over cancellation.
+                    await firstUnsuccessful;
                 }
             }
             finally

@@ -56,7 +56,7 @@ public class LocalEmulatorInactivityTimeoutTests : ConnectedEmulatorTestBase
         Shell.LocalEmulatorInactivityTimeout = TimeSpan.FromSeconds(1);
 
         var watch = Stopwatch.StartNew();
-        var state = await this.ExecuteAsync($"import '{ShellPath(this.inputPath)}' --concurrency=1");
+        var state = await this.ExecuteAsync($"import {ShellQuotedPath(this.inputPath)} --concurrency=1");
         watch.Stop();
 
         Assert.False(state.IsError, FormatError(state));
@@ -70,7 +70,7 @@ public class LocalEmulatorInactivityTimeoutTests : ConnectedEmulatorTestBase
     [Fact]
     public async Task RmWildcard_LongerThanTimeoutButMakingProgress_Completes()
     {
-        var import = await this.ExecuteAsync($"import '{ShellPath(this.inputPath)}'");
+        var import = await this.ExecuteAsync($"import {ShellQuotedPath(this.inputPath)}");
         Assert.False(import.IsError, FormatError(import));
         Shell.LocalEmulatorInactivityTimeout = TimeSpan.FromSeconds(1);
 
@@ -109,7 +109,7 @@ public class LocalEmulatorInactivityTimeoutTests : ConnectedEmulatorTestBase
     {
         Shell.LocalEmulatorInactivityTimeout = TimeSpan.FromMilliseconds(1);
 
-        var state = await this.ExecuteAsync($"import '{ShellPath(this.inputPath)}' --concurrency=1");
+        var state = await this.ExecuteAsync($"import {ShellQuotedPath(this.inputPath)} --concurrency=1");
 
         Assert.True(state.IsError);
         Assert.Contains("timed out", GetErrorMessage(state), StringComparison.OrdinalIgnoreCase);

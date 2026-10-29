@@ -394,6 +394,53 @@ public class BulkCommandTests
     }
 
     // Execution engine.
+    [Fact]
+    public async Task FinalDrainSettlesWritesInCompletionOrder()
+    {
+        using var timeout = Timeout();
+        var gates = new[]
+        {
+            new TaskCompletionSource<BulkOutcome>(TaskCreationOptions.RunContinuationsAsynchronously),
+            new TaskCompletionSource<BulkOutcome>(TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        var started = new[] { new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously), new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
+        var secondSettled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var summary = new BulkSummary();
+        var run = BulkExecutor.ExecuteAsync(
+            SourceAsync(2, timeout.Token),
+            (operation, _) =>
+            {
+                started[(int)operation.Index].SetResult();
+                return gates[(int)operation.Index].Task;
+            },
+            IgnoreAsync,
+            new Dictionary<long, BulkOutcome>(),
+            summary,
+            3,
+            null,
+            false,
+            false,
+            timeout.Token,
+            progressChanged: () => secondSettled.TrySetResult());
+        try
+        {
+            await Task.WhenAll(started.Select(gate => gate.Task)).WaitAsync(timeout.Token);
+            gates[1].SetResult(Succeeded(1));
+
+            await secondSettled.Task.WaitAsync(timeout.Token);
+            Assert.Equal(1, summary.Succeeded);
+            Assert.False(run.IsCompleted);
+        }
+        finally
+        {
+            gates[0].TrySetResult(Succeeded(0));
+            gates[1].TrySetResult(Succeeded(1));
+        }
+
+        await run.WaitAsync(timeout.Token);
+        Assert.Equal(2, summary.Succeeded);
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(3)]

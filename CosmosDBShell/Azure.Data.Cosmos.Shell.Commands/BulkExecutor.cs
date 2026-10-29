@@ -150,11 +150,15 @@ internal static class BulkExecutor
         finally
         {
             // Observe every started write even when reading, cancellation, or journal I/O fails.
+            // Settle in completion order so progress reflects writes that finish behind a slow one.
             while (pending.Count > 0)
             {
                 try
                 {
-                    await SettleAsync(0);
+#pragma warning disable VSTHRD003 // All pending tasks were started by this invocation.
+                    var completed = await Task.WhenAny(pending.Select(entry => entry.Task));
+#pragma warning restore VSTHRD003
+                    await SettleAsync(pending.FindIndex(entry => entry.Task == completed));
                 }
                 catch (Exception ex)
                 {

@@ -17,6 +17,46 @@ using NSubstitute;
 public class ImportConcurrencyTests
 {
     [Fact]
+    public async Task FinalDrain_RecordsWritesThatFinishBehindASlowerWrite()
+    {
+        using var timeout = CreateTimeout();
+        var container = Substitute.For<Container>();
+        var gates = new[] { NewGate(), NewGate() };
+        var started = new[] { NewGate(), NewGate() };
+        ConfigureWrites(container, async (item, token) =>
+        {
+            var index = item.GetProperty("id").GetInt32();
+            started[index].TrySetResult();
+            await gates[index].Task.WaitAsync(token);
+            return Response(HttpStatusCode.Created, 1);
+        });
+        using var reader = NewReader(2);
+        var progress = new ImportCommand.ImportProgress();
+        var secondRecorded = NewGate();
+        var import = ImportCommand.WriteItemsAsync(
+            ImportCommand.EnumerateJsonLinesAsync(reader, timeout.Token),
+            container, ImportMode.Insert, 3, false, [], new CommandState(), timeout.Token,
+            progress: progress,
+            progressChanged: () => secondRecorded.TrySetResult());
+        try
+        {
+            await Task.WhenAll(started.Select(gate => gate.Task)).WaitAsync(timeout.Token);
+            gates[1].TrySetResult();
+
+            await secondRecorded.Task.WaitAsync(timeout.Token);
+            Assert.Equal(1, progress.Success);
+            Assert.False(import.IsCompleted);
+        }
+        finally
+        {
+            gates[0].TrySetResult();
+            gates[1].TrySetResult();
+        }
+
+        Assert.Equal((2, 0, 2.0), await import.WaitAsync(timeout.Token));
+    }
+
+    [Fact]
     public async Task ProgressUpdatesIncludeEverySettledWriteAndObservedCharge()
     {
         using var timeout = CreateTimeout();

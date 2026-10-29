@@ -26,14 +26,14 @@ bulk run operations.jsonl --concurrency=16 --journal operations.journal --yes
 
 ## Reading progress
 
-Human-readable import and bulk execution report about every two seconds, even if no writes have completed since the previous update. In a terminal, a single progress line is updated in place and removed when the command finishes, leaving the final summary; when output is piped or redirected by the operating system, each update is written on its own line:
+Human-readable import and bulk execution report about every two seconds, even if no writes have completed since the previous update. A single progress line is updated in place and removed when the command finishes, leaving the final summary:
 
 - Import shows completed items, imported/failed counts, elapsed seconds, average completed items/second, and observed write RU charge. Offline validation shows validated items instead.
 - Bulk execution shows processed/total operations, succeeded/failed counts, elapsed seconds, average processed operations/second, and observed RU charge. Processed operations can include journal skips, so this is not necessarily a new-write rate. Failures include uncertain outcomes; use the final result/journal to distinguish them.
 - Bulk execution progress starts **after** validation/selection, confirmation, and journal verification. These preparation steps can add time before the first update.
 - These are cumulative averages, not instantaneous rates. Observed RU charge covers recorded responses, not a billing estimate or a count of internal SDK retries. Unchanged counts can mean input work, pending requests, or SDK retry waits; they do not prove a hang or identify throttling.
 - Streamed imports do not pre-count records, so they have no percentage or ETA. Bulk knows its operation count.
-- Quiet mode, structured output, shell stdout redirection, and MCP calls do not emit terminal progress. Final structured results retain their existing fields.
+- Progress appears only when standard output is a terminal. Quiet mode, structured output, shell or operating-system output redirection, pipes, and MCP calls do not emit it. Final structured results retain their existing fields.
 
 ## Limits and recovery
 

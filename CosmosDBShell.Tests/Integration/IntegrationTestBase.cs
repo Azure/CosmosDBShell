@@ -76,6 +76,12 @@ public abstract class IntegrationTestBase : IDisposable
     /// </summary>
     internal static string ShellPath(string path) => path.Replace('\\', '/');
 
+    /// <summary>
+    /// Formats a file-system path as a single-quoted shell argument, doubling embedded
+    /// apostrophes as the lexer requires (for example in a user profile named O'Brien).
+    /// </summary>
+    internal static string ShellQuotedPath(string path) => "'" + ShellPath(path).Replace("'", "''") + "'";
+
     public virtual void Dispose()
     {
         foreach (var file in tempFiles)

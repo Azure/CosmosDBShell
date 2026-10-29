@@ -22,6 +22,7 @@ internal sealed class IngestionProgress(ShellInterpreter shell, CommandState sta
         var format = state.OutputFormatExplicitlySet ? state.OutputFormat : shell.DefaultOutputFormat;
         return !shell.IsMachineMode && !shell.IsMcpInvocation
             && string.IsNullOrEmpty(shell.StdOutRedirect)
+            && shell.IsOutputTerminal()
             && !OutputPolicy.IsStructuredFormat(format);
     }
 
@@ -46,59 +47,66 @@ internal sealed class IngestionProgress(ShellInterpreter shell, CommandState sta
             return;
         }
 
-        var elapsed = Stopwatch.StartNew();
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
         var operation = execute();
         try
         {
-            var tick = timer.WaitForNextTickAsync().AsTask();
-            while (await Task.WhenAny(operation, tick) != operation)
-            {
-                await tick;
-                string message;
-                lock (this.sync)
-                {
-                    message = MessageService.GetArgsString(
-                        messageKey,
-                        "processed",
-                        this.processed,
-                        "succeeded",
-                        this.succeeded,
-                        "failed",
-                        this.failed,
-                        "total",
-                        total ?? 0,
-                        "elapsed",
-                        elapsed.Elapsed.TotalSeconds.ToString("F1", CultureInfo.InvariantCulture),
-                        "rate",
-                        (this.processed / elapsed.Elapsed.TotalSeconds).ToString("F1", CultureInfo.InvariantCulture),
-                        "charge",
-                        this.charge.ToString("F2", CultureInfo.InvariantCulture));
-                }
+            await this.ReportUntilCompleteAsync(operation);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Progress is informational: a formatting or output failure must not turn a
+            // successful ingestion into a failed one. Stop reporting and keep waiting.
+            Trace.TraceWarning("Ingestion progress reporting stopped ({0}).", ex.GetType().Name);
+        }
 
-                if (shell.IsOutputTerminal())
-                {
-                    shell.WriteTransientLine(message);
-                }
-                else
-                {
-                    ShellInterpreter.WriteLine(message);
-                }
-
-                tick = timer.WaitForNextTickAsync().AsTask();
-            }
+        try
+        {
+            await operation;
         }
         finally
         {
             try
             {
-                // Do not let a reporting failure abandon writes that are still settling.
-                await operation;
-            }
-            finally
-            {
                 shell.ClearTransientLine();
             }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            {
+                Trace.TraceWarning("Clearing the ingestion progress line failed ({0}).", ex.GetType().Name);
+            }
+        }
+    }
+
+    private async Task ReportUntilCompleteAsync(Task operation)
+    {
+        var elapsed = Stopwatch.StartNew();
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        var tick = timer.WaitForNextTickAsync().AsTask();
+        while (await Task.WhenAny(operation, tick) != operation)
+        {
+            await tick;
+            string message;
+            lock (this.sync)
+            {
+                message = MessageService.GetArgsString(
+                    messageKey,
+                    "processed",
+                    this.processed,
+                    "succeeded",
+                    this.succeeded,
+                    "failed",
+                    this.failed,
+                    "total",
+                    total ?? 0,
+                    "elapsed",
+                    elapsed.Elapsed.TotalSeconds.ToString("F1", CultureInfo.InvariantCulture),
+                    "rate",
+                    (this.processed / elapsed.Elapsed.TotalSeconds).ToString("F1", CultureInfo.InvariantCulture),
+                    "charge",
+                    this.charge.ToString("F2", CultureInfo.InvariantCulture));
+            }
+
+            shell.WriteTransientLine(message);
+            tick = timer.WaitForNextTickAsync().AsTask();
         }
     }
 }

@@ -54,8 +54,8 @@ public class IngestionBenchmarkTests : ConnectedEmulatorTestBase
                             var navigation = await this.ExecuteAsync($"cd /{databaseName}/{containerName}");
                             Assert.False(navigation.IsError, FormatError(navigation));
                             var text = command == "import"
-                                ? $"import '{inputPath}' --concurrency={concurrency}"
-                                : $"bulk run '{inputPath}' --concurrency={concurrency} --yes";
+                                ? $"import {ShellQuotedPath(inputPath)} --concurrency={concurrency}"
+                                : $"bulk run {ShellQuotedPath(inputPath)} --concurrency={concurrency} --yes";
                             var watch = Stopwatch.StartNew();
                             // Use the parsed command runner so timings stay comparable with docs/ingestion.md.
                             var state = await Shell.RunCommandAsync(new CommandState(), text, token);

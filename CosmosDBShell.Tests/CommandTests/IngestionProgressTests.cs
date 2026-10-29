@@ -11,28 +11,41 @@ using Azure.Data.Cosmos.Shell.Core;
 public class IngestionProgressTests
 {
     [Theory]
-    [InlineData(null, null, false, false, false, true)]
-    [InlineData("user", null, false, false, false, true)]
-    [InlineData("table", null, false, false, false, true)]
-    [InlineData("json", null, false, false, false, false)]
-    [InlineData("csv", null, false, false, false, false)]
-    [InlineData(null, "json", false, false, false, false)]
-    [InlineData(null, "csv", false, false, false, false)]
-    [InlineData("json", "user", false, false, false, false)]
-    [InlineData("user", null, true, false, false, false)]
-    [InlineData("user", null, false, true, false, false)]
-    [InlineData("user", null, false, false, true, false)]
+    [InlineData(null, null, false, false, false, true, true)]
+    [InlineData("user", null, false, false, false, true, true)]
+    [InlineData("table", null, false, false, false, true, true)]
+    [InlineData("json", null, false, false, false, true, false)]
+    [InlineData("csv", null, false, false, false, true, false)]
+    [InlineData(null, "json", false, false, false, true, false)]
+    [InlineData(null, "csv", false, false, false, true, false)]
+    [InlineData("json", "user", false, false, false, true, false)]
+    [InlineData("user", null, true, false, false, true, false)]
+    [InlineData("user", null, false, true, false, true, false)]
+    [InlineData("user", null, false, false, true, true, false)]
+    [InlineData("user", null, false, false, false, false, false)]
+    [InlineData(null, null, false, false, false, false, false)]
     public void OutputPolicy(
-        string? globalFormat, string? localFormat, bool quiet, bool mcp, bool redirected, bool expected)
+        string? globalFormat, string? localFormat, bool quiet, bool mcp, bool redirected, bool terminal, bool expected)
     {
-        using var shell = ShellInterpreter.CreateInstance();
-        shell.Options = new Program.CosmosShellOptions { Output = globalFormat, Quiet = quiet };
-        shell.IsMcpInvocation = mcp;
-        shell.StdOutRedirect = redirected ? "result.json" : null;
-        var state = new CommandState();
-        state.SetFormat(localFormat);
+        // The documented environment default would otherwise change the cases without a format.
+        var previousFormat = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+        Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", null);
+        try
+        {
+            using var shell = ShellInterpreter.CreateInstance();
+            shell.Options = new Program.CosmosShellOptions { Output = globalFormat, Quiet = quiet };
+            shell.IsMcpInvocation = mcp;
+            shell.StdOutRedirect = redirected ? "result.json" : null;
+            shell.IsOutputTerminal = () => terminal;
+            var state = new CommandState();
+            state.SetFormat(localFormat);
 
-        Assert.Equal(expected, IngestionProgress.IsEnabled(shell, state));
+            Assert.Equal(expected, IngestionProgress.IsEnabled(shell, state));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", previousFormat);
+        }
     }
 
     [Theory]
@@ -46,11 +59,9 @@ public class IngestionProgressTests
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(15));
-        using var shell = ShellInterpreter.CreateInstance();
-        shell.Options = new Program.CosmosShellOptions { Output = "user" };
-        shell.IsOutputTerminal = () => false;
+        using var shell = CreateTerminalShell();
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var output = new CompletingWriter(completion);
+        using var output = new CompletingWriter(completion, completeOnWrite: true);
         var original = Console.Out;
         try
         {
@@ -71,8 +82,6 @@ public class IngestionProgressTests
             {
                 Assert.Contains("7.50", text);
             }
-
-            Assert.Equal(1, output.Lines);
         }
         finally
         {
@@ -84,8 +93,7 @@ public class IngestionProgressTests
     [Fact]
     public async Task FastWorkIsSilentAndFailuresAndCancellationPropagate()
     {
-        using var shell = ShellInterpreter.CreateInstance();
-        shell.Options = new Program.CosmosShellOptions { Output = "user" };
+        using var shell = CreateTerminalShell();
         using var output = new StringWriter();
         var original = Console.Out;
         try
@@ -106,6 +114,49 @@ public class IngestionProgressTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReportingFailure_DoesNotChangeOperationOutcome(bool operationFails)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        using var shell = CreateTerminalShell();
+        var writeAttempted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var output = new FailingWriter(writeAttempted);
+        var original = Console.Out;
+        var operationFailure = new InvalidOperationException("write failed");
+        try
+        {
+            Console.SetOut(output);
+            var reporter = new IngestionProgress(shell, new CommandState(), "command-import-progress");
+
+            async Task OperationAsync()
+            {
+                await writeAttempted.Task.WaitAsync(timeout.Token);
+                if (operationFails)
+                {
+                    throw operationFailure;
+                }
+            }
+
+            if (operationFails)
+            {
+                Assert.Same(operationFailure, await Assert.ThrowsAsync<InvalidOperationException>(() => reporter.RunAsync(OperationAsync)));
+            }
+            else
+            {
+                await reporter.RunAsync(OperationAsync);
+            }
+
+            Assert.True(writeAttempted.Task.IsCompleted);
+        }
+        finally
+        {
+            writeAttempted.TrySetResult();
+            Console.SetOut(original);
+        }
+    }
     [Fact]
     public async Task Terminal_RedrawsOneLineInPlaceAndClearsItBeforeReturning()
     {
@@ -159,6 +210,23 @@ public class IngestionProgressTests
         finally
         {
             Console.SetOut(original);
+        }
+    }
+
+    private static ShellInterpreter CreateTerminalShell()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Output = "user" };
+        shell.IsOutputTerminal = () => true;
+        return shell;
+    }
+
+    private sealed class FailingWriter(TaskCompletionSource attempted) : StringWriter
+    {
+        public override void Write(string? value)
+        {
+            attempted.TrySetResult();
+            throw new IOException("console unavailable");
         }
     }
 
