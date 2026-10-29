@@ -259,7 +259,9 @@ command-rm-dry-run-plan = Dry run: Would delete { $count } { $count ->
     *[other] items
 }. No changes were made.
 command-rm-progress = Remove: { $processed } items scanned, { $succeeded } deleted; elapsed { $elapsed } s (observed RU charge: { $charge })
+command-rm-progress-compact = Remove: { $succeeded } deleted, { $processed } scanned, { $elapsed } s, { $charge } RU
 command-rm-dry-run-progress = Dry run: { $processed } items scanned, { $succeeded } would be deleted; elapsed { $elapsed } s (observed RU charge: { $charge })
+command-rm-dry-run-progress-compact = Dry run: { $succeeded } to delete, { $processed } scanned, { $elapsed } s, { $charge } RU
 command-rm-error-no_filter = Filter is missing.
 command-rm-error-invalid_pk_json = Invalid partition key JSON. Use { "{" }{ "}" }, a JSON scalar, or an array of one to three string, finite number, boolean, null, or { "{" }{ "}" } components. Non-empty objects and nested arrays are not supported.
 command-rm-error-partition_key_components = The partition key must specify all { $expected } components of the container's partition key, but { $actual } { $actual ->
@@ -500,6 +502,7 @@ command-bulk-status-failed = Failed
 command-bulk-status-uncertain = Uncertain
 command-bulk-status-more = ...and { $count } more
 command-bulk-progress = Bulk: { $processed } of { $total } operations processed, { $succeeded } succeeded, { $failed } failed; elapsed { $elapsed } s, { $rate } operations/s (observed RU charge: { $charge })
+command-bulk-progress-compact = Bulk: { $processed }/{ $total }, { $failed } failed, { $elapsed } s, { $rate }/s, { $charge } RU
 command-bulk-success = Bulk completed { $count } { $count ->
     [one] operation
     *[other] operations
@@ -576,7 +579,9 @@ command-import-description-partition-key = For CSV import, the partition key pat
 command-import-description-continue-on-error = Continue importing after individual item write failures. Otherwise stop scheduling writes on the first observed failure and wait for in-flight writes. Parse or validation errors still abort the import.
 command-import-description-dry-run = Validate file syntax and item IDs offline without writing items or accessing the target. Does not check target partition keys, permissions, conflicts, or other service constraints.
 command-import-progress = Import: { $processed } items processed, { $succeeded } imported, { $failed } failed; elapsed { $elapsed } s, { $rate } items/s (observed RU charge: { $charge })
+command-import-progress-compact = Import: { $succeeded } ok, { $failed } failed, { $elapsed } s, { $rate }/s, { $charge } RU
 command-import-validation-progress = Dry run: { $processed } items validated offline; elapsed { $elapsed } s, { $rate } items/s; no writes sent
+command-import-validation-progress-compact = Dry run: { $processed } validated, { $elapsed } s, { $rate }/s
 command-import-success = Imported { $count } { $count ->
     [one] item
     *[other] items

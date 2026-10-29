@@ -107,13 +107,10 @@ public class OperationInactivityTimeoutTests
         public void Advance(TimeSpan delta)
         {
             this.now += delta;
-            foreach (var timer in this.timers.ToArray())
+            foreach (var timer in this.timers.ToArray().Where(timer => timer.DueAt is { } due && due <= this.now))
             {
-                if (timer.DueAt is { } due && due <= this.now)
-                {
-                    timer.DueAt = null;
-                    timer.Fire();
-                }
+                timer.DueAt = null;
+                timer.Fire();
             }
         }
 

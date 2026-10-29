@@ -213,6 +213,56 @@ public class IngestionProgressTests
         }
     }
 
+    [Fact]
+    public void TransientLine_UsesCompactTextWhenFullTextDoesNotFitAndTruncatesAsLastResort()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.ConsoleWidth = () => 12;
+        using var output = new StringWriter();
+        var original = Console.Out;
+        try
+        {
+            Console.SetOut(output);
+            shell.WriteTransientLine("full status that is too long", "compact");
+            shell.WriteTransientLine("full status that is too long", "compact but still long");
+            shell.WriteTransientLine("fits");
+
+            Assert.Equal("\rcompact\rcompact but\rfits       ", output.ToString());
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+    }
+
+    [Fact]
+    public async Task ReportsDuringSynchronousWorkBeforeTheFirstAwait()
+    {
+        using var shell = CreateTerminalShell();
+        var drawn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var output = new CompletingWriter(drawn, completeOnWrite: true);
+        var original = Console.Out;
+        try
+        {
+            Console.SetOut(output);
+            var reporter = new IngestionProgress(shell, new CommandState(), "command-import-progress");
+
+            await reporter.RunAsync(() =>
+            {
+                // Blocks the calling thread like a long synchronous scan of piped input.
+                Assert.True(drawn.Task.Wait(TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken), "No progress was drawn during synchronous work.");
+                return Task.CompletedTask;
+            });
+
+            Assert.Contains("Import:", output.ToString());
+        }
+        finally
+        {
+            drawn.TrySetResult();
+            Console.SetOut(original);
+        }
+    }
+
     private static ShellInterpreter CreateTerminalShell()
     {
         var shell = ShellInterpreter.CreateInstance();

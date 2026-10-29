@@ -305,6 +305,11 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     internal Func<bool> IsOutputTerminal { get; set; } = static () => !Console.IsOutputRedirected;
 
+    /// <summary>
+    /// Gets or sets the console width used to fit in-place status lines; 0 means unknown.
+    /// </summary>
+    internal Func<int> ConsoleWidth { get; set; } = GetConsoleWidth;
+
     internal Func<bool> IsInputRedirected { get; set; } = static () => Console.IsInputRedirected;
 
     // RadLine detects terminal capabilities itself when no console is supplied.
@@ -519,10 +524,11 @@ public partial class ShellInterpreter : IDisposable
     /// Prompts the user for confirmation with a yes/no question.
     /// </summary>
     /// <param name="message">The message to display to the user.</param>
+    /// <param name="shell">The interpreter executing the command, whose inactivity timeout is paused while waiting for the answer. Defaults to <see cref="Instance"/>.</param>
     /// <returns><c>true</c> if the user confirms; otherwise, <c>false</c>.</returns>
-    public static bool Confirm(string message)
+    public static bool Confirm(string message, ShellInterpreter? shell = null)
     {
-        using var pause = Instance.PauseOperationTimeout();
+        using var pause = (shell ?? Instance).PauseOperationTimeout();
         var yes = char.ToUpper(MessageService.GetString("yes_char")[0]);
         var no = char.ToUpper(MessageService.GetString("no_char")[0]);
 
@@ -695,6 +701,32 @@ public partial class ShellInterpreter : IDisposable
 
         try
         {
+            CommandState PrintStructuredError(StructuredErrorCommandState structuredError)
+            {
+                // A command can turn the inactivity cancellation into a structured partial result
+                // (bulk does); still report it as an emulator timeout and disconnect.
+                var timedOut = isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested && !token.IsCancellationRequested;
+                if (timedOut)
+                {
+                    structuredError.Exception = new ShellException(
+                        CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, structuredError.Exception.Message),
+                        structuredError.Exception);
+                }
+
+                var printed = this.PrintState(structuredError);
+                if (timedOut)
+                {
+                    if (!this.IsMachineMode && this.ErrOutRedirect == null)
+                    {
+                        this.ReportExecutionError(structuredError.Exception);
+                    }
+
+                    this.Disconnect();
+                }
+
+                return printed;
+            }
+
             try
             {
                 state = await this.RunCommandAsync(state, command, operationTokenSource.Token);
@@ -739,7 +771,7 @@ public partial class ShellInterpreter : IDisposable
                         structuredError.Exception = e;
                     }
 
-                    result = this.PrintState(structuredError);
+                    result = PrintStructuredError(structuredError);
                     return result;
                 }
 
@@ -778,7 +810,9 @@ public partial class ShellInterpreter : IDisposable
                 return result;
             }
 
-            result = this.PrintState(state);
+            result = state is StructuredErrorCommandState returnedStructuredError
+                ? PrintStructuredError(returnedStructuredError)
+                : this.PrintState(state);
             return result;
         }
         finally
@@ -1993,17 +2027,23 @@ public partial class ShellInterpreter : IDisposable
 
     /// <summary>
     /// Draws a status line that replaces the previous one in place, such as command progress.
-    /// The text is truncated to the console width so it never wraps onto a second line.
+    /// When the text does not fit the console width, the compact form is used instead, and is
+    /// truncated if necessary, so the line never wraps.
     /// </summary>
     /// <param name="text">The status text, without a line break.</param>
-    internal void WriteTransientLine(string text)
+    /// <param name="compactText">A shorter form that keeps the key values, used on narrow consoles.</param>
+    internal void WriteTransientLine(string text, string? compactText = null)
     {
         lock (this.transientLineLock)
         {
-            var width = GetConsoleWidth();
+            var width = this.ConsoleWidth();
             if (width > 1 && text.Length >= width)
             {
-                text = text[..(width - 1)];
+                text = compactText ?? text;
+                if (text.Length >= width)
+                {
+                    text = text[..(width - 1)];
+                }
             }
 
             Write("\r" + text + new string(' ', Math.Max(0, this.transientLineLength - text.Length)));
@@ -2415,59 +2455,72 @@ public partial class ShellInterpreter : IDisposable
             warnings.AddRange(state.TakeDeferredWarnings());
         }
 
-        if (warnings.Count > 0)
+        // A warning raised mid-command must not be appended to an in-place progress line. Hold the
+        // progress-line lock until the warnings are written so a heartbeat cannot redraw in between.
+        var holdsProgressLine = false;
+        try
         {
-            // A warning raised mid-command must not be appended to an in-place progress line.
-            this.ClearTransientLine();
-        }
-
-        foreach (var warning in warnings)
-        {
-            if (warning.IsRendered
-                && (!renderUpdates || string.Equals(warning.LastRenderedMessage, warning.Message, StringComparison.Ordinal)))
+            if (warnings.Count > 0)
             {
-                continue;
+                Monitor.Enter(this.transientLineLock, ref holdsProgressLine);
+                this.ClearTransientLine();
             }
 
-            if (machineModeWarningRecords
-                && (!warning.IsRendered || (renderUpdates && warning.EmittedAsMachineModeWarningRecord)))
+            foreach (var warning in warnings)
             {
-                Console.Error.WriteLine(JsonSerializer.Serialize(new
-                {
-                    status = renderUpdates && warning.EmittedAsMachineModeWarningRecord ? "warning-update" : "warning",
-                    warning = warning.Message,
-                }));
-                warning.EmittedAsMachineModeWarningRecord = true;
-            }
-            else if (warning.DeferredToConsole)
-            {
-                // Held until the top-level command finalizes; see DeferMachineModeConsoleWarnings.
-                if (!flushConsoleWarnings)
+                if (warning.IsRendered
+                    && (!renderUpdates || string.Equals(warning.LastRenderedMessage, warning.Message, StringComparison.Ordinal)))
                 {
                     continue;
                 }
 
-                Console.Error.WriteLine(warning.Message);
-            }
-            else if (this.ErrOutRedirect != null)
-            {
-                this.WriteErrorRedirect(warning.Message + Environment.NewLine);
-                this.ErrorRedirectWarnings.HasWarning = true;
-            }
-            else if (!redirected && !inMachineMode)
-            {
-                AnsiConsole.MarkupLine(Theme.FormatWarning(Markup.Escape(warning.Message)));
-            }
-            else
-            {
-                Console.Error.WriteLine(warning.Message);
-            }
+                if (machineModeWarningRecords
+                    && (!warning.IsRendered || (renderUpdates && warning.EmittedAsMachineModeWarningRecord)))
+                {
+                    Console.Error.WriteLine(JsonSerializer.Serialize(new
+                    {
+                        status = renderUpdates && warning.EmittedAsMachineModeWarningRecord ? "warning-update" : "warning",
+                        warning = warning.Message,
+                    }));
+                    warning.EmittedAsMachineModeWarningRecord = true;
+                }
+                else if (warning.DeferredToConsole)
+                {
+                    // Held until the top-level command finalizes; see DeferMachineModeConsoleWarnings.
+                    if (!flushConsoleWarnings)
+                    {
+                        continue;
+                    }
 
-            warning.IsRendered = true;
-            warning.LastRenderedMessage = warning.Message;
-            warning.RenderedErrorRedirect = warning.DeferredToConsole || this.ErrOutRedirect == null
-                ? null
-                : Path.GetFullPath(this.ErrOutRedirect);
+                    Console.Error.WriteLine(warning.Message);
+                }
+                else if (this.ErrOutRedirect != null)
+                {
+                    this.WriteErrorRedirect(warning.Message + Environment.NewLine);
+                    this.ErrorRedirectWarnings.HasWarning = true;
+                }
+                else if (!redirected && !inMachineMode)
+                {
+                    AnsiConsole.MarkupLine(Theme.FormatWarning(Markup.Escape(warning.Message)));
+                }
+                else
+                {
+                    Console.Error.WriteLine(warning.Message);
+                }
+
+                warning.IsRendered = true;
+                warning.LastRenderedMessage = warning.Message;
+                warning.RenderedErrorRedirect = warning.DeferredToConsole || this.ErrOutRedirect == null
+                    ? null
+                    : Path.GetFullPath(this.ErrOutRedirect);
+            }
+        }
+        finally
+        {
+            if (holdsProgressLine)
+            {
+                Monitor.Exit(this.transientLineLock);
+            }
         }
     }
 

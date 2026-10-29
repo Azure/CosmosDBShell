@@ -906,6 +906,7 @@ internal class ImportCommand : CosmosCommand
                     ValidateDryRunItem(item.Item, item.LineNumber);
                     progress.Validated++;
                     progressChanged();
+                    shell.ReportOperationProgress();
                 }
 
                 return;

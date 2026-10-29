@@ -123,6 +123,22 @@ public class ExportCommandTests
     }
 
     [Fact]
+    public async Task WriteCsvAsync_ReportsEachRowOfTheFinalPass()
+    {
+        var items = ToAsyncEnumerableAsync(
+            JsonSerializer.SerializeToElement(new { id = "1" }),
+            JsonSerializer.SerializeToElement(new { id = "2" }),
+            JsonSerializer.SerializeToElement(new { id = "3" }));
+        using var writer = new StringWriter();
+        var rows = 0;
+
+        var count = await ExportCommand.WriteCsvAsync(items, writer, ',', CancellationToken.None, onRowWritten: () => rows++);
+
+        Assert.Equal(3, count);
+        Assert.Equal(3, rows);
+    }
+
+    [Fact]
     public async Task WriteCsvAsync_EscapesSeparatorsQuotesAndNewlines()
     {
         var items = ToAsyncEnumerableAsync(

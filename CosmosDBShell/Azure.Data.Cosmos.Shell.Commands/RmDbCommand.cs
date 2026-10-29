@@ -92,7 +92,7 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
                     return 0;
                 }
 
-                if (this.Force is true || ShellInterpreter.Confirm("command-rmdb-confirm_db_deletion"))
+                if (this.Force is true || ShellInterpreter.Confirm("command-rmdb-confirm_db_deletion", shell))
                 {
                     await CosmosResourceFacade.DeleteDatabaseAsync(state, databaseName, token);
                     UpdateStateAfterDelete(shell, state.Client, state.ArmContext, databaseName);

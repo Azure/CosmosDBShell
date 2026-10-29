@@ -28,6 +28,8 @@ internal sealed class IngestionProgress(ShellInterpreter shell, CommandState sta
 
     internal void Update(long processed, long succeeded, long failed, double charge)
     {
+        // Display only: failed writes, including SDK-synthesized timeouts, must not count as
+        // emulator activity. Real responses restart the inactivity timeout in OperationProgressHandler.
         lock (this.sync)
         {
             this.processed = processed;
@@ -35,8 +37,6 @@ internal sealed class IngestionProgress(ShellInterpreter shell, CommandState sta
             this.failed = failed;
             this.charge = charge;
         }
-
-        shell.ReportOperationProgress();
     }
 
     internal async Task RunAsync(Func<Task> execute)
@@ -47,48 +47,58 @@ internal sealed class IngestionProgress(ShellInterpreter shell, CommandState sta
             return;
         }
 
-        var operation = execute();
+        // Start reporting before invoking the work so a long synchronous stretch before its first
+        // await is still covered; the timer continuations run on the thread pool.
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reporting = this.ReportSafelyAsync(completion.Task);
         try
         {
-            await this.ReportUntilCompleteAsync(operation);
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            // Progress is informational: a formatting or output failure must not turn a
-            // successful ingestion into a failed one. Stop reporting and keep waiting.
-            Trace.TraceWarning("Ingestion progress reporting stopped ({0}).", ex.GetType().Name);
-        }
-
-        try
-        {
-            await operation;
+            await execute();
         }
         finally
         {
+            completion.TrySetResult();
+            await reporting;
             try
             {
                 shell.ClearTransientLine();
             }
-            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
+                // Like rendering, cleanup must never replace the operation's own outcome.
                 Trace.TraceWarning("Clearing the ingestion progress line failed ({0}).", ex.GetType().Name);
             }
         }
     }
 
-    private async Task ReportUntilCompleteAsync(Task operation)
+    private async Task ReportSafelyAsync(Task completed)
+    {
+        try
+        {
+            await this.ReportUntilCompleteAsync(completed);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Progress is informational: a formatting or output failure must not turn a
+            // successful ingestion into a failed one. Stop reporting and let the work finish.
+            Trace.TraceWarning("Ingestion progress reporting stopped ({0}).", ex.GetType().Name);
+        }
+    }
+
+    private async Task ReportUntilCompleteAsync(Task completed)
     {
         var elapsed = Stopwatch.StartNew();
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
         var tick = timer.WaitForNextTickAsync().AsTask();
-        while (await Task.WhenAny(operation, tick) != operation)
+        while (await Task.WhenAny(completed, tick).ConfigureAwait(false) != completed)
         {
-            await tick;
+            await tick.ConfigureAwait(false);
             string message;
+            string compactMessage;
             lock (this.sync)
             {
-                message = MessageService.GetArgsString(
-                    messageKey,
+                object[] args =
+                [
                     "processed",
                     this.processed,
                     "succeeded",
@@ -102,10 +112,13 @@ internal sealed class IngestionProgress(ShellInterpreter shell, CommandState sta
                     "rate",
                     (this.processed / elapsed.Elapsed.TotalSeconds).ToString("F1", CultureInfo.InvariantCulture),
                     "charge",
-                    this.charge.ToString("F2", CultureInfo.InvariantCulture));
+                    this.charge.ToString("F2", CultureInfo.InvariantCulture),
+                ];
+                message = MessageService.GetArgsString(messageKey, args);
+                compactMessage = MessageService.GetArgsString(messageKey + "-compact", args);
             }
 
-            shell.WriteTransientLine(message);
+            shell.WriteTransientLine(message, compactMessage);
             tick = timer.WaitForNextTickAsync().AsTask();
         }
     }

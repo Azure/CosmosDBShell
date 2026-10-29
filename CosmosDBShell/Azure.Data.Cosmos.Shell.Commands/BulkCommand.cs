@@ -685,7 +685,7 @@ internal sealed class BulkCommand : CosmosCommand
             count,
             "target",
             $"{target.DatabaseName}/{target.ContainerName}"));
-        if (!ShellInterpreter.Confirm("command-bulk-confirm"))
+        if (!ShellInterpreter.Confirm("command-bulk-confirm", shell))
         {
             throw Error("command-bulk-error-declined");
         }
@@ -926,10 +926,10 @@ internal sealed class BulkCommand : CosmosCommand
         this.Confirm(shell, count, target);
         using var journal = this.Journal is null
             ? null
-            : BulkJournal.Open(this.Journal, target.Endpoint, target.ContainerRid, hash, count);
+            : BulkJournal.Open(this.Journal, target.Endpoint, target.ContainerRid, hash, count, shell.ReportOperationProgress);
         if (journal is not null)
         {
-            await journal.ValidateAsync(operations, token);
+            await journal.ValidateAsync(operations, token, shell.ReportOperationProgress);
         }
 
         var previous = new Dictionary<long, BulkOutcome>();
@@ -964,7 +964,19 @@ internal sealed class BulkCommand : CosmosCommand
         }
 
         var progress = new IngestionProgress(shell, new CommandState(), "command-bulk-progress", count);
-        void UpdateProgress() => progress.Update(summary.Processed, summary.Succeeded, summary.Failed, summary.RequestCharge);
+        var reportedSkips = summary.Skipped;
+        void UpdateProgress()
+        {
+            progress.Update(summary.Processed, summary.Succeeded, summary.Failed, summary.RequestCharge);
+
+            // Journal skips are local work with no emulator response to restart the inactivity timeout.
+            if (summary.Skipped != reportedSkips)
+            {
+                reportedSkips = summary.Skipped;
+                shell.ReportOperationProgress();
+            }
+        }
+
         UpdateProgress();
         async Task RecordAsync(BulkOutcome outcome)
         {

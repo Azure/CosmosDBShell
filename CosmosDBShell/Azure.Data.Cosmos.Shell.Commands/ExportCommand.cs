@@ -185,8 +185,9 @@ internal class ExportCommand : CosmosCommand
     /// <param name="separator">The field separator.</param>
     /// <param name="token">Cancellation token.</param>
     /// <param name="scalarColumnName">The header for non-object rows; defaults to the environment setting.</param>
+    /// <param name="onRowWritten">Invoked after each row of the final pass, which runs after the last query page.</param>
     /// <returns>The number of data rows written.</returns>
-    internal static async Task<int> WriteCsvAsync(IAsyncEnumerable<JsonElement> items, TextWriter writer, char separator, CancellationToken token, string? scalarColumnName = null)
+    internal static async Task<int> WriteCsvAsync(IAsyncEnumerable<JsonElement> items, TextWriter writer, char separator, CancellationToken token, string? scalarColumnName = null, Action? onRowWritten = null)
     {
         scalarColumnName ??= Environment.GetEnvironmentVariable(ScalarColumnEnvironmentVariable) ?? string.Empty;
         var spoolOptions = new FileStreamOptions
@@ -287,6 +288,7 @@ internal class ExportCommand : CosmosCommand
 
             await writer.WriteLineAsync(sb.ToString().AsMemory(), token);
             count++;
+            onRowWritten?.Invoke();
         }
 
         await writer.FlushAsync(token);
@@ -331,7 +333,8 @@ internal class ExportCommand : CosmosCommand
                 format,
                 filePath,
                 overwrite,
-                token);
+                token,
+                shell.ReportOperationProgress);
             return (count, totalCharge);
         }
         catch (CosmosException ce)
@@ -353,7 +356,8 @@ internal class ExportCommand : CosmosCommand
         ExportFormat format,
         string filePath,
         bool overwrite,
-        CancellationToken token)
+        CancellationToken token,
+        Action? onRowWritten = null)
     {
         var destination = Path.GetFullPath(filePath);
 
@@ -392,7 +396,7 @@ internal class ExportCommand : CosmosCommand
                 {
                     using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
                     writer.NewLine = "\n";
-                    count = await WriteCsvAsync(items, writer, ShellInterpreter.CSVSeparator, token);
+                    count = await WriteCsvAsync(items, writer, ShellInterpreter.CSVSeparator, token, onRowWritten: onRowWritten);
                 }
                 else
                 {
