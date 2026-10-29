@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests.Shell;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
 
 public class OperationInactivityTimeoutTests
 {
@@ -86,6 +87,35 @@ public class OperationInactivityTimeoutTests
 
         shell.PauseOperationTimeout().Dispose();
         shell.ReportOperationProgress();
+    }
+
+    [Fact]
+    public void EmulatorTimeout_KeepsScriptFramesOutermostAndClassifiesAsConnectionError()
+    {
+        var canceled = new OperationCanceledException("The operation was canceled.");
+        var inner = new PositionalException("inner.csh", canceled, 3, 1, "bulk run plan.jsonl --yes");
+        var outer = new PositionalException("outer.csh", inner, 7, 5, "inner.csh");
+
+        var timeout = ShellInterpreter.CreateEmulatorTimeoutException(outer);
+
+        var frames = PositionalException.GetSourceTrace(timeout);
+        Assert.Equal(["inner.csh", "outer.csh"], frames.Select(frame => frame.FileName));
+        Assert.Equal([3, 7], frames.Select(frame => frame.Line));
+        Assert.IsType<PositionalException>(timeout);
+        Assert.Contains("timed out", timeout.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(ShellExitCode.ConnectionError, ShellExitCode.FromException(timeout));
+        Assert.Same(canceled, timeout.InnerException!.InnerException!.InnerException!.InnerException);
+    }
+
+    [Fact]
+    public void EmulatorTimeout_WithoutScriptFrame_ClassifiesAsConnectionError()
+    {
+        var timeout = ShellInterpreter.CreateEmulatorTimeoutException(new OperationCanceledException("The operation was canceled."));
+
+        Assert.IsType<ShellException>(timeout);
+        Assert.IsType<TimeoutException>(timeout.InnerException);
+        Assert.Contains("timed out", timeout.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(ShellExitCode.ConnectionError, ShellExitCode.FromException(timeout));
     }
 
     /// <summary>

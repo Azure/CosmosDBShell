@@ -708,15 +708,16 @@ public partial class ShellInterpreter : IDisposable
                 var timedOut = isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested && !token.IsCancellationRequested;
                 if (timedOut)
                 {
-                    structuredError.Exception = new ShellException(
-                        CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, structuredError.Exception.Message),
-                        structuredError.Exception);
+                    structuredError.Exception = CreateEmulatorTimeoutException(structuredError.Exception);
                 }
 
                 var printed = this.PrintState(structuredError);
                 if (timedOut)
                 {
-                    if (!this.IsMachineMode && this.ErrOutRedirect == null)
+                    // PrintState already reports positional and redirected structured errors.
+                    if (!this.IsMachineMode
+                        && this.ErrOutRedirect == null
+                        && structuredError.Exception is not Parser.PositionalException)
                     {
                         this.ReportExecutionError(structuredError.Exception);
                     }
@@ -741,9 +742,8 @@ public partial class ShellInterpreter : IDisposable
             }
             catch (OperationCanceledException e) when (isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested)
             {
-                var shellException = new ShellException(
-                    CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, e.Message),
-                    e);
+                var message = CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, e.Message);
+                var shellException = new ShellException(message, new TimeoutException(message, e));
                 result = new ErrorCommandState(shellException);
                 result.ShareWarningsFrom(state);
                 this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, deferToErrorEnvelope: true);
@@ -1609,6 +1609,24 @@ public partial class ShellInterpreter : IDisposable
     {
         token.ThrowIfCancellationRequested();
         return await client.ReadAccountAsync().WaitAsync(token);
+    }
+
+    /// <summary>
+    /// Re-labels an exception caused by the local-emulator inactivity timeout. Script location
+    /// frames stay outermost so diagnostics still identify the failing statement, and the cause
+    /// becomes a <see cref="TimeoutException"/> so the exit code reports a connection error.
+    /// </summary>
+    /// <param name="exception">The exception produced when the inactivity timeout canceled the command.</param>
+    /// <returns>The equivalent timeout exception.</returns>
+    internal static Exception CreateEmulatorTimeoutException(Exception exception)
+    {
+        if (exception is Parser.PositionalException { InnerException: { } inner } frame)
+        {
+            return new Parser.PositionalException(frame.FileName, CreateEmulatorTimeoutException(inner), frame.Line, frame.Column, frame.LineText);
+        }
+
+        var message = CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, exception.Message);
+        return new ShellException(message, new TimeoutException(message, exception));
     }
 
     internal static string GetLocalEmulatorConnectionFailureMessage(Uri endpoint)

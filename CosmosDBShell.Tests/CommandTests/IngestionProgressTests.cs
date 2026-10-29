@@ -165,6 +165,7 @@ public class IngestionProgressTests
         using var shell = ShellInterpreter.CreateInstance();
         shell.Options = new Program.CosmosShellOptions { Output = "user" };
         shell.IsOutputTerminal = () => true;
+        shell.ConsoleWidth = () => 1000;
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var output = new CompletingWriter(completion, completeOnWrite: true);
         var original = Console.Out;
@@ -268,6 +269,9 @@ public class IngestionProgressTests
         var shell = ShellInterpreter.CreateInstance();
         shell.Options = new Program.CosmosShellOptions { Output = "user" };
         shell.IsOutputTerminal = () => true;
+
+        // The real console width would select compact messages on narrow terminals.
+        shell.ConsoleWidth = () => 1000;
         return shell;
     }
 
