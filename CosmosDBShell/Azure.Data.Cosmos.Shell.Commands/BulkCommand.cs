@@ -4,7 +4,6 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
-using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Runtime.CompilerServices;
@@ -62,8 +61,6 @@ internal sealed class BulkCommand : CosmosCommand
     private const int SelectionPageSize = 1000;
 
     private const int StatusPreviewCount = 100;
-
-    private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(2);
 
     private static readonly Dictionary<string, string[]> AllowedOptions = new()
     {
@@ -688,7 +685,7 @@ internal sealed class BulkCommand : CosmosCommand
             count,
             "target",
             $"{target.DatabaseName}/{target.ContainerName}"));
-        if (!ShellInterpreter.Confirm("command-bulk-confirm"))
+        if (!ShellInterpreter.Confirm("command-bulk-confirm", shell))
         {
             throw Error("command-bulk-error-declined");
         }
@@ -733,6 +730,7 @@ internal sealed class BulkCommand : CosmosCommand
         {
             var operation = BulkOperationNormalizer.Normalize(element, target.PartitionKeyPaths, defaultKey, spool.Count);
             await spool.AddAsync(operation.Json);
+            shell.ReportOperationProgress();
         }
 
         if (spool.Count == 0)
@@ -773,8 +771,10 @@ internal sealed class BulkCommand : CosmosCommand
 
                 var page = await iterator.ReadNextAsync(token);
                 summary.RequestCharge += page.RequestCharge;
+                shell.ReportOperationProgress();
                 foreach (var row in page)
                 {
+                    token.ThrowIfCancellationRequested();
                     if (this.MaxItems is { } max && spool.Count >= max)
                     {
                         summary.SelectionLimited = true;
@@ -788,6 +788,8 @@ internal sealed class BulkCommand : CosmosCommand
                     {
                         await save.WriteLineAsync(operation.Json);
                     }
+
+                    shell.ReportOperationProgress();
                 }
 
                 if (this.MaxItems is { } limit && spool.Count >= limit && iterator.HasMoreResults)
@@ -927,10 +929,14 @@ internal sealed class BulkCommand : CosmosCommand
         this.Confirm(shell, count, target);
         using var journal = this.Journal is null
             ? null
-            : BulkJournal.Open(this.Journal, target.Endpoint, target.ContainerRid, hash, count);
+            : BulkJournal.Open(this.Journal, target.Endpoint, target.ContainerRid, hash, count, () =>
+            {
+                token.ThrowIfCancellationRequested();
+                shell.ReportOperationProgress();
+            });
         if (journal is not null)
         {
-            await journal.ValidateAsync(operations, token);
+            await journal.ValidateAsync(operations, token, shell.ReportOperationProgress);
         }
 
         var previous = new Dictionary<long, BulkOutcome>();
@@ -964,7 +970,23 @@ internal sealed class BulkCommand : CosmosCommand
             }
         }
 
-        var progress = Stopwatch.StartNew();
+        var progress = new IngestionProgress(shell, new CommandState(), "command-bulk-progress", count);
+        var reportedSkips = summary.Skipped;
+        var reportedSuccesses = summary.Succeeded;
+        void UpdateProgress()
+        {
+            progress.Update(summary.Processed, summary.Succeeded, summary.Failed, summary.RequestCharge);
+
+            // Only successful writes and local skips restart inactivity, not synthetic SDK errors.
+            if (summary.Skipped != reportedSkips || summary.Succeeded != reportedSuccesses)
+            {
+                reportedSkips = summary.Skipped;
+                reportedSuccesses = summary.Succeeded;
+                shell.ReportOperationProgress();
+            }
+        }
+
+        UpdateProgress();
         async Task RecordAsync(BulkOutcome outcome)
         {
             if (memory != null)
@@ -979,26 +1001,11 @@ internal sealed class BulkCommand : CosmosCommand
             {
                 await journal.RecordAsync(outcome);
             }
-
-            if (outcome.Status != BulkOutcome.Started && progress.Elapsed >= ProgressInterval && !shell.IsMachineMode)
-            {
-                progress.Restart();
-                ShellInterpreter.WriteLine(MessageService.GetArgsString(
-                    "command-bulk-progress",
-                    "processed",
-                    summary.Processed,
-                    "total",
-                    count,
-                    "failed",
-                    summary.Failed,
-                    "charge",
-                    summary.RequestCharge.ToString("F2", CultureInfo.InvariantCulture)));
-            }
         }
 
         try
         {
-            await BulkExecutor.ExecuteAsync(
+            await progress.RunAsync(() => BulkExecutor.ExecuteAsync(
                 operations,
                 (operation, cancellation) => WriteAsync(target.Container, operation, cancellation),
                 RecordAsync,
@@ -1008,7 +1015,8 @@ internal sealed class BulkCommand : CosmosCommand
                 this.MaxRu,
                 this.ContinueOnError == true,
                 this.RetryUncertain == true,
-                token);
+                token,
+                UpdateProgress));
         }
         catch (Exception ex)
         {

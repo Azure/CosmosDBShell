@@ -11,9 +11,21 @@
 ### Fixes
 
 - Preserve `?` in unquoted command arguments so scalar indexing paths such as `index add /city/?` and `index remove /city/?` reach Cosmos DB unchanged. ([#260](https://github.com/Azure/CosmosDBShell/issues/260))
+- Long-running commands and scripts against a local emulator no longer fail with a timeout and disconnect after 10 seconds while the emulator is still responding. The 10-second limit now applies only when nothing makes progress, and it is paused while confirmation prompts and external editors wait for input.
+- Preserve partial bulk write counts through pipelines on emulator timeouts, report consumed inactivity cancellations as failures, and keep active bulk selection, export, and piped removal scans from timing out during local processing.
+- Prevent scripts from rendering timed-out partial results as successful, pause emulator inactivity deadlines during file/theme editing and change-feed polling intervals, and cancel stalled change-feed requests.
+- Keep Ctrl+C effective for startup commands and redirected scripts, and exclude local external tools such as `jq` from emulator inactivity deadlines.
+- Report interrupted startup commands as failures, retain structured partial write results, and prevent MCP prompt refreshes from canceling queued startup work.
+- Retain settled import counts and RUs on cancellation, prevent interrupted startup scripts from writing partial success output, and keep intentional watch stops successful through pipelines, blocks, and scripts.
+- Stop follow-up startup commands after an intentional watch stop in redirected stdin, and align timed-out import result error messages and exit codes with the command failure.
+- Keep import progress counts and observed RUs current when writes finish while the next input record is still being read.
+- Keep bulk completion counts current during slow input reads, allow cancellation while loading resume journals, and recognize active local validation, removal scans, and successful journal recording without treating failed requests as activity.
+- Stop interrupted startup stdin reads, confirmation prompts, and watch expressions before subsequent work; keep machine-readable stdout clean on Ctrl+C and exclude external command expressions from emulator inactivity deadlines.
 - Database and container creation on key, emulator, and static-token connections now report `created: false` and `outcome: "existing"` when an existing resource is reused, instead of always reporting `created: true`. Human-readable output says "Using existing database/container" in that case. ([#261](https://github.com/Azure/CosmosDBShell/issues/261))
 
 ### Improvements
+
+- Show periodic progress for `import`, `bulk`, and pattern-based `rm`, including elapsed time, counts, and observed RU usage, even while requests are waiting. In a terminal, a single progress line is updated in place and removed when the command finishes. Structured output and MCP responses remain unchanged.
 
 ## 1.1.291 — 2026-10-26
 

@@ -11,6 +11,7 @@ using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
+using NSubstitute;
 
 public class RmCommandTests
 {
@@ -18,6 +19,92 @@ public class RmCommandTests
     {
         var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");
         return new CosmosClient(connectionString);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task PipedScan_ObservesCancellationBeforeFiltering(bool dryRun, bool singleItem)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var client = Substitute.For<CosmosClient>();
+        var database = Substitute.For<Database>();
+        var container = Substitute.For<Container>();
+        client.GetDatabase("db").Returns(database);
+        database.GetContainer("items").Returns(container);
+        var databaseResponse = Substitute.For<DatabaseResponse>();
+        databaseResponse.StatusCode.Returns(System.Net.HttpStatusCode.OK);
+        database.ReadAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).Returns(databaseResponse);
+        var containerResponse = Substitute.For<ContainerResponse>();
+        containerResponse.StatusCode.Returns(System.Net.HttpStatusCode.OK);
+        containerResponse.Resource.Returns(new ContainerProperties("items", "/pk"));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var reads = 0;
+        container.ReadContainerAsync(Arg.Any<ContainerRequestOptions>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            if (++reads == 2)
+            {
+                cancellation.Cancel();
+            }
+
+            return Task.FromResult(containerResponse);
+        });
+        shell.State = new ConnectedState(client);
+        using var input = JsonDocument.Parse(singleItem ? """{"id":"excluded","pk":"a"}""" : """[{"id":"excluded","pk":"a"}]""");
+        var state = new CommandState
+        {
+            Result = new ShellJson(input.RootElement.Clone()),
+        };
+        var command = new RmCommand { Pattern = "match-*", Key = "id", DryRun = dryRun, Database = "db", Container = "items" };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => command.ExecuteAsync(shell, state, "rm", cancellation.Token));
+        await container.DidNotReceiveWithAnyArgs().DeleteItemAsync<object>(default!, default, default, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task PatternScan_StopsBeforeNextRowWhenDeletionCancelsOperation()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var client = Substitute.For<CosmosClient>();
+        var database = Substitute.For<Database>();
+        var container = Substitute.For<Container>();
+        client.GetDatabase("db").Returns(database);
+        database.GetContainer("items").Returns(container);
+        var databaseResponse = Substitute.For<DatabaseResponse>();
+        databaseResponse.StatusCode.Returns(System.Net.HttpStatusCode.OK);
+        database.ReadAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).Returns(databaseResponse);
+        var metadata = Substitute.For<ContainerResponse>();
+        metadata.StatusCode.Returns(System.Net.HttpStatusCode.OK);
+        metadata.Resource.Returns(new ContainerProperties("items", "/pk"));
+        container.ReadContainerAsync(Arg.Any<ContainerRequestOptions>(), Arg.Any<CancellationToken>()).Returns(metadata);
+        using var iterator = Substitute.For<FeedIterator>();
+        iterator.HasMoreResults.Returns(true, false);
+        container.GetItemQueryStreamIterator(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<QueryRequestOptions>()).Returns(iterator);
+        using var response = new ResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
+                """{"Documents":[{"id":"first","pk":"x"},{"id":"second","pk":"x"},{"id":"third","pk":"x"}]}""")),
+        };
+        iterator.ReadNextAsync(Arg.Any<CancellationToken>()).Returns(response);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var deleted = Substitute.For<ItemResponse<object>>();
+        container.DeleteItemAsync<object>(Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                cancellation.Cancel();
+                return Task.FromResult(deleted);
+            });
+        shell.State = new ContainerState("items", "db", client);
+        var command = new RmCommand { Pattern = "*", PartitionKeyArgument = "\"x\"" };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm *", cancellation.Token));
+
+        await container.Received(1).DeleteItemAsync<object>("first", Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>());
+        Assert.Single(container.ReceivedCalls(), call => call.GetMethodInfo().Name == nameof(Container.DeleteItemAsync));
     }
 
     [Fact]

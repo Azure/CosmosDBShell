@@ -31,7 +31,7 @@ internal class EditCommand : CosmosCommand
             throw new CommandException("edit", MessageService.GetString("command-edit-missing-path"));
         }
 
-        if (Console.IsInputRedirected || !string.IsNullOrEmpty(shell.CurrentScriptFileName))
+        if (shell.IsInputRedirected() || !string.IsNullOrEmpty(shell.CurrentScriptFileName))
         {
             var message = MessageService.GetString("command-edit-not-interactive");
             AnsiConsole.MarkupLine(Theme.FormatError(message));
@@ -78,6 +78,7 @@ internal class EditCommand : CosmosCommand
         int exitCode;
         try
         {
+            using var pause = shell.PauseOperationTimeout();
             using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = editor.FileName,

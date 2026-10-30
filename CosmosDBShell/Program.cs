@@ -18,6 +18,36 @@ internal class Program
 {
     private const int DefaultMcpPort = 6128;
 
+    internal static async Task<(CommandState State, bool Interrupted)> ExecuteStartupCommandAsync(ShellInterpreter shell, string command)
+    {
+        using var cancellation = ShellInterpreter.UserCancellationTokenSource;
+        var state = await shell.ExecuteCommandAsync(command, cancellation.Token, cancellationIsError: true);
+        return (state, cancellation.IsCancellationRequested);
+    }
+
+    internal static async Task<(CommandState? State, bool Interrupted)> ExecuteStartupInputAsync(ShellInterpreter shell, TextReader input)
+    {
+        using var cancellation = ShellInterpreter.UserCancellationTokenSource;
+        var token = cancellation.Token;
+        try
+        {
+            // Console.In can perform synchronous reads even through its async API.
+            var script = await Task.Run(() => input.ReadToEndAsync(token), token).WaitAsync(token);
+            token.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(script))
+            {
+                return (null, false);
+            }
+
+            var state = await shell.ExecuteCommandAsync(script + Environment.NewLine, token, cancellationIsError: true);
+            return (state, cancellation.IsCancellationRequested);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return (new ErrorCommandState(new OperationCanceledException(token)), true);
+        }
+    }
+
     public static async Task Main(string[] args)
     {
         // Normalize argv first so that any --lsp/--stdio token that is part
@@ -441,39 +471,35 @@ internal class Program
 
             if (Console.IsInputRedirected)
             {
-                // Read entire stdin (script)
-                var script = await Console.In.ReadToEndAsync() + Environment.NewLine;
-                if (!string.IsNullOrWhiteSpace(script))
+                var (state, interrupted) = await ExecuteStartupInputAsync(ShellInterpreter.Instance, Console.In);
+                if (state?.IsError == true)
                 {
-                    var state = await ShellInterpreter.Instance.ExecuteCommandAsync(script, default);
-                    if (state.IsError)
-                    {
-                        Environment.ExitCode = ShellExitCode.FromCommandState(state);
-                        if (executeAndContinueCommand is null)
-                        {
-                            await StopHostAsync(host, hostTask);
+                    Environment.ExitCode = ShellExitCode.FromCommandState(state);
+                }
 
-                            return;
-                        }
-                    }
+                if (interrupted || (state?.IsError == true && executeAndContinueCommand is null))
+                {
+                    await StopHostAsync(host, hostTask);
 
-                    // If user only wants to execute piped script then quit (unless -k / ExecuteAndContinue)
-                    if (executeAndContinueCommand is null && executeAndQuitCommand is null)
-                    {
-                        await StopHostAsync(host, hostTask);
+                    return;
+                }
 
-                        return;
-                    }
+                // If user only wants to execute piped script then quit (unless -k / ExecuteAndContinue)
+                if (state is not null && executeAndContinueCommand is null && executeAndQuitCommand is null)
+                {
+                    await StopHostAsync(host, hostTask);
+
+                    return;
                 }
             }
 
             if (explicitCommand is not null)
             {
-                var state = await ShellInterpreter.Instance.ExecuteCommandAsync(explicitCommand, default);
+                var (state, interrupted) = await ExecuteStartupCommandAsync(ShellInterpreter.Instance, explicitCommand);
                 if (state.IsError)
                 {
                     Environment.ExitCode = ShellExitCode.FromCommandState(state);
-                    if (executeAndContinueCommand is null)
+                    if (executeAndContinueCommand is null || interrupted)
                     {
                         await StopHostAsync(host, hostTask);
 

@@ -746,6 +746,7 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                 }
 
                 using var response = await feedIterator.ReadNextAsync(token);
+                shell.ReportOperationProgress();
 
                 var pageRequestCharge = response.Headers.RequestCharge;
                 if (!response.IsSuccessStatusCode)

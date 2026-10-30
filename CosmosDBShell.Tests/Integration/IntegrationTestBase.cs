@@ -39,7 +39,7 @@ public abstract class IntegrationTestBase : IDisposable
 
     internal static string GetErrorMessage(CommandState state)
     {
-        return Assert.IsType<ErrorCommandState>(state).Exception.Message;
+        return Assert.IsAssignableFrom<ErrorCommandState>(state).Exception.Message;
     }
 
     internal static string FormatError(CommandState state)
@@ -75,6 +75,12 @@ public abstract class IntegrationTestBase : IDisposable
     /// does not interpret backslashes as escape sequences inside double-quoted strings.
     /// </summary>
     internal static string ShellPath(string path) => path.Replace('\\', '/');
+
+    /// <summary>
+    /// Formats a file-system path as a single-quoted shell argument, doubling embedded
+    /// apostrophes as the lexer requires (for example in a user profile named O'Brien).
+    /// </summary>
+    internal static string ShellQuotedPath(string path) => "'" + ShellPath(path).Replace("'", "''") + "'";
 
     public virtual void Dispose()
     {

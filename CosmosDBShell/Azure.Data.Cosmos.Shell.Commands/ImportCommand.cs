@@ -732,10 +732,19 @@ internal class ImportCommand : CosmosCommand
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
 
         var progress = new ImportProgress();
+        var reporter = new IngestionProgress(
+            shell,
+            selectedFormat,
+            dryRun ? "command-import-validation-progress" : "command-import-progress");
+        void UpdateProgress() => reporter.Update(
+            dryRun ? progress.Validated : progress.Success + progress.Failed,
+            progress.Success,
+            progress.Failed,
+            progress.Charge);
         Exception? failure = null;
         try
         {
-            await ExecuteImportAsync(
+            await reporter.RunAsync(() => ExecuteImportAsync(
                 shell,
                 filePath,
                 format,
@@ -748,7 +757,8 @@ internal class ImportCommand : CosmosCommand
                 concurrency,
                 commandState,
                 progress,
-                token);
+                token,
+                UpdateProgress));
         }
         catch (DecoderFallbackException ex)
         {
@@ -756,6 +766,10 @@ internal class ImportCommand : CosmosCommand
                 "import",
                 MessageService.GetArgsString("command-import-error-invalid_document", "message", ex.Message),
                 ex);
+        }
+        catch (OperationCanceledException ex) when (token.IsCancellationRequested)
+        {
+            failure = ex;
         }
         catch (Exception ex) when (ex is CommandException or JsonException or IOException or UnauthorizedAccessException)
         {
@@ -872,7 +886,8 @@ internal class ImportCommand : CosmosCommand
         int concurrency,
         CommandState commandState,
         ImportProgress progress,
-        CancellationToken token)
+        CancellationToken token,
+        Action progressChanged)
     {
         FileStream? stream = null;
         IAsyncEnumerable<(int LineNumber, JsonElement Item)> source;
@@ -894,6 +909,8 @@ internal class ImportCommand : CosmosCommand
                 {
                     ValidateDryRunItem(item.Item, item.LineNumber);
                     progress.Validated++;
+                    progressChanged();
+                    shell.ReportOperationProgress();
                 }
 
                 return;
@@ -910,7 +927,8 @@ internal class ImportCommand : CosmosCommand
                 commandState,
                 token,
                 warningShell: shell,
-                progress: progress);
+                progress: progress,
+                progressChanged: progressChanged);
         }
         finally
         {
@@ -971,7 +989,8 @@ internal class ImportCommand : CosmosCommand
         CommandState commandState,
         CancellationToken token,
         ShellInterpreter? warningShell = null,
-        ImportProgress? progress = null)
+        ImportProgress? progress = null,
+        Action? progressChanged = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         progress ??= new ImportProgress();
@@ -991,6 +1010,8 @@ internal class ImportCommand : CosmosCommand
                 progress.Failed++;
                 progress.FirstFailure ??= result.Error;
             }
+
+            progressChanged?.Invoke();
         }
 
         async Task DrainCompletedAsync()
@@ -1006,6 +1027,32 @@ internal class ImportCommand : CosmosCommand
         }
 
         await using var items = source.GetAsyncEnumerator(token);
+        async ValueTask<bool> ReadNextAsync()
+        {
+            var next = items.MoveNextAsync();
+            if (next.IsCompleted || pending.Count == 0)
+            {
+                return await next;
+            }
+
+            var read = next.AsTask();
+            try
+            {
+                while (!read.IsCompleted && pending.Count > 0)
+                {
+                    await Task.WhenAny(pending.Cast<Task>().Append(read));
+                    await DrainCompletedAsync();
+                }
+
+                return await read;
+            }
+            finally
+            {
+                // Settle the read before disposing its enumerator, even when a write fails.
+                await read;
+            }
+        }
+
         try
         {
             while (true)
@@ -1023,7 +1070,7 @@ internal class ImportCommand : CosmosCommand
                 }
 
                 token.ThrowIfCancellationRequested();
-                if (!await items.MoveNextAsync())
+                if (!await ReadNextAsync())
                 {
                     break;
                 }
@@ -1058,18 +1105,35 @@ internal class ImportCommand : CosmosCommand
                     items.Current.LineNumber,
                     items.Current.Item,
                     partitionKeyPaths,
-                    token));
+                    token,
+                    warningShell));
             }
         }
         finally
         {
             try
             {
-                // Drain every started write before returning or releasing the source, even on parse errors.
-                var results = await Task.WhenAll(pending);
-                foreach (var result in results)
+                // Drain every started write before returning or releasing the source, even on parse
+                // errors. Record each write as it completes so progress does not wait for the slowest one.
+                Task<(double Charge, Exception? Error)>? firstUnsuccessful = null;
+                while (pending.Count > 0)
                 {
-                    Record(result);
+                    var completed = await Task.WhenAny(pending);
+                    pending.Remove(completed);
+                    if (completed.IsCompletedSuccessfully)
+                    {
+                        Record(await completed);
+                    }
+                    else if (firstUnsuccessful is null || (firstUnsuccessful.IsCanceled && completed.IsFaulted))
+                    {
+                        firstUnsuccessful = completed;
+                    }
+                }
+
+                if (firstUnsuccessful != null)
+                {
+                    // Matches Task.WhenAll: a fault takes precedence over cancellation.
+                    await firstUnsuccessful;
                 }
             }
             finally
@@ -1091,7 +1155,8 @@ internal class ImportCommand : CosmosCommand
         int lineNumber,
         JsonElement item,
         IReadOnlyList<string> partitionKeyPaths,
-        CancellationToken token)
+        CancellationToken token,
+        ShellInterpreter? shell)
     {
         try
         {
@@ -1125,6 +1190,7 @@ internal class ImportCommand : CosmosCommand
             }
             catch (Exception ex) when (ex is JsonException or InvalidOperationException)
             {
+                shell?.ReportOperationProgress();
                 return (0, new CommandException(
                     "import",
                     MessageService.GetArgsString(

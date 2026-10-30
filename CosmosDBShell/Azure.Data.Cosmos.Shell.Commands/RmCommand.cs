@@ -189,8 +189,26 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         var matchKeyPropertyNames = string.IsNullOrEmpty(this.Key) ? partitionKeyPropertyNames : [this.Key];
 
         var totalCount = 0;
+        var scannedCount = 0;
         double totalCharge = 0;
         bool dryRun = this.DryRun == true;
+        var progress = new IngestionProgress(
+            this.shell,
+            new CommandState(),
+            dryRun ? "command-rm-dry-run-progress" : "command-rm-progress");
+
+        void ReportProgress() => progress.Update(scannedCount, totalCount, 0, totalCharge);
+
+        void RecordDelete((bool Counted, double RequestCharge) result)
+        {
+            totalCharge += result.RequestCharge;
+            if (result.Counted)
+            {
+                totalCount++;
+            }
+
+            ReportProgress();
+        }
 
         bool ShouldDelete(JsonElement element)
         {
@@ -230,158 +248,160 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             }
         }
 
-        // Process pipe input if available
-        if (hasPipeInput && commandState.Result is ShellJson jsonResult)
+        async Task RemoveMatchesAsync()
         {
-            // Handle items from pipe - check if it's an array or object with items property
-            JsonElement itemsArray;
+            // Process pipe input if available
+            if (hasPipeInput && commandState.Result is ShellJson jsonResult)
+            {
+                // Handle items from pipe - check if it's an array or object with items property
+                JsonElement itemsArray;
 
-            if (jsonResult.Value.ValueKind == JsonValueKind.Array)
-            {
-                itemsArray = jsonResult.Value;
-            }
-            else if (jsonResult.Value.TryGetProperty("items", out var itemsProp) && itemsProp.ValueKind == JsonValueKind.Array)
-            {
-                itemsArray = itemsProp;
-            }
-            else
-            {
-                // Single item - treat as array of one
-                itemsArray = jsonResult.Value;
-            }
-
-            if (itemsArray.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in itemsArray.EnumerateArray())
+                if (jsonResult.Value.ValueKind == JsonValueKind.Array)
                 {
-                    // Filter before converting the key so an excluded item with an invalid
-                    // partition-key value cannot block deletion of matching items.
-                    if (item.TryGetProperty("id", out var idElement)
+                    itemsArray = jsonResult.Value;
+                }
+                else if (jsonResult.Value.TryGetProperty("items", out var itemsProp) && itemsProp.ValueKind == JsonValueKind.Array)
+                {
+                    itemsArray = itemsProp;
+                }
+                else
+                {
+                    // Single item - treat as array of one
+                    itemsArray = jsonResult.Value;
+                }
+
+                if (itemsArray.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in itemsArray.EnumerateArray())
+                    {
+                        token.ThrowIfCancellationRequested();
+                        scannedCount++;
+                        this.shell.ReportOperationProgress();
+
+                        // Filter before converting the key so an excluded item with an invalid
+                        // partition-key value cannot block deletion of matching items.
+                        if (item.TryGetProperty("id", out var idElement)
+                            && idElement.GetString() is { } id
+                            && ShouldDelete(item)
+                            && TryGetPipedItemPartitionKey(item, out var itemPartitionKey))
+                        {
+                            RecordDelete(await TryDeleteAsync(id, itemPartitionKey));
+                        }
+                        else
+                        {
+                            ReportProgress();
+                        }
+                    }
+                }
+                else
+                {
+                    // Single item from pipe
+                    token.ThrowIfCancellationRequested();
+                    scannedCount++;
+                    this.shell.ReportOperationProgress();
+                    if (itemsArray.TryGetProperty("id", out var idElement)
                         && idElement.GetString() is { } id
-                        && ShouldDelete(item)
-                        && TryGetPipedItemPartitionKey(item, out var itemPartitionKey))
+                        && ShouldDelete(itemsArray)
+                        && TryGetPipedItemPartitionKey(itemsArray, out var itemPartitionKey))
                     {
-                        var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
-                        totalCharge += deleteResult.RequestCharge;
-                        if (deleteResult.Counted)
-                        {
-                            totalCount++;
-                        }
+                        RecordDelete(await TryDeleteAsync(id, itemPartitionKey));
                     }
                 }
             }
-            else
+            else if (this.matcher != null)
             {
-                // Single item from pipe
-                if (itemsArray.TryGetProperty("id", out var idElement)
-                    && idElement.GetString() is { } id
-                    && ShouldDelete(itemsArray)
-                    && TryGetPipedItemPartitionKey(itemsArray, out var itemPartitionKey))
-                {
-                    var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
-                    totalCharge += deleteResult.RequestCharge;
-                    if (deleteResult.Counted)
-                    {
-                        totalCount++;
-                    }
-                }
-            }
-        }
-        else if (this.matcher != null)
-        {
-            var needsDeletionPlan = !dryRun
-                && this.partitionKey == null
-                && partitionKeyPropertyNames.Length > 0;
-            var queryOptions = this.partitionKey is PartitionKey scope
-                ? new QueryRequestOptions { PartitionKey = scope }
-                : null;
+                var needsDeletionPlan = !dryRun
+                    && this.partitionKey == null
+                    && partitionKeyPropertyNames.Length > 0;
+                var queryOptions = this.partitionKey is PartitionKey scope
+                    ? new QueryRequestOptions { PartitionKey = scope }
+                    : null;
 
-            using var feedIterator = container.GetItemQueryStreamIterator("SELECT * FROM c", requestOptions: queryOptions);
-            await using var planStream = needsDeletionPlan ? this.CreateDeletionPlanStream() : null;
-            await using var planWriter = planStream is null
-                ? null
-                : new StreamWriter(planStream, new System.Text.UTF8Encoding(false), 4096, leaveOpen: true);
-            var undefinedPartitionKeyCount = 0;
+                using var feedIterator = container.GetItemQueryStreamIterator("SELECT * FROM c", requestOptions: queryOptions);
+                await using var planStream = needsDeletionPlan ? this.CreateDeletionPlanStream() : null;
+                await using var planWriter = planStream is null
+                    ? null
+                    : new StreamWriter(planStream, new System.Text.UTF8Encoding(false), 4096, leaveOpen: true);
+                var undefinedPartitionKeyCount = 0;
 
-            while (feedIterator.HasMoreResults)
-            {
-                token.ThrowIfCancellationRequested();
-                using var response = await feedIterator.ReadNextAsync(token);
-
-                // The scan pages that locate matching items consume RUs regardless of whether
-                // any item is ultimately deleted (including in --dry-run), so include each
-                // page's request charge from the response headers.
-                totalCharge += response.Headers.RequestCharge;
-
-                using var streamReader = new StreamReader(response.Content);
-                using var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync(token));
-
-                foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
-                {
-                    if (!element.TryGetProperty(IdPropertyName, out var idElement)
-                        || idElement.ValueKind != JsonValueKind.String
-                        || idElement.GetString() is not string id
-                        || !ShouldDelete(element))
-                    {
-                        continue;
-                    }
-
-                    TryCreatePartitionKeyFromItem(
-                        element,
-                        partitionKeyPropertyNames,
-                        out var hasUndefinedComponent,
-                        out var itemPartitionKey);
-
-                    if (planWriter != null)
-                    {
-                        if (hasUndefinedComponent)
-                        {
-                            undefinedPartitionKeyCount++;
-                        }
-
-                        var partitionKeyJson = itemPartitionKey.Equals(PartitionKey.None)
-                            ? "{}"
-                            : itemPartitionKey.ToString();
-                        var candidate = new DeletionCandidate(id, partitionKeyJson);
-                        await planWriter.WriteLineAsync(JsonSerializer.Serialize(candidate).AsMemory(), token);
-                    }
-                    else
-                    {
-                        var deleteResult = await TryDeleteAsync(id, itemPartitionKey);
-                        totalCharge += deleteResult.RequestCharge;
-                        if (deleteResult.Counted)
-                        {
-                            totalCount++;
-                        }
-                    }
-                }
-            }
-
-            token.ThrowIfCancellationRequested();
-            if (planWriter != null)
-            {
-                await planWriter.FlushAsync(token);
-                planStream!.Position = 0;
-
-                AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
-                this.shell!.RenderMutationWarnings(commandState);
-
-                using var planReader = new StreamReader(planStream, System.Text.Encoding.UTF8, false, 4096, leaveOpen: true);
-                while (await planReader.ReadLineAsync(token) is { } line)
+                while (feedIterator.HasMoreResults)
                 {
                     token.ThrowIfCancellationRequested();
-                    var candidate = JsonSerializer.Deserialize<DeletionCandidate>(line)
-                        ?? throw new JsonException("Unable to read a delete candidate from the temporary plan.");
-                    var itemPartitionKey = CreatePartitionKeyFromArgument(candidate.PartitionKeyJson);
-                    var deleteResult = await TryDeleteAsync(candidate.Id, itemPartitionKey);
-                    totalCharge += deleteResult.RequestCharge;
-                    if (deleteResult.Counted)
+                    using var response = await feedIterator.ReadNextAsync(token);
+
+                    // The scan pages that locate matching items consume RUs regardless of whether
+                    // any item is ultimately deleted (including in --dry-run), so include each
+                    // page's request charge from the response headers.
+                    totalCharge += response.Headers.RequestCharge;
+
+                    using var streamReader = new StreamReader(response.Content);
+                    using var queryDocument = JsonDocument.Parse(await streamReader.ReadToEndAsync(token));
+
+                    foreach (var element in queryDocument.RootElement.GetProperty("Documents").EnumerateArray())
                     {
-                        totalCount++;
+                        token.ThrowIfCancellationRequested();
+                        scannedCount++;
+                        this.shell.ReportOperationProgress();
+                        ReportProgress();
+                        if (!element.TryGetProperty(IdPropertyName, out var idElement)
+                            || idElement.ValueKind != JsonValueKind.String
+                            || idElement.GetString() is not string id
+                            || !ShouldDelete(element))
+                        {
+                            continue;
+                        }
+
+                        TryCreatePartitionKeyFromItem(
+                            element,
+                            partitionKeyPropertyNames,
+                            out var hasUndefinedComponent,
+                            out var itemPartitionKey);
+
+                        if (planWriter != null)
+                        {
+                            if (hasUndefinedComponent)
+                            {
+                                undefinedPartitionKeyCount++;
+                            }
+
+                            var partitionKeyJson = itemPartitionKey.Equals(PartitionKey.None)
+                                ? "{}"
+                                : itemPartitionKey.ToString();
+                            var candidate = new DeletionCandidate(id, partitionKeyJson);
+                            await planWriter.WriteLineAsync(JsonSerializer.Serialize(candidate).AsMemory(), token);
+                        }
+                        else
+                        {
+                            RecordDelete(await TryDeleteAsync(id, itemPartitionKey));
+                        }
+                    }
+
+                    ReportProgress();
+                }
+
+                token.ThrowIfCancellationRequested();
+                if (planWriter != null)
+                {
+                    await planWriter.FlushAsync(token);
+                    planStream!.Position = 0;
+
+                    AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
+                    this.shell!.RenderMutationWarnings(commandState);
+
+                    using var planReader = new StreamReader(planStream, System.Text.Encoding.UTF8, false, 4096, leaveOpen: true);
+                    while (await planReader.ReadLineAsync(token) is { } line)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        var candidate = JsonSerializer.Deserialize<DeletionCandidate>(line)
+                            ?? throw new JsonException("Unable to read a delete candidate from the temporary plan.");
+                        var itemPartitionKey = CreatePartitionKeyFromArgument(candidate.PartitionKeyJson);
+                        RecordDelete(await TryDeleteAsync(candidate.Id, itemPartitionKey));
                     }
                 }
             }
         }
+
+        await progress.RunAsync(RemoveMatchesAsync);
 
         string renderMessage = totalCount > 0
             ? MessageService.GetString(

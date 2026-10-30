@@ -67,6 +67,8 @@ public partial class CommandState
 
     internal bool OutputRendered { get; set; }
 
+    internal bool UserCancellationHandled { get; set; }
+
     /// <summary>
     /// Gets or sets an optional delegate that renders the result for a human on an
     /// interactive terminal. When set and the effective format is <see cref="OutputFormat.User"/>,
@@ -294,6 +296,11 @@ public partial class CommandState
             default:
                 throw new InvalidOperationException("OutputFormat invalid " + this.OutputFormat);
         }
+    }
+
+    internal sealed class HandledCancellationException(CommandState state, CancellationToken token) : OperationCanceledException(token)
+    {
+        internal CommandState State { get; } = state;
     }
 
     internal sealed class FailureException : Exception

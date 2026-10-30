@@ -15,10 +15,133 @@ using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 using NSubstitute;
+using CosmosShell.Tests.Integration;
 
 [Collection(ConsoleOutputTestCollection.Name)]
 public class ImportFailureResultTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EmulatorTimeout_SynchronizesStructuredClassificationAndPreservesSettledWrites(bool block)
+    {
+        var file = Path.GetTempFileName();
+        var errors = Path.GetTempFileName();
+        var output = Path.GetTempFileName();
+        using var shell = CreateShell(out var container);
+        Assert.IsAssignableFrom<ConnectedState>(shell.State).Client!.Endpoint.Returns(new Uri("https://localhost:8081"));
+        shell.Options = new Program.CosmosShellOptions { Output = "json", Quiet = true };
+        shell.LocalEmulatorInactivityTimeout = TimeSpan.FromMilliseconds(100);
+        shell.ErrOutRedirect = errors;
+        shell.StdOutRedirect = output;
+        var calls = 0;
+        container.CreateItemStreamAsync(Arg.Any<Stream>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                if (++calls > 1)
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, call.Arg<CancellationToken>());
+                }
+
+                return Response(2);
+            });
+        try
+        {
+            await File.WriteAllTextAsync(file, """[{"id":"first","pk":"x"},{"id":"second","pk":"x"}]""", TestContext.Current.CancellationToken);
+            var command = $"import {JsonSerializer.Serialize(file)} --concurrency=1";
+            if (block)
+            {
+                command = $"{{ {command}; echo downstream }}";
+            }
+
+            var state = Assert.IsType<StructuredErrorCommandState>(await shell.ExecuteCommandAsync(command, TestContext.Current.CancellationToken));
+
+            Assert.Equal(ShellExitCode.ConnectionError, state.ExitCode);
+            Assert.IsType<DisconnectedState>(shell.State);
+            var result = Assert.IsType<ShellJson>(state.Result).Value;
+            Assert.Equal(ShellExitCode.ConnectionError, result.GetProperty("exitCode").GetInt32());
+            Assert.Equal(state.Exception.Message, result.GetProperty("error").GetString());
+            Assert.Contains("timed out", state.Exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(state.Exception.Message, IntegrationTestBase.GetErrorMessage(state));
+            Assert.Equal(1, result.GetProperty("imported").GetInt32());
+            Assert.Equal(0, result.GetProperty("failed").GetInt32());
+            Assert.Equal(2, result.GetProperty("requestCharge").GetDouble());
+            Assert.Equal(3.25, state.RequestCharge);
+            Assert.Empty(await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
+            using var error = JsonDocument.Parse(await File.ReadAllTextAsync(errors, TestContext.Current.CancellationToken));
+            Assert.True(JsonElement.DeepEquals(result, error.RootElement.GetProperty("result")));
+            var mcp = McpResponseFactory.CreateSuccess(state, shell.State);
+            Assert.True(mcp.IsError);
+            Assert.True(JsonElement.DeepEquals(result, Assert.IsType<JsonElement>(mcp.StructuredContent).GetProperty("result")));
+        }
+        finally
+        {
+            shell.StdOutRedirect = null;
+            shell.ErrOutRedirect = null;
+            File.Delete(file);
+            File.Delete(errors);
+            File.Delete(output);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StartupCancellation_PreservesSettledWritesAndRendersPartialResult(bool cancelInFlight)
+    {
+        var file = Path.GetTempFileName();
+        var errors = Path.GetTempFileName();
+        var output = Path.GetTempFileName();
+        using var shell = CreateShell(out var container);
+        shell.Options = new Program.CosmosShellOptions { Output = "json", Quiet = true };
+        shell.ErrOutRedirect = errors;
+        shell.StdOutRedirect = output;
+        var calls = 0;
+        container.CreateItemStreamAsync(Arg.Any<Stream>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                calls++;
+                if (calls == (cancelInFlight ? 2 : 1))
+                {
+                    shell.CancelPrompt();
+                    if (cancelInFlight)
+                    {
+                        return Task.FromCanceled<ResponseMessage>(call.Arg<CancellationToken>());
+                    }
+                }
+
+                return Task.FromResult(Response(2));
+            });
+        try
+        {
+            await File.WriteAllTextAsync(file, """[{"id":"first","pk":"x"},{"id":"second","pk":"x"},{"id":"third","pk":"x"}]""", TestContext.Current.CancellationToken);
+
+            var (state, interrupted) = await Program.ExecuteStartupCommandAsync(shell, $"import {JsonSerializer.Serialize(file)} --concurrency=1");
+
+            Assert.IsType<StructuredErrorCommandState>(state);
+            Assert.True(interrupted);
+            Assert.True(state.IsError);
+            var result = Assert.IsType<ShellJson>(state.Result).Value;
+            Assert.Equal(1, result.GetProperty("imported").GetInt32());
+            Assert.Equal(0, result.GetProperty("failed").GetInt32());
+            Assert.Equal(2, result.GetProperty("requestCharge").GetDouble());
+            Assert.Equal(3.25, state.RequestCharge);
+            Assert.Equal(cancelInFlight ? 2 : 1, calls);
+            Assert.Empty(await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
+            using var error = JsonDocument.Parse(await File.ReadAllTextAsync(errors, TestContext.Current.CancellationToken));
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            Assert.True(JsonElement.DeepEquals(result, error.RootElement.GetProperty("result")));
+        }
+        finally
+        {
+            shell.StdOutRedirect = null;
+            shell.ErrOutRedirect = null;
+            File.Delete(file);
+            File.Delete(errors);
+            File.Delete(output);
+        }
+    }
+
     [Theory]
     [InlineData(429, ShellExitCode.Throttled, false, false)]
     [InlineData(429, ShellExitCode.Throttled, true, false)]

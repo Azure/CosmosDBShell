@@ -32,7 +32,7 @@ internal sealed class BulkJournal : IDisposable
 
     public IReadOnlyDictionary<long, BulkOutcome> Previous { get; }
 
-    public static BulkJournal Open(string path, string endpoint, string containerRid, string hash, long operationCount)
+    public static BulkJournal Open(string path, string endpoint, string containerRid, string hash, long operationCount, Action? onRecordRead = null)
     {
         var fullPath = Path.GetFullPath(path);
         var options = new FileStreamOptions
@@ -73,7 +73,7 @@ internal sealed class BulkJournal : IDisposable
                     throw Invalid(null);
                 }
 
-                ReadExisting(stream, header, previous, completeLength < stream.Length);
+                ReadExisting(stream, header, previous, completeLength < stream.Length, onRecordRead);
                 stream.SetLength(completeLength);
                 stream.Seek(0, SeekOrigin.End);
             }
@@ -105,7 +105,7 @@ internal sealed class BulkJournal : IDisposable
         }
     }
 
-    public async Task ValidateAsync(IAsyncEnumerable<BulkOperation> operations, CancellationToken token)
+    public async Task ValidateAsync(IAsyncEnumerable<BulkOperation> operations, CancellationToken token, Action? onOperationValidated = null)
     {
         if (this.Previous.Count == 0)
         {
@@ -115,6 +115,7 @@ internal sealed class BulkJournal : IDisposable
         var validated = 0;
         await foreach (var operation in operations.WithCancellation(token))
         {
+            onOperationValidated?.Invoke();
             if (this.Previous.TryGetValue(operation.Index, out var outcome))
             {
                 if (outcome.Op != operation.Op || outcome.Id != operation.Id ||
@@ -173,7 +174,7 @@ internal sealed class BulkJournal : IDisposable
         return 0;
     }
 
-    private static void ReadExisting(FileStream stream, Header expected, Dictionary<long, BulkOutcome> previous, bool tornTail)
+    private static void ReadExisting(FileStream stream, Header expected, Dictionary<long, BulkOutcome> previous, bool tornTail, Action? onRecordRead)
     {
         stream.Position = 0;
         using var reader = new StreamReader(stream, new UTF8Encoding(false), false, 65536, leaveOpen: true);
@@ -187,6 +188,7 @@ internal sealed class BulkJournal : IDisposable
 
             while (reader.ReadLine() is { } line)
             {
+                onRecordRead?.Invoke();
                 if (tornTail && reader.EndOfStream)
                 {
                     break;

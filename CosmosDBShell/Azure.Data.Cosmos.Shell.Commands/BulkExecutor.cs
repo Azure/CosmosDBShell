@@ -18,7 +18,8 @@ internal static class BulkExecutor
         double? maxRu,
         bool continueOnError,
         bool retryUncertain,
-        CancellationToken token)
+        CancellationToken token,
+        Action? progressChanged = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         var pending = new List<(BulkOperation Operation, PartitionKey Key, Task<BulkOutcome> Task, Guid AttemptId)>();
@@ -57,6 +58,7 @@ internal static class BulkExecutor
                 blockedItems.Add((operation.Id, key));
             }
 
+            progressChanged?.Invoke();
             await record(result);
         }
 
@@ -73,8 +75,50 @@ internal static class BulkExecutor
 
         try
         {
-            await foreach (var operation in source.WithCancellation(token))
+            await using var items = source.GetAsyncEnumerator(token);
+            async ValueTask<bool> ReadNextAsync()
             {
+                var next = items.MoveNextAsync();
+                if (next.IsCompleted || pending.Count == 0)
+                {
+                    return await next;
+                }
+
+                var read = next.AsTask();
+                try
+                {
+                    while (!read.IsCompleted && pending.Count > 0)
+                    {
+#pragma warning disable VSTHRD003 // All pending tasks were started by this invocation.
+                        await Task.WhenAny(pending.Select(entry => (Task)entry.Task).Append(read)).WaitAsync(token);
+#pragma warning restore VSTHRD003
+                        await SettleCompletedAsync();
+                    }
+
+                    return await read;
+                }
+                catch (Exception ex)
+                {
+                    failure ??= ExceptionDispatchInfo.Capture(ex);
+                    throw;
+                }
+                finally
+                {
+                    // Finish the read before disposing its enumerator, retaining the original failure.
+                    try
+                    {
+                        await read;
+                    }
+                    catch (Exception ex)
+                    {
+                        failure ??= ExceptionDispatchInfo.Capture(ex);
+                    }
+                }
+            }
+
+            while (await ReadNextAsync())
+            {
+                var operation = items.Current;
                 var key = BulkOperationNormalizer.ParseKey(operation.PartitionKey);
                 await SettleCompletedAsync();
 
@@ -102,6 +146,7 @@ internal static class BulkExecutor
                     {
                         summary.Skipped++;
                         summary.Processed++;
+                        progressChanged?.Invoke();
                         await record(old);
                         continue;
                     }
@@ -112,6 +157,7 @@ internal static class BulkExecutor
                         summary.Processed++;
                         summary.AddFailure(old with { Status = BulkOutcome.Uncertain });
                         blockedItems.Add((operation.Id, key));
+                        progressChanged?.Invoke();
                         continue;
                     }
                 }
@@ -121,6 +167,7 @@ internal static class BulkExecutor
                     summary.Skipped++;
                     summary.Processed++;
                     summary.ResultIncomplete = true;
+                    progressChanged?.Invoke();
                     continue;
                 }
 
@@ -145,11 +192,15 @@ internal static class BulkExecutor
         finally
         {
             // Observe every started write even when reading, cancellation, or journal I/O fails.
+            // Settle in completion order so progress reflects writes that finish behind a slow one.
             while (pending.Count > 0)
             {
                 try
                 {
-                    await SettleAsync(0);
+#pragma warning disable VSTHRD003 // All pending tasks were started by this invocation.
+                    var completed = await Task.WhenAny(pending.Select(entry => entry.Task));
+#pragma warning restore VSTHRD003
+                    await SettleAsync(pending.FindIndex(entry => entry.Task == completed));
                 }
                 catch (Exception ex)
                 {

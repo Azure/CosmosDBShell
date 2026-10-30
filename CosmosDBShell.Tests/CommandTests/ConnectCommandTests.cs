@@ -37,6 +37,23 @@ public class ConnectCommandTests
     }
 
     [Fact]
+    public void LocalEmulatorInactivityTimeout_IsInitializedOnSharedAndNewInstances()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+
+        Assert.Equal(TimeSpan.FromSeconds(10), ShellInterpreter.Instance.LocalEmulatorInactivityTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(10), shell.LocalEmulatorInactivityTimeout);
+    }
+
+    [Fact]
+    public void ReportOperationProgress_WithoutRunningCommand_IsNoOp()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+
+        shell.ReportOperationProgress();
+    }
+
+    [Fact]
     public void ConnectivityFailure_LocalEmulator_DisconnectsShell()
     {
         using var shell = ShellInterpreter.CreateInstance();

@@ -395,6 +395,183 @@ public class BulkCommandTests
 
     // Execution engine.
     [Theory]
+    [InlineData("success", false)]
+    [InlineData("record", false)]
+    [InlineData("write", false)]
+    [InlineData("cancel", false)]
+    [InlineData("source", false)]
+    [InlineData("record-and-source", false)]
+    [InlineData("write", true)]
+    [InlineData("source", true)]
+    [InlineData("record-and-source", true)]
+    public async Task PendingSourceReadSettlesCompletedWritesAndFinishesBeforeDisposal(string failureKind, bool applicationException)
+    {
+        using var timeout = Timeout();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+        var readStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var writes = new[]
+        {
+            new TaskCompletionSource<BulkOutcome>(TaskCreationOptions.RunContinuationsAsynchronously),
+            new TaskCompletionSource<BulkOutcome>(TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        Exception expected = applicationException ? new ApplicationException(failureKind) : new IOException(failureKind);
+        Exception sourceFailure = applicationException ? new ApplicationException("source") : new IOException("source");
+        var readFinished = false;
+        var disposed = false;
+        var progressUpdates = 0;
+        var summary = new BulkSummary();
+        var records = new List<BulkOutcome>();
+        async IAsyncEnumerable<BulkOperation> OperationsAsync()
+        {
+            try
+            {
+                yield return Operation(0);
+                yield return Operation(1);
+                readStarted.SetResult();
+                try
+                {
+                    // Deliberately ignore cancellation until released to check disposal ordering.
+                    await releaseRead.Task;
+                    if (failureKind is "source" or "record-and-source")
+                    {
+                        throw sourceFailure;
+                    }
+                }
+                finally
+                {
+                    readFinished = true;
+                }
+            }
+            finally
+            {
+                disposed = true;
+                Assert.True(readFinished);
+            }
+        }
+
+        var run = BulkExecutor.ExecuteAsync(
+            OperationsAsync(),
+            (operation, _) => writes[(int)operation.Index].Task,
+            outcome =>
+            {
+                records.Add(outcome);
+                if (outcome.Status != BulkOutcome.Started)
+                {
+                    settled.TrySetResult();
+                    if (failureKind is "record" or "record-and-source")
+                    {
+                        throw expected;
+                    }
+                }
+
+                return Task.CompletedTask;
+            },
+            new Dictionary<long, BulkOutcome>(),
+            summary, 3, null, true, false, cancellation.Token,
+            progressChanged: () => progressUpdates++);
+        try
+        {
+            await readStarted.Task.WaitAsync(timeout.Token);
+            if (failureKind == "write")
+            {
+                writes[0].SetException(expected);
+            }
+            else
+            {
+                writes[0].SetResult(Succeeded(0));
+            }
+
+            await settled.Task.WaitAsync(timeout.Token);
+            Assert.Equal(1, summary.Processed);
+            Assert.Equal(1, progressUpdates);
+            Assert.Equal(failureKind == "write" ? 0 : 1, summary.Succeeded);
+            Assert.Equal(failureKind == "write" ? 0 : 1, summary.RequestCharge);
+            if (failureKind == "cancel")
+            {
+                await cancellation.CancelAsync();
+            }
+
+            Assert.False(run.IsCompleted);
+            Assert.False(disposed);
+        }
+        finally
+        {
+            releaseRead.TrySetResult();
+            writes[0].TrySetResult(Succeeded(0));
+            writes[1].TrySetResult(Succeeded(1));
+        }
+
+        if (failureKind == "cancel")
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run.WaitAsync(timeout.Token));
+        }
+        else if (failureKind != "success")
+        {
+            var actual = await Assert.ThrowsAnyAsync<Exception>(() => run.WaitAsync(timeout.Token));
+            Assert.Same(failureKind == "source" ? sourceFailure : expected, actual);
+        }
+        else
+        {
+            await run.WaitAsync(timeout.Token);
+        }
+
+        Assert.True(readFinished);
+        Assert.True(disposed);
+        Assert.Equal(2, summary.Processed);
+        Assert.Equal(2, progressUpdates);
+        Assert.Equal(2, records.Count(outcome => outcome.Status != BulkOutcome.Started));
+    }
+
+    [Fact]
+    public async Task FinalDrainSettlesWritesInCompletionOrder()
+    {
+        using var timeout = Timeout();
+        var gates = new[]
+        {
+            new TaskCompletionSource<BulkOutcome>(TaskCreationOptions.RunContinuationsAsynchronously),
+            new TaskCompletionSource<BulkOutcome>(TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        var started = new[] { new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously), new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
+        var secondSettled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var summary = new BulkSummary();
+        var run = BulkExecutor.ExecuteAsync(
+            SourceAsync(2, timeout.Token),
+            (operation, _) =>
+            {
+                started[(int)operation.Index].SetResult();
+                return gates[(int)operation.Index].Task;
+            },
+            IgnoreAsync,
+            new Dictionary<long, BulkOutcome>(),
+            summary,
+            3,
+            null,
+            false,
+            false,
+            timeout.Token,
+            progressChanged: () => secondSettled.TrySetResult());
+        try
+        {
+            await Task.WhenAll(started.Select(gate => gate.Task)).WaitAsync(timeout.Token);
+            gates[1].SetResult(Succeeded(1));
+
+            await secondSettled.Task.WaitAsync(timeout.Token);
+            Assert.Equal(1, summary.Succeeded);
+            Assert.False(run.IsCompleted);
+        }
+        finally
+        {
+            gates[0].TrySetResult(Succeeded(0));
+            gates[1].TrySetResult(Succeeded(1));
+        }
+
+        await run.WaitAsync(timeout.Token);
+        Assert.Equal(2, summary.Succeeded);
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(3)]
     [InlineData(16)]
@@ -564,6 +741,7 @@ public class BulkCommandTests
         var summary = new BulkSummary { RequestCharge = 2 };
         var writes = new List<long>();
         var records = new List<BulkOutcome>();
+        var processed = new List<long>();
 
         await BulkExecutor.ExecuteAsync(
             SourceAsync(3, TestContext.Current.CancellationToken),
@@ -577,9 +755,11 @@ public class BulkCommandTests
                 records.Add(outcome);
                 return Task.CompletedTask;
             },
-            previous, summary, 1, 1, true, false, TestContext.Current.CancellationToken);
+            previous, summary, 1, 1, true, false, TestContext.Current.CancellationToken,
+            progressChanged: () => processed.Add(summary.Processed));
 
         Assert.Empty(writes);
+        Assert.Equal([1L, 2L, 3L], processed);
         Assert.Equal(status == BulkOutcome.Succeeded ? 3 : 0, records.Count);
         Assert.All(records, outcome => Assert.Equal(BulkOutcome.Succeeded, outcome.Status));
         Assert.Equal(3, summary.Skipped);
@@ -1180,6 +1360,165 @@ public class BulkCommandTests
     }
 
     // End-to-end command behavior against a substituted container.
+    [Theory]
+    [InlineData(HttpStatusCode.OK, false)]
+    [InlineData(HttpStatusCode.Conflict, true)]
+    [InlineData(HttpStatusCode.RequestTimeout, true)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, true)]
+    public async Task EmulatorActivityRefreshesForSettledSuccessesButNotWriteErrors(HttpStatusCode status, bool timesOut)
+    {
+        using var fixture = new Fixture(localEmulator: true);
+        fixture.Shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        fixture.Shell.LocalEmulatorInactivityTimeout = TimeSpan.FromSeconds(1);
+        fixture.Container.DeleteItemAsync<JsonElement>(
+            Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(200), call.ArgAt<CancellationToken>(3));
+                if (status != HttpStatusCode.OK)
+                {
+                    throw new CosmosException("write failed", status, 0, "activity", 1);
+                }
+
+                var response = Substitute.For<ItemResponse<JsonElement>>();
+                response.StatusCode.Returns(status);
+                response.RequestCharge.Returns(1);
+                return response;
+            });
+        var operations = string.Join(",", Enumerable.Range(0, 10).Select(index => Operation(index).Json));
+
+        var state = await fixture.Shell.ExecuteCommandAsync(
+            $"bulk run '[{operations}]' --db db --con items --concurrency 1 --continue-on-error --yes",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(timesOut, state.IsError);
+        if (timesOut)
+        {
+            var error = Assert.IsType<StructuredErrorCommandState>(state);
+            Assert.Equal(ShellExitCode.ConnectionError, error.ExitCode);
+            Assert.Contains("timed out", error.Exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.IsType<DisconnectedState>(fixture.Shell.State);
+            Assert.True(fixture.Writes().Count() < 10);
+        }
+        else
+        {
+            Assert.IsType<ConnectedState>(fixture.Shell.State);
+            Assert.Equal(10, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("succeeded").GetInt64());
+        }
+    }
+
+    [Fact]
+    public async Task CanceledJournalReplayStopsBeforeParsingAndReleasesFile()
+    {
+        using var fixture = new Fixture();
+        using var cancellation = Timeout();
+        var path = fixture.Directory.PathFor("canceled-journal.jsonl");
+        var hash = BulkSpool.ComputeHash([Operation(0).Json]);
+        using (var journal = BulkJournal.Open(path, "https://unit-test.documents.azure.com/", "rid", hash, 1))
+        {
+            await journal.RecordAsync(Succeeded(0));
+        }
+
+        await File.AppendAllTextAsync(path, "invalid record\n", TestContext.Current.CancellationToken);
+        await fixture.RunAsync("bulk begin --db db --con items");
+        await fixture.RunAsync($"bulk add '{Operation(0).Json}'");
+        using var response = new ResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new CancelOnDisposeStream(
+                Encoding.UTF8.GetBytes("""{"_rid":"rid","partitionKey":{"paths":["/pk"]}}"""), cancellation),
+        };
+        fixture.Container.ReadContainerStreamAsync(Arg.Any<ContainerRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(response));
+        var command = new BulkCommand { Subcommand = "execute", Journal = path, Yes = true };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            command.ExecuteAsync(fixture.Shell, new CommandState(), "bulk execute", cancellation.Token));
+
+        Assert.Empty(fixture.Writes());
+        using var reopened = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Assert.True(reopened.Length > 0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EmulatorTimeout_PreservesPartialResultsAndDisconnects(bool piped)
+    {
+        using var fixture = new Fixture(localEmulator: true);
+        fixture.Shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        fixture.Shell.LocalEmulatorInactivityTimeout = TimeSpan.FromMilliseconds(100);
+        fixture.Container.DeleteItemAsync<JsonElement>("1", Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, call.ArgAt<CancellationToken>(3));
+                return await Task.FromException<ItemResponse<JsonElement>>(new InvalidOperationException("The stalled write should be canceled."));
+            });
+        var command = $$"""bulk run '[{{Operation(0).Json}},{{Operation(1).Json}},{{Operation(2).Json}}]' --db db --con items --concurrency 1 --yes""";
+
+        var state = await fixture.Shell.ExecuteCommandAsync(
+            command + (piped ? " | echo" : string.Empty), TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<StructuredErrorCommandState>(state);
+        Assert.True(error.ExitCode == ShellExitCode.ConnectionError, error.Exception.ToString());
+        Assert.Contains("timed out", error.Exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.IsType<DisconnectedState>(fixture.Shell.State);
+        var result = Assert.IsType<ShellJson>(error.Result).Value;
+        Assert.Equal(1, result.GetProperty("succeeded").GetInt64());
+        Assert.Equal(1, result.GetProperty("uncertain").GetInt64());
+        Assert.Equal(2, result.GetProperty("attempted").GetInt64());
+        Assert.True(result.GetProperty("resultIncomplete").GetBoolean());
+        Assert.Equal(7, state.RequestCharge);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WhereSelection_ReportsActivityWhileSpoolingOnePage(bool save)
+    {
+        using var fixture = new Fixture(localEmulator: true);
+        fixture.Shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        fixture.Shell.LocalEmulatorInactivityTimeout = TimeSpan.FromSeconds(1);
+        var rows = Enumerable.Range(0, 10)
+            .Select(index => JsonSerializer.SerializeToElement(new { id = index.ToString(CultureInfo.InvariantCulture), __pk0 = "t" }))
+            .ToArray();
+        using var iterator = Substitute.For<FeedIterator<JsonElement>>();
+        var read = false;
+        iterator.HasMoreResults.Returns(_ => !read);
+        iterator.ReadNextAsync(Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            read = true;
+            var page = Substitute.For<FeedResponse<JsonElement>>();
+            page.GetEnumerator().Returns(_ => SlowRows(call.Arg<CancellationToken>()).GetEnumerator());
+            return Task.FromResult(page);
+        });
+        fixture.Container.GetItemQueryIterator<JsonElement>(
+            Arg.Any<QueryDefinition>(), Arg.Any<string?>(), Arg.Any<QueryRequestOptions>()).Returns(iterator);
+        var savePath = fixture.Directory.PathFor("selection.jsonl");
+        var command = "bulk delete --where true --dry-run --db db --con items"
+            + (save ? $" --save '{savePath}'" : string.Empty);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        var state = await fixture.Shell.ExecuteCommandAsync(command, TestContext.Current.CancellationToken);
+
+        Assert.False(state.IsError);
+        Assert.True(watch.Elapsed > fixture.Shell.LocalEmulatorInactivityTimeout);
+        Assert.IsType<ConnectedState>(fixture.Shell.State);
+        Assert.Equal(rows.Length, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("operationCount").GetInt64());
+        if (save)
+        {
+            Assert.Equal(rows.Length, (await File.ReadAllLinesAsync(savePath, TestContext.Current.CancellationToken)).Length);
+        }
+
+        IEnumerable<JsonElement> SlowRows(CancellationToken token)
+        {
+            foreach (var row in rows)
+            {
+                Assert.False(token.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(200)), "Active selection timed out.");
+                yield return row;
+            }
+        }
+    }
+
     [Fact]
     public async Task RunExecutesMixedOperationsAcrossPartitions()
     {
@@ -1932,6 +2271,18 @@ public class BulkCommandTests
         }
     }
 
+    private sealed class CancelOnDisposeStream(byte[] content, CancellationTokenSource cancellation) : MemoryStream(content)
+    {
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing)
+            {
+                cancellation.Cancel();
+            }
+        }
+    }
+
     private sealed class FailingSpoolFileStream(string path) : FileStream(path, new FileStreamOptions
     {
         Mode = FileMode.CreateNew,
@@ -2009,11 +2360,11 @@ public class BulkCommandTests
         private string? failingPatchId;
         private HttpStatusCode failingStatus = HttpStatusCode.OK;
 
-        public Fixture()
+        public Fixture(bool localEmulator = false)
         {
             var client = Substitute.For<CosmosClient>();
             var database = Substitute.For<Database>();
-            client.Endpoint.Returns(new Uri("https://unit-test.documents.azure.com"));
+            client.Endpoint.Returns(new Uri(localEmulator ? "https://localhost:8081" : "https://unit-test.documents.azure.com"));
             client.GetDatabase("db").Returns(database);
             database.GetContainer("items").Returns(this.Container);
             this.Shell.State = new ConnectedState(client);

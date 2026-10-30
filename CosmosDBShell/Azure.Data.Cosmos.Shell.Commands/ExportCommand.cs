@@ -92,7 +92,7 @@ internal class ExportCommand : CosmosCommand
         var max = ResultLimit.ResolveMaxItemCount(this.Max, defaultMaxItemCount: null);
         var format = ResolveFormat(filePath);
 
-        var (count, charge) = await ExecuteExportAsync(container, query, max, format, filePath, this.Force == true, token);
+        var (count, charge) = await ExecuteExportAsync(shell, container, query, max, format, filePath, this.Force == true, token);
 
         resultState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
@@ -151,14 +151,16 @@ internal class ExportCommand : CosmosCommand
     /// <param name="items">The items to write.</param>
     /// <param name="stream">The destination stream.</param>
     /// <param name="token">Cancellation token.</param>
+    /// <param name="onRowWritten">Invoked after each item is written.</param>
     /// <returns>The number of items written.</returns>
-    internal static async Task<int> WriteArrayAsync(IAsyncEnumerable<JsonElement> items, Stream stream, CancellationToken token)
+    internal static async Task<int> WriteArrayAsync(IAsyncEnumerable<JsonElement> items, Stream stream, CancellationToken token, Action? onRowWritten = null)
     {
         var count = 0;
         await using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true, IndentSize = 4, NewLine = "\n" });
         writer.WriteStartArray();
         await foreach (var item in items.WithCancellation(token))
         {
+            token.ThrowIfCancellationRequested();
             item.WriteTo(writer);
             if (writer.BytesPending >= 64 * 1024)
             {
@@ -166,6 +168,7 @@ internal class ExportCommand : CosmosCommand
             }
 
             count++;
+            onRowWritten?.Invoke();
         }
 
         writer.WriteEndArray();
@@ -185,8 +188,9 @@ internal class ExportCommand : CosmosCommand
     /// <param name="separator">The field separator.</param>
     /// <param name="token">Cancellation token.</param>
     /// <param name="scalarColumnName">The header for non-object rows; defaults to the environment setting.</param>
+    /// <param name="onRowWritten">Invoked after each row is written in both the spooling and final passes.</param>
     /// <returns>The number of data rows written.</returns>
-    internal static async Task<int> WriteCsvAsync(IAsyncEnumerable<JsonElement> items, TextWriter writer, char separator, CancellationToken token, string? scalarColumnName = null)
+    internal static async Task<int> WriteCsvAsync(IAsyncEnumerable<JsonElement> items, TextWriter writer, char separator, CancellationToken token, string? scalarColumnName = null, Action? onRowWritten = null)
     {
         scalarColumnName ??= Environment.GetEnvironmentVariable(ScalarColumnEnvironmentVariable) ?? string.Empty;
         var spoolOptions = new FileStreamOptions
@@ -209,7 +213,9 @@ internal class ExportCommand : CosmosCommand
         var hasScalarRows = false;
         await foreach (var item in items.WithCancellation(token))
         {
+            token.ThrowIfCancellationRequested();
             await spoolWriter.WriteLineAsync(SerializeJsonLine(item).AsMemory(), token);
+            onRowWritten?.Invoke();
             if (item.ValueKind != JsonValueKind.Object)
             {
                 hasScalarRows = true;
@@ -287,6 +293,7 @@ internal class ExportCommand : CosmosCommand
 
             await writer.WriteLineAsync(sb.ToString().AsMemory(), token);
             count++;
+            onRowWritten?.Invoke();
         }
 
         await writer.FlushAsync(token);
@@ -299,6 +306,7 @@ internal class ExportCommand : CosmosCommand
     }
 
     private static async Task<(int Count, double Charge)> ExecuteExportAsync(
+        ShellInterpreter shell,
         Container container,
         string query,
         int? max,
@@ -318,7 +326,20 @@ internal class ExportCommand : CosmosCommand
             var totalCharge = 0.0;
             using var iterator = container.GetItemQueryIterator<JsonElement>(query, requestOptions: options);
             var count = await WriteFileAsync(
-                EnumerateAsync(iterator, max, charge => totalCharge += charge, token), format, filePath, overwrite, token);
+                EnumerateAsync(
+                    iterator,
+                    max,
+                    charge =>
+                    {
+                        totalCharge += charge;
+                        shell.ReportOperationProgress();
+                    },
+                    token),
+                format,
+                filePath,
+                overwrite,
+                token,
+                shell.ReportOperationProgress);
             return (count, totalCharge);
         }
         catch (CosmosException ce)
@@ -340,7 +361,8 @@ internal class ExportCommand : CosmosCommand
         ExportFormat format,
         string filePath,
         bool overwrite,
-        CancellationToken token)
+        CancellationToken token,
+        Action? onRowWritten = null)
     {
         var destination = Path.GetFullPath(filePath);
 
@@ -379,11 +401,11 @@ internal class ExportCommand : CosmosCommand
                 {
                     using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
                     writer.NewLine = "\n";
-                    count = await WriteCsvAsync(items, writer, ShellInterpreter.CSVSeparator, token);
+                    count = await WriteCsvAsync(items, writer, ShellInterpreter.CSVSeparator, token, onRowWritten: onRowWritten);
                 }
                 else
                 {
-                    count = await WriteArrayAsync(items, stream, token);
+                    count = await WriteArrayAsync(items, stream, token, onRowWritten);
                 }
             }
 

@@ -191,7 +191,7 @@ internal class CommandStatement : Statement
             }
 
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
-            var result = await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token);
+            var result = await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token, factory.IsExternal);
             if (result is ErrorCommandState error && shell.CurrentScriptFileName is { } sourceName && shell.CurrentScriptContent is { } sourceText)
             {
                 var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(sourceText, this.Start);
@@ -453,7 +453,7 @@ internal class CommandStatement : Statement
                 {
                     // Run the parsed statements
                     currentState = await statement.RunAsync(shell, currentState, token);
-                    if (currentState.IsError)
+                    if (currentState.IsError || currentState.UserCancellationHandled)
                     {
                         break;
                     }
