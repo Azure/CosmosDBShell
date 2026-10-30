@@ -30,7 +30,7 @@ public class IngestionBenchmarkTests : ConnectedEmulatorTestBase
         var token = TestContext.Current.CancellationToken;
         var outputPath = Path.GetFullPath(Environment.GetEnvironmentVariable(OutputVariable)!);
         using var results = new StreamWriter(outputPath, append: false, new UTF8Encoding(false)) { AutoFlush = true };
-        await results.WriteLineAsync("command,items,itemBytes,inputBytes,concurrency,elapsedSeconds,itemsPerSecond,requestCharge,verifiedItems");
+        await results.WriteLineAsync(IngestionBenchmarkWorkload.CsvHeader);
         var databaseName = $"IngestionBenchmark_{Guid.NewGuid():N}";
         CreatedDatabases.Add(databaseName);
         var database = (await this.CosmosClient.CreateDatabaseAsync(databaseName, cancellationToken: token)).Database;
@@ -43,7 +43,7 @@ public class IngestionBenchmarkTests : ConnectedEmulatorTestBase
             {
                 foreach (var command in new[] { "import", "bulk" })
                 {
-                    await WriteInputAsync(inputPath, size, command == "bulk", token);
+                    await IngestionBenchmarkWorkload.WriteInputAsync(inputPath, size, command == "bulk", caseId: null, token);
                     foreach (var concurrency in new[] { 1, 16, 32 })
                     {
                         var containerName = $"items-{command}-{size}-{concurrency}";
@@ -66,17 +66,8 @@ public class IngestionBenchmarkTests : ConnectedEmulatorTestBase
                             Assert.Equal(0, result.GetProperty("failed").GetInt64());
                             var verified = (await container.GetItemLinqQueryable<JsonElement>().CountAsync(token)).Resource;
                             Assert.Equal(size, verified);
-                            await results.WriteLineAsync(string.Join(
-                                ",",
-                                command,
-                                size,
-                                1024,
-                                new FileInfo(inputPath).Length,
-                                concurrency,
-                                watch.Elapsed.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture),
-                                (size / watch.Elapsed.TotalSeconds).ToString("F1", CultureInfo.InvariantCulture),
-                                result.GetProperty("requestCharge").GetDouble().ToString("F2", CultureInfo.InvariantCulture),
-                                verified));
+                            await results.WriteLineAsync(IngestionBenchmarkWorkload.FormatRow(
+                                command, size, new FileInfo(inputPath).Length, concurrency, watch.Elapsed, result, verified));
                         }
                         finally
                         {
@@ -89,25 +80,6 @@ public class IngestionBenchmarkTests : ConnectedEmulatorTestBase
         finally
         {
             File.Delete(inputPath);
-        }
-    }
-
-    private static async Task WriteInputAsync(string path, int size, bool bulk, CancellationToken token)
-    {
-        var empty = JsonSerializer.Serialize(new { id = "00000000", pk = "p0000", payload = string.Empty });
-        var payload = new string('x', 1024 - Encoding.UTF8.GetByteCount(empty));
-        using var writer = new StreamWriter(path, append: false, new UTF8Encoding(false)) { NewLine = "\n" };
-        for (var index = 0; index < size; index++)
-        {
-            token.ThrowIfCancellationRequested();
-            var item = JsonSerializer.Serialize(new
-            {
-                id = index.ToString("D8", CultureInfo.InvariantCulture),
-                pk = $"p{index % 1000:D4}",
-                payload,
-            });
-            Assert.Equal(1024, Encoding.UTF8.GetByteCount(item));
-            await writer.WriteLineAsync(bulk ? $$"""{"op":"create","item":{{item}}}""" : item);
         }
     }
 }
