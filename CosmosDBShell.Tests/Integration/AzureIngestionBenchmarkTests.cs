@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
 using Azure.Identity;
 using Microsoft.Azure.Cosmos;
 
@@ -52,11 +53,13 @@ public class AzureIngestionBenchmarkTests : IntegrationTestBase
 
         var databaseName = $"IngestionBenchmark_{Guid.NewGuid():N}";
         var inputPath = Path.GetTempFileName();
-        var databaseCreated = false;
+
+        // Set before mkdb: a failed or canceled create can still have been accepted by Azure.
+        var creationAttempted = false;
         try
         {
+            creationAttempted = true;
             var database = await this.RunScriptAsync($"mkdb {databaseName} --scale m --ru 400");
-            databaseCreated = !database.IsError;
             Assert.False(database.IsError, FormatError(database));
             var container = await this.RunScriptAsync($"mkcon items /pk --database {databaseName} --scale m --ru {throughput}");
             Assert.False(container.IsError, FormatError(container));
@@ -105,15 +108,65 @@ public class AzureIngestionBenchmarkTests : IntegrationTestBase
         finally
         {
             File.Delete(inputPath);
-            if (databaseCreated)
+            if (creationAttempted)
             {
-                // Cleanup must run even when the test token is canceled. rmdb is rejected while the
-                // shell is inside a container, so return to the account root first.
-                using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-                await Shell.ExecuteCommandAsync("cd /", cleanupTimeout.Token);
-                var cleanup = await Shell.ExecuteCommandAsync($"rmdb {databaseName} true", cleanupTimeout.Token);
-                Assert.False(cleanup.IsError, $"Cleanup of {databaseName} failed: {FormatError(cleanup)}");
+                await this.DeleteDatabaseAsync(databaseName);
             }
         }
+    }
+
+    /// <summary>
+    /// Deletes the benchmark database so provisioned throughput stops billing. Retries cover a create
+    /// that is still finishing; absence is accepted only after several consecutive not-found checks.
+    /// Cancellation counts as failure so incomplete cleanup is reported instead of passing silently.
+    /// </summary>
+    private async Task DeleteDatabaseAsync(string databaseName)
+    {
+        const int Attempts = 12;
+        const int RequiredAbsentChecks = 3;
+        var notFound = MessageService.GetString(
+            "command-rmdb-error-database_not_found",
+            new Dictionary<string, object> { { "db", databaseName } });
+        using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+        var token = cleanupTimeout.Token;
+        var lastError = "no attempt completed";
+        var absentChecks = 0;
+
+        // rmdb is rejected inside a container, so return to the account root first.
+        var root = await Shell.ExecuteCommandAsync("cd /", token, cancellationIsError: true);
+        Assert.False(root.IsError, $"Cleanup of {databaseName} could not navigate to the account root: {FormatError(root)}. Delete it manually.");
+
+        for (var attempt = 1; attempt <= Attempts; attempt++)
+        {
+            var probe = await Shell.ExecuteCommandAsync($"rmdb {databaseName} --dry-run", token, cancellationIsError: true);
+            if (probe is ErrorCommandState { Exception.Message: var probeMessage } && probeMessage == notFound)
+            {
+                if (++absentChecks >= RequiredAbsentChecks)
+                {
+                    return;
+                }
+            }
+            else if (probe.IsError)
+            {
+                absentChecks = 0;
+                lastError = FormatError(probe);
+            }
+            else
+            {
+                absentChecks = 0;
+                var delete = await Shell.ExecuteCommandAsync($"rmdb {databaseName} true", token, cancellationIsError: true);
+                if (!delete.IsError)
+                {
+                    return;
+                }
+
+                // A create that is still running can reject the delete; retry after it settles.
+                lastError = FormatError(delete);
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(10), token);
+        }
+
+        Assert.Fail($"Cleanup could not confirm that {databaseName} was deleted ({lastError}). Delete it manually to stop throughput charges.");
     }
 }
