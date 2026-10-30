@@ -179,7 +179,10 @@ public class OperationInactivityTimeoutTests
             .Returns(_ => Task.FromResult(unavailable));
         shell.State = new ConnectedState(client);
         shell.Options = new Program.CosmosShellOptions { Output = "json" };
-        shell.LocalEmulatorInactivityTimeout = TimeSpan.FromMilliseconds(500);
+
+        // Items arrive every 50 ms for about 3 s in total. The 1.5 s limit tolerates CI scheduling
+        // pauses between items yet is still exceeded when no item counts as activity.
+        shell.LocalEmulatorInactivityTimeout = TimeSpan.FromMilliseconds(1500);
         Assert.True(CommandFactory.TryCreateFactory(typeof(ImportValidationProgressCommand), out var factory));
         shell.App.Commands["import-validation-progress-test"] = factory;
 
@@ -190,7 +193,7 @@ public class OperationInactivityTimeoutTests
         {
             Assert.False(state.IsError, state is ErrorCommandState error ? error.Exception.ToString() : state.GetType().Name);
             Assert.IsType<ConnectedState>(shell.State);
-            Assert.Equal(20, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("failed").GetInt32());
+            Assert.Equal(ImportValidationProgressCommand.ItemCount, Assert.IsType<ShellJson>(state.Result).Value.GetProperty("failed").GetInt32());
         }
         else
         {
@@ -203,6 +206,8 @@ public class OperationInactivityTimeoutTests
     [CosmosCommand("import-validation-progress-test")]
     internal sealed class ImportValidationProgressCommand : CosmosCommand
     {
+        internal const int ItemCount = 60;
+
         [CosmosOption("local")]
         public bool? Local { get; set; }
 
@@ -212,7 +217,7 @@ public class OperationInactivityTimeoutTests
             var container = ((ConnectedState)shell.State).Client.GetDatabase("db").GetContainer("items");
             async IAsyncEnumerable<(int LineNumber, JsonElement Item)> Items()
             {
-                for (var index = 0; index < 20; index++)
+                for (var index = 0; index < ItemCount; index++)
                 {
                     await Task.Delay(TimeSpan.FromMilliseconds(50), token);
                     yield return (index + 1, JsonSerializer.SerializeToElement(new
