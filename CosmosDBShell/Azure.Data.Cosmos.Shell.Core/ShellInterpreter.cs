@@ -299,6 +299,12 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     internal TimeSpan LocalEmulatorInactivityTimeout { get; set; } = TimeSpan.FromSeconds(LocalEmulatorOperationTimeoutSeconds);
 
+    /// <summary>
+    /// Gets or sets the clock for the local-emulator inactivity timeout. Tests set a manual clock;
+    /// when <see langword="null"/>, the timeout uses the system clock.
+    /// </summary>
+    internal TimeProvider? LocalEmulatorTimeProvider { get; set; }
+
     internal Func<bool> IsInteractiveSession { get; set; } =
         static () => !Console.IsInputRedirected && !Console.IsOutputRedirected;
 
@@ -718,11 +724,12 @@ public partial class ShellInterpreter : IDisposable
         var previousLocalEmulatorDeadline = this.localEmulatorDeadline;
         var previousCancellationErrorToken = this.cancellationErrorToken;
         this.cancellationErrorToken = cancellationIsError ? token : default;
-        if (isLocalEmulatorOperation)
+        using var deadline = isLocalEmulatorOperation
+            ? new OperationInactivityTimeout(operationTokenSource, this.LocalEmulatorInactivityTimeout, token, this.LocalEmulatorTimeProvider)
+            : null;
+        if (deadline is not null)
         {
-            Volatile.Write(
-                ref this.localEmulatorDeadline,
-                new OperationInactivityTimeout(operationTokenSource, this.LocalEmulatorInactivityTimeout, token));
+            Volatile.Write(ref this.localEmulatorDeadline, deadline);
         }
 
         try

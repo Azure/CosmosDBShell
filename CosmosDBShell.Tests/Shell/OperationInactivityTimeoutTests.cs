@@ -180,9 +180,10 @@ public class OperationInactivityTimeoutTests
         shell.State = new ConnectedState(client);
         shell.Options = new Program.CosmosShellOptions { Output = "json" };
 
-        // Items arrive every 50 ms for about 3 s in total. The 1.5 s limit tolerates CI scheduling
-        // pauses between items yet is still exceeded when no item counts as activity.
-        shell.LocalEmulatorInactivityTimeout = TimeSpan.FromMilliseconds(1500);
+        // A manual clock keeps this deterministic: each item advances time by 0.6x the limit, so
+        // the run exceeds the limit in total but never between two items that report activity.
+        shell.LocalEmulatorTimeProvider = new ManualTimeProvider();
+        shell.LocalEmulatorInactivityTimeout = TimeSpan.FromSeconds(10);
         Assert.True(CommandFactory.TryCreateFactory(typeof(ImportValidationProgressCommand), out var factory));
         shell.App.Commands["import-validation-progress-test"] = factory;
 
@@ -206,7 +207,7 @@ public class OperationInactivityTimeoutTests
     [CosmosCommand("import-validation-progress-test")]
     internal sealed class ImportValidationProgressCommand : CosmosCommand
     {
-        internal const int ItemCount = 60;
+        internal const int ItemCount = 20;
 
         [CosmosOption("local")]
         public bool? Local { get; set; }
@@ -215,11 +216,14 @@ public class OperationInactivityTimeoutTests
             ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
         {
             var container = ((ConnectedState)shell.State).Client.GetDatabase("db").GetContainer("items");
+            var clock = (ManualTimeProvider)shell.LocalEmulatorTimeProvider!;
+            var step = shell.LocalEmulatorInactivityTimeout * 0.6;
             async IAsyncEnumerable<(int LineNumber, JsonElement Item)> Items()
             {
                 for (var index = 0; index < ItemCount; index++)
                 {
-                    await Task.Delay(TimeSpan.FromMilliseconds(50), token);
+                    await Task.Yield();
+                    clock.Advance(step);
                     yield return (index + 1, JsonSerializer.SerializeToElement(new
                     {
                         id = index.ToString(System.Globalization.CultureInfo.InvariantCulture),
