@@ -61,8 +61,12 @@ public class AzureIngestionBenchmarkTests : IntegrationTestBase
         try
         {
             creationAttempted = true;
-            var database = await this.RunScriptAsync($"mkdb {databaseName} --scale m --ru 400");
+
+            // Cancellation must count as failure here: a canceled ARM create may still complete, so
+            // only a create that returned without error or cancellation is treated as completed.
+            var database = await Shell.ExecuteCommandAsync($"mkdb {databaseName} --scale m --ru 400", token, cancellationIsError: true);
             Assert.False(database.IsError, FormatError(database));
+            token.ThrowIfCancellationRequested();
             creationCompleted = true;
             var container = await this.RunScriptAsync($"mkcon items /pk --database {databaseName} --scale m --ru {throughput}");
             Assert.False(container.IsError, FormatError(container));
