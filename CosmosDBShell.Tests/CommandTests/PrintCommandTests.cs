@@ -148,6 +148,32 @@ public class PrintCommandTests
         await container.Received(1).ReadItemStreamAsync("item-1", new PartitionKey("legacy"), cancellationToken: Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task ExecuteAsync_MissingItemPreservesNotFoundExitCode()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var client = Substitute.For<CosmosClient>();
+        var container = Substitute.For<Container>();
+        client.GetDatabase("db").GetContainer("items").Returns(container);
+        var metadata = Substitute.For<ContainerResponse>();
+        metadata.Resource.Returns(new ContainerProperties("items", "/pk"));
+        container.ReadContainerAsync(Arg.Any<ContainerRequestOptions>(), Arg.Any<CancellationToken>()).Returns(metadata);
+        using var response = new ResponseMessage(HttpStatusCode.NotFound);
+        response.Headers.Add("x-ms-request-charge", "1.5");
+        container.ReadItemStreamAsync("absent", new PartitionKey("p1"), cancellationToken: Arg.Any<CancellationToken>()).Returns(response);
+        shell.State = new ConnectedState(client);
+        var command = new PrintCommand { Id = "absent", PartitionKey = "p1", Database = "db", Container = "items" };
+        using var scope = RequestChargeContext.Begin();
+
+        var error = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "print", TestContext.Current.CancellationToken));
+
+        Assert.Contains("Item with id 'absent' not found", error.Message);
+        Assert.Equal(404, Assert.IsType<RequestFailedException>(error.InnerException).Status);
+        Assert.Equal(ShellExitCode.NotFound, ShellExitCode.FromException(error));
+        Assert.Equal(1.5, scope.RequestCharge);
+    }
+
     [Theory]
     [InlineData(404)]
     [InlineData(403)]

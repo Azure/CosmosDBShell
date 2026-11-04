@@ -11,6 +11,7 @@
 ### Fixes
 
 - Add `help shortcuts` to list keyboard shortcuts, including history search with `Ctrl+R` and `Ctrl+S`; the `help` overview lists it under Help Topics. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
+- Return exit code `5` for `print` when the requested item is not found, matching the documented not-found exit-code contract. ([#279](https://github.com/Azure/CosmosDBShell/issues/279))
 
 ### Improvements
 
