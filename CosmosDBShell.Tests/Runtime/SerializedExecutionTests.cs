@@ -7,6 +7,195 @@ using Azure.Data.Cosmos.Shell.Core;
 
 public class SerializedExecutionTests
 {
+    [Theory]
+    [InlineData("""connect "AccountEndpoint=https://example.documents.azure.com/;Account\u004Bey=example-key==;" """)]
+    [InlineData("""connect "AccountEndpoint=https://example.documents.azure.com/;AccountKey=\"example-key==\";" """)]
+    [InlineData("""connect "AccountEndpoint=https://example.documents.azure.com/;AccountKey=example\u002Dkey==;" """)]
+    public void PrintCommand_MasksEscapedCredentialsInNewAndLegacyHistory(string command)
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(configPath);
+        var historyFile = Path.Join(configPath, "cmd_history");
+        File.WriteAllLines(historyFile, [ShellInterpreter.EncodeHistoryLine(command)]);
+        try
+        {
+            using (var shell = new ShellInterpreter(configPath))
+            {
+                shell.PrintCommand(command);
+                var saved = Assert.Single(File.ReadAllLines(historyFile));
+                Assert.DoesNotContain("example-key", saved);
+                Assert.DoesNotContain("""example\u002Dkey""", saved);
+                Assert.Contains("[REDACTED]", saved);
+            }
+
+            using var restarted = new ShellInterpreter(configPath);
+            Assert.Equal(SecretRedactor.MaskHistory(command), Assert.Single(restarted.History));
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PrintCommand_PreservesQueryPredicatesInHistory()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        const string query = """query "SELECT * FROM c WHERE c.token = 123 AND c.secret = 42" """;
+        try
+        {
+            using var shell = new ShellInterpreter(configPath);
+            shell.PrintCommand(query);
+            Assert.Equal([query], File.ReadAllLines(shell.HistoryFile));
+            Assert.Equal([query], shell.History);
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PrintCommand_RedactsNewAndExistingHistoryIncludingMultilineEntries(bool encoded)
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(configPath);
+        var historyFile = Path.Join(configPath, "cmd_history");
+        var command = "connect \"AccountEndpoint=https://example.documents.azure.com/;AccountKey=example-key==;\"";
+        if (encoded)
+        {
+            command = "echo before\n" + command + "\necho after";
+        }
+
+        var expected = command.Replace("example-key==", "[REDACTED]", StringComparison.Ordinal);
+        File.WriteAllLines(historyFile, [ShellInterpreter.EncodeHistoryLine(command)]);
+        try
+        {
+            using (var shell = new ShellInterpreter(configPath))
+            {
+                Assert.Equal([expected], shell.History);
+                Assert.Contains("example-key==", File.ReadAllText(historyFile));
+
+                shell.PrintCommand("echo after-save");
+
+                Assert.Equal([expected, "echo after-save"], File.ReadAllLines(historyFile).Select(ShellInterpreter.DecodeHistoryLine));
+                Assert.DoesNotContain("example-key==", File.ReadAllText(historyFile));
+                Assert.Equal(0, shell.PendingHistoryCount);
+            }
+
+            using var restarted = new ShellInterpreter(configPath);
+            Assert.Equal([expected, "echo after-save"], restarted.History);
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PrintCommand_RedactsBeforeRecordingAndDeduplicatesMaskedConnections()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            using var shell = new ShellInterpreter(configPath);
+            shell.PrintCommand("connect 'AccountEndpoint=https://example.documents.azure.com/;AccountKey=first-key==;'");
+            shell.PrintCommand("connect 'AccountEndpoint=https://example.documents.azure.com/;AccountKey=second-key==;'");
+
+            var expected = "connect 'AccountEndpoint=https://example.documents.azure.com/;AccountKey=[REDACTED];'";
+            Assert.Equal([expected], shell.History);
+            Assert.Equal([expected], File.ReadAllLines(shell.HistoryFile));
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PrintCommand_MasksCredentialsAddedToDiskByAnotherHistoryWriter()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        try
+        {
+            using var first = new ShellInterpreter(configPath);
+            using var second = new ShellInterpreter(configPath);
+            first.PrintCommand("echo first");
+            File.AppendAllLines(first.HistoryFile, ["connect 'AccountKey=legacy-writer-key==;AccountEndpoint=https://example.documents.azure.com/;'"]);
+
+            second.PrintCommand("echo second");
+            first.PrintCommand("echo third");
+
+            var lines = File.ReadAllLines(first.HistoryFile);
+            Assert.Equal(
+                ["echo first", "connect 'AccountKey=[REDACTED];AccountEndpoint=https://example.documents.azure.com/;'", "echo second", "echo third"],
+                lines);
+            Assert.DoesNotContain("legacy-writer-key==", File.ReadAllText(first.HistoryFile));
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PrintCommand_RedactionDoesNotChangeExecutedCommandValues()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        const string connection = "AccountEndpoint=https://example.documents.azure.com/;AccountKey=execution-example-key==;";
+        var command = $"$connection = '{connection}'; echo $connection";
+        try
+        {
+            using var shell = new ShellInterpreter(configPath);
+            shell.PrintCommand(command);
+            var result = await shell.RunCommandAsync(new CommandState(), command, TestContext.Current.CancellationToken);
+
+            Assert.Equal(connection, result.Result?.ConvertShellObject(Azure.Data.Cosmos.Shell.Parser.DataType.Text));
+            Assert.DoesNotContain("execution-example-key==", File.ReadAllText(shell.HistoryFile));
+            Assert.Contains("[REDACTED]", File.ReadAllText(shell.HistoryFile));
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PrintCommand_RedactsPendingCredentialsAndCleansLegacyHistoryAfterSaveRetry()
+    {
+        var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(configPath);
+        var historyFile = Path.Join(configPath, "cmd_history");
+        const string legacy = "connect 'AccountEndpoint=https://example.documents.azure.com/;AccountKey=legacy-example-key==;'";
+        File.WriteAllLines(historyFile, [legacy]);
+        try
+        {
+            using var shell = new ShellInterpreter(configPath);
+            using (var locked = new FileStream(historyFile + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+            {
+                shell.PrintCommand("connect 'AccountEndpoint=https://example.documents.azure.com/;AccountKey=pending-example-key==;'");
+
+                Assert.Equal(1, shell.PendingHistoryCount);
+                Assert.Equal(["connect 'AccountEndpoint=https://example.documents.azure.com/;AccountKey=[REDACTED];'"], shell.History);
+                Assert.Equal([legacy], File.ReadAllLines(historyFile));
+            }
+
+            shell.PrintCommand("echo recovered");
+
+            Assert.Equal(0, shell.PendingHistoryCount);
+            Assert.Equal(
+                ["connect 'AccountEndpoint=https://example.documents.azure.com/;AccountKey=[REDACTED];'", "echo recovered"],
+                File.ReadAllLines(historyFile));
+            Assert.Empty(Directory.GetFiles(configPath, "cmd_history.*.tmp"));
+        }
+        finally
+        {
+            Directory.Delete(configPath, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task PrintCommand_ConcurrentWithHistorySnapshots_DoesNotCorruptHistory()
     {

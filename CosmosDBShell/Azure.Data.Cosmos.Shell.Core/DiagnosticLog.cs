@@ -5,7 +5,6 @@
 namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Globalization;
-using System.Text.RegularExpressions;
 using Azure.Data.Cosmos.Shell.Parser;
 using Microsoft.Azure.Cosmos;
 
@@ -19,18 +18,6 @@ using Microsoft.Azure.Cosmos;
 internal sealed class DiagnosticLog : IDisposable
 {
     private const int TagWidth = 8;
-
-    private static readonly Regex JwtPattern = new(
-        "eyJ[A-Za-z0-9_-]+\\.eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+",
-        RegexOptions.Compiled);
-
-    private static readonly Regex BearerPattern = new(
-        "(?i)(Bearer\\s+)[A-Za-z0-9._~+/=-]+",
-        RegexOptions.Compiled);
-
-    private static readonly Regex KeyTokenPattern = new(
-        "(?i)(AccountKey|SharedAccessKey|SharedAccessSignature|password|passwd|pwd|sig|token|secret|apikey|api[_-]?key)(\\s*[=:]\\s*\"?)[^;\\s\"',}&]+",
-        RegexOptions.Compiled);
 
     private readonly object gate = new();
 
@@ -241,23 +228,7 @@ internal sealed class DiagnosticLog : IDisposable
 
     internal static string MaskSecrets(string value, IReadOnlyList<string> secrets)
     {
-        foreach (var secret in secrets)
-        {
-            if (string.IsNullOrEmpty(secret))
-            {
-                continue;
-            }
-
-            foreach (var form in new[] { secret, Uri.EscapeDataString(secret) })
-            {
-                value = Regex.Replace(value, Regex.Escape(form), "redacted:secret", RegexOptions.IgnoreCase);
-            }
-        }
-
-        value = JwtPattern.Replace(value, "redacted:jwt");
-        value = BearerPattern.Replace(value, "$1redacted");
-        value = KeyTokenPattern.Replace(value, "$1$2redacted");
-        return value;
+        return SecretRedactor.MaskSecrets(value, secrets, "redacted");
     }
 
     private string Flatten(string value)
