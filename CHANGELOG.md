@@ -4,11 +4,14 @@
 
 ### Breaking changes
 
+- Structured `help` results now include a `topics` array alongside `help`, `commands`, and `statements`. Consumers that require an exact set of JSON fields must accept the new field. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
+
 ### New features
 
 ### Fixes
 
 - Show endpoint-only account and emulator examples when running `connect` offline; keep the connection-string alternative in `help connect`. ([#270](https://github.com/Azure/CosmosDBShell/issues/270))
+- Add `help shortcuts` to list keyboard shortcuts, including history search with `Ctrl+R` and `Ctrl+S`; the `help` overview lists it under Help Topics. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
 
 ### Improvements
 
