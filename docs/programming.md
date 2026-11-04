@@ -256,6 +256,22 @@ echo "seed.csh \"AccountEndpoint=...;AccountKey=...\" mydb mycontainer" | cosmos
 
 Piping the contents of a script file directly runs those statements as standard input, so there is no script filename and no positional parameter list for that input stream. Use `-c`, `-k`, or pipe a script invocation when you need `$0`, `$1`, `$2`, and later parameters.
 
+### Output and Redirection
+
+Multiple statements passed through `-c`, `-k`, or standard input display their results in order, as if each statement were typed separately. Each statement's redirections apply to that statement only. Earlier output and files are preserved if a later statement fails at runtime; a parse error prevents the entire input from running.
+
+```bash
+cosmosdbshell -c 'echo first > result.txt; echo second >> result.txt'
+```
+
+To collect an entire script's output, redirect the script invocation:
+
+```bash
+cosmosdbshell -c 'seed.csh > results.txt'
+```
+
+Here, `>` clears the destination once and retains output from every statement in the script. Use `>>` instead to append the script's output to existing contents.
+
 ### Script Scope
 
 Each script run gets its own variable scope. Variables from the caller are readable at script start, but assignments inside the script stay local to that script run and do not leak back to the caller.

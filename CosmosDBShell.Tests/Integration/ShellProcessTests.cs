@@ -26,6 +26,198 @@ public class ShellProcessTests
     private static readonly Regex AnsiEscape = new("\x1b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
 
     [Theory]
+    [InlineData(false, "; ")]
+    [InlineData(true, "; ")]
+    [InlineData(true, "\n")]
+    public async Task MultipleStatements_PrintEveryResultInOrder(bool stdin, string separator)
+    {
+        var command = $"echo first{separator}echo second";
+        var result = await RunShellAsync(
+            stdin ? command : null,
+            extraArgs: stdin ? ["--quiet", "--output", "json"] : ["--quiet", "--output", "json", "-c", command],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal($"first{Environment.NewLine}second{Environment.NewLine}", result.StdOut);
+        Assert.Empty(result.StdErr);
+    }
+
+    [Theory]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    public async Task MultipleStatements_HonorEachFileRedirection(bool stdin, bool sameFile, bool append)
+    {
+        var firstFile = Path.GetTempFileName();
+        var secondFile = sameFile ? firstFile : Path.GetTempFileName();
+        try
+        {
+            var command = $"echo first > {JsonSerializer.Serialize(firstFile)}; echo second {(append ? ">>" : ">")} {JsonSerializer.Serialize(secondFile)}";
+            var result = await RunShellAsync(
+                stdin ? command : null,
+                extraArgs: stdin ? ["--quiet", "--output", "json"] : ["--quiet", "--output", "json", "-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            Assert.Empty(result.StdErr);
+            Assert.Equal(
+                append ? $"first{Environment.NewLine}second{Environment.NewLine}" : $"{(sameFile ? "second" : "first")}{Environment.NewLine}",
+                await File.ReadAllTextAsync(firstFile, TestContext.Current.CancellationToken));
+            if (!sameFile)
+            {
+                Assert.Equal($"second{Environment.NewLine}", await File.ReadAllTextAsync(secondFile, TestContext.Current.CancellationToken));
+            }
+        }
+        finally
+        {
+            File.Delete(firstFile);
+            File.Delete(secondFile);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, "echo second", 0, "second")]
+    [InlineData(true, "echo second", 0, "second")]
+    [InlineData(false, "not-a-real-command", 2, "")]
+    [InlineData(true, "not-a-real-command", 2, "")]
+    public async Task MultipleStatements_PreserveEarlierOutputAndDoNotLeakRedirect(bool stdin, string nextCommand, int exitCode, string stdout)
+    {
+        var file = Path.GetTempFileName();
+        try
+        {
+            var command = $"echo first > {JsonSerializer.Serialize(file)}; {nextCommand}";
+            var result = await RunShellAsync(
+                stdin ? command : null,
+                extraArgs: stdin ? ["--quiet", "--output", "json"] : ["--quiet", "--output", "json", "-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(exitCode, result.ExitCode);
+            Assert.Equal("first" + Environment.NewLine, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+            Assert.Equal(stdout.Length == 0 ? string.Empty : stdout + Environment.NewLine, result.StdOut);
+            if (exitCode != 0)
+            {
+                using var error = JsonDocument.Parse(result.StdErr);
+                Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            }
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
+    [InlineData(">", "echo first\necho second")]
+    [InlineData(">>", "echo first\necho second")]
+    [InlineData(">", "{ echo first; echo second }")]
+    [InlineData(">", "def show { echo first; echo second }\nshow")]
+    [InlineData(">", "echo first\nreturn \"second\"\necho skipped")]
+    public async Task WholeScriptRedirection_PreservesEveryStatement(string redirect, string content)
+    {
+        var script = Path.Combine(AppContext.BaseDirectory, $"output-{Guid.NewGuid():N}.csh");
+        var output = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(script, content, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(output, "before" + Environment.NewLine, TestContext.Current.CancellationToken);
+            var result = await RunShellAsync(
+                null,
+                extraArgs: ["--quiet", "--output", "json", "-c", $"{Path.GetFileName(script)} {redirect} {JsonSerializer.Serialize(output)}"],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            Assert.Empty(result.StdErr);
+            Assert.Equal(
+                (redirect == ">>" ? "before" + Environment.NewLine : string.Empty) + $"first{Environment.NewLine}second{Environment.NewLine}",
+                await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(output);
+        }
+    }
+
+    [Theory]
+    [InlineData("inline")]
+    [InlineData("stdin")]
+    [InlineData("script")]
+    public async Task MultipleStatements_ParseFailure_DoesNotPrintOrTruncate(string input)
+    {
+        var script = Path.Combine(AppContext.BaseDirectory, $"invalid-{Guid.NewGuid():N}.csh");
+        var output = Path.GetTempFileName();
+        try
+        {
+            var command = $"echo first > {JsonSerializer.Serialize(output)}; $x =";
+            await File.WriteAllTextAsync(output, "before", TestContext.Current.CancellationToken);
+            if (input == "script")
+            {
+                await File.WriteAllTextAsync(script, command, TestContext.Current.CancellationToken);
+                command = $"{Path.GetFileName(script)} > {JsonSerializer.Serialize(output)}";
+            }
+
+            var result = await RunShellAsync(
+                input == "stdin" ? command : null,
+                extraArgs: input == "stdin" ? ["--quiet", "--output", "json"] : ["--quiet", "--output", "json", "-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellExitCode.UsageError, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            Assert.NotEmpty(result.StdErr);
+            Assert.Equal("before", await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(output);
+        }
+    }
+
+    [Fact]
+    public async Task MultipleStatements_ExpressionsAndPipelines_DoNotDuplicateOutput()
+    {
+        var result = await RunShellAsync(
+            null,
+            extraArgs: ["--quiet", "--output", "json", "-c", "$value = (echo first); echo $value | echo; echo second"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal($"first{Environment.NewLine}second{Environment.NewLine}", result.StdOut);
+        Assert.Empty(result.StdErr);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MultipleStatements_ErrorRedirectionDoesNotLeak(bool stdin)
+    {
+        var file = Path.GetTempFileName();
+        try
+        {
+            var command = $"echo first 2> {JsonSerializer.Serialize(file)}; not-a-real-command";
+            var result = await RunShellAsync(
+                stdin ? command : null,
+                extraArgs: stdin ? ["--quiet", "--output", "json"] : ["--quiet", "--output", "json", "-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellExitCode.UsageError, result.ExitCode);
+            Assert.Equal("first" + Environment.NewLine, result.StdOut);
+            Assert.Empty(await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+            using var error = JsonDocument.Parse(result.StdErr);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
     [InlineData("{\"name\":\"missing-id\"}")]
     [InlineData("{\"id\":42}")]
     public async Task ImportDryRun_InvalidId_ReturnsUsageExitCodeAndOfflineResult(string content)

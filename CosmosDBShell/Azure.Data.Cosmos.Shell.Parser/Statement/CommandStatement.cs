@@ -440,6 +440,26 @@ internal class CommandStatement : Statement
                 return parserError;
             }
 
+            if (renderOutput && this.OutRedirectToken != null)
+            {
+                token.ThrowIfCancellationRequested();
+                if (!this.AppendOutput)
+                {
+                    try
+                    {
+                        File.WriteAllText(this.OutputRedirect!, string.Empty);
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    {
+                        var redirectError = new ErrorCommandState(exception);
+                        redirectError.ShareWarningsFrom(commandState);
+                        return redirectError;
+                    }
+                }
+
+                shell.AppendOutRedirection = true;
+            }
+
             foreach (var statement in parser.Statements)
             {
                 token.ThrowIfCancellationRequested();
@@ -472,7 +492,7 @@ internal class CommandStatement : Statement
                         if (this.OutRedirectToken != null)
                         {
                             shell.StdOutRedirect = this.OutputRedirect;
-                            shell.AppendOutRedirection = this.AppendOutput;
+                            shell.AppendOutRedirection = true;
                         }
 
                         if (this.ErrRedirectToken != null)
