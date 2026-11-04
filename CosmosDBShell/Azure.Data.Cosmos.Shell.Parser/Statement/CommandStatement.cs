@@ -314,7 +314,7 @@ internal class CommandStatement : Statement
                 }
                 else
                 {
-                    throw new CommandException(this.Name, $"Option '{rawName}' requires a value.");
+                    throw CommandException.Usage(this.Name, $"Option '{rawName}' requires a value.");
                 }
             }
         }
@@ -355,7 +355,7 @@ internal class CommandStatement : Statement
                     var message = !string.IsNullOrEmpty(attr.RequiredErrorKey)
                         ? MessageService.GetString(attr.RequiredErrorKey)
                         : $"Missing required parameter: {prop.Name}";
-                    throw new CommandException(this.Name, message);
+                    throw CommandException.Usage(this.Name, message);
                 }
 
                 break;
@@ -387,7 +387,7 @@ internal class CommandStatement : Statement
         // Too many arguments (when last parameter is not array)
         if (argIndex < positional.Count && parameters.All(p => !p.Prop.PropertyType.IsArray))
         {
-            throw new CommandException(this.Name, $"Too many arguments. Expected {parameters.Count}, got {positional.Count}");
+            throw CommandException.Usage(this.Name, $"Too many arguments. Expected {parameters.Count}, got {positional.Count}");
         }
 
         return cmd;

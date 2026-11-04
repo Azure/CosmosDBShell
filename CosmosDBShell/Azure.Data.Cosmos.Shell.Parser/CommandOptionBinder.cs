@@ -41,7 +41,7 @@ internal static class CommandOptionBinder
                 return false;
             }
 
-            throw new CommandException(commandName, $"Invalid boolean value '{stringValue}' for option '{rawName}'. Expected 'true' or 'false'.");
+            throw CommandException.Usage(commandName, $"Invalid boolean value '{stringValue}' for option '{rawName}'. Expected 'true' or 'false'.");
         }
 
         if (targetType.IsEnum)
@@ -52,7 +52,7 @@ internal static class CommandOptionBinder
             }
 
             var validValues = string.Join(", ", Enum.GetNames(targetType));
-            throw new CommandException(commandName, $"Invalid value '{stringValue}' for option '{rawName}'. Valid values are: {validValues}");
+            throw CommandException.Usage(commandName, $"Invalid value '{stringValue}' for option '{rawName}'. Valid values are: {validValues}");
         }
 
         if (targetType == typeof(int))
@@ -62,7 +62,7 @@ internal static class CommandOptionBinder
                 return intVal;
             }
 
-            throw new CommandException(commandName, $"Invalid integer value '{stringValue}' for option '{rawName}'.");
+            throw CommandException.Usage(commandName, $"Invalid integer value '{stringValue}' for option '{rawName}'.");
         }
 
         if (targetType == typeof(double))
@@ -72,7 +72,7 @@ internal static class CommandOptionBinder
                 return dblVal;
             }
 
-            throw new CommandException(commandName, $"Invalid numeric value '{stringValue}' for option '{rawName}'.");
+            throw CommandException.Usage(commandName, $"Invalid numeric value '{stringValue}' for option '{rawName}'.");
         }
 
         try
@@ -81,7 +81,7 @@ internal static class CommandOptionBinder
         }
         catch (Exception ex) when (ex is FormatException or OverflowException or InvalidCastException)
         {
-            throw new CommandException(commandName, $"Invalid value '{stringValue}' for option '{rawName}'. Expected a value of type '{targetType.Name}'.", ex);
+            throw CommandException.Usage(commandName, $"Invalid value '{stringValue}' for option '{rawName}'. Expected a value of type '{targetType.Name}'.", ex);
         }
     }
 }

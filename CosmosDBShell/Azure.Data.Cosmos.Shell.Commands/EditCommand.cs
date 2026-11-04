@@ -28,7 +28,7 @@ internal class EditCommand : CosmosCommand
     {
         if (string.IsNullOrWhiteSpace(this.FilePath))
         {
-            throw new CommandException("edit", MessageService.GetString("command-edit-missing-path"));
+            throw CommandException.Usage("edit", MessageService.GetString("command-edit-missing-path"));
         }
 
         if (shell.IsInputRedirected() || !string.IsNullOrEmpty(shell.CurrentScriptFileName))

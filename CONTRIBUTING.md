@@ -87,6 +87,7 @@ docs/                                        # User-facing documentation
 - **Commands** are classes in `Azure.Data.Cosmos.Shell.Commands/` using `[CosmosCommand]`, `[CosmosExample]`, `[CosmosOption]`, and `[CosmosParameter]` attributes.
 - **Localization** strings live in `lang/en.ftl` (Fluent format). Keep help text aligned with actual CLI behavior.
 - **Tests** live in `CosmosDBShell.Tests/`. Add or update tests when changing behavior.
+- **Command errors** use `CommandException.Usage(...)` for rejected arguments or input so callers receive exit code `2`. Keep operational failures as ordinary `CommandException` instances and preserve inner exceptions for service-status classification. Extend `CommandUsageErrorTests` for command-specific validation; its metadata-driven tests cover shared argument binding for all built-in commands.
 - Match the existing C# style. Prefer clear names over abbreviations.
 
 ### Script Language Tests

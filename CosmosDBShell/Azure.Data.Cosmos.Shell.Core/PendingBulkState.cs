@@ -54,7 +54,7 @@ internal sealed class PendingBulkState
     {
         if (operationCount > MaxOperations || canonicalJsonBytes > MaxCanonicalJsonBytes)
         {
-            throw new CommandException("bulk", MessageService.GetString("command-bulk-error-stateful_limit"));
+            throw CommandException.Usage("bulk", MessageService.GetString("command-bulk-error-stateful_limit"));
         }
     }
 }

@@ -52,23 +52,23 @@ internal class PatchCommand : CosmosCommand
 
         if (string.IsNullOrWhiteSpace(this.Id))
         {
-            throw new CommandException("patch", MessageService.GetString("command-patch-error-missing_id"));
+            throw CommandException.Usage("patch", MessageService.GetString("command-patch-error-missing_id"));
         }
 
         if (string.IsNullOrWhiteSpace(this.Key))
         {
-            throw new CommandException("patch", MessageService.GetString("command-patch-error-missing_pk"));
+            throw CommandException.Usage("patch", MessageService.GetString("command-patch-error-missing_pk"));
         }
 
         if (string.IsNullOrWhiteSpace(this.Op))
         {
-            throw new CommandException("patch", MessageService.GetString("command-patch-error-missing_op"));
+            throw CommandException.Usage("patch", MessageService.GetString("command-patch-error-missing_op"));
         }
 
         var op = PatchOperationFactory.Normalize(this.Op);
         if (!PatchOperationFactory.IsSupported(op))
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "patch",
                 MessageService.GetString(
                     "command-patch-error-unsupported_op",
@@ -77,12 +77,12 @@ internal class PatchCommand : CosmosCommand
 
         if (string.IsNullOrWhiteSpace(this.Path))
         {
-            throw new CommandException("patch", MessageService.GetString("command-patch-error-missing_path"));
+            throw CommandException.Usage("patch", MessageService.GetString("command-patch-error-missing_path"));
         }
 
         if (!this.Path.StartsWith("/", StringComparison.Ordinal))
         {
-            throw new CommandException("patch", MessageService.GetString("command-patch-error-invalid_path"));
+            throw CommandException.Usage("patch", MessageService.GetString("command-patch-error-invalid_path"));
         }
 
         var (_, _, container) = await ResolveContainerAsync(

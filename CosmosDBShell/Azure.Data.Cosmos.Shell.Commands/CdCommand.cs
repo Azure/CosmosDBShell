@@ -53,7 +53,7 @@ internal class CdCommand : CosmosCommand
         bool hasOptions = !string.IsNullOrWhiteSpace(this.Database) || !string.IsNullOrWhiteSpace(this.Container);
         if (!string.IsNullOrWhiteSpace(this.Item) && hasOptions)
         {
-            throw new CommandException("cd", MessageService.GetString("command-cd-error-item_and_options"));
+            throw CommandException.Usage("cd", MessageService.GetString("command-cd-error-item_and_options"));
         }
 
         // Get connected state - required for all cd operations
@@ -239,7 +239,7 @@ internal class CdCommand : CosmosCommand
         // segments and stayed in the current container.
         if (resolvedSegments.Count > 2)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "cd",
                 MessageService.GetString(
                     "command-cd-error-path_too_deep",

@@ -634,7 +634,7 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
     {
         if (string.IsNullOrWhiteSpace(this.Query))
         {
-            throw new CommandException("query", MessageService.GetString("command-query-error-empty_query"));
+            throw CommandException.Usage("query", MessageService.GetString("command-query-error-empty_query"));
         }
 
         try
@@ -731,7 +731,7 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
 
             if (string.IsNullOrWhiteSpace(this.Query))
             {
-                throw new CommandException("query", MessageService.GetString("command-query-error-empty_query"));
+                throw CommandException.Usage("query", MessageService.GetString("command-query-error-empty_query"));
             }
 
             using var feedIterator = container.GetItemQueryStreamIterator(this.Query, this.Continuation, options);
