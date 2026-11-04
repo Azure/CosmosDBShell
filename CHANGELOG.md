@@ -8,6 +8,8 @@
 
 ### Fixes
 
+- Show endpoint-only account and emulator examples when running `connect` offline; keep the connection-string alternative in `help connect`. ([#270](https://github.com/Azure/CosmosDBShell/issues/270))
+
 ### Improvements
 
 ## 1.1.295 — 2026-11-03
