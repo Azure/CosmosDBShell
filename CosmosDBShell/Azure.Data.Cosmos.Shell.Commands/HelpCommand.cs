@@ -587,7 +587,7 @@ internal class HelpCommand : CosmosCommand
             Padding = new Padding(1, 0, 1, 0),
         };
         AnsiConsole.Write(headerPanel);
-        AnsiConsole.MarkupLine(INDENT + Theme.FormatMuted(MessageService.GetString("help-keyboard-context")));
+        AnsiConsole.MarkupLine(INDENT + Theme.FormatHelpDescription(MessageService.GetString("help-keyboard-context")));
         ShellInterpreter.WriteLine();
 
         foreach (var group in groups)
@@ -608,7 +608,7 @@ internal class HelpCommand : CosmosCommand
             ShellInterpreter.WriteLine();
         }
 
-        AnsiConsole.MarkupLine(INDENT + Theme.FormatHelpAccent("\u25b6") + " " + Theme.FormatMuted(MessageService.GetString("help-keyboard-search-note")));
+        AnsiConsole.MarkupLine(INDENT + Theme.FormatHelpAccent("\u25b6") + " " + Theme.FormatHelpDescription(MessageService.GetString("help-keyboard-search-note")));
         ShellInterpreter.WriteLine();
     }
 
