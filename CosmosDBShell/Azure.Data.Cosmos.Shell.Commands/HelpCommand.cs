@@ -19,10 +19,12 @@ using static Azure.Data.Cosmos.Shell.Core.ShellInterpreter;
 [CosmosExample("help", DescriptionKey = "command-help-example-1")]
 [CosmosExample("help query", DescriptionKey = "command-help-example-2")]
 [CosmosExample("help --details", DescriptionKey = "command-help-example-3")]
+[CosmosExample("help shortcuts", DescriptionKey = "command-help-example-4")]
 internal class HelpCommand : CosmosCommand
 {
     private const int ARGPADDING = 20;
     private const string INDENT = "  ";
+    private const string ShortcutsTopic = "shortcuts";
 
     [CosmosOption("details", "d")]
     public bool Details { get; init; }
@@ -64,7 +66,30 @@ internal class HelpCommand : CosmosCommand
                 return stmtState;
             }
 
-            // Neither command nor statement
+            if (cmdStr.Equals(ShortcutsTopic, StringComparison.OrdinalIgnoreCase))
+            {
+                var shortcutsJson = new Dictionary<string, object>
+                {
+                    ["topic"] = ShortcutsTopic,
+                    ["description"] = MessageService.GetString("help-topic-shortcuts-description"),
+                    ["keyboardShortcuts"] = EnumerateKeyboardShortcuts()
+                        .Select(shortcut => new Dictionary<string, string>
+                        {
+                            ["group"] = shortcut.Group,
+                            ["shortcut"] = shortcut.Shortcut,
+                            ["description"] = shortcut.Description,
+                        }).ToList(),
+                    ["historySearch"] = MessageService.GetString("help-keyboard-search-note"),
+                };
+
+                return new CommandState
+                {
+                    Result = new ShellJson(System.Text.Json.JsonSerializer.SerializeToElement(shortcutsJson)),
+                    RenderUser = () => PrintKeyboardShortcuts(plain),
+                };
+            }
+
+            // Neither command, statement, nor help topic
             AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
             ShellInterpreter.WriteLine(MessageService.GetString("error-command-not-found", MessageService.Args("command", cmdStr)));
             return new ErrorCommandState(new CommandException("help", cmdStr + " not found."));
@@ -475,6 +500,14 @@ internal class HelpCommand : CosmosCommand
         }
 
         allCommandsHelp["statements"] = statementsJson;
+        allCommandsHelp["topics"] = new List<Dictionary<string, string>>
+        {
+            new()
+            {
+                ["topic"] = ShortcutsTopic,
+                ["description"] = MessageService.GetString("help-topic-shortcuts-description"),
+            },
+        };
 
         var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(allCommandsHelp);
         commandState.Result = new ShellJson(jsonElement);
@@ -488,6 +521,130 @@ internal class HelpCommand : CosmosCommand
         return app.Commands.Values
             .DistinctBy(c => c.CommandName)
             .OrderBy(c => c.CommandName);
+    }
+
+    private static (string Group, string Shortcut, string Description)[] EnumerateKeyboardShortcuts()
+    {
+        var history = MessageService.GetString("help-keyboard-group-history");
+        var cursor = MessageService.GetString("help-keyboard-group-cursor");
+        var editing = MessageService.GetString("help-keyboard-group-editing");
+        var shell = MessageService.GetString("help-keyboard-group-shell");
+        return
+        [
+            (history, "Up / Down", MessageService.GetString("help-keyboard-history")),
+            (history, "Ctrl+P / Ctrl+N", MessageService.GetString("help-keyboard-history")),
+            (history, "Ctrl+R", MessageService.GetString("help-keyboard-search-backward")),
+            (history, "Ctrl+S", MessageService.GetString("help-keyboard-search-forward")),
+            (cursor, "Ctrl+B / Ctrl+F", MessageService.GetString("help-keyboard-move-cursor")),
+            (cursor, "Ctrl+A", MessageService.GetString("help-keyboard-start-of-line")),
+            (cursor, "Ctrl+E", MessageService.GetString("help-keyboard-end-of-line")),
+            (editing, "Tab / Ctrl+Tab", MessageService.GetString("help-keyboard-completion")),
+            (editing, "Ctrl+U", MessageService.GetString("help-keyboard-delete-before")),
+            (editing, "Ctrl+K", MessageService.GetString("help-keyboard-delete-after")),
+            (editing, "Ctrl+W", MessageService.GetString("help-keyboard-delete-word")),
+            (editing, "Esc", MessageService.GetString("help-keyboard-clear-line")),
+            (shell, "Ctrl+L", MessageService.GetString("help-keyboard-clear-screen")),
+            (shell, "Ctrl+C", MessageService.GetString("help-keyboard-interrupt")),
+            (shell, "Ctrl+D", MessageService.GetString("help-keyboard-exit")),
+        ];
+    }
+
+    private static string FormatShortcutKeys(string shortcut)
+    {
+        var alternatives = shortcut.Split(" / ")
+            .Select(keys => string.Join(Theme.FormatMuted("+"), keys.Split('+').Select(Theme.FormatHelpAccent)));
+        return string.Join(Theme.FormatMuted(" / "), alternatives);
+    }
+
+    private static void PrintKeyboardShortcuts(bool plain)
+    {
+        var title = MessageService.GetString("help-keyboard-shortcuts");
+        var groups = EnumerateKeyboardShortcuts().GroupBy(shortcut => shortcut.Group);
+        if (plain)
+        {
+            ShellInterpreter.WriteLine(title);
+            ShellInterpreter.WriteLine(MessageService.GetString("help-keyboard-context"));
+            ShellInterpreter.WriteLine();
+            foreach (var group in groups)
+            {
+                ShellInterpreter.WriteLine(group.Key + ":");
+                foreach (var shortcut in group)
+                {
+                    ShellInterpreter.WriteLine($"  {shortcut.Shortcut,-18}{shortcut.Description}");
+                }
+
+                ShellInterpreter.WriteLine();
+            }
+
+            ShellInterpreter.WriteLine(MessageService.GetString("help-keyboard-search-note"));
+            return;
+        }
+
+        var headerPanel = new Panel(Theme.FormatHelpHeader(title))
+        {
+            Border = BoxBorder.Rounded,
+            BorderStyle = Theme.GetHelpBorderStyle(),
+            Padding = new Padding(1, 0, 1, 0),
+        };
+        AnsiConsole.Write(headerPanel);
+        AnsiConsole.MarkupLine(INDENT + Theme.FormatMuted(MessageService.GetString("help-keyboard-context")));
+        ShellInterpreter.WriteLine();
+
+        foreach (var group in groups)
+        {
+            WriteSectionHeader(group.Key);
+            var table = new Table()
+                .Border(TableBorder.None)
+                .HideHeaders()
+                .AddColumn(new TableColumn("Shortcut").Width(ARGPADDING))
+                .AddColumn(new TableColumn("Description"));
+
+            foreach (var shortcut in group)
+            {
+                table.AddRow(INDENT + FormatShortcutKeys(shortcut.Shortcut), Theme.FormatHelpDescription(shortcut.Description));
+            }
+
+            AnsiConsole.Write(table);
+            ShellInterpreter.WriteLine();
+        }
+
+        AnsiConsole.MarkupLine(INDENT + Theme.FormatHelpAccent("\u25b6") + " " + Theme.FormatMuted(MessageService.GetString("help-keyboard-search-note")));
+        ShellInterpreter.WriteLine();
+    }
+
+    private static void PrintHelpTopics(bool plain)
+    {
+        var title = MessageService.GetString("help-topics");
+        var description = MessageService.GetString("help-topic-shortcuts-description");
+        if (plain)
+        {
+            ShellInterpreter.WriteLine(title + ":");
+            ShellInterpreter.WriteLine();
+            ShellInterpreter.WriteLine($"  {ShortcutsTopic}");
+            ShellInterpreter.WriteLine($"    {description}");
+            ShellInterpreter.WriteLine();
+            return;
+        }
+
+        var panel = new Panel(Theme.FormatHelpHeader(title))
+        {
+            Border = BoxBorder.Rounded,
+            BorderStyle = Theme.GetHelpBorderStyle(),
+            Padding = new Padding(1, 0, 1, 0),
+        };
+        AnsiConsole.Write(panel);
+        ShellInterpreter.WriteLine();
+
+        var table = new Table()
+            .Border(TableBorder.None)
+            .HideHeaders()
+            .AddColumn(new TableColumn("Topic").Width(15))
+            .AddColumn(new TableColumn("Description"));
+        table.AddRow(INDENT + Theme.FormatHelpAccent(ShortcutsTopic), Theme.FormatHelpDescription(description));
+
+        AnsiConsole.Write(table);
+        AnsiConsole.MarkupLine(INDENT + Theme.FormatMuted(MessageService.GetString("help-topics-hint")));
+        ShellInterpreter.WriteLine();
     }
 
     private static void PrintCommandCategory(string categoryName, List<CommandFactory> commands)
@@ -910,5 +1067,6 @@ internal class HelpCommand : CosmosCommand
         }
 
         PrintStatementHelps(this.Plain);
+        PrintHelpTopics(this.Plain);
     }
 }

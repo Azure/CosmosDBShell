@@ -8,6 +8,8 @@
 
 ### Fixes
 
+- Add `help shortcuts` to list keyboard shortcuts, including history search with `Ctrl+R` and `Ctrl+S`; the `help` overview lists it under Help Topics. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
+
 ### Improvements
 
 ## 1.1.295 — 2026-11-03
