@@ -182,6 +182,12 @@ internal class CommandStatement : Statement
 
         if (shell.App.Commands.TryGetValue(this.Name, out var factory))
         {
+            if (!commandState.HasPipelineInput)
+            {
+                commandState.Result = null;
+            }
+
+            commandState.HasPipelineInput = false;
             bool showHelp = this.Arguments.OfType<CommandOption>().Any(arg => arg.Name == "help" || arg.Name == "?");
             if (showHelp)
             {
@@ -393,7 +399,7 @@ internal class CommandStatement : Statement
         return cmd;
     }
 
-    public async Task<CommandState> RunScriptAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, bool renderOutput = true)
+    public async Task<CommandState> RunScriptAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, bool renderOutput = true, CommandState? executionState = null)
     {
         var fileName = this.Name;
 
@@ -422,7 +428,7 @@ internal class CommandStatement : Statement
         }
 
         shell.PushCallScope(frame, token);
-        var currentState = commandState;
+        var currentState = executionState ?? commandState;
         string scriptContent = string.Empty;
         var priorFileName = shell.CurrentScriptFileName;
         var priorContent = shell.CurrentScriptContent;
@@ -518,6 +524,8 @@ internal class CommandStatement : Statement
         }
         finally
         {
+            currentState.HasPipelineInput = false;
+            (executionState ?? commandState).HasPipelineInput = false;
             shell.CurrentScriptFileName = priorFileName;
             shell.CurrentScriptContent = priorContent;
 

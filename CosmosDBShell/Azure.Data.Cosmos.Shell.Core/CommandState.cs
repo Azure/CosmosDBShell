@@ -63,6 +63,9 @@ public partial class CommandState
 
     internal ShellObject? Result { get; set; }
 
+    // Set only by a pipe stage and consumed by the receiving command.
+    internal bool HasPipelineInput { get; set; }
+
     internal List<CommandWarning> Warnings => this.warnings;
 
     internal bool OutputRendered { get; set; }

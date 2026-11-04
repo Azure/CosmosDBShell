@@ -118,6 +118,8 @@ For point reads, `print <id> <key>` accepts the established typed-key syntax. In
 
 The `|` operator pipes the JSON result of the left command into the right command. This enables powerful command chaining.
 
+Commands separated by a newline or `;` do not implicitly pass results to the next command. For example, `cd /db/items; rm safe-a --key=id --partition-key=p1 --dry-run` previews the exact item, not the result of `cd`. Use `|` when you intend to pass input.
+
 ### How It Works
 
 1. **Most commands return JSON** – listings return a structured result like `{ "type": "<kind>", "values": [...] }` (e.g. `database`, `container`, or `item` depending on context)

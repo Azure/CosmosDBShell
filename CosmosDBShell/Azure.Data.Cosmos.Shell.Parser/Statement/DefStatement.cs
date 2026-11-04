@@ -129,6 +129,7 @@ internal class DefStatement : Statement
                 result.OutputRendered = false;
             }
 
+            result.HasPipelineInput = false;
             return result;
         }
         catch (Exception exception) when (exception is not PositionalException && (exception is not OperationCanceledException || !token.IsCancellationRequested) && this.sourceName != null && this.sourceText != null)
@@ -138,6 +139,7 @@ internal class DefStatement : Statement
         }
         finally
         {
+            commandState.HasPipelineInput = false;
             shell.CurrentScriptFileName = callerName;
             shell.CurrentScriptContent = callerText;
             shell.PopCallScope();

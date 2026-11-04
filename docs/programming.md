@@ -441,6 +441,8 @@ Group statements with `{ ... }`. Separate by newline or `;`.
 
 `|` passes result from left to right command:
 
+Separate statements (newlines or `;`) do not pass their results as implicit command input. This also applies inside scripts, functions, blocks, and loops.
+
 ```bash
 query "SELECT * FROM c" | echo $.values[0]
 echo '[{"id":"a"}]' | mkitem

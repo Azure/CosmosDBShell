@@ -156,6 +156,10 @@ internal class CommandExpression : Expression
     /// </summary>
     internal async Task<CommandState> ExecuteCommandAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
+        // Arguments can read the caller's JSON paths, but execution must not consume its pipeline input.
+        var expressionState = new CommandState();
+        expressionState.ShareWarningsFrom(commandState);
+
         // Check for user-defined functions first
         if (shell.Functions.TryGetValue(this.Name, out var function))
         {
@@ -166,7 +170,7 @@ internal class CommandExpression : Expression
                 args.Add(evaluated);
             }
 
-            var functionResult = await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
+            var functionResult = await function.ExecuteCallAsync(shell, expressionState, token, this.Start, args.ToArray());
             functionResult.ShareWarningsFrom(commandState);
             return functionResult;
         }
@@ -175,7 +179,7 @@ internal class CommandExpression : Expression
         if (shell.App.Commands.TryGetValue(this.Name, out var factory))
         {
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
-            return await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token, factory.IsExternal);
+            return await shell.ExecuteCosmosCommandAsync(cmd, expressionState, string.Empty, token, factory.IsExternal);
         }
 
         // Check for script files
@@ -217,6 +221,8 @@ internal class CommandExpression : Expression
     {
         var statement = new CommandStatement(this.CommandToken);
         statement.Arguments.AddRange(this.Arguments);
-        return statement.RunScriptAsync(shell, commandState, token, renderOutput: false);
+        var executionState = new CommandState();
+        executionState.ShareWarningsFrom(commandState);
+        return statement.RunScriptAsync(shell, commandState, token, renderOutput: false, executionState: executionState);
     }
 }
