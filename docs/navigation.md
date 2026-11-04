@@ -246,6 +246,8 @@ Commands are stored in full so they can be executed again, including connection 
 
 ## Keyboard Shortcuts
 
+Run `help shortcuts` to see these shortcuts in the shell, grouped by History, Cursor Movement, Editing and Completion, and Shell. The `help` overview lists `shortcuts` under **Help Topics**. Structured results from `help shortcuts` include a `keyboardShortcuts` array with `group`, `shortcut`, and `description` fields, plus a `historySearch` note.
+
 Available at the interactive prompt:
 
 | Shortcut | Action |
@@ -264,6 +266,7 @@ Available at the interactive prompt:
 | `Ctrl+D` | Exit shell when prompt is empty; otherwise delete character under cursor |
 | `Ctrl+R` | Reverse search history (type to filter, repeat for older matches, Enter accepts, Esc/Ctrl+G/Ctrl+C cancels) |
 | `Ctrl+S` | Forward search history (type to filter, repeat for newer matches, Enter accepts, Esc/Ctrl+G/Ctrl+C cancels) |
+| `Ctrl+C` | Interrupt running work or discard pending multi-line input |
 
 ## CLI Arguments
 

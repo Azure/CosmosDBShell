@@ -4,12 +4,14 @@
 
 ### Breaking changes
 
+- Structured `help` results now include a `topics` array alongside `help`, `commands`, and `statements`. Consumers that require an exact set of JSON fields must accept the new field. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
 - `pwd` now prints labeled Cosmos location and local directory lines. Structured results retain the existing fields and add `localDirectory`; consumers that require an exact JSON shape must accept the new field. ([#269](https://github.com/Azure/CosmosDBShell/issues/269))
 
 ### New features
 
 ### Fixes
 
+- Add `help shortcuts` to list keyboard shortcuts, including history search with `Ctrl+R` and `Ctrl+S`; the `help` overview lists it under Help Topics. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
 - Show the absolute destination path in export success messages so exported files can be located. The structured result's `file` field continues to contain the supplied path. ([#269](https://github.com/Azure/CosmosDBShell/issues/269))
 
 ### Improvements

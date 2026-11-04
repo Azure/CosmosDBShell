@@ -25,6 +25,7 @@ public class JsonResultContractTests : IntegrationTestBase
         "pwd",
         "help",
         "help query",
+        "help shortcuts",
         "theme list",
         "theme current",
         "theme show",
@@ -63,7 +64,20 @@ public class JsonResultContractTests : IntegrationTestBase
     {
         var json = await RunAndGetJsonAsync("help");
 
-        AssertShape(json, "help", "commands", "statements");
+        AssertShape(json, "help", "commands", "statements", "topics");
+        Assert.All(json.GetProperty("topics").EnumerateArray(), topic =>
+            AssertShape(topic, "topic", "description"));
+    }
+
+    [Fact]
+    public async Task HelpShortcuts_Shape()
+    {
+        var json = await RunAndGetJsonAsync("help shortcuts");
+
+        AssertShape(json, "topic", "description", "keyboardShortcuts", "historySearch");
+        Assert.Equal("shortcuts", json.GetProperty("topic").GetString());
+        Assert.All(json.GetProperty("keyboardShortcuts").EnumerateArray(), shortcut =>
+            AssertShape(shortcut, "group", "shortcut", "description"));
     }
 
     [Fact]
