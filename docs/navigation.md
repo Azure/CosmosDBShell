@@ -305,8 +305,10 @@ output. **Machine mode** is entered when any of the following is true:
 
 In machine mode the shell disables ANSI colors, suppresses connection/informational
 banners, emits command results as the selected structured format (JSON or CSV) on `STDOUT`,
-and writes early parser/connection failures as a structured `{ "status": "error", "error": ... }`
-object on `STDERR`. Inferred partition-key mutation warnings are emitted before writes as
+and writes parser, connection, and command failures (including `theme` errors and rejected
+non-interactive `edit` calls) as a structured `{ "status": "error", "error": ... }` object
+on `STDERR`. In-shell `2>` / `2>>` redirection sends that error object to the specified
+file instead. Inferred partition-key mutation warnings are emitted before writes as
 JSON Lines records on console stderr; a later error is emitted as a separate JSON record.
 The human-facing `user` and `table` formats are not machine mode; `user`
 falls back to JSON whenever output is redirected, piped, or run in machine mode.
