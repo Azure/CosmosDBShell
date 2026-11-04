@@ -305,7 +305,7 @@ such as `cd /MyDb/customers`. See [Navigation](navigation.md) for more.
 
 ### pwd
 
-Show the current shell location.
+Show the current Cosmos DB location and the shell process's local working directory. This also works when disconnected.
 
 ```text
 Usage: pwd
@@ -314,14 +314,18 @@ Usage: pwd
 Examples:
 
 ```bash
-pwd                    # not connected
+pwd                    # Cosmos location: not connected
 connect "AccountEndpoint=...;AccountKey=..."
-pwd                    # /
+pwd                    # Cosmos location: /
 cd MyDb
-pwd                    # /MyDb
+pwd                    # Cosmos location: /MyDb
 cd MyContainer
-pwd                    # /MyDb/MyContainer
+pwd                    # Cosmos location: /MyDb/MyContainer
 ```
+
+Each call also prints `Local directory: <absolute path>`. Relative file paths, such as `export test.csv`, are resolved against that directory, independently of Cosmos DB navigation. `cd` changes the Cosmos DB location, not the local directory. With MCP, the directory is on the machine running the shell server, not necessarily the client machine.
+
+Structured output retains `type`, `database`, `container`, and `currentLocation`, and adds `localDirectory`.
 
 ## Appearance
 
@@ -887,7 +891,7 @@ Examples:
 - `export items.csv` exports as CSV with one column per top-level property (nested values are written as compact JSON).
 - `export items.json --format=csv` writes a JSON array file and presents the export summary as CSV.
 
-Normal output shows a readable summary with the number of items written and the total RU charge. `--format=json`, `--format=csv`, and `--format=table` change only this command result, not the exported data. When `--format` is omitted, the result inherits the shell's output settings.
+Normal output shows a readable summary with the number of items written, the absolute destination path, and the total RU charge. Relative destination paths are resolved against the local working directory shown by `pwd`, not the current Cosmos DB location. The structured result's `file` field retains the path supplied to the command. `--format=json`, `--format=csv`, and `--format=table` change only this command result, not the exported data. When `--format` is omitted, the result inherits the shell's output settings.
 
 ### import
 

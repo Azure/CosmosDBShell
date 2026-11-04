@@ -4,9 +4,13 @@
 
 ### Breaking changes
 
+- `pwd` now prints labeled Cosmos location and local directory lines. Structured results retain the existing fields and add `localDirectory`; consumers that require an exact JSON shape must accept the new field. ([#269](https://github.com/Azure/CosmosDBShell/issues/269))
+
 ### New features
 
 ### Fixes
+
+- Show the absolute destination path in export success messages so exported files can be located. The structured result's `file` field continues to contain the supplied path. ([#269](https://github.com/Azure/CosmosDBShell/issues/269))
 
 ### Improvements
 
