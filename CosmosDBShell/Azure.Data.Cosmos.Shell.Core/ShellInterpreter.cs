@@ -1369,6 +1369,14 @@ public partial class ShellInterpreter : IDisposable
                 this.RecordRequestCharge(new CommandState { RequestCharge = requestCharge }, generation);
             }
 
+            if (ex is Azure.RequestFailedException or CosmosException)
+            {
+                var commandName = string.IsNullOrEmpty(commandText)
+                    ? command.GetType().GetCustomAttribute<CosmosCommandAttribute>()?.CommandName ?? string.Empty
+                    : commandText;
+                throw new CommandException(commandName, ex);
+            }
+
             throw;
         }
         finally

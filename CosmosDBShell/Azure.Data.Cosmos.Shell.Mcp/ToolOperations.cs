@@ -808,10 +808,18 @@ internal class ToolOperations
         }
         catch (Exception ex)
         {
-            this.logger?.LogError(ex, $"An exception occurred running '{command.CommandName}'. ");
+            var message = CommandException.GetSummaryMessage(ex);
+            if (shell.Options?.Verbose == true)
+            {
+                this.logger?.LogError(ex, "An exception occurred running '{Command}'.", command.CommandName);
+            }
+            else
+            {
+                this.logger?.LogError("Error executing command '{Command}': {Message}", command.CommandName, message);
+            }
 
             return McpResponseFactory.CreateError(
-                $"Error executing command '{command.CommandName}': {ex.Message}",
+                $"Error executing command '{command.CommandName}': {message}",
                 ShellInterpreter.Instance.State,
                 RequestChargeContext.GetExceptionCharge(ex),
                 commandState.Warnings);
