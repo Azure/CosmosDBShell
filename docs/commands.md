@@ -1875,12 +1875,16 @@ Show help for commands.
 Usage: help [-details] [-plain] [command]
 
 Arguments:
-    [command]       Command to show help for (Optional)
+    [command]       Command, statement, or help topic to show help for (Optional)
 
 Options:
     -details, -d    Show detailed help for all commands
     -plain          Disable colors/styling
 ```
+
+Help topics:
+
+- `help shortcuts` — keyboard shortcuts for the interactive prompt, such as `Ctrl+R` history search. See [Keyboard Shortcuts](./navigation.md#keyboard-shortcuts).
 
 ### version
 
