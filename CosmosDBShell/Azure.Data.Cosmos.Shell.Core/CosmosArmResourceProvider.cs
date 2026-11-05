@@ -222,7 +222,9 @@ internal static class CosmosArmResourceProvider
             context.Account.Data.Location,
             new CosmosDBSqlDatabaseResourceInfo(databaseName))
         {
-            Options = CreateUpdateConfig(context.Account.Data, scale, maxRu),
+            Options = CreationThroughput.IsSpecified(scale, maxRu)
+                ? CreateUpdateConfig(context.Account.Data, scale, maxRu)
+                : null,
         };
 
         var operation = await context.Account.GetCosmosDBSqlDatabases().CreateOrUpdateAsync(WaitUntil.Completed, databaseName, content, token);
