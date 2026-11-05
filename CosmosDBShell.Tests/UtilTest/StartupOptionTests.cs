@@ -407,6 +407,36 @@ public class StartupOptionTests
         }
     }
 
+    [Theory]
+    [InlineData("{0}")]
+    [InlineData("echo first; {0}")]
+    public async Task InteractiveCancellation_DoesNotRenderPartialResult(string template)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Output = "json", Quiet = true };
+        Assert.True(CommandFactory.TryCreateFactory(typeof(StartupCancellationCommand), out var factory));
+        shell.App.Commands["startup-cancel-test"] = factory;
+        var output = Path.GetTempFileName();
+        const string sentinel = "previous complete result";
+        try
+        {
+            await File.WriteAllTextAsync(output, sentinel, TestContext.Current.CancellationToken);
+            using var cancellation = ShellInterpreter.UserCancellationTokenSource;
+
+            var state = await shell.ExecuteCommandAsync(
+                string.Format(template, $"startup-cancel-test > {JsonSerializer.Serialize(output)}"),
+                cancellation.Token);
+
+            Assert.True(cancellation.IsCancellationRequested);
+            Assert.False(state.IsError);
+            Assert.Equal(sentinel, await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(output);
+        }
+    }
+
     [Fact]
     public async Task StartupCancellation_RendersStructuredPartialResults()
     {

@@ -28,6 +28,24 @@ Found a typo or strangely worded sentences? Submit a PR! Documentation lives in 
 
 Contribute bug fixes, features, or design changes by following the development setup below.
 
+### Changelog and Release Notes
+
+Leave `CHANGELOG.md` unchanged in routine PRs, including its `Unreleased` section,
+to avoid merge conflicts between parallel changes. Summarize user-visible changes,
+breaking changes, migration guidance, and relevant issue links in the PR description
+instead. Keep directly relevant usage documentation and tests up to date; no
+per-change changelog fragment is required.
+
+Update the changelog only for release preparation or an explicitly requested
+changelog update. When preparing a release:
+
+1. Review merged PRs since the previous release and consolidate their user-visible
+   changes into the appropriate categories. Exclude unmerged work.
+2. Reconcile existing `Unreleased` entries without duplicating them, then move the
+   prepared entries into a dated version section.
+3. Retain `## Unreleased` and its four category headings, even when empty, in this
+   order: `Breaking changes`, `New features`, `Fixes`, `Improvements`.
+
 ## Development Setup
 
 ### Prerequisites

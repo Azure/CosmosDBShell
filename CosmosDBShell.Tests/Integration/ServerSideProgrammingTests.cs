@@ -81,8 +81,7 @@ public class ServerSideProgrammingTests : ConnectedEmulatorTestBase
 
             var exec = await ExecuteAsync($"sproc exec echoProc '[\"hello\"]' --partition-key pk1 --database {dbName} --container scripts");
 
-            if (exec is ErrorCommandState { Exception: CosmosException { StatusCode: HttpStatusCode.BadRequest } cosmosEx }
-                && cosmosEx.Message.Contains("Server-side script execution is not supported", StringComparison.Ordinal))
+            if (IsScriptExecutionUnsupported(exec))
             {
                 throw SkipException.ForSkip("The Cosmos DB emulator does not support server-side script execution.");
             }
@@ -114,8 +113,7 @@ public class ServerSideProgrammingTests : ConnectedEmulatorTestBase
 
             var exec = await ExecuteAsync($"sproc exec noBodyProc --partition-key pk1 --database {dbName} --container scripts");
 
-            if (exec is ErrorCommandState { Exception: CosmosException { StatusCode: HttpStatusCode.BadRequest } cosmosEx }
-                && cosmosEx.Message.Contains("Server-side script execution is not supported", StringComparison.Ordinal))
+            if (IsScriptExecutionUnsupported(exec))
             {
                 throw SkipException.ForSkip("The Cosmos DB emulator does not support server-side script execution.");
             }
@@ -127,6 +125,25 @@ public class ServerSideProgrammingTests : ConnectedEmulatorTestBase
         {
             File.Delete(bodyFile);
         }
+    }
+
+    internal static bool IsScriptExecutionUnsupported(CommandState state)
+    {
+        if (state is not ErrorCommandState error)
+        {
+            return false;
+        }
+
+        for (Exception? exception = error.Exception; exception != null; exception = exception.InnerException)
+        {
+            if (exception is CosmosException { StatusCode: HttpStatusCode.BadRequest } cosmosException
+                && cosmosException.Message.Contains("Server-side script execution is not supported", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     [Fact]
