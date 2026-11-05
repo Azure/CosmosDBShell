@@ -283,7 +283,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
                 isAutoscale = true;
                 break;
             default:
-                throw new CommandException(
+                throw CommandException.Usage(
                     "throughput",
                     MessageService.GetArgsString("command-throughput-error-invalid_subcommand", "subcommand", this.Subcommand));
         }
@@ -295,7 +295,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         }
         else if (this.Ru.HasValue)
         {
-            throw new CommandException("throughput", MessageService.GetString("command-throughput-error-show_no_args"));
+            throw CommandException.Usage("throughput", MessageService.GetString("command-throughput-error-show_no_args"));
         }
 
         await ValidateContainerExistsAsync(state, databaseName, containerName, "throughput", token);
@@ -364,13 +364,13 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
     {
         if (!this.Ru.HasValue)
         {
-            throw new CommandException("throughput", MessageService.GetString("command-throughput-error-missing_ru"));
+            throw CommandException.Usage("throughput", MessageService.GetString("command-throughput-error-missing_ru"));
         }
 
         int value = this.Ru.Value;
         if (value <= 0)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "throughput",
                 MessageService.GetArgsString("command-throughput-error-invalid_ru", "ru", value));
         }
@@ -383,7 +383,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         if (value < minimum)
         {
             string key = isAutoscale ? "command-throughput-error-autoscale_min" : "command-throughput-error-manual_min";
-            throw new CommandException(
+            throw CommandException.Usage(
                 "throughput",
                 MessageService.GetArgsString(key, "ru", value, "min", minimum));
         }
@@ -391,7 +391,7 @@ internal class ThroughputCommand : CosmosCommand, IStateVisitor<CommandState, Sh
         if (value % increment != 0)
         {
             string key = isAutoscale ? "command-throughput-error-autoscale_increment" : "command-throughput-error-manual_increment";
-            throw new CommandException(
+            throw CommandException.Usage(
                 "throughput",
                 MessageService.GetArgsString(key, "ru", value, "increment", increment));
         }

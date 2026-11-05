@@ -113,12 +113,12 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         var keys = (partitionKey ?? string.Empty).Split(",", StringSplitOptions.TrimEntries).ToList();
         if (string.IsNullOrEmpty(keys[0]))
         {
-            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_empty"));
+            throw CommandException.Usage("mkcon", MessageService.GetString("command-mkcon-error_partition_key_empty"));
         }
 
         if (keys.Any(key => !key.StartsWith("/")))
         {
-            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_partition_key_slash"));
+            throw CommandException.Usage("mkcon", MessageService.GetString("command-mkcon-error_partition_key_slash"));
         }
 
         return keys;
@@ -166,7 +166,7 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         }
         catch (InvalidIndexingPolicyJsonException ex)
         {
-            throw new CommandException("mkcon", MessageService.GetString("command-mkcon-error_invalid_index_policy"), ex);
+            throw CommandException.Usage("mkcon", MessageService.GetString("command-mkcon-error_invalid_index_policy"), ex);
         }
         catch (ServerlessThroughputNotSupportedException ex)
         {

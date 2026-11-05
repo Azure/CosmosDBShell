@@ -87,7 +87,7 @@ internal class TriggerCommand : CosmosCommand
         {
             "pre" => TriggerType.Pre,
             "post" => TriggerType.Post,
-            _ => throw new CommandException(
+            _ => throw CommandException.Usage(
                 "trigger",
                 MessageService.GetArgsString("command-trigger-error-invalid_type", "type", value ?? string.Empty)),
         };
@@ -106,7 +106,7 @@ internal class TriggerCommand : CosmosCommand
             "replace" => TriggerOperation.Replace,
             "delete" => TriggerOperation.Delete,
             "update" => TriggerOperation.Update,
-            _ => throw new CommandException(
+            _ => throw CommandException.Usage(
                 "trigger",
                 MessageService.GetArgsString("command-trigger-error-invalid_operation", "operation", value ?? string.Empty)),
         };
@@ -117,7 +117,7 @@ internal class TriggerCommand : CosmosCommand
         var subcommand = NormalizeSubcommand(this.Subcommand);
         if (subcommand.Length == 0)
         {
-            throw new CommandException("trigger", MessageService.GetString("command-trigger-error-missing_subcommand"));
+            throw CommandException.Usage("trigger", MessageService.GetString("command-trigger-error-missing_subcommand"));
         }
 
         if (shell.State is not ConnectedState connectedState)
@@ -141,7 +141,7 @@ internal class TriggerCommand : CosmosCommand
             "create" or "set" => await this.CreateAsync(container, shell, commandState, token),
             "edit" => await this.EditAsync(container, shell, commandState, token),
             "delete" or "rm" => await this.DeleteAsync(container, commandState, token),
-            _ => throw new CommandException(
+            _ => throw CommandException.Usage(
                 "trigger",
                 MessageService.GetArgsString("command-trigger-error-invalid_subcommand", "subcommand", subcommand)),
         };
@@ -296,7 +296,7 @@ internal class TriggerCommand : CosmosCommand
 
         if (string.IsNullOrWhiteSpace(this.Type))
         {
-            throw new CommandException("trigger", MessageService.GetString("command-trigger-error-missing_type"));
+            throw CommandException.Usage("trigger", MessageService.GetString("command-trigger-error-missing_type"));
         }
 
         var triggerType = ParseTriggerType(this.Type);
@@ -315,7 +315,7 @@ internal class TriggerCommand : CosmosCommand
         // real terminal, so scripts and MCP must pass a file instead.
         if (Console.IsInputRedirected || !string.IsNullOrEmpty(shell.CurrentScriptFileName))
         {
-            throw new CommandException("trigger", MessageService.GetString("command-trigger-error-missing_file"));
+            throw CommandException.Usage("trigger", MessageService.GetString("command-trigger-error-missing_file"));
         }
 
         // Check for an existing trigger before opening the editor so the user
@@ -579,7 +579,7 @@ internal class TriggerCommand : CosmosCommand
     {
         if (string.IsNullOrWhiteSpace(this.Name))
         {
-            throw new CommandException("trigger", MessageService.GetString("command-trigger-error-missing_name"));
+            throw CommandException.Usage("trigger", MessageService.GetString("command-trigger-error-missing_name"));
         }
 
         return this.Name;

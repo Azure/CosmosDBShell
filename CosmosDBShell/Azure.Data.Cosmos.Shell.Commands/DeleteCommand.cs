@@ -73,7 +73,7 @@ internal class DeleteCommand : CosmosCommand
         }
         else
         {
-            throw new CommandException("delete", MessageService.GetString("command-delete-error-invalid_item_type"));
+            throw CommandException.Usage("delete", MessageService.GetString("command-delete-error-invalid_item_type"));
         }
 
         return commandState;

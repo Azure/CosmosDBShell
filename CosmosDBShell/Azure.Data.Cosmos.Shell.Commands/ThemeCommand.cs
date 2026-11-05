@@ -74,7 +74,7 @@ internal class ThemeCommand : CosmosCommand
                 string.Join(", ", ThemeRegistry.Instance.All.Keys)));
 
     private static CommandException UnknownAction(string action)
-        => new(
+        => CommandException.Usage(
             "theme",
             MessageService.GetArgsString(
                 "command-theme-unknown-action",
@@ -253,7 +253,7 @@ internal class ThemeCommand : CosmosCommand
     {
         if (string.IsNullOrWhiteSpace(this.Name))
         {
-            throw new CommandException("theme", MessageService.GetString("command-theme-use-missing-name"));
+            throw CommandException.Usage("theme", MessageService.GetString("command-theme-use-missing-name"));
         }
 
         if (!ThemeProfiles.TryGet(this.Name, out var profile))
@@ -274,7 +274,7 @@ internal class ThemeCommand : CosmosCommand
         if (string.IsNullOrWhiteSpace(requested))
         {
             var message = MessageService.GetString("command-theme-load-missing-path");
-            throw new CommandException("theme", message);
+            throw CommandException.Usage("theme", message);
         }
 
         var path = ResolveThemePath(requested);
@@ -321,7 +321,7 @@ internal class ThemeCommand : CosmosCommand
         if (string.IsNullOrWhiteSpace(this.Name))
         {
             var message = MessageService.GetString("command-theme-save-missing-name");
-            throw new CommandException("theme", message);
+            throw CommandException.Usage("theme", message);
         }
 
         string path;
@@ -336,7 +336,7 @@ internal class ThemeCommand : CosmosCommand
                 || this.Name != System.IO.Path.GetFileName(this.Name))
             {
                 var message = MessageService.GetArgsString("command-theme-save-invalid-name", "name", this.Name);
-                throw new CommandException("theme", message);
+                throw CommandException.Usage("theme", message);
             }
 
             path = System.IO.Path.Combine(ThemeFile.DefaultUserThemesDirectory(), this.Name + ".toml");

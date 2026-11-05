@@ -101,7 +101,7 @@ internal class WatchCommand : CosmosCommand
 
         if (double.IsNaN(value) || double.IsInfinity(value))
         {
-            throw new CommandException("watch", MessageService.GetArgsString("command-watch-error-invalid_interval", "interval", value.ToString()));
+            throw CommandException.Usage("watch", MessageService.GetArgsString("command-watch-error-invalid_interval", "interval", value.ToString()));
         }
 
         return TimeSpan.FromSeconds(Math.Max(value, MinIntervalSeconds));

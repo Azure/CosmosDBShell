@@ -35,7 +35,7 @@ internal class ReplaceCommand : CosmosCommand
         var jsonOpt = this.Data ?? (evaluatedResult as string);
         if (string.IsNullOrEmpty(jsonOpt))
         {
-            throw new CommandException("replace", MessageService.GetString("error-no_input_data"));
+            throw CommandException.Usage("replace", MessageService.GetString("error-no_input_data"));
         }
 
         if (shell.State is not ConnectedState connectedState)
@@ -85,7 +85,7 @@ internal class ReplaceCommand : CosmosCommand
             {
                 if (!string.IsNullOrEmpty(etag))
                 {
-                    throw new CommandException("replace", MessageService.GetString("command-replace-error-etag_array_not_supported"));
+                    throw CommandException.Usage("replace", MessageService.GetString("command-replace-error-etag_array_not_supported"));
                 }
 
                 var undefinedPartitionKeyCount =
@@ -113,6 +113,7 @@ internal class ReplaceCommand : CosmosCommand
     {
         int successCount = 0;
         int failCount = 0;
+        bool hasUsageError = false;
         double charge = 0.0;
 
         foreach (var element in arrayRoot.EnumerateArray())
@@ -125,6 +126,7 @@ internal class ReplaceCommand : CosmosCommand
             }
             catch (CommandException ex)
             {
+                hasUsageError |= ShellExitCode.FromException(ex) == ShellExitCode.UsageError;
                 RequestChargeContext.Record(RequestChargeContext.GetCosmosExceptionCharge(ex));
                 failCount++;
                 ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, ex.Message);
@@ -149,14 +151,15 @@ internal class ReplaceCommand : CosmosCommand
         {
             ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, summary);
             RequestChargeContext.Record(charge);
-            throw new CommandException(
-                "replace",
-                MessageService.GetArgsString(
-                    "command-replace-error-array_failed",
-                    "failed",
-                    failCount,
-                    "total",
-                    successCount + failCount));
+            var message = MessageService.GetArgsString(
+                "command-replace-error-array_failed",
+                "failed",
+                failCount,
+                "total",
+                successCount + failCount);
+            throw hasUsageError
+                ? CommandException.Usage("replace", message)
+                : new CommandException("replace", message);
         }
 
         return new ReplaceSummary(successCount, failCount, charge, summary);
@@ -166,12 +169,12 @@ internal class ReplaceCommand : CosmosCommand
     {
         if (item.ValueKind != JsonValueKind.Object)
         {
-            throw new CommandException("replace", MessageService.GetString("command-replace-error-invalid_item"));
+            throw CommandException.Usage("replace", MessageService.GetString("command-replace-error-invalid_item"));
         }
 
         if (!item.TryGetProperty("id", out var idElement) || idElement.ValueKind != JsonValueKind.String || string.IsNullOrEmpty(idElement.GetString()))
         {
-            throw new CommandException("replace", MessageService.GetString("command-replace-error-missing_id"));
+            throw CommandException.Usage("replace", MessageService.GetString("command-replace-error-missing_id"));
         }
 
         var id = idElement.GetString();
@@ -180,7 +183,7 @@ internal class ReplaceCommand : CosmosCommand
         {
             if (!TryCreatePartitionKeyFromItem(item, partitionKeyPaths, out _, out partitionKey))
             {
-                throw new CommandException(
+                throw CommandException.Usage(
                     "replace",
                     MessageService.GetString(
                         "command-replace-error-missing_partition_key",

@@ -171,7 +171,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
         {
             "consistent" => "consistent",
             "none" => "none",
-            _ => throw new CommandException("index", MessageService.GetString("command-index-error-invalid_mode")),
+            _ => throw CommandException.Usage("index", MessageService.GetString("command-index-error-invalid_mode")),
         };
     }
 
@@ -191,7 +191,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
             return parsed;
         }
 
-        throw new CommandException("index", MessageService.GetString("command-index-error-invalid_automatic"));
+        throw CommandException.Usage("index", MessageService.GetString("command-index-error-invalid_automatic"));
     }
 
     private static JsonObject ParseObject(string policyJson)
@@ -199,11 +199,11 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
         try
         {
             return JsonNode.Parse(policyJson) as JsonObject
-                ?? throw new CommandException("index", MessageService.GetString("command-index-error-invalid_policy"));
+                ?? throw CommandException.Usage("index", MessageService.GetString("command-index-error-invalid_policy"));
         }
         catch (JsonException ex)
         {
-            throw new CommandException("index", MessageService.GetString("command-index-error-invalid_policy"), ex);
+            throw CommandException.Usage("index", MessageService.GetString("command-index-error-invalid_policy"), ex);
         }
     }
 
@@ -324,7 +324,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
             case "set":
                 return await this.SetAsync(state, databaseName, containerName, token);
             default:
-                throw new CommandException(
+                throw CommandException.Usage(
                     "index",
                     MessageService.GetArgsString("command-index-error-invalid_subcommand", "subcommand", this.Subcommand));
         }
@@ -334,7 +334,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
     {
         if (this.Paths is { Length: > 0 })
         {
-            throw new CommandException("index", MessageService.GetString("command-index-error-show_no_args"));
+            throw CommandException.Usage("index", MessageService.GetString("command-index-error-show_no_args"));
         }
 
         string json = await this.ReadPolicyAsync(state, databaseName, containerName, token);
@@ -365,7 +365,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
 
         if (policyArgument is null && string.IsNullOrEmpty(this.Mode) && !automatic.HasValue)
         {
-            throw new CommandException("index", MessageService.GetString("command-index-error-missing_set_args"));
+            throw CommandException.Usage("index", MessageService.GetString("command-index-error-missing_set_args"));
         }
 
         string baseJson = policyArgument ?? await this.ReadPolicyAsync(state, databaseName, containerName, token);
@@ -377,7 +377,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
     {
         if (this.Paths is null || this.Paths.Length == 0)
         {
-            throw new CommandException("index", MessageService.GetString("command-index-error-missing_paths"));
+            throw CommandException.Usage("index", MessageService.GetString("command-index-error-missing_paths"));
         }
 
         return this.Paths;

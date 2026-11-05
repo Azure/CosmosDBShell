@@ -107,7 +107,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         {
             "lastwriterwins" or "lww" or "last-writer-wins" => "lastWriterWins",
             "custom" => "custom",
-            _ => throw new CommandException("conflict", MessageService.GetString("command-conflict-error-invalid_mode")),
+            _ => throw CommandException.Usage("conflict", MessageService.GetString("command-conflict-error-invalid_mode")),
         };
     }
 
@@ -160,7 +160,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
                 normalizedMode = this.PreValidateSet();
                 break;
             default:
-                throw new CommandException(
+                throw CommandException.Usage(
                     "conflict",
                     MessageService.GetArgsString("command-conflict-error-invalid_subcommand", "subcommand", this.Subcommand));
         }
@@ -187,22 +187,22 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         string? procedure = NormalizeOption(this.Procedure);
         if (normalizedMode is null && path is null && procedure is null)
         {
-            throw new CommandException("conflict", MessageService.GetString("command-conflict-error-missing_set_args"));
+            throw CommandException.Usage("conflict", MessageService.GetString("command-conflict-error-missing_set_args"));
         }
 
         if (path is not null && procedure is not null)
         {
-            throw new CommandException("conflict", MessageService.GetString("command-conflict-error-path_and_procedure"));
+            throw CommandException.Usage("conflict", MessageService.GetString("command-conflict-error-path_and_procedure"));
         }
 
         if (string.Equals(normalizedMode, "custom", StringComparison.Ordinal) && path is not null)
         {
-            throw new CommandException("conflict", MessageService.GetString("command-conflict-error-path_with_custom"));
+            throw CommandException.Usage("conflict", MessageService.GetString("command-conflict-error-path_with_custom"));
         }
 
         if (string.Equals(normalizedMode, "lastWriterWins", StringComparison.Ordinal) && procedure is not null)
         {
-            throw new CommandException("conflict", MessageService.GetString("command-conflict-error-procedure_with_lww"));
+            throw CommandException.Usage("conflict", MessageService.GetString("command-conflict-error-procedure_with_lww"));
         }
 
         return normalizedMode;
@@ -221,13 +221,13 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         {
             if (path is not null)
             {
-                throw new CommandException("conflict", MessageService.GetString("command-conflict-error-path_with_custom"));
+                throw CommandException.Usage("conflict", MessageService.GetString("command-conflict-error-path_with_custom"));
             }
 
             string? effectiveProcedure = procedure ?? current.ResolutionProcedure;
             if (string.IsNullOrWhiteSpace(effectiveProcedure))
             {
-                throw new CommandException("conflict", MessageService.GetString("command-conflict-error-missing_procedure"));
+                throw CommandException.Usage("conflict", MessageService.GetString("command-conflict-error-missing_procedure"));
             }
 
             update = new ConflictResolutionUpdate("custom", null, effectiveProcedure);
@@ -236,7 +236,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         {
             if (procedure is not null)
             {
-                throw new CommandException("conflict", MessageService.GetString("command-conflict-error-procedure_with_lww"));
+                throw CommandException.Usage("conflict", MessageService.GetString("command-conflict-error-procedure_with_lww"));
             }
 
             string resolutionPath = path ?? current.ResolutionPath ?? "/_ts";

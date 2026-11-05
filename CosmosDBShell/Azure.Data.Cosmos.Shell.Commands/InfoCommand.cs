@@ -69,12 +69,12 @@ internal class InfoCommand : CosmosCommand
         // by falling back to a broader scope.
         if (!string.IsNullOrEmpty(containerName) && string.IsNullOrEmpty(databaseName))
         {
-            throw new CommandException("info", MessageService.GetString("command-info-error-container-without-database"));
+            throw CommandException.Usage("info", MessageService.GetString("command-info-error-container-without-database"));
         }
 
         if (this.Partitions && string.IsNullOrEmpty(containerName))
         {
-            throw new CommandException("info", MessageService.GetString("command-info-error-partitions-requires-container"));
+            throw CommandException.Usage("info", MessageService.GetString("command-info-error-partitions-requires-container"));
         }
 
         try
@@ -133,7 +133,7 @@ internal class InfoCommand : CosmosCommand
         }
         else
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "info",
                 MessageService.GetArgsString("command-info-error-invalid-format", "format", format));
         }

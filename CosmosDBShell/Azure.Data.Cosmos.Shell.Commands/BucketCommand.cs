@@ -226,7 +226,7 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             return BucketActionKind.ClientSet;
         }
 
-        throw new CommandException(
+        throw CommandException.Usage(
             "bucket",
             MessageService.GetArgsString("command-bucket-error-invalid_subcommand", "subcommand", raw));
     }
@@ -238,7 +238,7 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
     {
         if (this.Id.HasValue || this.Percent.HasValue)
         {
-            throw new CommandException("bucket", MessageService.GetString("command-bucket-error-unexpected_args"));
+            throw CommandException.Usage("bucket", MessageService.GetString("command-bucket-error-unexpected_args"));
         }
 
         string? message = null;
@@ -288,7 +288,7 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
         if ((kind == BucketActionKind.ServerShow && (this.Id.HasValue || this.Percent.HasValue))
             || (kind == BucketActionKind.ServerClear && this.Percent.HasValue))
         {
-            throw new CommandException("bucket", MessageService.GetString("command-bucket-error-unexpected_args"));
+            throw CommandException.Usage("bucket", MessageService.GetString("command-bucket-error-unexpected_args"));
         }
 
         if (string.IsNullOrEmpty(containerName))
@@ -380,13 +380,13 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
     {
         if (!this.Id.HasValue)
         {
-            throw new CommandException("bucket", MessageService.GetString("command-bucket-error-missing_id"));
+            throw CommandException.Usage("bucket", MessageService.GetString("command-bucket-error-missing_id"));
         }
 
         int id = this.Id.Value;
         if (id < 1 || id > 5)
         {
-            throw new CommandException("bucket", MessageService.GetArgsString("command-bucket-error-invalid_id", "id", id));
+            throw CommandException.Usage("bucket", MessageService.GetArgsString("command-bucket-error-invalid_id", "id", id));
         }
 
         return id;
@@ -396,13 +396,13 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
     {
         if (!this.Percent.HasValue)
         {
-            throw new CommandException("bucket", MessageService.GetString("command-bucket-error-missing_percent"));
+            throw CommandException.Usage("bucket", MessageService.GetString("command-bucket-error-missing_percent"));
         }
 
         int percent = this.Percent.Value;
         if (percent < 1 || percent > 100)
         {
-            throw new CommandException("bucket", MessageService.GetArgsString("command-bucket-error-invalid_percent", "percent", percent));
+            throw CommandException.Usage("bucket", MessageService.GetArgsString("command-bucket-error-invalid_percent", "percent", percent));
         }
 
         return percent;

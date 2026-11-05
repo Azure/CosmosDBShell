@@ -90,7 +90,7 @@ internal class HelpCommand : CosmosCommand
             }
 
             // Neither command, statement, nor help topic
-            throw new CommandException("help", MessageService.GetString("error-command-not-found", MessageService.Args("command", cmdStr)));
+            throw CommandException.Usage("help", MessageService.GetString("error-command-not-found", MessageService.Args("command", cmdStr)));
         }
 
         if (cmd == null)

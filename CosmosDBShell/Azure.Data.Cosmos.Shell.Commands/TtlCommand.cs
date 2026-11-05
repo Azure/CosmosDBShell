@@ -185,7 +185,7 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
                 isShow = true;
                 if (this.Seconds.HasValue)
                 {
-                    throw new CommandException("ttl", MessageService.GetString("command-ttl-error-show_no_args"));
+                    throw CommandException.Usage("ttl", MessageService.GetString("command-ttl-error-show_no_args"));
                 }
 
                 break;
@@ -201,7 +201,7 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
                 targetTtl = null;
                 break;
             default:
-                throw new CommandException(
+                throw CommandException.Usage(
                     "ttl",
                     MessageService.GetArgsString("command-ttl-error-invalid_subcommand", "subcommand", this.Subcommand));
         }
@@ -238,13 +238,13 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
     {
         if (!this.Seconds.HasValue)
         {
-            throw new CommandException("ttl", MessageService.GetString("command-ttl-error-missing_seconds"));
+            throw CommandException.Usage("ttl", MessageService.GetString("command-ttl-error-missing_seconds"));
         }
 
         int seconds = this.Seconds.Value;
         if (seconds <= 0)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "ttl",
                 MessageService.GetArgsString("command-ttl-error-invalid_seconds", "seconds", seconds));
         }
@@ -256,7 +256,7 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
     {
         if (this.Seconds.HasValue)
         {
-            throw new CommandException("ttl", MessageService.GetString("command-ttl-error-toggle_no_args"));
+            throw CommandException.Usage("ttl", MessageService.GetString("command-ttl-error-toggle_no_args"));
         }
     }
 }

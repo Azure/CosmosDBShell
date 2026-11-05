@@ -36,7 +36,7 @@ internal class FilterCallExpression : Expression
         var current = currentState.Result?.ConvertShellObject(DataType.Json);
         if (current is not JsonElement currentJson)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "filter",
                 MessageService.GetString(
                     "command-filter-error-not_json",
@@ -52,7 +52,7 @@ internal class FilterCallExpression : Expression
             "map" => await this.EvaluateMapAsync(interpreter, currentState, currentJson, cancellationToken),
             "select" => await this.EvaluateSelectAsync(interpreter, currentState, currentJson, cancellationToken),
             "sort_by" => await this.EvaluateSortByAsync(interpreter, currentState, currentJson, cancellationToken),
-            _ => throw new CommandException(
+            _ => throw CommandException.Usage(
                 "filter",
                 MessageService.GetString(
                     "command-filter-error-unknown_builtin",
@@ -91,7 +91,7 @@ internal class FilterCallExpression : Expression
             JsonValueKind.Object => new ShellNumber(currentJson.EnumerateObject().Count()),
             JsonValueKind.String => new ShellNumber((currentJson.GetString() ?? string.Empty).Length),
             JsonValueKind.Null => new ShellNumber(0),
-            _ => throw new CommandException(
+            _ => throw CommandException.Usage(
                 "filter",
                 MessageService.GetString(
                     "command-filter-error-length_type",
@@ -103,7 +103,7 @@ internal class FilterCallExpression : Expression
     {
         if (currentJson.ValueKind != JsonValueKind.Object)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "filter",
                 MessageService.GetString(
                     "command-filter-error-keys_type",
@@ -123,7 +123,7 @@ internal class FilterCallExpression : Expression
     {
         if (actual != expected)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "filter",
                 MessageService.GetString(
                     "command-filter-error-argument_count",
@@ -143,7 +143,7 @@ internal class FilterCallExpression : Expression
         this.RequireArgumentCount(1);
         if (currentJson.ValueKind != JsonValueKind.Array)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "filter",
                 MessageService.GetString(
                     "command-filter-error-map_type",
@@ -174,7 +174,7 @@ internal class FilterCallExpression : Expression
         this.RequireArgumentCount(1);
         if (currentJson.ValueKind != JsonValueKind.Array)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "filter",
                 MessageService.GetString(
                     "command-filter-error-select_type",
@@ -205,7 +205,7 @@ internal class FilterCallExpression : Expression
         this.RequireArgumentCount(1);
         if (currentJson.ValueKind != JsonValueKind.Array)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "filter",
                 MessageService.GetString(
                     "command-filter-error-sort_by_type",

@@ -848,6 +848,14 @@ public partial class ShellInterpreter : IDisposable
             }
             catch (Exception e)
             {
+                if (FindException<CommandState.FailureException>(e)?.State is { OutputRendered: true } reportedError)
+                {
+                    reportedError.ShareWarningsFrom(state);
+                    result = this.PrintState(reportedError);
+                    this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
+                    return result;
+                }
+
                 if (FindException<CommandState.FailureException>(e)?.State is StructuredErrorCommandState structuredError)
                 {
                     structuredError.ShareWarningsFrom(state);
@@ -2382,7 +2390,7 @@ public partial class ShellInterpreter : IDisposable
                 state,
                 redirected,
                 inMachineMode,
-                deferToErrorEnvelope: state is StructuredErrorCommandState);
+                deferToErrorEnvelope: state is ErrorCommandState);
 
             if (state.OutputRendered)
             {
@@ -2441,6 +2449,12 @@ public partial class ShellInterpreter : IDisposable
                         : $"{errorLocation.FileName}:{errorLocation.Line}:{errorLocation.Column}: {structuredError.Exception.Message}",
                     structuredError.Result,
                     state.Warnings);
+                return state;
+            }
+
+            if (inMachineMode && state is ErrorCommandState error)
+            {
+                this.ReportExecutionError(error.Exception, warnings: state.Warnings);
                 return state;
             }
 
@@ -2522,7 +2536,7 @@ public partial class ShellInterpreter : IDisposable
         }
         catch (Exception e)
         {
-            if (this.Options?.Verbose == true)
+            if (this.Options?.Verbose == true && !this.IsMachineMode)
             {
                 this.Output.WriteException(ShellMessageKind.Error, e);
                 return new ErrorCommandState(e);
@@ -2547,7 +2561,7 @@ public partial class ShellInterpreter : IDisposable
                     this.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(canceled));
                 }
 
-                return new ErrorCommandState(e);
+                return new ErrorCommandState(e) { OutputRendered = inMachineMode };
             }
 
             if (inMachineMode)
@@ -2571,7 +2585,7 @@ public partial class ShellInterpreter : IDisposable
                 }
             }
 
-            return new ErrorCommandState(e);
+            return new ErrorCommandState(e) { OutputRendered = inMachineMode };
         }
         finally
         {

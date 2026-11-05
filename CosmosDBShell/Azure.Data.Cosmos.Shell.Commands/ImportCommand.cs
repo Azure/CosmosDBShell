@@ -104,7 +104,7 @@ internal class ImportCommand : CosmosCommand
     {
         if (string.IsNullOrWhiteSpace(line))
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "import",
                 MessageService.GetArgsString(
                     "command-import-error-blank_line",
@@ -117,7 +117,7 @@ internal class ImportCommand : CosmosCommand
             using var doc = JsonDocument.Parse(line);
             if (doc.RootElement.ValueKind != JsonValueKind.Object)
             {
-                throw new CommandException(
+                throw CommandException.Usage(
                     "import",
                     MessageService.GetArgsString(
                         "command-import-error-not_object",
@@ -129,7 +129,7 @@ internal class ImportCommand : CosmosCommand
         }
         catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "import",
                 MessageService.GetArgsString(
                     "command-import-error-invalid_line_json",
@@ -182,7 +182,7 @@ internal class ImportCommand : CosmosCommand
             index++;
             if (element.ValueKind != JsonValueKind.Object)
             {
-                throw new CommandException(
+                throw CommandException.Usage(
                     "import",
                     MessageService.GetArgsString(
                         "command-import-error-not_object",
@@ -250,7 +250,7 @@ internal class ImportCommand : CosmosCommand
             {
                 if (buffer[offset] != (byte)'{')
                 {
-                    throw new CommandException(
+                    throw CommandException.Usage(
                         "import",
                         MessageService.GetArgsString("command-import-error-not_object", "line", line));
                 }
@@ -317,7 +317,7 @@ internal class ImportCommand : CosmosCommand
         }
         catch (JsonException ex)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "import",
                 MessageService.GetArgsString("command-import-error-invalid_line_json", "line", line, "message", ex.Message),
                 ex);
@@ -336,7 +336,7 @@ internal class ImportCommand : CosmosCommand
         }
         catch (JsonException ex)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "import",
                 MessageService.GetArgsString("command-import-error-invalid_line_json", "line", line, "message", ex.Message),
                 ex);
@@ -364,7 +364,7 @@ internal class ImportCommand : CosmosCommand
         }
         catch (Exception ex) when (ex is JsonException or DecoderFallbackException)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "import",
                 MessageService.GetArgsString("command-import-error-invalid_document", "message", ex.Message),
                 ex);
@@ -411,7 +411,7 @@ internal class ImportCommand : CosmosCommand
         }
         catch (DecoderFallbackException ex)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "import",
                 MessageService.GetArgsString("command-import-error-invalid_document", "message", ex.Message),
                 ex);
@@ -522,7 +522,7 @@ internal class ImportCommand : CosmosCommand
             }
             catch (CsvHelperException ex)
             {
-                throw new CommandException("import", MessageService.GetArgsString("command-import-error-invalid_csv", "line", startLine), ex);
+                throw CommandException.Usage("import", MessageService.GetArgsString("command-import-error-invalid_csv", "line", startLine), ex);
             }
 
             if (fields is not null && parser.RawRecord.TrimEnd('\r', '\n').Length > 0)
@@ -554,7 +554,7 @@ internal class ImportCommand : CosmosCommand
             }
             catch (CsvHelperException ex)
             {
-                throw new CommandException("import", MessageService.GetArgsString("command-import-error-invalid_csv", "line", startLine), ex);
+                throw CommandException.Usage("import", MessageService.GetArgsString("command-import-error-invalid_csv", "line", startLine), ex);
             }
 
             if (fields is not null && parser.RawRecord.TrimEnd('\r', '\n').Length > 0)
@@ -594,7 +594,7 @@ internal class ImportCommand : CosmosCommand
             {
                 if (i < values.Count && !string.IsNullOrEmpty(values[i]))
                 {
-                    throw new CommandException(
+                    throw CommandException.Usage(
                         "import",
                         MessageService.GetArgsString(
                             "command-import-error-unnamed_csv_value",
@@ -633,7 +633,7 @@ internal class ImportCommand : CosmosCommand
                         // array) value from another CSV column. Nesting under it
                         // would silently discard that value, so fail loudly
                         // instead of corrupting the imported data.
-                        throw new CommandException(
+                        throw CommandException.Usage(
                             "import",
                             MessageService.GetArgsString(
                                 "command-import-error-csv_pk_conflict",
@@ -691,12 +691,12 @@ internal class ImportCommand : CosmosCommand
         var concurrency = this.Concurrency ?? DefaultConcurrency;
         if (concurrency < 1)
         {
-            throw new CommandException("import", MessageService.GetString("command-import-error-invalid_concurrency"));
+            throw CommandException.Usage("import", MessageService.GetString("command-import-error-invalid_concurrency"));
         }
 
         if (string.IsNullOrWhiteSpace(this.File))
         {
-            throw new CommandException("import", MessageService.GetString("command-import-error-missing_file"));
+            throw CommandException.Usage("import", MessageService.GetString("command-import-error-missing_file"));
         }
 
         var filePath = this.File!;
@@ -762,7 +762,7 @@ internal class ImportCommand : CosmosCommand
         }
         catch (DecoderFallbackException ex)
         {
-            failure = new CommandException(
+            failure = CommandException.Usage(
                 "import",
                 MessageService.GetArgsString("command-import-error-invalid_document", "message", ex.Message),
                 ex);

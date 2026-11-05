@@ -67,23 +67,23 @@ internal sealed class DoctorCommand : CosmosCommand
         commandState.SetFormat(this.Format);
         if (this.Subcommand != null && !string.Equals(this.Subcommand.Trim(), "who", StringComparison.OrdinalIgnoreCase))
         {
-            throw new CommandException("doctor", Message("invalid-subcommand"));
+            throw CommandException.Usage("doctor", Message("invalid-subcommand"));
         }
 
         if (this.Timeout is < 1 or > 120)
         {
-            throw new CommandException("doctor", Message("invalid-timeout"));
+            throw CommandException.Usage("doctor", Message("invalid-timeout"));
         }
 
         var (database, container) = this.ResolveTarget(shell.State);
         if (container != null && database == null)
         {
-            throw new CommandException("doctor", Message("container-without-database"));
+            throw CommandException.Usage("doctor", Message("container-without-database"));
         }
 
         if (this.Query && container == null)
         {
-            throw new CommandException("doctor", Message("query-without-container"));
+            throw CommandException.Usage("doctor", Message("query-without-container"));
         }
 
         var currentVersion = ShellInterpreter.GetDisplayVersion(typeof(ShellInterpreter).Assembly);

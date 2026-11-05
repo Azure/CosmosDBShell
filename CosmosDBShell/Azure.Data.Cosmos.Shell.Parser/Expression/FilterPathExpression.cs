@@ -38,7 +38,7 @@ internal class FilterPathExpression : Expression
         var evaluatedResult = currentState.Result?.ConvertShellObject(DataType.Json);
         if (evaluatedResult is not JsonElement root)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "filter",
                 MessageService.GetString(
                     "command-filter-error-not_json",
@@ -75,7 +75,7 @@ internal class FilterPathExpression : Expression
                         }
                         else
                         {
-                            throw new CommandException(
+                            throw CommandException.Usage(
                                 "filter",
                                 MessageService.GetString(
                                     "command-filter-error-property_type",
@@ -106,7 +106,7 @@ internal class FilterPathExpression : Expression
                         }
                         else
                         {
-                            throw new CommandException(
+                            throw CommandException.Usage(
                                 "filter",
                                 MessageService.GetString(
                                     "command-filter-error-index_type",
@@ -135,7 +135,7 @@ internal class FilterPathExpression : Expression
                         }
                         else
                         {
-                            throw new CommandException(
+                            throw CommandException.Usage(
                                 "filter",
                                 MessageService.GetString(
                                     "command-filter-error-iterate_type",

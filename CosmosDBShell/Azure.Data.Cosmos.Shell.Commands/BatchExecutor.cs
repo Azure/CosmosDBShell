@@ -25,12 +25,12 @@ internal static class BatchExecutor
     {
         if (operations.Count == 0)
         {
-            throw new CommandException(commandName, MessageService.GetString("command-batch-error-empty"));
+            throw CommandException.Usage(commandName, MessageService.GetString("command-batch-error-empty"));
         }
 
         if (operations.Count > MaxOperations)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 commandName,
                 MessageService.GetArgsString("command-batch-error-too_many", "count", operations.Count));
         }
