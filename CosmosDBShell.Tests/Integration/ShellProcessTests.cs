@@ -814,6 +814,40 @@ public class ShellProcessTests
         }
     }
 
+    [Theory]
+    [InlineData(false, "--help")]
+    [InlineData(false, "--lsp")]
+    [InlineData(true, "--help")]
+    [InlineData(true, "--lsp")]
+    public async Task MalformedStdioOption_ReportsUsageBeforeEarlyReturns(bool responseFile, string earlyOption)
+    {
+        var path = Path.Join(AppContext.BaseDirectory, $"malformed-stdio-{Guid.NewGuid():N}.rsp");
+        try
+        {
+            const string option = "--mcp-stdio=invalid";
+            if (responseFile)
+            {
+                await File.WriteAllTextAsync(path, option, TestContext.Current.CancellationToken);
+            }
+
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: [responseFile ? "@" + path : option, earlyOption],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellExitCode.UsageError, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            using var error = JsonDocument.Parse(result.StdErr);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            Assert.Contains("invalid", error.RootElement.GetProperty("error").GetString());
+            Assert.DoesNotContain("Unhandled exception", result.StdErr);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public async Task StdioOption_InCommandTail_RemainsCommandText()
     {

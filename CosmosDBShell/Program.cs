@@ -61,7 +61,21 @@ internal class Program
             || a.StartsWith("--mcp-stdio:", StringComparison.Ordinal)).ToArray();
         bool stdioRequested = directStdioTokens.Length > 0;
         var (rootCommand, optionMap) = BuildRootCommand();
-        var parseResult = rootCommand.Parse(args);
+        var parseResult = rootCommand.Parse(args.Where((argument, index) =>
+            index >= preCommandArgs.Length
+            || argument is not ("--help" or "-h" or "-?" or "/?" or "/h" or "--version")).ToArray());
+        if (parseResult.Errors.Count > 0
+            && (stdioRequested || parseResult.GetResult(optionMap.McpStdio) is { Implicit: false }))
+        {
+            WriteErrorLine(System.Text.Json.JsonSerializer.Serialize(new
+            {
+                status = "error",
+                error = string.Join("; ", GetParseErrorMessages(parseResult)),
+            }));
+            Environment.ExitCode = ShellExitCode.UsageError;
+            return;
+        }
+
         bool stdioDirectlyEnabled = directStdioTokens.Any(IsDirectlyEnabledMcpStdioToken);
 
         // Response files are expanded before any protocol-mode early return so a hidden
@@ -910,7 +924,7 @@ internal class Program
             },
         };
 
-        // Startup help/version are handled before parsing, not by built-in actions.
+        // Startup help/version are handled separately, not by built-in actions.
         foreach (var option in root.Options.Where(option => option is System.CommandLine.Help.HelpOption or VersionOption).ToArray())
         {
             root.Options.Remove(option);

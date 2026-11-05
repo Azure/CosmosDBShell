@@ -391,6 +391,8 @@ public class McpStdioProcessTests
     [InlineData("--container", "orphan", 2)]
     [InlineData("--connect", "not-an-endpoint", 2)]
     [InlineData("--mcp-stdio=false", null, 2)]
+    [InlineData("--mcp-stdio=invalid", null, 2)]
+    [InlineData("--quiet=invalid", null, 2)]
     [InlineData("--lsp=true", null, 2)]
     [InlineData("--stdio=true", null, 2)]
     public async Task Stdio_StartupOutput_IsStderrOnly(string option, string? value, int expectedExitCode)
