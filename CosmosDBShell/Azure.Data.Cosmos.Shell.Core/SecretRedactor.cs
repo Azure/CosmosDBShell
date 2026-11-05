@@ -32,31 +32,106 @@ internal static class SecretRedactor
         RegexOptions.Compiled);
 
     internal static string MaskHistory(string value)
+        => MaskHistory(value, 0);
+
+    private static string MaskHistory(string value, int depth)
     {
-        var result = new StringBuilder(value);
-        var tokens = new Lexer(value).Tokenize().ToArray();
-        foreach (var token in tokens.Reverse())
+        if (depth >= 16)
         {
+            return "[REDACTED]";
+        }
+
+        var result = new StringBuilder(value.Length);
+        var lexer = new Lexer(value);
+        var tokens = lexer.Tokenize().ToArray();
+        var offset = 0;
+        for (var index = 0; index < tokens.Length; index++)
+        {
+            var token = tokens[index];
             if (token.Type is not (TokenType.String or TokenType.InterpolatedString))
             {
                 continue;
             }
 
-            var masked = MaskHistoryCredentials(token.Value);
-            if (masked == token.Value)
+            result.Append(MaskHistoryCredentials(value[offset..token.Start]));
+            var raw = value.Substring(token.Start, token.Length);
+            var isCredentialValue = index >= 2
+                && tokens[index - 1].Value is ":" or "="
+                && IsCredentialName(tokens[index - 2].Value);
+            if (isCredentialValue)
+            {
+                result.Append(ShellLiteral.Quote("[REDACTED]"));
+            }
+            else if (token.Type == TokenType.InterpolatedString)
+            {
+                result.Append(MaskInterpolatedToken(raw, token, lexer));
+            }
+            else
+            {
+                var masked = MaskHistory(token.Value, depth + 1);
+                if (masked == token.Value)
+                {
+                    result.Append(raw);
+                }
+                else if (raw.StartsWith('\''))
+                {
+                    result.Append('\'').Append(masked.Replace("'", "''", StringComparison.Ordinal));
+                    if (raw.Length > 1 && raw.EndsWith('\''))
+                    {
+                        result.Append('\'');
+                    }
+                }
+                else
+                {
+                    var quoted = ShellLiteral.Quote(masked);
+                    result.Append(raw.Length > 1 && raw.EndsWith('"') ? quoted : quoted[..^1]);
+                }
+            }
+
+            offset = token.Start + token.Length;
+        }
+
+        result.Append(MaskHistoryCredentials(value[offset..]));
+        return result.ToString();
+    }
+
+    private static bool IsCredentialName(string value)
+        => value.Equals("AccountKey", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("SharedAccessKey", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("ResourceToken", StringComparison.OrdinalIgnoreCase);
+
+    private static string MaskInterpolatedToken(string raw, Token token, Lexer lexer)
+    {
+        var sourceMap = lexer.GetInterpolatedStringSourceMap(token)!;
+        var ranges = new List<(int Start, int End)>();
+        foreach (var pattern in new[] { JwtPattern, BearerPattern, ConnectionCredentialPattern, HistorySignaturePattern })
+        {
+            foreach (Match match in pattern.Matches(token.Value))
+            {
+                var prefixLength = match.Groups.Count > 1 ? match.Groups[1].Length : 0;
+                var start = sourceMap[match.Index + prefixLength] - token.Start;
+                var endIndex = match.Index + match.Length;
+                var end = endIndex < sourceMap.Count
+                    ? sourceMap[endIndex] - token.Start
+                    : raw.Length - (raw.EndsWith('"') ? 1 : 0);
+                ranges.Add((start, end));
+            }
+        }
+
+        var result = new StringBuilder(raw.Length);
+        var offset = 0;
+        foreach (var range in ranges.OrderBy(range => range.Start).ThenByDescending(range => range.End))
+        {
+            if (range.Start < offset)
             {
                 continue;
             }
 
-            var raw = value.Substring(token.Start, token.Length);
-            if (raw.Contains('\\'))
-            {
-                // Re-encode the cooked value so escaped names and quotes cannot hide credentials.
-                result.Remove(token.Start, token.Length).Insert(token.Start, ShellLiteral.Quote(masked));
-            }
+            result.Append(raw.AsSpan(offset, range.Start - offset)).Append("[REDACTED]");
+            offset = range.End;
         }
 
-        return MaskHistoryCredentials(result.ToString());
+        return result.Append(raw.AsSpan(offset)).ToString();
     }
 
     private static string MaskHistoryCredentials(string value)

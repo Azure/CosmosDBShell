@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests.Runtime;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
 
 public class SecretRedactorTests
 {
@@ -71,5 +72,44 @@ public class SecretRedactorTests
         Assert.Contains("[REDACTED]", masked);
         Assert.Contains("AccountEndpoint=https://example.documents.azure.com/", masked);
         Assert.Equal(masked, SecretRedactor.MaskHistory(masked));
+        var lexer = new Lexer(masked);
+        _ = lexer.Tokenize().ToArray();
+        Assert.False(lexer.Errors.HasErrors);
+    }
+
+    [Theory]
+    [InlineData("""$credentials = {"Account\u004Bey": "example-key=="}""")]
+    [InlineData("""$credentials = {"SharedAccess\u004Bey": "example-key=="}""")]
+    [InlineData("""$credentials = {"Resource\u0054oken": "example-key=="}""")]
+    [InlineData("""echo '{"Account\u004Bey": "example-key=="}'""")]
+    [InlineData("""echo "{\"Account\\u004Bey\": \"example-key==\"}" """)]
+    [InlineData("""connect 'AccountKey=''example-key=='';'""")]
+    public void MaskHistory_RedactsEscapedPropertyNamesAndDoubledQuotes(string command)
+    {
+        var masked = SecretRedactor.MaskHistory(command);
+
+        Assert.DoesNotContain("example-key", masked);
+        Assert.Contains("[REDACTED]", masked);
+        Assert.Equal(masked, SecretRedactor.MaskHistory(masked));
+        var lexer = new Lexer(masked);
+        _ = lexer.Tokenize().ToArray();
+        Assert.False(lexer.Errors.HasErrors);
+    }
+
+    [Theory]
+    [InlineData("""connect $"AccountEndpoint=$endpoint;Account\u004Bey=example-key==;" """)]
+    [InlineData("""connect $"AccountEndpoint=$($endpoint);AccountKey=\"example-key==\";" """)]
+    [InlineData("""connect $"AccountEndpoint=$endpoint;AccountKey=example-key==;Label=\$literal;" """)]
+    public void MaskHistory_PreservesInterpolationAndNonSecretSource(string command)
+    {
+        var masked = SecretRedactor.MaskHistory(command);
+        var expected = command.Replace("example-key==", "[REDACTED]", StringComparison.Ordinal);
+
+        Assert.Equal(expected, masked);
+        Assert.Equal(masked, SecretRedactor.MaskHistory(masked));
+        var lexer = new Lexer(masked);
+        var tokens = lexer.Tokenize().ToArray();
+        Assert.False(lexer.Errors.HasErrors);
+        Assert.Single(tokens, token => token.Type == TokenType.InterpolatedString);
     }
 }

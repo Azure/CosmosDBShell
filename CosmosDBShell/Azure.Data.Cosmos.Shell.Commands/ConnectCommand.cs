@@ -14,8 +14,9 @@ using Spectre.Console;
 
 [CosmosCommand("connect")]
 [CosmosExample("connect", DescriptionKey = "command-connect-example-1")]
-[CosmosExample("connect \"AccountEndpoint=https://myaccount.documents.azure.com:443/;AccountKey=mykey;\"", DescriptionKey = "command-connect-example-2")]
+[CosmosExample("connect https://myaccount.documents.azure.com:443/", DescriptionKey = "command-connect-example-9")]
 [CosmosExample("connect https://localhost:8081", DescriptionKey = "command-connect-example-3")]
+[CosmosExample("connect \"AccountEndpoint=https://myaccount.documents.azure.com:443/;AccountKey=mykey;\"", DescriptionKey = "command-connect-example-2")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -hint=user@contoso.com", DescriptionKey = "command-connect-example-4")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -tenant=<tenant-id> -mode=gateway", DescriptionKey = "command-connect-example-5")]
 [CosmosExample("connect https://myaccount.documents.azure.com:443/ -managed-identity=<client-id>", DescriptionKey = "command-connect-example-6")]

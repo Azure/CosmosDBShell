@@ -98,17 +98,19 @@ cd                           # return to root (connected state)
 
 ### The `pwd` Command
 
-The `pwd` command prints the current shell location:
+The `pwd` command prints the current Cosmos DB location and the local working directory, including when disconnected:
 
 ```bash
-pwd                  # not connected
+pwd                  # Cosmos location: not connected
 connect "AccountEndpoint=...;AccountKey=..."
-pwd                  # /
+pwd                  # Cosmos location: /
 cd ToDoList
-pwd                  # /ToDoList
+pwd                  # Cosmos location: /ToDoList
 cd Items
-pwd                  # /ToDoList/Items
+pwd                  # Cosmos location: /ToDoList/Items
 ```
+
+Each call also prints `Local directory: <absolute path>`, the base for relative paths used by commands such as `export`, `import`, and `dir`. Cosmos DB navigation with `cd` does not change it. Export success messages show the absolute destination path. For MCP, local paths refer to the machine running the shell server. Structured `pwd` results include this directory as `localDirectory` alongside the existing Cosmos location fields.
 
 ### Reading an Item by ID
 
@@ -244,7 +246,9 @@ Recognized credentials, including connection-string `AccountKey`, `SharedAccessK
 and `ResourceToken` values, are replaced with `[REDACTED]` in saved history.
 The endpoint and other non-secret connection settings remain available. This
 also applies to connection strings inside assignments, scripts, and multi-line
-history entries, including escaped credential names and values in string literals.
+history entries, including escaped credential names and values in string literals
+and object properties. Non-secret interpolation expressions are preserved. Excessively
+nested quoted text is masked in full.
 Ordinary query predicates on fields such as `token`, `password`, or `secret`
 are not treated as connection credentials. The command being executed is unchanged; to reuse a masked
 connection from history, supply a fresh key or use Entra ID.
