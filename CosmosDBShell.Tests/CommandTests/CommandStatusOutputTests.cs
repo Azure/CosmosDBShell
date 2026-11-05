@@ -18,6 +18,55 @@ using Spectre.Console;
 [Collection(ConsoleOutputTestCollection.Name)]
 public class CommandStatusOutputTests
 {
+    [Theory]
+    [InlineData(".json", false)]
+    [InlineData(".csv", false)]
+    [InlineData(".json", true)]
+    [InlineData(".csv", true)]
+    public async Task Export_ShowsAbsoluteDestinationAndPreservesStructuredFile(string extension, bool absolute)
+    {
+        var relativePath = Path.Join(".", $"cosmos-export-[{Guid.NewGuid():N}] test{extension}");
+        var fullPath = Path.GetFullPath(relativePath);
+        var suppliedPath = absolute ? fullPath : relativePath;
+        using var shell = CreateShell();
+        var originalOut = Console.Out;
+        using var output = new StringWriter();
+        try
+        {
+            Console.SetOut(output);
+            var state = await new ExportCommand { File = suppliedPath }.ExecuteAsync(
+                shell, new CommandState(), "export", TestContext.Current.CancellationToken);
+
+            Assert.Empty(output.ToString());
+            var result = Assert.IsType<ShellJson>(state.Result).Value;
+            Assert.Equal(suppliedPath, result.GetProperty("file").GetString());
+            Assert.Equal(["type", "file", "exported", "requestCharge"], result.EnumerateObject().Select(property => property.Name));
+            Assert.Equal(1, result.GetProperty("exported").GetInt32());
+            Assert.True(File.Exists(fullPath));
+            var exported = await File.ReadAllTextAsync(fullPath, TestContext.Current.CancellationToken);
+            if (extension == ".json")
+            {
+                using var document = JsonDocument.Parse(exported);
+                Assert.Equal("a", document.RootElement[0].GetProperty("id").GetString());
+            }
+            else
+            {
+                Assert.Equal("\"id\"\n\"a\"\n", exported);
+            }
+
+            Assert.NotNull(state.RenderUser);
+            state.RenderUser();
+            var expected = MessageService.GetArgsString(
+                "command-export-success", "count", 1, "file", fullPath, "charge", "0.00");
+            Assert.Equal(expected + Environment.NewLine, output.ToString());
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            File.Delete(fullPath);
+        }
+    }
+
     public static IEnumerable<object?[]> StatusCases()
     {
         string[] commands =
