@@ -96,6 +96,7 @@ internal sealed class StdioStartupInput : IDisposable
             return;
         }
 
+        var timerStopped = this.deadlineTimer.DisposeAsync().AsTask();
         this.stopping.Cancel();
 
         // The stdin pump may never unblock. Release the spool independently of its lifetime.
@@ -115,13 +116,13 @@ internal sealed class StdioStartupInput : IDisposable
         this.input.Dispose();
 
         // Console pipe reads may not be interruptible. Do not hold process shutdown
-        // open waiting for a read, or dispose its token sources while it is still running.
-        _ = this.pump.ContinueWith(
+        // open waiting for a read. Queued timeout callbacks must also finish before
+        // their cancellation sources can be disposed.
+        _ = Task.WhenAll(this.pump, timerStopped).ContinueWith(
             _ =>
             {
                 this.startupCancellation.Dispose();
                 this.deadline.Dispose();
-                this.deadlineTimer.Dispose();
                 this.inputEnded.Dispose();
                 this.stopping.Dispose();
                 this.startupBufferLock.Dispose();

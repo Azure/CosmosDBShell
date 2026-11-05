@@ -11,6 +11,33 @@ using Azure.Data.Cosmos.Shell.Mcp;
 
 public class StdioStartupInputTests
 {
+    [Fact]
+    public async Task Dispose_DrainsTimeoutCallbackBeforeReleasingCancellationSources()
+    {
+        using var source = new MemoryStream();
+        using var input = new StdioStartupInput(source, TimeSpan.FromSeconds(1));
+        using var releaseCallback = new ManualResetEventSlim();
+        var callbackEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = input.StartupToken.Register(() =>
+        {
+            callbackEntered.TrySetResult();
+            releaseCallback.Wait(TimeSpan.FromSeconds(15));
+        });
+        try
+        {
+            await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            await Task.Run(input.Dispose, TestContext.Current.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+            Assert.False(File.Exists(input.StartupBufferPath));
+            Assert.NotNull(input.StartupToken.WaitHandle);
+        }
+        finally
+        {
+            releaseCallback.Set();
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
