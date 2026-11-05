@@ -18,8 +18,6 @@
 
 ### Improvements
 
-- Enumerate valid command-result formats in the MCP `import` and `export` schemas, and clarify automatic import file-format detection so clients do not confuse `format` with JSON array or JSON Lines input. ([#273](https://github.com/Azure/CosmosDBShell/issues/273))
-
 ## 1.1.295 — 2026-11-03
 
 ### Breaking changes
