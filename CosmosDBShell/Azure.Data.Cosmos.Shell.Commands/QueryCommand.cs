@@ -562,13 +562,13 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
         return new ShellJson(element);
     }
 
-    private static void RenderExplain(PlanEvaluation evaluation, double requestCharge, IReadOnlyList<string> messages)
+    private static void RenderExplain(ShellInterpreter shell, PlanEvaluation evaluation, double requestCharge, IReadOnlyList<string> messages)
     {
-        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-query-explain-header"));
+        shell.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-query-explain-header"));
 
         foreach (var message in messages)
         {
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Markup.Escape(message));
+            shell.Output.MarkupLine(ShellMessageKind.Result, Markup.Escape(message));
         }
 
         var table = new Table();
@@ -592,9 +592,9 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
         table.AddRow(
             Theme.FormatHelpName(MessageService.GetString("command-query-explain-charge")),
             Theme.FormatTableValue(requestCharge.ToString(CultureInfo.InvariantCulture)));
-        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
+        shell.Output.Render(ShellMessageKind.Result, table);
 
-        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-query-explain-estimate_note"));
+        shell.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-query-explain-estimate_note"));
     }
 
     private async Task ThrowIfRequestFailedAsync(ResponseMessage response, ShellInterpreter shell)
@@ -682,7 +682,7 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
             var messages = BuildPlanMessages(evaluation);
 
             returnState.Result = BuildExplainJson(this.Query, evaluation, requestCharge, messages);
-            returnState.RenderUser = () => RenderExplain(evaluation, requestCharge, messages);
+            returnState.RenderUser = () => RenderExplain(shell, evaluation, requestCharge, messages);
             returnState.RequestCharge = requestCharge;
             return returnState;
         }
@@ -748,6 +748,7 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                 }
 
                 using var response = await feedIterator.ReadNextAsync(token);
+                shell.ReportOperationProgress();
 
                 var pageRequestCharge = response.Headers.RequestCharge;
                 if (!response.IsSuccessStatusCode)
@@ -769,14 +770,14 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                 }
 
                 using var queryDocument = JsonDocument.Parse(responseContent);
-                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("command-query-fetched", new Dictionary<string, object> { { "count", queryDocument.RootElement.GetProperty("_count").ToString() } }));
+                shell.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("command-query-fetched", new Dictionary<string, object> { { "count", queryDocument.RootElement.GetProperty("_count").ToString() } }));
 
                 // Cosmos always returns the RU cost in the response headers, whereas query
                 // metrics (and their TotalRequestCharge) can be null when diagnostics are
                 // unavailable. Accumulate and report from the headers so the charge is always
                 // correct; the detailed metrics payload is built separately from the response.
                 totalRequestCharge += pageRequestCharge;
-                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", pageRequestCharge.ToString("F2", CultureInfo.InvariantCulture) } }));
+                shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetString("command-query-request_charge", new Dictionary<string, object> { { "charge", pageRequestCharge.ToString("F2", CultureInfo.InvariantCulture) } }));
 
                 if (TryReadContinuationToken(response, out var pageContinuationToken))
                 {
@@ -881,7 +882,7 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
 
                     table.AddRow(MessageService.GetString("command-query-retrieved"), Theme.FormatTableValue(Fmt("Retrieved document count")), Theme.FormatTableValue(Fmt("Retrieved document size")));
                     table.AddRow(MessageService.GetString("command-query-output"), Theme.FormatTableValue(Fmt("Output document count")), Theme.FormatTableValue(Fmt("Output document size")));
-                    ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
+                    shell.Output.Render(ShellMessageKind.Result, table);
 
                     table = new Table();
                     table.AddColumns(string.Empty, string.Empty, string.Empty, string.Empty);
@@ -891,13 +892,13 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                     table.AddRow(MessageService.GetString("command-query-vm_execution"), Theme.FormatTableValue(Fmt("VMExecution execution time")));
                     table.AddEmptyRow();
                     table.AddRow(MessageService.GetString("command-query-total"), Theme.FormatTableValue(Fmt("Total time")));
-                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-query-time_label"));
-                    ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
+                    shell.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-query-time_label"));
+                    shell.Output.Render(ShellMessageKind.Result, table);
 
                     table = new Table();
                     table.AddColumns(MessageService.GetString("command-query-index_hit_ratio"), MessageService.GetString("command-query-index_lookup_time"));
                     table.AddRow(Theme.FormatTableValue(Fmt("Index hit ratio")), Theme.FormatTableValue(Fmt("Index lookup time")));
-                    ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
+                    shell.Output.Render(ShellMessageKind.Result, table);
 
                     if (!string.IsNullOrWhiteSpace(response.IndexMetrics))
                     {
@@ -925,7 +926,7 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                             }
                         }
 
-                        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, indexTable);
+                        shell.Output.Render(ShellMessageKind.Result, indexTable);
                     }
                 }
                 else
@@ -951,10 +952,10 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
 
             if (limitReached && effectiveMaxItemCount.HasValue)
             {
-                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
+                shell.Output.MarkupLine(ShellMessageKind.Warning, MessageService.GetString("command-results-limit_reached", new Dictionary<string, object> { { "count", effectiveMaxItemCount.Value } }));
                 if (!continuationSupported)
                 {
-                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Warning, MessageService.GetString("command-query-no_continuation"));
+                    shell.Output.MarkupLine(ShellMessageKind.Warning, MessageService.GetString("command-query-no_continuation"));
                 }
             }
 

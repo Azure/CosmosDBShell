@@ -42,7 +42,11 @@ public partial class CommandState
     /// </summary>
     public OutputFormat OutputFormat
     {
-        get => this.outputFormat;
+        get
+        {
+            return this.outputFormat;
+        }
+
         set
         {
             this.outputFormat = value;
@@ -62,6 +66,8 @@ public partial class CommandState
     internal List<CommandWarning> Warnings => this.warnings;
 
     internal bool OutputRendered { get; set; }
+
+    internal bool UserCancellationHandled { get; set; }
 
     /// <summary>
     /// Gets or sets an optional delegate that renders the result for a human on an
@@ -290,6 +296,11 @@ public partial class CommandState
             default:
                 throw new InvalidOperationException("OutputFormat invalid " + this.OutputFormat);
         }
+    }
+
+    internal sealed class HandledCancellationException(CommandState state, CancellationToken token) : OperationCanceledException(token)
+    {
+        internal CommandState State { get; } = state;
     }
 
     internal sealed class FailureException : Exception

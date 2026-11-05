@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 
@@ -125,6 +126,35 @@ public class ShellProcessTests
             using var json = JsonDocument.Parse(result.StdOut);
             Assert.True(json.RootElement.GetProperty(resultProperty).GetBoolean());
             Assert.Empty(result.StdErr);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
+    [InlineData("{\"name\":\"missing-id\"}")]
+    [InlineData("{\"id\":42}")]
+    public async Task ImportDryRun_InvalidId_ReturnsUsageExitCodeAndOfflineResult(string content)
+    {
+        var file = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(file, content, TestContext.Current.CancellationToken);
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: ["--output", "json", "-c", $"import {JsonSerializer.Serialize(file)} --dry-run"],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellExitCode.UsageError, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            using var error = JsonDocument.Parse(result.StdErr);
+            var import = error.RootElement.GetProperty("result");
+            Assert.Equal(0, import.GetProperty("imported").GetInt32());
+            Assert.Equal(0, import.GetProperty("validated").GetInt32());
+            Assert.Equal("offline", import.GetProperty("validationScope").GetString());
+            Assert.False(import.GetProperty("targetValidated").GetBoolean());
         }
         finally
         {
@@ -545,7 +575,7 @@ public class ShellProcessTests
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.ExitCode);
-        Assert.Contains("Required option '--connect' is missing", result.StdOut + result.StdErr);
+        Assert.Contains("Option '--connect' has no value.", result.StdOut + result.StdErr);
     }
 
     [Fact]

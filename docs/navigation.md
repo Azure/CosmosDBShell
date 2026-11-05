@@ -98,17 +98,19 @@ cd                           # return to root (connected state)
 
 ### The `pwd` Command
 
-The `pwd` command prints the current shell location:
+The `pwd` command prints the current Cosmos DB location and the local working directory, including when disconnected:
 
 ```bash
-pwd                  # not connected
+pwd                  # Cosmos location: not connected
 connect "AccountEndpoint=...;AccountKey=..."
-pwd                  # /
+pwd                  # Cosmos location: /
 cd ToDoList
-pwd                  # /ToDoList
+pwd                  # Cosmos location: /ToDoList
 cd Items
-pwd                  # /ToDoList/Items
+pwd                  # Cosmos location: /ToDoList/Items
 ```
+
+Each call also prints `Local directory: <absolute path>`, the base for relative paths used by commands such as `export`, `import`, and `dir`. Cosmos DB navigation with `cd` does not change it. Export success messages show the absolute destination path. For MCP, local paths refer to the machine running the shell server. Structured `pwd` results include this directory as `localDirectory` alongside the existing Cosmos location fields.
 
 ### Reading an Item by ID
 
@@ -244,6 +246,8 @@ Commands are stored in full so they can be executed again, including connection 
 
 ## Keyboard Shortcuts
 
+Run `help shortcuts` to see these shortcuts in the shell, grouped by History, Cursor Movement, Editing and Completion, and Shell. The `help` overview lists `shortcuts` under **Help Topics**. Structured results from `help shortcuts` include a `keyboardShortcuts` array with `group`, `shortcut`, and `description` fields, plus a `historySearch` note.
+
 Available at the interactive prompt:
 
 | Shortcut | Action |
@@ -262,6 +266,7 @@ Available at the interactive prompt:
 | `Ctrl+D` | Exit shell when prompt is empty; otherwise delete character under cursor |
 | `Ctrl+R` | Reverse search history (type to filter, repeat for older matches, Enter accepts, Esc/Ctrl+G/Ctrl+C cancels) |
 | `Ctrl+S` | Forward search history (type to filter, repeat for newer matches, Enter accepts, Esc/Ctrl+G/Ctrl+C cancels) |
+| `Ctrl+C` | Interrupt running work or discard pending multi-line input |
 
 ## CLI Arguments
 
@@ -321,6 +326,15 @@ and `2>>` redirection still applies and also captures warnings and required inst
 Outside machine mode, `2>` and `2>>` capture warnings and errors, while confirmation
 prompts and other required instructions stay on the terminal.
 
+In normal `user` mode, command confirmations and status messages are readable text,
+not JSON status objects. Commands that display document or policy data can still show
+that data as JSON. Where supported, a command's `--format` / `-f` selects its result
+presentation and overrides the shell default. On `import` and `export`, it formats
+the summary, not file contents: a `.csv` export file name writes CSV and any other name
+writes a JSON array. Import automatically detects JSON arrays, single objects, and
+sequences of objects (including JSON Lines and multiple objects on one line); no
+input-format flag is needed.
+
 Bare piped stdin (for example `echo "..." | cosmosdbshell`) is **not** implicitly machine
 mode; pass `-c`, `--output json`, or `--quiet` to opt into structured output.
 
@@ -338,6 +352,12 @@ or `$LASTEXITCODE`):
 | `6` | Throttled (`429` / RU budget exceeded) |
 
 These values are a public contract. See the [CI/CD guide](ci.md#exit-code-contract) for install steps, auth patterns, and scripted failure handling.
+
+Ctrl+C interrupts commands started with `-c`, `-k`, or redirected stdin. An interrupted startup command returns a nonzero exit code and stops any following startup command; structured partial write results, including settled import counts and observed RUs, remain visible. Canceled partial results are not written as successful redirected output. Successful writes are not rolled back, and canceled in-flight writes may require reconciliation before retrying. Stopping `watch` with Ctrl+C is intentional and remains successful; enclosing pipelines, blocks, and scripts stop without running subsequent work. An interrupted stdin script also skips any separately supplied `-c` or `-k` command, even when `watch` handled the interruption successfully.
+
+Interruption also applies while stdin is still being read and while a confirmation prompt is waiting. At a confirmation, `n` or Escape declines normally; Ctrl+C interrupts the operation. Stopping a `watch` expression stops its enclosing assignment or command before it changes a variable or performs subsequent work. Interrupt markers are not written to machine-readable or redirected stdout.
+
+Scripted `bulk` writes require `--yes`; use `--dry-run` to preview first. Bulk operations are not transactional, and an exhausted observed RU budget returns exit code `6`. Supply `--journal` on the original run and reuse that same journal to resume; without it, reconcile completed writes before retrying. See [bulk operations](commands.md#bulk) for recovery and partial-success semantics.
 
 ### Environment Variables
 

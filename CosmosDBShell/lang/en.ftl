@@ -216,6 +216,30 @@ help-examples-heading = Examples
 help-aliases = Aliases:
 help-OutputFormat = The output format to use (user, json, table, csv).
 help-Quiet = Suppress informational messages, progress, banners, and command echoes. Preserve results, warnings, errors, and required authentication instructions.
+help-topics = Help Topics
+help-topics-hint = Type help <topic> to show a topic.
+help-topic-shortcuts-description = Keyboard shortcuts for the interactive prompt
+help-keyboard-shortcuts = Keyboard Shortcuts
+help-keyboard-context = Available at the interactive prompt. Ctrl+C also interrupts running commands.
+help-keyboard-group-history = History
+help-keyboard-group-cursor = Cursor Movement
+help-keyboard-group-editing = Editing and Completion
+help-keyboard-group-shell = Shell
+help-keyboard-search-note = In history search: type to filter, Enter accepts, Esc, Ctrl+G, or Ctrl+C cancels.
+help-keyboard-history = Previous / next history entry
+help-keyboard-move-cursor = Move cursor left / right
+help-keyboard-completion = Next / previous completion
+help-keyboard-clear-line = Clear current line
+help-keyboard-clear-screen = Clear screen
+help-keyboard-start-of-line = Move cursor to start of line
+help-keyboard-end-of-line = Move cursor to end of line
+help-keyboard-delete-before = Delete text before cursor
+help-keyboard-delete-after = Delete text after cursor
+help-keyboard-delete-word = Delete previous word
+help-keyboard-exit = Exit shell when prompt is empty; otherwise delete character under cursor
+help-keyboard-search-backward = Search history backward; press again for older matches
+help-keyboard-search-forward = Search history forward; press again for newer matches
+help-keyboard-interrupt = Interrupt running work or discard pending multi-line input
 
 command-help-description = Shows help information for commands
 command-welcome-description = Displays the welcome screen
@@ -261,6 +285,10 @@ command-rm-dry-run-plan = Dry run: Would delete { $count } { $count ->
     [one] item
     *[other] items
 }. No changes were made.
+command-rm-progress = Remove: { $processed } items scanned, { $succeeded } deleted; elapsed { $elapsed } s (observed RU charge: { $charge })
+command-rm-progress-compact = Remove: { $succeeded } deleted, { $processed } scanned, { $elapsed } s, { $charge } RU
+command-rm-dry-run-progress = Dry run: { $processed } items scanned, { $succeeded } would be deleted; elapsed { $elapsed } s (observed RU charge: { $charge })
+command-rm-dry-run-progress-compact = Dry run: { $succeeded } to delete, { $processed } scanned, { $elapsed } s, { $charge } RU
 command-rm-error-no_filter = Filter is missing.
 command-rm-error-invalid_pk_json = Invalid partition key JSON. Use { "{" }{ "}" }, a JSON scalar, or an array of one to three string, finite number, boolean, null, or { "{" }{ "}" } components. Non-empty objects and nested arrays are not supported.
 command-rm-error-partition_key_components = The partition key must specify all { $expected } components of the container's partition key, but { $actual } { $actual ->
@@ -462,14 +490,100 @@ command-batch-error-already_active = A batch is already in progress. Run 'batch 
 command-batch-error-not_active = No batch is in progress. Start one with 'batch begin'.
 command-batch-error-failed = Batch failed with status { $status } and was rolled back (RU charge: { $charge })
 command-batch-error-execution_failed = Failed to execute batch: { $status } - { $message }
+command-bulk-description = Executes many independent write operations across partition keys with bounded concurrency, either in a single call (run, patch, delete) or as a stateful bulk job (begin, add, execute, cancel, status, show). Bulk jobs are not transactional: successful writes are not rolled back when others fail.
+command-bulk-mcp-help = Available through MCP for the stateless run, patch, and delete subcommands. Writes and dry runs that save a plan require user confirmation; dry runs without --save skip confirmation and send no writes.
+command-bulk-description-subcommand = The action to perform: run, patch, delete, begin, add, execute, cancel, status, or show.
+command-bulk-description-data = For run and add: operations as a JSON array or object (the batch schema plus optional partitionKey and ifMatch), or a path to a JSON array or JSON Lines file. Stateful jobs are limited to 10,000 operations and 64 MiB of canonical JSON; use bulk run for larger files.
+command-bulk-description-where = For patch and delete: Cosmos SQL predicate over alias c that selects the target items.
+command-bulk-description-operations = For patch: JSON array of 1-10 patch operations applied atomically to each selected item.
+command-bulk-description-partition-key = Default partition key for delete and patch operations without partitionKey. Item operations must match it.
+command-bulk-description-database = The database containing the target container.
+command-bulk-description-container = The target container.
+command-bulk-description-concurrency = Maximum in-flight writes (default 16, positive integer). Operations on the same item run in list order.
+command-bulk-description-max-items = For patch and delete: positive maximum number of selected items.
+command-bulk-description-max-ru = Positive observed RU budget for this invocation, including selection reads. No new requests start once it is reached; in-flight requests can exceed it.
+command-bulk-description-dry-run = Validate operations, or select the items matching --where, without sending writes. Selection reads consume RUs.
+command-bulk-description-yes = Approve writes without a terminal prompt. Required in scripts; does not bypass MCP confirmation.
+command-bulk-description-continue-on-error = Keep scheduling writes after an operation fails. Otherwise stop scheduling new writes and wait for in-flight writes.
+command-bulk-description-etag = For patch and delete: send each selected item's _etag as ifMatch, so items changed since selection fail with 412 instead of being overwritten.
+command-bulk-description-save = For patch and delete: write the generated operations to a new JSON Lines file that bulk run accepts. Existing files are never overwritten.
+command-bulk-description-journal = JSON Lines file recording each write attempt and outcome. Rerunning the same operations with the same journal skips succeeded writes and retries failed ones.
+command-bulk-description-retry-uncertain = Also retry writes whose earlier outcome is unknown. Safe only for idempotent operations or operations with ifMatch.
+command-bulk-confirm-summary = About to run { $count } non-transactional { $count ->
+    [one] operation
+    *[other] operations
+} against { $target }. Successful writes are not rolled back if others fail.
+command-bulk-confirm = Proceed
+command-bulk-begun = Started a bulk job on { $database }/{ $container }. Add operations with 'bulk add' and run them with 'bulk execute'.
+command-bulk-added = Added { $count } { $count ->
+    [one] operation
+    *[other] operations
+} to the bulk job ({ $total } total)
+command-bulk-cancelled = Discarded the pending bulk job ({ $count } { $count ->
+    [one] operation
+    *[other] operations
+})
+command-bulk-status-inactive = No bulk job is currently active.
+command-bulk-status-succeeded = Succeeded
+command-bulk-status-failed = Failed
+command-bulk-status-uncertain = Uncertain
+command-bulk-status-more = ...and { $count } more
+command-bulk-progress = Bulk: { $processed } of { $total } operations processed, { $succeeded } succeeded, { $failed } failed; elapsed { $elapsed } s, { $rate } operations/s (observed RU charge: { $charge })
+command-bulk-progress-compact = Bulk: { $processed }/{ $total }, { $failed } failed, { $elapsed } s, { $rate }/s, { $charge } RU
+command-bulk-success = Bulk completed { $count } { $count ->
+    [one] operation
+    *[other] operations
+}: { $succeeded } succeeded, { $skipped } skipped as already succeeded (RU charge: { $charge })
+command-bulk-dry-run = Dry run: { $count } valid { $count ->
+    [one] operation
+    *[other] operations
+}; no writes were sent (RU charge: { $charge })
+command-bulk-error-missing_subcommand = Missing subcommand. Use one of: run, patch, delete, begin, add, execute, cancel, status, show.
+command-bulk-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: run, patch, delete, begin, add, execute, cancel, status, show.
+command-bulk-error-option_not_supported = Option --{ $option } is not supported by 'bulk { $subcommand }'.
+command-bulk-error-data_not_supported = 'bulk { $subcommand }' does not accept positional data. Use --where to select items for patch and delete.
+command-bulk-error-invalid_number = --concurrency and --max-items must be positive integers; --max-ru must be a positive, finite number.
+command-bulk-error-missing_where = 'bulk { $subcommand }' requires --where with a predicate over alias c.
+command-bulk-error-missing_operations = 'bulk patch' requires --operations with a JSON array of patch operations.
+command-bulk-error-dry_run_option = --{ $option } cannot be combined with --dry-run.
+command-bulk-error-journal_requires_save = With --where, --journal requires --save. Resume with 'bulk run <saved-file> --journal <file>', because a new selection can match different items.
+command-bulk-error-retry_requires_journal = --retry-uncertain requires --journal.
+command-bulk-error-missing_data = Bulk operations are required. Provide a JSON array or object, pipe it in, or pass a JSON array or JSON Lines file path.
+command-bulk-error-file_not_found = File '{ $file }' was not found.
+command-bulk-error-save_exists = File '{ $file }' already exists. --save never overwrites files.
+command-bulk-error-empty = No bulk operations were provided.
+command-bulk-error-operation = Operation { $index }: { $message }
+command-bulk-error-id = Every operation needs a nonempty string id. Item operations take it from item.id; an explicit id must match item.id.
+command-bulk-error-partition_key = Missing or invalid partition key. Delete and patch operations need partitionKey or --partition-key. Use one value per partition-key path, as a JSON array for hierarchical keys, with an empty JSON object for an undefined component.
+command-bulk-error-partition_key_mismatch = The partitionKey does not match the partition key in the item.
+command-bulk-error-if_match = ifMatch must be a nonempty string and is supported only for replace, delete, and patch. Use replace for conditional item updates; create and upsert do not support ifMatch.
+command-bulk-error-patch_count = Each patch supports at most 10 operations.
+command-bulk-error-patch_path = Patch paths must start with '/'.
+command-bulk-error-selected_id = Every selected item must have a string id.
+command-bulk-error-selected_etag = Every selected item must have an _etag when --etag is used.
+command-bulk-error-container = Could not read container { $target } (status { $status }).
+command-bulk-error-container_changed = The container was recreated after 'bulk begin'. Run 'bulk cancel' and start a new bulk job.
+command-bulk-error-already_active = A bulk job is already in progress. Run 'bulk execute' or 'bulk cancel' first.
+command-bulk-error-not_active = No bulk job is in progress. Start one with 'bulk begin'.
+command-bulk-error-stateful_limit = Stateful bulk jobs are limited to 10,000 operations and 64 MiB of canonical JSON. Nothing from this add was queued. Use bulk run with a file for larger jobs.
+command-bulk-error-stateful_journal = A stateful retry must keep the same journal choice as its first execution. Do not add, change, or omit the original journal after writes have started.
+command-bulk-error-stateful_add = Cannot add operations after a journaled execution has recorded outcomes. Retry the original job before beginning a new one, or cancel it after reconciling completed writes.
+command-bulk-error-confirm_required = Bulk writes in scripts or non-interactive sessions require --yes. Use --dry-run to validate first.
+command-bulk-error-declined = Bulk operation was not approved. No writes were sent.
+command-bulk-error-journal_open = Could not open journal '{ $file }': { $message }
+command-bulk-error-journal_mismatch = The journal has a different format version, account, container, or operation list. Resume only with the matching original operations and journal; creating a new journal cannot identify earlier successes.
+command-bulk-error-journal_invalid = The journal is damaged. Refusing to guess which writes can safely be repeated.
+command-bulk-error-failed = Bulk run incomplete: { $succeeded } succeeded, { $failed } failed ({ $uncertain } with unknown outcome) (RU charge: { $charge }). Successful writes were not rolled back.
+command-bulk-error-budget = Bulk run stopped at the RU budget after { $succeeded } of { $count } operations succeeded (RU charge: { $charge }). Resume writes only with the same journal used for the original run; without one, reconcile completed writes before retrying. If selection exhausted the budget before writes began, increase the budget and select again.
+command-bulk-error-item = #{ $index } { $op } '{ $id }': { $status } { $message }
 
-command-export-description = Exports items from a container to a JSON Lines, JSON array, or CSV file.
-command-export-description-file = Destination file path.
+command-export-description = Exports items from a container to a JSON array file, or to a CSV file when the file name ends in .csv.
+command-export-description-file = Destination file path, relative to the shell process's local working directory. The success message shows the full path.
 command-export-description-database = The database to read from.
 command-export-description-container = The container to read from.
 command-export-description-query = SELECT query whose results are exported (default: SELECT * FROM c).
 command-export-description-max = Maximum number of items to export. 0 means no limit.
-command-export-description-format = Output format: jsonl (default), array, or csv.
+command-export-description-format = Command result format: user, json, csv, or table. Does not change the exported file, which is CSV for .csv file names and a JSON array otherwise.
 command-export-description-force = Overwrite the destination file if it already exists.
 command-export-success = Exported { $count } { $count ->
     [one] item
@@ -481,16 +595,20 @@ command-export-error-destination_directory = Destination '{ $file }' is a direct
 command-export-error-query_failed = Export query failed: { $status } - { $message }
 command-export-error-scalar_column_conflict = CSV scalar column '{ $column }' conflicts with an object property. Set COSMOSDB_SHELL_CSV_SCALAR_COLUMN to a different name.
 
-command-import-description = Imports items into a container from a JSON Lines, JSON array, or CSV file.
-command-import-description-file = Source file path.
+command-import-description = Imports items into a container from a JSON, JSON Lines, or CSV file.
+command-import-description-file = Source file path. A .csv extension selects CSV; otherwise JSON arrays, single objects, and sequences of objects (including JSON Lines) are detected automatically.
 command-import-description-database = The database to write to.
 command-import-description-container = The container to write to.
 command-import-description-mode = Write mode: insert (default) or upsert.
-command-import-description-format = Input format: auto (default), jsonl, array, or csv.
+command-import-description-format = Command result presentation only: user, json, csv, or table. Omit to use the current output setting. Input file format is detected automatically; array and jsonl are not valid values for this option.
 command-import-description-concurrency = Maximum in-flight writes (default: 16). Must be positive. Use 1 for sequential writes and file-order processing.
 command-import-description-partition-key = For CSV import, the partition key path. Nested paths (e.g. /address/city) place the matching column under that path.
 command-import-description-continue-on-error = Continue importing after individual item write failures. Otherwise stop scheduling writes on the first observed failure and wait for in-flight writes. Parse or validation errors still abort the import.
-command-import-description-dry-run = Parse the file without writing any items.
+command-import-description-dry-run = Validate file syntax and item IDs offline without writing items or accessing the target. Does not check target partition keys, permissions, conflicts, or other service constraints.
+command-import-progress = Import: { $processed } items processed, { $succeeded } imported, { $failed } failed; elapsed { $elapsed } s, { $rate } items/s (observed RU charge: { $charge })
+command-import-progress-compact = Import: { $succeeded } ok, { $failed } failed, { $elapsed } s, { $rate }/s, { $charge } RU
+command-import-validation-progress = Dry run: { $processed } items validated offline; elapsed { $elapsed } s, { $rate } items/s; no writes sent
+command-import-validation-progress-compact = Dry run: { $processed } validated, { $elapsed } s, { $rate }/s
 command-import-success = Imported { $count } { $count ->
     [one] item
     *[other] items
@@ -500,10 +618,13 @@ command-import-success-partial = Imported { $success } { $success ->
     *[other] items
 }, { $failed } failed (RU charge: { $charge })
 command-import-all-failed = Failed to import all { $count } items
-command-import-dry-run-success = Dry run: { $count } valid { $count ->
+command-import-stopped = Import stopped after { $success } items (RU charge: { $charge }).
+command-import-dry-run-success = Dry run: { $count } { $count ->
     [one] item
     *[other] items
-}
+} passed offline validation; no items were written. Target partition keys, permissions, conflicts, and other service constraints were not checked.
+command-import-dry-run-stopped = Dry run stopped after { $count } items passed offline validation; no items were written. The target container was not checked.
+command-import-error-invalid_id = Line { $line }: 'id' must be a non-empty string of at most 1023 UTF-8 bytes and must not contain slash or backslash characters.
 command-import-error-missing_file = A source file path is required.
 command-import-error-invalid_concurrency = Concurrency must be a positive integer.
 command-import-error-invalid_csv = Invalid CSV record at line { $line }.
@@ -523,6 +644,7 @@ script-error-expression-depth = Maximum expression tree depth of { $limit } exce
 command-import-error-file_not_found = File '{ $file }' was not found.
 command-import-error-blank_line = Line { $line } is blank.
 command-import-error-not_object = Line { $line } is not a JSON object.
+command-import-error-invalid_document = The file is not a valid JSON document or sequence of JSON objects: { $message }
 command-import-error-invalid_line_json = Line { $line } is not valid JSON: { $message }
 command-import-error-item_status = Line { $line }: item returned status { $status }.
 command-import-error-item_failed = Line { $line }: { $status } - { $message }
@@ -530,11 +652,13 @@ command-import-error-some_failed = Failed to import { $failed } of { $total } it
 command-import-error-csv_pk_conflict = CSV column '{ $column }' conflicts with the partition key path '{ $path }': the column holds a scalar value but the path requires it to be a nested object. Rename the column or choose a different partition key path.
 
 
-command-mkdb-description = Creates new database
+command-mkdb-description = Creates a database without shared throughput by default
 command-mkdb-description-name = The database name to create
-command-mkdb-description-scale = Database throughput mode (manual or auto). Not supported on serverless accounts.
-command-mkdb-description-ru = Database max RU/s (default: 1000; omitted on serverless accounts)
+command-mkdb-description-scale = Provision shared database throughput: manual (m) or auto. Omitted by default. Not supported on serverless accounts.
+command-mkdb-description-ru = Shared database RU/s (autoscale maximum in auto mode). Specifying --scale or --ru provisions shared throughput (default: auto, 1000 RU/s). Not supported on serverless accounts.
 command-mkdb-database_created = Created database { $db }
+command-mkdb-database_existing = Using existing database { $db }
+command-mkdb-database_created_or_updated = Created or updated database { $db }
 command-mkdb-error-only_auto_or_manual_allowed = Only manual or autoscale are allowed. Not both.
 
 command-mkcon-description = Creates a new container in the current database.
@@ -545,6 +669,8 @@ command-mkcon-description-scale = Container throughput mode (manual or auto). No
 command-mkcon-description-ru = Container max RU/s (default: 1000; omitted on serverless accounts)
 command-mkcon-description-database = The database where the container should be created
 command-mkcon-CreatedContainer = Created container { $container }
+command-mkcon-container_existing = Using existing container { $container }
+command-mkcon-container_created_or_updated = Created or updated container { $container }
 command-mkcon-error_partition_key_empty = Partition key path cannot be empty. Provide a path that starts with '/', for example: mkcon name /pk.
 command-mkcon-error_partition_key_slash = Partition key path must start with a forward slash (/), for example: mkcon name /pk.
 command-mkcon-error_invalid_index_policy = Invalid indexing policy JSON. Please provide a valid Cosmos DB indexing policy.
@@ -582,6 +708,12 @@ command-ttl-description-database = The database containing the container.
 command-ttl-description-container = The container to read/update the TTL for.
 command-ttl-updated = Time-to-live updated successfully.
 command-ttl-analytical-updated = Analytical store time-to-live updated successfully.
+command-ttl-status-disabled = Time-to-live for { $container }: disabled.
+command-ttl-status-no-default = Time-to-live for { $container }: enabled, with expiration set per item.
+command-ttl-status-enabled = Time-to-live for { $container }: items expire after { $seconds } seconds.
+command-ttl-analytical-status-disabled = Analytical store time-to-live for { $container }: disabled.
+command-ttl-analytical-status-indefinite = Analytical store time-to-live for { $container }: indefinite retention.
+command-ttl-analytical-status-enabled = Analytical store time-to-live for { $container }: data retained for { $seconds } seconds.
 command-ttl-error-missing_subcommand = Missing subcommand. Use one of: show, set, on, off.
 command-ttl-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set, on, off.
 command-ttl-error-missing_seconds = No seconds value provided. Specify a positive number of seconds, for example: ttl set 86400.
@@ -597,6 +729,9 @@ command-conflict-description-procedure = The stored procedure id that resolves c
 command-conflict-description-database = The database containing the container.
 command-conflict-description-container = The container to read/update the conflict resolution policy for.
 command-conflict-updated = Conflict resolution policy updated successfully.
+command-conflict-status-lww = Conflict resolution for { $container }: last writer wins, using path { $value }.
+command-conflict-status-custom = Conflict resolution for { $container }: custom, using procedure { $value }.
+command-conflict-status-custom-manual = Conflict resolution for { $container }: custom, conflicts require manual resolution.
 command-conflict-error-missing_subcommand = Missing subcommand. Use one of: show, set.
 command-conflict-error-invalid_subcommand = Unknown subcommand '{ $subcommand }'. Use one of: show, set.
 command-conflict-error-missing_set_args = Nothing to set. Provide --mode, --path, or --procedure.
@@ -867,8 +1002,8 @@ command-create-description-item = The object to create item, container or databa
 command-create-description-name = The container or database name to create.
 command-create-description-partition_key = { command-mkcon-description-partition_key }
 command-create-description-unique_key = { command-mkcon-description-unique_key }
-command-create-description-scale = Database or container throughput mode (manual or auto). Not supported on serverless accounts.
-command-create-description-ru = Database or container max RU/s (default: 1000; omitted on serverless accounts)
+command-create-description-scale = Throughput mode: manual (m) or auto. Databases default to no shared throughput; specify --scale or --ru to provision it. Containers default to auto. Not supported on serverless accounts.
+command-create-description-ru = Database or container RU/s (autoscale maximum in auto mode; default: 1000 when throughput is provisioned). Databases omit shared throughput unless --scale or --ru is specified. Not supported on serverless accounts.
 command-create-description-data = JSON data for the item to create
 command-create-description-database = The database for the create operation
 command-create-description-container = The container for creating items
@@ -910,7 +1045,9 @@ command-connect-info-read-regions = Read Regions
 command-connect-info-write-regions = Write Regions
 command-connect-info-location = Current Location
 command-connect-info-credential = Credential
-command-pwd-description = Shows the current shell location.
+command-pwd-description = Shows the current Cosmos DB location and local working directory.
+command-pwd-cosmos-location = Cosmos location
+command-pwd-local-directory = Local directory
 command-pwd-not-connected = not connected
 command-connect-rbac-error =
   You need the 'Data Contributor' RBAC role permission to enable all
@@ -1557,6 +1694,13 @@ command-batch-example-5 = Execute the queued operations atomically
 command-batch-example-6 = Show the active batch and its queued operations
 command-batch-example-7 = Print the queued operations as a JSON array
 command-batch-example-8 = Discard the active batch
+command-bulk-example-1 = Run independent operations across partition keys with up to 32 concurrent writes
+command-bulk-example-2 = Run operations from a JSON Lines file with a resumable journal
+command-bulk-example-3 = Preview a patch of every matching item and save the generated operations
+command-bulk-example-4 = Delete every matching item; items changed since selection fail instead
+command-bulk-example-5 = Start a stateful bulk job with a default partition key
+command-bulk-example-6 = Queue an operation onto the active bulk job
+command-bulk-example-7 = Execute the queued operations
 command-bucket-example-1 = Display the current client-side throughput bucket selection
 command-bucket-example-2 = Tag this client's requests with throughput bucket 3
 command-bucket-example-3 = Clear the client-side throughput bucket selection
@@ -1588,6 +1732,7 @@ command-connect-example-5 = Connect using Entra ID with gateway connection mode
 command-connect-example-6 = Connect using a user-assigned managed identity
 command-connect-example-7 = Connect using the signed-in Azure CLI (az login) identity, bypassing managed identity
 command-connect-example-8 = Connect using Entra ID with an explicit Azure Resource Manager subscription and resource group (skips ARM auto-discovery)
+command-connect-example-9 = Connect using Entra ID authentication with DefaultAzureCredential
 command-create-example-1 = Create a new container with partition key
 command-create-example-2 = Create database with autoscale throughput
 command-delete-example-1 = Delete items matching the pattern
@@ -1611,9 +1756,9 @@ command-echo-example-3 = Output JSON data
 command-echo-example-4 = Pipe text output to jq for processing
 command-edit-example-1 = Open deploy.csh in $EDITOR, creating it if needed
 command-exit-example-1 = Exit the Cosmos DB Shell
-command-export-example-1 = Export every item in the current container as JSON Lines
+command-export-example-1 = Export every item in the current container as a JSON array
 command-export-example-2 = Export the results of a query
-command-export-example-3 = Export as a JSON array, overwriting an existing file
+command-export-example-3 = Export, overwriting an existing file
 command-export-example-4 = Export items as CSV (one column per top-level property)
 command-export-example-5 = Export up to 1000 items from a specific database and container
 command-filter-example-1 = Extract the first query result
@@ -1630,8 +1775,9 @@ command-ftab-example-7 = Display list results as a table
 command-help-example-1 = Display list of all available commands
 command-help-example-2 = Show detailed help for the query command
 command-help-example-3 = Show detailed help for all commands
-command-import-example-1 = Import items from a JSON Lines file (one JSON object per line)
-command-import-example-2 = Import items from a JSON array file
+command-help-example-4 = Show keyboard shortcuts for the interactive prompt
+command-import-example-1 = Import items from a JSON file containing an array of items or a single item
+command-import-example-2 = Import items from a JSON Lines file (one JSON object per line)
 command-import-example-3 = Import items from a CSV file (the header row defines property names)
 command-import-example-4 = Import CSV and nest the matching column under a nested partition key path
 command-import-example-5 = Insert new items and replace any existing items with the same id
@@ -1661,7 +1807,7 @@ command-mkcon-example-2 = Create container with hierarchical partition keys
 command-mkcon-example-3 = Create container with unique key constraint and autoscale throughput
 command-mkcon-example-4 = Create container in specific database
 command-mkcon-example-5 = Create container with custom indexing policy
-command-mkdb-example-1 = Create a new database with default settings
+command-mkdb-example-1 = Create a database without shared throughput; provision throughput on its containers
 command-mkdb-example-2 = Create database with autoscale and 4000 RU/s maximum throughput
 command-mkdb-example-3 = Create database with manual throughput of 1000 RU/s
 command-mkitem-example-1 = Create a single item from JSON string
@@ -1679,7 +1825,7 @@ command-print-example-2 = Retrieve item from specific database and container
 command-print-example-3 = Read an item with a numeric partition key
 command-print-example-4 = Read an item with a numeric-looking string partition key
 command-print-example-5 = Read an item with a complete mixed-type hierarchical partition key
-command-pwd-example-1 = Show the current shell location
+command-pwd-example-1 = Show the current Cosmos DB location and local working directory
 command-query-example-1 = Query all documents from container
 command-query-example-2 = Query with filter condition
 command-query-example-3 = Query specific fields with result limit

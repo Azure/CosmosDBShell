@@ -2,6 +2,13 @@
 
 Model Context Protocol (MCP) allows AI clients to control CosmosDBShell programmatically.
 
+Database/container creation tools expose `created: true` and `outcome: "created"`
+for a new data-plane resource, or `created: false` and `outcome: "existing"` when
+reusing one. ARM create-or-update returns `created: null` and
+`outcome: "createdOrUpdated"` because the API cannot distinguish the two.
+Do not count that unknown outcome as a confirmed creation.
+See [management result semantics](commands.md#management).
+
 ## Start MCP Server
 
 ```bash
@@ -108,7 +115,7 @@ Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an expli
 
 The prompt is sent as a multi-round-trip request: the tool call returns an input-required result, and the client shows the prompt and retries the call with the answer. For clients that use the `initialize` handshake, the server sends a standard `elicitation/create` request on the session and retries the call itself, so those clients see the same prompt as before. The retry carries a server-signed state that ties the answer to the exact command line and shell context. Each state can be answered once and expires after 10 minutes. At most 1,024 confirmations are tracked at a time; beyond that the oldest pending one is dropped and must be confirmed again. An answer for a different command, a reused or expired state, or a missing or altered state is refused without executing. Argument order does not matter: the command line is built with positionals in shell order and options in declaration order.
 
-This replaces any opt-in write flag: destructive commands are always allowed to be invoked, but always require confirmation.
+This replaces any opt-in write flag: destructive writes are allowed to be invoked, but always require confirmation. The `bulk` tool's `dry-run: true` mode is exempt only without `save`; saving a plan creates a server-local file and requires confirmation.
 
 Confirmation includes the connected account endpoint and current navigation location alongside the command and its explicit target arguments. If the connection or navigation state changes while confirmation is pending, the approved command is refused without executing; retry it to confirm the new context. Even navigating away and back invalidates the pending confirmation. A pending confirmation also expires when the MCP server restarts.
 
@@ -125,6 +132,16 @@ On serverless accounts, `mkdb`, `mkcon`, and their `create` aliases omit through
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.
 
 MCP `import` uses the same bounded concurrency as the CLI: up to 16 writes in flight by default, configurable with the `concurrency` argument. Its schema requires a positive integer (`minimum: 1`). Use `concurrency: 1` for sequential, file-order writes. In-flight writes may complete after an error; imports are not transactional. See [import](commands.md#import) for error and cancellation behavior.
+
+The CLI's periodic ingestion messages are terminal-only: MCP `import` and `bulk` calls do not emit them or add progress fields to their final results. See [ingestion sizing and limitations](ingestion.md) before planning large jobs.
+
+### Bulk Operations
+
+The `bulk` tool exposes the stateless `run`, `patch`, and `delete` subcommands, with the same operation schema, selection, journal, and reporting semantics as the [CLI command](commands.md#bulk). Stateful subcommands (`begin`, `add`, `execute`, `cancel`, `status`, and `show`) are restricted to the interactive shell, like stateful batches. Writes always require MCP elicitation, even with `yes: true`; once approved, no second terminal prompt is shown. `dry-run: true` validates or selects without database writes, but selection reads consume RUs. Only dry runs without `save` skip elicitation: saving a plan creates a server-local file and requires confirmation.
+
+Pass operations as JSON text or a file path in `data`, or use `where` with `operations` for query-driven patches. `concurrency` defaults to 16 and must be positive; optional `max-items` and `max-ru` must also be positive. Explicit `false` boolean values still count as supplied arguments and are rejected when the subcommand does not support them. File paths for `data`, `save`, and `journal` are local to the shell server.
+
+These are independent writes, **not** transactions across partitions. Failed or incomplete runs include their summary alongside the MCP error. The command-level `result.resultIncomplete` and `result.budgetExceeded` flags describe job execution and are distinct from the envelope's query-paging `resultIncomplete`. Resume only with the same journal from the original run; adding a new journal cannot prevent replaying earlier successes. Without the original journal, reconcile completed writes before retrying. A journal never automatically retries a write whose outcome is unknown unless `retry-uncertain` is set; later writes for the same item ID and partition key are also held back.
 
 ### Shell Location Updates
 
@@ -188,7 +205,7 @@ Both representations are always byte-for-byte equivalent.
 | Field | When present | Description |
 | ----- | ------------ | ----------- |
 | `result` | Commands that produce output | The command result as JSON (objects, arrays, or a scalar). Text-only results are represented as a JSON string. Failed transactional batches include their per-operation summary here alongside `error`. |
-| `outputText` | CSV output commands with non-empty text | The CSV rendering of the result. Omitted when the CSV output is empty or whitespace. |
+| `outputText` | CSV output commands with non-empty text, including structured failures | The CSV rendering of the result. Omitted when the CSV output is empty or whitespace. Failed imports retain their partial-result CSV alongside `error` and `result`, with `isError: true`. |
 | `continuationToken` | Paged `query` and container-item `ls` results | Opaque token for the next page, or `null` when no more results are available — unless `resultIncomplete` is `true`, where a `null` token accompanies a truncated result that cannot be resumed. Omitted for `query --explain` and database/container name listings, which are not paged. |
 | `resultIncomplete` | Truncated results that cannot be resumed | `true` when the result stops at the requested limit and the query cannot produce a continuation token. Omitted otherwise. |
 | `requestCharge` | Charged data-plane command results | The Cosmos DB request charge (in RUs) consumed by the command, as a number. This is omitted for commands that do not issue a billable request. |
@@ -209,6 +226,21 @@ command operations that reported a positive request charge; it counts command
 operations rather than individual query pages or transactional batch items. If
 the shell variable `$sessionRequestChargeWarningThreshold` is set to a positive value, the
 session object also includes `session.requestChargeWarningThreshold`.
+
+### Import and export `format`
+
+The `format` argument of `import` and `export` affects only the summary that the
+command reports, such as item counts and request charges. It never changes the
+file that is read or written:
+
+- `import` reads CSV for `.csv` paths and otherwise automatically detects a JSON
+  array, a single JSON object, or a sequence of objects (including JSON Lines).
+- `export` writes CSV for `.csv` paths and an indented JSON array otherwise.
+
+The schemas accept `user`, `json`, `csv`, and `table`. Values such as `array` or
+`jsonl` are not file-format selectors and are rejected. The summary is always
+returned in `result`; `csv` additionally returns its CSV rendering in
+`outputText`. Omit `format` to keep the current output setting.
 
 ### Pagination
 

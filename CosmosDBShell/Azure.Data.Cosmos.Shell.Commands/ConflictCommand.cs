@@ -63,7 +63,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         string? container = NormalizeOption(this.Container);
         if (database is not null && container is not null)
         {
-            return await this.ExecuteOnContainerAsync(state, database, container, token);
+            return await this.ExecuteOnContainerAsync(state, shell, database, container, token);
         }
 
         throw new NotInContainerException("conflict");
@@ -76,7 +76,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
 
         if (container is not null)
         {
-            return await this.ExecuteOnContainerAsync(state, databaseName, container, token);
+            return await this.ExecuteOnContainerAsync(state, shell, databaseName, container, token);
         }
 
         throw new NotInContainerException("conflict");
@@ -87,7 +87,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         string databaseName = NormalizeOption(this.Database) ?? state.DatabaseName;
         string containerName = NormalizeOption(this.Container) ?? state.ContainerName;
 
-        return await this.ExecuteOnContainerAsync(state, databaseName, containerName, token);
+        return await this.ExecuteOnContainerAsync(state, shell, databaseName, containerName, token);
     }
 
     /// <summary>
@@ -130,13 +130,22 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         };
 
         using var jsonDoc = JsonDocument.Parse(root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        var messageId = IsCustom(view.Mode)
+            ? string.IsNullOrEmpty(view.ResolutionProcedure) ? "command-conflict-status-custom-manual" : "command-conflict-status-custom"
+            : "command-conflict-status-lww";
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
+            RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                messageId,
+                "container",
+                containerName,
+                "value",
+                IsCustom(view.Mode) ? view.ResolutionProcedure ?? string.Empty : view.ResolutionPath ?? string.Empty)),
         };
     }
 
-    private async Task<CommandState> ExecuteOnContainerAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    private async Task<CommandState> ExecuteOnContainerAsync(ConnectedState state, ShellInterpreter shell, string databaseName, string containerName, CancellationToken token)
     {
         // Validate the subcommand and options that do not depend on the current policy
         // before touching the network so bad input fails fast without a round-trip.
@@ -164,7 +173,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
             return BuildResult(containerName, current);
         }
 
-        return await this.SetAsync(state, databaseName, containerName, normalizedMode, token);
+        return await this.SetAsync(state, shell, databaseName, containerName, normalizedMode, token);
     }
 
     /// <summary>
@@ -199,7 +208,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         return normalizedMode;
     }
 
-    private async Task<CommandState> SetAsync(ConnectedState state, string databaseName, string containerName, string? normalizedMode, CancellationToken token)
+    private async Task<CommandState> SetAsync(ConnectedState state, ShellInterpreter shell, string databaseName, string containerName, string? normalizedMode, CancellationToken token)
     {
         var current = await CosmosResourceFacade.GetConflictResolutionPolicyAsync(state, databaseName, containerName, token);
         string effectiveMode = normalizedMode ?? (IsCustom(current.Mode) ? "custom" : "lastWriterWins");
@@ -235,7 +244,8 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         }
 
         var view = await CosmosResourceFacade.ReplaceConflictResolutionPolicyAsync(state, databaseName, containerName, update, token);
-        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("command-conflict-updated"));
-        return BuildResult(containerName, view);
+        var result = BuildResult(containerName, view);
+        result.RenderUser = () => shell.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-conflict-updated"));
+        return result;
     }
 }

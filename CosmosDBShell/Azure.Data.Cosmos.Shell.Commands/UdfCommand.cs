@@ -281,7 +281,7 @@ internal class UdfCommand : CosmosCommand
         }
 
         var seed = existingBody ?? DefaultUserDefinedFunctionBody();
-        var edited = await this.LaunchEditorAsync(seed, name, token);
+        var edited = await this.LaunchEditorAsync(shell, seed, name, token);
 
         if (!string.IsNullOrWhiteSpace(edited))
         {
@@ -292,7 +292,7 @@ internal class UdfCommand : CosmosCommand
             ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction);
         }
 
-        if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-udf-create-confirm"))
+        if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-udf-create-confirm", shell))
         {
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "udf", id = name, created = false }));
             commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString("command-udf-create-discarded", "name", name));
@@ -395,7 +395,7 @@ internal class UdfCommand : CosmosCommand
             throw NotFound(name, ex);
         }
 
-        var newBody = await this.LaunchEditorAsync(existingBody, name, token);
+        var newBody = await this.LaunchEditorAsync(shell, existingBody, name, token);
 
         if (string.Equals(newBody, existingBody, StringComparison.Ordinal))
         {
@@ -423,7 +423,7 @@ internal class UdfCommand : CosmosCommand
     /// external editor, waits for the editor to close, and returns the edited
     /// contents. The temporary file is always removed.
     /// </summary>
-    private async Task<string> LaunchEditorAsync(string initialBody, string name, CancellationToken token)
+    private async Task<string> LaunchEditorAsync(ShellInterpreter shell, string initialBody, string name, CancellationToken token)
     {
         var editor = ExternalEditor.Resolve(null);
         if (editor is null)
@@ -438,6 +438,7 @@ internal class UdfCommand : CosmosCommand
         try
         {
             await File.WriteAllTextAsync(tempPath, initialBody, token);
+            using var pause = shell.PauseOperationTimeout();
 
             ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, Theme.FormatMuted(MessageService.GetArgsString(
                 "command-udf-edit-launching",

@@ -130,8 +130,8 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             return true;
         }
 
-        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.RequiredInstruction, MessageService.GetArgsString(summaryKey, args));
-        return ShellInterpreter.Confirm("command-bucket-confirm");
+        shell.Output.MarkupLine(ShellMessageKind.RequiredInstruction, MessageService.GetArgsString(summaryKey, args));
+        return ShellInterpreter.Confirm("command-bucket-confirm", shell);
     }
 
     private static CommandState BuildShowResult(ConnectedState state, ThroughputBucketsView view)

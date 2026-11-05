@@ -735,6 +735,7 @@ internal class ThemeCommand : CosmosCommand
         int exitCode;
         try
         {
+            using var pause = shell.PauseOperationTimeout();
             using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = editor.FileName,

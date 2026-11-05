@@ -5,6 +5,10 @@
 namespace CosmosShell.Tests.UtilTest;
 
 using Azure.Data.Cosmos.Shell.Util;
+using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.States;
+using Microsoft.Azure.Cosmos;
+using NSubstitute;
 
 // Several tests below mutate process-wide environment variables (VISUAL/EDITOR).
 // xUnit parallelizes across test classes, so this collection disables
@@ -18,6 +22,51 @@ public sealed class ExternalEditorTestCollection
 [Collection(ExternalEditorTestCollection.Name)]
 public class ExternalEditorTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FileAndThemeEditing_PauseTheExecutingShellDeadline(bool theme)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Uses the Windows PowerShell fake editor.");
+        var directory = Directory.CreateTempSubdirectory("cosmos-editor-timeout-");
+        var visual = Environment.GetEnvironmentVariable("VISUAL");
+        var savedTheme = Theme.Current;
+        try
+        {
+            var script = Path.Join(directory.FullName, "editor.ps1");
+            await File.WriteAllTextAsync(script, "param($path)\nStart-Sleep -Milliseconds 1500\nexit 0\n", TestContext.Current.CancellationToken);
+            var executable = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+            Environment.SetEnvironmentVariable("VISUAL", $"\"{executable}\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{script}\"");
+            var path = Path.Join(directory.FullName, theme ? "test.toml" : "test.csh");
+            if (theme)
+            {
+                ThemeFile.Save("editor-timeout-test", Theme.Current, path);
+            }
+
+            using var shell = ShellInterpreter.CreateInstance();
+            using var client = Substitute.For<CosmosClient>();
+            client.Endpoint.Returns(new Uri("https://localhost:8081"));
+            shell.State = new ConnectedState(client);
+            shell.IsInputRedirected = () => false;
+            shell.Options = new Program.CosmosShellOptions { Output = "json" };
+            shell.LocalEmulatorInactivityTimeout = TimeSpan.FromSeconds(1);
+            var command = $"{(theme ? "theme edit" : "edit")} '{path.Replace("'", "''")}'";
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
+            var state = await shell.ExecuteCommandAsync(command, TestContext.Current.CancellationToken);
+
+            Assert.False(state.IsError, state is ErrorCommandState error ? error.Exception.ToString() : string.Empty);
+            Assert.True(watch.Elapsed > shell.LocalEmulatorInactivityTimeout);
+            Assert.IsType<ConnectedState>(shell.State);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("VISUAL", visual);
+            Theme.Apply(savedTheme);
+            directory.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public void Resolve_ExplicitEditor_TakesPrecedence()
     {

@@ -37,6 +37,23 @@ public class ConnectCommandTests
     }
 
     [Fact]
+    public void LocalEmulatorInactivityTimeout_IsInitializedOnSharedAndNewInstances()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+
+        Assert.Equal(TimeSpan.FromSeconds(10), ShellInterpreter.Instance.LocalEmulatorInactivityTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(10), shell.LocalEmulatorInactivityTimeout);
+    }
+
+    [Fact]
+    public void ReportOperationProgress_WithoutRunningCommand_IsNoOp()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+
+        shell.ReportOperationProgress();
+    }
+
+    [Fact]
     public void ConnectivityFailure_LocalEmulator_DisconnectsShell()
     {
         using var shell = ShellInterpreter.CreateInstance();
@@ -256,29 +273,38 @@ public class ConnectCommandTests
     }
 
     [Fact]
-    public void ConnectCommand_PrintConnectUsageHint_HasExamplesToPrint()
+    public void ConnectCommand_HelpExamples_RetainConnectionStringAlternative()
     {
-        // The hint helper iterates the connect command's CosmosExample metadata and
-        // skips the bare `connect` no-arg form. Confirm there is at least one other
-        // example to display so the helper output is meaningful.
         Assert.True(CommandFactory.TryCreateFactory(typeof(ConnectCommand), out var factory));
 
         var examples = factory.ExamplesWithDescriptions
             .Where(e => !string.IsNullOrWhiteSpace(e.Example) && e.Example != "connect")
             .ToList();
 
-        Assert.NotEmpty(examples);
+        Assert.Equal("connect https://myaccount.documents.azure.com:443/", examples[0].Example);
+        Assert.Equal("connect https://localhost:8081", examples[1].Example);
+        Assert.Contains(examples, example => example.Example.Contains("AccountKey=", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ConnectCommand_PrintConnectUsageHint_RunsWithoutThrowing()
+    public async Task ConnectCommand_Offline_RenderShowsEndpointThenEmulatorWithoutConnectionString()
     {
         using var shell = ShellInterpreter.CreateInstance();
+        var result = await new ConnectCommand().ExecuteAsync(
+            shell, new CommandState(), "connect", TestContext.Current.CancellationToken);
 
-        // Smoke test: must not throw even when the shell's command map exposes the
-        // factory through ShellInterpreter.App.Commands.
-        var ex = Record.Exception(() => ConnectCommand.PrintConnectUsageHint(shell));
-        Assert.Null(ex);
+        var output = CaptureConsole(() => result.RenderUser!());
+
+        const string endpointExample = "connect https://myaccount.documents.azure.com:443/";
+        const string emulatorExample = "connect https://localhost:8081";
+        Assert.Contains(endpointExample, output);
+        Assert.Contains(emulatorExample, output);
+        Assert.True(output.IndexOf(endpointExample, StringComparison.Ordinal) < output.IndexOf(emulatorExample, StringComparison.Ordinal));
+        Assert.Contains(MessageService.GetString("command-connect-example-9"), output);
+        Assert.Contains(MessageService.GetString("command-connect-not_connected"), output);
+        Assert.Contains("help connect", output);
+        Assert.DoesNotContain("AccountEndpoint=", output);
+        Assert.DoesNotContain("AccountKey=", output);
     }
 
     [Fact]

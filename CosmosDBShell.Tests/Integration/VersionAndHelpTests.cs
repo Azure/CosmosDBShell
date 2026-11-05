@@ -41,6 +41,10 @@ public class VersionAndHelpTests : IntegrationTestBase
 
         var statements = json.GetProperty("statements");
         Assert.True(statements.GetArrayLength() > 0);
+
+        Assert.False(json.TryGetProperty("keyboardShortcuts", out _));
+        var topics = json.GetProperty("topics");
+        Assert.Contains(topics.EnumerateArray(), topic => topic.GetProperty("topic").GetString() == "shortcuts");
     }
 
     [Fact]
@@ -56,6 +60,39 @@ public class VersionAndHelpTests : IntegrationTestBase
 
         var parameters = json.GetProperty("parameters");
         Assert.Contains(parameters.EnumerateArray(), parameter => parameter.GetProperty("name").GetString() == "messages");
+    }
+
+    [Theory]
+    [InlineData("help shortcuts")]
+    [InlineData("help --plain shortcuts")]
+    public async Task Help_ShortcutsTopic_ReturnsKeyboardShortcutMetadata(string script)
+    {
+        var state = await RunScriptAsync(script);
+
+        Assert.False(state.IsError);
+        var json = GetJson(state);
+        Assert.Equal("shortcuts", json.GetProperty("topic").GetString());
+        var shortcuts = json.GetProperty("keyboardShortcuts");
+        var expectedShortcuts = new[]
+        {
+            "Up / Down", "Ctrl+P / Ctrl+N", "Ctrl+R", "Ctrl+S",
+            "Ctrl+B / Ctrl+F", "Ctrl+A", "Ctrl+E",
+            "Tab / Ctrl+Tab", "Ctrl+U", "Ctrl+K", "Ctrl+W", "Esc",
+            "Ctrl+L", "Ctrl+C", "Ctrl+D",
+        };
+        Assert.Equal(expectedShortcuts, shortcuts.EnumerateArray().Select(shortcut => shortcut.GetProperty("shortcut").GetString()));
+        Assert.All(shortcuts.EnumerateArray(), shortcut =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(shortcut.GetProperty("group").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(shortcut.GetProperty("description").GetString()));
+        });
+        Assert.Contains("Ctrl+G", json.GetProperty("historySearch").GetString(), StringComparison.Ordinal);
+        Assert.Contains(shortcuts.EnumerateArray(), shortcut =>
+            shortcut.GetProperty("shortcut").GetString() == "Ctrl+R" &&
+            shortcut.GetProperty("description").GetString()!.Contains("older matches", StringComparison.Ordinal));
+        Assert.Contains(shortcuts.EnumerateArray(), shortcut =>
+            shortcut.GetProperty("shortcut").GetString() == "Ctrl+S" &&
+            shortcut.GetProperty("description").GetString()!.Contains("newer matches", StringComparison.Ordinal));
     }
 
     [Fact]

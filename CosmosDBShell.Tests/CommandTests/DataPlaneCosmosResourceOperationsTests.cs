@@ -7,9 +7,46 @@ namespace CosmosShell.Tests.CommandTests;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Newtonsoft.Json.Linq;
 
 public class DataPlaneCosmosResourceOperationsTests
 {
+    [Fact]
+    public void IndexingPolicy_ServiceReturnedIndexes_RoundTripPreservesMetadata()
+    {
+        const string json = """
+            {
+              "indexingMode": "consistent",
+              "automatic": true,
+              "includedPaths": [
+                {"path": "/addressId/?", "isFullIndex": true, "indexes": [
+                  {"kind": "Range", "dataType": "Number", "precision": -1},
+                  {"kind": "Range", "dataType": "String", "precision": -1}
+                ]},
+                {"path": "/docType/?", "indexes": []},
+                {"path": "/rowguid/?", "indexes": []}
+              ],
+              "excludedPaths": [{"path": "/\"_etag\"/?"}, {"path": "/*"}],
+              "compositeIndexes": [[{"path": "/docType", "order": "ascending"}, {"path": "/rowguid", "order": "descending"}]],
+              "spatialIndexes": [{"path": "/location/*", "types": ["Point"]}],
+              "vectorIndexes": [{"path": "/embedding", "type": "quantizedFlat"}],
+              "fullTextIndexes": [{"path": "/text"}]
+            }
+            """;
+        var initial = DataPlaneCosmosResourceOperations.ParseIndexingPolicy(json);
+        var current = DataPlaneCosmosResourceOperations.SerializeIndexingPolicy(initial);
+        var updated = IndexCommand.AddIncludedPaths(current, ["/city/?"]);
+        var roundTrip = DataPlaneCosmosResourceOperations.SerializeIndexingPolicy(
+            DataPlaneCosmosResourceOperations.ParseIndexingPolicy(updated));
+
+        var before = JObject.Parse(current);
+        var after = JObject.Parse(roundTrip);
+        var included = Assert.IsType<JArray>(after["includedPaths"]);
+        var added = Assert.Single(included, path => (string?)path["path"] == "/city/?");
+        added.Remove();
+        Assert.True(JToken.DeepEquals(before, after), $"Expected: {before}\nActual: {after}");
+    }
+
     [Theory]
     [InlineData(null, null)]
     [InlineData("none", null)]

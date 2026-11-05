@@ -70,6 +70,13 @@ internal class MakeItemCommand : CosmosCommand
             requestCharge = summary.RequestCharge,
         }));
         returnState.RequestCharge = summary.RequestCharge;
+        returnState.RenderUser = () =>
+        {
+            if (summary.Message is { } message)
+            {
+                shell.Output.WriteLine(ShellMessageKind.Result, message);
+            }
+        };
         return returnState;
     }
 
@@ -159,9 +166,20 @@ internal class MakeItemCommand : CosmosCommand
                     int replacedCount = 0;
                     int failCount = 0;
                     double charge = 0.0;
-                    var presentResults = !shell.IsMachineMode;
-                    var errors = presentResults ? null : new BulkWriteDiagnostics();
+                    var errors = shell.IsMachineMode ? new BulkWriteDiagnostics() : null;
                     var itemIndex = 0;
+                    void RecordError(string message)
+                    {
+                        if (errors != null)
+                        {
+                            errors.Add($"Item {itemIndex}: {message}");
+                        }
+                        else
+                        {
+                            shell.Output.WriteLine(ShellMessageKind.Error, message);
+                        }
+                    }
+
                     foreach (var element in root.EnumerateArray())
                     {
                         itemIndex++;
@@ -180,125 +198,99 @@ internal class MakeItemCommand : CosmosCommand
                             else
                             {
                                 failCount++;
-                                var message = MessageService.GetArgsString(
-                                    "command-mkitem-error-status-returned",
-                                    "status",
-                                    result.StatusCode.ToString());
-                                errors?.Add(MessageService.GetArgsString("error-bulk-item", "index", itemIndex, "message", message));
-                                if (presentResults)
-                                {
-                                    shell.Output.WriteLine(ShellMessageKind.Error, message);
-                                }
+                                RecordError(
+                                    MessageService.GetArgsString(
+                                        "command-mkitem-error-status-returned",
+                                        "status",
+                                        result.StatusCode.ToString()));
                             }
                         }
                         catch (CosmosException ce)
                         {
                             RequestChargeContext.Record(ce.RequestCharge);
                             failCount++;
-                            var message = MessageService.GetArgsString(
-                                "command-mkitem-error-creation-failed",
-                                "status",
-                                ce.StatusCode.ToString(),
-                                "message",
-                                CommandException.GetDisplayMessage(ce));
-                            errors?.Add(MessageService.GetArgsString("error-bulk-item", "index", itemIndex, "message", message));
-                            if (presentResults)
-                            {
-                                shell.Output.WriteLine(ShellMessageKind.Error, message);
-                            }
+                            RecordError(
+                                MessageService.GetArgsString(
+                                    "command-mkitem-error-creation-failed",
+                                    "status",
+                                    ce.StatusCode.ToString(),
+                                    "message",
+                                    CommandException.GetDisplayMessage(ce)));
                         }
                         catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
                         {
                             failCount++;
-                            var message = MessageService.GetArgsString(
-                                "command-mkitem-error-creation-failed",
-                                "status",
-                                "Invalid partition key",
-                                "message",
-                                ex.Message);
-                            errors?.Add(MessageService.GetArgsString("error-bulk-item", "index", itemIndex, "message", message));
-                            if (presentResults)
-                            {
-                                shell.Output.WriteLine(ShellMessageKind.Error, message);
-                            }
+                            RecordError(
+                                MessageService.GetArgsString(
+                                    "command-mkitem-error-creation-failed",
+                                    "status",
+                                    "Invalid partition key",
+                                    "message",
+                                    ex.Message));
                         }
                     }
 
-                    if (presentResults)
+                    string summaryMessage;
+                    if (force)
                     {
-                        if (force)
+                        if ((createdCount + replacedCount) > 0 && failCount == 0)
                         {
-                            if ((createdCount + replacedCount) > 0 && failCount == 0)
-                            {
-                                shell.Output.WriteLine(
-                                    ShellMessageKind.Information,
-                                    MessageService.GetArgsString(
-                                        "command-mkitem-upserted-multiple",
-                                        "created",
-                                        createdCount,
-                                        "replaced",
-                                        replacedCount,
-                                        "charge",
-                                        charge.ToString("F2")));
-                            }
-                            else if ((createdCount + replacedCount) > 0)
-                            {
-                                shell.Output.WriteLine(
-                                    ShellMessageKind.Warning,
-                                    MessageService.GetArgsString(
-                                        "command-mkitem-upserted-partial",
-                                        "created",
-                                        createdCount,
-                                        "replaced",
-                                        replacedCount,
-                                        "failed",
-                                        failCount,
-                                        "charge",
-                                        charge.ToString("F2")));
-                            }
-                            else
-                            {
-                                shell.Output.WriteLine(
-                                    ShellMessageKind.Error,
-                                    MessageService.GetArgsString(
-                                        "command-mkitem-upserted-all-failed",
-                                        "count",
-                                        failCount));
-                            }
+                            summaryMessage = MessageService.GetArgsString(
+                                "command-mkitem-upserted-multiple",
+                                "created",
+                                createdCount,
+                                "replaced",
+                                replacedCount,
+                                "charge",
+                                charge.ToString("F2"));
                         }
-                        else if (createdCount > 0 && failCount == 0)
+                        else if ((createdCount + replacedCount) > 0)
                         {
-                            shell.Output.WriteLine(
-                                ShellMessageKind.Information,
-                                MessageService.GetArgsString(
-                                    "command-mkitem-created-multiple",
-                                    "count",
-                                    createdCount,
-                                    "charge",
-                                    charge.ToString("F2")));
-                        }
-                        else if (createdCount > 0 && failCount > 0)
-                        {
-                            shell.Output.WriteLine(
-                                ShellMessageKind.Warning,
-                                MessageService.GetArgsString(
-                                    "command-mkitem-created-partial",
-                                    "success",
-                                    createdCount,
-                                    "failed",
-                                    failCount,
-                                    "charge",
-                                    charge.ToString("F2")));
+                            summaryMessage = MessageService.GetArgsString(
+                                "command-mkitem-upserted-partial",
+                                "created",
+                                createdCount,
+                                "replaced",
+                                replacedCount,
+                                "failed",
+                                failCount,
+                                "charge",
+                                charge.ToString("F2"));
                         }
                         else
                         {
-                            shell.Output.WriteLine(
-                                ShellMessageKind.Error,
-                                MessageService.GetArgsString(
-                                    "command-mkitem-created-all-failed",
-                                    "count",
-                                    failCount));
+                            summaryMessage = MessageService.GetArgsString(
+                                "command-mkitem-upserted-all-failed",
+                                "count",
+                                failCount);
                         }
+                    }
+                    else if (createdCount > 0 && failCount == 0)
+                    {
+                        summaryMessage = MessageService.GetArgsString(
+                            "command-mkitem-created-multiple",
+                            "count",
+                            createdCount,
+                            "charge",
+                            charge.ToString("F2"));
+                    }
+                    else if (createdCount > 0 && failCount > 0)
+                    {
+                        summaryMessage = MessageService.GetArgsString(
+                            "command-mkitem-created-partial",
+                            "success",
+                            createdCount,
+                            "failed",
+                            failCount,
+                            "charge",
+                            charge.ToString("F2"));
+                    }
+                    else
+                    {
+                        summaryMessage = MessageService.GetArgsString(
+                            "command-mkitem-created-all-failed",
+                            "count",
+                            failCount);
                     }
 
                     // Bulk write summary is informational; signal the caller
@@ -306,13 +298,18 @@ internal class MakeItemCommand : CosmosCommand
                     // treat a partial/total failure as success.
                     if (failCount > 0)
                     {
+                        if (!shell.IsMachineMode)
+                        {
+                            shell.Output.WriteLine(ShellMessageKind.Error, summaryMessage);
+                        }
+
                         var totalCount = createdCount + replacedCount + failCount;
                         var message = MessageService.GetArgsString(
-                            "command-mkitem-error-array_failed",
-                            "failed",
-                            failCount,
-                            "total",
-                            totalCount);
+                                "command-mkitem-error-array_failed",
+                                "failed",
+                                failCount,
+                                "total",
+                                totalCount);
                         if (errors != null)
                         {
                             message += Environment.NewLine + errors.GetMessage();
@@ -321,7 +318,7 @@ internal class MakeItemCommand : CosmosCommand
                         throw new CommandException("mkitem", message);
                     }
 
-                    return new WriteSummary(createdCount, replacedCount, failCount, charge);
+                    return new WriteSummary(createdCount, replacedCount, failCount, charge, summaryMessage);
                 }
                 else
                 {
@@ -336,19 +333,19 @@ internal class MakeItemCommand : CosmosCommand
                         if (result.StatusCode == System.Net.HttpStatusCode.Created)
                         {
                             var key = force ? "command-mkitem-upserted-created" : "command-mkitem-created-success";
-                            shell.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                            var message = MessageService.GetArgsString(
                                 key,
                                 "charge",
-                                result.RequestCharge.ToString("F2")));
-                            return new WriteSummary(1, 0, 0, result.RequestCharge);
+                                result.RequestCharge.ToString("F2"));
+                            return new WriteSummary(1, 0, 0, result.RequestCharge, message);
                         }
                         else if (force && result.StatusCode == System.Net.HttpStatusCode.OK)
                         {
-                            shell.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                            var message = MessageService.GetArgsString(
                                 "command-mkitem-upserted-replaced",
                                 "charge",
-                                result.RequestCharge.ToString("F2")));
-                            return new WriteSummary(0, 1, 0, result.RequestCharge);
+                                result.RequestCharge.ToString("F2"));
+                            return new WriteSummary(0, 1, 0, result.RequestCharge, message);
                         }
                         else
                         {
@@ -397,5 +394,5 @@ internal class MakeItemCommand : CosmosCommand
         return (response.StatusCode, response.Headers.RequestCharge);
     }
 
-    private readonly record struct WriteSummary(int Created, int Replaced, int Failed, double RequestCharge);
+    private readonly record struct WriteSummary(int Created, int Replaced, int Failed, double RequestCharge, string? Message);
 }

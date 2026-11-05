@@ -230,6 +230,8 @@ public class CommandExecutionTests : TestBase
     [InlineData("-1.5 +2", "-1.5 +2")]
     [InlineData("\"--format=json\"", "--format=json")]
     [InlineData("https://localhost:8081 *.json", "https://localhost:8081 *.json")]
+    [InlineData("/city/? /probeFlag/?", "/city/? /probeFlag/?")]
+    [InlineData("https://example.test/items?city=London", "https://example.test/items?city=London")]
     public async Task Exec_ShellWords_RunLikeDirectArguments(string arguments, string expected)
     {
         var state = await Shell.RunCommandAsync(new(), $"exec \"echo\" {arguments}", TestContext.Current.CancellationToken);

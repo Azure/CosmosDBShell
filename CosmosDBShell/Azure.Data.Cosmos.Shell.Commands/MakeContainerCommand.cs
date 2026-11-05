@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Commands;
 
+using System.Diagnostics;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
@@ -66,7 +67,7 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
     {
         if (!string.IsNullOrEmpty(this.Database))
         {
-            return await this.CreateContainerInDatabaseAsync(state, this.Database, token);
+            return await this.CreateContainerInDatabaseAsync(state, shell, this.Database, token);
         }
 
         throw new NotInDatabaseException("mkcon");
@@ -127,10 +128,10 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
     {
         if (!string.IsNullOrEmpty(this.Database) && !string.Equals(this.Database, state.DatabaseName, StringComparison.OrdinalIgnoreCase))
         {
-            return await this.CreateContainerInDatabaseAsync(state, this.Database, token);
+            return await this.CreateContainerInDatabaseAsync(state, shell, this.Database, token);
         }
 
-        return await this.CreateContainerInDatabaseAsync(state, state.DatabaseName, token);
+        return await this.CreateContainerInDatabaseAsync(state, shell, state.DatabaseName, token);
     }
 
     Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitContainerStateAsync(ContainerState state, ShellInterpreter shell, CancellationToken token)
@@ -143,16 +144,16 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         throw new CommandException("mkcon", MessageService.GetString("error-not_allowed_in_container"));
     }
 
-    private async Task<CommandState> CreateContainerInDatabaseAsync(ConnectedState state, string databaseName, CancellationToken token)
+    private async Task<CommandState> CreateContainerInDatabaseAsync(ConnectedState state, ShellInterpreter shell, string databaseName, CancellationToken token)
     {
         // Validate database exists
         await ValidateDatabaseExistsAsync(state, databaseName, "mkcon", token);
 
         var partitionKeyPaths = this.GetPartitionKeyPaths();
-        string containerName;
+        ResourceCreationResult creation;
         try
         {
-            containerName = await CosmosResourceFacade.CreateContainerAsync(
+            creation = await CosmosResourceFacade.CreateContainerAsync(
                 state,
                 databaseName,
                 this.Name ?? string.Empty,
@@ -177,10 +178,18 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
             type = "container",
-            id = containerName,
-            created = true,
+            id = creation.Id,
+            created = creation.Created,
+            outcome = creation.OutcomeName,
         }));
-        commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-mkcon-CreatedContainer", new Dictionary<string, object> { { "container", containerName } }));
+        var messageKey = creation.Outcome switch
+        {
+            ResourceCreationOutcome.Created => "command-mkcon-CreatedContainer",
+            ResourceCreationOutcome.Existing => "command-mkcon-container_existing",
+            ResourceCreationOutcome.CreatedOrUpdated => "command-mkcon-container_created_or_updated",
+            _ => throw new UnreachableException(),
+        };
+        commandState.RenderUser = () => shell.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString(messageKey, new Dictionary<string, object> { { "container", creation.Id } }));
         return commandState;
     }
 

@@ -17,6 +17,147 @@ using NSubstitute;
 public class ImportConcurrencyTests
 {
     [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task SlowInput_RecordsSettledWritesAndSettlesReadBeforeDisposal(int failure)
+    {
+        using var timeout = CreateTimeout();
+        var container = Substitute.For<Container>();
+        var write = new TaskCompletionSource<ItemResponse<JsonElement>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ConfigureWrites(container, (_, _) => write.Task);
+        var reading = NewGate();
+        var releaseRead = NewGate();
+        var recorded = NewGate();
+        var disposed = false;
+        var progress = new ImportCommand.ImportProgress();
+        async IAsyncEnumerable<(int LineNumber, JsonElement Item)> SlowSource()
+        {
+            try
+            {
+                yield return (1, JsonSerializer.SerializeToElement(new { id = "first" }));
+                reading.TrySetResult();
+                await releaseRead.Task.WaitAsync(timeout.Token);
+            }
+            finally
+            {
+                disposed = true;
+            }
+        }
+
+        var import = ImportCommand.WriteItemsAsync(
+            SlowSource(), container, ImportMode.Insert, 2, false, [], new CommandState(), timeout.Token,
+            progress: progress,
+            progressChanged: () => recorded.TrySetResult());
+        try
+        {
+            await reading.Task.WaitAsync(timeout.Token);
+            if (failure == 1)
+            {
+                write.SetException(new InvalidOperationException("write failed"));
+            }
+            else if (failure == 2)
+            {
+                write.SetCanceled(timeout.Token);
+            }
+            else
+            {
+                write.SetResult(Response(HttpStatusCode.Created, 2.5));
+                await recorded.Task.WaitAsync(timeout.Token);
+                Assert.Equal(1, progress.Success);
+                Assert.Equal(0, progress.Failed);
+                Assert.Equal(2.5, progress.Charge);
+            }
+
+            Assert.False(import.IsCompleted);
+            Assert.False(disposed);
+        }
+        finally
+        {
+            write.TrySetResult(Response(HttpStatusCode.Created, 2.5));
+            releaseRead.TrySetResult();
+        }
+
+        if (failure == 1)
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => import.WaitAsync(timeout.Token));
+            Assert.Equal("write failed", error.Message);
+        }
+        else if (failure == 2)
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => import.WaitAsync(timeout.Token));
+        }
+        else
+        {
+            Assert.Equal((1, 0, 2.5), await import.WaitAsync(timeout.Token));
+        }
+
+        Assert.True(disposed);
+    }
+
+    [Fact]
+    public async Task FinalDrain_RecordsWritesThatFinishBehindASlowerWrite()
+    {
+        using var timeout = CreateTimeout();
+        var container = Substitute.For<Container>();
+        var gates = new[] { NewGate(), NewGate() };
+        var started = new[] { NewGate(), NewGate() };
+        ConfigureWrites(container, async (item, token) =>
+        {
+            var index = item.GetProperty("id").GetInt32();
+            started[index].TrySetResult();
+            await gates[index].Task.WaitAsync(token);
+            return Response(HttpStatusCode.Created, 1);
+        });
+        using var reader = NewReader(2);
+        var progress = new ImportCommand.ImportProgress();
+        var secondRecorded = NewGate();
+        var import = ImportCommand.WriteItemsAsync(
+            ImportCommand.EnumerateJsonLinesAsync(reader, timeout.Token),
+            container, ImportMode.Insert, 3, false, [], new CommandState(), timeout.Token,
+            progress: progress,
+            progressChanged: () => secondRecorded.TrySetResult());
+        try
+        {
+            await Task.WhenAll(started.Select(gate => gate.Task)).WaitAsync(timeout.Token);
+            gates[1].TrySetResult();
+
+            await secondRecorded.Task.WaitAsync(timeout.Token);
+            Assert.Equal(1, progress.Success);
+            Assert.False(import.IsCompleted);
+        }
+        finally
+        {
+            gates[0].TrySetResult();
+            gates[1].TrySetResult();
+        }
+
+        Assert.Equal((2, 0, 2.0), await import.WaitAsync(timeout.Token));
+    }
+
+    [Fact]
+    public async Task ProgressUpdatesIncludeEverySettledWriteAndObservedCharge()
+    {
+        using var timeout = CreateTimeout();
+        var container = Substitute.For<Container>();
+        ConfigureWrites(container, (item, _) => Task.FromResult(
+            Response(item.GetProperty("id").GetInt32() == 1 ? HttpStatusCode.Conflict : HttpStatusCode.Created, 2.5)));
+        using var reader = NewReader(3);
+        var progress = new ImportCommand.ImportProgress();
+        var snapshots = new List<(int Success, int Failed, double Charge)>();
+
+        await ImportCommand.WriteItemsAsync(
+            ImportCommand.EnumerateJsonLinesAsync(reader, timeout.Token),
+            container, ImportMode.Insert, 3, true, [], new CommandState(), timeout.Token,
+            progress: progress,
+            progressChanged: () => snapshots.Add((progress.Success, progress.Failed, progress.Charge)));
+
+        Assert.Equal(3, snapshots.Count);
+        Assert.Equal((2, 1, 7.5), snapshots[^1]);
+        Assert.Equal([1, 2, 3], snapshots.Select(snapshot => snapshot.Success + snapshot.Failed));
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(3)]
     [InlineData(16)]
@@ -120,6 +261,44 @@ public class ImportConcurrencyTests
         var result = await import.WaitAsync(timeout.Token);
         Assert.Equal(continueOnError ? (4, 1, 11.0) : (2, 1, 7.0), result);
         Assert.Equal(continueOnError ? 5 : 3, started.Count);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SdkTimeout_IsRecordedPerItemWithoutLosingSettledWrites(bool continueOnError)
+    {
+        using var timeout = CreateTimeout();
+        var container = Substitute.For<Container>();
+        var first = new TaskCompletionSource<ItemResponse<JsonElement>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var second = new TaskCompletionSource<ItemResponse<JsonElement>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ConfigureWrites(container, (item, _) => item.GetProperty("id").GetInt32() switch
+        {
+            0 => first.Task,
+            1 => second.Task,
+            _ => Task.FromResult(Response(HttpStatusCode.Created, 2)),
+        });
+        using var reader = NewReader(3);
+        var progress = new ImportCommand.ImportProgress();
+        var import = ImportCommand.WriteItemsAsync(
+            ImportCommand.EnumerateJsonLinesAsync(reader, timeout.Token),
+            container,
+            ImportMode.Insert,
+            3,
+            continueOnError,
+            [],
+            new CommandState(),
+            timeout.Token,
+            progress: progress);
+
+        second.SetException(new OperationCanceledException("The operation was canceled. Cancellation Token has expired: True."));
+        first.SetResult(Response(HttpStatusCode.Created, 2));
+
+        var result = await import.WaitAsync(timeout.Token);
+        Assert.Equal((2, 1, 4.0), result);
+        var failure = Assert.IsType<CommandException>(progress.FirstFailure);
+        Assert.IsType<OperationCanceledException>(failure.InnerException);
+        Assert.Contains(nameof(HttpStatusCode.RequestTimeout), failure.Message);
     }
 
     [Theory]
@@ -476,10 +655,12 @@ public class ImportConcurrencyTests
     }
 
     [Theory]
-    [InlineData("jsonl", "{\"id\":\"a\"}\n{\"id\":\"b\"}\n")]
-    [InlineData("json", "[{\"id\":\"a\"},{\"id\":\"b\"}]")]
-    [InlineData("csv", "id\na\nb\n")]
-    public async Task DryRun_WithConcurrencyValidatesWithoutConnectionAndPreservesResult(string extension, string content)
+    [InlineData("jsonl", "{\"id\":\"a\"}\n{\"id\":\"b\"}\n", 2)]
+    [InlineData("json", "{\"id\":\"a\"} {\"id\":\"b\"}", 2)]
+    [InlineData("json", "[{\"id\":\"a\"},{\"id\":\"b\"}]", 2)]
+    [InlineData("json", "{\n    \"id\": \"a\"\n}\n", 1)]
+    [InlineData("csv", "id\na\nb\n", 2)]
+    public async Task DryRun_WithConcurrencyValidatesWithoutConnectionAndPreservesResult(string extension, string content, int expected)
     {
         var fileName = $"cosmos-import-{Guid.NewGuid():N}.{Path.GetFileName(extension).TrimStart('.')}";
         var path = Path.Join(Path.GetTempPath(), fileName);
@@ -492,7 +673,8 @@ public class ImportConcurrencyTests
             var result = Assert.IsType<ShellJson>(state.Result).Value;
 
             Assert.Equal("import", result.GetProperty("type").GetString());
-            Assert.Equal(2, result.GetProperty("imported").GetInt32());
+            Assert.Equal(0, result.GetProperty("imported").GetInt32());
+            Assert.Equal(expected, result.GetProperty("validated").GetInt32());
             Assert.Equal(0, result.GetProperty("failed").GetInt32());
             Assert.Equal(0, result.GetProperty("requestCharge").GetDouble());
             Assert.True(result.GetProperty("dryRun").GetBoolean());
