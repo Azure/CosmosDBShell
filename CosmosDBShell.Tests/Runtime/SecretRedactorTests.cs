@@ -161,6 +161,10 @@ public class SecretRedactorTests
     [InlineData("""$ResourceToken = 'example-key==' + 'suffix'; echo 'unchanged'""", """$ResourceToken = "[REDACTED]"; echo 'unchanged'""")]
     [InlineData("""$data = {"AccountKey": ('example-key=='), "label": "unchanged"}""", """$data = {"AccountKey": "[REDACTED]", "label": "unchanged"}""")]
     [InlineData("""$AccountKey = ('example-key==') + ('suffix'); echo 'unchanged'""", """$AccountKey = "[REDACTED]"; echo 'unchanged'""")]
+    [InlineData("""$AccountKey += 'example-key=='; echo 'unchanged'""", """$AccountKey += "[REDACTED]"; echo 'unchanged'""")]
+    [InlineData("""$SharedAccessKey -= 'example-key=='; echo 'unchanged'""", """$SharedAccessKey -= "[REDACTED]"; echo 'unchanged'""")]
+    [InlineData("""$ResourceToken *= ('example-key=='); echo 'unchanged'""", """$ResourceToken *= "[REDACTED]"; echo 'unchanged'""")]
+    [InlineData("""$AccountKey /= ('example-key=='); echo 'unchanged'""", """$AccountKey /= "[REDACTED]"; echo 'unchanged'""")]
     public void MaskHistory_RedactsCompleteCredentialExpressionsAndPreservesSyntax(string command, string expected)
     {
         var masked = SecretRedactor.MaskHistory(command);
@@ -188,5 +192,33 @@ public class SecretRedactorTests
         var parser = new StatementParser(masked);
         _ = parser.ParseStatements();
         Assert.False(parser.Errors.HasErrors);
+    }
+
+    [Theory]
+    [InlineData("""echo $"Before=$label $('AccountKey=''example-key=='';') After=$label" """, true)]
+    [InlineData("""echo $"Before=$label $(\"AccountKey='example-key==';\") After=$label" """, false)]
+    [InlineData("""echo $"Before=$label $($\"AccountKey=example-key==;\") After=$label" """, false)]
+    public void MaskHistory_RecursivelyRedactsLiteralsInsideInterpolation(string command, bool validExpression)
+    {
+        var masked = SecretRedactor.MaskHistory(command);
+
+        Assert.DoesNotContain("example-key", masked);
+        Assert.Contains("[REDACTED]", masked);
+        Assert.Contains("Before=$label ", masked);
+        Assert.Contains(" After=$label", masked);
+        Assert.Equal(masked, SecretRedactor.MaskHistory(masked));
+        var originalParser = new StatementParser(command);
+        _ = originalParser.ParseStatements();
+        Assert.Equal(validExpression, !originalParser.Errors.HasErrors);
+        if (validExpression)
+        {
+            var parser = new StatementParser(masked);
+            _ = parser.ParseStatements();
+            Assert.False(parser.Errors.HasErrors);
+        }
+
+        var lexer = new Lexer(masked);
+        _ = lexer.Tokenize().ToArray();
+        Assert.False(lexer.Errors.HasErrors);
     }
 }

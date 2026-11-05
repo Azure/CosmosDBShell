@@ -52,7 +52,8 @@ internal static class SecretRedactor
         for (var index = 0; index < tokens.Length; index++)
         {
             var token = tokens[index];
-            var isCredentialValue = IsCredentialValue(tokens, index);
+            var credentialNameIndex = GetCredentialNameIndex(tokens, index);
+            var isCredentialValue = credentialNameIndex >= 0;
             if (!isCredentialValue && token.Type is not (TokenType.String or TokenType.InterpolatedString))
             {
                 continue;
@@ -60,7 +61,7 @@ internal static class SecretRedactor
 
             if (isCredentialValue)
             {
-                var nameStart = Math.Max(offset, tokens[index - 2].Start);
+                var nameStart = Math.Max(offset, tokens[credentialNameIndex].Start);
                 var separatorEnd = tokens[index - 1].Start + tokens[index - 1].Length;
                 result.Append(MaskHistoryCredentials(value[offset..nameStart]));
                 result.Append(value.AsSpan(nameStart, separatorEnd - nameStart));
@@ -80,7 +81,7 @@ internal static class SecretRedactor
                 result.Append(MaskHistoryCredentials(value[offset..token.Start]));
                 if (token.Type == TokenType.InterpolatedString)
                 {
-                    result.Append(MaskInterpolatedToken(raw, token, lexer));
+                    result.Append(MaskInterpolatedToken(raw, token, lexer, depth));
                 }
                 else
                 {
@@ -124,12 +125,28 @@ internal static class SecretRedactor
             || value.Equals("ResourceToken", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsCredentialValue(IReadOnlyList<Token> tokens, int index)
-        => index >= 2
-            && tokens[index - 1].Value is ":" or "="
-            && IsCredentialName(tokens[index - 2].Value)
+    private static int GetCredentialNameIndex(IReadOnlyList<Token> tokens, int index)
+    {
+        if (index < 2 || tokens[index - 1].Type is not (TokenType.Assignment or TokenType.Colon))
+        {
+            return -1;
+        }
+
+        var nameIndex = index - 2;
+        if (tokens[index - 1].Type == TokenType.Assignment
+            && tokens[nameIndex].Type is TokenType.Plus or TokenType.Minus or TokenType.Multiply or TokenType.Divide
+            && tokens[nameIndex].Start + tokens[nameIndex].Length == tokens[index - 1].Start)
+        {
+            nameIndex--;
+        }
+
+        return nameIndex >= 0
+            && IsCredentialName(tokens[nameIndex].Value)
             && (tokens[index].Type is TokenType.String or TokenType.InterpolatedString or TokenType.OpenParenthesis
-                || tokens[index - 2].Value.StartsWith('$') || tokens[index - 1].Type == TokenType.Colon);
+                || tokens[nameIndex].Value.StartsWith('$') || tokens[index - 1].Type == TokenType.Colon)
+            ? nameIndex
+            : -1;
+    }
 
     private static int GetCredentialExpressionEnd(string value, int start)
     {
@@ -138,10 +155,11 @@ internal static class SecretRedactor
         return lexer.Errors.HasErrors ? value.Length : start + expression.Start + expression.Length;
     }
 
-    private static string MaskInterpolatedToken(string raw, Token token, Lexer lexer)
+    private static string MaskInterpolatedToken(string raw, Token token, Lexer lexer, int depth)
     {
         var sourceMap = lexer.GetInterpolatedStringSourceMap(token)!;
         var ranges = new List<(int Start, int End, string Replacement)>();
+        var literalRanges = new List<(int Start, int End)>();
         void AddRange(int start, int end, string replacement)
         {
             ranges.Add((
@@ -164,10 +182,45 @@ internal static class SecretRedactor
                 .Where(item => item.Type is not (TokenType.Eol or TokenType.Comment)).ToArray();
             for (var expressionIndex = 0; expressionIndex < expressionTokens.Length; expressionIndex++)
             {
-                if (IsCredentialValue(expressionTokens, expressionIndex))
+                var expressionToken = expressionTokens[expressionIndex];
+                if (expressionToken.Type is TokenType.String or TokenType.InterpolatedString)
                 {
-                    var start = expressionTokens[expressionIndex].Start;
+                    literalRanges.Add((expressionStart + expressionToken.Start, expressionStart + expressionToken.Start + expressionToken.Length));
+                }
+
+                if (GetCredentialNameIndex(expressionTokens, expressionIndex) >= 0)
+                {
+                    var start = expressionToken.Start;
                     AddRange(expressionStart + start, expressionStart + GetCredentialExpressionEnd(expressionText, start), "'[REDACTED]'");
+                }
+                else if (expressionToken.Type is TokenType.String or TokenType.InterpolatedString)
+                {
+                    var original = expressionText.Substring(expressionToken.Start, expressionToken.Length);
+                    var masked = depth >= 15 ? "'[REDACTED]'" : MaskHistory(original, depth + 1);
+                    if (masked == original)
+                    {
+                        continue;
+                    }
+
+                    var prefix = 0;
+                    while (prefix < original.Length && prefix < masked.Length && original[prefix] == masked[prefix])
+                    {
+                        prefix++;
+                    }
+
+                    var suffix = 0;
+                    while (suffix < original.Length - prefix && suffix < masked.Length - prefix
+                        && original[^(suffix + 1)] == masked[^(suffix + 1)])
+                    {
+                        suffix++;
+                    }
+
+                    var replacement = masked[prefix..(masked.Length - suffix)]
+                        .Replace("\\", "\\\\", StringComparison.Ordinal)
+                        .Replace("\"", "\\\"", StringComparison.Ordinal)
+                        .Replace("{", "\\{", StringComparison.Ordinal)
+                        .Replace("}", "\\}", StringComparison.Ordinal);
+                    AddRange(expressionStart + expressionToken.Start + prefix, expressionStart + expressionToken.Start + original.Length - suffix, replacement);
                 }
             }
 
@@ -178,6 +231,11 @@ internal static class SecretRedactor
         {
             foreach (Match match in pattern.Matches(token.Value))
             {
+                if (literalRanges.Any(range => match.Index >= range.Start && match.Index < range.End))
+                {
+                    continue;
+                }
+
                 var prefixLength = match.Groups.Count > 1 ? match.Groups[1].Length : 0;
                 var endIndex = match.Index + match.Length;
                 if (pattern != JwtPattern)
