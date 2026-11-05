@@ -132,7 +132,7 @@ internal class ReplaceCommand : CosmosCommand
                 failCount++;
                 if (errors != null)
                 {
-                    errors.Add($"Item {itemIndex}: {ex.Message}");
+                    errors.Add(MessageService.GetArgsString("error-bulk-item", "index", itemIndex, "message", ex.Message));
                 }
                 else
                 {

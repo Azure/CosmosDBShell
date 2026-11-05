@@ -172,7 +172,7 @@ internal class MakeItemCommand : CosmosCommand
                     {
                         if (errors != null)
                         {
-                            errors.Add($"Item {itemIndex}: {message}");
+                            errors.Add(MessageService.GetArgsString("error-bulk-item", "index", itemIndex, "message", message));
                         }
                         else
                         {
