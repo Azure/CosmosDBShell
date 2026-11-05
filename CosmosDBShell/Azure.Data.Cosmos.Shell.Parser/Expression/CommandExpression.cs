@@ -156,9 +156,8 @@ internal class CommandExpression : Expression
     /// </summary>
     internal async Task<CommandState> ExecuteCommandAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
-        // Arguments can read the caller's JSON paths, but execution must not consume its pipeline input.
-        var expressionState = new CommandState();
-        expressionState.ShareWarningsFrom(commandState);
+        // Arguments can read caller JSON paths; execution only inherits an expression-level pipe.
+        var expressionState = CreateExecutionState(commandState);
 
         // Check for user-defined functions first
         if (shell.Functions.TryGetValue(this.Name, out var function))
@@ -221,8 +220,18 @@ internal class CommandExpression : Expression
     {
         var statement = new CommandStatement(this.CommandToken);
         statement.Arguments.AddRange(this.Arguments);
-        var executionState = new CommandState();
-        executionState.ShareWarningsFrom(commandState);
+        var executionState = CreateExecutionState(commandState);
         return statement.RunScriptAsync(shell, commandState, token, renderOutput: false, executionState: executionState);
+    }
+
+    private static CommandState CreateExecutionState(CommandState caller)
+    {
+        var state = new CommandState
+        {
+            Result = caller.HasExpressionPipelineInput ? caller.Result : null,
+            HasPipelineInput = caller.HasExpressionPipelineInput,
+        };
+        state.ShareWarningsFrom(caller);
+        return state;
     }
 }

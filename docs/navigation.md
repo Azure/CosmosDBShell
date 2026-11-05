@@ -122,6 +122,8 @@ The `|` operator pipes the JSON result of the left command into the right comman
 
 Commands separated by a newline or `;` do not implicitly pass results to the next command. For example, `cd /db/items; rm safe-a --key=id --partition-key=p1 --dry-run` previews the exact item, not the result of `cd`. Use `|` when you intend to pass input.
 
+Explicit pipes within filter expressions also pass their own left-hand value to nested commands, for example `echo [1] | filter '. | (filter ".")'`.
+
 Function and script calls follow the same rule, including empty bodies and bodies that only return a value. Explicit arguments are evaluated before the call's input is cleared.
 
 ### How It Works
@@ -244,9 +246,36 @@ There is no separate "enter multi-line mode" command — the shell enters and le
 
 ### History
 
-Multi-line commands are saved to history as a single entry. When you recall one with `Up` / `Ctrl+P` or reverse-search (`Ctrl+R`), the full multi-line text is restored. History files written by older versions of the shell continue to load unchanged. Concurrent shells merge their saved entries into the shared history file. Saves and clears coordinate through `cmd_history.lock` and replace `cmd_history` only after the complete replacement has been written and flushed, so a failed write leaves the saved history intact. History saving remains best-effort; at most the newest 60 pending entries are retained for a later retry. A failed `--clear-history` reports an error and leaves the loaded history unchanged.
+Multi-line commands are saved to history as a single entry. When you recall one with `Up` / `Ctrl+P` or reverse-search (`Ctrl+R`), the full multi-line text is restored, with recognized credentials masked as described below. History formats written by older versions remain supported. Concurrent shells merge their saved entries into the shared history file. Saves and clears coordinate through `cmd_history.lock` and replace `cmd_history` only after the complete replacement has been written and flushed, so a failed write leaves the saved history intact. History saving remains best-effort; at most the newest 60 pending entries are retained for a later retry. A failed `--clear-history` reports an error and leaves the loaded history unchanged.
 
-Commands are stored in full so they can be executed again, including connection strings containing account keys. Treat the `cmd_history` file in the shell configuration directory as sensitive: protect it with your user account's file permissions and do not share it. Temporary history files have owner-only permissions on Unix. On Windows, they are created with the existing history file's access rules, or owner-only access for a new history file, without inheriting broader directory permissions; those rules remain on the published file. Use Entra ID to avoid storing account keys, or `--clear-history` to clear the saved history. MCP tool invocations are echoed as command lines and recorded in the same history.
+Recognized credentials, including connection-string `AccountKey`, `SharedAccessKey`,
+and `ResourceToken` values, are replaced with `[REDACTED]` in saved history.
+The endpoint and other non-secret connection settings remain available. This
+also applies to connection strings inside assignments, scripts, and multi-line
+history entries, including escaped credential names and values in string literals
+and object properties, named credential variables such as `$AccountKey`, and
+properties separated from their values by newlines or comments. Credential values
+containing interpolation expressions are masked in full. Non-secret interpolation expressions are preserved. Excessively
+nested quoted text is masked in full. Credential assignments and properties also
+mask grouped and combined value expressions, and bearer credentials with interpolation
+are masked as complete values.
+Ordinary query predicates on fields such as `token`, `password`, or `secret`
+are not treated as connection credentials. The command being executed is unchanged; to reuse a masked
+connection from history, supply a fresh key or use Entra ID.
+
+Existing history entries are masked when loaded, and the next successful history save
+rewrites existing credentials on disk as well, including entries merged from
+another shell. Already-created backups or copies are not cleaned. This filter
+does not identify arbitrary secrets stored under unrelated names, so continue
+to treat `cmd_history` in the shell configuration directory as sensitive and
+do not share it. Use `--clear-history` to clear saved history.
+
+Temporary history files have owner-only permissions on Unix. On Windows, they
+are created with the existing history file's access rules, or owner-only access
+for a new history file, without inheriting broader directory permissions; those
+rules remain on the published file. MCP tool invocations are echoed as command
+lines and recorded in the same history; redacting history does not mask the
+command echo or its output.
 
 ## Keyboard Shortcuts
 

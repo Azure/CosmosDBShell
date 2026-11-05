@@ -75,6 +75,9 @@ public class PipelineInputTests
     [InlineData("echo [1] | {} | filter '.'")]
     [InlineData("echo [1] | { if (false) {} } | filter '.'")]
     [InlineData("echo [1]; { echo $. } | filter '.'")]
+    [InlineData("""echo [1] | filter '. | (filter ".")'""")]
+    [InlineData("""echo [1] | filter '.[] | (filter ".")'""")]
+    [InlineData("""def consume { filter "." }; echo [1] | filter '. | (consume)'""")]
     public async Task ExplicitPipelines_PreserveTheirInput(string script)
     {
         using var shell = ShellInterpreter.CreateInstance();
@@ -302,6 +305,36 @@ public class PipelineInputTests
 
             Assert.Same(input, callerState.Result);
             Assert.True(callerState.HasPipelineInput);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task ExpressionScript_ReceivesOnlyItsExplicitExpressionPipe()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var callerInput = new ShellJson(JsonSerializer.SerializeToElement(new[] { 9 }));
+        var callerState = new CommandState { Result = callerInput, HasPipelineInput = true };
+        var path = Path.Join(Path.GetTempPath(), $"cosmosshell-expression-pipe-{Guid.NewGuid():N}.csh");
+        try
+        {
+            await File.WriteAllTextAsync(path, "filter '.'", TestContext.Current.CancellationToken);
+            var input = new ShellJson(JsonSerializer.SerializeToElement(new[] { 1 }));
+            var pipeline = new FilterPipeExpression(
+                new ConstantExpression(new Token(TokenType.Number, "1", 0, 1), input),
+                new Token(TokenType.Pipe, "|", 2, 1),
+                new CommandExpression(new Token(TokenType.Identifier, path, 4, path.Length)));
+
+            var result = await pipeline.EvaluateAsync(shell, callerState, TestContext.Current.CancellationToken);
+
+            var json = Assert.IsType<JsonElement>(result.ConvertShellObject(DataType.Json));
+            Assert.Equal(1, Assert.Single(json.EnumerateArray()).GetInt32());
+            Assert.Same(callerInput, callerState.Result);
+            Assert.True(callerState.HasPipelineInput);
+            Assert.False(callerState.HasExpressionPipelineInput);
         }
         finally
         {

@@ -81,6 +81,8 @@ public partial class CommandState
     // Set only by a pipe stage and consumed by the receiving command.
     internal bool HasPipelineInput { get; set; }
 
+    internal bool HasExpressionPipelineInput { get; set; }
+
     internal List<CommandWarning> Warnings => this.warnings;
 
     internal bool OutputRendered { get; set; }
