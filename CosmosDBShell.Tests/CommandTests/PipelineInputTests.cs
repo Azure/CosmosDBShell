@@ -7,6 +7,7 @@ namespace CosmosShell.Tests.CommandTests;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
@@ -18,6 +19,19 @@ using DataType = Azure.Data.Cosmos.Shell.Parser.DataType;
 [Collection(ConsoleOutputTestCollection.Name)]
 public class PipelineInputTests
 {
+    [CosmosCommand("binding-probe")]
+    internal sealed class BindingProbeCommand : CosmosCommand
+    {
+        [CosmosParameter("value")]
+        public string? Value { get; init; }
+
+        [CosmosOption("format")]
+        public string? Format { get; init; }
+
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+            => Task.FromResult(new CommandState { Result = new ShellText($"{this.Value}|{this.Format}|{commandState.Result is null}") });
+    }
+
     [Theory]
     [InlineData("echo [1]; filter '.'")]
     [InlineData("{ echo [1]; filter '.' }")]
@@ -32,6 +46,10 @@ public class PipelineInputTests
     [InlineData("def make { return [2] }; def consume { make; filter '.' }; echo [1] | consume")]
     [InlineData("def make { return $. }; def consume { make; filter '.' }; echo [1] | consume")]
     [InlineData("def make { }; def consume { make; filter '.' }; echo [1] | consume")]
+    [InlineData("echo [1]; {} | filter '.'")]
+    [InlineData("echo [1]; { if (false) {} } | filter '.'")]
+    [InlineData("echo [1]; { while (false) {} } | filter '.'")]
+    [InlineData("echo [1]; { for $value in [] {} } | filter '.'")]
     public async Task SequentialCommands_DoNotReceiveImplicitInput(string script)
     {
         using var shell = ShellInterpreter.CreateInstance();
@@ -54,6 +72,9 @@ public class PipelineInputTests
     [InlineData("def passthrough { return $. }; echo [1] | passthrough | filter '.'")]
     [InlineData("def passthrough { }; echo [1] | passthrough | filter '.'")]
     [InlineData("def passthrough [value] { return $value }; echo [1]; passthrough $. | filter '.'")]
+    [InlineData("echo [1] | {} | filter '.'")]
+    [InlineData("echo [1] | { if (false) {} } | filter '.'")]
+    [InlineData("echo [1]; { echo $. } | filter '.'")]
     public async Task ExplicitPipelines_PreserveTheirInput(string script)
     {
         using var shell = ShellInterpreter.CreateInstance();
@@ -152,6 +173,25 @@ public class PipelineInputTests
         var state = await shell.RunCommandAsync(new CommandState(), script, TestContext.Current.CancellationToken);
 
         Assert.Equal(string.Empty, state.Result?.ConvertShellObject(DataType.Text));
+    }
+
+    [Fact]
+    public async Task ExplicitArgumentsAndOptions_CanReadEarlierResultsWithoutImplicitInput()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(BindingProbeCommand), out var factory));
+        shell.App.Commands["binding-probe"] = factory;
+        var state = await shell.RunCommandAsync(
+            new CommandState(),
+            """echo '{"id":"safe-a","format":"json"}'; binding-probe $.id --format $.format""",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("safe-a|json|True", state.Result?.ConvertShellObject(DataType.Text));
+        Assert.False(state.HasPipelineInput);
+
+        state = await shell.RunCommandAsync(
+            new CommandState(), """echo '{"id":"safe-a"}'; echo $.id""", TestContext.Current.CancellationToken);
+        Assert.Equal("safe-a", state.Result?.ConvertShellObject(DataType.Text));
     }
 
     [Theory]

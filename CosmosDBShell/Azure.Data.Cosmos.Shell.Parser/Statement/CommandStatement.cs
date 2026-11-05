@@ -182,12 +182,6 @@ internal class CommandStatement : Statement
 
         if (shell.App.Commands.TryGetValue(this.Name, out var factory))
         {
-            if (!commandState.HasPipelineInput)
-            {
-                commandState.Result = null;
-            }
-
-            commandState.HasPipelineInput = false;
             bool showHelp = this.Arguments.OfType<CommandOption>().Any(arg => arg.Name == "help" || arg.Name == "?");
             if (showHelp)
             {
@@ -197,6 +191,12 @@ internal class CommandStatement : Statement
             }
 
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
+            if (!commandState.HasPipelineInput)
+            {
+                commandState.Result = null;
+            }
+
+            commandState.HasPipelineInput = false;
             var result = await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token, factory.IsExternal);
             if (result is ErrorCommandState error && shell.CurrentScriptFileName is { } sourceName && shell.CurrentScriptContent is { } sourceText)
             {

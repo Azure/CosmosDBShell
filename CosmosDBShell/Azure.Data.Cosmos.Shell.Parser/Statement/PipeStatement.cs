@@ -91,9 +91,20 @@ internal class PipeStatement : Statement
 
             token.ThrowIfCancellationRequested();
             commandState.HasPipelineInput = index > 0 || commandState.HasPipelineInput;
+            var hadPipelineInput = commandState.HasPipelineInput;
+            var inputState = commandState;
+            var resultVersion = commandState.ResultVersion;
             try
             {
                 commandState = await this.Statements[index].RunAsync(shell, commandState, token);
+                if (!hadPipelineInput && ReferenceEquals(commandState, inputState) && commandState.ResultVersion == resultVersion)
+                {
+                    commandState.Result = null;
+                    commandState.RenderUser = null;
+                    commandState.RenderTabular = null;
+                    commandState.ResetOutputFormat();
+                    commandState.OutputRendered = false;
+                }
             }
             finally
             {
