@@ -139,6 +139,8 @@ internal class CommandStatement : Statement
     /// </summary>
     public override async Task<CommandState> RunAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
+        var priorOutputRendered = commandState.OutputRendered;
+
         // Each command statement re-establishes its own render state. Without this reset a
         // prior command that supplied a RenderUser or RenderTabular delegate (for example a
         // condition command in an if/while) would leak it into this statement and cause
@@ -157,6 +159,7 @@ internal class CommandStatement : Statement
         {
             shell.StdOutRedirect = this.OutputRedirect;
             shell.AppendOutRedirection = this.AppendOutput;
+            shell.ScriptAuxiliaryOutputFiles = null;
         }
 
         if (this.ErrRedirectToken != null)
@@ -175,6 +178,7 @@ internal class CommandStatement : Statement
                 args.Add(evaluated);
             }
 
+            commandState.OutputRendered = priorOutputRendered;
             var functionResult = await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
             functionResult.ShareWarningsFrom(commandState);
             return functionResult;
@@ -210,6 +214,7 @@ internal class CommandStatement : Statement
 
         if (File.Exists(this.Name))
         {
+            commandState.OutputRendered = priorOutputRendered;
             var scriptResult = await this.RunScriptAsync(shell, commandState, token);
             scriptResult.ShareWarningsFrom(commandState);
             return scriptResult;
@@ -426,6 +431,7 @@ internal class CommandStatement : Statement
         string scriptContent = string.Empty;
         var priorFileName = shell.CurrentScriptFileName;
         var priorContent = shell.CurrentScriptContent;
+        var priorAuxiliaryFiles = shell.ScriptAuxiliaryOutputFiles;
 
         try
         {
@@ -440,11 +446,25 @@ internal class CommandStatement : Statement
                 return parserError;
             }
 
+            if (renderOutput && this.OutRedirectToken != null)
+            {
+                token.ThrowIfCancellationRequested();
+                if (!this.AppendOutput)
+                {
+                    File.WriteAllText(this.OutputRedirect!, string.Empty);
+                    shell.ScriptAuxiliaryOutputFiles = new HashSet<string>(
+                        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+                }
+
+                shell.AppendOutRedirection = true;
+            }
+
             foreach (var statement in parser.Statements)
             {
                 token.ThrowIfCancellationRequested();
                 var savedStdOut = shell.StdOutRedirect;
                 var savedAppendOut = shell.AppendOutRedirection;
+                var savedAuxiliaryFiles = shell.ScriptAuxiliaryOutputFiles;
                 var savedErrOut = shell.ErrOutRedirect;
                 var savedAppendErr = shell.AppendErrRedirection;
                 var savedErrorRedirectWarnings = shell.ErrorRedirectWarnings;
@@ -472,7 +492,7 @@ internal class CommandStatement : Statement
                         if (this.OutRedirectToken != null)
                         {
                             shell.StdOutRedirect = this.OutputRedirect;
-                            shell.AppendOutRedirection = this.AppendOutput;
+                            shell.AppendOutRedirection = true;
                         }
 
                         if (this.ErrRedirectToken != null)
@@ -510,6 +530,7 @@ internal class CommandStatement : Statement
                 {
                     shell.StdOutRedirect = savedStdOut;
                     shell.AppendOutRedirection = savedAppendOut;
+                    shell.ScriptAuxiliaryOutputFiles = savedAuxiliaryFiles;
                     shell.ErrOutRedirect = savedErrOut;
                     shell.AppendErrRedirection = savedAppendErr;
                     shell.ErrorRedirectWarnings = savedErrorRedirectWarnings;
@@ -520,6 +541,7 @@ internal class CommandStatement : Statement
         {
             shell.CurrentScriptFileName = priorFileName;
             shell.CurrentScriptContent = priorContent;
+            shell.ScriptAuxiliaryOutputFiles = priorAuxiliaryFiles;
 
             shell.PopCallScope();
         }

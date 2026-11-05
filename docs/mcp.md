@@ -216,6 +216,14 @@ Successful results set `result` (and optionally `outputText`); failed results se
 
 This field reports observed cost; it does not enforce an RU budget. Budget guardrails are tracked separately in [#162](https://github.com/Azure/CosmosDBShell/issues/162).
 
+Azure/Cosmos DB failures return the actionable service message rather than nested
+response JSON and SDK diagnostics when the response format is recognized. For example,
+an account throughput-limit failure reports the configured limit, requested total,
+and service troubleshooting link. Unrecognized response formats retain their original
+message. MCP command-failure logs omit exception stacks by default; start the shell
+with `cosmosdbshell --mcp --verbose` to log the full exception for troubleshooting.
+Tool responses remain concise with `--verbose`.
+
 The `info` command result also includes `session.requestCharge`, the cumulative
 charge observed from data-plane commands during the current connection,
 including the current `info` request cost. A
