@@ -776,7 +776,7 @@ public class CommandStatementTests
     [Theory]
     [InlineData("plain-error-test")]
     [InlineData("reported-failure-test")]
-    public async Task MachineMode_RendersWarningsForFailuresWithoutErrorEnvelope(string failingCommand)
+    public async Task MachineMode_PreservesWarningsForReturnedAndAlreadyReportedFailures(string failingCommand)
     {
         using var shell = ShellInterpreter.CreateInstance();
         Assert.True(CommandFactory.TryCreateFactory(typeof(WarningOutputTestCommand), out var warningFactory));
@@ -795,9 +795,18 @@ public class CommandStatementTests
                 TestContext.Current.CancellationToken);
 
             Assert.True(result.IsError);
-            Assert.Equal(
-                $"script warning{Environment.NewLine}",
-                await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken));
+            var output = await File.ReadAllTextAsync(stderr, TestContext.Current.CancellationToken);
+            if (failingCommand == "plain-error-test")
+            {
+                using var document = JsonDocument.Parse(output);
+                Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+                Assert.Equal("plain failure", document.RootElement.GetProperty("error").GetString());
+                Assert.Equal("script warning", Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+            }
+            else
+            {
+                Assert.Equal($"script warning{Environment.NewLine}", output);
+            }
         }
         finally
         {

@@ -188,6 +188,60 @@ public class ExecuteCommandExceptionTests
         return new ShellInterpreter();
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void PrintState_OrdinaryErrorInMachineMode_ReportsOnceWithWarnings(bool redirect, bool append)
+    {
+        using var interpreter = CreateInterpreter();
+        interpreter.Options = new Program.CosmosShellOptions { Output = "json" };
+        var stdoutFile = Path.GetTempFileName();
+        var stderrFile = Path.GetTempFileName();
+        var originalError = Console.Error;
+        using var stderr = new StringWriter();
+        interpreter.StdOutRedirect = stdoutFile;
+        interpreter.ErrOutRedirect = redirect ? stderrFile : null;
+        interpreter.AppendErrRedirection = append;
+        try
+        {
+            File.WriteAllText(stderrFile, "existing" + Environment.NewLine);
+            Console.SetError(stderr);
+            var state = new ErrorCommandState(new CommandException("theme", "Unknown theme."));
+            var warning = state.AddWarning("warning before failure");
+
+            Assert.Same(state, interpreter.PrintState(state, markAsRendered: true));
+            interpreter.PrintState(state);
+
+            var output = redirect ? File.ReadAllText(stderrFile) : stderr.ToString();
+            if (redirect && append)
+            {
+                Assert.StartsWith("existing" + Environment.NewLine, output);
+                output = output[("existing" + Environment.NewLine).Length..];
+            }
+
+            using var document = JsonDocument.Parse(output);
+            Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+            Assert.Equal("Unknown theme.", document.RootElement.GetProperty("error").GetString());
+            Assert.Equal("warning before failure", Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+            Assert.True(warning.IsRendered);
+            Assert.Empty(File.ReadAllText(stdoutFile));
+            if (redirect)
+            {
+                Assert.Empty(stderr.ToString());
+            }
+        }
+        finally
+        {
+            Console.SetError(originalError);
+            interpreter.StdOutRedirect = null;
+            interpreter.ErrOutRedirect = null;
+            File.Delete(stdoutFile);
+            File.Delete(stderrFile);
+        }
+    }
+
     [Fact]
     public void PrintState_StructuredErrorInMachineMode_WritesSingleEnvelopeToStderr()
     {
@@ -218,6 +272,35 @@ public class ExecuteCommandExceptionTests
             interpreter.ErrOutRedirect = null;
             File.Delete(stdoutFile);
             File.Delete(stderrFile);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PrintState_RenderFailureInMachineMode_IsNotReportedAgain(bool verbose)
+    {
+        using var interpreter = CreateInterpreter();
+        interpreter.Options = new Program.CosmosShellOptions { Output = "json", Verbose = verbose };
+        var originalError = Console.Error;
+        using var stderr = new StringWriter();
+        try
+        {
+            Console.SetError(stderr);
+            var state = new CommandState { Result = new ShellText("value") };
+            interpreter.StdOutRedirect = Path.Join(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "missing", "out.txt");
+
+            var error = Assert.IsType<ErrorCommandState>(interpreter.PrintState(state, markAsRendered: true));
+            interpreter.PrintState(error);
+
+            using var document = JsonDocument.Parse(stderr.ToString());
+            Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+            Assert.NotEmpty(document.RootElement.GetProperty("error").GetString()!);
+        }
+        finally
+        {
+            Console.SetError(originalError);
+            interpreter.StdOutRedirect = null;
         }
     }
 

@@ -25,6 +25,161 @@ public class ShellProcessTests
 {
     private static readonly Regex AnsiEscape = new("\x1b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
 
+    public static IEnumerable<object?[]> ReturnedErrorCases()
+    {
+        string[] commands = ["theme use missing-bug-bash-theme", "theme validate", "edit"];
+        string?[] modes = [null, "json", "csv", "quiet", "verbose"];
+        foreach (var command in commands)
+        {
+            foreach (var mode in modes)
+            {
+                yield return [command, mode];
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(ReturnedErrorCases))]
+    public async Task ReturnedCommandError_WritesSingleMachineDiagnostic(string command, string? mode)
+    {
+        var file = Path.GetTempFileName();
+        const string content = "sample text";
+        try
+        {
+            await File.WriteAllTextAsync(file, content, TestContext.Current.CancellationToken);
+            var expectedMessage = "missing-bug-bash-theme";
+            if (command == "theme validate")
+            {
+                command += " " + JsonSerializer.Serialize(file + ".toml");
+                expectedMessage = Path.GetFileName(file) + ".toml";
+            }
+            else if (command == "edit")
+            {
+                command += " " + JsonSerializer.Serialize(file);
+                expectedMessage = MessageService.GetString("command-edit-not-interactive");
+            }
+
+            var args = new List<string>();
+            if (mode == "quiet")
+            {
+                args.Add("--quiet");
+            }
+            else if (mode == "verbose")
+            {
+                args.AddRange(["--output", "json", "--verbose"]);
+            }
+            else if (mode != null)
+            {
+                args.AddRange(["--output", mode]);
+            }
+
+            args.AddRange(["-c", command]);
+            var result = await RunShellAsync(null, args, TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellExitCode.GeneralFailure, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            using var error = JsonDocument.Parse(result.RawStdErr);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            Assert.Contains(expectedMessage, error.RootElement.GetProperty("error").GetString(), StringComparison.Ordinal);
+            Assert.Equal(2, error.RootElement.EnumerateObject().Count());
+            Assert.DoesNotContain("\x1b", result.RawStdErr, StringComparison.Ordinal);
+            Assert.Equal(content, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
+    [InlineData("theme use missing-bug-bash-theme", false)]
+    [InlineData("theme use missing-bug-bash-theme", true)]
+    [InlineData("edit", false)]
+    [InlineData("edit", true)]
+    public async Task ReturnedCommandError_HonorsStderrRedirection(string command, bool append)
+    {
+        var errorFile = Path.GetTempFileName();
+        var editFile = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(errorFile, "existing" + Environment.NewLine, TestContext.Current.CancellationToken);
+            if (command == "edit")
+            {
+                command += " " + JsonSerializer.Serialize(editFile);
+            }
+
+            var result = await RunShellAsync(
+                null,
+                ["--output", "json", "-c", $"{command} {(append ? "2>>" : "2>")} {JsonSerializer.Serialize(errorFile)}"],
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellExitCode.GeneralFailure, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            Assert.Empty(result.RawStdErr);
+            var text = await File.ReadAllTextAsync(errorFile, TestContext.Current.CancellationToken);
+            if (append)
+            {
+                Assert.StartsWith("existing" + Environment.NewLine, text);
+                text = text[("existing" + Environment.NewLine).Length..];
+            }
+
+            using var error = JsonDocument.Parse(text);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            Assert.Contains(
+                command.StartsWith("edit", StringComparison.Ordinal) ? "interactive terminal" : "missing-bug-bash-theme",
+                error.RootElement.GetProperty("error").GetString(),
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(errorFile);
+            File.Delete(editFile);
+        }
+    }
+
+    [Theory]
+    [InlineData("theme use missing-bug-bash-theme | echo")]
+    [InlineData("{ theme use missing-bug-bash-theme }")]
+    [InlineData("$value = (theme use missing-bug-bash-theme)")]
+    [InlineData("def fail { echo ignored | theme use missing-bug-bash-theme }; $value = (fail)")]
+    [InlineData("def fail { echo ignored | theme use missing-bug-bash-theme }; echo (fail)")]
+    [InlineData("render-expression")]
+    [InlineData("script")]
+    public async Task ReturnedCommandError_ThroughScriptOrExpression_IsReportedOnce(string command)
+    {
+        var script = Path.Join(AppContext.BaseDirectory, $"theme-error-{Guid.NewGuid():N}.csh");
+        try
+        {
+            if (command == "script")
+            {
+                await File.WriteAllTextAsync(script, "theme use missing-bug-bash-theme", TestContext.Current.CancellationToken);
+                command = Path.GetFileName(script);
+            }
+            else if (command == "render-expression")
+            {
+                var destination = Path.Join(Path.GetTempPath(), $"missing-bug-bash-theme-{Guid.NewGuid():N}", "output.txt");
+                command = $"def fail {{ echo ignored > {JsonSerializer.Serialize(destination)} }}; echo (fail)";
+            }
+
+            var result = await RunShellAsync(null, ["--quiet", "-c", command], TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellExitCode.GeneralFailure, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            using var error = JsonDocument.Parse(result.RawStdErr);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            var message = error.RootElement.GetProperty("error").GetString();
+            Assert.Contains("missing-bug-bash-theme", message, StringComparison.Ordinal);
+            if (command == Path.GetFileName(script))
+            {
+                Assert.Contains(Path.GetFileName(script) + ":1:1:", message, StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            File.Delete(script);
+        }
+    }
+
     [Theory]
     [InlineData("echo [1] | filter")]
     [InlineData("""echo [{"id":"a"}] | ftab --format invalid""")]
@@ -1014,10 +1169,12 @@ public class ShellProcessTests
                     $"CosmosDBShell process did not exit in time. StdOut: {Strip(stdOut.ToString())} StdErr: {Strip(stdErr.ToString())}");
             }
 
+            var rawStdErr = stdErr.ToString();
             return new ShellProcessResult(
                 process.ExitCode,
                 Strip(stdOut.ToString()),
-                Strip(stdErr.ToString()));
+                Strip(rawStdErr),
+                rawStdErr);
         }
         finally
         {
@@ -1053,5 +1210,5 @@ public class ShellProcessTests
         return AnsiEscape.Replace(text, string.Empty);
     }
 
-    private sealed record ShellProcessResult(int ExitCode, string StdOut, string StdErr);
+    private sealed record ShellProcessResult(int ExitCode, string StdOut, string StdErr, string RawStdErr);
 }
