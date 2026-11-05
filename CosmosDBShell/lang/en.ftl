@@ -180,7 +180,6 @@ error-no_input_data = No input data.
 error-bulk-item = Item { $index }: { $message }
 error-bulk-diagnostic_truncated = [diagnostic truncated]
 error-bulk-diagnostics_omitted = { $count } additional item diagnostics omitted.
-error-bulk-item = Item { $index }: { $message }
 error-argument_parse_redirect = Invalid redirection
 error-param_parse = Invalid value for '{ $name }' valid values: { $values }
 error-too_many_arguments = Too many arguments ({$expected} expected)
