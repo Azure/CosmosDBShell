@@ -417,6 +417,25 @@ public class CommandStatusOutputTests
         }
     }
 
+    [Theory]
+    [InlineData("[{}]", HttpStatusCode.OK, ShellExitCode.UsageError)]
+    [InlineData("[42]", HttpStatusCode.OK, ShellExitCode.UsageError)]
+    [InlineData("[{\"id\":\"\"}]", HttpStatusCode.OK, ShellExitCode.UsageError)]
+    [InlineData("[{\"id\":\"a\",\"pk\":\"x\"},{}]", HttpStatusCode.OK, ShellExitCode.UsageError)]
+    [InlineData("[{\"id\":\"a\",\"pk\":\"x\"},{}]", HttpStatusCode.BadRequest, ShellExitCode.UsageError)]
+    [InlineData("[{\"id\":\"a\",\"pk\":\"x\"}]", HttpStatusCode.BadRequest, ShellExitCode.GeneralFailure)]
+    [InlineData("[{\"id\":\"a\",\"pk\":\"x\"}]", HttpStatusCode.NotFound, ShellExitCode.GeneralFailure)]
+    public async Task ReplaceArray_PreservesValidationFailureClassification(string data, HttpStatusCode serviceStatus, int exitCode)
+    {
+        using var shell = CreateShell(replaceStatus: serviceStatus);
+        var command = new ReplaceCommand { Data = data };
+
+        var error = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), string.Empty, TestContext.Current.CancellationToken));
+
+        Assert.Equal(exitCode, ShellExitCode.FromException(error));
+    }
+
     private static CosmosCommand CreateCommand(string name, string file)
     {
         const string item = "{\"id\":\"a\",\"pk\":\"x\"}";
@@ -442,7 +461,7 @@ public class CommandStatusOutputTests
         };
     }
 
-    private static ShellInterpreter CreateShell(int? ttl = 3600, ConflictResolutionPolicy? conflictPolicy = null)
+    private static ShellInterpreter CreateShell(int? ttl = 3600, ConflictResolutionPolicy? conflictPolicy = null, HttpStatusCode replaceStatus = HttpStatusCode.OK)
     {
         var client = Substitute.For<CosmosClient>();
         client.Endpoint.Returns(new Uri("https://example.documents.azure.com"));
@@ -473,7 +492,7 @@ public class CommandStatusOutputTests
         container.UpsertItemStreamAsync(Arg.Any<Stream>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
             .Returns(_ => new ResponseMessage(HttpStatusCode.OK));
         container.ReplaceItemStreamAsync(Arg.Any<Stream>(), Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ => new ResponseMessage(HttpStatusCode.OK));
+            .Returns(_ => new ResponseMessage(replaceStatus));
         var patched = Substitute.For<ItemResponse<JsonElement>>();
         patched.StatusCode.Returns(HttpStatusCode.OK);
         container.PatchItemAsync<JsonElement>(Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<IReadOnlyList<PatchOperation>>(), Arg.Any<PatchItemRequestOptions>(), Arg.Any<CancellationToken>())

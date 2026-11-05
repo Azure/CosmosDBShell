@@ -19,7 +19,7 @@ internal static class BatchOperationParser
         }
         catch (JsonException ex)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 commandName,
                 MessageService.GetArgsString("command-batch-error-invalid_json", "message", ex.Message),
                 ex);
@@ -45,7 +45,7 @@ internal static class BatchOperationParser
                     break;
 
                 default:
-                    throw new CommandException(commandName, MessageService.GetString("command-batch-error-not_object"));
+                    throw CommandException.Usage(commandName, MessageService.GetString("command-batch-error-not_object"));
             }
 
             return specs;
@@ -56,12 +56,12 @@ internal static class BatchOperationParser
     {
         if (element.ValueKind != JsonValueKind.Object)
         {
-            throw new CommandException(commandName, MessageService.GetString("command-batch-error-not_object"));
+            throw CommandException.Usage(commandName, MessageService.GetString("command-batch-error-not_object"));
         }
 
         if (!element.TryGetProperty("op", out var opElement) || opElement.ValueKind != JsonValueKind.String)
         {
-            throw new CommandException(commandName, MessageService.GetString("command-batch-error-missing_op"));
+            throw CommandException.Usage(commandName, MessageService.GetString("command-batch-error-missing_op"));
         }
 
         var op = opElement.GetString()!.Trim().ToLowerInvariant();
@@ -80,7 +80,7 @@ internal static class BatchOperationParser
                 var replaceId = ExtractExplicitId(element) ?? ExtractItemId(element);
                 if (string.IsNullOrEmpty(replaceId))
                 {
-                    throw new CommandException(commandName, MessageService.GetArgsString("command-batch-error-missing_id", "op", op));
+                    throw CommandException.Usage(commandName, MessageService.GetArgsString("command-batch-error-missing_id", "op", op));
                 }
 
                 return new BatchOperationSpec { Kind = BatchOperationKind.Replace, Item = item, Id = replaceId, RawOperation = raw };
@@ -89,7 +89,7 @@ internal static class BatchOperationParser
                 var deleteId = ExtractExplicitId(element);
                 if (string.IsNullOrEmpty(deleteId))
                 {
-                    throw new CommandException(commandName, MessageService.GetArgsString("command-batch-error-missing_id", "op", op));
+                    throw CommandException.Usage(commandName, MessageService.GetArgsString("command-batch-error-missing_id", "op", op));
                 }
 
                 return new BatchOperationSpec { Kind = BatchOperationKind.Delete, Id = deleteId, RawOperation = raw };
@@ -98,13 +98,13 @@ internal static class BatchOperationParser
                 var patchId = ExtractExplicitId(element);
                 if (string.IsNullOrEmpty(patchId))
                 {
-                    throw new CommandException(commandName, MessageService.GetArgsString("command-batch-error-missing_id", "op", op));
+                    throw CommandException.Usage(commandName, MessageService.GetArgsString("command-batch-error-missing_id", "op", op));
                 }
 
                 return new BatchOperationSpec { Kind = BatchOperationKind.Patch, Id = patchId, PatchOperations = ParsePatchOperations(commandName, element), RawOperation = raw };
 
             default:
-                throw new CommandException(
+                throw CommandException.Usage(
                     commandName,
                     MessageService.GetArgsString("command-batch-error-unsupported_op", "op", op));
         }
@@ -114,12 +114,12 @@ internal static class BatchOperationParser
     {
         if (!element.TryGetProperty("item", out var itemElement))
         {
-            throw new CommandException(commandName, MessageService.GetArgsString("command-batch-error-missing_item", "op", op));
+            throw CommandException.Usage(commandName, MessageService.GetArgsString("command-batch-error-missing_item", "op", op));
         }
 
         if (itemElement.ValueKind != JsonValueKind.Object)
         {
-            throw new CommandException(commandName, MessageService.GetArgsString("command-batch-error-invalid_item", "op", op));
+            throw CommandException.Usage(commandName, MessageService.GetArgsString("command-batch-error-invalid_item", "op", op));
         }
 
         return itemElement.Clone();
@@ -161,7 +161,7 @@ internal static class BatchOperationParser
     {
         if (!element.TryGetProperty("operations", out var operationsElement) || operationsElement.ValueKind != JsonValueKind.Array)
         {
-            throw new CommandException(commandName, MessageService.GetString("command-batch-error-missing_patch_ops"));
+            throw CommandException.Usage(commandName, MessageService.GetString("command-batch-error-missing_patch_ops"));
         }
 
         var operations = new List<PatchOperation>();
@@ -173,7 +173,7 @@ internal static class BatchOperationParser
                 || !patchElement.TryGetProperty("path", out var patchPath)
                 || patchPath.ValueKind != JsonValueKind.String)
             {
-                throw new CommandException(commandName, MessageService.GetString("command-batch-error-invalid_patch_op"));
+                throw CommandException.Usage(commandName, MessageService.GetString("command-batch-error-invalid_patch_op"));
             }
 
             var value = patchElement.TryGetProperty("value", out var valueElement)
@@ -190,7 +190,7 @@ internal static class BatchOperationParser
 
         if (operations.Count == 0)
         {
-            throw new CommandException(commandName, MessageService.GetString("command-batch-error-missing_patch_ops"));
+            throw CommandException.Usage(commandName, MessageService.GetString("command-batch-error-missing_patch_ops"));
         }
 
         return operations;

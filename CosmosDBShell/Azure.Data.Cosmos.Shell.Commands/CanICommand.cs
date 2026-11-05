@@ -53,7 +53,7 @@ internal class CanICommand : CosmosCommand
         var action = (this.Action ?? string.Empty).Trim().ToLowerInvariant();
         if (action is not ("read" or "query" or "write" or "manage"))
         {
-            throw new CommandException("can-i", MessageService.GetArgsString("command-can-i-invalid-action", "action", this.Action ?? string.Empty));
+            throw CommandException.Usage("can-i", MessageService.GetArgsString("command-can-i-invalid-action", "action", this.Action ?? string.Empty));
         }
 
         commandState.SetFormat(this.OutputFormat);

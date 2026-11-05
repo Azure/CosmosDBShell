@@ -91,7 +91,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         {
             if (string.IsNullOrEmpty(this.Pattern))
             {
-                throw new CommandException("rm", MessageService.GetString("command-rm-error-no_filter"));
+                throw CommandException.Usage("rm", MessageService.GetString("command-rm-error-no_filter"));
             }
         }
 
@@ -150,7 +150,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         bool hasPipeInput = commandState.Result != null;
         if (this.matcher == null && !hasPipeInput)
         {
-            throw new CommandException("rm", MessageService.GetString("command-rm-error-no_filter"));
+            throw CommandException.Usage("rm", MessageService.GetString("command-rm-error-no_filter"));
         }
 
         // Validate database and container exist
@@ -168,7 +168,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
             var componentCount = GetPartitionKeyComponentCount(scopedPartitionKey);
             if (componentCount != partitionKeyPropertyNames.Length)
             {
-                throw new CommandException(
+                throw CommandException.Usage(
                     "rm",
                     MessageService.GetString(
                         "command-rm-error-partition_key_components",
@@ -438,7 +438,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
     {
         if (this.PartitionKeySpecified && this.PartitionKeyArgument == null)
         {
-            throw new CommandException("rm", MessageService.GetString("command-rm-error-partition_key_missing_value"));
+            throw CommandException.Usage("rm", MessageService.GetString("command-rm-error-partition_key_missing_value"));
         }
 
         if (!this.ETagSpecified)
@@ -448,17 +448,17 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
 
         if (string.IsNullOrWhiteSpace(this.ETag))
         {
-            throw new CommandException("rm", MessageService.GetString("command-rm-error-etag_empty"));
+            throw CommandException.Usage("rm", MessageService.GetString("command-rm-error-etag_empty"));
         }
 
         if (hasPipeInput || !this.IsExactIdTarget())
         {
-            throw new CommandException("rm", MessageService.GetString("command-rm-error-etag_requires_exact_id"));
+            throw CommandException.Usage("rm", MessageService.GetString("command-rm-error-etag_requires_exact_id"));
         }
 
         if (this.PartitionKeyArgument == null)
         {
-            throw new CommandException("rm", MessageService.GetString("command-rm-error-etag_requires_partition_key"));
+            throw CommandException.Usage("rm", MessageService.GetString("command-rm-error-etag_requires_partition_key"));
         }
     }
 

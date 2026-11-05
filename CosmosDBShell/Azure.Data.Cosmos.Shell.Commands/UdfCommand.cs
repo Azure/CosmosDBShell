@@ -99,7 +99,7 @@ internal class UdfCommand : CosmosCommand
         var subcommand = NormalizeSubcommand(this.Subcommand);
         if (subcommand.Length == 0)
         {
-            throw new CommandException("udf", MessageService.GetString("command-udf-error-missing_subcommand"));
+            throw CommandException.Usage("udf", MessageService.GetString("command-udf-error-missing_subcommand"));
         }
 
         if (shell.State is not ConnectedState connectedState)
@@ -123,7 +123,7 @@ internal class UdfCommand : CosmosCommand
             "create" or "set" => await this.CreateAsync(container, shell, commandState, token),
             "edit" => await this.EditAsync(container, shell, commandState, token),
             "delete" or "rm" => await this.DeleteAsync(container, commandState, token),
-            _ => throw new CommandException(
+            _ => throw CommandException.Usage(
                 "udf",
                 MessageService.GetArgsString("command-udf-error-invalid_subcommand", "subcommand", subcommand)),
         };
@@ -254,7 +254,7 @@ internal class UdfCommand : CosmosCommand
         // real terminal, so scripts and MCP must pass a file instead.
         if (Console.IsInputRedirected || !string.IsNullOrEmpty(shell.CurrentScriptFileName))
         {
-            throw new CommandException("udf", MessageService.GetString("command-udf-error-missing_file"));
+            throw CommandException.Usage("udf", MessageService.GetString("command-udf-error-missing_file"));
         }
 
         // Check for an existing function before opening the editor so the user
@@ -498,7 +498,7 @@ internal class UdfCommand : CosmosCommand
     {
         if (string.IsNullOrWhiteSpace(this.Name))
         {
-            throw new CommandException("udf", MessageService.GetString("command-udf-error-missing_name"));
+            throw CommandException.Usage("udf", MessageService.GetString("command-udf-error-missing_name"));
         }
 
         return this.Name;

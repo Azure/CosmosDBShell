@@ -41,7 +41,7 @@ internal class MakeItemCommand : CosmosCommand
         var jsonOpt = this.Data ?? (evaluatedResult as string);
         if (string.IsNullOrEmpty(jsonOpt))
         {
-            throw new CommandException("mkitem", MessageService.GetString("error-no_input_data"));
+            throw CommandException.Usage("mkitem", MessageService.GetString("error-no_input_data"));
         }
 
         // Get connected state

@@ -64,7 +64,7 @@ internal class ExportCommand : CosmosCommand
         resultState.SetFormat(this.Format);
         if (string.IsNullOrWhiteSpace(this.File))
         {
-            throw new CommandException("export", MessageService.GetString("command-export-error-missing_file"));
+            throw CommandException.Usage("export", MessageService.GetString("command-export-error-missing_file"));
         }
 
         if (shell.State is not ConnectedState connectedState)

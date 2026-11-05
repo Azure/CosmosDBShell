@@ -41,7 +41,7 @@ internal class PrintCommand : CosmosCommand
 
         if (string.IsNullOrEmpty(this.Id))
         {
-            throw new CommandException("print", MessageService.GetString("command-print-error-missing_id"));
+            throw CommandException.Usage("print", MessageService.GetString("command-print-error-missing_id"));
         }
 
         var partitionKey = this.GetPartitionKey();
@@ -78,7 +78,7 @@ internal class PrintCommand : CosmosCommand
         var actual = GetPartitionKeyComponentCount(partitionKey);
         if (actual != expected)
         {
-            throw new CommandException("print", MessageService.GetString(
+            throw CommandException.Usage("print", MessageService.GetString(
                 "command-print-error-partition_key_components",
                 new Dictionary<string, object> { { "expected", expected }, { "actual", actual } }));
         }
@@ -88,7 +88,7 @@ internal class PrintCommand : CosmosCommand
     {
         if (this.PartitionKey == null)
         {
-            throw new CommandException("print", MessageService.GetString("command-print-error-missing_key"));
+            throw CommandException.Usage("print", MessageService.GetString("command-print-error-missing_key"));
         }
 
         return CreatePartitionKeyFromArgument(this.PartitionKey, "print", "command-print-error-invalid_pk_json");

@@ -322,5 +322,5 @@ internal static class BulkOperationNormalizer
             || trimmed is "true" or "false" or "null";
     }
 
-    private static CommandException Error(string key) => new("bulk", MessageService.GetString(key));
+    private static CommandException Error(string key) => CommandException.Usage("bulk", MessageService.GetString(key));
 }

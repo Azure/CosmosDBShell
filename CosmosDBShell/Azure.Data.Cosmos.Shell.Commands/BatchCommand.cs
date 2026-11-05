@@ -74,8 +74,8 @@ internal class BatchCommand : CosmosCommand
             "cancel" or "abort" => Cancel(shell),
             "status" => Status(shell),
             "show" => Show(shell),
-            "" => throw new CommandException("batch", MessageService.GetString("command-batch-error-missing_subcommand")),
-            _ => throw new CommandException(
+            "" => throw CommandException.Usage("batch", MessageService.GetString("command-batch-error-missing_subcommand")),
+            _ => throw CommandException.Usage(
                 "batch",
                 MessageService.GetArgsString("command-batch-error-invalid_subcommand", "subcommand", subcommand)),
         };
@@ -202,7 +202,7 @@ internal class BatchCommand : CosmosCommand
 
         if (string.IsNullOrWhiteSpace(this.PartitionKeyArgument))
         {
-            throw new CommandException("batch", MessageService.GetString("command-batch-error-missing_pk"));
+            throw CommandException.Usage("batch", MessageService.GetString("command-batch-error-missing_pk"));
         }
 
         var json = this.ResolveData(commandState);
@@ -249,7 +249,7 @@ internal class BatchCommand : CosmosCommand
 
         if (string.IsNullOrWhiteSpace(this.PartitionKeyArgument))
         {
-            throw new CommandException("batch", MessageService.GetString("command-batch-error-missing_pk"));
+            throw CommandException.Usage("batch", MessageService.GetString("command-batch-error-missing_pk"));
         }
 
         var (databaseName, containerName, _) = await ResolveContainerAsync(
@@ -282,7 +282,7 @@ internal class BatchCommand : CosmosCommand
 
         if (batch.Operations.Count + specs.Count > BatchExecutor.MaxOperations)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 "batch",
                 MessageService.GetArgsString(
                     "command-batch-error-too_many",
@@ -312,7 +312,7 @@ internal class BatchCommand : CosmosCommand
 
         if (batch.Operations.Count == 0)
         {
-            throw new CommandException("batch", MessageService.GetString("command-batch-error-empty"));
+            throw CommandException.Usage("batch", MessageService.GetString("command-batch-error-empty"));
         }
 
         var container = connectedState.Client.GetDatabase(batch.DatabaseName).GetContainer(batch.ContainerName);
@@ -343,7 +343,7 @@ internal class BatchCommand : CosmosCommand
         var json = this.Data ?? (evaluatedResult as string);
         if (string.IsNullOrWhiteSpace(json))
         {
-            throw new CommandException("batch", MessageService.GetString("command-batch-error-missing_data"));
+            throw CommandException.Usage("batch", MessageService.GetString("command-batch-error-missing_data"));
         }
 
         return json;

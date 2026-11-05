@@ -248,42 +248,42 @@ internal sealed class BulkCommand : CosmosCommand
     {
         if (subcommand.Length == 0)
         {
-            throw Error("command-bulk-error-missing_subcommand");
+            throw UsageError("command-bulk-error-missing_subcommand");
         }
 
         if (!AllowedOptions.TryGetValue(subcommand, out var allowed))
         {
-            throw new CommandException("bulk", MessageService.GetArgsString("command-bulk-error-invalid_subcommand", "subcommand", subcommand));
+            throw CommandException.Usage("bulk", MessageService.GetArgsString("command-bulk-error-invalid_subcommand", "subcommand", subcommand));
         }
 
         foreach (var (name, supplied) in this.GetSuppliedOptions())
         {
             if (supplied && !allowed.Contains(name))
             {
-                throw new CommandException("bulk", MessageService.GetArgsString("command-bulk-error-option_not_supported", "option", name, "subcommand", subcommand));
+                throw CommandException.Usage("bulk", MessageService.GetArgsString("command-bulk-error-option_not_supported", "option", name, "subcommand", subcommand));
             }
         }
 
         if (this.Data != null && subcommand is not ("run" or "add"))
         {
-            throw new CommandException("bulk", MessageService.GetArgsString("command-bulk-error-data_not_supported", "subcommand", subcommand));
+            throw CommandException.Usage("bulk", MessageService.GetArgsString("command-bulk-error-data_not_supported", "subcommand", subcommand));
         }
 
         if (this.Concurrency is < 1 || this.MaxItems is < 1 || (this.MaxRu is { } ru && (!double.IsFinite(ru) || ru <= 0)))
         {
-            throw Error("command-bulk-error-invalid_number");
+            throw UsageError("command-bulk-error-invalid_number");
         }
 
         if (subcommand is "patch" or "delete" && string.IsNullOrWhiteSpace(this.Where))
         {
-            throw new CommandException("bulk", MessageService.GetArgsString("command-bulk-error-missing_where", "subcommand", subcommand));
+            throw CommandException.Usage("bulk", MessageService.GetArgsString("command-bulk-error-missing_where", "subcommand", subcommand));
         }
 
         if (subcommand == "patch")
         {
             if (string.IsNullOrWhiteSpace(this.Operations))
             {
-                throw Error("command-bulk-error-missing_operations");
+                throw UsageError("command-bulk-error-missing_operations");
             }
 
             try
@@ -292,27 +292,29 @@ internal sealed class BulkCommand : CosmosCommand
             }
             catch (JsonException ex)
             {
-                throw new CommandException("bulk", MessageService.GetArgsString("command-batch-error-invalid_json", "message", ex.Message), ex);
+                throw CommandException.Usage("bulk", MessageService.GetArgsString("command-batch-error-invalid_json", "message", ex.Message), ex);
             }
         }
 
         if (this.DryRun == true && (this.Journal != null || this.RetryUncertain == true))
         {
-            throw new CommandException("bulk", MessageService.GetArgsString("command-bulk-error-dry_run_option", "option", this.Journal != null ? "journal" : "retry-uncertain"));
+            throw CommandException.Usage("bulk", MessageService.GetArgsString("command-bulk-error-dry_run_option", "option", this.Journal != null ? "journal" : "retry-uncertain"));
         }
 
         if (this.Journal != null && subcommand is "patch" or "delete" && this.Save == null)
         {
-            throw Error("command-bulk-error-journal_requires_save");
+            throw UsageError("command-bulk-error-journal_requires_save");
         }
 
         if (this.RetryUncertain == true && subcommand == "run" && this.Journal == null)
         {
-            throw Error("command-bulk-error-retry_requires_journal");
+            throw UsageError("command-bulk-error-retry_requires_journal");
         }
     }
 
     private static CommandException Error(string key) => new("bulk", MessageService.GetString(key));
+
+    private static CommandException UsageError(string key) => CommandException.Usage("bulk", MessageService.GetString(key));
 
     private static ConnectedState RequireConnected(ShellInterpreter shell)
     {
@@ -382,7 +384,7 @@ internal sealed class BulkCommand : CosmosCommand
         }
         catch (JsonException ex)
         {
-            throw new CommandException("bulk", MessageService.GetArgsString("command-batch-error-invalid_json", "message", ex.Message), ex);
+            throw CommandException.Usage("bulk", MessageService.GetArgsString("command-batch-error-invalid_json", "message", ex.Message), ex);
         }
     }
 
@@ -656,7 +658,7 @@ internal sealed class BulkCommand : CosmosCommand
     private string ResolveData(CommandState commandState)
     {
         var data = this.Data ?? commandState.Result?.ConvertShellObject(DataType.Text) as string;
-        return string.IsNullOrWhiteSpace(data) ? throw Error("command-bulk-error-missing_data") : data;
+        return string.IsNullOrWhiteSpace(data) ? throw UsageError("command-bulk-error-missing_data") : data;
     }
 
     private void RequireApprovalAvailable(ShellInterpreter shell)
@@ -735,7 +737,7 @@ internal sealed class BulkCommand : CosmosCommand
 
         if (spool.Count == 0)
         {
-            throw Error("command-bulk-error-empty");
+            throw UsageError("command-bulk-error-empty");
         }
 
         return await this.ExecuteOperationsAsync(shell, target, spool.Count, spool.GetHash(), spool.ReadAsync(token), null, token);
@@ -867,7 +869,7 @@ internal sealed class BulkCommand : CosmosCommand
 
         if (added.Count == 0)
         {
-            throw Error("command-bulk-error-empty");
+            throw UsageError("command-bulk-error-empty");
         }
 
         bulk.Operations.AddRange(added);
@@ -881,7 +883,7 @@ internal sealed class BulkCommand : CosmosCommand
         var bulk = shell.CurrentBulk ?? throw Error("command-bulk-error-not_active");
         if (bulk.Operations.Count == 0)
         {
-            throw Error("command-bulk-error-empty");
+            throw UsageError("command-bulk-error-empty");
         }
 
         var connected = RequireConnected(shell);

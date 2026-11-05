@@ -52,18 +52,18 @@ internal class FtabCommand : CosmosCommand
     {
         if (commandState.Result == null)
         {
-            throw new CommandException("ftab", "The ftab command requires piped JSON input.");
+            throw CommandException.Usage("ftab", "The ftab command requires piped JSON input.");
         }
 
         if (this.Take < 0)
         {
-            throw new CommandException("ftab", "The -take option must be zero or greater.");
+            throw CommandException.Usage("ftab", "The -take option must be zero or greater.");
         }
 
         var evaluated = commandState.Result.ConvertShellObject(DataType.Json);
         if (evaluated is not JsonElement json)
         {
-            throw new CommandException("ftab", "The ftab command can only render JSON input.");
+            throw CommandException.Usage("ftab", "The ftab command can only render JSON input.");
         }
 
         var rows = NormalizeRows(json);
@@ -75,7 +75,7 @@ internal class FtabCommand : CosmosCommand
 
         if (format != FtabOutputFormat.Default && colorizeRules.Count > 0)
         {
-            throw new CommandException("ftab", "The -colorize option is only supported with -format default.");
+            throw CommandException.Usage("ftab", "The -colorize option is only supported with -format default.");
         }
 
         if (format == FtabOutputFormat.Default)
@@ -115,7 +115,7 @@ internal class FtabCommand : CosmosCommand
             return FtabOutputFormat.Html;
         }
 
-        throw new CommandException("ftab", "The -format option must be one of: default, markdown, html.");
+        throw CommandException.Usage("ftab", "The -format option must be one of: default, markdown, html.");
     }
 
     internal static IReadOnlyList<ColorizeRule> ParseColorizeRules(string? colorize)
@@ -131,7 +131,7 @@ internal class FtabCommand : CosmosCommand
             var parts = ruleText.Split(':', 3, StringSplitOptions.TrimEntries);
             if (parts.Length != 3 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[2]))
             {
-                throw new CommandException("ftab", "The -colorize option must use the format 'field:value:style' with multiple rules separated by ';'.");
+                throw CommandException.Usage("ftab", "The -colorize option must use the format 'field:value:style' with multiple rules separated by ';'.");
             }
 
             rules.Add(new ColorizeRule(parts[0], parts[1], parts[2]));
@@ -150,7 +150,7 @@ internal class FtabCommand : CosmosCommand
         var parts = sort.Split(':', 2, StringSplitOptions.TrimEntries);
         if (parts.Length == 0 || string.IsNullOrWhiteSpace(parts[0]))
         {
-            throw new CommandException("ftab", "The -sort option must be in the form 'field' or 'field:asc|desc'.");
+            throw CommandException.Usage("ftab", "The -sort option must be in the form 'field' or 'field:asc|desc'.");
         }
 
         var descending = false;
@@ -166,7 +166,7 @@ internal class FtabCommand : CosmosCommand
             }
             else
             {
-                throw new CommandException("ftab", "The -sort option direction must be 'asc' or 'desc'.");
+                throw CommandException.Usage("ftab", "The -sort option direction must be 'asc' or 'desc'.");
             }
         }
 
@@ -254,7 +254,7 @@ internal class FtabCommand : CosmosCommand
         {
             if (!string.Equals(sortSpec.Field, "value", StringComparison.Ordinal))
             {
-                throw new CommandException("ftab", "The -sort option can only use 'value' when the input rows are not JSON objects.");
+                throw CommandException.Usage("ftab", "The -sort option can only use 'value' when the input rows are not JSON objects.");
             }
 
             return sortSpec.Descending
@@ -322,7 +322,7 @@ internal class FtabCommand : CosmosCommand
         var rowObjects = rows.All(row => row.ValueKind == JsonValueKind.Object);
         if (fields != null && !rowObjects)
         {
-            throw new CommandException("ftab", "The -f option can only be used when the input rows are JSON objects.");
+            throw CommandException.Usage("ftab", "The -f option can only be used when the input rows are JSON objects.");
         }
 
         List<string> headers;
