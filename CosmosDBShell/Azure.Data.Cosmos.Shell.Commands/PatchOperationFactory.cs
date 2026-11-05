@@ -32,7 +32,7 @@ internal static class PatchOperationFactory
             case "remove":
                 if (value is not null)
                 {
-                    throw new CommandException(
+                    throw CommandException.Usage(
                         commandName,
                         MessageService.GetString("command-patch-error-unexpected_value_for_remove"));
                 }
@@ -53,7 +53,7 @@ internal static class PatchOperationFactory
                 return BuildIncrementOperation(commandName, path, value);
 
             default:
-                throw new CommandException(
+                throw CommandException.Usage(
                     commandName,
                     MessageService.GetString(
                         unsupportedOpMessageKey,
@@ -65,7 +65,7 @@ internal static class PatchOperationFactory
     {
         if (rawValue == null)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 commandName,
                 MessageService.GetString(
                     "command-patch-error-missing_value_for_op",
@@ -83,7 +83,7 @@ internal static class PatchOperationFactory
             return PatchOperation.Increment(path, doubleValue);
         }
 
-        throw new CommandException(
+        throw CommandException.Usage(
             commandName,
             MessageService.GetString("command-patch-error-increment_number"));
     }
@@ -92,7 +92,7 @@ internal static class PatchOperationFactory
     {
         if (rawValue == null)
         {
-            throw new CommandException(
+            throw CommandException.Usage(
                 commandName,
                 MessageService.GetString(
                     "command-patch-error-missing_value_for_op",

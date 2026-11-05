@@ -68,19 +68,19 @@ internal class CreateCommand : CosmosCommand
         // up front for database/container so the flag isn't silently ignored.
         if (this.Force == true)
         {
-            throw new CommandException("create", MessageService.GetString("command-create-error-force_only_for_items"));
+            throw CommandException.Usage("create", MessageService.GetString("command-create-error-force_only_for_items"));
         }
 
         if (IsContainer(item))
         {
             if (this.Name == null)
             {
-                throw new CommandException("create", MessageService.GetString("command-create-error-container_name_required"));
+                throw CommandException.Usage("create", MessageService.GetString("command-create-error-container_name_required"));
             }
 
             if (this.PartitionKey == null)
             {
-                throw new CommandException("create", MessageService.GetString("command-create-error-partition_key_required"));
+                throw CommandException.Usage("create", MessageService.GetString("command-create-error-partition_key_required"));
             }
 
             return await shell.State.AcceptAsync(
@@ -102,7 +102,7 @@ internal class CreateCommand : CosmosCommand
         {
             if (this.Name == null)
             {
-                throw new CommandException("create", MessageService.GetString("command-create-error-database_name_required"));
+                throw CommandException.Usage("create", MessageService.GetString("command-create-error-database_name_required"));
             }
 
             return await shell.State.AcceptAsync(
@@ -116,7 +116,7 @@ internal class CreateCommand : CosmosCommand
                 token);
         }
 
-        throw new CommandException("create", MessageService.GetString("command-create-error-invalid_item_type"));
+        throw CommandException.Usage("create", MessageService.GetString("command-create-error-invalid_item_type"));
     }
 
     internal static bool IsDatabase(string item)

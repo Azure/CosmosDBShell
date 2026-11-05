@@ -339,8 +339,10 @@ output. **Machine mode** is entered when any of the following is true:
 
 In machine mode the shell disables ANSI colors, suppresses connection/informational
 banners, emits command results as the selected structured format (JSON or CSV) on `STDOUT`,
-and writes early parser/connection failures as a structured `{ "status": "error", "error": ... }`
-object on `STDERR`. Inferred partition-key mutation warnings are emitted before writes as
+and writes parser, connection, and command failures (including `theme` errors and rejected
+non-interactive `edit` calls) as a structured `{ "status": "error", "error": ... }` object
+on `STDERR`. In-shell `2>` / `2>>` redirection sends that error object to the specified
+file instead. Inferred partition-key mutation warnings are emitted before writes as
 JSON Lines records on console stderr; a later error is emitted as a separate JSON record.
 The human-facing `user` and `table` formats are not machine mode; `user`
 falls back to JSON whenever output is redirected, piped, or run in machine mode.
@@ -371,6 +373,13 @@ or `$LASTEXITCODE`):
 | `6` | Throttled (`429` / RU budget exceeded) |
 
 These values are a public contract. See the [CI/CD guide](ci.md#exit-code-contract) for install steps, auth patterns, and scripted failure handling.
+
+Usage errors (`2`) include missing or extra arguments, unknown command options,
+invalid option values, and rejected command input. For example, `echo [1] | filter`
+(missing expression), `import sample.json --dry-run --concurrency 0`, and
+`echo [1] | ftab --format invalid` return `2`. Operational failures, such as a
+missing local input file or an editor failing to start, are not usage errors;
+service failures retain their status-specific exit codes above.
 
 Ctrl+C interrupts commands started with `-c`, `-k`, or redirected stdin. An interrupted startup command returns a nonzero exit code and stops any following startup command; structured partial write results, including settled import counts and observed RUs, remain visible. Canceled partial results are not written as successful redirected output. Successful writes are not rolled back, and canceled in-flight writes may require reconciliation before retrying. Stopping `watch` with Ctrl+C is intentional and remains successful; enclosing pipelines, blocks, and scripts stop without running subsequent work. An interrupted stdin script also skips any separately supplied `-c` or `-k` command, even when `watch` handled the interruption successfully.
 

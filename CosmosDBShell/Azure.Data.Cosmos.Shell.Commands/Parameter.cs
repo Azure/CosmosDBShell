@@ -101,16 +101,28 @@ internal class Parameter(PropertyInfo p, CosmosParameterAttribute pAttr)
                         { "values", string.Join(", ", underlyingType.GetEnumNames()) },
                     });
 
-                    throw new CommandException("ParseParameter", msg);
+                    throw CommandException.Usage("ParseParameter", msg);
                 }
             }
 
-            var obj = Convert.ChangeType(v, underlyingType);
+            var obj = ConvertValue(v, underlyingType);
             p.SetValue(cmd, obj);
             return;
         }
 
-        p.SetValue(cmd, Convert.ChangeType(v, p.PropertyType));
+        p.SetValue(cmd, ConvertValue(v, p.PropertyType));
+
+        static object? ConvertValue(string value, Type type)
+        {
+            try
+            {
+                return Convert.ChangeType(value, type);
+            }
+            catch (Exception ex) when (ex is FormatException or OverflowException or InvalidCastException)
+            {
+                throw CommandException.Usage("ParseParameter", ex.Message, ex);
+            }
+        }
     }
 
     /// <summary>

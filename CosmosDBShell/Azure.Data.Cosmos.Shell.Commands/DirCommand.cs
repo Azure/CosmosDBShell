@@ -98,7 +98,7 @@ internal class DirCommand : CosmosCommand
         }
         catch (ArgumentException ex)
         {
-            throw new CommandException("dir", MessageService.GetArgsString("command-dir-invalid_filter", "message", ex.Message));
+            throw CommandException.Usage("dir", MessageService.GetArgsString("command-dir-invalid_filter", "message", ex.Message));
         }
 
         // Sort: directories first, then by name
