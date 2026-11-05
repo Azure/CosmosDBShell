@@ -171,4 +171,22 @@ public class SecretRedactorTests
         _ = parser.ParseStatements();
         Assert.False(parser.Errors.HasErrors);
     }
+
+    [Theory]
+    [InlineData("('example-key==')")]
+    [InlineData("(('example-key=='))")]
+    [InlineData("'example-key==' + 'suffix'")]
+    public void MaskHistory_RedactsCredentialPropertiesInsideInterpolation(string credential)
+    {
+        var command = "echo $\"Before=$label $({AccountKey: " + credential + "}) After=$label\"";
+        const string expected = "echo $\"Before=$label $({AccountKey: '[REDACTED]'}) After=$label\"";
+
+        var masked = SecretRedactor.MaskHistory(command);
+
+        Assert.Equal(expected, masked);
+        Assert.Equal(masked, SecretRedactor.MaskHistory(masked));
+        var parser = new StatementParser(masked);
+        _ = parser.ParseStatements();
+        Assert.False(parser.Errors.HasErrors);
+    }
 }

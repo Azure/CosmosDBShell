@@ -14,6 +14,7 @@ public class SerializedExecutionTests
     [InlineData("""$AccountKey = ('example-key==')""")]
     [InlineData("""$credentials = {"AccountKey": ('example-key==')}""")]
     [InlineData("""echo $"Bearer $('example-key==')" """)]
+    [InlineData("""echo $"$({AccountKey: ('example-key==')})" """)]
     public void PrintCommand_MasksEscapedCredentialsInNewAndLegacyHistory(string command)
     {
         var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");

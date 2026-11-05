@@ -52,11 +52,7 @@ internal static class SecretRedactor
         for (var index = 0; index < tokens.Length; index++)
         {
             var token = tokens[index];
-            var isCredentialValue = index >= 2
-                && tokens[index - 1].Value is ":" or "="
-                && IsCredentialName(tokens[index - 2].Value)
-                && (token.Type is TokenType.String or TokenType.InterpolatedString or TokenType.OpenParenthesis
-                    || tokens[index - 2].Value.StartsWith('$') || tokens[index - 1].Type == TokenType.Colon);
+            var isCredentialValue = IsCredentialValue(tokens, index);
             if (!isCredentialValue && token.Type is not (TokenType.String or TokenType.InterpolatedString))
             {
                 continue;
@@ -70,11 +66,7 @@ internal static class SecretRedactor
                 result.Append(value.AsSpan(nameStart, separatorEnd - nameStart));
                 result.Append(MaskHistoryCredentials(value[separatorEnd..token.Start]));
                 result.Append(ShellLiteral.Quote("[REDACTED]"));
-                var expressionLexer = new Lexer(value[token.Start..]);
-                var expression = new ExpressionParser(expressionLexer).ParseExpression();
-                offset = expressionLexer.Errors.HasErrors
-                    ? value.Length
-                    : token.Start + expression.Start + expression.Length;
+                offset = GetCredentialExpressionEnd(value, token.Start);
                 while (index + 1 < tokens.Length && tokens[index + 1].Start < offset)
                 {
                     index++;
@@ -132,26 +124,68 @@ internal static class SecretRedactor
             || value.Equals("ResourceToken", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsCredentialValue(IReadOnlyList<Token> tokens, int index)
+        => index >= 2
+            && tokens[index - 1].Value is ":" or "="
+            && IsCredentialName(tokens[index - 2].Value)
+            && (tokens[index].Type is TokenType.String or TokenType.InterpolatedString or TokenType.OpenParenthesis
+                || tokens[index - 2].Value.StartsWith('$') || tokens[index - 1].Type == TokenType.Colon);
+
+    private static int GetCredentialExpressionEnd(string value, int start)
+    {
+        var lexer = new Lexer(value[start..]);
+        var expression = new ExpressionParser(lexer).ParseExpression();
+        return lexer.Errors.HasErrors ? value.Length : start + expression.Start + expression.Length;
+    }
+
     private static string MaskInterpolatedToken(string raw, Token token, Lexer lexer)
     {
         var sourceMap = lexer.GetInterpolatedStringSourceMap(token)!;
-        var ranges = new List<(int Start, int End)>();
+        var ranges = new List<(int Start, int End, string Replacement)>();
+        void AddRange(int start, int end, string replacement)
+        {
+            ranges.Add((
+                sourceMap[start] - token.Start,
+                end < sourceMap.Count ? sourceMap[end] - token.Start : raw.Length - (raw.EndsWith('"') ? 1 : 0),
+                replacement));
+        }
+
+        for (var index = 0; index + 1 < token.Value.Length; index++)
+        {
+            if (token.Value[index] != '$' || token.Value[index + 1] != '(')
+            {
+                continue;
+            }
+
+            var expressionStart = index + 2;
+            var expressionEnd = FindInterpolationEnd(token.Value, index);
+            var expressionText = token.Value[expressionStart..expressionEnd];
+            var expressionTokens = new Lexer(expressionText).Tokenize()
+                .Where(item => item.Type is not (TokenType.Eol or TokenType.Comment)).ToArray();
+            for (var expressionIndex = 0; expressionIndex < expressionTokens.Length; expressionIndex++)
+            {
+                if (IsCredentialValue(expressionTokens, expressionIndex))
+                {
+                    var start = expressionTokens[expressionIndex].Start;
+                    AddRange(expressionStart + start, expressionStart + GetCredentialExpressionEnd(expressionText, start), "'[REDACTED]'");
+                }
+            }
+
+            index = expressionEnd;
+        }
+
         foreach (var pattern in new[] { JwtPattern, InterpolatedBearerPattern, ConnectionCredentialPattern, HistorySignaturePattern })
         {
             foreach (Match match in pattern.Matches(token.Value))
             {
                 var prefixLength = match.Groups.Count > 1 ? match.Groups[1].Length : 0;
-                var start = sourceMap[match.Index + prefixLength] - token.Start;
                 var endIndex = match.Index + match.Length;
                 if (pattern != JwtPattern)
                 {
                     endIndex = FindInterpolatedCredentialEnd(token.Value, match.Index + prefixLength, pattern);
                 }
 
-                var end = endIndex < sourceMap.Count
-                    ? sourceMap[endIndex] - token.Start
-                    : raw.Length - (raw.EndsWith('"') ? 1 : 0);
-                ranges.Add((start, end));
+                AddRange(match.Index + prefixLength, endIndex, "[REDACTED]");
             }
         }
 
@@ -164,7 +198,7 @@ internal static class SecretRedactor
                 continue;
             }
 
-            result.Append(raw.AsSpan(offset, range.Start - offset)).Append("[REDACTED]");
+            result.Append(raw.AsSpan(offset, range.Start - offset)).Append(range.Replacement);
             offset = range.End;
         }
 
@@ -191,28 +225,26 @@ internal static class SecretRedactor
                 continue;
             }
 
-            var expressionStart = index + 1;
-            var nesting = 0;
-            var expressionEnd = -1;
-            foreach (var expressionToken in new Lexer(value[expressionStart..]).Tokenize())
-            {
-                if (expressionToken.Type == TokenType.OpenParenthesis)
-                {
-                    nesting++;
-                }
-                else if (expressionToken.Type == TokenType.CloseParenthesis && --nesting == 0)
-                {
-                    expressionEnd = expressionStart + expressionToken.Start;
-                    break;
-                }
-            }
+            index = FindInterpolationEnd(value, index);
+        }
 
-            if (expressionEnd < 0)
-            {
-                return value.Length;
-            }
+        return value.Length;
+    }
 
-            index = expressionEnd;
+    private static int FindInterpolationEnd(string value, int start)
+    {
+        var expressionStart = start + 1;
+        var nesting = 0;
+        foreach (var token in new Lexer(value[expressionStart..]).Tokenize())
+        {
+            if (token.Type == TokenType.OpenParenthesis)
+            {
+                nesting++;
+            }
+            else if (token.Type == TokenType.CloseParenthesis && --nesting == 0)
+            {
+                return expressionStart + token.Start;
+            }
         }
 
         return value.Length;
