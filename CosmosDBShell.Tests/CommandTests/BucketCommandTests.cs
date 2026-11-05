@@ -11,13 +11,74 @@ using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
+using Spectre.Console;
 
 /// <summary>
 /// Unit tests for <see cref="BucketCommand"/>. Covers the pure validation helper and
 /// the offline state visitors that do not require a live Cosmos DB connection.
 /// </summary>
+[Collection(ConsoleOutputTestCollection.Name)]
 public class BucketCommandTests
 {
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("3", false)]
+    [InlineData("0", false)]
+    [InlineData(null, true)]
+    [InlineData("3", true)]
+    [InlineData("0", true)]
+    public async Task ClientSelection_UsesExecutingShellOutput(string? action, bool machineMode)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var client = CreateTestClient();
+        client.ClientOptions.ThroughputBucket = 2;
+        shell.State = new DatabaseState("TestDatabase", client);
+        shell.Options = new Program.CosmosShellOptions { Output = machineMode ? "json" : "user", Quiet = machineMode };
+        var singletonOptions = ShellInterpreter.Instance.Options;
+        var originalOut = Console.Out;
+        var originalConsole = AnsiConsole.Console;
+        using var output = new StringWriter();
+        try
+        {
+            ShellInterpreter.Instance.Options = new Program.CosmosShellOptions { Output = machineMode ? "user" : "json", Quiet = !machineMode };
+            Console.SetOut(output);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            var state = await new BucketCommand { Action = action }.ExecuteAsync(
+                shell, new CommandState(), "bucket", TestContext.Current.CancellationToken);
+            shell.PrintState(state);
+
+            if (machineMode)
+            {
+                using var result = JsonDocument.Parse(output.ToString());
+                var selection = result.RootElement.GetProperty("clientBucket");
+                if (action == "0")
+                {
+                    Assert.Equal(JsonValueKind.Null, selection.ValueKind);
+                }
+                else
+                {
+                    Assert.Equal(action == "3" ? 3 : 2, selection.GetInt32());
+                }
+            }
+            else
+            {
+                Assert.NotEmpty(output.ToString());
+                Assert.DoesNotContain("clientBucket", output.ToString());
+            }
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            AnsiConsole.Console = originalConsole;
+            ShellInterpreter.Instance.Options = singletonOptions;
+        }
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
