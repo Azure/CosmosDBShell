@@ -113,6 +113,11 @@ internal class DefStatement : Statement
             arguments.Set(this.Parameters[i].TrimStart('$'), argument);
         }
 
+        if (!commandState.HasPipelineInput)
+        {
+            commandState.Result = null;
+        }
+
         shell.PushCallScope(arguments, token);
         var callerName = shell.CurrentScriptFileName;
         var callerText = shell.CurrentScriptContent;

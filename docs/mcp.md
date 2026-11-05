@@ -227,6 +227,21 @@ operations rather than individual query pages or transactional batch items. If
 the shell variable `$sessionRequestChargeWarningThreshold` is set to a positive value, the
 session object also includes `session.requestChargeWarningThreshold`.
 
+### Import and export `format`
+
+The `format` argument of `import` and `export` affects only the summary that the
+command reports, such as item counts and request charges. It never changes the
+file that is read or written:
+
+- `import` reads CSV for `.csv` paths and otherwise automatically detects a JSON
+  array, a single JSON object, or a sequence of objects (including JSON Lines).
+- `export` writes CSV for `.csv` paths and an indented JSON array otherwise.
+
+The schemas accept `user`, `json`, `csv`, and `table`. Values such as `array` or
+`jsonl` are not file-format selectors and are rejected. The summary is always
+returned in `result`; `csv` additionally returns its CSV rendering in
+`outputText`. Omit `format` to keep the current output setting.
+
 ### Pagination
 
 MCP calls to `query` and container-item `ls` return one Cosmos DB page per call. `max` must be positive; when it is omitted or non-positive, the server applies a safe default cap of `100` items. To continue, pass a non-null returned `continuationToken` as the next call's `continuation` argument while keeping the query and other options unchanged. The token is opaque; do not parse or edit it. When the token is `null` and the response does not set `resultIncomplete`, the result set is exhausted: stop paging and do not send another request with `continuation`.

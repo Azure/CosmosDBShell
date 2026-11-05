@@ -52,6 +52,8 @@ public class PipelineInputTests
     [InlineData("def path [value] { return $value }; echo '{\"path\":\".items\",\"items\":[1]}' | filter (path $.path)")]
     [InlineData("def make { return [1] }; def consume { make | filter '.' }; echo [2] | consume")]
     [InlineData("def passthrough { return $. }; echo [1] | passthrough | filter '.'")]
+    [InlineData("def passthrough { }; echo [1] | passthrough | filter '.'")]
+    [InlineData("def passthrough [value] { return $value }; echo [1]; passthrough $. | filter '.'")]
     public async Task ExplicitPipelines_PreserveTheirInput(string script)
     {
         using var shell = ShellInterpreter.CreateInstance();
@@ -61,6 +63,84 @@ public class PipelineInputTests
         var json = Assert.IsType<JsonElement>(state.Result?.ConvertShellObject(DataType.Json));
         Assert.Equal(1, Assert.Single(json.EnumerateArray()).GetInt32());
         Assert.False(state.HasPipelineInput);
+    }
+
+    [Theory]
+    [InlineData(false, false, "")]
+    [InlineData(false, true, "")]
+    [InlineData(true, false, "")]
+    [InlineData(true, true, "")]
+    [InlineData(false, false, "return $.")]
+    [InlineData(false, true, "return $.")]
+    [InlineData(true, false, "return $.")]
+    [InlineData(true, true, "return $.")]
+    public async Task EmptyAndReturnOnlyBodies_OnlyReceiveExplicitPipelineInput(bool fileScript, bool piped, string body)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var path = Path.Join(Path.GetTempPath(), $"cosmosshell-entry-{Guid.NewGuid():N}.csh");
+        try
+        {
+            string invocation;
+            if (fileScript)
+            {
+                await File.WriteAllTextAsync(path, body, TestContext.Current.CancellationToken);
+                invocation = $"echo [1] {(piped ? "|" : ";")} exec {ShellLiteral.Quote(path)}";
+            }
+            else
+            {
+                invocation = $"def consume {{ {body} }}; echo [1] {(piped ? "|" : ";")} consume";
+            }
+
+            if (!piped && body.Length > 0)
+            {
+                var exception = await Record.ExceptionAsync(
+                    () => shell.RunCommandAsync(new CommandState(), invocation, TestContext.Current.CancellationToken));
+                Assert.NotNull(exception);
+                Assert.Contains(MessageService.GetString("json_error_result_evaluation_null"), exception.ToString());
+                return;
+            }
+
+            var state = await shell.RunCommandAsync(new CommandState(), invocation, TestContext.Current.CancellationToken);
+            Assert.False(state.IsError);
+            if (piped)
+            {
+                var json = Assert.IsType<JsonElement>(state.Result?.ConvertShellObject(DataType.Json));
+                Assert.Equal(1, Assert.Single(json.EnumerateArray()).GetInt32());
+            }
+            else
+            {
+                Assert.Null(state.Result);
+            }
+
+            Assert.False(state.HasPipelineInput);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task ScriptArguments_AreEvaluatedBeforeClearingNonPipedInput()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var path = Path.Join(Path.GetTempPath(), $"cosmosshell-argument-{Guid.NewGuid():N}.csh");
+        try
+        {
+            await File.WriteAllTextAsync(path, "return $1", TestContext.Current.CancellationToken);
+            var state = await shell.RunCommandAsync(
+                new CommandState(),
+                $"echo [1]; exec {ShellLiteral.Quote(path)} $. | filter '.'",
+                TestContext.Current.CancellationToken);
+
+            Assert.False(state.IsError);
+            var json = Assert.IsType<JsonElement>(state.Result?.ConvertShellObject(DataType.Json));
+            Assert.Equal(1, Assert.Single(json.EnumerateArray()).GetInt32());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Theory]
@@ -81,7 +161,7 @@ public class PipelineInputTests
     public async Task ScriptInput_RequiresPipeAndIsConsumedByFirstCommand(bool piped, bool secondCommand)
     {
         using var shell = ShellInterpreter.CreateInstance();
-        var path = Path.Combine(Path.GetTempPath(), $"cosmosshell-pipeline-{Guid.NewGuid():N}.csh");
+        var path = Path.Join(Path.GetTempPath(), $"cosmosshell-pipeline-{Guid.NewGuid():N}.csh");
         try
         {
             await File.WriteAllTextAsync(path, secondCommand ? "filter '.'; filter '.'" : "filter '.'", TestContext.Current.CancellationToken);
@@ -114,7 +194,7 @@ public class PipelineInputTests
     public async Task NestedScript_ReturnedResultRequiresExplicitPipe(bool outerScript, bool explicitPipe)
     {
         using var shell = ShellInterpreter.CreateInstance();
-        var path = Path.Combine(Path.GetTempPath(), $"cosmosshell-nested-{Guid.NewGuid():N}.csh");
+        var path = Path.Join(Path.GetTempPath(), $"cosmosshell-nested-{Guid.NewGuid():N}.csh");
         var outerPath = path + ".outer.csh";
         try
         {
@@ -162,7 +242,7 @@ public class PipelineInputTests
         using var shell = ShellInterpreter.CreateInstance();
         var input = new ShellJson(JsonSerializer.SerializeToElement(new[] { 1 }));
         var callerState = new CommandState { Result = input, HasPipelineInput = true };
-        var path = Path.Combine(Path.GetTempPath(), $"cosmosshell-expression-{Guid.NewGuid():N}.csh");
+        var path = Path.Join(Path.GetTempPath(), $"cosmosshell-expression-{Guid.NewGuid():N}.csh");
         try
         {
             await File.WriteAllTextAsync(path, requiresInput ? "filter '.'" : "echo", TestContext.Current.CancellationToken);
@@ -224,7 +304,7 @@ public class PipelineInputTests
         shell.State = new ContainerState("items", "db", client);
         var previousState = ShellInterpreter.Instance.State;
         var script = prefix + "\nrm safe-a --key=id --partition-key=p1 --dry-run";
-        var path = Path.Combine(Path.GetTempPath(), $"cosmosshell-pipeline-{Guid.NewGuid():N}.csh");
+        var path = Path.Join(Path.GetTempPath(), $"cosmosshell-pipeline-{Guid.NewGuid():N}.csh");
         var beforePath = path + ".before.json";
         var afterPath = path + ".after.json";
         try

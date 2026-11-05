@@ -429,6 +429,11 @@ internal class CommandStatement : Statement
 
         shell.PushCallScope(frame, token);
         var currentState = executionState ?? commandState;
+        if (!currentState.HasPipelineInput)
+        {
+            currentState.Result = null;
+        }
+
         string scriptContent = string.Empty;
         var priorFileName = shell.CurrentScriptFileName;
         var priorContent = shell.CurrentScriptContent;
