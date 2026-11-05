@@ -10,8 +10,10 @@ using Spectre.Console;
 [Collection(ThemeStateTestCollection.Name)]
 public class NonAnsiFallbackTests
 {
-    [Fact]
-    public void PrintCommand_Quiet_RecordsInExistingEditorHistoryWithoutEcho()
+    [Theory]
+    [InlineData("echo QUIET_HISTORY", "echo QUIET_HISTORY")]
+    [InlineData("connect 'AccountKey=example-key==;'", "connect 'AccountKey=[REDACTED];'")]
+    public void PrintCommand_Quiet_RecordsInExistingEditorHistoryWithoutEcho(string command, string expectedHistory)
     {
         var configPath = CreateConfigPath();
         var savedConsole = AnsiConsole.Console;
@@ -40,11 +42,11 @@ public class NonAnsiFallbackTests
             Assert.NotNull(editor);
             var historyCount = editor.History.Count;
 
-            shell.PrintCommand("echo QUIET_HISTORY");
+            shell.PrintCommand(command);
 
             Assert.Equal(historyCount + 1, editor.History.Count);
-            Assert.Contains("echo QUIET_HISTORY", shell.History);
-            Assert.Contains("echo QUIET_HISTORY", File.ReadAllText(shell.HistoryFile));
+            Assert.Contains(expectedHistory, shell.History);
+            Assert.Contains(expectedHistory, File.ReadAllText(shell.HistoryFile));
             Assert.Empty(output.ToString());
             Assert.Empty(error.ToString());
         }
