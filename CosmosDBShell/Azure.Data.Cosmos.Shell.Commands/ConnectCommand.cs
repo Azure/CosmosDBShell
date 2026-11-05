@@ -94,7 +94,7 @@ internal partial class ConnectCommand : CosmosCommand
             }
             else
             {
-                throw new CommandException(
+                throw CommandException.Usage(
                     "connect",
                     $"Invalid mode '{this.Mode}'. Valid values are 'direct' or 'gateway'.");
             }

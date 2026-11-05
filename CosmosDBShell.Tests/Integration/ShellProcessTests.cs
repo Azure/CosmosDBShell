@@ -26,6 +26,48 @@ public class ShellProcessTests
     private static readonly Regex AnsiEscape = new("\x1b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
 
     [Theory]
+    [InlineData("echo [1] | filter")]
+    [InlineData("""echo [{"id":"a"}] | ftab --format invalid""")]
+    [InlineData("ftab --take=invalid")]
+    [InlineData("ftab --take=999999999999999999999999999")]
+    [InlineData("echo --unknown-usage-test-option")]
+    public async Task InvalidCommandArguments_ReturnUsageExitCode(string command)
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--output", "json", "-c", command],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(ShellExitCode.UsageError, result.ExitCode);
+        Assert.Empty(result.StdOut);
+        using var error = JsonDocument.Parse(result.StdErr);
+        Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task ImportDryRun_InvalidConcurrency_ReturnsUsageExitCode()
+    {
+        var file = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(file, """[{"id":"a"}]""", TestContext.Current.CancellationToken);
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: ["--output", "json", "-c", $"import {JsonSerializer.Serialize(file)} --dry-run --concurrency 0"],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellExitCode.UsageError, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            using var error = JsonDocument.Parse(result.StdErr);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
     [InlineData(false, "; ")]
     [InlineData(true, "; ")]
     [InlineData(true, "\n")]
@@ -337,6 +379,19 @@ public class ShellProcessTests
         {
             File.Delete(file);
         }
+    }
+
+    [Fact]
+    public async Task ImportDryRun_MissingFile_RemainsOperationalFailure()
+    {
+        var file = Path.Join(Path.GetTempPath(), $"missing-usage-test-{Guid.NewGuid():N}.json");
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--output", "json", "-c", $"import {JsonSerializer.Serialize(file)} --dry-run"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(ShellExitCode.GeneralFailure, result.ExitCode);
+        Assert.Empty(result.StdOut);
     }
 
     [Theory]

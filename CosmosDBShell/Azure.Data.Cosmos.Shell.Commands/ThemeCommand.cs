@@ -246,7 +246,7 @@ internal class ThemeCommand : CosmosCommand
         if (string.IsNullOrWhiteSpace(this.Name))
         {
             AnsiConsole.MarkupLine(MessageService.GetString("command-theme-use-missing-name"));
-            return new ErrorCommandState(new CommandException("theme", MessageService.GetString("command-theme-use-missing-name")));
+            return new ErrorCommandState(CommandException.Usage("theme", MessageService.GetString("command-theme-use-missing-name")));
         }
 
         if (!ThemeProfiles.TryGet(this.Name, out var profile))
@@ -268,7 +268,7 @@ internal class ThemeCommand : CosmosCommand
         {
             var message = MessageService.GetString("command-theme-load-missing-path");
             AnsiConsole.MarkupLine(message);
-            return new ErrorCommandState(new CommandException("theme", message));
+            return new ErrorCommandState(CommandException.Usage("theme", message));
         }
 
         var path = ResolveThemePath(requested);
@@ -318,7 +318,7 @@ internal class ThemeCommand : CosmosCommand
         {
             var message = MessageService.GetString("command-theme-save-missing-name");
             AnsiConsole.MarkupLine(message);
-            return new ErrorCommandState(new CommandException("theme", message));
+            return new ErrorCommandState(CommandException.Usage("theme", message));
         }
 
         string path;
@@ -334,7 +334,7 @@ internal class ThemeCommand : CosmosCommand
             {
                 var message = MessageService.GetArgsString("command-theme-save-invalid-name", "name", this.Name);
                 AnsiConsole.MarkupLine(Theme.FormatError(message));
-                return new ErrorCommandState(new CommandException("theme", message));
+                return new ErrorCommandState(CommandException.Usage("theme", message));
             }
 
             path = System.IO.Path.Combine(ThemeFile.DefaultUserThemesDirectory(), this.Name + ".toml");
@@ -811,6 +811,6 @@ internal class ThemeCommand : CosmosCommand
             "actions",
             "current, list, show, use (alias: set), load, validate, save, edit, open, reload");
         AnsiConsole.MarkupLine(message);
-        return new ErrorCommandState(new CommandException("theme", message));
+        return new ErrorCommandState(CommandException.Usage("theme", message));
     }
 }

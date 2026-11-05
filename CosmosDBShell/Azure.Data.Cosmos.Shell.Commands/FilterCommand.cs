@@ -22,18 +22,18 @@ internal class FilterCommand : CosmosCommand
     {
         if (string.IsNullOrWhiteSpace(this.ExpressionText))
         {
-            throw new CommandException("filter", MessageService.GetString("command-filter-error-no_expression"));
+            throw CommandException.Usage("filter", MessageService.GetString("command-filter-error-no_expression"));
         }
 
         if (commandState.Result == null)
         {
-            throw new CommandException("filter", MessageService.GetString("command-filter-error-no_input"));
+            throw CommandException.Usage("filter", MessageService.GetString("command-filter-error-no_input"));
         }
 
         var evaluatedInput = commandState.Result.ConvertShellObject(DataType.Json);
         if (evaluatedInput is not System.Text.Json.JsonElement)
         {
-            throw new CommandException("filter", MessageService.GetString("command-filter-error-invalid_input"));
+            throw CommandException.Usage("filter", MessageService.GetString("command-filter-error-invalid_input"));
         }
 
         var lexer = new Lexer(this.ExpressionText);
@@ -42,13 +42,13 @@ internal class FilterCommand : CosmosCommand
 
         if (lexer.Errors.HasErrors)
         {
-            throw new CommandException("filter", lexer.Errors[0].Message);
+            throw CommandException.Usage("filter", lexer.Errors[0].Message);
         }
 
         if (!parser.IsAtEnd)
         {
             var trailing = parser.Current?.Value ?? string.Empty;
-            throw new CommandException(
+            throw CommandException.Usage(
                 "filter",
                 MessageService.GetString(
                     "command-filter-error-trailing_tokens",

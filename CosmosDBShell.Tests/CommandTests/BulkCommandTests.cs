@@ -2108,6 +2108,7 @@ public class BulkCommandTests
     {
         var error = Assert.Throws<CommandException>(() => PendingBulkState.ValidateCapacity(count, bytes));
         Assert.Contains("10,000 operations and 64 MiB", error.Message);
+        Assert.Equal(ShellExitCode.UsageError, ShellExitCode.FromException(error));
     }
 
     [Fact]

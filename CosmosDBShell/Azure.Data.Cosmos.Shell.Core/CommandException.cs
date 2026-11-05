@@ -55,6 +55,11 @@ public class CommandException : ShellException
     /// </summary>
     public string Command { get; }
 
+    internal bool IsUsageError { get; private init; }
+
+    internal static CommandException Usage(string command, string message, Exception? innerException = null)
+        => new(command, message, innerException) { IsUsageError = true };
+
     /// <inheritdoc/>
     public override string ToString()
     {

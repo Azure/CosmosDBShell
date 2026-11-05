@@ -19,6 +19,28 @@ using Xunit;
 
 public class ShellExitCodeTests
 {
+    [Fact]
+    public void ExplicitUsageError_PreservesMessageAndConversionCauseThroughWrappers()
+    {
+        var cause = new FormatException("bad integer");
+        var error = CommandException.Usage("throughput", "Invalid RU value.", cause);
+        var positional = new PositionalException("input.csh", error, 1, 1);
+        var state = new ErrorCommandState(positional);
+
+        Assert.Equal("Invalid RU value.", error.Message);
+        Assert.Same(cause, error.InnerException);
+        Assert.Equal(ShellExitCode.UsageError, state.ExitCode);
+        Assert.Equal(ShellExitCode.UsageError, ShellExitCode.FromException(new CommandState.FailureException(state)));
+    }
+
+    [Fact]
+    public void OrdinaryCommandFailure_RemainsGeneralFailure()
+    {
+        Assert.Equal(ShellExitCode.GeneralFailure, ShellExitCode.FromException(new CommandException("edit", "Editor failed.")));
+        Assert.Equal(ShellExitCode.GeneralFailure, ShellExitCode.FromException(new CommandException("import", "Read failed.", new IOException("failure"))));
+        Assert.Equal(ShellExitCode.GeneralFailure, ShellExitCode.FromException(new FormatException("runtime formatting failure")));
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized, ShellExitCode.AuthFailure)]
     [InlineData(HttpStatusCode.NotFound, ShellExitCode.NotFound)]
@@ -31,6 +53,7 @@ public class ShellExitCodeTests
         var outer = new PositionalException("parent.csh", inner, 1, 1, "child.csh");
         Assert.Equal(expected, ShellExitCode.FromException(outer));
         Assert.Equal(expected, new ErrorCommandState(outer).ExitCode);
+        Assert.Equal(expected, ShellExitCode.FromException(new CommandException("query", "Query failed.", outer)));
     }
 
     [Fact]

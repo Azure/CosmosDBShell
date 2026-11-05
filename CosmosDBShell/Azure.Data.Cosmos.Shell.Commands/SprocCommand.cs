@@ -95,14 +95,14 @@ internal class SprocCommand : CosmosCommand
         }
         catch (JsonException ex)
         {
-            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-invalid_params"), ex);
+            throw CommandException.Usage("sproc", MessageService.GetString("command-sproc-error-invalid_params"), ex);
         }
 
         using (document)
         {
             if (document.RootElement.ValueKind != JsonValueKind.Array)
             {
-                throw new CommandException("sproc", MessageService.GetString("command-sproc-error-invalid_params"));
+                throw CommandException.Usage("sproc", MessageService.GetString("command-sproc-error-invalid_params"));
             }
 
             var parameters = new List<object>();
@@ -188,7 +188,7 @@ internal class SprocCommand : CosmosCommand
         var subcommand = NormalizeSubcommand(this.Subcommand);
         if (subcommand.Length == 0)
         {
-            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-missing_subcommand"));
+            throw CommandException.Usage("sproc", MessageService.GetString("command-sproc-error-missing_subcommand"));
         }
 
         if (shell.State is not ConnectedState connectedState)
@@ -213,7 +213,7 @@ internal class SprocCommand : CosmosCommand
             "exec" or "run" => await this.ExecAsync(container, commandState, token),
             "edit" => await this.EditAsync(container, shell, commandState, token),
             "delete" or "rm" => await this.DeleteAsync(container, commandState, token),
-            _ => throw new CommandException(
+            _ => throw CommandException.Usage(
                 "sproc",
                 MessageService.GetArgsString("command-sproc-error-invalid_subcommand", "subcommand", subcommand)),
         };
@@ -346,7 +346,7 @@ internal class SprocCommand : CosmosCommand
         // real terminal, so scripts and MCP must pass a file instead.
         if (Console.IsInputRedirected || !string.IsNullOrEmpty(shell.CurrentScriptFileName))
         {
-            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-missing_file"));
+            throw CommandException.Usage("sproc", MessageService.GetString("command-sproc-error-missing_file"));
         }
 
         // Check for an existing stored procedure before opening the editor so the user
@@ -449,7 +449,7 @@ internal class SprocCommand : CosmosCommand
 
         if (string.IsNullOrWhiteSpace(this.PartitionKey))
         {
-            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-missing_partition_key"));
+            throw CommandException.Usage("sproc", MessageService.GetString("command-sproc-error-missing_partition_key"));
         }
 
         var parameters = ParseExecParams(this.Value);
@@ -628,7 +628,7 @@ internal class SprocCommand : CosmosCommand
     {
         if (string.IsNullOrWhiteSpace(this.Name))
         {
-            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-missing_name"));
+            throw CommandException.Usage("sproc", MessageService.GetString("command-sproc-error-missing_name"));
         }
 
         return this.Name;

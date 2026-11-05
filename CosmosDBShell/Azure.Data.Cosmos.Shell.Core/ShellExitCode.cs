@@ -69,6 +69,11 @@ public static class ShellExitCode
     {
         for (var ex = exception; ex is not null; ex = ex.InnerException)
         {
+            if (ex is CommandException { IsUsageError: true } or UnknownOptionException)
+            {
+                return UsageError;
+            }
+
             if (ex is CommandState.FailureException failure)
             {
                 // A structured failure can be re-attached to the state it came from; asking that state
