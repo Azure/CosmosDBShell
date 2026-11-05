@@ -39,15 +39,21 @@
 ## Documentation
 
 - Keep `README.md` focused on end-user information: installation, quick start, capabilities, command usage, configuration, compatibility, and actionable limitations. Update it only when a change affects information users need to understand or use the shell; not every user-visible bugfix requires a README edit.
-- Do not add implementation details, internal lifecycle or cleanup behavior, SDK plumbing, or test details to `README.md`. Describe bugfixes in `CHANGELOG.md` in terms of their user-visible impact; put implementation rationale in the PR description or a necessary code comment.
+- Do not add implementation details, internal lifecycle or cleanup behavior, SDK plumbing, or test details to `README.md`. Put implementation rationale in the PR description or a necessary code comment.
 - Before adding README text, identify what users can do differently or what they need to know because of it. If neither applies, leave the README unchanged. Keep detailed usage and troubleshooting guidance in the relevant `docs/` page and link from the README only when useful.
-- Always retain `## Unreleased` at the top of `CHANGELOG.md`, even when it is empty. When preparing a release, move its entries into a dated version section below it; never replace or remove the Unreleased heading.
-- Keep permanent category headings under `## Unreleased` in this order: `### Breaking changes`, `### New features`, `### Fixes`, `### Improvements`. Retain all four headings even when empty, including after preparing a release.
-- Append new changelog entries to the appropriate existing category. Do not duplicate or reorder headings, reorder existing entries, or rewrite unrelated changelog text. Keep a blank line between sections to reduce overlapping edits and merge conflicts.
 - Update the relevant docs in `docs/`, especially:
   - `docs/commands.md` for command usage
   - `docs/navigation.md` for CLI arguments and shell navigation
   - `docs/mcp.md` for MCP behavior
+
+## Changelog And Release Preparation
+
+- Do not edit `CHANGELOG.md` in routine bugfix, feature, refactoring, or documentation PRs, including under `## Unreleased`. Update it only when the user explicitly requests release preparation or a changelog update. This avoids conflicts between parallel PRs.
+- Record user-visible changes, breaking changes, migration guidance, and relevant issue links in the PR description instead. Continue updating directly relevant usage documentation and tests in the same PR; do not create per-change changelog fragments.
+- During release preparation, consolidate merged PRs since the previous release into user-facing changelog entries, reconciling any existing Unreleased entries without duplicates. Do not include unmerged changes.
+- Always retain `## Unreleased` at the top of `CHANGELOG.md` and its permanent categories in this order: `### Breaking changes`, `### New features`, `### Fixes`, `### Improvements`, even when empty. Move the prepared entries into a dated version section below it.
+- Put entries in the appropriate category. Do not duplicate or reorder headings, reorder existing entries, or rewrite unrelated release history. Keep a blank line between sections.
+- See [CONTRIBUTING.md](../CONTRIBUTING.md#changelog-and-release-notes) for the contributor workflow.
 
 ## Tests And Validation
 
