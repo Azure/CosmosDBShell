@@ -144,6 +144,51 @@ public class ShellProcessTests
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task EmptyScript_DoesNotRepeatRenderedOutput(bool stdin, bool redirect)
+    {
+        var script = Path.Join(AppContext.BaseDirectory, $"empty-{Guid.NewGuid():N}.csh");
+        var output = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(script, string.Empty, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(output, "before", TestContext.Current.CancellationToken);
+            var command = $"echo first; {Path.GetFileName(script)}";
+            if (redirect)
+            {
+                command += $" > {JsonSerializer.Serialize(output)}";
+            }
+
+            var result = await RunShellAsync(
+                stdin ? command : null,
+                extraArgs: stdin ? ["--quiet", "--output", "json"] : ["--quiet", "--output", "json", "-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal("first" + Environment.NewLine, result.StdOut);
+            Assert.Empty(result.StdErr);
+            Assert.Equal(redirect ? string.Empty : "before", await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
+
+            var pipeline = await RunShellAsync(
+                null,
+                extraArgs: ["--quiet", "--output", "json", "-c", $"echo first | {Path.GetFileName(script)} | echo"],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, pipeline.ExitCode);
+            Assert.Equal("first" + Environment.NewLine, pipeline.StdOut);
+            Assert.Empty(pipeline.StdErr);
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(output);
+        }
+    }
+
+    [Theory]
     [InlineData(false, "")]
     [InlineData(true, "")]
     [InlineData(false, "2>")]

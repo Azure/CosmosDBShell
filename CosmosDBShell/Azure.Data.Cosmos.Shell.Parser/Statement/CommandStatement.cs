@@ -139,6 +139,8 @@ internal class CommandStatement : Statement
     /// </summary>
     public override async Task<CommandState> RunAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
+        var priorOutputRendered = commandState.OutputRendered;
+
         // Each command statement re-establishes its own render state. Without this reset a
         // prior command that supplied a RenderUser or RenderTabular delegate (for example a
         // condition command in an if/while) would leak it into this statement and cause
@@ -210,6 +212,7 @@ internal class CommandStatement : Statement
 
         if (File.Exists(this.Name))
         {
+            commandState.OutputRendered = priorOutputRendered;
             var scriptResult = await this.RunScriptAsync(shell, commandState, token);
             scriptResult.ShareWarningsFrom(commandState);
             return scriptResult;
