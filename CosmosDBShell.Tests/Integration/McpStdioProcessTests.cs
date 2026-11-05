@@ -50,7 +50,7 @@ public class McpStdioProcessTests
     {
         await using var server = new ServerProcess(seedHistory: seedHistory);
         var historyFile = Path.Join(server.ConfigDirectory, "cmd_history");
-        var original = seedHistory ? await File.ReadAllBytesAsync(historyFile, TestContext.Current.CancellationToken) : null;
+        var original = seedHistory ? Encoding.UTF8.GetBytes(ServerProcess.HistorySeed) : null;
         await server.InitializeAsync("2025-11-25");
         await server.CallToolAsync(2, "echo", new { messages = new[] { "NO_HISTORY_MARKER" } });
         await server.CompleteAsync();
@@ -413,6 +413,8 @@ public class McpStdioProcessTests
 
     private sealed class ServerProcess : IAsyncDisposable
     {
+        internal const string HistorySeed = "echo EXISTING_HISTORY\nconnect 'AccountEndpoint=https://example.test/;AccountKey=example-history-key;'\n";
+
         private readonly string configDirectory = Path.Join(Path.GetTempPath(), $"cosmosshell-stdio-{Guid.NewGuid():N}");
         private readonly CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         private readonly Channel<JsonElement> messages = Channel.CreateUnbounded<JsonElement>();
@@ -427,7 +429,7 @@ public class McpStdioProcessTests
             if (seedHistory)
             {
                 Directory.CreateDirectory(this.configDirectory);
-                File.WriteAllText(Path.Join(this.configDirectory, "cmd_history"), "echo EXISTING_HISTORY\n");
+                File.WriteAllText(Path.Join(this.configDirectory, "cmd_history"), HistorySeed);
             }
 
             this.timeout.CancelAfter(TimeSpan.FromSeconds(30));

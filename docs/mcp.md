@@ -243,7 +243,7 @@ The HTTP server serves `2026-07-28` requests without a session and gives a sessi
 
 ### Data Exposure
 
-HTTP MCP tool invocations are echoed as command lines in the shell window and recorded in shell history. Stdio mode does neither and does not load existing history. HTTP history entries are complete and replayable, including any supplied connection strings. Protect the history file accordingly. On Linux and macOS, the shell restricts the history file to its owner.
+HTTP MCP tool invocations are echoed as command lines in the shell window, so anyone watching the terminal can see what a connected client is doing. They are also recorded in the shell history, with recognized credentials such as connection-string account keys replaced by `[REDACTED]`. Stdio mode does neither and does not load existing history. Recalled key-based connections require a fresh key. Existing saved credentials are removed on the next successful history save; this does not clean backups or mask the command echo. Continue to protect the history file, since arbitrary secrets under unrelated names may not be recognized. On Linux and macOS, the shell restricts the history file to its owner. See [history](navigation.md#history) for details.
 
 Positional arguments must be supplied without gaps: a call that provides a positional parameter while omitting an earlier one is rejected, because the equivalent shell command line would bind the value to the omitted slot.
 
