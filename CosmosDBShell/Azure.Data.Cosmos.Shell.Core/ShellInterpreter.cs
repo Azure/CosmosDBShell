@@ -371,6 +371,8 @@ public partial class ShellInterpreter : IDisposable
 
     internal bool AppendOutRedirection { get; set; }
 
+    internal HashSet<string>? ScriptAuxiliaryOutputFiles { get; set; }
+
     internal bool AppendErrRedirection { get; set; }
 
     internal long StateVersion => Interlocked.Read(ref this.stateVersion);
@@ -710,6 +712,7 @@ public partial class ShellInterpreter : IDisposable
         // the next command executed against this interpreter instance.
         var savedStdOut = this.StdOutRedirect;
         var savedAppendOut = this.AppendOutRedirection;
+        var savedAuxiliaryFiles = this.ScriptAuxiliaryOutputFiles;
         var savedErrOut = this.ErrOutRedirect;
         var savedAppendErr = this.AppendErrRedirection;
         var savedErrorRedirectWarnings = this.ErrorRedirectWarnings;
@@ -903,6 +906,7 @@ public partial class ShellInterpreter : IDisposable
             this.cancellationErrorToken = previousCancellationErrorToken;
             this.StdOutRedirect = savedStdOut;
             this.AppendOutRedirection = savedAppendOut;
+            this.ScriptAuxiliaryOutputFiles = savedAuxiliaryFiles;
             this.ErrOutRedirect = savedErrOut;
             this.AppendErrRedirection = savedAppendErr;
             this.ErrorRedirectWarnings = savedErrorRedirectWarnings;
@@ -960,6 +964,24 @@ public partial class ShellInterpreter : IDisposable
         if (!text.EndsWith(Environment.NewLine))
         {
             File.AppendAllText(this.StdOutRedirect, Environment.NewLine);
+        }
+    }
+
+    internal void WriteAuxiliaryOutput(string path, string text)
+    {
+        var append = this.AppendOutRedirection;
+        if (append && this.ScriptAuxiliaryOutputFiles is { } files)
+        {
+            append = !files.Add(Path.GetFullPath(path));
+        }
+
+        if (append)
+        {
+            File.AppendAllText(path, text);
+        }
+        else
+        {
+            File.WriteAllText(path, text);
         }
     }
 
@@ -1244,6 +1266,7 @@ public partial class ShellInterpreter : IDisposable
 
         var savedStdOut = this.StdOutRedirect;
         var savedAppendOut = this.AppendOutRedirection;
+        var savedAuxiliaryFiles = this.ScriptAuxiliaryOutputFiles;
         var savedErrOut = this.ErrOutRedirect;
         var savedAppendErr = this.AppendErrRedirection;
         var savedErrorRedirectWarnings = this.ErrorRedirectWarnings;
@@ -1279,6 +1302,7 @@ public partial class ShellInterpreter : IDisposable
                 {
                     this.StdOutRedirect = savedStdOut;
                     this.AppendOutRedirection = savedAppendOut;
+                    this.ScriptAuxiliaryOutputFiles = savedAuxiliaryFiles;
                     this.ErrOutRedirect = savedErrOut;
                     this.AppendErrRedirection = savedAppendErr;
                     this.ErrorRedirectWarnings = savedErrorRedirectWarnings;

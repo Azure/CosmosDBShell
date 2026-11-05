@@ -144,6 +144,26 @@ public class ShellProcessTests
     }
 
     [Theory]
+    [InlineData("def empty { }; echo first; empty")]
+    [InlineData("def empty { }; echo first | empty | echo")]
+    [InlineData("def value { echo first }; value; value")]
+    public async Task EmptyFunction_DoesNotRepeatRenderedOutput(string command)
+    {
+        var result = await RunShellAsync(
+            null,
+            extraArgs: ["--quiet", "--output", "json", "-c", command],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(
+            command.StartsWith("def value", StringComparison.Ordinal)
+                ? $"first{Environment.NewLine}first{Environment.NewLine}"
+                : "first" + Environment.NewLine,
+            result.StdOut);
+        Assert.Empty(result.StdErr);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]

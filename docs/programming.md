@@ -272,6 +272,8 @@ cosmosdbshell -c 'seed.csh > results.txt'
 
 Here, `>` clears the destination once and retains output from every statement in the script. Use `>>` instead to append the script's output to existing contents.
 
+Query metrics sidecar files follow the same rule: `>` overwrites each sidecar on its first write in that script run and accumulates later metrics, while `>>` retains existing metrics.
+
 If `>` cannot open the destination, the script does not run and the shell exits with an error diagnostic. Machine mode emits a JSON error on stderr, honoring `2>` and `2>>` when specified.
 
 ### Script Scope
