@@ -43,7 +43,7 @@ internal static class SecretRedactor
 
         var result = new StringBuilder(value.Length);
         var lexer = new Lexer(value);
-        var tokens = lexer.Tokenize().ToArray();
+        var tokens = lexer.Tokenize().Where(token => token.Type is not (TokenType.Eol or TokenType.Comment)).ToArray();
         var offset = 0;
         for (var index = 0; index < tokens.Length; index++)
         {
@@ -53,38 +53,46 @@ internal static class SecretRedactor
                 continue;
             }
 
-            result.Append(MaskHistoryCredentials(value[offset..token.Start]));
             var raw = value.Substring(token.Start, token.Length);
             var isCredentialValue = index >= 2
                 && tokens[index - 1].Value is ":" or "="
                 && IsCredentialName(tokens[index - 2].Value);
             if (isCredentialValue)
             {
+                var nameStart = Math.Max(offset, tokens[index - 2].Start);
+                var separatorEnd = tokens[index - 1].Start + tokens[index - 1].Length;
+                result.Append(MaskHistoryCredentials(value[offset..nameStart]));
+                result.Append(value.AsSpan(nameStart, separatorEnd - nameStart));
+                result.Append(MaskHistoryCredentials(value[separatorEnd..token.Start]));
                 result.Append(ShellLiteral.Quote("[REDACTED]"));
-            }
-            else if (token.Type == TokenType.InterpolatedString)
-            {
-                result.Append(MaskInterpolatedToken(raw, token, lexer));
             }
             else
             {
-                var masked = MaskHistory(token.Value, depth + 1);
-                if (masked == token.Value)
+                result.Append(MaskHistoryCredentials(value[offset..token.Start]));
+                if (token.Type == TokenType.InterpolatedString)
                 {
-                    result.Append(raw);
-                }
-                else if (raw.StartsWith('\''))
-                {
-                    result.Append('\'').Append(masked.Replace("'", "''", StringComparison.Ordinal));
-                    if (raw.Length > 1 && raw.EndsWith('\''))
-                    {
-                        result.Append('\'');
-                    }
+                    result.Append(MaskInterpolatedToken(raw, token, lexer));
                 }
                 else
                 {
-                    var quoted = ShellLiteral.Quote(masked);
-                    result.Append(raw.Length > 1 && raw.EndsWith('"') ? quoted : quoted[..^1]);
+                    var masked = MaskHistory(token.Value, depth + 1);
+                    if (masked == token.Value)
+                    {
+                        result.Append(raw);
+                    }
+                    else if (raw.StartsWith('\''))
+                    {
+                        result.Append('\'').Append(masked.Replace("'", "''", StringComparison.Ordinal));
+                        if (raw.Length > 1 && raw.EndsWith('\''))
+                        {
+                            result.Append('\'');
+                        }
+                    }
+                    else
+                    {
+                        var quoted = ShellLiteral.Quote(masked);
+                        result.Append(raw.Length > 1 && raw.EndsWith('"') ? quoted : quoted[..^1]);
+                    }
                 }
             }
 
@@ -96,9 +104,16 @@ internal static class SecretRedactor
     }
 
     private static bool IsCredentialName(string value)
-        => value.Equals("AccountKey", StringComparison.OrdinalIgnoreCase)
+    {
+        if (value.StartsWith('$'))
+        {
+            value = value[1..];
+        }
+
+        return value.Equals("AccountKey", StringComparison.OrdinalIgnoreCase)
             || value.Equals("SharedAccessKey", StringComparison.OrdinalIgnoreCase)
             || value.Equals("ResourceToken", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string MaskInterpolatedToken(string raw, Token token, Lexer lexer)
     {
@@ -111,6 +126,11 @@ internal static class SecretRedactor
                 var prefixLength = match.Groups.Count > 1 ? match.Groups[1].Length : 0;
                 var start = sourceMap[match.Index + prefixLength] - token.Start;
                 var endIndex = match.Index + match.Length;
+                if (pattern == ConnectionCredentialPattern || pattern == HistorySignaturePattern)
+                {
+                    endIndex = FindInterpolatedCredentialEnd(token.Value, match.Index + prefixLength, pattern == HistorySignaturePattern);
+                }
+
                 var end = endIndex < sourceMap.Count
                     ? sourceMap[endIndex] - token.Start
                     : raw.Length - (raw.EndsWith('"') ? 1 : 0);
@@ -132,6 +152,48 @@ internal static class SecretRedactor
         }
 
         return result.Append(raw.AsSpan(offset)).ToString();
+    }
+
+    private static int FindInterpolatedCredentialEnd(string value, int start, bool isSignature)
+    {
+        for (var index = start; index < value.Length; index++)
+        {
+            var ch = value[index];
+            if (ch is '"' or '\'' || (isSignature ? ch is '&' or '<' or '>' || char.IsWhiteSpace(ch) : ch == ';'))
+            {
+                return index;
+            }
+
+            if (ch != '$' || index + 1 >= value.Length || value[index + 1] != '(')
+            {
+                continue;
+            }
+
+            var expressionStart = index + 1;
+            var nesting = 0;
+            var expressionEnd = -1;
+            foreach (var expressionToken in new Lexer(value[expressionStart..]).Tokenize())
+            {
+                if (expressionToken.Type == TokenType.OpenParenthesis)
+                {
+                    nesting++;
+                }
+                else if (expressionToken.Type == TokenType.CloseParenthesis && --nesting == 0)
+                {
+                    expressionEnd = expressionStart + expressionToken.Start;
+                    break;
+                }
+            }
+
+            if (expressionEnd < 0)
+            {
+                return value.Length;
+            }
+
+            index = expressionEnd;
+        }
+
+        return value.Length;
     }
 
     private static string MaskHistoryCredentials(string value)

@@ -84,6 +84,13 @@ public class SecretRedactorTests
     [InlineData("""echo '{"Account\u004Bey": "example-key=="}'""")]
     [InlineData("""echo "{\"Account\\u004Bey\": \"example-key==\"}" """)]
     [InlineData("""connect 'AccountKey=''example-key=='';'""")]
+    [InlineData("""$AccountKey='example-key==';""")]
+    [InlineData("""$SharedAccessKey="example-key==";""")]
+    [InlineData("""$ResourceToken='example-key==';""")]
+    [InlineData("$credentials = {\"AccountKey\":\n\"example-key==\"}")]
+    [InlineData("$credentials = {\"SharedAccessKey\"\n:\n\"example-key==\"}")]
+    [InlineData("$credentials = {\"ResourceToken\": # credential\n\"example-key==\"}")]
+    [InlineData("$AccountKey = # credential\n'example-key=='")]
     public void MaskHistory_RedactsEscapedPropertyNamesAndDoubledQuotes(string command)
     {
         var masked = SecretRedactor.MaskHistory(command);
@@ -111,5 +118,25 @@ public class SecretRedactorTests
         var tokens = lexer.Tokenize().ToArray();
         Assert.False(lexer.Errors.HasErrors);
         Assert.Single(tokens, token => token.Type == TokenType.InterpolatedString);
+    }
+
+    [Theory]
+    [InlineData("$('example-key==')")]
+    [InlineData("$((('example-key==')))")]
+    [InlineData("$('example-key==;with)delimiters')")]
+    [InlineData("prefix$('example-key==')suffix")]
+    [InlineData("$('example-key==')$('second-secret')")]
+    public void MaskHistory_RedactsCompleteInterpolatedCredentialExpressions(string credential)
+    {
+        var command = "connect $\"AccountEndpoint=$endpoint;AccountKey=" + credential + ";Label=$label;\"";
+        const string expected = "connect $\"AccountEndpoint=$endpoint;AccountKey=[REDACTED];Label=$label;\"";
+
+        var masked = SecretRedactor.MaskHistory(command);
+
+        Assert.Equal(expected, masked);
+        Assert.Equal(masked, SecretRedactor.MaskHistory(masked));
+        var lexer = new Lexer(masked);
+        Assert.Single(lexer.Tokenize(), token => token.Type == TokenType.InterpolatedString);
+        Assert.False(lexer.Errors.HasErrors);
     }
 }

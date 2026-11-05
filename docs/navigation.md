@@ -247,7 +247,9 @@ and `ResourceToken` values, are replaced with `[REDACTED]` in saved history.
 The endpoint and other non-secret connection settings remain available. This
 also applies to connection strings inside assignments, scripts, and multi-line
 history entries, including escaped credential names and values in string literals
-and object properties. Non-secret interpolation expressions are preserved. Excessively
+and object properties, named credential variables such as `$AccountKey`, and
+properties separated from their values by newlines or comments. Credential values
+containing interpolation expressions are masked in full. Non-secret interpolation expressions are preserved. Excessively
 nested quoted text is masked in full.
 Ordinary query predicates on fields such as `token`, `password`, or `secret`
 are not treated as connection credentials. The command being executed is unchanged; to reuse a masked
