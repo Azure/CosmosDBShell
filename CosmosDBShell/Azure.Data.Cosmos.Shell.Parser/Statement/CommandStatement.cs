@@ -445,16 +445,7 @@ internal class CommandStatement : Statement
                 token.ThrowIfCancellationRequested();
                 if (!this.AppendOutput)
                 {
-                    try
-                    {
-                        File.WriteAllText(this.OutputRedirect!, string.Empty);
-                    }
-                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                    {
-                        var redirectError = new ErrorCommandState(exception);
-                        redirectError.ShareWarningsFrom(commandState);
-                        return redirectError;
-                    }
+                    File.WriteAllText(this.OutputRedirect!, string.Empty);
                 }
 
                 shell.AppendOutRedirection = true;

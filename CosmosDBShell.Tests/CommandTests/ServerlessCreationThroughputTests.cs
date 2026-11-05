@@ -83,7 +83,7 @@ public class ServerlessCreationThroughputTests
     }
 
     [Fact]
-    public async Task ArmCreateDatabase_Provisioned_SendsDefaultAutoscale()
+    public async Task ArmCreateDatabase_ProvisionedWithoutOptions_OmitsSharedThroughput()
     {
         var (context, databases) = CreateArmContext(Provisioned());
         CosmosDBSqlDatabaseCreateOrUpdateContent? sent = null;
@@ -92,8 +92,44 @@ public class ServerlessCreationThroughputTests
 
         await CosmosArmResourceProvider.CreateDatabaseAsync(context, "db", null, null, TestContext.Current.CancellationToken);
 
+        Assert.Null(sent!.Options);
+        var json = CosmosArmResourceProvider.WriteArmModel(sent);
+        Assert.DoesNotContain("throughput", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("autoscaleSettings", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("auto", 4000, null, 4000)]
+    [InlineData("auto", null, null, 1000)]
+    [InlineData(null, 2000, null, 2000)]
+    [InlineData("manual", 400, 400, null)]
+    [InlineData("m", null, 1000, null)]
+    public async Task ArmCreateDatabase_ExplicitOptions_ProvisionsSharedThroughput(string? scale, int? ru, int? manual, int? autoscale)
+    {
+        var (context, databases) = CreateArmContext(Provisioned());
+        CosmosDBSqlDatabaseCreateOrUpdateContent? sent = null;
+        databases.CreateOrUpdateAsync(WaitUntil.Completed, "db", Arg.Do<CosmosDBSqlDatabaseCreateOrUpdateContent>(c => sent = c), Arg.Any<CancellationToken>())
+            .Returns(Substitute.For<ArmOperation<CosmosDBSqlDatabaseResource>>());
+
+        await CosmosArmResourceProvider.CreateDatabaseAsync(context, "db", scale, ru, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(sent!.Options);
+        Assert.Equal(manual, sent.Options.Throughput);
+        Assert.Equal(autoscale, sent.Options.AutoscaleMaxThroughput);
+    }
+
+    [Fact]
+    public async Task ArmCreateContainer_ProvisionedWithoutOptions_KeepsDefaultAutoscale()
+    {
+        var (context, containers) = CreateArmContainerContext(Provisioned());
+        CosmosDBSqlContainerCreateOrUpdateContent? sent = null;
+        containers.CreateOrUpdateAsync(WaitUntil.Completed, "Items", Arg.Do<CosmosDBSqlContainerCreateOrUpdateContent>(c => sent = c), Arg.Any<CancellationToken>())
+            .Returns(Substitute.For<ArmOperation<CosmosDBSqlContainerResource>>());
+
+        await CosmosArmResourceProvider.CreateContainerAsync(
+            context, "db", "Items", ["/pk"], null, null, null, null, TestContext.Current.CancellationToken);
+
         Assert.Equal(1000, sent!.Options.AutoscaleMaxThroughput);
-        Assert.Contains("autoscaleSettings", CosmosArmResourceProvider.WriteArmModel(sent), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -225,26 +261,44 @@ public class ServerlessCreationThroughputTests
     }
 
     [Theory]
-    [InlineData("mkdb")]
-    [InlineData("create")]
-    public async Task CreateDatabase_ServerlessDataPlane_RetriesWithoutThroughput(string entryPoint)
+    [InlineData("mkdb NewDb")]
+    [InlineData("create database NewDb")]
+    [InlineData("create db NewDb")]
+    public async Task CreateDatabase_WithoutOptions_OmitsSharedThroughputOnFirstRequest(string command)
     {
         using var shell = ShellInterpreter.CreateInstance();
         var (client, _) = CreateDataPlaneClient();
         var sent = new List<ThroughputProperties?>();
         var created = Substitute.For<DatabaseResponse>();
         created.Database.Id.Returns("NewDb");
+        created.StatusCode.Returns(HttpStatusCode.Created);
         client.CreateDatabaseIfNotExistsAsync("NewDb", Arg.Do<ThroughputProperties?>(sent.Add), Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromException<DatabaseResponse>(ServerlessRejection()), _ => Task.FromResult(created));
+            .Returns(created);
         shell.State = new ConnectedState(client);
 
-        CosmosCommand command = entryPoint == "mkdb"
-            ? new MakeDbCommand { Name = "NewDb" }
-            : new CreateCommand { Item = "db", Name = "NewDb" };
-        await command.ExecuteAsync(shell, new CommandState(), entryPoint, TestContext.Current.CancellationToken);
+        var result = await shell.RunCommandAsync(new CommandState(), command, TestContext.Current.CancellationToken);
 
-        Assert.Equal(2, sent.Count);
-        Assert.Null(sent[1]);
+        Assert.False(result.IsError);
+        Assert.Null(Assert.Single(sent));
+        Assert.True(Assert.IsType<ShellJson>(result.Result).Value.GetProperty("created").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("mkdb NewDb --scale=auto")]
+    [InlineData("create database NewDb --ru=1000")]
+    public async Task CreateDatabase_ServerlessWithExplicitOptions_ReportsActionableErrorWithoutRetry(string command)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var (client, _) = CreateDataPlaneClient();
+        client.CreateDatabaseIfNotExistsAsync("NewDb", Arg.Any<ThroughputProperties?>(), Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(ServerlessRejection());
+        shell.State = new ConnectedState(client);
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => shell.RunCommandAsync(new CommandState(), command, TestContext.Current.CancellationToken));
+
+        Assert.Equal(MessageService.GetString("error-serverless_throughput_not_supported"), ex.Message);
+        await client.ReceivedWithAnyArgs(1).CreateDatabaseIfNotExistsAsync(default!, default(ThroughputProperties?), default, TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -263,8 +317,16 @@ public class ServerlessCreationThroughputTests
         await database.ReceivedWithAnyArgs(1).CreateContainerIfNotExistsAsync(default(ContainerProperties)!, default(ThroughputProperties?), default, TestContext.Current.CancellationToken);
     }
 
-    [Fact]
-    public async Task Mkdb_ProvisionedSharedThroughput_SendsRequestedManualThroughputOnce()
+    [Theory]
+    [InlineData("mkdb Shared --scale=manual --ru=400", 400, null)]
+    [InlineData("mkdb Shared --scale=m", 1000, null)]
+    [InlineData("mkdb Shared --scale=auto", null, 1000)]
+    [InlineData("mkdb Shared --ru=2000", null, 2000)]
+    [InlineData("create database Shared --scale=manual --ru=400", 400, null)]
+    [InlineData("create database Shared --scale=m", 1000, null)]
+    [InlineData("create database Shared --scale=auto --ru=4000", null, 4000)]
+    [InlineData("create db Shared --ru=2000", null, 2000)]
+    public async Task CreateDatabase_ExplicitOptions_ProvisionsSharedThroughputOnce(string command, int? manual, int? autoscale)
     {
         using var shell = ShellInterpreter.CreateInstance();
         var (client, _) = CreateDataPlaneClient();
@@ -275,10 +337,12 @@ public class ServerlessCreationThroughputTests
             .Returns(created);
         shell.State = new ConnectedState(client);
 
-        await new MakeDbCommand { Name = "Shared", Scale = "manual", MaxRU = 400 }
-            .ExecuteAsync(shell, new CommandState(), "mkdb", TestContext.Current.CancellationToken);
+        var result = await shell.RunCommandAsync(new CommandState(), command, TestContext.Current.CancellationToken);
 
-        Assert.Equal(400, Assert.Single(sent)!.Throughput);
+        Assert.False(result.IsError);
+        var throughput = Assert.IsType<ThroughputProperties>(Assert.Single(sent));
+        Assert.Equal(manual, throughput.Throughput);
+        Assert.Equal(autoscale, throughput.AutoscaleMaxThroughput);
     }
 
     [Fact]

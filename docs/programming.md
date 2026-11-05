@@ -272,6 +272,8 @@ cosmosdbshell -c 'seed.csh > results.txt'
 
 Here, `>` clears the destination once and retains output from every statement in the script. Use `>>` instead to append the script's output to existing contents.
 
+If `>` cannot open the destination, the script does not run and the shell exits with an error diagnostic. Machine mode emits a JSON error on stderr, honoring `2>` and `2>>` when specified.
+
 ### Script Scope
 
 Each script run gets its own variable scope. Variables from the caller are readable at script start, but assignments inside the script stay local to that script run and do not leak back to the caller.

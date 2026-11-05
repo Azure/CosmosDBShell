@@ -118,7 +118,7 @@ public class ShellProcessTests
     [InlineData(">", "echo first\nreturn \"second\"\necho skipped")]
     public async Task WholeScriptRedirection_PreservesEveryStatement(string redirect, string content)
     {
-        var script = Path.Combine(AppContext.BaseDirectory, $"output-{Guid.NewGuid():N}.csh");
+        var script = Path.Join(AppContext.BaseDirectory, $"output-{Guid.NewGuid():N}.csh");
         var output = Path.GetTempFileName();
         try
         {
@@ -144,12 +144,69 @@ public class ShellProcessTests
     }
 
     [Theory]
+    [InlineData(false, "")]
+    [InlineData(true, "")]
+    [InlineData(false, "2>")]
+    [InlineData(true, "2>")]
+    [InlineData(false, "2>>")]
+    [InlineData(true, "2>>")]
+    public async Task WholeScriptRedirection_MissingDirectory_ReportsErrorWithoutExecutingScript(bool stdin, string errorRedirect)
+    {
+        var script = Path.Join(AppContext.BaseDirectory, $"redirect-error-{Guid.NewGuid():N}.csh");
+        var marker = Path.Join(AppContext.BaseDirectory, $"not-executed-{Guid.NewGuid():N}.txt");
+        var output = Path.Join(Path.GetTempPath(), $"missing-{Guid.NewGuid():N}", "out.txt");
+        var errorFile = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(
+                script, $"echo executed > {JsonSerializer.Serialize(marker)}", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(errorFile, "existing" + Environment.NewLine, TestContext.Current.CancellationToken);
+            var command = $"{Path.GetFileName(script)} > {JsonSerializer.Serialize(output)}";
+            if (errorRedirect.Length > 0)
+            {
+                command += $" {errorRedirect} {JsonSerializer.Serialize(errorFile)}";
+            }
+
+            var result = await RunShellAsync(
+                stdin ? command : null,
+                extraArgs: stdin ? ["--quiet", "--output", "json"] : ["--quiet", "--output", "json", "-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellExitCode.GeneralFailure, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            Assert.False(File.Exists(marker));
+            Assert.False(File.Exists(output));
+            var diagnostic = result.StdErr;
+            if (errorRedirect.Length > 0)
+            {
+                Assert.Empty(result.StdErr);
+                diagnostic = await File.ReadAllTextAsync(errorFile, TestContext.Current.CancellationToken);
+                if (errorRedirect == "2>>")
+                {
+                    Assert.StartsWith("existing" + Environment.NewLine, diagnostic);
+                    diagnostic = diagnostic[("existing" + Environment.NewLine).Length..];
+                }
+            }
+
+            using var error = JsonDocument.Parse(diagnostic);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            Assert.Contains(output, error.RootElement.GetProperty("error").GetString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(marker);
+            File.Delete(errorFile);
+        }
+    }
+
+    [Theory]
     [InlineData("inline")]
     [InlineData("stdin")]
     [InlineData("script")]
     public async Task MultipleStatements_ParseFailure_DoesNotPrintOrTruncate(string input)
     {
-        var script = Path.Combine(AppContext.BaseDirectory, $"invalid-{Guid.NewGuid():N}.csh");
+        var script = Path.Join(AppContext.BaseDirectory, $"invalid-{Guid.NewGuid():N}.csh");
         var output = Path.GetTempFileName();
         try
         {
