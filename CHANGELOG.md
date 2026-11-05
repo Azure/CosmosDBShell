@@ -11,7 +11,6 @@
 ### Fixes
 
 - Add `help shortcuts` to list keyboard shortcuts, including history search with `Ctrl+R` and `Ctrl+S`; the `help` overview lists it under Help Topics. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
-- Report failed `theme` operations and rejected non-interactive `edit` calls as structured JSON errors on stderr in machine mode instead of exiting silently. ([#278](https://github.com/Azure/CosmosDBShell/issues/278))
 
 ### Improvements
 
