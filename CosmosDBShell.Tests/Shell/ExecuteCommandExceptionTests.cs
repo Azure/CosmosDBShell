@@ -12,6 +12,69 @@ using Azure.Data.Cosmos.Shell.Parser;
 [Collection(ConsoleOutputTestCollection.Name)]
 public class ExecuteCommandExceptionTests
 {
+    [CosmosCommand("service-error-test")]
+    internal sealed class ServiceErrorTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell,
+            CommandState commandState,
+            string commandText,
+            CancellationToken token)
+        {
+            throw CommandExceptionServiceErrorTests.CreateThroughputException();
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ExecuteCommandAsync_ServiceFailure_ShowsFriendlyMessageUnlessVerbose(bool machineMode, bool verbose)
+    {
+        using var interpreter = CreateInterpreter();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(ServiceErrorTestCommand), out var factory));
+        interpreter.App.Commands["service-error-test"] = factory;
+        interpreter.Options = new Program.CosmosShellOptions { Output = machineMode ? "json" : "user", Verbose = verbose };
+        var stderrFile = Path.GetTempFileName();
+        interpreter.ErrOutRedirect = stderrFile;
+        try
+        {
+            var state = Assert.IsType<ErrorCommandState>(
+                await interpreter.ExecuteCommandAsync("service-error-test", TestContext.Current.CancellationToken));
+
+            Assert.Equal(ShellExitCode.GeneralFailure, state.ExitCode);
+            var output = File.ReadAllText(stderrFile);
+            if (machineMode)
+            {
+                using var document = JsonDocument.Parse(output);
+                output = document.RootElement.GetProperty("error").GetString()!;
+            }
+
+            Assert.Contains(CommandExceptionServiceErrorTests.ThroughputMessage, output);
+            if (verbose)
+            {
+                Assert.Contains("RequestFailedException", output);
+                Assert.Contains("/internal/replicas", output);
+            }
+            else
+            {
+                if (!machineMode)
+                {
+                    Assert.StartsWith($"service-error-test: {CommandExceptionServiceErrorTests.ThroughputMessage}", output);
+                }
+
+                Assert.DoesNotContain("ActivityId", output);
+                Assert.DoesNotContain("RequestFailedException", output);
+                Assert.DoesNotContain("/internal/replicas", output);
+            }
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(stderrFile);
+        }
+    }
+
     [CosmosCommand("warning-error-test")]
     internal sealed class WarningErrorTestCommand : CosmosCommand
     {

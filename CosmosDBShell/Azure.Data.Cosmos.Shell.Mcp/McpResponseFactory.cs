@@ -60,7 +60,7 @@ internal static class McpResponseFactory
     {
         return commandState switch
         {
-            ErrorCommandState errorState => errorState.Exception.Message,
+            ErrorCommandState errorState => CommandException.GetSummaryMessage(errorState.Exception),
             ParserErrorCommandState parserErrorState => string.Join("; ", parserErrorState.Errors.Select(e => e.Message)),
             _ => null,
         };

@@ -327,7 +327,7 @@ public class ScriptExecutionScopeTests
     }
 
     [Fact]
-    public async Task RunScriptAsync_PrintFailure_ReturnsError()
+    public async Task RunScriptAsync_RedirectionFailure_ThrowsAndRestoresScope()
     {
         var shell = ShellInterpreter.CreateInstance();
         var tempDir = Path.Combine(Path.GetTempPath(), "CosmosShellTests", Guid.NewGuid().ToString("N"));
@@ -345,9 +345,13 @@ public class ScriptExecutionScopeTests
                 7),
         };
 
-        var state = await command.RunAsync(shell, new CommandState(), CancellationToken.None);
+        var scopeCount = shell.VariableContainers.Count;
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(
+            () => command.RunAsync(shell, new CommandState(), CancellationToken.None));
 
-        Assert.True(state.IsError);
+        Assert.Equal(scopeCount, shell.VariableContainers.Count);
+        Assert.Null(shell.CurrentScriptFileName);
+        Assert.Null(shell.CurrentScriptContent);
     }
     private sealed class CancelOnConversion(CancellationTokenSource cancellation, bool throwOnConversion = true, bool cancelToken = true) : ShellObject(DataType.Boolean)
     {
