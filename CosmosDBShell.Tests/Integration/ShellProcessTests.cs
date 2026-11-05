@@ -78,11 +78,11 @@ public class ShellProcessTests
 
             Assert.Equal(ShellExitCode.GeneralFailure, result.ExitCode);
             Assert.Empty(result.StdOut);
-            using var error = JsonDocument.Parse(result.StdErr);
+            using var error = JsonDocument.Parse(result.RawStdErr);
             Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
             Assert.Contains(expectedMessage, error.RootElement.GetProperty("error").GetString(), StringComparison.Ordinal);
             Assert.Equal(2, error.RootElement.EnumerateObject().Count());
-            Assert.DoesNotContain("\x1b", result.StdErr, StringComparison.Ordinal);
+            Assert.DoesNotContain("\x1b", result.RawStdErr, StringComparison.Ordinal);
             Assert.Equal(content, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
         }
         finally
@@ -115,7 +115,7 @@ public class ShellProcessTests
 
             Assert.Equal(ShellExitCode.GeneralFailure, result.ExitCode);
             Assert.Empty(result.StdOut);
-            Assert.Empty(result.StdErr);
+            Assert.Empty(result.RawStdErr);
             var text = await File.ReadAllTextAsync(errorFile, TestContext.Current.CancellationToken);
             if (append)
             {
@@ -157,7 +157,7 @@ public class ShellProcessTests
 
             Assert.Equal(ShellExitCode.GeneralFailure, result.ExitCode);
             Assert.Empty(result.StdOut);
-            using var error = JsonDocument.Parse(result.StdErr);
+            using var error = JsonDocument.Parse(result.RawStdErr);
             Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
             var message = error.RootElement.GetProperty("error").GetString();
             Assert.Contains("missing-bug-bash-theme", message, StringComparison.Ordinal);
@@ -792,10 +792,12 @@ public class ShellProcessTests
                     $"CosmosDBShell process did not exit in time. StdOut: {Strip(stdOut.ToString())} StdErr: {Strip(stdErr.ToString())}");
             }
 
+            var rawStdErr = stdErr.ToString();
             return new ShellProcessResult(
                 process.ExitCode,
                 Strip(stdOut.ToString()),
-                Strip(stdErr.ToString()));
+                Strip(rawStdErr),
+                rawStdErr);
         }
         finally
         {
@@ -831,5 +833,5 @@ public class ShellProcessTests
         return AnsiEscape.Replace(text, string.Empty);
     }
 
-    private sealed record ShellProcessResult(int ExitCode, string StdOut, string StdErr);
+    private sealed record ShellProcessResult(int ExitCode, string StdOut, string StdErr, string RawStdErr);
 }
