@@ -1063,11 +1063,20 @@ Arguments:
     name        The database name to create
 
 Options:
-    --scale     Throughput mode: manual (m) or auto (default)
-    --ru        Max RU/s (default: 1000)
+    --scale     Provision shared throughput: manual (m) or auto
+    --ru        Shared RU/s (autoscale maximum in auto mode)
+
+Examples:
+    mkdb MyDatabase
+    mkdb SharedDatabase --scale=auto --ru=1000
+    mkdb SharedManual --scale=manual --ru=400
 ```
 
-On provisioned accounts, omitting both options creates shared autoscale throughput with a maximum of 1000 RU/s. On serverless accounts, omit both options to create the database without throughput settings. Supplying `--scale` or `--ru` produces an actionable error. ARM connections detect serverless accounts before sending the creation request. Data-plane connections first call create-if-not-exists with throughput settings: if the service rejects creation specifically because serverless throughput is unsupported, the shell retries without throughput only when neither option was supplied; explicit options produce the error without a retry. If the resource already exists and either option was supplied, the data-plane path reads its throughput to detect serverless and reject the unsupported options. Existing provisioned resources retain their throughput.
+Omitting both options creates a database **without shared throughput**, on both provisioned and serverless accounts. On provisioned accounts, provision throughput on its individual containers with `mkcon` or `create container`. This does not change the account to serverless.
+
+On provisioned accounts, specifying either `--scale` or `--ru` opts into **shared database throughput**. The mode defaults to autoscale when only `--ru` is supplied, and RU/s defaults to 1000 when only `--scale` is supplied. For example, `mkdb SharedDatabase --scale=auto --ru=1000` retains the previous shared autoscale default. Omitted options do not remove shared throughput from an existing database.
+
+On serverless accounts, explicit `--scale` or `--ru` options produce an actionable error. ARM connections detect this before sending the creation request. Data-plane connections omit throughput on the first request when neither option is supplied; explicit options are rejected when the service reports unsupported serverless throughput. If a database already exists and either option was supplied, the data-plane path reads its throughput to detect serverless and reject the unsupported options. Existing provisioned databases retain their throughput on data-plane connections; ARM connections retain their create-or-update behavior.
 
 ### mkcon
 
@@ -1090,7 +1099,9 @@ Examples:
     mkcon Orders /customerId,/orderId
 ```
 
-Throughput defaults and serverless handling match `mkdb`: serverless containers are created without throughput settings, and explicit `--scale` or `--ru` options are rejected. `create database` and `create container` behave the same way.
+Unlike `mkdb`, container creation on provisioned accounts still defaults to dedicated autoscale throughput with a maximum of 1000 RU/s. On serverless accounts, omit both options: data-plane connections retry without throughput when the service rejects the default throughput, and ARM connections omit it directly. Explicit `--scale` or `--ru` options are rejected on serverless accounts.
+
+`create database` follows the `mkdb` defaults; `create container` follows the `mkcon` defaults.
 
 ### rmdb
 
@@ -1139,7 +1150,11 @@ Arguments:
 Options:
     -force, -upsert
                     Create or replace items when creating an item (upsert behavior)
+    --scale         Database/container throughput mode: manual (m) or auto
+    --ru            Database/container RU/s (autoscale maximum in auto mode)
 ```
+
+`create database MyDatabase` creates a database without shared throughput. Specify `--scale` or `--ru` to provision shared database throughput, for example `create database SharedDatabase --scale=auto --ru=1000`. Container creation retains its default dedicated autoscale throughput (1000 RU/s maximum) on provisioned accounts. See [mkdb](#mkdb) and [mkcon](#mkcon) for defaults and serverless behavior.
 
 ### delete
 

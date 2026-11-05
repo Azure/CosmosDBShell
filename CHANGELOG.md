@@ -5,6 +5,7 @@
 ### Breaking changes
 
 - Structured `help` results now include a `topics` array alongside `help`, `commands`, and `statements`. Consumers that require an exact set of JSON fields must accept the new field. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
+- `mkdb` and `create database` now create databases without shared throughput when `--scale` and `--ru` are omitted. Provision throughput on individual containers, or specify `--scale=auto --ru=1000` to retain the previous shared autoscale default. Container creation defaults are unchanged. ([#268](https://github.com/Azure/CosmosDBShell/issues/268))
 
 ### New features
 
