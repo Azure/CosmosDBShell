@@ -101,15 +101,7 @@ internal class PatchCommand : CosmosCommand
 
         try
         {
-            PartitionKey partitionKey;
-            try
-            {
-                partitionKey = CreatePartitionKeyFromArgument(this.Key);
-            }
-            catch (JsonException ex)
-            {
-                throw new CommandException("patch", MessageService.GetString("command-patch-error-invalid_pk_json"), ex);
-            }
+            var partitionKey = CreatePartitionKeyFromArgument(this.Key, "patch", "command-patch-error-invalid_pk_json");
 
             var response = await container.PatchItemAsync<JsonElement>(
                 this.Id,
@@ -123,7 +115,6 @@ internal class PatchCommand : CosmosCommand
                 throw new CommandException("patch", MessageService.GetArgsString("command-patch-error-status-returned", "status", response.StatusCode.ToString()));
             }
 
-            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString("command-patch-success", "charge", response.RequestCharge.ToString("F2")));
             return new CommandState
             {
                 Result = new ShellJson(JsonSerializer.SerializeToElement(new
@@ -134,6 +125,7 @@ internal class PatchCommand : CosmosCommand
                     requestCharge = response.RequestCharge,
                 })),
                 RequestCharge = response.RequestCharge,
+                RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-patch-success", "charge", response.RequestCharge.ToString("F2"))),
             };
         }
         catch (CosmosException ce) when (ce.StatusCode == System.Net.HttpStatusCode.NotFound)

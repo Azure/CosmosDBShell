@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System.Linq;
 using System.Text.Json;
 
+using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Util;
 
 internal static class FilterExpressionUtilities
@@ -16,6 +17,20 @@ internal static class FilterExpressionUtilities
     public static JsonElement NullElement()
     {
         return NullJsonDocument.RootElement;
+    }
+
+    /// <summary>
+    /// Creates a per-element evaluation state that shares the caller's warnings, so warnings
+    /// from commands evaluated inside a filter are retained even if evaluation fails.
+    /// </summary>
+    /// <param name="outer">The caller's state.</param>
+    /// <param name="result">The element the nested expression operates on.</param>
+    /// <returns>The nested state.</returns>
+    public static CommandState CreateNestedState(CommandState outer, ShellObject? result)
+    {
+        var nested = new CommandState { Result = result };
+        nested.ShareWarningsFrom(outer);
+        return nested;
     }
 
     public static string DescribeKind(JsonValueKind kind)

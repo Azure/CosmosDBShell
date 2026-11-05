@@ -136,7 +136,7 @@ internal sealed class StdioStartupInput : IDisposable
         Exception? error = null;
         try
         {
-            var bytes = new byte[4096];
+            var bytes = new byte[64 * 1024];
             while (true)
             {
                 var read = await this.input.ReadAsync(bytes, this.stopping.Token).ConfigureAwait(false);
@@ -260,6 +260,19 @@ internal sealed class StdioStartupInput : IDisposable
 #pragma warning disable VSTHRD002 // Synchronously waiting is required by the Stream.Read contract.
         public override int Read(byte[] buffer, int offset, int count)
         {
+            ArgumentNullException.ThrowIfNull(buffer);
+            ArgumentOutOfRangeException.ThrowIfNegative(offset);
+            ArgumentOutOfRangeException.ThrowIfNegative(count);
+            if (buffer.Length - offset < count)
+            {
+                throw new ArgumentException("Offset and count exceed the buffer bounds.");
+            }
+
+            if (count == 0)
+            {
+                return 0;
+            }
+
             if (!this.prefixCompleted)
             {
                 this.prefix ??= startupBuffer.GetAwaiter().GetResult();
@@ -281,6 +294,11 @@ internal sealed class StdioStartupInput : IDisposable
             Memory<byte> buffer,
             CancellationToken cancellationToken = default)
         {
+            if (buffer.IsEmpty)
+            {
+                return 0;
+            }
+
             if (!this.prefixCompleted)
             {
                 this.prefix ??= await startupBuffer.WaitAsync(cancellationToken).ConfigureAwait(false);

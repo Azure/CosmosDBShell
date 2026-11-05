@@ -56,7 +56,7 @@ internal class ThemeCommand : CosmosCommand
             "load" => Task.FromResult(this.RunLoad(commandState)),
             "validate" => Task.FromResult(this.RunValidate(commandState)),
             "save" => Task.FromResult(this.RunSave(commandState)),
-            "edit" => Task.FromResult(this.RunEdit(commandState)),
+            "edit" => Task.FromResult(this.RunEdit(shell, commandState)),
             "open" => Task.FromResult(this.RunOpen(commandState)),
             "reload" => Task.FromResult(this.RunReload(commandState)),
             _ => throw UnknownAction(action),
@@ -622,7 +622,7 @@ internal class ThemeCommand : CosmosCommand
         return commandState;
     }
 
-    private CommandState RunEdit(CommandState commandState)
+    private CommandState RunEdit(ShellInterpreter shell, CommandState commandState)
     {
         // Resolve target. Empty -> active theme; otherwise treat as theme name
         // or path (same rules as load/validate).
@@ -721,6 +721,7 @@ internal class ThemeCommand : CosmosCommand
         int exitCode;
         try
         {
+            using var pause = shell.PauseOperationTimeout();
             using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = editor.FileName,

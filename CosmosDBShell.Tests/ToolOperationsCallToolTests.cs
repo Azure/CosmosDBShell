@@ -515,6 +515,74 @@ public class ToolOperationsCallToolTests : IDisposable
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteTool_DefersWarningsAndRestoresInvocationScope(bool fail)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalMcpPort = shell.McpPort;
+        var stderrFile = Path.GetTempFileName();
+        var originalErrorRedirect = shell.ErrOutRedirect;
+        var originalMcpInvocation = shell.IsMcpInvocation;
+        var command = new WarningScopeCommand { ShouldFail = fail };
+        try
+        {
+            shell.McpPort = null;
+            shell.ErrOutRedirect = stderrFile;
+            shell.IsMcpInvocation = false;
+
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["echo"], command, "echo warning-scope", null,
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(fail, result.IsError == true);
+            Assert.True(command.WasMcpInvocation);
+            Assert.False(shell.IsMcpInvocation);
+            Assert.NotNull(command.Warning);
+            Assert.False(command.Warning.IsRendered);
+            Assert.Empty(await File.ReadAllTextAsync(stderrFile, TestContext.Current.CancellationToken));
+            var (_, root, document) = ReadResult(result);
+            using (document)
+            {
+                Assert.Equal("mutation warning", Assert.Single(root.GetProperty("warnings").EnumerateArray()).GetString());
+            }
+        }
+        finally
+        {
+            shell.McpPort = originalMcpPort;
+            shell.ErrOutRedirect = originalErrorRedirect;
+            shell.IsMcpInvocation = originalMcpInvocation;
+            File.Delete(stderrFile);
+        }
+    }
+
+    private sealed class WarningScopeCommand : CosmosCommand
+    {
+        public bool ShouldFail { get; init; }
+
+        public bool WasMcpInvocation { get; private set; }
+
+        public CommandWarning? Warning { get; private set; }
+
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            this.WasMcpInvocation = shell.IsMcpInvocation;
+            this.Warning = commandState.AddWarning("mutation warning");
+            shell.RenderMutationWarnings(commandState);
+            commandState.UpdateWarning(this.Warning, "updated mutation warning");
+            shell.RenderUpdatedWarnings(commandState);
+            commandState.UpdateWarning(this.Warning, "mutation warning");
+            shell.RenderWarnings(commandState);
+            if (this.ShouldFail)
+            {
+                throw new CommandException(commandText, "mutation failed");
+            }
+
+            return Task.FromResult(commandState);
+        }
+    }
+
     [Fact]
     public async Task ExecuteTool_UnchangedContextAfterConfirmation_ExecutesCommand()
     {
@@ -753,6 +821,91 @@ public class ToolOperationsCallToolTests : IDisposable
             }
 
             Assert.Equal("query \"SELECT * FROM c\"", shell.History.ToArray()[^1]);
+        }
+        finally
+        {
+            shell.State = originalState;
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CallTool_PrintWithoutKey_ReportsMissingKey(bool explicitNull)
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["id"] = Json("\"item-1\""),
+        };
+        if (explicitNull)
+        {
+            arguments["key"] = Json("null");
+        }
+
+        var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Contains(
+                Azure.Data.Cosmos.Shell.Util.MessageService.GetString("command-print-error-missing_key"),
+                root.GetProperty("error").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData("partition-key")]
+    [InlineData("pk")]
+    public async Task CallTool_PrintWithRemovedPartitionKeyOption_IsUnknownArgument(string option)
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["id"] = Json("\"item-1\""),
+            ["key"] = Json("\"680\""),
+            [option] = Json("\"680\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.StartsWith($"Unknown argument '{option}' for command 'print'.", root.GetProperty("error").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData("680")]
+    [InlineData("\"680\"")]
+    [InlineData("[1001,\"customer-1001\"]")]
+    [InlineData("true")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("[\"tenant-1\",{}]")]
+    [InlineData("customer-1")]
+    public async Task CallTool_PrintWithTypedKey_Binds(string value)
+    {
+        var tool = CreateToolOperations();
+        var shell = ShellInterpreter.Instance;
+        var originalState = shell.State;
+        try
+        {
+            shell.State = new DisconnectedState();
+            var arguments = new Dictionary<string, JsonElement>
+            {
+                ["id"] = Json("\"item-1\""),
+                ["key"] = JsonSerializer.SerializeToElement(value),
+            };
+
+            var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
+            var (isError, root, document) = ReadResult(result);
+            using (document)
+            {
+                Assert.True(isError);
+                Assert.Equal($"Error executing command 'print': {new NotConnectedException("print").Message}", root.GetProperty("error").GetString());
+            }
         }
         finally
         {

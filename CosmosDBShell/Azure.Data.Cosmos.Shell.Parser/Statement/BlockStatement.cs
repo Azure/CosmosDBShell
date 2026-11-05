@@ -111,12 +111,12 @@ internal class BlockStatement : Statement
                 return commandState;
             }
 
-            if (commandState.IsError)
+            if (commandState.IsError || commandState.UserCancellationHandled)
             {
                 return commandState;
             }
 
-            commandState = shell.PrintState(commandState, markAsRendered: true);
+            commandState = shell.PrintState(commandState, markAsRendered: true, deferMachineModeWarnings: true);
             if (commandState.IsError)
             {
                 return commandState;

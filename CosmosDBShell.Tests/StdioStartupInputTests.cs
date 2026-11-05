@@ -14,6 +14,39 @@ public class StdioStartupInputTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task EmptyReads_PreserveBufferedRequests(bool synchronous)
+    {
+        using var source = new UninterruptibleInput();
+        using var input = new StdioStartupInput(source);
+        input.Start();
+        try
+        {
+            await source.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.Equal(0, await input.Input.ReadAsync(Memory<byte>.Empty, TestContext.Current.CancellationToken));
+            await input.CompleteStartupAsync();
+            if (synchronous)
+            {
+                Assert.Equal(0, input.Input.Read([], 0, 0));
+            }
+            else
+            {
+                Assert.Equal(0, await input.Input.ReadAsync(Memory<byte>.Empty, TestContext.Current.CancellationToken));
+            }
+
+            source.Release.TrySetResult();
+            using var received = new MemoryStream();
+            await input.Input.CopyToAsync(received, TestContext.Current.CancellationToken);
+            Assert.Equal(UninterruptibleInput.Prefix, received.ToArray());
+        }
+        finally
+        {
+            source.Release.TrySetResult();
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Dispose_DeletesStartupSpoolWithoutWaitingForUninterruptibleInput(bool timedOut)
     {
         using var source = new UninterruptibleInput();
@@ -217,7 +250,7 @@ public class StdioStartupInputTests
         input.Start();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             Task.Delay(Timeout.InfiniteTimeSpan, input.StartupToken)
-                .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+                .WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
 
         Assert.False(input.TimedOut);
         var error = Assert.IsType<IOException>(input.InputError);

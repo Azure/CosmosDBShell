@@ -50,16 +50,15 @@ internal class MakeItemCommand : CosmosCommand
             throw new NotConnectedException("mkitem");
         }
 
-        // Resolve container using the helper
-        var (_, _, container) = await ResolveContainerAsync(
-            connectedState.Client,
-            shell.State,
+        // Reading the partition-key paths also validates that the container exists.
+        var (_, _, container, partitionKeyPaths) = await ResolveContainerWithPartitionKeyPathsAsync(
+            connectedState,
             this.Database,
             this.Container,
             "mkitem",
             token);
 
-        var summary = await WriteItemAsync(container, jsonOpt, this.Force == true, token);
+        var summary = await WriteItemAsync(shell, container, partitionKeyPaths, jsonOpt, this.Force == true, commandState, token);
 
         var returnState = new CommandState();
         returnState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
@@ -71,6 +70,13 @@ internal class MakeItemCommand : CosmosCommand
             requestCharge = summary.RequestCharge,
         }));
         returnState.RequestCharge = summary.RequestCharge;
+        returnState.RenderUser = () =>
+        {
+            if (summary.Message is { } message)
+            {
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, message);
+            }
+        };
         return returnState;
     }
 
@@ -132,7 +138,14 @@ internal class MakeItemCommand : CosmosCommand
         }
     }
 
-    private static async Task<WriteSummary> WriteItemAsync(Container container, string? jsonOpt, bool force, CancellationToken token)
+    private static async Task<WriteSummary> WriteItemAsync(
+        ShellInterpreter shell,
+        Container container,
+        IReadOnlyList<string> partitionKeyPaths,
+        string? jsonOpt,
+        bool force,
+        CommandState commandState,
+        CancellationToken token)
     {
         if (!string.IsNullOrEmpty(jsonOpt))
         {
@@ -143,18 +156,21 @@ internal class MakeItemCommand : CosmosCommand
 
                 if (root.ValueKind == JsonValueKind.Array)
                 {
+                    var undefinedPartitionKeyCount =
+                        root.EnumerateArray().Count(
+                            item => item.ValueKind == JsonValueKind.Object
+                                && HasUndefinedPartitionKeyComponent(item, partitionKeyPaths));
+                    AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
+                    shell.RenderMutationWarnings(commandState);
                     int createdCount = 0;
                     int replacedCount = 0;
                     int failCount = 0;
                     double charge = 0.0;
-                    var presentResults = !ShellInterpreter.Instance.IsMachineMode;
                     foreach (var element in root.EnumerateArray())
                     {
                         try
                         {
-                            ItemResponse<JsonElement> result = force
-                                ? await container.UpsertItemAsync(element, cancellationToken: token)
-                                : await container.CreateItemAsync(element, cancellationToken: token);
+                            var result = await WriteOneAsync(container, partitionKeyPaths, element, force, token);
                             charge += result.RequestCharge;
                             if (result.StatusCode == System.Net.HttpStatusCode.Created)
                             {
@@ -167,110 +183,102 @@ internal class MakeItemCommand : CosmosCommand
                             else
                             {
                                 failCount++;
-                                if (presentResults)
-                                {
-                                    ShellInterpreter.Instance.Output.WriteLine(
-                                        ShellMessageKind.Error,
-                                        MessageService.GetArgsString(
-                                            "command-mkitem-error-status-returned",
-                                            "status",
-                                            result.StatusCode.ToString()));
-                                }
+                                ShellInterpreter.Instance.Output.WriteLine(
+                                    ShellMessageKind.Result,
+                                    MessageService.GetArgsString(
+                                        "command-mkitem-error-status-returned",
+                                        "status",
+                                        result.StatusCode.ToString()));
                             }
                         }
                         catch (CosmosException ce)
                         {
                             RequestChargeContext.Record(ce.RequestCharge);
                             failCount++;
-                            if (presentResults)
-                            {
-                                ShellInterpreter.Instance.Output.WriteLine(
-                                    ShellMessageKind.Error,
-                                    MessageService.GetArgsString(
-                                        "command-mkitem-error-creation-failed",
-                                        "status",
-                                        ce.StatusCode.ToString(),
-                                        "message",
-                                        CommandException.GetDisplayMessage(ce)));
-                            }
+                            ShellInterpreter.Instance.Output.WriteLine(
+                                ShellMessageKind.Result,
+                                MessageService.GetArgsString(
+                                    "command-mkitem-error-creation-failed",
+                                    "status",
+                                    ce.StatusCode.ToString(),
+                                    "message",
+                                    CommandException.GetDisplayMessage(ce)));
+                        }
+                        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
+                        {
+                            failCount++;
+                            ShellInterpreter.Instance.Output.WriteLine(
+                                ShellMessageKind.Result,
+                                MessageService.GetArgsString(
+                                    "command-mkitem-error-creation-failed",
+                                    "status",
+                                    "Invalid partition key",
+                                    "message",
+                                    ex.Message));
                         }
                     }
 
-                    if (presentResults)
+                    string summaryMessage;
+                    if (force)
                     {
-                        if (force)
+                        if ((createdCount + replacedCount) > 0 && failCount == 0)
                         {
-                            if ((createdCount + replacedCount) > 0 && failCount == 0)
-                            {
-                                ShellInterpreter.Instance.Output.WriteLine(
-                                    ShellMessageKind.Information,
-                                    MessageService.GetArgsString(
-                                        "command-mkitem-upserted-multiple",
-                                        "created",
-                                        createdCount,
-                                        "replaced",
-                                        replacedCount,
-                                        "charge",
-                                        charge.ToString("F2")));
-                            }
-                            else if ((createdCount + replacedCount) > 0)
-                            {
-                                ShellInterpreter.Instance.Output.WriteLine(
-                                    ShellMessageKind.Warning,
-                                    MessageService.GetArgsString(
-                                        "command-mkitem-upserted-partial",
-                                        "created",
-                                        createdCount,
-                                        "replaced",
-                                        replacedCount,
-                                        "failed",
-                                        failCount,
-                                        "charge",
-                                        charge.ToString("F2")));
-                            }
-                            else
-                            {
-                                ShellInterpreter.Instance.Output.WriteLine(
-                                    ShellMessageKind.Error,
-                                    MessageService.GetArgsString(
-                                        "command-mkitem-upserted-all-failed",
-                                        "count",
-                                        failCount));
-                            }
+                            summaryMessage = MessageService.GetArgsString(
+                                "command-mkitem-upserted-multiple",
+                                "created",
+                                createdCount,
+                                "replaced",
+                                replacedCount,
+                                "charge",
+                                charge.ToString("F2"));
                         }
-                        else if (createdCount > 0 && failCount == 0)
+                        else if ((createdCount + replacedCount) > 0)
                         {
-                            ShellInterpreter.Instance.Output.WriteLine(
-                                ShellMessageKind.Information,
-                                MessageService.GetArgsString(
-                                    "command-mkitem-created-multiple",
-                                    "count",
-                                    createdCount,
-                                    "charge",
-                                    charge.ToString("F2")));
-                        }
-                        else if (createdCount > 0 && failCount > 0)
-                        {
-                            ShellInterpreter.Instance.Output.WriteLine(
-                                ShellMessageKind.Warning,
-                                MessageService.GetArgsString(
-                                    "command-mkitem-created-partial",
-                                    "success",
-                                    createdCount,
-                                    "failed",
-                                    failCount,
-                                    "charge",
-                                    charge.ToString("F2")));
+                            summaryMessage = MessageService.GetArgsString(
+                                "command-mkitem-upserted-partial",
+                                "created",
+                                createdCount,
+                                "replaced",
+                                replacedCount,
+                                "failed",
+                                failCount,
+                                "charge",
+                                charge.ToString("F2"));
                         }
                         else
                         {
-                            ShellInterpreter.Instance.Output.WriteLine(
-                                ShellMessageKind.Error,
-                                MessageService.GetArgsString(
-                                    "command-mkitem-created-all-failed",
-                                    "count",
-                                    failCount));
+                            summaryMessage = MessageService.GetArgsString(
+                                "command-mkitem-upserted-all-failed",
+                                "count",
+                                failCount);
                         }
+                    }
+                    else if (createdCount > 0 && failCount == 0)
+                    {
+                        summaryMessage = MessageService.GetArgsString(
+                            "command-mkitem-created-multiple",
+                            "count",
+                            createdCount,
+                            "charge",
+                            charge.ToString("F2"));
+                    }
+                    else if (createdCount > 0 && failCount > 0)
+                    {
+                        summaryMessage = MessageService.GetArgsString(
+                            "command-mkitem-created-partial",
+                            "success",
+                            createdCount,
+                            "failed",
+                            failCount,
+                            "charge",
+                            charge.ToString("F2"));
+                    }
+                    else
+                    {
+                        summaryMessage = MessageService.GetArgsString(
+                            "command-mkitem-created-all-failed",
+                            "count",
+                            failCount);
                     }
 
                     // Bulk write summary is informational; signal the caller
@@ -278,6 +286,7 @@ internal class MakeItemCommand : CosmosCommand
                     // treat a partial/total failure as success.
                     if (failCount > 0)
                     {
+                        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, summaryMessage);
                         var totalCount = createdCount + replacedCount + failCount;
                         throw new CommandException(
                             "mkitem",
@@ -289,40 +298,42 @@ internal class MakeItemCommand : CosmosCommand
                                 totalCount));
                     }
 
-                    return new WriteSummary(createdCount, replacedCount, failCount, charge);
+                    return new WriteSummary(createdCount, replacedCount, failCount, charge, summaryMessage);
                 }
                 else
                 {
+                    AddUndefinedPartitionKeyWarning(
+                        commandState,
+                        root.ValueKind == JsonValueKind.Object && HasUndefinedPartitionKeyComponent(root, partitionKeyPaths) ? 1 : 0);
+                    shell.RenderMutationWarnings(commandState);
                     try
                     {
-                        ItemResponse<JsonElement> result = force
-                            ? await container.UpsertItemAsync(root, cancellationToken: token)
-                            : await container.CreateItemAsync(root, cancellationToken: token);
+                        var result = await WriteOneAsync(container, partitionKeyPaths, root, force, token);
 
                         if (result.StatusCode == System.Net.HttpStatusCode.Created)
                         {
                             var key = force ? "command-mkitem-upserted-created" : "command-mkitem-created-success";
-                            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                            var message = MessageService.GetArgsString(
                                 key,
                                 "charge",
-                                result.RequestCharge.ToString("F2")));
-                            return new WriteSummary(1, 0, 0, result.RequestCharge);
+                                result.RequestCharge.ToString("F2"));
+                            return new WriteSummary(1, 0, 0, result.RequestCharge, message);
                         }
                         else if (force && result.StatusCode == System.Net.HttpStatusCode.OK)
                         {
-                            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Information, MessageService.GetArgsString(
+                            var message = MessageService.GetArgsString(
                                 "command-mkitem-upserted-replaced",
                                 "charge",
-                                result.RequestCharge.ToString("F2")));
-                            return new WriteSummary(0, 1, 0, result.RequestCharge);
+                                result.RequestCharge.ToString("F2"));
+                            return new WriteSummary(0, 1, 0, result.RequestCharge, message);
                         }
                         else
                         {
-                            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString(
+                            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
                                 "command-mkitem-error-status-returned",
                                 "status",
                                 result.StatusCode.ToString()));
-                            return new WriteSummary(0, 0, 1, result.RequestCharge);
+                            return new WriteSummary(0, 0, 1, result.RequestCharge, null);
                         }
                     }
                     catch (CosmosException ce)
@@ -348,5 +359,21 @@ internal class MakeItemCommand : CosmosCommand
         return default;
     }
 
-    private readonly record struct WriteSummary(int Created, int Replaced, int Failed, double RequestCharge);
+    private static async Task<(System.Net.HttpStatusCode StatusCode, double RequestCharge)> WriteOneAsync(
+        Container container,
+        IReadOnlyList<string> partitionKeyPaths,
+        JsonElement item,
+        bool force,
+        CancellationToken token)
+    {
+        using var body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(item.GetRawText()));
+        TryCreatePartitionKeyFromItem(item, partitionKeyPaths, out _, out var partitionKey);
+        using var response = force
+            ? await container.UpsertItemStreamAsync(body, partitionKey, cancellationToken: token)
+            : await container.CreateItemStreamAsync(body, partitionKey, cancellationToken: token);
+        response.EnsureSuccessStatusCode();
+        return (response.StatusCode, response.Headers.RequestCharge);
+    }
+
+    private readonly record struct WriteSummary(int Created, int Replaced, int Failed, double RequestCharge, string? Message);
 }

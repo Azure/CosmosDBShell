@@ -98,17 +98,23 @@ cd                           # return to root (connected state)
 
 ### The `pwd` Command
 
-The `pwd` command prints the current shell location:
+The `pwd` command prints the current Cosmos DB location and the local working directory, including when disconnected:
 
 ```bash
-pwd                  # not connected
+pwd                  # Cosmos location: not connected
 connect "AccountEndpoint=...;AccountKey=..."
-pwd                  # /
+pwd                  # Cosmos location: /
 cd ToDoList
-pwd                  # /ToDoList
+pwd                  # Cosmos location: /ToDoList
 cd Items
-pwd                  # /ToDoList/Items
+pwd                  # Cosmos location: /ToDoList/Items
 ```
+
+Each call also prints `Local directory: <absolute path>`, the base for relative paths used by commands such as `export`, `import`, and `dir`. Cosmos DB navigation with `cd` does not change it. Export success messages show the absolute destination path. For MCP, local paths refer to the machine running the shell server. Structured `pwd` results include this directory as `localDirectory` alongside the existing Cosmos location fields.
+
+### Reading an Item by ID
+
+For point reads, `print <id> <key>` accepts the established typed-key syntax. Inside Cosmos DB Shell, `print <id> 680` selects a number and `print <id> '"680"'` selects a string: outer shell quotes are removed, while the inner JSON quotes determine the key type. A complete hierarchical key is an ordered JSON array, for example `print <id> '[1001,"customer-1001"]'`. See [print](commands.md#print) for examples and validation rules.
 
 ## Pipes and JSON Flow
 
@@ -240,6 +246,8 @@ Commands are stored in full so they can be executed again, including connection 
 
 ## Keyboard Shortcuts
 
+Run `help shortcuts` to see these shortcuts in the shell, grouped by History, Cursor Movement, Editing and Completion, and Shell. The `help` overview lists `shortcuts` under **Help Topics**. Structured results from `help shortcuts` include a `keyboardShortcuts` array with `group`, `shortcut`, and `description` fields, plus a `historySearch` note.
+
 Available at the interactive prompt:
 
 | Shortcut | Action |
@@ -258,6 +266,7 @@ Available at the interactive prompt:
 | `Ctrl+D` | Exit shell when prompt is empty; otherwise delete character under cursor |
 | `Ctrl+R` | Reverse search history (type to filter, repeat for older matches, Enter accepts, Esc/Ctrl+G/Ctrl+C cancels) |
 | `Ctrl+S` | Forward search history (type to filter, repeat for newer matches, Enter accepts, Esc/Ctrl+G/Ctrl+C cancels) |
+| `Ctrl+C` | Interrupt running work or discard pending multi-line input |
 
 ## CLI Arguments
 
@@ -279,7 +288,7 @@ Start the shell with options to customize behavior:
 | `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations at startup |
 | `--database <id>` | Navigate to this database after connecting at startup |
 | `--container <id>` | Navigate to this container after connecting at startup. Requires `--database` |
-| `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
+| `--mcp [port]` | Enable MCP server with Streamable HTTP and legacy SSE on the given port, or `6128` by default |
 | `--mcp-stdio` | Run a headless MCP server over stdin/stdout, with diagnostics on stderr and no listening port |
 | `--diagnostics [path]` | Write timestamped diagnostic logs (commands, timing, errors, connection events) to a file, or to a timestamped file in the config directory by default |
 | `--otel [endpoint]` | Enable distributed tracing so requests carry a sampled W3C `traceparent`. Optionally export spans to an OTLP `endpoint`; falls back to the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable |
@@ -310,6 +319,17 @@ authentication prompts and previews shown before a confirmation) remain visible 
 logging is unaffected. Command results are separate from informational messages and
 remain on `STDOUT` (or in MCP responses for `--mcp-stdio`).
 
+Inferred partition-key mutation warnings are emitted before writes as JSON Lines records on stderr; a later error is a separate JSON record.
+
+In normal `user` mode, command confirmations and status messages are readable text,
+not JSON status objects. Commands that display document or policy data can still show
+that data as JSON. Where supported, a command's `--format` / `-f` selects its result
+presentation and overrides the shell default. On `import` and `export`, it formats
+the summary, not file contents: a `.csv` export file name writes CSV and any other name
+writes a JSON array. Import automatically detects JSON arrays, single objects, and
+sequences of objects (including JSON Lines and multiple objects on one line); no
+input-format flag is needed.
+
 Bare piped stdin (for example `echo "..." | cosmosdbshell`) is **not** implicitly machine
 mode; pass `-c`, `--output json`, or `--quiet` to opt into structured output.
 
@@ -327,6 +347,12 @@ or `$LASTEXITCODE`):
 | `6` | Throttled (`429` / RU budget exceeded) |
 
 These values are a public contract. See the [CI/CD guide](ci.md#exit-code-contract) for install steps, auth patterns, and scripted failure handling.
+
+Ctrl+C interrupts commands started with `-c`, `-k`, or redirected stdin. An interrupted startup command returns a nonzero exit code and stops any following startup command; structured partial write results, including settled import counts and observed RUs, remain visible. Canceled partial results are not written as successful redirected output. Successful writes are not rolled back, and canceled in-flight writes may require reconciliation before retrying. Stopping `watch` with Ctrl+C is intentional and remains successful; enclosing pipelines, blocks, and scripts stop without running subsequent work. An interrupted stdin script also skips any separately supplied `-c` or `-k` command, even when `watch` handled the interruption successfully.
+
+Interruption also applies while stdin is still being read and while a confirmation prompt is waiting. At a confirmation, `n` or Escape declines normally; Ctrl+C interrupts the operation. Stopping a `watch` expression stops its enclosing assignment or command before it changes a variable or performs subsequent work. Interrupt markers are not written to machine-readable or redirected stdout.
+
+Scripted `bulk` writes require `--yes`; use `--dry-run` to preview first. Bulk operations are not transactional, and an exhausted observed RU budget returns exit code `6`. Supply `--journal` on the original run and reuse that same journal to resume; without it, reconcile completed writes before retrying. See [bulk operations](commands.md#bulk) for recovery and partial-success semantics.
 
 ### Environment Variables
 
@@ -360,6 +386,7 @@ cosmosdbshell --mcp
 # Start with MCP server enabled on a custom port
 cosmosdbshell --mcp 5050
 
+# The same server also accepts legacy clients at http://127.0.0.1:5050/sse
 # Client-owned, headless MCP server; stdin/stdout carry only MCP messages
 cosmosdbshell --mcp-stdio
 

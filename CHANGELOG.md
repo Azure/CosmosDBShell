@@ -2,8 +2,106 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- Structured `help` results now include a `topics` array alongside `help`, `commands`, and `statements`. Consumers that require an exact set of JSON fields must accept the new field. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
+- `pwd` now prints labeled Cosmos location and local directory lines. Structured results retain the existing fields and add `localDirectory`; consumers that require an exact JSON shape must accept the new field. ([#269](https://github.com/Azure/CosmosDBShell/issues/269))
+- `mkdb` and `create database` now create databases without shared throughput when `--scale` and `--ru` are omitted. Provision throughput on individual containers, or specify `--scale=auto --ru=1000` to retain the previous shared autoscale default. Container creation defaults are unchanged. ([#268](https://github.com/Azure/CosmosDBShell/issues/268))
+
+### New features
+
 ### Fixes
 
+- Show endpoint-only account and emulator examples when running `connect` offline; keep the connection-string alternative in `help connect`. ([#270](https://github.com/Azure/CosmosDBShell/issues/270))
+- Add `help shortcuts` to list keyboard shortcuts, including history search with `Ctrl+R` and `Ctrl+S`; the `help` overview lists it under Help Topics. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
+- Show the absolute destination path in export success messages so exported files can be located. The structured result's `file` field continues to contain the supplied path. ([#269](https://github.com/Azure/CosmosDBShell/issues/269))
+
+### Improvements
+
+## 1.1.295 — 2026-11-03
+
+### Breaking changes
+
+- On Entra ID (Azure Resource Manager) connections, `mkdb`, `mkcon`, `create database`, and `create container` now return `created: null` with `outcome: "createdOrUpdated"` instead of `created: true`, because the ARM create-or-update API cannot distinguish a new resource from an existing one. Scripts that treat `created` as a boolean should check `outcome` instead. ([#261](https://github.com/Azure/CosmosDBShell/issues/261))
+
+### New features
+
+### Fixes
+
+- Preserve `?` in unquoted command arguments so scalar indexing paths such as `index add /city/?` and `index remove /city/?` reach Cosmos DB unchanged. ([#260](https://github.com/Azure/CosmosDBShell/issues/260))
+- Long-running commands and scripts against a local emulator no longer fail with a timeout and disconnect after 10 seconds while the emulator is still responding. The 10-second limit now applies only when nothing makes progress, and it is paused while confirmation prompts and external editors wait for input.
+- Preserve partial bulk write counts through pipelines on emulator timeouts, report consumed inactivity cancellations as failures, and keep active bulk selection, export, and piped removal scans from timing out during local processing.
+- Prevent scripts from rendering timed-out partial results as successful, pause emulator inactivity deadlines during file/theme editing and change-feed polling intervals, and cancel stalled change-feed requests.
+- Keep Ctrl+C effective for startup commands and redirected scripts, and exclude local external tools such as `jq` from emulator inactivity deadlines.
+- Report interrupted startup commands as failures, retain structured partial write results, and prevent MCP prompt refreshes from canceling queued startup work.
+- Retain settled import counts and RUs on cancellation, prevent interrupted startup scripts from writing partial success output, and keep intentional watch stops successful through pipelines, blocks, and scripts.
+- Stop follow-up startup commands after an intentional watch stop in redirected stdin, and align timed-out import result error messages and exit codes with the command failure.
+- Keep import progress counts and observed RUs current when writes finish while the next input record is still being read.
+- Keep bulk completion counts current during slow input reads, allow cancellation while loading resume journals, and recognize active local validation, removal scans, and successful journal recording without treating failed requests as activity.
+- Stop interrupted startup stdin reads, confirmation prompts, and watch expressions before subsequent work; keep machine-readable stdout clean on Ctrl+C and exclude external command expressions from emulator inactivity deadlines.
+- Database and container creation on key, emulator, and static-token connections now report `created: false` and `outcome: "existing"` when an existing resource is reused, instead of always reporting `created: true`. Human-readable output says "Using existing database/container" in that case. ([#261](https://github.com/Azure/CosmosDBShell/issues/261))
+
+### Improvements
+
+- Show periodic progress for `import`, `bulk`, and pattern-based `rm`, including elapsed time, counts, and observed RU usage, even while requests are waiting. In a terminal, a single progress line is updated in place and removed when the command finishes. Structured output and MCP responses remain unchanged.
+
+## 1.1.291 — 2026-10-26
+
+### Breaking changes
+
+- `print <id> <key>` now parses the key with the same typed syntax as `patch`, so `print item-1 680` reads numeric key `680` instead of string `"680"`. To address a string key that looks like a number, boolean, null, or JSON array, quote it as a JSON string: `print item-1 '"680"'`. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
+- `import` and `export` now use the JSON format of the Azure Databases extension for VS Code. `export` writes an indented JSON array, or CSV when the file name ends in `.csv`; JSON Lines output is no longer supported. `import` automatically detects JSON arrays, single objects, and sequences of objects (including JSON Lines) in non-CSV files; no `--legacy` flag is needed. On both commands, `--format` / `-f` selects the command-result presentation (`user`, `json`, `csv`, or `table`), not the file contents.
+- `import --dry-run` now reports locally validated records in `validated` and always sets `imported` to `0`. Dry-run results explicitly identify offline validation and an unchecked target.
+
+### New features
+
+- **Non-transactional `bulk` command.** Run unlimited independent `create`, `upsert`, `replace`, `delete`, and `patch` operations across partition keys with bounded concurrency (default 16). It uses the batch operation schema, plus optional per-operation `partitionKey` and `ifMatch`, and the same `run`/`begin`/`add`/`execute`/`cancel`/`status`/`show` subcommands. `bulk patch --where` and `bulk delete --where` select items by predicate, including complete hierarchical partition keys. Add `--save` to write a reviewable plan for `bulk run`. Safeguards include dry-run, confirmation, item and observed-RU limits, and ETag checks. Journals skip succeeded writes on rerun, retry failed writes, and hold back writes with unknown outcomes. MCP exposes `run`, `patch`, and `delete`. ([#107](https://github.com/Azure/CosmosDBShell/issues/107))
+
+### Fixes
+
+- Item commands now support undefined partition-key values (`PartitionKey.None`) with the explicit `{}` syntax, including missing components in hierarchical keys. Mutations that infer undefined keys from item content emit bounded warnings. ([#251](https://github.com/Azure/CosmosDBShell/issues/251))
+- Emit inferred-key warnings before bulk mutations and retain them across partial failures, MCP responses, expressions, and pipelines; wildcard `rm *` also matches items with missing partition-key paths.
+- Route inferred-key warnings through stderr redirection and include pending warnings in machine-readable errors; import and scan-based `rm` counts reflect only scheduled writes and selected delete candidates.
+- Emit machine-readable warnings for inferred partition-key mutations before the writes as JSON Lines records on console stderr.
+- Report invalid import partition-key values as per-item failures with `--continue-on-error`, show the final scheduled-write count in bulk warnings, and preserve prior warnings in script machine-mode errors.
+- Partition-key paths with quoted property names, such as `/"tenant id"`, are now resolved correctly when inferring keys from item content and when matching items or typing CSV import columns.
+- `sproc exec` now returns `null` for a stored procedure that completes without setting a response body, instead of reporting a failure after the procedure's writes have committed.
+- `print` now reads items with typed scalar and complete hierarchical partition keys, for example `print customer-1001 '[1001,"customer-1001"]'`. Invalid keys are distinguished from missing items. Shared argument parsing rejects object/nested-array components and non-finite numbers instead of coercing them. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
+- Avoid accessing an expired HTTP request during MCP session teardown, preventing disposal errors while releasing location subscriptions and legacy SSE admission state. ([#249](https://github.com/Azure/CosmosDBShell/issues/249))
+- Keep CLI inferred-key warnings visible before writes when the MCP listener is enabled; MCP calls continue to return warnings in their responses.
+- Show successful imports as a readable summary in normal output mode without appending JSON; structured output modes receive only the result.
+- Keep export, item-write, TTL, conflict-policy, and indexing-policy confirmations readable in normal output mode rather than appending status JSON. Requested structured results retain their existing data.
+- Preserve import counts and observed write RUs in structured CLI and MCP errors after partial imports or invalid input. Import failures retain the underlying error classification and report a bounded representative error.
+- Validate item IDs during import dry runs and report local validation failures with usage exit code `2`. Help and results clarify that dry runs do not check target partition keys, permissions, conflicts, or other service constraints.
+- Reject non-object values in JSON object sequences before buffering their bodies, report physical start lines for sequence items, and validate import result formats before accessing the target container or writing items.
+- Restore actionable missing-value diagnostics for startup options such as `--connect` and keep literal help/version command tails separate from startup handling.
+- Include requested CSV result text in MCP responses for failed imports and other structured failures, alongside the error and partial results.
+- Preserve partial bulk results after execution errors or cancellation, decode quoted partition-key paths consistently, and prevent retries from replaying newer journal outcomes or reordering writes after a failure.
+- Remove incomplete bulk saved plans when the final file flush fails, so a truncated plan cannot be mistaken for a complete job.
+- Restore actionable missing-value diagnostics for startup options such as `--connect` and keep literal help/version command tails separate from startup handling.
+- Release bulk temporary files promptly after a final spool flush fails, preventing retained disk space from hindering recovery.
+- Report invalid Unicode item IDs in import dry runs as validation errors, preserving the validated count, selected result format, and usage exit code.
+- Reject malformed BOM-encoded UTF-16/UTF-32 import files instead of silently replacing characters in item IDs; retain partial results and the requested result format when decoding fails.
+- Count invalid Unicode partition-key strings as per-item import failures without losing concurrent write results or the selected output format.
+- Describe existing custom conflict policies without a stored procedure as requiring manual resolution rather than displaying an empty procedure name.
+- Validate UTF-8 throughout JSON import files, including non-ID fields, and retain structured partial results when malformed bytes are found.
+- Avoid repeatedly parsing incomplete JSON objects during import when large records arrive in short reads.
+- Preserve completed import writes, observed request charges, and structured partial results when an SDK request timeout occurs alongside other in-flight writes; explicit caller cancellation still stops the import.
+- Restore BOM-aware UTF-16/UTF-32 JSON import support, including JSON Lines, while streaming the input.
+- Honor `2>` and `2>>` for structured command failure diagnostics in normal output mode, including import dry-run validation errors.
+- Reject malformed JSON object prefixes before growing the import buffer, preventing invalid input followed by a large whitespace tail from exhausting memory, including during dry runs.
+- Keep terminal JSON output valid on narrow consoles by avoiding inserted line breaks inside long JSON strings. Shorter JSON output remains syntax-highlighted.
+
+### Improvements
+
+- `import` now streams documents with up to 16 concurrent writes by default. Use `--concurrency` to tune the limit or `--concurrency=1` for sequential, file-order writes. On a failure, imports stop scheduling new writes and wait for in-flight writes; `--continue-on-error` continues after per-item write failures.
+- Refresh dependencies, including the stable Cosmos DB client SDK, .NET 10 hosting libraries, command-line parsing, theme loading, editor/LSP support, authentication, diagnostics, serialization, and test/build tooling. Preserve existing CLI options and theme files while migrating to the current library APIs.
+
+## 1.1.280 — 2026-10-09
+
+### Fixes
+
+- Restore legacy MCP HTTP+SSE endpoints alongside Streamable HTTP on the same `--mcp` server using SDK 2.2. No extra option is required. Bound outstanding legacy requests to 16 across all sessions and reject excess requests without queuing.
 - Parse `exec` options and shell words like direct commands. Bind built-in options normally and pass option-shaped words to functions and script files as positional text.
 - `for` and `do` loops now reject misspelled `in` and `while` keywords before any statements in the input execute. They previously accepted any identifier in those positions.
 - `filter` now rejects array index literals larger than `2147483647`, including optional access, instead of silently selecting element zero. Representable indexes beyond the array length still return `null`.

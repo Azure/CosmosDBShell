@@ -115,6 +115,11 @@ internal class CommandExpression : Expression
             throw failure;
         }
 
+        if (resultState.UserCancellationHandled)
+        {
+            throw new CommandState.HandledCancellationException(resultState, cancellationToken);
+        }
+
         // Return the result from the command state
         if (resultState.Result != null)
         {
@@ -161,20 +166,24 @@ internal class CommandExpression : Expression
                 args.Add(evaluated);
             }
 
-            return await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
+            var functionResult = await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
+            functionResult.ShareWarningsFrom(commandState);
+            return functionResult;
         }
 
         // Check for built-in commands
         if (shell.App.Commands.TryGetValue(this.Name, out var factory))
         {
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
-            return await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token);
+            return await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token, factory.IsExternal);
         }
 
         // Check for script files
         if (File.Exists(this.Name))
         {
-            return await this.RunScriptAsync(shell, commandState, token);
+            var scriptResult = await this.RunScriptAsync(shell, commandState, token);
+            scriptResult.ShareWarningsFrom(commandState);
+            return scriptResult;
         }
 
         throw new CommandNotFoundException(this.Name, SuggestCommand(shell, this.Name), this.Start, this.CommandToken.Length);

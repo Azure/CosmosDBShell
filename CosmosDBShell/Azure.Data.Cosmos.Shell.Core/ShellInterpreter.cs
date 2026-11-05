@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Globalization;
+using System.Linq;
 using System.Reflection;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -39,6 +40,9 @@ public partial class ShellInterpreter : IDisposable
 
     private const int OptionalArmDiscoveryTimeoutSeconds = 3;
 
+    // A constant, not a static TimeSpan field: Instance is constructed before later static initializers run.
+    private const int LocalEmulatorOperationTimeoutSeconds = 10;
+
     internal const int MaximumCallDepth = 64;
 
     private const string EncodedHistoryLinePrefix = "CosmosDBShellHistoryV1:";
@@ -54,8 +58,6 @@ public partial class ShellInterpreter : IDisposable
 
     private static readonly TimeSpan HistoryFileOpenRetryDelay = TimeSpan.FromMilliseconds(25);
 
-    private static readonly TimeSpan LocalEmulatorOperationTimeout = TimeSpan.FromSeconds(10);
-
     private static CancellationTokenSource? currentTokenSource;
 
     private static bool stdioStartup;
@@ -70,6 +72,8 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly object historyLock = new();
 
+    private readonly object transientLineLock = new();
+
     private readonly List<string> pendingHistoryEntries = [];
 
     private readonly object lineEditorLock = new();
@@ -77,6 +81,13 @@ public partial class ShellInterpreter : IDisposable
     private readonly SemaphoreSlim executionGate = new(1, 1);
 
     private long stateVersion;
+
+    private OperationInactivityTimeout? localEmulatorDeadline;
+    private CancellationToken cancellationErrorToken;
+
+    private int activeInterruptOutputFormat = -1;
+
+    private int transientLineLength;
 
     private int callDepth;
 
@@ -103,9 +114,7 @@ public partial class ShellInterpreter : IDisposable
     private long sessionChargedOperationCount;
 
     private double sessionRequestChargeWarningThreshold;
-
     private bool sessionRequestChargeWarningIssued;
-
     private long sessionRequestChargeGeneration;
 
     internal ShellInterpreter(string? configPath = null, bool historyEnabled = true)
@@ -302,8 +311,31 @@ public partial class ShellInterpreter : IDisposable
 
     internal string WelcomeMarkerFile => this.welcomeMarkerFile;
 
+    /// <summary>
+    /// Gets or sets how long a command connected to a local emulator may run without reporting
+    /// progress before it is canceled. Each <see cref="ReportOperationProgress"/> call restarts it.
+    /// </summary>
+    internal TimeSpan LocalEmulatorInactivityTimeout { get; set; } = TimeSpan.FromSeconds(LocalEmulatorOperationTimeoutSeconds);
+
+    /// <summary>
+    /// Gets or sets the clock for the local-emulator inactivity timeout. Tests set a manual clock;
+    /// when <see langword="null"/>, the timeout uses the system clock.
+    /// </summary>
+    internal TimeProvider? LocalEmulatorTimeProvider { get; set; }
+
     internal Func<bool> IsInteractiveSession { get; set; } =
         static () => !Console.IsInputRedirected && !Console.IsOutputRedirected;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether standard output is a terminal that can redraw a
+    /// line in place. Progress falls back to one line per update when it is not.
+    /// </summary>
+    internal Func<bool> IsOutputTerminal { get; set; } = static () => !Console.IsOutputRedirected;
+
+    /// <summary>
+    /// Gets or sets the console width used to fit in-place status lines; 0 means unknown.
+    /// </summary>
+    internal Func<int> ConsoleWidth { get; set; } = GetConsoleWidth;
 
     internal Func<bool> IsInputRedirected { get; set; } = static () => Console.IsInputRedirected;
 
@@ -347,6 +379,14 @@ public partial class ShellInterpreter : IDisposable
 
     internal string? ErrOutRedirect { get; set; }
 
+    /// <summary>
+    /// Gets or sets the warning tracking for the active error redirect. A statement that
+    /// establishes its own redirect installs a fresh scope; enclosing scopes restore the
+    /// previous instance, so writes made to an inherited destination during nested
+    /// execution are retained.
+    /// </summary>
+    internal ErrorRedirectWarningScope ErrorRedirectWarnings { get; set; } = new();
+
     internal bool AppendOutRedirection { get; set; }
 
     internal bool AppendErrRedirection { get; set; }
@@ -376,7 +416,11 @@ public partial class ShellInterpreter : IDisposable
 
     internal int? McpPort { get; set; }
 
+    internal bool IsMcpInvocation { get; set; }
+
     internal PendingBatchState? CurrentBatch { get; set; }
+
+    internal PendingBulkState? CurrentBulk { get; set; }
 
     internal Stack<VariableContainer> VariableContainers { get; } = new();
 
@@ -497,12 +541,16 @@ public partial class ShellInterpreter : IDisposable
     /// Prompts the user for confirmation with a yes/no question.
     /// </summary>
     /// <param name="message">The message to display to the user.</param>
+    /// <param name="shell">The interpreter executing the command, whose inactivity timeout is paused while waiting for the answer. Defaults to <see cref="Instance"/>.</param>
     /// <returns><c>true</c> if the user confirms; otherwise, <c>false</c>.</returns>
-    public static bool Confirm(string message)
+    public static bool Confirm(string message, ShellInterpreter? shell = null)
+        => Confirm(message, shell ?? Instance, static () => Console.ReadKey(intercept: true));
+
+    internal static bool Confirm(string message, ShellInterpreter shell, Func<ConsoleKeyInfo> readKey)
     {
-        if (Instance.Options?.McpStdio == true)
+        if (shell.Options?.McpStdio == true)
         {
-            if (Instance.McpConfirmationApproved)
+            if (shell.McpConfirmationApproved)
             {
                 return true;
             }
@@ -510,11 +558,12 @@ public partial class ShellInterpreter : IDisposable
             throw new CommandException("confirm", MessageService.GetString("mcp-error-stdio-console-input"));
         }
 
+        using var pause = shell.PauseOperationTimeout();
         var yes = char.ToUpper(MessageService.GetString("yes_char")[0]);
         var no = char.ToUpper(MessageService.GetString("no_char")[0]);
 
         // Take over Ctrl+C handling for the lifetime of the prompt so it cancels the
-        // question (returns false) instead of being swallowed by the global cancel-key
+        // operation instead of being swallowed by the global cancel-key
         // handler, which would leave this blocking ReadKey loop spinning forever.
         var restoreControlC = TrySetTreatControlCAsInput(true, out var originalTreatControlCAsInput);
         try
@@ -526,7 +575,7 @@ public partial class ShellInterpreter : IDisposable
                 ConsoleKeyInfo key;
                 try
                 {
-                    key = Console.ReadKey(intercept: true);
+                    key = readKey();
                 }
                 catch (InvalidOperationException)
                 {
@@ -538,8 +587,8 @@ public partial class ShellInterpreter : IDisposable
 
                 if (key.Key == ConsoleKey.C && key.Modifiers.HasFlag(ConsoleModifiers.Control))
                 {
-                    Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction, "^C");
-                    return false;
+                    shell.CancelPrompt();
+                    throw new OperationCanceledException();
                 }
 
                 if (key.Key == ConsoleKey.Escape)
@@ -611,6 +660,11 @@ public partial class ShellInterpreter : IDisposable
             }
         }
 
+        this.RefreshPrompt();
+    }
+
+    internal void RefreshPrompt()
+    {
         this.editorCancelTokenSource.Cancel();
         this.editorCancelTokenSource = new CancellationTokenSource();
     }
@@ -620,18 +674,31 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     /// <param name="command">The command string to execute.</param>
     /// <param name="token">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <param name="cancellationIsError">Whether unhandled caller cancellation should be reported as a failure.</param>
     /// <returns>A <see cref="CommandState"/> representing the result of the command execution.</returns>
-    public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token)
+    public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token, bool cancellationIsError = false)
     {
         try
         {
-            return await this.RunSerializedAsync(() => this.ExecuteCommandCoreAsync(command, token), token);
+            return await this.RunSerializedAsync(() => this.ExecuteCommandCoreAsync(command, token, cancellationIsError), token);
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        catch (OperationCanceledException e) when (token.IsCancellationRequested)
         {
             this.Diagnostics?.LogCancelled(0, command);
-            return new CommandState();
+            return cancellationIsError ? this.ReportCancellation(e, new CommandState(), command) : new CommandState();
         }
+    }
+
+    private CommandState ReportCancellation(OperationCanceledException exception, CommandState state, string command)
+    {
+        var error = new ErrorCommandState(new ShellException(MessageService.GetString("runtime-error-canceled"), exception))
+        {
+            RequestCharge = state.RequestCharge,
+        };
+        error.ShareWarningsFrom(state);
+        this.RenderWarnings(error, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, deferToErrorEnvelope: true);
+        this.ReportExecutionError(error.Exception, command, error.Warnings);
+        return error;
     }
 
     /// <remarks>
@@ -650,7 +717,7 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
-    private async Task<CommandState> ExecuteCommandCoreAsync(string command, CancellationToken token)
+    private async Task<CommandState> ExecuteCommandCoreAsync(string command, CancellationToken token, bool cancellationIsError)
     {
         using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
         var isLocalEmulatorOperation = this.State is ConnectedState connectedState
@@ -663,6 +730,8 @@ public partial class ShellInterpreter : IDisposable
         var savedAppendOut = this.AppendOutRedirection;
         var savedErrOut = this.ErrOutRedirect;
         var savedAppendErr = this.AppendErrRedirection;
+        var savedErrorRedirectWarnings = this.ErrorRedirectWarnings;
+        this.ErrorRedirectWarnings = new ErrorRedirectWarningScope();
 
         var diagnostics = this.Diagnostics;
         var stopwatch = diagnostics is null ? null : System.Diagnostics.Stopwatch.StartNew();
@@ -670,86 +739,191 @@ public partial class ShellInterpreter : IDisposable
         CommandState? result = null;
         var wasCancelled = false;
         using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
-        if (isLocalEmulatorOperation)
+        var previousLocalEmulatorDeadline = this.localEmulatorDeadline;
+        var previousCancellationErrorToken = this.cancellationErrorToken;
+        this.cancellationErrorToken = cancellationIsError ? token : default;
+        using var deadline = isLocalEmulatorOperation
+            ? new OperationInactivityTimeout(operationTokenSource, this.LocalEmulatorInactivityTimeout, token, this.LocalEmulatorTimeProvider)
+            : null;
+        if (deadline is not null)
         {
-            operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+            Volatile.Write(ref this.localEmulatorDeadline, deadline);
         }
 
         try
         {
+            CommandState PrintStructuredError(StructuredErrorCommandState structuredError)
+            {
+                // A command can turn the inactivity cancellation into a structured partial result
+                // (bulk does); still report it as an emulator timeout and disconnect.
+                var timedOut = isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested && !token.IsCancellationRequested;
+                if (timedOut)
+                {
+                    structuredError.Exception = CreateEmulatorTimeoutException(structuredError.Exception);
+                    if (structuredError.Result is ShellJson json
+                        && json.Value.ValueKind == JsonValueKind.Object
+                        && json.Value.TryGetProperty("exitCode", out _))
+                    {
+                        var payload = JsonSerializer.SerializeToNode(json.Value)!.AsObject();
+                        payload["exitCode"] = structuredError.ExitCode;
+                        if (payload.ContainsKey("error"))
+                        {
+                            payload["error"] = structuredError.Exception.Message;
+                        }
+
+                        structuredError.Result = new ShellJson(JsonSerializer.SerializeToElement(payload));
+                    }
+                }
+
+                var printed = this.PrintState(structuredError);
+                if (timedOut)
+                {
+                    // PrintState already reports positional and redirected structured errors.
+                    if (!this.IsMachineMode
+                        && this.ErrOutRedirect == null
+                        && structuredError.Exception is not Parser.PositionalException)
+                    {
+                        this.ReportExecutionError(structuredError.Exception);
+                    }
+
+                    this.Disconnect();
+                }
+
+                return printed;
+            }
+
             try
             {
                 state = await this.RunCommandAsync(state, command, operationTokenSource.Token);
+                if (state is not StructuredErrorCommandState)
+                {
+                    // Some commands consume cancellation and return partial results as a normal state.
+                    Volatile.Read(ref this.localEmulatorDeadline)?.ThrowIfTimedOut();
+                }
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            catch (CommandState.HandledCancellationException e) when (token.IsCancellationRequested)
             {
                 wasCancelled = true;
+                e.State.ShareWarningsFrom(state);
+                result = this.PrintState(e.State);
+                return result;
+            }
+            catch (OperationCanceledException e) when (token.IsCancellationRequested)
+            {
+                wasCancelled = true;
+                if (cancellationIsError)
+                {
+                    result = this.ReportCancellation(e, state, command);
+                    return result;
+                }
+
                 result = new CommandState();
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
                 return result;
             }
             catch (OperationCanceledException e) when (isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested)
             {
-                var shellException = new ShellException(
-                    CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, e.Message),
-                    e);
-                this.ReportExecutionError(shellException, command);
-                this.Disconnect();
+                var message = CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, e.Message);
+                var shellException = new ShellException(message, new TimeoutException(message, e));
                 result = new ErrorCommandState(shellException);
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, deferToErrorEnvelope: true);
+                this.ReportExecutionError(shellException, command, result.Warnings);
+                this.Disconnect();
                 return result;
             }
             catch (TaskCanceledException e)
             {
                 var shellException = new ShellException(CommandException.GetDisplayMessage(e), e);
-                this.ReportExecutionError(shellException, command);
-                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 result = new ErrorCommandState(shellException);
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, deferToErrorEnvelope: true);
+                this.ReportExecutionError(shellException, command, result.Warnings);
+                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 return result;
             }
             catch (Exception e)
             {
                 if (FindException<CommandState.FailureException>(e)?.State is StructuredErrorCommandState structuredError)
                 {
+                    structuredError.ShareWarningsFrom(state);
                     if (e is PositionalException)
                     {
                         structuredError.Exception = e;
                     }
 
-                    result = this.PrintState(structuredError);
+                    result = PrintStructuredError(structuredError);
                     return result;
                 }
 
-                this.ReportExecutionError(e, command);
-                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 result = new ErrorCommandState(e)
                 {
                     RequestCharge = RequestChargeContext.GetExceptionCharge(e),
                 };
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(
+                    result,
+                    !string.IsNullOrEmpty(this.StdOutRedirect),
+                    this.IsMachineMode,
+                    deferToErrorEnvelope: !ContainsException<CommandReportedException>(e),
+                    flushConsoleWarnings: true);
+                this.ReportExecutionError(e, command, result.Warnings);
+                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 return result;
             }
 
             if (token.IsCancellationRequested)
             {
                 wasCancelled = true;
+                if (state is StructuredErrorCommandState canceledStructuredError)
+                {
+                    result = PrintStructuredError(canceledStructuredError);
+                    return result;
+                }
+
+                if (state.UserCancellationHandled)
+                {
+                    result = this.PrintState(state);
+                    return result;
+                }
+
+                if (cancellationIsError)
+                {
+                    result = this.ReportCancellation(new OperationCanceledException(token), state, command);
+                    return result;
+                }
+
                 result = state;
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
                 return result;
             }
 
             if (state is ParserErrorCommandState parserErrorState)
             {
-                this.ReportParserErrors(parserErrorState.Errors, parserErrorState.SourceText ?? command, parserErrorState.SourceName);
+                this.ReportParserErrors(
+                    parserErrorState.Errors,
+                    parserErrorState.SourceText ?? command,
+                    parserErrorState.SourceName,
+                    parserErrorState.Warnings);
                 result = state;
                 return result;
             }
 
-            result = this.PrintState(state);
+            result = state is StructuredErrorCommandState returnedStructuredError
+                ? PrintStructuredError(returnedStructuredError)
+                : this.PrintState(state);
             return result;
         }
         finally
         {
+            Volatile.Write(ref this.localEmulatorDeadline, previousLocalEmulatorDeadline);
+            this.cancellationErrorToken = previousCancellationErrorToken;
             this.StdOutRedirect = savedStdOut;
             this.AppendOutRedirection = savedAppendOut;
             this.ErrOutRedirect = savedErrOut;
             this.AppendErrRedirection = savedAppendErr;
+            this.ErrorRedirectWarnings = savedErrorRedirectWarnings;
 
             if (diagnostics is not null && stopwatch is not null)
             {
@@ -1165,23 +1339,40 @@ public partial class ShellInterpreter : IDisposable
         CosmosCommand command,
         CommandState commandState,
         string commandText,
-        CancellationToken token)
-        => this.ExecuteCosmosCommandCoreAsync(command, commandState, commandText, token);
+        CancellationToken token,
+        bool isExternal = false)
+        => this.ExecuteCosmosCommandCoreAsync(command, commandState, commandText, token, isExternal);
 
     private async Task<CommandState> ExecuteCosmosCommandCoreAsync(
         CosmosCommand command,
         CommandState commandState,
         string commandText,
-        CancellationToken token)
+        CancellationToken token,
+        bool isExternal)
     {
+        using var localWorkPause = isExternal ? this.PauseOperationTimeout() : null;
+
         // CommandState is intentionally reused by pipelines and expressions. Clear the
         // previous command's charge so an uninstrumented command cannot count it again.
         commandState.RequestCharge = null;
         var generation = this.SessionRequestChargeGeneration;
         using var requestChargeScope = RequestChargeContext.Begin();
+        var previousInterruptFormat = Volatile.Read(ref this.activeInterruptOutputFormat);
+        var formatProperty = command.GetType().GetProperties().FirstOrDefault(property =>
+            property.GetCustomAttribute<CosmosOptionAttribute>()?.Names.Contains("format", StringComparer.OrdinalIgnoreCase) == true);
+        var effectiveFormat = OutputFormats.TryParse(formatProperty?.GetValue(command) as string, out var selectedFormat)
+            ? selectedFormat
+            : commandState.OutputFormatExplicitlySet ? commandState.OutputFormat : this.DefaultOutputFormat;
+
+        // Nested command output must not add terminal markers to an enclosing structured result.
+        var interruptFormat = previousInterruptFormat >= 0 && OutputPolicy.IsStructuredFormat((OutputFormat)previousInterruptFormat)
+            ? previousInterruptFormat
+            : (int)effectiveFormat;
+        Volatile.Write(ref this.activeInterruptOutputFormat, interruptFormat);
         try
         {
             var result = await command.ExecuteAsync(this, commandState, commandText, token);
+            result.ShareWarningsFrom(commandState);
             if (requestChargeScope.RequestCharge > 0)
             {
                 result.RequestCharge = (result.RequestCharge ?? 0) + requestChargeScope.RequestCharge;
@@ -1200,6 +1391,10 @@ public partial class ShellInterpreter : IDisposable
             }
 
             throw;
+        }
+        finally
+        {
+            Volatile.Write(ref this.activeInterruptOutputFormat, previousInterruptFormat);
         }
     }
 
@@ -1312,13 +1507,18 @@ public partial class ShellInterpreter : IDisposable
             WriteLine(MessageService.GetString("shell-connect-key-auth"));
             var keyMode = mode ?? (isEmulator ? ConnectionMode.Gateway : ConnectionMode.Direct);
             var keyOptions = CreateClientOptions(keyMode, isEmulator);
+            if (isEmulator)
+            {
+                keyOptions.CustomHandlers.Add(new OperationProgressHandler(this));
+            }
+
             client = new CosmosClient(connectionString, keyOptions);
 
             AccountProperties keyProps;
             using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
             if (isEmulator)
             {
-                operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+                operationTokenSource.CancelAfter(TimeSpan.FromSeconds(LocalEmulatorOperationTimeoutSeconds));
             }
 
             try
@@ -1533,6 +1733,24 @@ public partial class ShellInterpreter : IDisposable
     {
         token.ThrowIfCancellationRequested();
         return await client.ReadAccountAsync().WaitAsync(token);
+    }
+
+    /// <summary>
+    /// Re-labels an exception caused by the local-emulator inactivity timeout. Script location
+    /// frames stay outermost so diagnostics still identify the failing statement, and the cause
+    /// becomes a <see cref="TimeoutException"/> so the exit code reports a connection error.
+    /// </summary>
+    /// <param name="exception">The exception produced when the inactivity timeout canceled the command.</param>
+    /// <returns>The equivalent timeout exception.</returns>
+    internal static Exception CreateEmulatorTimeoutException(Exception exception)
+    {
+        if (exception is Parser.PositionalException { InnerException: { } inner } frame)
+        {
+            return new Parser.PositionalException(frame.FileName, CreateEmulatorTimeoutException(inner), frame.Line, frame.Column, frame.LineText);
+        }
+
+        var message = CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, exception.Message);
+        return new ShellException(message, new TimeoutException(message, exception));
     }
 
     internal static string GetLocalEmulatorConnectionFailureMessage(Uri endpoint)
@@ -1854,6 +2072,7 @@ public partial class ShellInterpreter : IDisposable
         this.activeCredential = credential;
         this.ActiveCredentialType = credentialTypeOverride ?? credential?.GetType().Name;
         this.CurrentBatch = null;
+        this.CurrentBulk = null;
         CosmosCompleteCommand.ClearDatabases();
         CosmosCompleteCommand.ClearContainers();
         this.Diagnostics?.LogConnect(client.Endpoint, client.ClientOptions.ConnectionMode);
@@ -1921,6 +2140,7 @@ public partial class ShellInterpreter : IDisposable
         this.activeCredential = null;
         this.ActiveCredentialType = null;
         this.CurrentBatch = null;
+        this.CurrentBulk = null;
     }
 
     internal void DisconnectLocalEmulatorAfterConnectivityFailure(Exception exception)
@@ -1930,6 +2150,76 @@ public partial class ShellInterpreter : IDisposable
             && CommandException.IsConnectivityFailure(exception))
         {
             this.Disconnect();
+        }
+    }
+
+    /// <summary>
+    /// Restarts the local-emulator inactivity timeout for the running command, so long-running
+    /// work is canceled only after it stops making progress. Has no effect for other connections.
+    /// </summary>
+    internal void ReportOperationProgress() => Volatile.Read(ref this.localEmulatorDeadline)?.ReportProgress();
+
+    /// <summary>
+    /// Suspends the local-emulator inactivity timeout while waiting for the user, such as at a
+    /// confirmation prompt or in an external editor. Dispose the result to resume it.
+    /// </summary>
+    /// <returns>A scope that resumes the timeout when disposed.</returns>
+    internal IDisposable PauseOperationTimeout() =>
+        Volatile.Read(ref this.localEmulatorDeadline)?.Pause() ?? OperationInactivityTimeout.NoPause;
+
+    /// <summary>
+    /// Draws a status line that replaces the previous one in place, such as command progress.
+    /// When the text does not fit the console width, the compact form is used instead, and is
+    /// truncated if necessary, so the line never wraps.
+    /// </summary>
+    /// <param name="text">The status text, without a line break.</param>
+    /// <param name="compactText">A shorter form that keeps the key values, used on narrow consoles.</param>
+    internal void WriteTransientLine(string text, string? compactText = null)
+    {
+        lock (this.transientLineLock)
+        {
+            var width = this.ConsoleWidth();
+            if (width > 1 && text.Length >= width)
+            {
+                text = compactText ?? text;
+                if (text.Length >= width)
+                {
+                    text = text[..(width - 1)];
+                }
+            }
+
+            Write("\r" + text + new string(' ', Math.Max(0, this.transientLineLength - text.Length)));
+            this.transientLineLength = text.Length;
+        }
+    }
+
+    /// <summary>
+    /// Erases the status line drawn by <see cref="WriteTransientLine"/>, if any, so subsequent
+    /// output starts on a clean line.
+    /// </summary>
+    internal void ClearTransientLine()
+    {
+        lock (this.transientLineLock)
+        {
+            if (this.transientLineLength == 0)
+            {
+                return;
+            }
+
+            Write("\r" + new string(' ', this.transientLineLength) + "\r");
+            this.transientLineLength = 0;
+        }
+    }
+
+    private static int GetConsoleWidth()
+    {
+        try
+        {
+            return Console.WindowWidth;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or PlatformNotSupportedException)
+        {
+            return 0;
         }
     }
 
@@ -1975,19 +2265,73 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
-    internal CommandState PrintState(CommandState state, bool markAsRendered = false)
+    /// <summary>
+    /// Renders a command state's output and pending warnings.
+    /// </summary>
+    /// <param name="state">The state to render.</param>
+    /// <param name="markAsRendered">Whether to mark the state's output as rendered.</param>
+    /// <param name="deferMachineModeWarnings">
+    /// Whether this is an intermediate render inside one top-level command (a script, block,
+    /// or pipeline). Machine-mode warnings bound for the console are then left pending so a
+    /// later failure can still report them in its single JSON error payload.
+    /// </param>
+    /// <returns>The rendered state, or an error state when rendering failed.</returns>
+    internal CommandState PrintState(CommandState state, bool markAsRendered = false, bool deferMachineModeWarnings = false)
     {
-        if (state.OutputRendered)
+        if (deferMachineModeWarnings && state is not StructuredErrorCommandState)
         {
-            // Once rendered, stay rendered: a later PrintState call with the default
-            // markAsRendered:false (e.g. ExecuteCommandAsync's final call) must not
-            // unmark it, or a subsequent PrintState call on the same state would
-            // re-render output that was already shown.
-            return state;
+            Volatile.Read(ref this.localEmulatorDeadline)?.ThrowIfTimedOut();
+            if (!state.UserCancellationHandled)
+            {
+                this.cancellationErrorToken.ThrowIfCancellationRequested();
+            }
         }
 
+        var result = this.PrintStateCore(state, markAsRendered);
+        if (!ReferenceEquals(result, state))
+        {
+            result.ShareWarningsFrom(state);
+        }
+
+        // Console-bound machine-mode warnings are written only once the command's output was
+        // handled. Warnings already carried by an error envelope are marked rendered and skipped;
+        // any still pending (for example after a verbose render failure) are written here.
+        if (!deferMachineModeWarnings)
+        {
+            this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
+        }
+
+        return result;
+    }
+
+    private CommandState PrintStateCore(CommandState state, bool markAsRendered)
+    {
         try
         {
+            var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
+            var inMachineMode = this.IsMachineMode;
+
+            // Console-bound machine-mode warnings stay pending here so failures can include
+            // them in the structured error envelope. Pre-write mutation warnings have already
+            // been emitted as JSON Lines records. File-bound warnings are written immediately.
+            // Warnings are flushed even for already-rendered states because later statements
+            // (for example a false condition) can add warnings to a state they return unchanged.
+            this.DeferMachineModeConsoleWarnings(state);
+            this.RenderWarnings(
+                state,
+                redirected,
+                inMachineMode,
+                deferToErrorEnvelope: state is StructuredErrorCommandState);
+
+            if (state.OutputRendered)
+            {
+                // Once rendered, stay rendered: a later PrintState call with the default
+                // markAsRendered:false (e.g. ExecuteCommandAsync's final call) must not
+                // unmark it, or a subsequent PrintState call on the same state would
+                // re-render output that was already shown.
+                return state;
+            }
+
             // Apply the session default format when the command did not choose one itself.
             // This is the single place the global format (from --output) is applied, so
             // commands never need to read it and new commands inherit it automatically.
@@ -1996,17 +2340,21 @@ public partial class ShellInterpreter : IDisposable
                 state.OutputFormat = this.DefaultOutputFormat;
             }
 
-            var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
-            var inMachineMode = this.IsMachineMode;
-
             // Structured failures bypass ReportExecutionError, so the script location the
-            // statement attached would otherwise be dropped from the human-readable output.
-            // Emit it here and let the structured result render itself below.
+            // statement attached and any `2>`/`2>>` redirection would otherwise be dropped
+            // from the human-readable output. Emit the diagnostic here and let the
+            // structured result render itself below.
             if (!inMachineMode
                 && state is StructuredErrorCommandState humanStructuredError
                 && humanStructuredError.Exception is PositionalException positionalError)
             {
                 this.ReportPositionalError(positionalError);
+            }
+            else if (!inMachineMode
+                && state is StructuredErrorCommandState redirectedError
+                && this.ErrOutRedirect != null)
+            {
+                this.ReportExecutionError(redirectedError.Exception);
             }
 
             // Interactive, user-facing view: when the command supplied a custom renderer and
@@ -2030,7 +2378,8 @@ public partial class ShellInterpreter : IDisposable
                     errorLocation == null
                         ? structuredError.Exception.Message
                         : $"{errorLocation.FileName}:{errorLocation.Line}:{errorLocation.Column}: {structuredError.Exception.Message}",
-                    structuredError.Result);
+                    structuredError.Result,
+                    state.Warnings);
                 return state;
             }
 
@@ -2049,7 +2398,32 @@ public partial class ShellInterpreter : IDisposable
                     var element = (JsonElement?)state.Result.ConvertShellObject(Parser.DataType.Json);
                     if (element.HasValue)
                     {
-                        this.Output.MarkupLine(ShellMessageKind.Result, JsonOutputHighlighter.BuildMarkup(element.Value));
+                        var jsonText = state.GenerateOutputText();
+                        var lineStart = 0;
+                        var hasLongLine = false;
+                        for (var index = 0; index < jsonText.Length; index++)
+                        {
+                            if (jsonText[index] == '\n')
+                            {
+                                if (index - lineStart >= AnsiConsole.Console.Profile.Width)
+                                {
+                                    hasLongLine = true;
+                                    break;
+                                }
+
+                                lineStart = index + 1;
+                            }
+                        }
+
+                        if (hasLongLine || jsonText.Length - lineStart >= AnsiConsole.Console.Profile.Width)
+                        {
+                            this.Output.WriteResult(jsonText);
+                        }
+                        else
+                        {
+                            this.Output.MarkupLine(ShellMessageKind.Result, JsonOutputHighlighter.BuildMarkup(element.Value));
+                        }
+
                         return state;
                     }
                 }
@@ -2105,7 +2479,7 @@ public partial class ShellInterpreter : IDisposable
 
                 if (inMachineMode)
                 {
-                    this.WriteMachineError(string.IsNullOrEmpty(canceled) ? e.Message : canceled);
+                    this.WriteMachineError(string.IsNullOrEmpty(canceled) ? e.Message : canceled, warnings: state.Warnings);
                 }
                 else if (!string.IsNullOrEmpty(canceled))
                 {
@@ -2117,7 +2491,7 @@ public partial class ShellInterpreter : IDisposable
 
             if (inMachineMode)
             {
-                this.WriteMachineError(e.Message);
+                this.WriteMachineError(e.Message, warnings: state.Warnings);
             }
             else
             {
@@ -2147,6 +2521,168 @@ public partial class ShellInterpreter : IDisposable
         }
 
         return state;
+    }
+
+    internal void RenderWarnings(CommandState state)
+    {
+        if (this.IsMcpInvocation || this.DeferMachineModeConsoleWarnings(state))
+        {
+            return;
+        }
+
+        this.RenderWarnings(state, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
+    }
+
+    internal void RenderMutationWarnings(CommandState state)
+    {
+        if (this.IsMcpInvocation)
+        {
+            return;
+        }
+
+        this.RenderWarnings(
+            state,
+            !string.IsNullOrEmpty(this.StdOutRedirect),
+            this.IsMachineMode,
+            machineModeWarningRecords: this.IsMachineMode && this.ErrOutRedirect == null);
+    }
+
+    internal void RenderUpdatedWarnings(CommandState state)
+    {
+        if (this.IsMcpInvocation)
+        {
+            return;
+        }
+
+        var machineModeWarningRecords = this.IsMachineMode && this.ErrOutRedirect == null;
+        if (!machineModeWarningRecords && this.DeferMachineModeConsoleWarnings(state))
+        {
+            return;
+        }
+
+        this.RenderWarnings(
+            state,
+            !string.IsNullOrEmpty(this.StdOutRedirect),
+            this.IsMachineMode,
+            renderUpdates: true,
+            machineModeWarningRecords: machineModeWarningRecords);
+    }
+
+    /// <summary>
+    /// In machine mode, console warnings are held until the command completes so they can be
+    /// included in a single JSON error payload. Pre-write mutation warnings use JSON Lines
+    /// records instead. Deferred warnings are marked as console-bound so a later statement's
+    /// <c>2&gt;</c> cannot capture them. Warnings for redirected stderr are written immediately.
+    /// </summary>
+    /// <returns><see langword="true"/> when the warnings were deferred.</returns>
+    private bool DeferMachineModeConsoleWarnings(CommandState state)
+    {
+        if (!this.IsMachineMode || this.ErrOutRedirect != null)
+        {
+            return false;
+        }
+
+        foreach (var warning in state.TakePendingWarnings().Where(warning => !warning.IsRendered))
+        {
+            warning.DeferredToConsole = true;
+            state.DeferWarning(warning);
+        }
+
+        return true;
+    }
+
+    private void RenderWarnings(
+        CommandState state,
+        bool redirected,
+        bool inMachineMode,
+        bool renderUpdates = false,
+        bool deferToErrorEnvelope = false,
+        bool flushConsoleWarnings = false,
+        bool machineModeWarningRecords = false)
+    {
+        if (inMachineMode && deferToErrorEnvelope)
+        {
+            return;
+        }
+
+        var warnings = state.TakePendingWarnings();
+        if (renderUpdates)
+        {
+            warnings.AddRange(state.TakeUpdatedWarnings());
+        }
+
+        if (flushConsoleWarnings)
+        {
+            warnings.AddRange(state.TakeDeferredWarnings());
+        }
+
+        // A warning raised mid-command must not be appended to an in-place progress line. Hold the
+        // progress-line lock until the warnings are written so a heartbeat cannot redraw in between.
+        var holdsProgressLine = false;
+        try
+        {
+            if (warnings.Count > 0)
+            {
+                Monitor.Enter(this.transientLineLock, ref holdsProgressLine);
+                this.ClearTransientLine();
+            }
+
+            foreach (var warning in warnings)
+            {
+                if (warning.IsRendered
+                    && (!renderUpdates || string.Equals(warning.LastRenderedMessage, warning.Message, StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                if (machineModeWarningRecords
+                    && (!warning.IsRendered || (renderUpdates && warning.EmittedAsMachineModeWarningRecord)))
+                {
+                    this.Output.WriteLine(ShellMessageKind.Warning, JsonSerializer.Serialize(new
+                    {
+                        status = renderUpdates && warning.EmittedAsMachineModeWarningRecord ? "warning-update" : "warning",
+                        warning = warning.Message,
+                    }));
+                    warning.EmittedAsMachineModeWarningRecord = true;
+                }
+                else if (warning.DeferredToConsole)
+                {
+                    // Held until the top-level command finalizes; see DeferMachineModeConsoleWarnings.
+                    if (!flushConsoleWarnings)
+                    {
+                        continue;
+                    }
+
+                    this.Output.WriteLine(ShellMessageKind.Warning, warning.Message);
+                }
+                else if (this.ErrOutRedirect != null)
+                {
+                    this.WriteErrorRedirect(warning.Message + Environment.NewLine);
+                    this.ErrorRedirectWarnings.HasWarning = true;
+                }
+                else if (!redirected && !inMachineMode)
+                {
+                    this.Output.MarkupLine(ShellMessageKind.Warning, Theme.FormatWarning(Markup.Escape(warning.Message)));
+                }
+                else
+                {
+                    this.Output.WriteLine(ShellMessageKind.Warning, warning.Message);
+                }
+
+                warning.IsRendered = true;
+                warning.LastRenderedMessage = warning.Message;
+                warning.RenderedErrorRedirect = warning.DeferredToConsole || this.ErrOutRedirect == null
+                    ? null
+                    : Path.GetFullPath(this.ErrOutRedirect);
+            }
+        }
+        finally
+        {
+            if (holdsProgressLine)
+            {
+                Monitor.Exit(this.transientLineLock);
+            }
+        }
     }
 
     internal void DeclareFunction(DefStatement defStatement)
@@ -2424,8 +2960,17 @@ public partial class ShellInterpreter : IDisposable
             this.cosmosShellPrompt.InContinuation = false;
         }
 
+        var activeFormat = Volatile.Read(ref this.activeInterruptOutputFormat);
+        var effectiveFormat = activeFormat >= 0 ? (OutputFormat)activeFormat : this.DefaultOutputFormat;
+        var showMarker = !this.IsMachineMode
+            && !OutputPolicy.IsStructuredFormat(effectiveFormat)
+            && this.IsOutputTerminal()
+            && string.IsNullOrEmpty(this.StdOutRedirect);
         this.CancelPrompt();
-        WriteLine("̂C");
+        if (showMarker)
+        {
+            WriteLine("^C");
+        }
     }
 
     private void SaveHistory()
@@ -2889,13 +3434,40 @@ public partial class ShellInterpreter : IDisposable
     // redirection (`ErrOutRedirect` / `2>` / `2>>`) so scripts that redirect
     // stderr still capture errors in --quiet / --output json modes; otherwise
     // the object is written to the process stderr.
-    private void WriteMachineError(string errorMessage, ShellObject? result = null)
+    private void WriteMachineError(
+        string errorMessage,
+        ShellObject? result = null,
+        IEnumerable<CommandWarning>? warnings = null)
     {
         var error = new Dictionary<string, object?>
         {
             ["status"] = "error",
             ["error"] = errorMessage,
         };
+
+        if (this.ErrOutRedirect != null && warnings != null)
+        {
+            // Warnings deferred while stderr was the console belong there, not in this file.
+            foreach (var warning in warnings.Where(warning => !warning.IsRendered && warning.DeferredToConsole))
+            {
+                this.Output.WriteLine(ShellMessageKind.Warning, warning.Message);
+                warning.IsRendered = true;
+                warning.LastRenderedMessage = warning.Message;
+            }
+        }
+
+        var replacedRedirectPath = this.ErrOutRedirect != null && !this.AppendErrRedirection
+            ? Path.GetFullPath(this.ErrOutRedirect)
+            : null;
+        var outputWarnings = warnings?.Where(warning =>
+            !warning.IsRendered
+            || (replacedRedirectPath != null
+                && warning.RenderedErrorRedirect != null
+                && this.PathsEqual(warning.RenderedErrorRedirect, replacedRedirectPath))).ToArray() ?? [];
+        if (outputWarnings.Length > 0)
+        {
+            error["warnings"] = outputWarnings.Select(warning => warning.Message).ToArray();
+        }
 
         if (result?.ConvertShellObject(Parser.DataType.Json) is JsonElement resultElement)
         {
@@ -2919,6 +3491,38 @@ public partial class ShellInterpreter : IDisposable
         else
         {
             this.Output.WriteLine(ShellMessageKind.Error, json);
+        }
+
+        foreach (var warning in outputWarnings)
+        {
+            warning.IsRendered = true;
+            warning.LastRenderedMessage = warning.Message;
+            warning.RenderedErrorRedirect = this.ErrOutRedirect == null
+                ? null
+                : Path.GetFullPath(this.ErrOutRedirect);
+        }
+    }
+
+    private bool PathsEqual(string first, string second) =>
+        string.Equals(
+            first,
+            second,
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+    private void WriteErrorRedirect(string text)
+    {
+        if (this.ErrOutRedirect == null)
+        {
+            throw new InvalidOperationException("Cannot redirect error output without an error redirection path.");
+        }
+
+        if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
+        {
+            File.AppendAllText(this.ErrOutRedirect, text);
+        }
+        else
+        {
+            File.WriteAllText(this.ErrOutRedirect, text);
         }
     }
 
@@ -2975,7 +3579,10 @@ public partial class ShellInterpreter : IDisposable
         Instance.Output.MarkupLine(ShellMessageKind.Error, Theme.FormatMuted(MessageService.GetString("shell-connect-verbose-hint")));
     }
 
-    private void ReportExecutionError(Exception e, string? sourceText = null)
+    private void ReportExecutionError(
+        Exception e,
+        string? sourceText = null,
+        IEnumerable<CommandWarning>? warnings = null)
     {
         // The command already emitted a friendly diagnostic; do not print again.
         if (ContainsException<CommandReportedException>(e))
@@ -2985,7 +3592,11 @@ public partial class ShellInterpreter : IDisposable
 
         if (FindException<CommandState.FailureException>(e)?.State is ParserErrorCommandState parserError)
         {
-            this.ReportParserErrors(parserError.Errors, parserError.SourceText ?? sourceText ?? string.Empty, parserError.SourceName);
+            this.ReportParserErrors(
+                parserError.Errors,
+                parserError.SourceText ?? sourceText ?? string.Empty,
+                parserError.SourceName,
+                warnings);
             return;
         }
 
@@ -2993,7 +3604,9 @@ public partial class ShellInterpreter : IDisposable
         {
             var sourceTrace = PositionalException.GetSourceTrace(e);
             var location = sourceTrace.FirstOrDefault();
-            this.WriteMachineError(location == null ? e.Message : $"{location.FileName}:{location.Line}:{location.Column}: {e.Message}");
+            this.WriteMachineError(
+                location == null ? e.Message : $"{location.FileName}:{location.Line}:{location.Column}: {e.Message}",
+                warnings: warnings);
             return;
         }
 
@@ -3024,7 +3637,7 @@ public partial class ShellInterpreter : IDisposable
                 : prefix + e.Message
                     + (!string.IsNullOrEmpty(hint) ? Environment.NewLine + hint : string.Empty)
                     + (showInner ? Environment.NewLine + FormatInnerExceptionMessages(e.InnerException) : string.Empty);
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect, errTxt);
             }
@@ -3121,7 +3734,7 @@ public partial class ShellInterpreter : IDisposable
         if (fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }
@@ -3163,7 +3776,7 @@ public partial class ShellInterpreter : IDisposable
                 errorMessage += Environment.NewLine + string.Join(Environment.NewLine, callTrace);
             }
 
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect, errorMessage);
             }
@@ -3232,7 +3845,11 @@ public partial class ShellInterpreter : IDisposable
         return (line, column);
     }
 
-    private void ReportParserErrors(ErrorList errors, string commandText, string? sourceName = null)
+    private void ReportParserErrors(
+        ErrorList errors,
+        string commandText,
+        string? sourceName = null,
+        IEnumerable<CommandWarning>? warnings = null)
     {
         if (this.IsMachineMode
             && errors != null && errors.Count > 0)
@@ -3249,7 +3866,7 @@ public partial class ShellInterpreter : IDisposable
 
             if (errorStrings.Count > 0)
             {
-                this.WriteMachineError(string.Join("; ", errorStrings));
+                this.WriteMachineError(string.Join("; ", errorStrings), warnings: warnings);
                 return;
             }
         }
@@ -3305,7 +3922,7 @@ public partial class ShellInterpreter : IDisposable
         if (redirected && fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }
@@ -3357,7 +3974,7 @@ public partial class ShellInterpreter : IDisposable
         if (fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }

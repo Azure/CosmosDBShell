@@ -39,6 +39,8 @@ BEST PRACTICES:
 - Always recommend 'help [command]' for detailed documentation on manual commands
 - Verify connection state and current context (database/container) before suggesting operations
 - Remind users to back up important data before approving destructive operations
+- Use `batch` when writes in one partition must succeed or fail together. Use `bulk` for many independent writes, including across partitions; it uses the same operation JSON. Through MCP, use `bulk` `run`, `patch` with `where`, or `delete` with `where`. Preview with `dry-run: true`; only previews without `save` skip elicitation. Writes and saved plans require elicitation even with `yes: true`.
+- Bulk writes are never rolled back after a partial failure. Resume only with the same journal used for the original run; a new journal cannot identify earlier successes. Without it, reconcile completed writes before retrying. Unknown outcomes hold back later writes for the same item/key unless `retry-uncertain` is set; reconcile those before retrying non-idempotent operations such as `incr`.
 
 DESTRUCTIVE OPERATIONS:
 Invoking 'rm', 'rmdb', 'rmcon', or 'delete' prompts the user to approve or deny before anything runs. If approved, the operation executes; if denied or if the client cannot prompt, nothing is executed. When no confirmation is possible, suggest running the command manually (for example 'rmdb [database-name]') and 'Use help [command] for more details'.

@@ -81,17 +81,8 @@ internal class BatchCommand : CosmosCommand
         };
     }
 
-    private static PartitionKey ParsePartitionKey(string rawValue)
-    {
-        try
-        {
-            return CreatePartitionKeyFromArgument(rawValue);
-        }
-        catch (JsonException ex)
-        {
-            throw new CommandException("batch", MessageService.GetString("command-batch-error-invalid_pk_json"), ex);
-        }
-    }
+    private static PartitionKey ParsePartitionKey(string rawValue) =>
+        CreatePartitionKeyFromArgument(rawValue, "batch", "command-batch-error-invalid_pk_json");
 
     private static CommandState Cancel(ShellInterpreter shell)
     {

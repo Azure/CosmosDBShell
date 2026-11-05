@@ -97,4 +97,57 @@ jobs:
         # CI should fail if the emulator service is not actually reachable. The
         # MSBuild flag compiles emulator tests in "required" mode; local runs
         # without it still skip emulator tests when no emulator is running.
-        run: dotnet test CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --filter "Category=Emulator" --no-restore -p:CosmosRequireEmulator=true
+        # The preview emulator rejects same-ID fixtures across partition-key types.
+        # The Windows emulator job below exercises those collisions.
+        run: dotnet test CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --filter "Category=Emulator&Feature!=PartitionKeyCollisions" --no-restore -p:CosmosRequireEmulator=true
+
+  windows-partition-key-tests:
+    name: Windows Partition-Key Integration Tests
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            global.json
+            Directory.Packages.props
+            **/*.csproj
+
+      - name: Install and start Windows Cosmos DB Emulator
+        run: |
+          $emulator = Join-Path $env:ProgramFiles 'Azure Cosmos DB Emulator\CosmosDB.Emulator.exe'
+          if (-not (Test-Path $emulator)) {
+            $installer = Join-Path $env:RUNNER_TEMP 'cosmosdb-emulator.msi'
+            Invoke-WebRequest 'https://aka.ms/cosmosdb-emulator' -OutFile $installer
+            $install = Start-Process msiexec.exe -ArgumentList @('/i', "`"$installer`"", '/quiet', '/norestart') -Wait -PassThru
+            if ($install.ExitCode -notin @(0, 3010)) {
+              throw "Emulator installation failed with exit code $($install.ExitCode)."
+            }
+          }
+          $data = Join-Path $env:RUNNER_TEMP 'cosmosdb-emulator-data'
+          Start-Process $emulator -ArgumentList @('/NoUI', '/NoExplorer', "/DataPath=`"$data`"")
+          $deadline = (Get-Date).AddMinutes(5)
+          do {
+            $status = curl.exe -ks --connect-timeout 2 --max-time 5 -o NUL -w '%{http_code}' https://localhost:8081/
+            if ($LASTEXITCODE -eq 0 -and $status -in @('200', '401')) {
+              exit 0
+            }
+            Start-Sleep -Seconds 2
+          } while ((Get-Date) -lt $deadline)
+          throw 'Windows Cosmos DB Emulator did not become ready within five minutes.'
+
+      - name: Restore
+        run: dotnet restore .\CosmosDBShell.Tests\CosmosDBShell.Tests.csproj
+
+      - name: Run partition-key integration tests
+        run: dotnet test .\CosmosDBShell.Tests\CosmosDBShell.Tests.csproj --filter "Category=Emulator&FullyQualifiedName~PrintPartitionKeyTests" --no-restore -p:CosmosRequireEmulator=true

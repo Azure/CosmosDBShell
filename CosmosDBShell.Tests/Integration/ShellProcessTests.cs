@@ -4,6 +4,7 @@
 
 namespace CosmosShell.Tests.Integration;
 
+using Azure.Data.Cosmos.Shell.Core;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
@@ -478,7 +479,7 @@ public class ShellProcessTests
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.ExitCode);
-        Assert.Contains("Required option '--connect' is missing", result.StdOut + result.StdErr);
+        Assert.Contains("Option '--connect' has no value.", result.StdOut + result.StdErr);
     }
 
     [Fact]
@@ -861,4 +862,33 @@ public class ShellProcessTests
     }
 
     private sealed record ShellProcessResult(int ExitCode, string StdOut, string StdErr);
+
+    [Theory]
+    [InlineData("{\"name\":\"missing-id\"}")]
+    [InlineData("{\"id\":42}")]
+    public async Task ImportDryRun_InvalidId_ReturnsUsageExitCodeAndOfflineResult(string content)
+    {
+        var file = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(file, content, TestContext.Current.CancellationToken);
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: ["--output", "json", "-c", $"import {JsonSerializer.Serialize(file)} --dry-run"],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellExitCode.UsageError, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            using var error = JsonDocument.Parse(result.StdErr);
+            var import = error.RootElement.GetProperty("result");
+            Assert.Equal(0, import.GetProperty("imported").GetInt32());
+            Assert.Equal(0, import.GetProperty("validated").GetInt32());
+            Assert.Equal("offline", import.GetProperty("validationScope").GetString());
+            Assert.False(import.GetProperty("targetValidated").GetBoolean());
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
 }
