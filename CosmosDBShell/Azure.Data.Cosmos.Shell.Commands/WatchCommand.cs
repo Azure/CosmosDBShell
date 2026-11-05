@@ -52,7 +52,7 @@ internal class WatchCommand : CosmosCommand
 
         if (shell.IsMachineMode && this.Max is not > 0)
         {
-            throw new CommandException("watch", MessageService.GetString("command-watch-error-machine_max_required"));
+            throw CommandException.Usage("watch", MessageService.GetString("command-watch-error-machine_max_required"));
         }
 
         if (shell.State is not ConnectedState connectedState)

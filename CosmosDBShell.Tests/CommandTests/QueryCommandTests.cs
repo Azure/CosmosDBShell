@@ -17,6 +17,20 @@ using Spectre.Console;
 [Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class QueryCommandTests
 {
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(6)]
+    public async Task ExecuteAsync_InvalidBucket_ReportsUsageBeforeConnecting(int bucket)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var command = new QueryCommand { Bucket = bucket };
+
+        var error = await Assert.ThrowsAsync<CommandException>(() =>
+            command.ExecuteAsync(shell, new CommandState(), "query", TestContext.Current.CancellationToken));
+
+        Assert.Equal(ShellExitCode.UsageError, ShellExitCode.FromException(error));
+    }
+
     private class TestServerSideMetrics : ServerSideMetrics
     {
         public override long RetrievedDocumentCount { get; } = 0;

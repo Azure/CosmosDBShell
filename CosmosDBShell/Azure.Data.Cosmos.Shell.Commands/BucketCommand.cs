@@ -247,7 +247,7 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             int bucket = int.Parse(this.Action!.Trim(), CultureInfo.InvariantCulture);
             if (!CheckBucket(bucket))
             {
-                throw new CommandException(
+                throw CommandException.Usage(
                     "bucket",
                     MessageService.GetString("error-invalid_bucket_value", new Dictionary<string, object> { { "bucket", bucket } }));
             }

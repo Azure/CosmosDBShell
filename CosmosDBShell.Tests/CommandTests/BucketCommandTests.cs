@@ -136,9 +136,10 @@ public class BucketCommandTests
         shell.State = new DatabaseState("TestDatabase", client);
         var command = new BucketCommand { Action = "99" };
 
-        await Assert.ThrowsAsync<CommandException>(
+        var error = await Assert.ThrowsAsync<CommandException>(
             () => command.ExecuteAsync(shell, new CommandState(), "bucket 99", CancellationToken.None));
 
+        Assert.Equal(ShellExitCode.UsageError, ShellExitCode.FromException(error));
         Assert.Null(client.ClientOptions.ThroughputBucket);
     }
 

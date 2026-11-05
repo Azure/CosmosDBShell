@@ -553,6 +553,8 @@ public class ShellProcessTests
     [InlineData("theme use MACHINE_NOPE", "MACHINE_NOPE", ShellExitCode.GeneralFailure)]
     [InlineData("help MACHINE_MISSING", "MACHINE_MISSING", ShellExitCode.UsageError)]
     [InlineData("edit machine.txt", "interactive terminal", ShellExitCode.GeneralFailure)]
+    [InlineData("watch", "positive --max", ShellExitCode.UsageError)]
+    [InlineData("watch --max=0", "positive --max", ShellExitCode.UsageError)]
     public async Task MachineMode_CommandFailure_ReportsSingleStructuredError(string command, string expected, int exitCode)
     {
         var result = await RunShellAsync(
