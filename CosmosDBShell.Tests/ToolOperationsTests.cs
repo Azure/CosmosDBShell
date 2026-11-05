@@ -13,6 +13,50 @@ using Azure.Data.Cosmos.Shell.Util;
 
 public class ToolOperationsTests
 {
+    [Theory]
+    [InlineData("import")]
+    [InlineData("export")]
+    public void GetTool_FileTransferFormat_ListsOnlyCanonicalResultFormats(string commandName)
+    {
+        var tool = ToolOperations.GetTool(new CommandRunner().Commands[commandName]);
+        var format = tool.InputSchema.GetProperty("properties").GetProperty("format");
+
+        Assert.Equal("string", format.GetProperty("type").GetString());
+        var values = format.GetProperty("enum").EnumerateArray().Select(value => value.GetString()).ToArray();
+        Assert.Equal(["user", "json", "csv", "table"], values);
+        Assert.All(values, value => Assert.True(OutputFormats.TryParse(value, out _)));
+        Assert.Contains("Aliases: f", format.GetProperty("description").GetString());
+        Assert.False(format.TryGetProperty("default", out _));
+        if (tool.InputSchema.TryGetProperty("required", out var required))
+        {
+            Assert.DoesNotContain(required.EnumerateArray(), value => value.GetString() == "format");
+        }
+    }
+
+    [Fact]
+    public void GetTool_Import_ExplainsAutomaticInputDetectionAndResultPresentation()
+    {
+        var tool = ToolOperations.GetTool(new CommandRunner().Commands["import"]);
+        var properties = tool.InputSchema.GetProperty("properties");
+
+        Assert.Contains("detected automatically", properties.GetProperty("file").GetProperty("description").GetString());
+        var formatDescription = properties.GetProperty("format").GetProperty("description").GetString();
+        Assert.Contains("Command result presentation only", formatDescription);
+        Assert.Contains("array and jsonl are not valid values", formatDescription);
+        Assert.Contains("format option controls the command result, not the input file", tool.Description);
+    }
+
+    [Fact]
+    public void GetTool_UnrelatedStringOptions_AreNotConstrainedToResultFormats()
+    {
+        var tool = ToolOperations.GetTool(new CommandRunner().Commands["import"]);
+        var properties = tool.InputSchema.GetProperty("properties");
+
+        Assert.False(properties.GetProperty("file").TryGetProperty("enum", out _));
+        Assert.False(properties.GetProperty("database").TryGetProperty("enum", out _));
+        Assert.False(properties.GetProperty("container").TryGetProperty("enum", out _));
+    }
+
     [Fact]
     public void GetTool_ImportExposesConfigurableConcurrencyWithDefault()
     {
