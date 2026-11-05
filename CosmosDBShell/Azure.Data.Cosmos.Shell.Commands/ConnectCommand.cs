@@ -76,7 +76,7 @@ internal partial class ConnectCommand : CosmosCommand
             var previousEndpoint = cs.Client.Endpoint.Host;
             if (!isMachineMode)
             {
-                AnsiConsole.MarkupLine(MessageService.GetArgsString("command-connect-switching", "endpoint", previousEndpoint));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetArgsString("command-connect-switching", "endpoint", previousEndpoint));
             }
         }
 
@@ -153,8 +153,8 @@ internal partial class ConnectCommand : CosmosCommand
 
     internal static void AskForRBacPermissions(string principalId, string permission)
     {
-        AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
-        ShellInterpreter.WriteLine(MessageService.GetArgsString("command-connect-rbac-error", "id", principalId, "permission", permission));
+        ShellInterpreter.Instance.Output.Markup(ShellMessageKind.Error, Theme.FormatError(MessageService.GetString("error")) + " ");
+        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Error, MessageService.GetArgsString("command-connect-rbac-error", "id", principalId, "permission", permission));
     }
 
     /// <summary>
@@ -165,7 +165,7 @@ internal partial class ConnectCommand : CosmosCommand
     /// </summary>
     internal static void PrintConnectUsageHint(ShellInterpreter shell)
     {
-        AnsiConsole.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-header")));
+        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-header")));
 
         if (shell.App.Commands.TryGetValue("connect", out var factory))
         {
@@ -185,17 +185,17 @@ internal partial class ConnectCommand : CosmosCommand
                 }
 
                 var highlighted = shell.BuildHighlightedMarkup(example);
-                AnsiConsole.MarkupLine($"  {highlighted}");
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, $"  {highlighted}");
                 if (!string.IsNullOrWhiteSpace(description))
                 {
-                    AnsiConsole.MarkupLine($"    {Theme.FormatMuted(description)}");
+                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, $"    {Theme.FormatMuted(description)}");
                 }
 
                 shown++;
             }
         }
 
-        AnsiConsole.MarkupLine(Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-footer")));
+        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Markup.Escape(MessageService.GetString("command-connect-not_connected-usage-footer")));
     }
 
     private static async Task<CommandState> PrintConnectionInfoAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
@@ -210,7 +210,7 @@ internal partial class ConnectCommand : CosmosCommand
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(notConnectedJson));
             commandState.RenderUser = () =>
             {
-                AnsiConsole.MarkupLine(MessageService.GetString("command-connect-not_connected"));
+                ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-connect-not_connected"));
                 PrintConnectUsageHint(shell);
             };
             return commandState;
@@ -259,7 +259,7 @@ internal partial class ConnectCommand : CosmosCommand
         };
         commandState.RenderUser = () =>
         {
-            AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-connect-info-title")));
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatSectionHeader(MessageService.GetString("command-connect-info-title")));
 
             var table = new Table();
             table.AddColumns(string.Empty, string.Empty);
@@ -283,7 +283,7 @@ internal partial class ConnectCommand : CosmosCommand
             // Show current navigation state
             table.AddRow(MessageService.GetString("command-connect-info-location"), Theme.ConnectedStatePromt(currentLocation));
 
-            AnsiConsole.Write(table);
+            ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
         };
         return commandState;
     }

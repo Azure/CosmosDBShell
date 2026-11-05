@@ -136,7 +136,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
-            RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
                 messageId,
                 "container",
                 containerName,
@@ -245,7 +245,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
 
         var view = await CosmosResourceFacade.ReplaceConflictResolutionPolicyAsync(state, databaseName, containerName, update, token);
         var result = BuildResult(containerName, view);
-        result.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-conflict-updated"));
+        result.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-conflict-updated"));
         return result;
     }
 }

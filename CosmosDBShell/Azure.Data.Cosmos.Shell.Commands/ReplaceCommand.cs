@@ -62,7 +62,7 @@ internal class ReplaceCommand : CosmosCommand
                 requestCharge = summary.RequestCharge,
             })),
             RequestCharge = summary.RequestCharge,
-            RenderUser = () => ShellInterpreter.WriteLine(summary.Message),
+            RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, summary.Message),
         };
         return resultState;
     }
@@ -129,7 +129,7 @@ internal class ReplaceCommand : CosmosCommand
                 hasUsageError |= ShellExitCode.FromException(ex) == ShellExitCode.UsageError;
                 RequestChargeContext.Record(RequestChargeContext.GetCosmosExceptionCharge(ex));
                 failCount++;
-                ShellInterpreter.WriteLine(ex.Message);
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, ex.Message);
             }
         }
 
@@ -149,7 +149,7 @@ internal class ReplaceCommand : CosmosCommand
 
         if (failCount > 0)
         {
-            ShellInterpreter.WriteLine(summary);
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, summary);
             RequestChargeContext.Record(charge);
             var message = MessageService.GetArgsString(
                 "command-replace-error-array_failed",

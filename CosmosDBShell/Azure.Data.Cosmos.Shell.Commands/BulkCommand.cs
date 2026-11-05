@@ -593,7 +593,7 @@ internal sealed class BulkCommand : CosmosCommand
         AddDetail("command-bulk-status-succeeded", succeeded.ToString(CultureInfo.InvariantCulture));
         AddDetail("command-bulk-status-failed", failed.ToString(CultureInfo.InvariantCulture));
         AddDetail("command-bulk-status-uncertain", uncertain.ToString(CultureInfo.InvariantCulture));
-        AnsiConsole.Write(details);
+        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, details);
         if (bulk.Operations.Count == 0)
         {
             return;
@@ -611,7 +611,7 @@ internal sealed class BulkCommand : CosmosCommand
                 Theme.FormatTableValue(Markup.Escape(operation.Id)));
         }
 
-        AnsiConsole.Write(operations);
+        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, operations);
         if (bulk.Operations.Count > StatusPreviewCount)
         {
             ShellInterpreter.WriteLine(MessageService.GetArgsString("command-bulk-status-more", "count", bulk.Operations.Count - StatusPreviewCount));

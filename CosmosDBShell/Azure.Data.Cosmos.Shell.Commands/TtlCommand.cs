@@ -137,7 +137,7 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
-            RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
                 "command-ttl-status-" + StatusFor(view.DefaultTimeToLive),
                 "container",
                 containerName,
@@ -160,7 +160,7 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
-            RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
                 view.AnalyticalTimeToLiveSeconds is null or 0
                     ? "command-ttl-analytical-status-disabled"
                     : view.AnalyticalTimeToLiveSeconds == -1
@@ -218,7 +218,7 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
 
             var analyticalView = await CosmosResourceFacade.ReplaceAnalyticalTimeToLiveAsync(state, databaseName, containerName, targetTtl, token);
             var analyticalResult = BuildAnalyticalResult(containerName, analyticalView);
-            analyticalResult.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-ttl-analytical-updated"));
+            analyticalResult.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-ttl-analytical-updated"));
             return analyticalResult;
         }
 
@@ -230,7 +230,7 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
 
         var view = await CosmosResourceFacade.ReplaceTimeToLiveAsync(state, databaseName, containerName, targetTtl, token);
         var result = BuildResult(containerName, view);
-        result.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-ttl-updated"));
+        result.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-ttl-updated"));
         return result;
     }
 
