@@ -884,9 +884,11 @@ extends:
 
               - script: |
                   set -euo pipefail
-                  if ! command -v rpmbuild >/dev/null 2>&1; then
+                  if ! command -v rpmbuild >/dev/null 2>&1 ||
+                     ! command -v rpm2cpio >/dev/null 2>&1 ||
+                     ! command -v cpio >/dev/null 2>&1; then
                     if ! command -v tdnf >/dev/null 2>&1; then
-                      echo "rpmbuild is unavailable and tdnf is not installed; run this job in the configured Azure Linux container." >&2
+                      echo "RPM build/extraction tools are unavailable and tdnf is not installed; run this job in the configured Azure Linux container." >&2
                       exit 1
                     fi
                     tdnf install -y rpm-build cpio
