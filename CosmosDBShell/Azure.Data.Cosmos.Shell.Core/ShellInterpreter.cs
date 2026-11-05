@@ -371,6 +371,8 @@ public partial class ShellInterpreter : IDisposable
 
     internal bool AppendOutRedirection { get; set; }
 
+    internal HashSet<string>? ScriptAuxiliaryOutputFiles { get; set; }
+
     internal bool AppendErrRedirection { get; set; }
 
     internal long StateVersion => Interlocked.Read(ref this.stateVersion);
@@ -710,6 +712,7 @@ public partial class ShellInterpreter : IDisposable
         // the next command executed against this interpreter instance.
         var savedStdOut = this.StdOutRedirect;
         var savedAppendOut = this.AppendOutRedirection;
+        var savedAuxiliaryFiles = this.ScriptAuxiliaryOutputFiles;
         var savedErrOut = this.ErrOutRedirect;
         var savedAppendErr = this.AppendErrRedirection;
         var savedErrorRedirectWarnings = this.ErrorRedirectWarnings;
@@ -776,7 +779,7 @@ public partial class ShellInterpreter : IDisposable
 
             try
             {
-                state = await this.RunCommandAsync(state, command, operationTokenSource.Token);
+                state = await this.RunCommandAsync(state, command, operationTokenSource.Token, renderOutput: true);
                 if (state is not StructuredErrorCommandState)
                 {
                     // Some commands consume cancellation and return partial results as a normal state.
@@ -911,6 +914,7 @@ public partial class ShellInterpreter : IDisposable
             this.cancellationErrorToken = previousCancellationErrorToken;
             this.StdOutRedirect = savedStdOut;
             this.AppendOutRedirection = savedAppendOut;
+            this.ScriptAuxiliaryOutputFiles = savedAuxiliaryFiles;
             this.ErrOutRedirect = savedErrOut;
             this.AppendErrRedirection = savedAppendErr;
             this.ErrorRedirectWarnings = savedErrorRedirectWarnings;
@@ -968,6 +972,24 @@ public partial class ShellInterpreter : IDisposable
         if (!text.EndsWith(Environment.NewLine))
         {
             File.AppendAllText(this.StdOutRedirect, Environment.NewLine);
+        }
+    }
+
+    internal void WriteAuxiliaryOutput(string path, string text)
+    {
+        var append = this.AppendOutRedirection;
+        if (append && this.ScriptAuxiliaryOutputFiles is { } files)
+        {
+            append = !files.Add(Path.GetFullPath(path));
+        }
+
+        if (append)
+        {
+            File.AppendAllText(path, text);
+        }
+        else
+        {
+            File.WriteAllText(path, text);
         }
     }
 
@@ -1237,7 +1259,7 @@ public partial class ShellInterpreter : IDisposable
         return result;
     }
 
-    internal async Task<CommandState> RunCommandAsync(CommandState currentState, string commandText, CancellationToken token)
+    internal async Task<CommandState> RunCommandAsync(CommandState currentState, string commandText, CancellationToken token, bool renderOutput = false)
     {
         var parser = StatementParser.ScriptParseResult.Parse(commandText);
         if (parser.Errors.HasErrors)
@@ -1250,7 +1272,13 @@ public partial class ShellInterpreter : IDisposable
             return new ParserErrorCommandState(parser.Errors);
         }
 
-        foreach (var statements in parser.Statements)
+        var savedStdOut = this.StdOutRedirect;
+        var savedAppendOut = this.AppendOutRedirection;
+        var savedAuxiliaryFiles = this.ScriptAuxiliaryOutputFiles;
+        var savedErrOut = this.ErrOutRedirect;
+        var savedAppendErr = this.AppendErrRedirection;
+        var savedErrorRedirectWarnings = this.ErrorRedirectWarnings;
+        for (var index = 0; index < parser.Statements.Count; index++)
         {
             if (token.IsCancellationRequested)
             {
@@ -1258,10 +1286,35 @@ public partial class ShellInterpreter : IDisposable
             }
 
             // Run the parsed statements
-            currentState = await statements.RunAsync(this, currentState, token);
-            if (currentState.IsError)
+            currentState = await parser.Statements[index].RunAsync(this, currentState, token);
+            if (currentState.IsError || currentState.UserCancellationHandled)
             {
                 break;
+            }
+
+            if (renderOutput)
+            {
+                // Results produced after cancellation are partial; the caller decides how to report them.
+                if (token.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                currentState = this.PrintState(currentState, markAsRendered: true, deferMachineModeWarnings: true);
+                if (currentState.IsError)
+                {
+                    break;
+                }
+
+                if (index + 1 < parser.Statements.Count)
+                {
+                    this.StdOutRedirect = savedStdOut;
+                    this.AppendOutRedirection = savedAppendOut;
+                    this.ScriptAuxiliaryOutputFiles = savedAuxiliaryFiles;
+                    this.ErrOutRedirect = savedErrOut;
+                    this.AppendErrRedirection = savedAppendErr;
+                    this.ErrorRedirectWarnings = savedErrorRedirectWarnings;
+                }
             }
         }
 
@@ -1375,6 +1428,14 @@ public partial class ShellInterpreter : IDisposable
             {
                 RequestChargeContext.SetExceptionCharge(ex, requestCharge);
                 this.RecordRequestCharge(new CommandState { RequestCharge = requestCharge }, generation);
+            }
+
+            if (ex is Azure.RequestFailedException or CosmosException)
+            {
+                var commandName = string.IsNullOrEmpty(commandText)
+                    ? command.GetType().GetCustomAttribute<CosmosCommandAttribute>()?.CommandName ?? string.Empty
+                    : commandText;
+                throw new CommandException(commandName, ex);
             }
 
             throw;
