@@ -14,6 +14,21 @@ namespace CosmosShell.Tests;
 public class McpResponseFactoryTests
 {
     [Fact]
+    public void CreateSuccess_ServiceErrorState_UsesConciseMessageAndPreservesResult()
+    {
+        var state = new StructuredErrorCommandState(
+            Shell.CommandExceptionServiceErrorTests.CreateThroughputException(),
+            new ShellJson(JsonSerializer.SerializeToElement(new { created = false })));
+
+        var result = McpResponseFactory.CreateSuccess(state, new DisconnectedState());
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        using var document = JsonDocument.Parse(text);
+        Assert.True(result.IsError);
+        Assert.Equal(Shell.CommandExceptionServiceErrorTests.ThroughputMessage, document.RootElement.GetProperty("error").GetString());
+        Assert.False(document.RootElement.GetProperty("result").GetProperty("created").GetBoolean());
+    }
+
+    [Fact]
     public void CreateSuccess_WrapsResultWithCurrentLocation()
     {
         var commandState = new CommandState

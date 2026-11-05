@@ -6,6 +6,8 @@ namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
+using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Util;
 
@@ -71,12 +73,108 @@ public class CommandException : ShellException
             return GetRequestTimeoutMessage();
         }
 
+        var message = GetSummaryMessage(exception);
         if (exception.InnerException != null)
         {
-            return string.Format("{0} ({1})", exception.Message, GetDisplayMessage(exception.InnerException));
+            var innerMessage = GetDisplayMessage(exception.InnerException);
+            return message == innerMessage || message == exception.InnerException.Message
+                ? innerMessage
+                : string.Format("{0} ({1})", message, innerMessage);
         }
 
-        return exception.Message;
+        return message;
+    }
+
+    /// <summary>
+    /// Gets an exception's own message, replacing raw Azure/Cosmos service payloads
+    /// with their actionable service message. Inner exceptions are not appended.
+    /// </summary>
+    internal static string GetSummaryMessage(Exception exception)
+    {
+        if (exception is not (global::Azure.RequestFailedException or CosmosException))
+        {
+            return exception.Message;
+        }
+
+        return IsRequestTimeout(exception)
+            ? GetRequestTimeoutMessage()
+            : ExtractServiceMessage(exception.Message, 0) ?? exception.Message;
+    }
+
+    private static string? ExtractServiceMessage(string message, int depth)
+    {
+        if (depth >= 8)
+        {
+            return null;
+        }
+
+        var json = message.TrimStart();
+        if (json.StartsWith("Message:", StringComparison.OrdinalIgnoreCase))
+        {
+            json = json["Message:".Length..].TrimStart();
+        }
+
+        if (!json.StartsWith('{'))
+        {
+            return null;
+        }
+
+        try
+        {
+            var reader = new Utf8JsonReader(Encoding.UTF8.GetBytes(json), new JsonReaderOptions { MaxDepth = 32 });
+            using var document = JsonDocument.ParseValue(ref reader);
+            return ExtractServiceMessage(document.RootElement, depth + 1);
+        }
+        catch (JsonException)
+        {
+            // Unrecognized service responses must retain the original diagnostic.
+            return null;
+        }
+    }
+
+    private static string? ExtractServiceMessage(JsonElement element, int depth)
+    {
+        if (depth >= 8)
+        {
+            return null;
+        }
+
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            var message = element.GetString();
+            return string.IsNullOrWhiteSpace(message) ? null : ExtractServiceMessage(message, depth) ?? message;
+        }
+
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (element.TryGetProperty("Errors", out var errors) && errors.ValueKind == JsonValueKind.Array)
+        {
+            var messages = errors.EnumerateArray()
+                .Where(error => error.ValueKind == JsonValueKind.String)
+                .Select(error => error.GetString())
+                .Where(message => !string.IsNullOrWhiteSpace(message))
+                .ToArray();
+            if (messages.Length > 0)
+            {
+                return string.Join(Environment.NewLine, messages);
+            }
+        }
+
+        if (element.TryGetProperty("error", out var error))
+        {
+            var message = ExtractServiceMessage(error, depth + 1);
+            if (message != null)
+            {
+                return message;
+            }
+        }
+
+        return element.TryGetProperty("message", out var serviceMessage)
+            ? ExtractServiceMessage(serviceMessage, depth + 1)
+            : null;
     }
 
     internal static string GetDisplayMessage(HttpStatusCode statusCode, string fallbackMessage)
