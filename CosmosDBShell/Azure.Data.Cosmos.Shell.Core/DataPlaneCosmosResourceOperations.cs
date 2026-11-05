@@ -73,10 +73,12 @@ internal sealed class DataPlaneCosmosResourceOperations(CosmosClient client) : I
 
     public async Task<ResourceCreationResult> CreateDatabaseAsync(string databaseName, string? scale, int? maxRu, CancellationToken token)
     {
-        var response = await CreateWithServerlessFallbackAsync(
-            scale,
-            maxRu,
-            throughput => client.CreateDatabaseIfNotExistsAsync(databaseName, throughput, cancellationToken: token));
+        var response = CreationThroughput.IsSpecified(scale, maxRu)
+            ? await CreateWithServerlessFallbackAsync(
+                scale,
+                maxRu,
+                throughput => client.CreateDatabaseIfNotExistsAsync(databaseName, throughput, cancellationToken: token))
+            : await client.CreateDatabaseIfNotExistsAsync(databaseName, (ThroughputProperties?)null, cancellationToken: token);
         RequestChargeContext.Record(response.RequestCharge);
         if (response.StatusCode == HttpStatusCode.OK && CreationThroughput.IsSpecified(scale, maxRu))
         {
