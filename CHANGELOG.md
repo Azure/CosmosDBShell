@@ -8,8 +8,6 @@
 
 ### Fixes
 
-- Show actionable Azure/Cosmos DB service errors, including account throughput-limit failures, without nested response JSON or SDK diagnostics. MCP logs include full exception details only with `--verbose`. ([#272](https://github.com/Azure/CosmosDBShell/issues/272))
-
 ### Improvements
 
 ## 1.1.295 — 2026-11-03
