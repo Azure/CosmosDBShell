@@ -140,12 +140,11 @@ internal static class SecretRedactor
             nameIndex--;
         }
 
-        return nameIndex >= 0
+        var isCredentialValue = nameIndex >= 0
             && IsCredentialName(tokens[nameIndex].Value)
             && (tokens[index].Type is TokenType.String or TokenType.InterpolatedString or TokenType.OpenParenthesis
-                || tokens[nameIndex].Value.StartsWith('$') || tokens[index - 1].Type == TokenType.Colon)
-            ? nameIndex
-            : -1;
+                || tokens[nameIndex].Value.StartsWith('$') || tokens[index - 1].Type == TokenType.Colon);
+        return isCredentialValue ? nameIndex : -1;
     }
 
     private static int GetCredentialExpressionEnd(string value, int start)
