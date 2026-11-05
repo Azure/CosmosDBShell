@@ -54,8 +54,9 @@ public class JsonResultContractTests : IntegrationTestBase
     {
         var json = await RunAndGetJsonAsync("pwd");
 
-        AssertShape(json, "type", "database", "container", "currentLocation");
+        AssertShape(json, "type", "database", "container", "currentLocation", "localDirectory");
         Assert.Equal("location", json.GetProperty("type").GetString());
+        Assert.Equal(Directory.GetCurrentDirectory(), json.GetProperty("localDirectory").GetString());
     }
 
     [Fact]

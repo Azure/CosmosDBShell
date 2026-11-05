@@ -225,7 +225,7 @@ public class ExecuteCommandExceptionTests
         {
             Console.SetError(stderr);
             var state = new CommandState { Result = new ShellText("value") };
-            interpreter.StdOutRedirect = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "missing", "out.txt");
+            interpreter.StdOutRedirect = Path.Join(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "missing", "out.txt");
 
             var error = Assert.IsType<ErrorCommandState>(interpreter.PrintState(state, markAsRendered: true));
             interpreter.PrintState(error);

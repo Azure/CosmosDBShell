@@ -144,7 +144,7 @@ public class ShellProcessTests
     [InlineData("script")]
     public async Task ReturnedCommandError_ThroughScriptOrExpression_IsReportedOnce(string command)
     {
-        var script = Path.Combine(AppContext.BaseDirectory, $"theme-error-{Guid.NewGuid():N}.csh");
+        var script = Path.Join(AppContext.BaseDirectory, $"theme-error-{Guid.NewGuid():N}.csh");
         try
         {
             if (command == "script")
