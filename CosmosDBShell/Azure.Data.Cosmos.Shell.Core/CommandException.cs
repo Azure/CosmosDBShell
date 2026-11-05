@@ -68,20 +68,16 @@ public class CommandException : ShellException
             return GetRequestTimeoutMessage();
         }
 
-        if (exception is global::Azure.RequestFailedException or CosmosException)
-        {
-            return ExtractServiceMessage(exception.Message, 0) ?? exception.Message;
-        }
-
+        var message = GetSummaryMessage(exception);
         if (exception.InnerException != null)
         {
             var innerMessage = GetDisplayMessage(exception.InnerException);
-            return exception.Message == innerMessage || exception.Message == exception.InnerException.Message
+            return message == innerMessage || message == exception.InnerException.Message
                 ? innerMessage
-                : string.Format("{0} ({1})", exception.Message, innerMessage);
+                : string.Format("{0} ({1})", message, innerMessage);
         }
 
-        return exception.Message;
+        return message;
     }
 
     /// <summary>
@@ -90,9 +86,14 @@ public class CommandException : ShellException
     /// </summary>
     internal static string GetSummaryMessage(Exception exception)
     {
-        return exception is global::Azure.RequestFailedException or CosmosException
-            ? GetDisplayMessage(exception)
-            : exception.Message;
+        if (exception is not (global::Azure.RequestFailedException or CosmosException))
+        {
+            return exception.Message;
+        }
+
+        return IsRequestTimeout(exception)
+            ? GetRequestTimeoutMessage()
+            : ExtractServiceMessage(exception.Message, 0) ?? exception.Message;
     }
 
     private static string? ExtractServiceMessage(string message, int depth)

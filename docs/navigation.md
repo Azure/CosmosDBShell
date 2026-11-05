@@ -98,17 +98,19 @@ cd                           # return to root (connected state)
 
 ### The `pwd` Command
 
-The `pwd` command prints the current shell location:
+The `pwd` command prints the current Cosmos DB location and the local working directory, including when disconnected:
 
 ```bash
-pwd                  # not connected
+pwd                  # Cosmos location: not connected
 connect "AccountEndpoint=...;AccountKey=..."
-pwd                  # /
+pwd                  # Cosmos location: /
 cd ToDoList
-pwd                  # /ToDoList
+pwd                  # Cosmos location: /ToDoList
 cd Items
-pwd                  # /ToDoList/Items
+pwd                  # Cosmos location: /ToDoList/Items
 ```
+
+Each call also prints `Local directory: <absolute path>`, the base for relative paths used by commands such as `export`, `import`, and `dir`. Cosmos DB navigation with `cd` does not change it. Export success messages show the absolute destination path. For MCP, local paths refer to the machine running the shell server. Structured `pwd` results include this directory as `localDirectory` alongside the existing Cosmos location fields.
 
 ### Reading an Item by ID
 
@@ -244,6 +246,8 @@ Commands are stored in full so they can be executed again, including connection 
 
 ## Keyboard Shortcuts
 
+Run `help shortcuts` to see these shortcuts in the shell, grouped by History, Cursor Movement, Editing and Completion, and Shell. The `help` overview lists `shortcuts` under **Help Topics**. Structured results from `help shortcuts` include a `keyboardShortcuts` array with `group`, `shortcut`, and `description` fields, plus a `historySearch` note.
+
 Available at the interactive prompt:
 
 | Shortcut | Action |
@@ -262,6 +266,7 @@ Available at the interactive prompt:
 | `Ctrl+D` | Exit shell when prompt is empty; otherwise delete character under cursor |
 | `Ctrl+R` | Reverse search history (type to filter, repeat for older matches, Enter accepts, Esc/Ctrl+G/Ctrl+C cancels) |
 | `Ctrl+S` | Forward search history (type to filter, repeat for newer matches, Enter accepts, Esc/Ctrl+G/Ctrl+C cancels) |
+| `Ctrl+C` | Interrupt running work or discard pending multi-line input |
 
 ## CLI Arguments
 

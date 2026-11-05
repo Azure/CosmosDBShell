@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests.Shell;
 
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using Azure;
 using Azure.Data.Cosmos.Shell.Core;
@@ -82,14 +83,28 @@ public class CommandExceptionServiceErrorTests
     [Fact]
     public void ExcessiveNesting_DoesNotRecurseIndefinitely()
     {
-        var payload = "{\"message\":\"failure\"}";
+        var payload = new StringBuilder();
         for (var i = 0; i < 40; i++)
         {
-            payload = "{\"error\":" + payload + "}";
+            payload.Append("{\"error\":");
         }
 
-        var exception = new RequestFailedException(400, payload);
+        payload.Append("{\"message\":\"failure\"}").Append('}', 40);
+        var exception = new RequestFailedException(400, payload.ToString());
         Assert.Equal(exception.Message, CommandException.GetDisplayMessage(exception));
+    }
+
+    [Theory]
+    [InlineData("Request failed.", "DNS resolution failed.")]
+    [InlineData("{\"message\":\"Request failed.\"}", "Certificate validation failed.")]
+    public void ServiceError_DisplayPreservesInnerCauseWhileSummaryRemainsOwnMessage(string message, string cause)
+    {
+        var original = new RequestFailedException(400, message, "BadRequest", new IOException(cause));
+        var wrapped = new CommandException("mkcon", original);
+
+        Assert.Equal("Request failed.", CommandException.GetSummaryMessage(original));
+        Assert.Equal($"Request failed. ({cause})", CommandException.GetDisplayMessage(original));
+        Assert.Equal($"Request failed. ({cause})", CommandException.GetDisplayMessage(wrapped));
     }
 
     [Fact]

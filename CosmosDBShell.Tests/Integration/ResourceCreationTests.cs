@@ -20,6 +20,7 @@ public class ResourceCreationTests : ConnectedEmulatorTestBase
         var name = $"Creation_{Guid.NewGuid():N}";
         CreatedDatabases.Add(name);
         await AssertCreationAsync($"{command} {name}", "database", name, true);
+        Assert.Null(await CosmosClient.GetDatabase(name).ReadThroughputAsync(cancellationToken: TestContext.Current.CancellationToken));
         var before = await CosmosClient.GetDatabase(name).ReadAsync(cancellationToken: TestContext.Current.CancellationToken);
         await AssertCreationAsync($"{command} {name}", "database", name, false);
         var after = await CosmosClient.GetDatabase(name).ReadAsync(cancellationToken: TestContext.Current.CancellationToken);

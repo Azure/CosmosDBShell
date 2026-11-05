@@ -72,6 +72,7 @@ internal class ExportCommand : CosmosCommand
             throw new NotConnectedException("export");
         }
 
+        var filePath = Path.GetFullPath(this.File);
         var (_, _, container) = await ResolveContainerAsync(
             connectedState.Client,
             shell.State,
@@ -80,7 +81,6 @@ internal class ExportCommand : CosmosCommand
             "export",
             token);
 
-        var filePath = this.File!;
         if (System.IO.File.Exists(filePath) && this.Force != true)
         {
             throw new CommandException(
@@ -97,7 +97,7 @@ internal class ExportCommand : CosmosCommand
         resultState.Result = new ShellJson(JsonSerializer.SerializeToElement(new
         {
             type = "export",
-            file = filePath,
+            file = this.File,
             exported = count,
             requestCharge = charge,
         }));
