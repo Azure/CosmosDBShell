@@ -20,6 +20,19 @@ using Xunit;
 
 public class CommandStatementTests
 {
+    [CosmosCommand("auxiliary-output-test")]
+    internal sealed class AuxiliaryOutputTestCommand : CosmosCommand
+    {
+        [CosmosParameter("value")]
+        public string Value { get; init; } = string.Empty;
+
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            shell.WriteAuxiliaryOutput(Path.ChangeExtension(shell.StdOutRedirect!, "metrics.csv"), this.Value + Environment.NewLine);
+            return Task.FromResult(new CommandState { Result = new ShellText(this.Value) });
+        }
+    }
+
     [CosmosCommand("structured-error-test")]
     internal sealed class StructuredErrorTestCommand : CosmosCommand
     {
@@ -197,6 +210,56 @@ public class CommandStatementTests
         {
             System.IO.File.WriteAllText(this.File!, "executed");
             return Task.FromResult(new CommandState());
+        }
+    }
+
+    [Theory]
+    [InlineData(">", false)]
+    [InlineData(">>", false)]
+    [InlineData(">", true)]
+    [InlineData(">>", true)]
+    public async Task Script_AuxiliaryFilesOverwriteOncePerRun(string redirect, bool nested)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(AuxiliaryOutputTestCommand), out var factory));
+        shell.App.Commands["auxiliary-output-test"] = factory;
+        var script = Path.Join(Path.GetTempPath(), $"auxiliary-{Guid.NewGuid():N}.csh");
+        var outer = script + ".outer.csh";
+        var output = Path.GetTempFileName();
+        var metrics = Path.ChangeExtension(output, "metrics.csv");
+        var content = $"first{Environment.NewLine}second{Environment.NewLine}";
+        try
+        {
+            await File.WriteAllTextAsync(script, "auxiliary-output-test first\nauxiliary-output-test second", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(outer, $"exec {ShellLiteral.Quote(script)}", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(metrics, "before" + Environment.NewLine, TestContext.Current.CancellationToken);
+            var scriptPath = nested ? outer : script;
+            var command = new CommandStatement(new Token(TokenType.Identifier, scriptPath, 0, scriptPath.Length))
+            {
+                OutRedirectToken = new Token(redirect == ">>" ? TokenType.RedirectAppendOutput : TokenType.RedirectOutput, redirect, 0, redirect.Length),
+                OutRedirectDestToken = new Token(TokenType.String, output, 0, output.Length),
+            };
+            var expected = redirect == ">>" ? "before" + Environment.NewLine : string.Empty;
+            for (var run = 0; run < 2; run++)
+            {
+                var result = await command.RunAsync(shell, new CommandState(), TestContext.Current.CancellationToken);
+                Assert.False(result.IsError, (result as ErrorCommandState)?.Exception.ToString());
+                expected = redirect == ">>" ? expected + content : content;
+                Assert.Equal(expected, await File.ReadAllTextAsync(metrics, TestContext.Current.CancellationToken));
+                Assert.Null(shell.ScriptAuxiliaryOutputFiles);
+            }
+
+            var standalone = await shell.ExecuteCommandAsync(
+                $"auxiliary-output-test third > {ShellLiteral.Quote(output)}", TestContext.Current.CancellationToken);
+            Assert.False(standalone.IsError);
+            Assert.Equal("third" + Environment.NewLine, await File.ReadAllTextAsync(metrics, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(script);
+            File.Delete(outer);
+            File.Delete(output);
+            File.Delete(metrics);
         }
     }
 
