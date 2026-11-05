@@ -593,11 +593,11 @@ command-export-error-query_failed = Export query failed: { $status } - { $messag
 command-export-error-scalar_column_conflict = CSV scalar column '{ $column }' conflicts with an object property. Set COSMOSDB_SHELL_CSV_SCALAR_COLUMN to a different name.
 
 command-import-description = Imports items into a container from a JSON, JSON Lines, or CSV file.
-command-import-description-file = Source file path.
+command-import-description-file = Source file path. A .csv extension selects CSV; otherwise JSON arrays, single objects, and sequences of objects (including JSON Lines) are detected automatically.
 command-import-description-database = The database to write to.
 command-import-description-container = The container to write to.
 command-import-description-mode = Write mode: insert (default) or upsert.
-command-import-description-format = Command result format: user, json, csv, or table. Does not change how the input file is read.
+command-import-description-format = Command result presentation only: user, json, csv, or table. Omit to use the current output setting. Input file format is detected automatically; array and jsonl are not valid values for this option.
 command-import-description-concurrency = Maximum in-flight writes (default: 16). Must be positive. Use 1 for sequential writes and file-order processing.
 command-import-description-partition-key = For CSV import, the partition key path. Nested paths (e.g. /address/city) place the matching column under that path.
 command-import-description-continue-on-error = Continue importing after individual item write failures. Otherwise stop scheduling writes on the first observed failure and wait for in-flight writes. Parse or validation errors still abort the import.
