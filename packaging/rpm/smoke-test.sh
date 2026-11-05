@@ -40,4 +40,15 @@ for option in --mcp --lsp --stdio; do
     fi
     test ! -e "$scratch/diagnostics.log"
   done
+
+  set +e
+  timeout 30 "$launcher" --output json --otel invalid-endpoint >"$scratch/stdout" 2>"$scratch/stderr"
+  status=$?
+  set -e
+  if [[ $status -ne 2 || -s "$scratch/stdout" ]]; then
+    echo "Malformed --otel endpoint did not return a machine-mode usage error." >&2
+    cat "$scratch/stdout" "$scratch/stderr" >&2
+    exit 1
+  fi
+  grep -Fx '{"status":"error","error":"Error: --otel endpoint \u0027invalid-endpoint\u0027 is not a valid absolute URI."}' "$scratch/stderr"
 done

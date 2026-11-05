@@ -15,6 +15,9 @@ files="$(rpm -qlp "$package")"
 for required in /usr/bin/cosmosdbshell /usr/libexec/cosmosdbshell/CosmosDBShell /usr/libexec/cosmosdbshell/CosmosDBShell.dll; do
   grep -Fx "$required" <<<"$files"
 done
+for assembly in OpenTelemetry.dll OpenTelemetry.Api.dll OpenTelemetry.Api.ProviderBuilderExtensions.dll OpenTelemetry.Exporter.OpenTelemetryProtocol.dll; do
+  grep -Fx "/usr/libexec/cosmosdbshell/$assembly" <<<"$files"
+done
 if grep -Eq 'libmsalruntime\.so|/(ModelContextProtocol|OmniSharp|Azure\.Identity\.Broker|Microsoft\.Identity\.Client\.Broker).*\.dll$' <<<"$files"; then
   echo "$(basename "$package") contains an excluded feature assembly or native MSAL runtime." >&2
   exit 1
