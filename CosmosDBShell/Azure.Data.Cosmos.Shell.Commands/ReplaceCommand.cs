@@ -113,6 +113,7 @@ internal class ReplaceCommand : CosmosCommand
     {
         int successCount = 0;
         int failCount = 0;
+        bool hasUsageError = false;
         double charge = 0.0;
 
         foreach (var element in arrayRoot.EnumerateArray())
@@ -125,6 +126,7 @@ internal class ReplaceCommand : CosmosCommand
             }
             catch (CommandException ex)
             {
+                hasUsageError |= ShellExitCode.FromException(ex) == ShellExitCode.UsageError;
                 RequestChargeContext.Record(RequestChargeContext.GetCosmosExceptionCharge(ex));
                 failCount++;
                 ShellInterpreter.WriteLine(ex.Message);
@@ -149,14 +151,15 @@ internal class ReplaceCommand : CosmosCommand
         {
             ShellInterpreter.WriteLine(summary);
             RequestChargeContext.Record(charge);
-            throw new CommandException(
-                "replace",
-                MessageService.GetArgsString(
-                    "command-replace-error-array_failed",
-                    "failed",
-                    failCount,
-                    "total",
-                    successCount + failCount));
+            var message = MessageService.GetArgsString(
+                "command-replace-error-array_failed",
+                "failed",
+                failCount,
+                "total",
+                successCount + failCount);
+            throw hasUsageError
+                ? CommandException.Usage("replace", message)
+                : new CommandException("replace", message);
         }
 
         return new ReplaceSummary(successCount, failCount, charge, summary);

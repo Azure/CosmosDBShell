@@ -18,6 +18,55 @@ using Spectre.Console;
 [Collection(ConsoleOutputTestCollection.Name)]
 public class CommandStatusOutputTests
 {
+    [Theory]
+    [InlineData(".json", false)]
+    [InlineData(".csv", false)]
+    [InlineData(".json", true)]
+    [InlineData(".csv", true)]
+    public async Task Export_ShowsAbsoluteDestinationAndPreservesStructuredFile(string extension, bool absolute)
+    {
+        var relativePath = Path.Join(".", $"cosmos-export-[{Guid.NewGuid():N}] test{extension}");
+        var fullPath = Path.GetFullPath(relativePath);
+        var suppliedPath = absolute ? fullPath : relativePath;
+        using var shell = CreateShell();
+        var originalOut = Console.Out;
+        using var output = new StringWriter();
+        try
+        {
+            Console.SetOut(output);
+            var state = await new ExportCommand { File = suppliedPath }.ExecuteAsync(
+                shell, new CommandState(), "export", TestContext.Current.CancellationToken);
+
+            Assert.Empty(output.ToString());
+            var result = Assert.IsType<ShellJson>(state.Result).Value;
+            Assert.Equal(suppliedPath, result.GetProperty("file").GetString());
+            Assert.Equal(["type", "file", "exported", "requestCharge"], result.EnumerateObject().Select(property => property.Name));
+            Assert.Equal(1, result.GetProperty("exported").GetInt32());
+            Assert.True(File.Exists(fullPath));
+            var exported = await File.ReadAllTextAsync(fullPath, TestContext.Current.CancellationToken);
+            if (extension == ".json")
+            {
+                using var document = JsonDocument.Parse(exported);
+                Assert.Equal("a", document.RootElement[0].GetProperty("id").GetString());
+            }
+            else
+            {
+                Assert.Equal("\"id\"\n\"a\"\n", exported);
+            }
+
+            Assert.NotNull(state.RenderUser);
+            state.RenderUser();
+            var expected = MessageService.GetArgsString(
+                "command-export-success", "count", 1, "file", fullPath, "charge", "0.00");
+            Assert.Equal(expected + Environment.NewLine, output.ToString());
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            File.Delete(fullPath);
+        }
+    }
+
     public static IEnumerable<object?[]> StatusCases()
     {
         string[] commands =
@@ -308,6 +357,25 @@ public class CommandStatusOutputTests
         }
     }
 
+    [Theory]
+    [InlineData("[{}]", HttpStatusCode.OK, ShellExitCode.UsageError)]
+    [InlineData("[42]", HttpStatusCode.OK, ShellExitCode.UsageError)]
+    [InlineData("[{\"id\":\"\"}]", HttpStatusCode.OK, ShellExitCode.UsageError)]
+    [InlineData("[{\"id\":\"a\",\"pk\":\"x\"},{}]", HttpStatusCode.OK, ShellExitCode.UsageError)]
+    [InlineData("[{\"id\":\"a\",\"pk\":\"x\"},{}]", HttpStatusCode.BadRequest, ShellExitCode.UsageError)]
+    [InlineData("[{\"id\":\"a\",\"pk\":\"x\"}]", HttpStatusCode.BadRequest, ShellExitCode.GeneralFailure)]
+    [InlineData("[{\"id\":\"a\",\"pk\":\"x\"}]", HttpStatusCode.NotFound, ShellExitCode.GeneralFailure)]
+    public async Task ReplaceArray_PreservesValidationFailureClassification(string data, HttpStatusCode serviceStatus, int exitCode)
+    {
+        using var shell = CreateShell(replaceStatus: serviceStatus);
+        var command = new ReplaceCommand { Data = data };
+
+        var error = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), string.Empty, TestContext.Current.CancellationToken));
+
+        Assert.Equal(exitCode, ShellExitCode.FromException(error));
+    }
+
     private static CosmosCommand CreateCommand(string name, string file)
     {
         const string item = "{\"id\":\"a\",\"pk\":\"x\"}";
@@ -333,7 +401,7 @@ public class CommandStatusOutputTests
         };
     }
 
-    private static ShellInterpreter CreateShell(int? ttl = 3600, ConflictResolutionPolicy? conflictPolicy = null)
+    private static ShellInterpreter CreateShell(int? ttl = 3600, ConflictResolutionPolicy? conflictPolicy = null, HttpStatusCode replaceStatus = HttpStatusCode.OK)
     {
         var client = Substitute.For<CosmosClient>();
         client.Endpoint.Returns(new Uri("https://example.documents.azure.com"));
@@ -364,7 +432,7 @@ public class CommandStatusOutputTests
         container.UpsertItemStreamAsync(Arg.Any<Stream>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
             .Returns(_ => new ResponseMessage(HttpStatusCode.OK));
         container.ReplaceItemStreamAsync(Arg.Any<Stream>(), Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ => new ResponseMessage(HttpStatusCode.OK));
+            .Returns(_ => new ResponseMessage(replaceStatus));
         var patched = Substitute.For<ItemResponse<JsonElement>>();
         patched.StatusCode.Returns(HttpStatusCode.OK);
         container.PatchItemAsync<JsonElement>(Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<IReadOnlyList<PatchOperation>>(), Arg.Any<PatchItemRequestOptions>(), Arg.Any<CancellationToken>())

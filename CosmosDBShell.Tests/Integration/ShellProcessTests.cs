@@ -70,7 +70,7 @@ public class ShellProcessTests
     [Fact]
     public async Task ImportDryRun_MissingFile_RemainsOperationalFailure()
     {
-        var file = Path.Combine(Path.GetTempPath(), $"missing-usage-test-{Guid.NewGuid():N}.json");
+        var file = Path.Join(Path.GetTempPath(), $"missing-usage-test-{Guid.NewGuid():N}.json");
         var result = await RunShellAsync(
             stdinScript: null,
             extraArgs: ["--output", "json", "-c", $"import {JsonSerializer.Serialize(file)} --dry-run"],

@@ -143,6 +143,12 @@ internal class ToolOperations
                 propertySchema["minimum"] = JsonSerializer.SerializeToNode(option.MinimumValue);
             }
 
+            if (command.CommandName is "import" or "export" && option.MatchesArgument("format"))
+            {
+                propertySchema["enum"] = JsonSerializer.SerializeToNode(
+                    Enum.GetNames<OutputFormat>().Select(name => name.ToLowerInvariant()));
+            }
+
             if (IsPagedMaxOption(command, option))
             {
                 propertySchema["minimum"] = 1;

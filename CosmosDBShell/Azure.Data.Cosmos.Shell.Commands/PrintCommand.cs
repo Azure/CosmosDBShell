@@ -114,11 +114,15 @@ internal class PrintCommand : CosmosCommand
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
-                throw new CommandException("print", MessageService.GetString("command-print-error-item_not_found", new Dictionary<string, object>
+                var message = MessageService.GetString("command-print-error-item_not_found", new Dictionary<string, object>
                 {
                     { "id", this.Id ?? "(null)" },
                     { "partitionKey", this.PartitionKey ?? "(null)" },
-                }));
+                });
+                throw new CommandException(
+                    "print",
+                    message,
+                    new global::Azure.RequestFailedException((int)response.StatusCode, message));
             }
             else
             {
