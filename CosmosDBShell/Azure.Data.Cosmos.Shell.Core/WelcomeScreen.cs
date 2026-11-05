@@ -16,6 +16,12 @@ internal static class WelcomeScreen
 
     internal static string Render(string template, string version, Func<string, string> getString)
     {
+        var isPrerelease = ShellInterpreter.IsPrereleaseVersion(version);
+        template = Regex.Replace(
+            template,
+            @"\{\{PREVIEW\}\}(.*?)\{\{END_PREVIEW\}\}",
+            match => isPrerelease ? match.Groups[1].Value : string.Empty,
+            RegexOptions.Singleline);
         return Regex.Replace(
             template,
             @"\{\{(VERSION|shell-welcome-[a-z-]+)\}\}",

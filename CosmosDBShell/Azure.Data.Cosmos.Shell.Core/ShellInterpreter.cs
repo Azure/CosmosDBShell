@@ -19,6 +19,7 @@ using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Core;
 using global::Azure.Identity;
 using Microsoft.Azure.Cosmos;
+using NuGet.Versioning;
 using RadLine;
 using Spectre.Console;
 
@@ -1014,6 +1015,11 @@ public partial class ShellInterpreter : IDisposable
         return assembly.GetName().Version?.ToString() ?? "unknown";
     }
 
+    internal static bool IsPrereleaseVersion(string version)
+    {
+        return NuGetVersion.TryParse(version, out var parsedVersion) && parsedVersion.IsPrerelease;
+    }
+
     internal static string GetDisplayCommit(Assembly assembly)
     {
         return ExtractCommitMetadata(assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion);
@@ -1190,7 +1196,11 @@ public partial class ShellInterpreter : IDisposable
 
     internal void PrintStartupStatus()
     {
-        var version = GetDisplayVersion(typeof(VersionCommand).Assembly);
+        this.PrintStartupStatus(GetDisplayVersion(typeof(VersionCommand).Assembly));
+    }
+
+    internal void PrintStartupStatus(string version)
+    {
         var mcpStatus = this.McpPort is int port
             ? MessageService.GetArgsString("shell-startup-mcp-port", "port", port.ToString())
             : MessageService.GetString("shell-startup-mcp-off");
@@ -1200,7 +1210,10 @@ public partial class ShellInterpreter : IDisposable
             version,
             "mcp_status",
             mcpStatus));
-        WriteLine(MessageService.GetString("shell-startup-preview-warning"));
+        if (IsPrereleaseVersion(version))
+        {
+            WriteLine(MessageService.GetString("shell-startup-preview-warning"));
+        }
     }
 
     internal async Task<int> RunAsync()

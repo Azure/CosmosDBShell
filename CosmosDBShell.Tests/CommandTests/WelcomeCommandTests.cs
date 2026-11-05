@@ -18,7 +18,10 @@ public sealed class WelcomeCommandTests
     {
         var expectedVersion = ShellInterpreter.GetDisplayVersion(typeof(WelcomeScreen).Assembly);
 
-        Assert.Contains($"{MessageService.GetString("shell-welcome-preview")} {expectedVersion}", WelcomeScreen.Text, StringComparison.Ordinal);
+        Assert.Contains(expectedVersion, WelcomeScreen.Text, StringComparison.Ordinal);
+        Assert.Equal(
+            ShellInterpreter.IsPrereleaseVersion(expectedVersion),
+            WelcomeScreen.Text.Contains(MessageService.GetString("shell-welcome-preview"), StringComparison.Ordinal));
         Assert.DoesNotContain("{{", WelcomeScreen.Text, StringComparison.Ordinal);
         Assert.Contains(MessageService.GetString("shell-welcome-start"), WelcomeScreen.Text, StringComparison.Ordinal);
         Assert.Contains(MessageService.GetString("shell-welcome-resources"), WelcomeScreen.Text, StringComparison.Ordinal);
@@ -34,7 +37,7 @@ public sealed class WelcomeCommandTests
         using var reader = new StreamReader(stream);
         var keys = new HashSet<string>();
 
-        var rendered = WelcomeScreen.Render(reader.ReadToEnd(), "1.2.3", key =>
+        var rendered = WelcomeScreen.Render(reader.ReadToEnd(), "1.2.3-preview", key =>
         {
             keys.Add(key);
             return "translated:" + key;
@@ -43,11 +46,36 @@ public sealed class WelcomeCommandTests
         Assert.Equal(15, keys.Count);
         Assert.DoesNotContain("{{", rendered, StringComparison.Ordinal);
         Assert.Contains("translated:shell-welcome-start", rendered, StringComparison.Ordinal);
-        Assert.Contains("translated:shell-welcome-preview 1.2.3", rendered, StringComparison.Ordinal);
+        Assert.Contains("translated:shell-welcome-preview 1.2.3-preview", rendered, StringComparison.Ordinal);
         Assert.Contains("connect <endpoint>", rendered, StringComparison.Ordinal);
         Assert.Contains("query \"SELECT * FROM c\"", rendered, StringComparison.Ordinal);
         Assert.Contains("https://github.com/Azure/CosmosDBShell", rendered, StringComparison.Ordinal);
         Assert.Contains("\u001b[", rendered, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("1.2.3", false)]
+    [InlineData("1.2.3+preview", false)]
+    [InlineData("1.2.3-preview", true)]
+    [InlineData("1.2.3-preview.2+abc", true)]
+    [InlineData("1.2.3-beta.1", true)]
+    [InlineData("1.2.3-rc.1", true)]
+    [InlineData("unknown", false)]
+    public void WelcomeScreen_RenderShowsPreviewTextOnlyForPrereleases(string version, bool isPrerelease)
+    {
+        var assembly = typeof(WelcomeScreen).Assembly;
+        var resourceName = Assert.Single(assembly.GetManifestResourceNames(), name => name.EndsWith("cosmos_welcome.ans", StringComparison.Ordinal));
+        using var stream = assembly.GetManifestResourceStream(resourceName)!;
+        using var reader = new StreamReader(stream);
+
+        var rendered = WelcomeScreen.Render(reader.ReadToEnd(), version, key => MessageService.GetString(key));
+
+        Assert.DoesNotContain("{{", rendered, StringComparison.Ordinal);
+        Assert.Equal(isPrerelease, rendered.Contains(MessageService.GetString("shell-welcome-preview"), StringComparison.Ordinal));
+        Assert.Equal(isPrerelease, rendered.Contains(MessageService.GetString("shell-welcome-preview-warning"), StringComparison.Ordinal));
+        var lines = Regex.Replace(rendered, @"\x1b\[[0-9;]*m", string.Empty).ReplaceLineEndings("\n").Split('\n');
+        Assert.Contains(isPrerelease ? $"{MessageService.GetString("shell-welcome-preview")} {version}" : version, lines);
+        Assert.Contains(MessageService.GetString("shell-welcome-start"), rendered, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -133,8 +161,15 @@ public sealed class WelcomeCommandTests
         }
     }
 
-    [Fact]
-    public void PrintStartupStatus_PrintsPreviewWarningBelowVersion()
+    [Theory]
+    [InlineData("1.2.3", false)]
+    [InlineData("1.2.3+preview", false)]
+    [InlineData("1.2.3-preview", true)]
+    [InlineData("1.2.3-preview.2+abc", true)]
+    [InlineData("1.2.3-beta.1", true)]
+    [InlineData("1.2.3-rc.1", true)]
+    [InlineData("unknown", false)]
+    public void PrintStartupStatus_PrintsPreviewWarningOnlyForPrereleases(string version, bool isPrerelease)
     {
         var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-welcome-{Guid.NewGuid():N}");
         var originalOut = Console.Out;
@@ -145,21 +180,20 @@ public sealed class WelcomeCommandTests
             Console.SetOut(output);
             using var shell = new ShellInterpreter(configPath);
 
-            shell.PrintStartupStatus();
+            shell.PrintStartupStatus(version);
 
             var status = output.ToString();
             Assert.StartsWith(
                 MessageService.GetArgsString(
                     "shell-startup-status",
-                    "version", ShellInterpreter.GetDisplayVersion(typeof(ShellInterpreter).Assembly),
+                    "version", version,
                     "mcp_status", MessageService.GetString("shell-startup-mcp-off")),
                 status,
                 StringComparison.Ordinal);
-            Assert.Contains(
-                $"{Environment.NewLine}{MessageService.GetString("shell-startup-preview-warning")}{Environment.NewLine}",
-                status,
-                StringComparison.Ordinal);
-            Assert.Equal(2, status.Count(character => character == '\n'));
+            Assert.Equal(
+                isPrerelease,
+                status.Contains($"{Environment.NewLine}{MessageService.GetString("shell-startup-preview-warning")}{Environment.NewLine}", StringComparison.Ordinal));
+            Assert.Equal(isPrerelease ? 2 : 1, status.Count(character => character == '\n'));
         }
         finally
         {

@@ -1926,6 +1926,8 @@ Usage: welcome
 
 The welcome screen is shown automatically on the first interactive startup. Later
 startups show a compact line containing the shell version and MCP server status.
+The welcome screen and startup status show preview warnings only when the running
+version is a prerelease (for example, `-preview`, `-beta`, or `-rc`).
 
 ### cls
 
