@@ -12,6 +12,7 @@
 
 ### Fixes
 
+- Show endpoint-only account and emulator examples when running `connect` offline; keep the connection-string alternative in `help connect`. ([#270](https://github.com/Azure/CosmosDBShell/issues/270))
 - Add `help shortcuts` to list keyboard shortcuts, including history search with `Ctrl+R` and `Ctrl+S`; the `help` overview lists it under Help Topics. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
 - Show the absolute destination path in export success messages so exported files can be located. The structured result's `file` field continues to contain the supplied path. ([#269](https://github.com/Azure/CosmosDBShell/issues/269))
 

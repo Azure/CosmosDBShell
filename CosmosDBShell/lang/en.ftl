@@ -1728,6 +1728,7 @@ command-connect-example-5 = Connect using Entra ID with gateway connection mode
 command-connect-example-6 = Connect using a user-assigned managed identity
 command-connect-example-7 = Connect using the signed-in Azure CLI (az login) identity, bypassing managed identity
 command-connect-example-8 = Connect using Entra ID with an explicit Azure Resource Manager subscription and resource group (skips ARM auto-discovery)
+command-connect-example-9 = Connect using Entra ID authentication with DefaultAzureCredential
 command-create-example-1 = Create a new container with partition key
 command-create-example-2 = Create database with autoscale throughput
 command-delete-example-1 = Delete items matching the pattern
