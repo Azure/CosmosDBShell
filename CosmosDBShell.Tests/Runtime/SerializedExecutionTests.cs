@@ -11,6 +11,9 @@ public class SerializedExecutionTests
     [InlineData("""connect "AccountEndpoint=https://example.documents.azure.com/;Account\u004Bey=example-key==;" """)]
     [InlineData("""connect "AccountEndpoint=https://example.documents.azure.com/;AccountKey=\"example-key==\";" """)]
     [InlineData("""connect "AccountEndpoint=https://example.documents.azure.com/;AccountKey=example\u002Dkey==;" """)]
+    [InlineData("""$AccountKey = ('example-key==')""")]
+    [InlineData("""$credentials = {"AccountKey": ('example-key==')}""")]
+    [InlineData("""echo $"Bearer $('example-key==')" """)]
     public void PrintCommand_MasksEscapedCredentialsInNewAndLegacyHistory(string command)
     {
         var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-history-{Guid.NewGuid():N}");

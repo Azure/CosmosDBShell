@@ -19,6 +19,10 @@ internal static class SecretRedactor
         "(?i)(Bearer\\s+)[A-Za-z0-9._~+/=-]+",
         RegexOptions.Compiled);
 
+    private static readonly Regex InterpolatedBearerPattern = new(
+        "(?i)(Bearer\\s+)(?=[A-Za-z0-9._~+/=$-])",
+        RegexOptions.Compiled);
+
     private static readonly Regex ConnectionCredentialPattern = new(
         """(?i)(\b(?:AccountKey|SharedAccessKey|ResourceToken)["']?\s*[=:]\s*["']?)[^;"']+""",
         RegexOptions.Compiled);
@@ -48,15 +52,16 @@ internal static class SecretRedactor
         for (var index = 0; index < tokens.Length; index++)
         {
             var token = tokens[index];
-            if (token.Type is not (TokenType.String or TokenType.InterpolatedString))
+            var isCredentialValue = index >= 2
+                && tokens[index - 1].Value is ":" or "="
+                && IsCredentialName(tokens[index - 2].Value)
+                && (token.Type is TokenType.String or TokenType.InterpolatedString or TokenType.OpenParenthesis
+                    || tokens[index - 2].Value.StartsWith('$') || tokens[index - 1].Type == TokenType.Colon);
+            if (!isCredentialValue && token.Type is not (TokenType.String or TokenType.InterpolatedString))
             {
                 continue;
             }
 
-            var raw = value.Substring(token.Start, token.Length);
-            var isCredentialValue = index >= 2
-                && tokens[index - 1].Value is ":" or "="
-                && IsCredentialName(tokens[index - 2].Value);
             if (isCredentialValue)
             {
                 var nameStart = Math.Max(offset, tokens[index - 2].Start);
@@ -65,9 +70,21 @@ internal static class SecretRedactor
                 result.Append(value.AsSpan(nameStart, separatorEnd - nameStart));
                 result.Append(MaskHistoryCredentials(value[separatorEnd..token.Start]));
                 result.Append(ShellLiteral.Quote("[REDACTED]"));
+                var expressionLexer = new Lexer(value[token.Start..]);
+                var expression = new ExpressionParser(expressionLexer).ParseExpression();
+                offset = expressionLexer.Errors.HasErrors
+                    ? value.Length
+                    : token.Start + expression.Start + expression.Length;
+                while (index + 1 < tokens.Length && tokens[index + 1].Start < offset)
+                {
+                    index++;
+                }
+
+                continue;
             }
             else
             {
+                var raw = value.Substring(token.Start, token.Length);
                 result.Append(MaskHistoryCredentials(value[offset..token.Start]));
                 if (token.Type == TokenType.InterpolatedString)
                 {
@@ -119,16 +136,16 @@ internal static class SecretRedactor
     {
         var sourceMap = lexer.GetInterpolatedStringSourceMap(token)!;
         var ranges = new List<(int Start, int End)>();
-        foreach (var pattern in new[] { JwtPattern, BearerPattern, ConnectionCredentialPattern, HistorySignaturePattern })
+        foreach (var pattern in new[] { JwtPattern, InterpolatedBearerPattern, ConnectionCredentialPattern, HistorySignaturePattern })
         {
             foreach (Match match in pattern.Matches(token.Value))
             {
                 var prefixLength = match.Groups.Count > 1 ? match.Groups[1].Length : 0;
                 var start = sourceMap[match.Index + prefixLength] - token.Start;
                 var endIndex = match.Index + match.Length;
-                if (pattern == ConnectionCredentialPattern || pattern == HistorySignaturePattern)
+                if (pattern != JwtPattern)
                 {
-                    endIndex = FindInterpolatedCredentialEnd(token.Value, match.Index + prefixLength, pattern == HistorySignaturePattern);
+                    endIndex = FindInterpolatedCredentialEnd(token.Value, match.Index + prefixLength, pattern);
                 }
 
                 var end = endIndex < sourceMap.Count
@@ -154,12 +171,17 @@ internal static class SecretRedactor
         return result.Append(raw.AsSpan(offset)).ToString();
     }
 
-    private static int FindInterpolatedCredentialEnd(string value, int start, bool isSignature)
+    private static int FindInterpolatedCredentialEnd(string value, int start, Regex pattern)
     {
         for (var index = start; index < value.Length; index++)
         {
             var ch = value[index];
-            if (ch is '"' or '\'' || (isSignature ? ch is '&' or '<' or '>' || char.IsWhiteSpace(ch) : ch == ';'))
+            var isDelimiter = pattern == ConnectionCredentialPattern
+                ? ch is ';' or '"' or '\''
+                : pattern == HistorySignaturePattern
+                    ? ch is '&' or '<' or '>' or '"' or '\'' || char.IsWhiteSpace(ch)
+                    : !char.IsAsciiLetterOrDigit(ch) && !"._~+/=$-".Contains(ch);
+            if (isDelimiter)
             {
                 return index;
             }

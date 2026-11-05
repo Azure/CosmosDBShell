@@ -139,4 +139,36 @@ public class SecretRedactorTests
         Assert.Single(lexer.Tokenize(), token => token.Type == TokenType.InterpolatedString);
         Assert.False(lexer.Errors.HasErrors);
     }
+
+    [Theory]
+    [InlineData("$('example-token')")]
+    [InlineData("prefix$('example-token')suffix")]
+    [InlineData("$((('example-token')))")]
+    public void MaskHistory_RedactsCompleteInterpolatedBearerValues(string credential)
+    {
+        var command = "echo $\"Bearer " + credential + " Label=$label\"";
+        const string expected = "echo $\"Bearer [REDACTED] Label=$label\"";
+
+        var masked = SecretRedactor.MaskHistory(command);
+
+        Assert.Equal(expected, masked);
+        Assert.Equal(masked, SecretRedactor.MaskHistory(masked));
+    }
+
+    [Theory]
+    [InlineData("""$AccountKey = ('example-key=='); echo 'unchanged'""", """$AccountKey = "[REDACTED]"; echo 'unchanged'""")]
+    [InlineData("""$SharedAccessKey = (('example-key==')); echo 'unchanged'""", """$SharedAccessKey = "[REDACTED]"; echo 'unchanged'""")]
+    [InlineData("""$ResourceToken = 'example-key==' + 'suffix'; echo 'unchanged'""", """$ResourceToken = "[REDACTED]"; echo 'unchanged'""")]
+    [InlineData("""$data = {"AccountKey": ('example-key=='), "label": "unchanged"}""", """$data = {"AccountKey": "[REDACTED]", "label": "unchanged"}""")]
+    [InlineData("""$AccountKey = ('example-key==') + ('suffix'); echo 'unchanged'""", """$AccountKey = "[REDACTED]"; echo 'unchanged'""")]
+    public void MaskHistory_RedactsCompleteCredentialExpressionsAndPreservesSyntax(string command, string expected)
+    {
+        var masked = SecretRedactor.MaskHistory(command);
+
+        Assert.Equal(expected, masked);
+        Assert.Equal(masked, SecretRedactor.MaskHistory(masked));
+        var parser = new StatementParser(masked);
+        _ = parser.ParseStatements();
+        Assert.False(parser.Errors.HasErrors);
+    }
 }

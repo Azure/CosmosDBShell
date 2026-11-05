@@ -250,7 +250,9 @@ history entries, including escaped credential names and values in string literal
 and object properties, named credential variables such as `$AccountKey`, and
 properties separated from their values by newlines or comments. Credential values
 containing interpolation expressions are masked in full. Non-secret interpolation expressions are preserved. Excessively
-nested quoted text is masked in full.
+nested quoted text is masked in full. Credential assignments and properties also
+mask grouped and combined value expressions, and bearer credentials with interpolation
+are masked as complete values.
 Ordinary query predicates on fields such as `token`, `password`, or `secret`
 are not treated as connection credentials. The command being executed is unchanged; to reuse a masked
 connection from history, supply a fresh key or use Entra ID.
