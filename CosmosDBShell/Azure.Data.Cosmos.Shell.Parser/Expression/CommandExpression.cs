@@ -156,6 +156,9 @@ internal class CommandExpression : Expression
     /// </summary>
     internal async Task<CommandState> ExecuteCommandAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
+        // Arguments can read caller JSON paths; execution only inherits an expression-level pipe.
+        var expressionState = CreateExecutionState(commandState);
+
         // Check for user-defined functions first
         if (shell.Functions.TryGetValue(this.Name, out var function))
         {
@@ -166,7 +169,7 @@ internal class CommandExpression : Expression
                 args.Add(evaluated);
             }
 
-            var functionResult = await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
+            var functionResult = await function.ExecuteCallAsync(shell, expressionState, token, this.Start, args.ToArray());
             functionResult.ShareWarningsFrom(commandState);
             return functionResult;
         }
@@ -175,7 +178,7 @@ internal class CommandExpression : Expression
         if (shell.App.Commands.TryGetValue(this.Name, out var factory))
         {
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
-            return await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token, factory.IsExternal);
+            return await shell.ExecuteCosmosCommandAsync(cmd, expressionState, string.Empty, token, factory.IsExternal);
         }
 
         // Check for script files
@@ -217,6 +220,18 @@ internal class CommandExpression : Expression
     {
         var statement = new CommandStatement(this.CommandToken);
         statement.Arguments.AddRange(this.Arguments);
-        return statement.RunScriptAsync(shell, commandState, token, renderOutput: false);
+        var executionState = CreateExecutionState(commandState);
+        return statement.RunScriptAsync(shell, commandState, token, renderOutput: false, executionState: executionState);
+    }
+
+    private static CommandState CreateExecutionState(CommandState caller)
+    {
+        var state = new CommandState
+        {
+            Result = caller.HasExpressionPipelineInput ? caller.Result : null,
+            HasPipelineInput = caller.HasExpressionPipelineInput,
+        };
+        state.ShareWarningsFrom(caller);
+        return state;
     }
 }

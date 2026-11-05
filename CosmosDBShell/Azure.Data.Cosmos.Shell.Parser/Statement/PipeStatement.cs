@@ -82,7 +82,7 @@ internal class PipeStatement : Statement
     /// </remarks>
     public override async Task<CommandState> RunAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
     {
-        foreach (var statement in this.Statements)
+        for (var index = 0; index < this.Statements.Count; index++)
         {
             if (commandState.IsError || commandState.UserCancellationHandled || commandState.BreakBlock || commandState.ContinueBlock || commandState.ReturnFunc)
             {
@@ -90,7 +90,26 @@ internal class PipeStatement : Statement
             }
 
             token.ThrowIfCancellationRequested();
-            commandState = await statement.RunAsync(shell, commandState, token);
+            commandState.HasPipelineInput = index > 0 || commandState.HasPipelineInput;
+            var hadPipelineInput = commandState.HasPipelineInput;
+            var inputState = commandState;
+            var resultVersion = commandState.ResultVersion;
+            try
+            {
+                commandState = await this.Statements[index].RunAsync(shell, commandState, token);
+                if (!hadPipelineInput && ReferenceEquals(commandState, inputState) && commandState.ResultVersion == resultVersion)
+                {
+                    commandState.Result = null;
+                    commandState.RenderUser = null;
+                    commandState.RenderTabular = null;
+                    commandState.ResetOutputFormat();
+                    commandState.OutputRendered = false;
+                }
+            }
+            finally
+            {
+                commandState.HasPipelineInput = false;
+            }
         }
 
         if (commandState.IsError || commandState.UserCancellationHandled || commandState.BreakBlock || commandState.ContinueBlock || commandState.ReturnFunc)

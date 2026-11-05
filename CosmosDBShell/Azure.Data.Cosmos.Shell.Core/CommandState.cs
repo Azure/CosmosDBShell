@@ -16,6 +16,7 @@ using Azure.Data.Cosmos.Shell.Util;
 public partial class CommandState
 {
     private OutputFormat outputFormat;
+    private ShellObject? result;
     private List<CommandWarning> warnings = [];
     private HashSet<CommandWarning> warningSet = [];
     private Queue<CommandWarning> pendingWarnings = [];
@@ -61,7 +62,26 @@ public partial class CommandState
     /// </summary>
     internal bool OutputFormatExplicitlySet { get; private set; }
 
-    internal ShellObject? Result { get; set; }
+    internal ShellObject? Result
+    {
+        get
+        {
+            return this.result;
+        }
+
+        set
+        {
+            this.result = value;
+            this.ResultVersion++;
+        }
+    }
+
+    internal long ResultVersion { get; private set; }
+
+    // Set only by a pipe stage and consumed by the receiving command.
+    internal bool HasPipelineInput { get; set; }
+
+    internal bool HasExpressionPipelineInput { get; set; }
 
     internal List<CommandWarning> Warnings => this.warnings;
 
