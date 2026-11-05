@@ -11,7 +11,6 @@
 ### Fixes
 
 - Add `help shortcuts` to list keyboard shortcuts, including history search with `Ctrl+R` and `Ctrl+S`; the `help` overview lists it under Help Topics. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
-- Preserve every statement's output and file redirections in multi-statement startup commands and piped input, including output before a later runtime failure. Redirecting a whole script with `>` now keeps all its output instead of only the last result. ([#277](https://github.com/Azure/CosmosDBShell/issues/277))
 
 ### Improvements
 
