@@ -858,14 +858,7 @@ internal class QueryCommand : CosmosCommand, IPagedCommand
                             outFile = Path.ChangeExtension(shell.StdOutRedirect, "metrics2.csv");
                         }
 
-                        if (shell.AppendOutRedirection)
-                        {
-                            File.AppendAllText(outFile, sb.ToString());
-                        }
-                        else
-                        {
-                            File.WriteAllText(outFile, sb.ToString());
-                        }
+                        shell.WriteAuxiliaryOutput(outFile, sb.ToString());
                     }
                 }
                 else if (this.Metrics == MetricTarget.Display)

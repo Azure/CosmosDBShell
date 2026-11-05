@@ -18,6 +18,7 @@ using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.States;
 
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -31,6 +32,72 @@ using Spectre.Console;
 [Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class ToolOperationsCallToolTests : IDisposable
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteTool_ServiceFailure_LogsFullExceptionOnlyWhenVerbose(bool verbose)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var logger = new RecordingLogger();
+        var tool = new ToolOperations(logger, this.locationSubscriptions);
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Verbose = verbose };
+            var result = await tool.ExecuteToolAsync(
+                shell.App.Commands["mkcon"],
+                new Shell.ExecuteCommandExceptionTests.ServiceErrorTestCommand(),
+                "mkcon test /id", null,
+                TestContext.Current.CancellationToken);
+
+            var (isError, root, document) = ReadResult(result);
+            using (document)
+            {
+                Assert.True(isError);
+                Assert.Equal(
+                    $"Error executing command 'mkcon': {Shell.CommandExceptionServiceErrorTests.ThroughputMessage}",
+                    root.GetProperty("error").GetString());
+            }
+
+            var log = Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Error);
+            if (verbose)
+            {
+                var exception = Assert.IsAssignableFrom<Exception>(log.Exception);
+                Assert.Contains("/internal/replicas", exception.ToString());
+            }
+            else
+            {
+                Assert.Null(log.Exception);
+                Assert.DoesNotContain("ActivityId", log.Message);
+                Assert.Contains(Shell.CommandExceptionServiceErrorTests.ThroughputMessage, log.Message);
+            }
+        }
+        finally
+        {
+            shell.Options = originalOptions;
+        }
+    }
+
+    private sealed class RecordingLogger : ILogger<ToolOperations>
+    {
+        public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            this.Entries.Add((logLevel, formatter(state, exception), exception));
+        }
+    }
+
     private readonly LocationResourceSubscriptions locationSubscriptions =
         new(NullLogger<LocationResourceSubscriptions>.Instance);
 
