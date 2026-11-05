@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UseAppHost>false</UseAppHost>
+    <ShouldBeValidatedAsExecutableReference>false</ShouldBeValidatedAsExecutableReference>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Fluent.Net" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CosmosDBShell.Tests" />
+  </ItemGroup>
+
+</Project>

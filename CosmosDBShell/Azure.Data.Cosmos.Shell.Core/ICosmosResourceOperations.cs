@@ -14,9 +14,9 @@ internal interface ICosmosResourceOperations
 
     Task<bool> ContainerExistsAsync(string databaseName, string containerName, CancellationToken token);
 
-    Task<string> CreateDatabaseAsync(string databaseName, string? scale, int? maxRu, CancellationToken token);
+    Task<ResourceCreationResult> CreateDatabaseAsync(string databaseName, string? scale, int? maxRu, CancellationToken token);
 
-    Task<string> CreateContainerAsync(
+    Task<ResourceCreationResult> CreateContainerAsync(
         string databaseName,
         string containerName,
         IReadOnlyList<string> partitionKeyPaths,

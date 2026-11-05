@@ -12,6 +12,11 @@ There are **no folders inside a container** – containers hold items (JSON docu
 
 ## Moving Around
 
+`doctor` checks the current scope without navigating. Its `--database` and
+`--container` options select a diagnostic target only. An explicit database does not
+inherit the current container; specify both options to check another container.
+See [doctor troubleshooting](commands.md#doctor).
+
 ### The `ls` Command
 
 The `ls` command lists resources at the current level:
@@ -93,17 +98,23 @@ cd                           # return to root (connected state)
 
 ### The `pwd` Command
 
-The `pwd` command prints the current shell location:
+The `pwd` command prints the current Cosmos DB location and the local working directory, including when disconnected:
 
 ```bash
-pwd                  # not connected
+pwd                  # Cosmos location: not connected
 connect "AccountEndpoint=...;AccountKey=..."
-pwd                  # /
+pwd                  # Cosmos location: /
 cd ToDoList
-pwd                  # /ToDoList
+pwd                  # Cosmos location: /ToDoList
 cd Items
-pwd                  # /ToDoList/Items
+pwd                  # Cosmos location: /ToDoList/Items
 ```
+
+Each call also prints `Local directory: <absolute path>`, the base for relative paths used by commands such as `export`, `import`, and `dir`. Cosmos DB navigation with `cd` does not change it. Export success messages show the absolute destination path. For MCP, local paths refer to the machine running the shell server. Structured `pwd` results include this directory as `localDirectory` alongside the existing Cosmos location fields.
+
+### Reading an Item by ID
+
+For point reads, `print <id> <key>` accepts the established typed-key syntax. Inside Cosmos DB Shell, `print <id> 680` selects a number and `print <id> '"680"'` selects a string: outer shell quotes are removed, while the inner JSON quotes determine the key type. A complete hierarchical key is an ordered JSON array, for example `print <id> '[1001,"customer-1001"]'`. See [print](commands.md#print) for examples and validation rules.
 
 ## Pipes and JSON Flow
 
@@ -229,9 +240,13 @@ There is no separate "enter multi-line mode" command — the shell enters and le
 
 ### History
 
-Multi-line commands are saved to history as a single entry. When you recall one with `Up` / `Ctrl+P` or reverse-search (`Ctrl+R`), the full multi-line text is restored. History files written by older versions of the shell continue to load unchanged.
+Multi-line commands are saved to history as a single entry. When you recall one with `Up` / `Ctrl+P` or reverse-search (`Ctrl+R`), the full multi-line text is restored. History files written by older versions of the shell continue to load unchanged. Concurrent shells merge their saved entries into the shared history file. Saves and clears coordinate through `cmd_history.lock` and replace `cmd_history` only after the complete replacement has been written and flushed, so a failed write leaves the saved history intact. History saving remains best-effort; at most the newest 60 pending entries are retained for a later retry. A failed `--clear-history` reports an error and leaves the loaded history unchanged.
+
+Commands are stored in full so they can be executed again, including connection strings containing account keys. Treat the `cmd_history` file in the shell configuration directory as sensitive: protect it with your user account's file permissions and do not share it. Temporary history files have owner-only permissions on Unix. On Windows, they are created with the existing history file's access rules, or owner-only access for a new history file, without inheriting broader directory permissions; those rules remain on the published file. Use Entra ID to avoid storing account keys, or `--clear-history` to clear the saved history. MCP tool invocations are echoed as command lines and recorded in the same history.
 
 ## Keyboard Shortcuts
+
+Run `help shortcuts` to see these shortcuts in the shell, grouped by History, Cursor Movement, Editing and Completion, and Shell. The `help` overview lists `shortcuts` under **Help Topics**. Structured results from `help shortcuts` include a `keyboardShortcuts` array with `group`, `shortcut`, and `description` fields, plus a `historySearch` note.
 
 Available at the interactive prompt:
 
@@ -251,6 +266,7 @@ Available at the interactive prompt:
 | `Ctrl+D` | Exit shell when prompt is empty; otherwise delete character under cursor |
 | `Ctrl+R` | Reverse search history (type to filter, repeat for older matches, Enter accepts, Esc/Ctrl+G/Ctrl+C cancels) |
 | `Ctrl+S` | Forward search history (type to filter, repeat for newer matches, Enter accepts, Esc/Ctrl+G/Ctrl+C cancels) |
+| `Ctrl+C` | Interrupt running work or discard pending multi-line input |
 
 ## CLI Arguments
 
@@ -272,13 +288,18 @@ Start the shell with options to customize behavior:
 | `--connect-resource-group <name>` | Azure resource group name for ARM database and container operations at startup |
 | `--database <id>` | Navigate to this database after connecting at startup |
 | `--container <id>` | Navigate to this container after connecting at startup. Requires `--database` |
-| `--mcp [port]` | Enable MCP (Model Context Protocol) server on the given port, or `6128` by default |
+| `--mcp [port]` | Enable MCP server with Streamable HTTP and legacy SSE on the given port, or `6128` by default |
 | `--diagnostics [path]` | Write timestamped diagnostic logs (commands, timing, errors, connection events) to a file, or to a timestamped file in the config directory by default |
 | `--otel [endpoint]` | Enable distributed tracing so requests carry a sampled W3C `traceparent`. Optionally export spans to an OTLP `endpoint`; falls back to the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable |
 | `--color-system <n>` | Color scheme: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
 | `--clear-history` | Clear command history on start |
 | `--help` | Show usage information |
 | `--version` | Show version |
+
+The internal `cosmosdbshell-lite` RPM does not include MCP or LSP. Its `--mcp`,
+`--lsp`, and `--stdio` options return usage exit code `2` before connecting or
+starting diagnostic logging. In machine mode (for example, `--output json`),
+the error is a JSON object on stderr and stdout remains empty.
 
 ### Machine Mode And Exit Codes
 
@@ -292,8 +313,19 @@ output. **Machine mode** is entered when any of the following is true:
 In machine mode the shell disables ANSI colors, suppresses connection/informational
 banners, emits command results as the selected structured format (JSON or CSV) on `STDOUT`,
 and writes early parser/connection failures as a structured `{ "status": "error", "error": ... }`
-object on `STDERR`. The human-facing `user` and `table` formats are not machine mode; `user`
+object on `STDERR`. Inferred partition-key mutation warnings are emitted before writes as
+JSON Lines records on console stderr; a later error is emitted as a separate JSON record.
+The human-facing `user` and `table` formats are not machine mode; `user`
 falls back to JSON whenever output is redirected, piped, or run in machine mode.
+
+In normal `user` mode, command confirmations and status messages are readable text,
+not JSON status objects. Commands that display document or policy data can still show
+that data as JSON. Where supported, a command's `--format` / `-f` selects its result
+presentation and overrides the shell default. On `import` and `export`, it formats
+the summary, not file contents: a `.csv` export file name writes CSV and any other name
+writes a JSON array. Import automatically detects JSON arrays, single objects, and
+sequences of objects (including JSON Lines and multiple objects on one line); no
+input-format flag is needed.
 
 Bare piped stdin (for example `echo "..." | cosmosdbshell`) is **not** implicitly machine
 mode; pass `-c`, `--output json`, or `--quiet` to opt into structured output.
@@ -313,6 +345,12 @@ or `$LASTEXITCODE`):
 
 These values are a public contract. See the [CI/CD guide](ci.md#exit-code-contract) for install steps, auth patterns, and scripted failure handling.
 
+Ctrl+C interrupts commands started with `-c`, `-k`, or redirected stdin. An interrupted startup command returns a nonzero exit code and stops any following startup command; structured partial write results, including settled import counts and observed RUs, remain visible. Canceled partial results are not written as successful redirected output. Successful writes are not rolled back, and canceled in-flight writes may require reconciliation before retrying. Stopping `watch` with Ctrl+C is intentional and remains successful; enclosing pipelines, blocks, and scripts stop without running subsequent work. An interrupted stdin script also skips any separately supplied `-c` or `-k` command, even when `watch` handled the interruption successfully.
+
+Interruption also applies while stdin is still being read and while a confirmation prompt is waiting. At a confirmation, `n` or Escape declines normally; Ctrl+C interrupts the operation. Stopping a `watch` expression stops its enclosing assignment or command before it changes a variable or performs subsequent work. Interrupt markers are not written to machine-readable or redirected stdout.
+
+Scripted `bulk` writes require `--yes`; use `--dry-run` to preview first. Bulk operations are not transactional, and an exhausted observed RU budget returns exit code `6`. Supply `--journal` on the original run and reuse that same journal to resume; without it, reconcile completed writes before retrying. See [bulk operations](commands.md#bulk) for recovery and partial-success semantics.
+
 ### Environment Variables
 
 | Variable | Description |
@@ -320,6 +358,7 @@ These values are a public contract. See the [CI/CD guide](ci.md#exit-code-contra
 | `COSMOSDB_SHELL_TOKEN` | Pre-obtained Entra ID access token (JWT) for single-shot auth |
 | `COSMOSDB_SHELL_ACCOUNT_KEY` | Account key for authentication |
 | `COSMOSDB_SHELL_CSVSEP` | CSV column separator |
+| `COSMOSDB_SHELL_CSV_SCALAR_COLUMN` | Header for non-object CSV export rows (empty by default) |
 | `COSMOSDB_SHELL_FORMAT` | Default output format (`user`, `json`, `table`, `csv`) used when `--output` is not supplied. Supplies a format only — it does not enable machine mode |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Default OTLP endpoint used by `--otel` when no endpoint is supplied |
 
@@ -343,6 +382,8 @@ cosmosdbshell --mcp
 
 # Start with MCP server enabled on a custom port
 cosmosdbshell --mcp 5050
+
+# The same server also accepts legacy clients at http://127.0.0.1:5050/sse
 
 # Capture a diagnostic log to the default location in the config directory
 cosmosdbshell --diagnostics

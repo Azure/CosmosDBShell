@@ -17,7 +17,7 @@ using Spectre.Console;
 /// waits for the editor to close. The file is created when it does not yet exist.
 /// </summary>
 [CosmosCommand("edit")]
-[CosmosExample("edit deploy.csh", Description = "Open deploy.csh in $EDITOR, creating it if needed")]
+[CosmosExample("edit deploy.csh", DescriptionKey = "command-edit-example-1")]
 [McpAnnotation(Restricted = true)]
 internal class EditCommand : CosmosCommand
 {
@@ -31,7 +31,7 @@ internal class EditCommand : CosmosCommand
             throw new CommandException("edit", MessageService.GetString("command-edit-missing-path"));
         }
 
-        if (Console.IsInputRedirected || !string.IsNullOrEmpty(shell.CurrentScriptFileName))
+        if (shell.IsInputRedirected() || !string.IsNullOrEmpty(shell.CurrentScriptFileName))
         {
             var message = MessageService.GetString("command-edit-not-interactive");
             AnsiConsole.MarkupLine(Theme.FormatError(message));
@@ -78,6 +78,7 @@ internal class EditCommand : CosmosCommand
         int exitCode;
         try
         {
+            using var pause = shell.PauseOperationTimeout();
             using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = editor.FileName,

@@ -53,6 +53,36 @@ public class SprocCommandTests
     }
 
     [Theory]
+    [InlineData("")]
+    [InlineData("  \r\n ")]
+    public async Task ReadExecResultAsync_EmptyBody_ReturnsNull(string body)
+    {
+        using var content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(body));
+
+        var result = await SprocCommand.ReadExecResultAsync(content, TestContext.Current.CancellationToken);
+
+        Assert.Equal(JsonValueKind.Null, result.ValueKind);
+    }
+
+    [Fact]
+    public async Task ReadExecResultAsync_NoContentStream_ReturnsNull()
+    {
+        var result = await SprocCommand.ReadExecResultAsync(null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(JsonValueKind.Null, result.ValueKind);
+    }
+
+    [Fact]
+    public async Task ReadExecResultAsync_JsonBody_ReturnsValue()
+    {
+        using var content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("{\"ok\":true}"));
+
+        var result = await SprocCommand.ReadExecResultAsync(content, TestContext.Current.CancellationToken);
+
+        Assert.True(result.GetProperty("ok").GetBoolean());
+    }
+
+    [Theory]
     [InlineData("not json")]
     [InlineData("{\"a\":1}")]
     [InlineData("\"justAString\"")]

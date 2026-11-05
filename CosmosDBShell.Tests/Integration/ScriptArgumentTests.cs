@@ -86,7 +86,7 @@ public class ScriptArgumentTests : IntegrationTestBase
         var tempDir = Path.Combine(Path.GetTempPath(), "CosmosShellIntTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var scriptPath = Path.Combine(tempDir, "control_flow.csh");
-        await File.WriteAllTextAsync(scriptPath, "$sum = 0\nfor $i in [1, 2, 3] {\n  $sum = ($sum + $i)\n}\nreturn $sum\n", TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(scriptPath, "$sum = 0\nfor $i in [1, 2, 3] {\n  $sum = ($sum + $i)\n}\nreturn $sum\ndef unreachable { return 0 }\n", TestContext.Current.CancellationToken);
 
         try
         {
@@ -94,6 +94,8 @@ public class ScriptArgumentTests : IntegrationTestBase
             var state = await cmd.RunAsync(Shell, new CommandState(), CancellationToken.None);
 
             Assert.False(state.IsError);
+            Assert.Equal(6, Assert.IsType<ShellNumber>(state.Result).Value);
+            Assert.False(Shell.Functions.ContainsKey("unreachable"));
         }
         finally
         {

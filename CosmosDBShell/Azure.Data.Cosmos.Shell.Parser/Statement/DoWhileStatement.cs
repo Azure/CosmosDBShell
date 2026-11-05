@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Parser;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 /// <summary>
 /// Represents a do-while loop statement that executes a statement at least once before checking a condition.
@@ -69,6 +70,7 @@ internal class DoWhileStatement : Statement
     {
         do
         {
+            token.ThrowIfCancellationRequested();
             try
             {
                 commandState = await this.Statement.RunAsync(shell, commandState, token);
@@ -77,7 +79,7 @@ internal class DoWhileStatement : Statement
             {
                 throw;
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
                 var content = shell.CurrentScriptContent;
                 var fileName = shell.CurrentScriptFileName;
@@ -90,6 +92,12 @@ internal class DoWhileStatement : Statement
                 throw;
             }
 
+            if (commandState.IsError || commandState.UserCancellationHandled || commandState.ReturnFunc)
+            {
+                return commandState;
+            }
+
+            commandState.ContinueBlock = false;
             if (commandState.BreakBlock)
             {
                 commandState.BreakBlock = false; // Reset break state
@@ -123,7 +131,7 @@ internal class DoWhileStatement : Statement
         var boolObj = conditionResult.ConvertShellObject(DataType.Boolean);
         if (boolObj == null)
         {
-            throw new InvalidOperationException("Condition evaluation returned null for do-while statement");
+            throw new InvalidOperationException(MessageService.GetString("statement-error-null-do-while-condition"));
         }
 
         return (bool)boolObj;

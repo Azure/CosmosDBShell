@@ -41,7 +41,7 @@ internal class PipeStatement : Statement
         this.Statements = statements ?? throw new ArgumentNullException(nameof(statements));
         if (statements.Count == 0)
         {
-            throw new ArgumentException("Pipe statement must contain at least one statement.", nameof(statements));
+            throw new ArgumentException(MessageService.GetString("statement-error-empty-pipe"), nameof(statements));
         }
     }
 
@@ -84,15 +84,21 @@ internal class PipeStatement : Statement
     {
         foreach (var statement in this.Statements)
         {
-            if (commandState.IsError)
+            if (commandState.IsError || commandState.UserCancellationHandled || commandState.BreakBlock || commandState.ContinueBlock || commandState.ReturnFunc)
             {
                 return commandState;
             }
 
+            token.ThrowIfCancellationRequested();
             commandState = await statement.RunAsync(shell, commandState, token);
         }
 
-        commandState = shell.PrintState(commandState, markAsRendered: true);
+        if (commandState.IsError || commandState.UserCancellationHandled || commandState.BreakBlock || commandState.ContinueBlock || commandState.ReturnFunc)
+        {
+            return commandState;
+        }
+
+        commandState = shell.PrintState(commandState, markAsRendered: true, deferMachineModeWarnings: true);
         return commandState;
     }
 

@@ -14,8 +14,8 @@ using Azure.Data.Cosmos.Shell.Util;
 /// <example>
 /// <code>
 /// [CosmosCommand("query")]
-/// [CosmosExample("query \"SELECT * FROM c\"", Description = "Query all documents")]
-/// [CosmosExample("query \"SELECT * FROM c WHERE c.id = 'test'\"", Description = "Filter by ID")]
+/// [CosmosExample("query \"SELECT * FROM c\"", DescriptionKey = "command-query-example-1")]
+/// [CosmosExample("query \"SELECT * FROM c WHERE c.id = 'test'\"", DescriptionKey = "command-query-example-2")]
 /// internal class QueryCommand : CosmosCommand
 /// {
 ///     // Command implementation
@@ -49,4 +49,14 @@ internal class CosmosExampleAttribute : Attribute
     /// A brief description explaining the purpose or scenario of this example.
     /// </value>
     public string? Description { get; set; }
+
+    /// <summary>
+    /// Gets or sets the Fluent resource key for the example description.
+    /// </summary>
+    /// <remarks>
+    /// Built-in examples must define this key in the English resource catalog.
+    /// When non-null, this key is resolved by <see cref="CommandFactory"/> and
+    /// takes precedence over the legacy literal <see cref="Description"/>.
+    /// </remarks>
+    public string? DescriptionKey { get; set; }
 }

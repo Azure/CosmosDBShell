@@ -4,9 +4,11 @@
 
 namespace Azure.Data.Cosmos.Shell.Parser;
 
+using System.Globalization;
 using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal class ShellJson : ShellObject
 {
@@ -66,10 +68,10 @@ internal class ShellJson : ShellObject
 
                 if (this.Value.ValueKind == JsonValueKind.Number)
                 {
-                    return this.Value.GetInt32() != 0;
+                    return this.Value.GetDouble() != 0;
                 }
 
-                throw new InvalidOperationException($"Cannot convert JSON {this.Value.ValueKind} to boolean");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-json-boolean", "kind", this.Value.ValueKind));
             case DataType.Number:
                 if (this.Value.ValueKind == JsonValueKind.Number)
                 {
@@ -79,31 +81,31 @@ internal class ShellJson : ShellObject
                 if (this.Value.ValueKind == JsonValueKind.String)
                 {
                     var strValue = this.Value.GetString() ?? string.Empty;
-                    if (int.TryParse(strValue, out int intValue))
+                    if (int.TryParse(strValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
                     {
                         return intValue;
                     }
                 }
 
-                throw new InvalidOperationException($"Cannot convert JSON {this.Value.ValueKind} to number");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-json-number", "kind", this.Value.ValueKind));
             case DataType.Decimal:
                 if (this.Value.ValueKind == JsonValueKind.Number)
                 {
-                    return this.Value.GetDecimal();
+                    return this.Value.GetDouble();
                 }
 
                 if (this.Value.ValueKind == JsonValueKind.String)
                 {
                     var strValue = this.Value.GetString() ?? string.Empty;
-                    if (decimal.TryParse(strValue, out decimal decimalValue))
+                    if (double.TryParse(strValue, NumberStyles.Float, CultureInfo.InvariantCulture, out double decimalValue))
                     {
                         return decimalValue;
                     }
                 }
 
-                throw new InvalidOperationException($"Cannot convert JSON {this.Value.ValueKind} to decimal");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-json-decimal", "kind", this.Value.ValueKind));
             default:
-                throw new InvalidOperationException($"Cannot convert JSON to {type}");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-json-type", "type", type));
         }
     }
 }

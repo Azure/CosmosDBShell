@@ -7,9 +7,11 @@ namespace CosmosShell.Tests.CommandTests;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
+using NSubstitute;
 
 public class RmCommandTests
 {
@@ -17,6 +19,92 @@ public class RmCommandTests
     {
         var connectionString = ParsedDocDBConnectionString.BuildEmulatorConnectionString("https://localhost:8081/");
         return new CosmosClient(connectionString);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task PipedScan_ObservesCancellationBeforeFiltering(bool dryRun, bool singleItem)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var client = Substitute.For<CosmosClient>();
+        var database = Substitute.For<Database>();
+        var container = Substitute.For<Container>();
+        client.GetDatabase("db").Returns(database);
+        database.GetContainer("items").Returns(container);
+        var databaseResponse = Substitute.For<DatabaseResponse>();
+        databaseResponse.StatusCode.Returns(System.Net.HttpStatusCode.OK);
+        database.ReadAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).Returns(databaseResponse);
+        var containerResponse = Substitute.For<ContainerResponse>();
+        containerResponse.StatusCode.Returns(System.Net.HttpStatusCode.OK);
+        containerResponse.Resource.Returns(new ContainerProperties("items", "/pk"));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var reads = 0;
+        container.ReadContainerAsync(Arg.Any<ContainerRequestOptions>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            if (++reads == 2)
+            {
+                cancellation.Cancel();
+            }
+
+            return Task.FromResult(containerResponse);
+        });
+        shell.State = new ConnectedState(client);
+        using var input = JsonDocument.Parse(singleItem ? """{"id":"excluded","pk":"a"}""" : """[{"id":"excluded","pk":"a"}]""");
+        var state = new CommandState
+        {
+            Result = new ShellJson(input.RootElement.Clone()),
+        };
+        var command = new RmCommand { Pattern = "match-*", Key = "id", DryRun = dryRun, Database = "db", Container = "items" };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => command.ExecuteAsync(shell, state, "rm", cancellation.Token));
+        await container.DidNotReceiveWithAnyArgs().DeleteItemAsync<object>(default!, default, default, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task PatternScan_StopsBeforeNextRowWhenDeletionCancelsOperation()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        using var client = Substitute.For<CosmosClient>();
+        var database = Substitute.For<Database>();
+        var container = Substitute.For<Container>();
+        client.GetDatabase("db").Returns(database);
+        database.GetContainer("items").Returns(container);
+        var databaseResponse = Substitute.For<DatabaseResponse>();
+        databaseResponse.StatusCode.Returns(System.Net.HttpStatusCode.OK);
+        database.ReadAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).Returns(databaseResponse);
+        var metadata = Substitute.For<ContainerResponse>();
+        metadata.StatusCode.Returns(System.Net.HttpStatusCode.OK);
+        metadata.Resource.Returns(new ContainerProperties("items", "/pk"));
+        container.ReadContainerAsync(Arg.Any<ContainerRequestOptions>(), Arg.Any<CancellationToken>()).Returns(metadata);
+        using var iterator = Substitute.For<FeedIterator>();
+        iterator.HasMoreResults.Returns(true, false);
+        container.GetItemQueryStreamIterator(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<QueryRequestOptions>()).Returns(iterator);
+        using var response = new ResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
+                """{"Documents":[{"id":"first","pk":"x"},{"id":"second","pk":"x"},{"id":"third","pk":"x"}]}""")),
+        };
+        iterator.ReadNextAsync(Arg.Any<CancellationToken>()).Returns(response);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var deleted = Substitute.For<ItemResponse<object>>();
+        container.DeleteItemAsync<object>(Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                cancellation.Cancel();
+                return Task.FromResult(deleted);
+            });
+        shell.State = new ContainerState("items", "db", client);
+        var command = new RmCommand { Pattern = "*", PartitionKeyArgument = "\"x\"" };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm *", cancellation.Token));
+
+        await container.Received(1).DeleteItemAsync<object>("first", Arg.Any<PartitionKey>(), Arg.Any<ItemRequestOptions>(), Arg.Any<CancellationToken>());
+        Assert.Single(container.ReceivedCalls(), call => call.GetMethodInfo().Name == nameof(Container.DeleteItemAsync));
     }
 
     [Fact]
@@ -95,7 +183,7 @@ public class RmCommandTests
     }
 
     [Fact]
-    public void TryGetPartitionKeyElements_ReturnsAllHierarchicalValues()
+    public void TryCreatePartitionKeyFromItem_ReturnsAllHierarchicalValues()
     {
         using var document = JsonDocument.Parse("""
         {
@@ -106,17 +194,21 @@ public class RmCommandTests
         }
         """);
 
-        var found = RmCommand.TryGetPartitionKeyElements(
+        var found = CosmosCommand.TryCreatePartitionKeyFromItem(
             document.RootElement,
             ["tenantId", "userId", "sessionId"],
-            out var partitionKeyElements);
+            out var hasUndefinedComponent,
+            out var partitionKey);
 
         Assert.True(found);
-        Assert.Equal(["tenant-a", "user-b", "session-c"], partitionKeyElements.Select(element => element.GetString()!).ToArray());
+        Assert.False(hasUndefinedComponent);
+        Assert.Equal(
+            new PartitionKeyBuilder().Add("tenant-a").Add("user-b").Add("session-c").Build().ToString(),
+            partitionKey.ToString());
     }
 
     [Fact]
-    public void TryGetPartitionKeyElements_SupportsNestedHierarchicalValues()
+    public void TryCreatePartitionKeyFromItem_SupportsNestedHierarchicalValues()
     {
         using var document = JsonDocument.Parse("""
         {
@@ -130,31 +222,219 @@ public class RmCommandTests
         }
         """);
 
-        var found = RmCommand.TryGetPartitionKeyElements(
+        var found = CosmosCommand.TryCreatePartitionKeyFromItem(
             document.RootElement,
             ["tenant/id", "user/id"],
-            out var partitionKeyElements);
+            out var hasUndefinedComponent,
+            out var partitionKey);
 
         Assert.True(found);
-        Assert.Equal(["tenant-a", "user-b"], partitionKeyElements.Select(element => element.GetString()!).ToArray());
+        Assert.False(hasUndefinedComponent);
+        Assert.Equal(
+            new PartitionKeyBuilder().Add("tenant-a").Add("user-b").Build().ToString(),
+            partitionKey.ToString());
+    }
+
+    [Theory]
+    [InlineData("order-1", "customerId", "customer-42", "command-rm-error-etag_requires_exact_id")]
+    [InlineData("order-*", "id", "customer-42", "command-rm-error-etag_requires_exact_id")]
+    [InlineData("order-?", "id", "customer-42", "command-rm-error-etag_requires_exact_id")]
+    [InlineData("order-1", null, "customer-42", "command-rm-error-etag_requires_exact_id")]
+    [InlineData("order-1", "id", null, "command-rm-error-etag_requires_partition_key")]
+    public async Task ExecuteAsync_InvalidETagCombination_FailsBeforeConnecting(string pattern, string? key, string? partitionKey, string expectedKey)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = partitionKey == null
+            ? new RmCommand { Pattern = pattern, Key = key, ETag = "\"etag\"" }
+            : new RmCommand { Pattern = pattern, Key = key, PartitionKeyArgument = partitionKey, ETag = "\"etag\"" };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm", TestContext.Current.CancellationToken));
+        Assert.Equal(MessageService.GetString(expectedKey), ex.Message);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ExecuteAsync_EmptyETag_FailsBeforeConnecting(string etag)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new RmCommand { Pattern = "order-1", Key = "id", PartitionKeyArgument = "customer-42", ETag = etag };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm", TestContext.Current.CancellationToken));
+        Assert.Equal(MessageService.GetString("command-rm-error-etag_empty"), ex.Message);
     }
 
     [Fact]
-    public void TryGetPartitionKeyElements_ReturnsFalseWhenAnyPathIsMissing()
+    public async Task ExecuteAsync_ETagWithPipeInput_FailsBeforeConnecting()
     {
-        using var document = JsonDocument.Parse("""
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new RmCommand { Pattern = "order-1", Key = "id", PartitionKeyArgument = "customer-42", ETag = "\"etag\"" };
+        var piped = new CommandState
         {
-          "id": "1",
-          "tenantId": "tenant-a"
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { id = "order-1", customerId = "customer-42" })),
+        };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, piped, "rm", TestContext.Current.CancellationToken));
+        Assert.Equal(MessageService.GetString("command-rm-error-etag_requires_exact_id"), ex.Message);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ExplicitNullETag_FailsInsteadOfDeletingUnconditionally()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new RmCommand { Pattern = "order-1", Key = "id", PartitionKeyArgument = "customer-42", ETag = null };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm", TestContext.Current.CancellationToken));
+        Assert.Equal(MessageService.GetString("command-rm-error-etag_empty"), ex.Message);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ExplicitNullPartitionKey_FailsInsteadOfScanningAllPartitions()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new RmCommand { Pattern = "order-*", Key = "id", PartitionKeyArgument = null };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm", TestContext.Current.CancellationToken));
+        Assert.Equal(MessageService.GetString("command-rm-error-partition_key_missing_value"), ex.Message);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ObjectPartitionKey_FailsBeforeConnecting()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new RmCommand { Pattern = "order-1", Key = "id", PartitionKeyArgument = "{\"a\":1}" };
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm", TestContext.Current.CancellationToken));
+        Assert.Equal(MessageService.GetString("command-rm-error-invalid_pk_json"), ex.Message);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PartitionKeyWithoutETag_KeepsExistingConnectionValidation()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        var command = new RmCommand { Pattern = "order-1", Key = "id", PartitionKeyArgument = "customer-42" };
+
+        await Assert.ThrowsAsync<NotConnectedException>(
+            () => command.ExecuteAsync(shell, new CommandState(), "rm", TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("customer-42", 1, "\"customer-42\"")]
+    [InlineData("7", 1, "7")]
+    [InlineData("true", 1, "true")]
+    [InlineData("[\"customer-42\"]", 1, "\"customer-42\"")]
+    [InlineData("[\"tenant-1\",7]", 2, "[\"tenant-1\",7]")]
+    [InlineData("[\"tenant-1\",\"user-2\",\"session-3\"]", 3, "[\"tenant-1\",\"user-2\",\"session-3\"]")]
+    public void ParsePartitionKey_ReportsComponentsAndTypedJson(string rawValue, int expectedComponents, string expectedJson)
+    {
+        var partitionKey = RmCommand.ParsePartitionKey(rawValue);
+
+        Assert.Equal(expectedComponents, RmCommand.GetPartitionKeyComponentCount(partitionKey));
+        Assert.Equal(expectedJson, RmCommand.ToPartitionKeyJson(partitionKey).GetRawText());
+    }
+
+    [Fact]
+    public void ToPartitionKeyJson_PreservesFractionalNumbers()
+    {
+        var partitionKey = RmCommand.ParsePartitionKey("[\"tenant-1\",7.5]");
+
+        Assert.Equal("[\"tenant-1\",7.5]", RmCommand.ToPartitionKeyJson(partitionKey).GetRawText());
+    }
+
+    [Fact]
+    public void ToPartitionKeyJson_DoesNotOverflowIntegralValuesOutsideInt64Range()
+    {
+        var partitionKey = RmCommand.ParsePartitionKey("1e19");
+
+        var json = RmCommand.ToPartitionKeyJson(partitionKey);
+
+        Assert.Equal(JsonValueKind.Number, json.ValueKind);
+        Assert.Equal(1e19, json.GetDouble());
+    }
+
+    [Theory]
+    [InlineData("customer-42", """{"pk":"customer-42"}""", true)]
+    [InlineData("customer-42", """{"pk":"customer-43"}""", false)]
+    [InlineData("7", """{"pk":7}""", true)]
+    [InlineData("7", """{"pk":"7"}""", false)]
+    [InlineData("[\"tenant-1\",7]", """{"tenant":"tenant-1","pk":7}""", true)]
+    [InlineData("[\"tenant-1\",7]", """{"tenant":"tenant-1","pk":8}""", false)]
+    public void ParsePartitionKey_MatchesItemPartitionKeyByTypeAndValue(string rawValue, string itemJson, bool expected)
+    {
+        using var item = JsonDocument.Parse(itemJson);
+        var paths = item.RootElement.TryGetProperty("tenant", out _) ? new[] { "tenant", "pk" } : ["pk"];
+        Assert.True(CosmosCommand.TryCreatePartitionKeyFromItem(item.RootElement, paths, out _, out var itemPartitionKey));
+
+        var scope = RmCommand.ParsePartitionKey(rawValue);
+
+        Assert.Equal(expected, scope.Equals(itemPartitionKey));
+    }
+
+    [Fact]
+    public void TryCreatePartitionKeyFromItem_MissingScalarPropertyCreatesNone()
+    {
+        using var item = JsonDocument.Parse("""{"id":"missing"}""");
+
+        var created = CosmosCommand.TryCreatePartitionKeyFromItem(
+            item.RootElement,
+            ["pk"],
+            out var hasUndefinedComponent,
+            out var partitionKey);
+
+        Assert.True(created);
+        Assert.True(hasUndefinedComponent);
+        Assert.Equal(PartitionKey.None.ToString(), partitionKey.ToString());
+    }
+
+    [Fact]
+    public void ParsePartitionKey_NoneRendersAsEmptyObject()
+    {
+        var partitionKey = RmCommand.ParsePartitionKey("{}");
+
+        Assert.Equal("{}", RmCommand.ToPartitionKeyJson(partitionKey).GetRawText());
+    }
+
+    [Fact]
+    public void RmNewLocalizationKeys_ArePresent()
+    {
+        string[] keys =
+        [
+            "command-rm-description-partition-key",
+            "command-rm-description-etag",
+            "command-rm-error-invalid_pk_json",
+            "command-rm-error-etag_empty",
+            "command-rm-error-etag_requires_exact_id",
+            "command-rm-error-etag_requires_partition_key",
+            "command-rm-example-6",
+            "command-rm-example-7",
+        ];
+
+        foreach (var key in keys)
+        {
+            var message = MessageService.GetString(key);
+            Assert.False(string.IsNullOrWhiteSpace(message));
+            Assert.DoesNotContain(key, message);
         }
-        """);
 
-        var found = RmCommand.TryGetPartitionKeyElements(
-            document.RootElement,
-            ["tenantId", "userId"],
-            out var partitionKeyElements);
-
-        Assert.False(found);
-        Assert.Empty(partitionKeyElements);
+        var mismatch = MessageService.GetString("command-rm-error-etag_mismatch", new Dictionary<string, object> { { "id", "order-1" } });
+        Assert.Contains("order-1", mismatch);
+        var components = MessageService.GetString(
+            "command-rm-error-partition_key_components",
+            new Dictionary<string, object> { { "expected", 2 }, { "actual", 1 } });
+        Assert.Contains("2", components);
+        Assert.Contains("1 was", components);
     }
 }

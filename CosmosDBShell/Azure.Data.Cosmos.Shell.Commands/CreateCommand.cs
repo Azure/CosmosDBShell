@@ -13,8 +13,8 @@ using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 
 [CosmosCommand("create")]
-[CosmosExample("create container \"Test\" \"/pk\"", Description = "Create a new container with partition key")]
-[CosmosExample("create database \"My-Database\" -scale=auto -ru=1000", Description = "Create database with autoscale throughput")]
+[CosmosExample("create container \"Test\" \"/pk\"", DescriptionKey = "command-create-example-1")]
+[CosmosExample("create database \"My-Database\" -scale=auto -ru=1000", DescriptionKey = "command-create-example-2")]
 internal class CreateCommand : CosmosCommand
 {
     private static readonly char[] EOL = ['\n', '\r'];

@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Parser;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 /// <summary>
 /// Represents an exec statement that dynamically evaluates an expression to get a command
@@ -84,7 +85,7 @@ internal class ExecStatement : Statement
 
         if (string.IsNullOrEmpty(commandPath))
         {
-            throw new InvalidOperationException("exec: command expression evaluated to empty or null. Expected a valid command or script path.");
+            throw new InvalidOperationException(MessageService.GetString("statement-error-empty-exec"));
         }
 
         // Allow passing a quoted path: exec "C:\path\file.csh"
@@ -121,7 +122,7 @@ internal class ExecStatement : Statement
         {
             throw;
         }
-        catch (Exception e)
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
             var content = shell.CurrentScriptContent;
             var fileName = shell.CurrentScriptFileName;
@@ -137,10 +138,11 @@ internal class ExecStatement : Statement
 
     public override string ToString()
     {
-        var args = string.Join(" ", this.Arguments.Select(a => a.ToString()));
+        var args = string.Join(" ", this.Arguments.Select(CommandArgumentFormatter.Format));
+        var command = CommandArgumentFormatter.Format(this.CommandExpression);
         return string.IsNullOrEmpty(args)
-            ? $"exec {this.CommandExpression}"
-            : $"exec {this.CommandExpression} {args}";
+            ? $"exec {command}"
+            : $"exec {command} {args}";
     }
 
     /// <summary>

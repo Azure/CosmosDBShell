@@ -13,10 +13,10 @@ using global::Azure.Data.Cosmos.Shell.States;
 using Spectre.Console;
 
 [CosmosCommand("rmcon")]
-[CosmosExample("rmcon OldContainer", Description = "Delete container with confirmation prompt")]
-[CosmosExample("rmcon TempData true", Description = "Delete container skipping the interactive confirmation prompt (over MCP, confirmation is still required)")]
-[CosmosExample("rmcon TestContainer --database=TestDB", Description = "Delete container from specific database")]
-[CosmosExample("rmcon OldContainer --dry-run", Description = "Preview the deletion without deleting the container")]
+[CosmosExample("rmcon OldContainer", DescriptionKey = "command-rmcon-example-1")]
+[CosmosExample("rmcon TempData true", DescriptionKey = "command-rmcon-example-2")]
+[CosmosExample("rmcon TestContainer --database=TestDB", DescriptionKey = "command-rmcon-example-3")]
+[CosmosExample("rmcon OldContainer --dry-run", DescriptionKey = "command-rmcon-example-4")]
 [McpAnnotation(Title = "Remove Container", Restricted = true, Destructive = true, Confirmable = true)]
 internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpreter>
 {
@@ -50,7 +50,7 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
     {
         if (!string.IsNullOrEmpty(this.Database))
         {
-            return await this.RemoveContainerAsync(state, this.Database, token);
+            return await this.RemoveContainerAsync(state, shell, this.Database, token);
         }
 
         throw new NotInDatabaseException("rmcon");
@@ -60,23 +60,23 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
     {
         if (!string.IsNullOrEmpty(this.Database))
         {
-            return await this.RemoveContainerAsync(state, this.Database, token);
+            return await this.RemoveContainerAsync(state, shell, this.Database, token);
         }
 
-        return await this.RemoveContainerAsync(state, state.DatabaseName, token);
+        return await this.RemoveContainerAsync(state, shell, state.DatabaseName, token);
     }
 
     async Task<ExitCode> IStateVisitor<ExitCode, ShellInterpreter>.VisitContainerStateAsync(ContainerState state, ShellInterpreter shell, CancellationToken token)
     {
         if (!string.IsNullOrEmpty(this.Database))
         {
-            return await this.RemoveContainerAsync(state, this.Database, token);
+            return await this.RemoveContainerAsync(state, shell, this.Database, token);
         }
 
         throw new NotInContainerException("rmcon");
     }
 
-    private async Task<ExitCode> RemoveContainerAsync(ConnectedState state, string databaseName, CancellationToken token)
+    private async Task<ExitCode> RemoveContainerAsync(ConnectedState state, ShellInterpreter shell, string databaseName, CancellationToken token)
     {
         // Validate database exists
         await ValidateDatabaseExistsAsync(state, databaseName, "rmcon", token);
@@ -98,7 +98,7 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
                     return 0;
                 }
 
-                if (this.Force == true || ShellInterpreter.Confirm("command-rmcon-confirm_container_deletion"))
+                if (this.Force == true || ShellInterpreter.Confirm("command-rmcon-confirm_container_deletion", shell))
                 {
                     await CosmosResourceFacade.DeleteContainerAsync(state, databaseName, containerName, token);
                     CosmosCompleteCommand.ClearContainers();

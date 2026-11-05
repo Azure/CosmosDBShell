@@ -5,6 +5,7 @@
 namespace CosmosShell.Tests;
 
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -12,7 +13,9 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Mcp;
+using Azure.Data.Cosmos.Shell.States;
 
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -26,11 +29,19 @@ using Spectre.Console;
 // success path (which writes the highlighted command line through AnsiConsole) does
 // not race with other tests that swap the global console or theme.
 [Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
-public class ToolOperationsCallToolTests
+public class ToolOperationsCallToolTests : IDisposable
 {
-    private static ToolOperations CreateToolOperations()
+    private readonly LocationResourceSubscriptions locationSubscriptions =
+        new(NullLogger<LocationResourceSubscriptions>.Instance);
+
+    public void Dispose()
     {
-        return new ToolOperations(NullLogger<ToolOperations>.Instance);
+        this.locationSubscriptions.Dispose();
+    }
+
+    private ToolOperations CreateToolOperations()
+    {
+        return new ToolOperations(NullLogger<ToolOperations>.Instance, this.locationSubscriptions);
     }
 
     private static RequestContext<CallToolRequestParams> CallContext(string? name, Dictionary<string, JsonElement>? arguments = null)
@@ -133,17 +144,293 @@ public class ToolOperationsCallToolTests
     }
 
     [Fact]
+    public async Task CallTool_RmWithPartitionKeyAndETag_ConfirmationShowsTargetConditions()
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["pattern"] = Json("\"order-123\""),
+            ["key"] = Json("\"id\""),
+            ["pk"] = Json("\"customer-42\""),
+            ["etag"] = Json("\"\\\"etag-1\\\"\""),
+            ["database"] = Json("\"MyDb\""),
+            ["container"] = Json("\"Orders\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("rm", arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            var error = root.GetProperty("error").GetString();
+            Assert.Contains("does not support confirmation prompts", error);
+            Assert.Contains("rm \"order-123\"", error);
+            Assert.Contains("--partition-key \"customer-42\"", error);
+            Assert.Contains("--etag \"\\\"etag-1\\\"\"", error);
+        }
+    }
+
+    [Fact]
+    public async Task CallTool_RmArgumentOrder_DoesNotChangeConfirmedCommandLine()
+    {
+        var tool = CreateToolOperations();
+        var forward = new Dictionary<string, JsonElement>
+        {
+            ["pattern"] = Json("\"order-123\""),
+            ["key"] = Json("\"id\""),
+            ["partition-key"] = Json("\"customer-42\""),
+            ["etag"] = Json("\"etag-1\""),
+        };
+        var reversed = forward.Reverse().ToDictionary();
+
+        var errors = new List<string?>();
+        foreach (var arguments in new[] { forward, reversed })
+        {
+            var (_, root, document) = ReadResult(await tool.CallToolHandler(CallContext("rm", arguments), CancellationToken.None));
+            using (document)
+            {
+                errors.Add(root.GetProperty("error").GetString());
+            }
+        }
+
+        Assert.Contains("rm \"order-123\" --key \"id\" --partition-key \"customer-42\" --etag \"etag-1\"", errors[0]);
+        Assert.Equal(errors[0], errors[1]);
+    }
+
+    [Theory]
+    [InlineData("etag", "command-rm-error-etag_empty")]
+    [InlineData("partition-key", "command-rm-error-partition_key_missing_value")]
+    public async Task CallTool_RmWithJsonNullSafetyOption_ConfirmedCommandFailsWithoutDeleting(string argumentName, string expectedKey)
+    {
+        var tool = CreateToolOperations();
+        var factory = ShellInterpreter.Instance.App.Commands["rm"];
+        var command = (RmCommand)factory.CreateCommand();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["pattern"] = Json("\"order-123\""),
+            ["key"] = Json("\"id\""),
+            ["partition-key"] = Json("\"customer-42\""),
+            [argumentName] = Json("null"),
+        };
+
+        foreach (var argument in arguments)
+        {
+            var option = factory.Options.FirstOrDefault(o => o.Name.Contains(argument.Key));
+            var property = option?.PropertyInfo ?? factory.Parameters.First(p => p.Name.Contains(argument.Key)).PropertyInfo;
+            property.SetValue(command, argument.Value.GetString());
+        }
+
+        var result = await tool.ExecuteToolAsync(
+            factory,
+            command,
+            "rm \"order-123\" --key \"id\" --partition-key \"customer-42\"",
+            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        Assert.Contains(
+            Azure.Data.Cosmos.Shell.Util.MessageService.GetString(expectedKey),
+            Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Theory]
+    [InlineData("etag", "command-rm-error-etag_empty")]
+    [InlineData("partition-key", "command-rm-error-partition_key_missing_value")]
+    [InlineData("pk", "command-rm-error-partition_key_missing_value")]
+    public async Task CallTool_NullRmSafetyOption_ReturnsErrorBeforeConfirmation(string argumentName, string errorKey)
+    {
+        var history = ShellInterpreter.Instance.History.ToArray();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["pattern"] = Json("\"order-123\""),
+            ["key"] = Json("\"id\""),
+            [argumentName] = Json("null"),
+        };
+
+        var result = await CreateToolOperations().CallToolHandler(
+            CallContext("rm", arguments), TestContext.Current.CancellationToken);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Equal(
+                Azure.Data.Cosmos.Shell.Util.MessageService.GetString(errorKey),
+                root.GetProperty("error").GetString());
+        }
+
+        Assert.Equal(history, ShellInterpreter.Instance.History);
+    }
+
+    [Fact]
     public async Task ConfirmDestructive_UserAccepts_ReturnsNull()
     {
         var tool = CreateToolOperations();
 
         var result = await tool.ConfirmDestructiveAsync(
-            (_, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
             "rmdb",
             "rmdb mydb",
             CancellationToken.None);
 
         Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_ContextChangesDuringConfirmation_RefusesExecution()
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalState = shell.State;
+        var command = new TrackingCommand();
+        try
+        {
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["rm"], command, "rm test-*",
+                (request, _, _) =>
+                {
+                    Assert.Contains("Account:", request.Message);
+                    Assert.Contains("Current location:", request.Message);
+                    shell.State = new DisconnectedState();
+                    shell.State = originalState;
+                    return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+                }, CancellationToken.None);
+
+            Assert.True(result.IsError);
+            Assert.False(command.Executed);
+            Assert.Contains("context changed", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        }
+        finally
+        {
+            shell.State = originalState;
+        }
+    }
+
+    private sealed class TrackingCommand : CosmosCommand
+    {
+        public bool Executed { get; private set; }
+
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            this.Executed = true;
+            return Task.FromResult(commandState);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteTool_DefersWarningsAndRestoresInvocationScope(bool fail)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalMcpPort = shell.McpPort;
+        var stderrFile = Path.GetTempFileName();
+        var originalErrorRedirect = shell.ErrOutRedirect;
+        var originalMcpInvocation = shell.IsMcpInvocation;
+        var command = new WarningScopeCommand { ShouldFail = fail };
+        try
+        {
+            shell.McpPort = null;
+            shell.ErrOutRedirect = stderrFile;
+            shell.IsMcpInvocation = false;
+
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["echo"], command, "echo warning-scope", null,
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(fail, result.IsError == true);
+            Assert.True(command.WasMcpInvocation);
+            Assert.False(shell.IsMcpInvocation);
+            Assert.NotNull(command.Warning);
+            Assert.False(command.Warning.IsRendered);
+            Assert.Empty(await File.ReadAllTextAsync(stderrFile, TestContext.Current.CancellationToken));
+            var (_, root, document) = ReadResult(result);
+            using (document)
+            {
+                Assert.Equal("mutation warning", Assert.Single(root.GetProperty("warnings").EnumerateArray()).GetString());
+            }
+        }
+        finally
+        {
+            shell.McpPort = originalMcpPort;
+            shell.ErrOutRedirect = originalErrorRedirect;
+            shell.IsMcpInvocation = originalMcpInvocation;
+            File.Delete(stderrFile);
+        }
+    }
+
+    private sealed class WarningScopeCommand : CosmosCommand
+    {
+        public bool ShouldFail { get; init; }
+
+        public bool WasMcpInvocation { get; private set; }
+
+        public CommandWarning? Warning { get; private set; }
+
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            this.WasMcpInvocation = shell.IsMcpInvocation;
+            this.Warning = commandState.AddWarning("mutation warning");
+            shell.RenderMutationWarnings(commandState);
+            commandState.UpdateWarning(this.Warning, "updated mutation warning");
+            shell.RenderUpdatedWarnings(commandState);
+            commandState.UpdateWarning(this.Warning, "mutation warning");
+            shell.RenderWarnings(commandState);
+            if (this.ShouldFail)
+            {
+                throw new CommandException(commandText, "mutation failed");
+            }
+
+            return Task.FromResult(commandState);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteTool_UnchangedContextAfterConfirmation_ExecutesCommand()
+    {
+        var command = new TrackingCommand();
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            ShellInterpreter.Instance.App.Commands["rm"], command, "rm test-*",
+            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            TestContext.Current.CancellationToken);
+        Assert.False(result.IsError == true);
+        Assert.True(command.Executed);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_WithoutAnsiTerminal_EchoesPlainlyAndStillExecutes()
+    {
+        var command = new TrackingCommand();
+        using var plain = new StringWriter();
+
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        try
+        {
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(plain),
+            });
+            Console.SetOut(plain);
+
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                ShellInterpreter.Instance.App.Commands["rm"], command, "rm test-*",
+                (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError == true);
+            Assert.True(command.Executed);
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            AnsiConsole.Console = savedConsole;
+        }
+
+        Assert.Contains("rm test-*", plain.ToString(), StringComparison.Ordinal);
+        Assert.Equal("rm test-*", ShellInterpreter.Instance.History.ToArray()[^1]);
     }
 
     [Theory]
@@ -154,7 +441,7 @@ public class ToolOperationsCallToolTests
         var tool = CreateToolOperations();
 
         var result = await tool.ConfirmDestructiveAsync(
-            (_, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = action }),
+            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = action }),
             "rmdb",
             "rmdb mydb",
             CancellationToken.None);
@@ -176,7 +463,7 @@ public class ToolOperationsCallToolTests
         var tool = CreateToolOperations();
 
         var result = await tool.ConfirmDestructiveAsync(
-            (_, _) => throw new InvalidOperationException("boom"),
+            (_, _, _) => throw new InvalidOperationException("boom"),
             "rmdb",
             "rmdb mydb",
             CancellationToken.None);
@@ -190,6 +477,241 @@ public class ToolOperationsCallToolTests
             Assert.Contains("could not be completed", error);
             Assert.Contains("InvalidOperationException", error);
             Assert.DoesNotContain("boom", error);
+        }
+    }
+
+    [Fact]
+    public async Task CallTool_PositionalArgumentsOutOfOrder_DisplaysDeclarationOrder()
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["force"] = Json("true"),
+            ["name"] = Json("\"OldDb\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("rmdb", arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Contains("rmdb \"OldDb\" \"True\"", root.GetProperty("error").GetString(), StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task CallTool_PositionalGap_ReturnsErrorWithoutExecuting()
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["path"] = Json("\"dark.json\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("theme", arguments), CancellationToken.None);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            var error = root.GetProperty("error").GetString();
+            Assert.Contains("'path'", error, StringComparison.Ordinal);
+            Assert.Contains("'action'", error, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void FindPositionalGap_DetectsOmittedAndNullPredecessors()
+    {
+        var parameters = ShellInterpreter.Instance.App.Commands["theme"].Parameters;
+
+        Assert.NotNull(ToolOperations.FindPositionalGap(parameters, new Dictionary<Parameter, object?> { [parameters[2]] = "dark.json" }));
+        Assert.NotNull(ToolOperations.FindPositionalGap(parameters, new Dictionary<Parameter, object?> { [parameters[0]] = null, [parameters[1]] = "dark" }));
+        Assert.Null(ToolOperations.FindPositionalGap(parameters, new Dictionary<Parameter, object?> { [parameters[0]] = "show", [parameters[1]] = "dark" }));
+    }
+
+    [Fact]
+    public void FormatPositionalsForHistory_RendersContiguousValuesAndExpandsArrays()
+    {
+        var parameters = ShellInterpreter.Instance.App.Commands["theme"].Parameters;
+        var values = new Dictionary<Parameter, object?> { [parameters[0]] = "show", [parameters[1]] = "dark" };
+        Assert.Equal(" \"show\" \"dark\"", ToolOperations.FormatPositionalsForHistory(parameters, values));
+
+        var echoParameters = ShellInterpreter.Instance.App.Commands["echo"].Parameters;
+        var echoValues = new Dictionary<Parameter, object?> { [echoParameters[0]] = new[] { "hello", "world" } };
+        Assert.Equal(" \"hello\" \"world\"", ToolOperations.FormatPositionalsForHistory(echoParameters, echoValues));
+    }
+
+    [Fact]
+    public void HistoryFormatting_UsesInvariantCultureForOptionsAndPositionals()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+
+            var intervalOption = ShellInterpreter.Instance.App.Commands["watch"].Options.Single(o => o.Name[0] == "interval");
+            Assert.Equal(" --interval \"1.5\"", ToolOperations.FormatOptionForHistory(intervalOption, 1.5d));
+
+            var echoParameters = ShellInterpreter.Instance.App.Commands["echo"].Parameters;
+            var echoValues = new Dictionary<Parameter, object?> { [echoParameters[0]] = new object?[] { 1.5d, 2.5d } };
+            Assert.Equal(" \"1.5\" \"2.5\"", ToolOperations.FormatPositionalsForHistory(echoParameters, echoValues));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    [Fact]
+    public async Task CallTool_NullNullableValueOption_IsOmitted()
+    {
+        var tool = CreateToolOperations();
+        var shell = ShellInterpreter.Instance;
+        var originalState = shell.State;
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["query"] = Json("\"SELECT * FROM c\""),
+            ["max"] = Json("null"),
+        };
+
+        try
+        {
+            shell.State = new DisconnectedState();
+
+            var result = await tool.CallToolHandler(CallContext("query", arguments), CancellationToken.None);
+
+            var (isError, root, document) = ReadResult(result);
+            using (document)
+            {
+                Assert.True(isError);
+                Assert.DoesNotContain("Invalid value", root.GetProperty("error").GetString(), StringComparison.Ordinal);
+            }
+
+            Assert.Equal("query \"SELECT * FROM c\"", shell.History.ToArray()[^1]);
+        }
+        finally
+        {
+            shell.State = originalState;
+        }
+    }
+
+    [Fact]
+    public async Task CallTool_NullStringOption_IsOmitted()
+    {
+        var tool = CreateToolOperations();
+        var shell = ShellInterpreter.Instance;
+        var originalState = shell.State;
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["query"] = Json("\"SELECT * FROM c\""),
+            ["database"] = Json("null"),
+        };
+
+        try
+        {
+            shell.State = new DisconnectedState();
+
+            var result = await tool.CallToolHandler(CallContext("query", arguments), CancellationToken.None);
+
+            var (isError, root, document) = ReadResult(result);
+            using (document)
+            {
+                Assert.True(isError);
+                Assert.DoesNotContain("Invalid value", root.GetProperty("error").GetString(), StringComparison.Ordinal);
+            }
+
+            Assert.Equal("query \"SELECT * FROM c\"", shell.History.ToArray()[^1]);
+        }
+        finally
+        {
+            shell.State = originalState;
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CallTool_PrintWithoutKey_ReportsMissingKey(bool explicitNull)
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["id"] = Json("\"item-1\""),
+        };
+        if (explicitNull)
+        {
+            arguments["key"] = Json("null");
+        }
+
+        var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Contains(
+                Azure.Data.Cosmos.Shell.Util.MessageService.GetString("command-print-error-missing_key"),
+                root.GetProperty("error").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData("partition-key")]
+    [InlineData("pk")]
+    public async Task CallTool_PrintWithRemovedPartitionKeyOption_IsUnknownArgument(string option)
+    {
+        var tool = CreateToolOperations();
+        var arguments = new Dictionary<string, JsonElement>
+        {
+            ["id"] = Json("\"item-1\""),
+            ["key"] = Json("\"680\""),
+            [option] = Json("\"680\""),
+        };
+
+        var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.StartsWith($"Unknown argument '{option}' for command 'print'.", root.GetProperty("error").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData("680")]
+    [InlineData("\"680\"")]
+    [InlineData("[1001,\"customer-1001\"]")]
+    [InlineData("true")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("[\"tenant-1\",{}]")]
+    [InlineData("customer-1")]
+    public async Task CallTool_PrintWithTypedKey_Binds(string value)
+    {
+        var tool = CreateToolOperations();
+        var shell = ShellInterpreter.Instance;
+        var originalState = shell.State;
+        try
+        {
+            shell.State = new DisconnectedState();
+            var arguments = new Dictionary<string, JsonElement>
+            {
+                ["id"] = Json("\"item-1\""),
+                ["key"] = JsonSerializer.SerializeToElement(value),
+            };
+
+            var result = await tool.CallToolHandler(CallContext("print", arguments), TestContext.Current.CancellationToken);
+            var (isError, root, document) = ReadResult(result);
+            using (document)
+            {
+                Assert.True(isError);
+                Assert.Equal($"Error executing command 'print': {new NotConnectedException("print").Message}", root.GetProperty("error").GetString());
+            }
+        }
+        finally
+        {
+            shell.State = originalState;
         }
     }
 
@@ -353,9 +875,14 @@ public class ToolOperationsCallToolTests
     public async Task CallTool_EchoCommand_ReturnsSuccessResult()
     {
         var tool = CreateToolOperations();
+        var history = ShellInterpreter.Instance.History.ToArray();
+        using var output = new StringWriter();
+
+        // History drops duplicates, so the entry must be unique to this test to grow the history.
+        var unique = "world-" + Guid.NewGuid().ToString("N");
         var arguments = new Dictionary<string, JsonElement>
         {
-            ["messages"] = Json("[\"hello\", \"world\"]"),
+            ["messages"] = Json($"[\"hello\", \"{unique}\"]"),
         };
 
         var saved = AnsiConsole.Console;
@@ -365,16 +892,22 @@ public class ToolOperationsCallToolTests
             {
                 Ansi = AnsiSupport.Yes,
                 ColorSystem = ColorSystemSupport.NoColors,
-                Out = new AnsiConsoleOutput(new StringWriter()),
+                Out = new AnsiConsoleOutput(output),
             });
 
             var result = await tool.CallToolHandler(CallContext("echo", arguments), CancellationToken.None);
+
+            Assert.Contains("echo", output.ToString(), StringComparison.Ordinal);
+            var recorded = ShellInterpreter.Instance.History.ToArray();
+            Assert.Equal(history.Length + 1, recorded.Length);
+            Assert.Equal($"echo \"hello\" \"{unique}\"", recorded[^1]);
+            Assert.Single(recorded, entry => entry == recorded[^1]);
 
             var (isError, root, document) = ReadResult(result);
             using (document)
             {
                 Assert.False(isError);
-                Assert.Equal("hello world", root.GetProperty("result").GetString());
+                Assert.Equal($"hello {unique}", root.GetProperty("result").GetString());
                 Assert.True(root.TryGetProperty("currentLocation", out _));
             }
         }
@@ -440,5 +973,194 @@ public class ToolOperationsCallToolTests
         Assert.NotEmpty(result.Tools);
         Assert.Contains(result.Tools, t => t.Name == "query");
         Assert.Contains(result.Tools, t => t.Name == "echo");
+    }
+
+    [Fact]
+    public void ConfirmationRequestState_RoundTripsOnlyForTheSameCommand()
+    {
+        var state = ConfirmationRequestState.Create("rmdb mydb", 42);
+
+        Assert.True(ConfirmationRequestState.TryRead(state, "rmdb mydb", out var version));
+        Assert.Equal(42, version);
+        Assert.False(ConfirmationRequestState.TryRead(state, "rmdb otherdb", out _));
+    }
+
+    [Fact]
+    public void ConfirmationRequestState_CanBeReadOnlyOnce()
+    {
+        var state = ConfirmationRequestState.Create("rmdb mydb", 42);
+
+        Assert.True(ConfirmationRequestState.TryRead(state, "rmdb mydb", out _));
+        Assert.False(ConfirmationRequestState.TryRead(state, "rmdb mydb", out _));
+    }
+
+    [Fact]
+    public void ConfirmationRequestState_DropsOldestBeyondMaxPending()
+    {
+        var oldest = ConfirmationRequestState.Create("rmdb oldest", 1);
+        var states = Enumerable.Range(0, ConfirmationRequestState.MaxPending)
+            .Select(index => ConfirmationRequestState.Create($"rmdb db{index}", 1))
+            .ToArray();
+
+        Assert.False(ConfirmationRequestState.TryRead(oldest, "rmdb oldest", out _));
+        Assert.True(ConfirmationRequestState.TryRead(states[^1], $"rmdb db{ConfirmationRequestState.MaxPending - 1}", out _));
+    }
+
+    [Fact]
+    public void ConfirmationRequestState_ExpiresAfterLifetime()
+    {
+        var state = ConfirmationRequestState.Create("rmdb mydb", 42);
+
+        Assert.False(ConfirmationRequestState.TryRead(
+            state, "rmdb mydb", DateTimeOffset.UtcNow + ConfirmationRequestState.Lifetime + TimeSpan.FromSeconds(1), out _));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not-a-state")]
+    [InlineData("Zm9v.YmFy")]
+    public void ConfirmationRequestState_RejectsMissingOrForgedState(string? state)
+    {
+        Assert.False(ConfirmationRequestState.TryRead(state, "rmdb mydb", out _));
+    }
+
+    [Fact]
+    public void ConfirmationRequestState_RejectsTamperedPayload()
+    {
+        var state = ConfirmationRequestState.Create("rmdb mydb", 1);
+        var signature = state[(state.IndexOf('.') + 1)..];
+        var forgedPayload = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(
+            System.Text.Encoding.UTF8.GetBytes("1\nrmdb otherdb"));
+
+        Assert.False(ConfirmationRequestState.TryRead(forgedPayload + "." + signature, "rmdb otherdb", out _));
+    }
+
+    [Fact]
+    public async Task ExecuteTool_MrtrPrompt_RequestsConfirmationWithoutExecuting()
+    {
+        var command = new TrackingCommand();
+        var shell = ShellInterpreter.Instance;
+
+        var exception = await Assert.ThrowsAsync<InputRequiredException>(() => CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], command, "rm test-*",
+            (request, stateVersion, _) => throw new InputRequiredException(
+                inputRequests: new Dictionary<string, InputRequest> { ["confirm"] = InputRequest.ForElicitation(request) },
+                requestState: ConfirmationRequestState.Create("rm test-*", stateVersion)),
+            TestContext.Current.CancellationToken));
+
+        Assert.False(command.Executed);
+        var inputRequest = Assert.Single(exception.Result.InputRequests!);
+        Assert.Equal("confirm", inputRequest.Key);
+        Assert.Contains("rm test-*", inputRequest.Value.ElicitationParams!.Message);
+        Assert.True(ConfirmationRequestState.TryRead(exception.Result.RequestState, "rm test-*", out var version));
+        Assert.Equal(shell.StateVersion, version);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_AcceptedConfirmationResponse_ExecutesCommand()
+    {
+        var command = new TrackingCommand();
+        var shell = ShellInterpreter.Instance;
+
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], command, "rm test-*", null,
+            TestContext.Current.CancellationToken,
+            ConfirmationRetry("accept", ConfirmationRequestState.Create("rm test-*", shell.StateVersion)));
+
+        Assert.False(result.IsError == true);
+        Assert.True(command.Executed);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_ReplayedConfirmationResponse_DoesNotExecuteAgain()
+    {
+        var shell = ShellInterpreter.Instance;
+        var retry = ConfirmationRetry("accept", ConfirmationRequestState.Create("rm test-*", shell.StateVersion));
+        var first = new TrackingCommand();
+        var replayed = new TrackingCommand();
+
+        await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], first, "rm test-*", null, TestContext.Current.CancellationToken, retry);
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], replayed, "rm test-*", null, TestContext.Current.CancellationToken, retry);
+
+        Assert.True(first.Executed);
+        Assert.True(result.IsError);
+        Assert.False(replayed.Executed);
+    }
+
+    [Theory]
+    [InlineData("decline")]
+    [InlineData("cancel")]
+    public async Task ExecuteTool_DeclinedConfirmationResponse_DoesNotExecute(string action)
+    {
+        var command = new TrackingCommand();
+        var shell = ShellInterpreter.Instance;
+
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], command, "rm test-*", null,
+            TestContext.Current.CancellationToken,
+            ConfirmationRetry(action, ConfirmationRequestState.Create("rm test-*", shell.StateVersion)));
+
+        Assert.True(result.IsError);
+        Assert.False(command.Executed);
+        Assert.Contains("was not approved by the user", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_ConfirmationResponseForOtherCommand_DoesNotExecute()
+    {
+        var command = new TrackingCommand();
+        var shell = ShellInterpreter.Instance;
+
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands["rm"], command, "rm *", null,
+            TestContext.Current.CancellationToken,
+            ConfirmationRetry("accept", ConfirmationRequestState.Create("rm test-*", shell.StateVersion)));
+
+        Assert.True(result.IsError);
+        Assert.False(command.Executed);
+        Assert.Contains("does not match this command", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
+    public async Task ExecuteTool_ContextChangedBetweenConfirmationRounds_DoesNotExecute()
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalState = shell.State;
+        var command = new TrackingCommand();
+        var requestState = ConfirmationRequestState.Create("rm test-*", shell.StateVersion);
+        try
+        {
+            shell.State = new DisconnectedState();
+            shell.State = originalState;
+
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["rm"], command, "rm test-*", null,
+                TestContext.Current.CancellationToken,
+                ConfirmationRetry("accept", requestState));
+
+            Assert.True(result.IsError);
+            Assert.False(command.Executed);
+            Assert.Contains("context changed", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        }
+        finally
+        {
+            shell.State = originalState;
+        }
+    }
+
+    private static CallToolRequestParams ConfirmationRetry(string action, string requestState)
+    {
+        return new CallToolRequestParams
+        {
+            Name = "rm",
+            RequestState = requestState,
+            InputResponses = new Dictionary<string, InputResponse>
+            {
+                ["confirm"] = InputResponse.FromElicitResult(new ElicitResult { Action = action }),
+            },
+        };
     }
 }

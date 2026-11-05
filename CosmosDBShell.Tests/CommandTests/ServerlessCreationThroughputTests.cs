@@ -1,0 +1,510 @@
+// ------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+// ------------------------------------------------------------
+
+namespace CosmosShell.Tests.CommandTests;
+
+using System.Net;
+using Azure;
+using Azure.Core;
+using Azure.Data.Cosmos.Shell.Commands;
+using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.States;
+using Azure.Data.Cosmos.Shell.Util;
+using Azure.ResourceManager;
+using Azure.ResourceManager.CosmosDB;
+using Azure.ResourceManager.CosmosDB.Models;
+using Microsoft.Azure.Cosmos;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
+
+public class ServerlessCreationThroughputTests
+{
+    private const string ServerlessMessage = "Setting offer throughput or autopilot on container is not supported for serverless accounts.";
+
+    [Fact]
+    public void CreateUpdateConfig_ServerlessWithoutOptions_OmitsThroughput()
+    {
+        Assert.Null(CosmosArmResourceProvider.CreateUpdateConfig(ServerlessByCapability(), null, null));
+        Assert.Null(CosmosArmResourceProvider.CreateUpdateConfig(ServerlessByCapacityMode(), null, null));
+    }
+
+    [Theory]
+    [InlineData("manual", null)]
+    [InlineData("auto", null)]
+    [InlineData(" ", null)]
+    [InlineData("", null)]
+    [InlineData(null, 400)]
+    [InlineData("m", 1000)]
+    public void CreateUpdateConfig_ServerlessWithOptions_Throws(string? scale, int? ru)
+    {
+        Assert.Throws<ServerlessThroughputNotSupportedException>(
+            () => CosmosArmResourceProvider.CreateUpdateConfig(ServerlessByCapability(), scale, ru));
+    }
+
+    [Theory]
+    [InlineData(null, null, null, 1000)]
+    [InlineData("auto", 4000, null, 4000)]
+    [InlineData("manual", 400, 400, null)]
+    [InlineData("m", null, 1000, null)]
+    public void CreateUpdateConfig_Provisioned_KeepsExistingDefaults(string? scale, int? ru, int? manual, int? autoscale)
+    {
+        var config = CosmosArmResourceProvider.CreateUpdateConfig(Provisioned(), scale, ru);
+
+        Assert.NotNull(config);
+        Assert.Equal(manual, config!.Throughput);
+        Assert.Equal(autoscale, config.AutoscaleMaxThroughput);
+    }
+
+    [Fact]
+    public async Task ArmCreateDatabase_Serverless_SendsPayloadWithoutThroughput()
+    {
+        var (context, databases) = CreateArmContext(ServerlessByCapability());
+        CosmosDBSqlDatabaseCreateOrUpdateContent? sent = null;
+        databases.CreateOrUpdateAsync(WaitUntil.Completed, "db", Arg.Do<CosmosDBSqlDatabaseCreateOrUpdateContent>(c => sent = c), Arg.Any<CancellationToken>())
+            .Returns(Substitute.For<ArmOperation<CosmosDBSqlDatabaseResource>>());
+
+        await CosmosArmResourceProvider.CreateDatabaseAsync(context, "db", null, null, TestContext.Current.CancellationToken);
+
+        var json = CosmosArmResourceProvider.WriteArmModel(Assert.IsType<CosmosDBSqlDatabaseCreateOrUpdateContent>(sent));
+        Assert.DoesNotContain("throughput", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("autoscaleSettings", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ArmCreateDatabase_ServerlessWithOptions_ThrowsBeforeSending()
+    {
+        var (context, databases) = CreateArmContext(ServerlessByCapacityMode());
+
+        await Assert.ThrowsAsync<ServerlessThroughputNotSupportedException>(
+            () => CosmosArmResourceProvider.CreateDatabaseAsync(context, "db", "manual", 400, TestContext.Current.CancellationToken));
+        await databases.DidNotReceiveWithAnyArgs().CreateOrUpdateAsync(default, default!, default!, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task ArmCreateDatabase_ProvisionedWithoutOptions_OmitsSharedThroughput()
+    {
+        var (context, databases) = CreateArmContext(Provisioned());
+        CosmosDBSqlDatabaseCreateOrUpdateContent? sent = null;
+        databases.CreateOrUpdateAsync(WaitUntil.Completed, "db", Arg.Do<CosmosDBSqlDatabaseCreateOrUpdateContent>(c => sent = c), Arg.Any<CancellationToken>())
+            .Returns(Substitute.For<ArmOperation<CosmosDBSqlDatabaseResource>>());
+
+        await CosmosArmResourceProvider.CreateDatabaseAsync(context, "db", null, null, TestContext.Current.CancellationToken);
+
+        Assert.Null(sent!.Options);
+        var json = CosmosArmResourceProvider.WriteArmModel(sent);
+        Assert.DoesNotContain("throughput", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("autoscaleSettings", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("auto", 4000, null, 4000)]
+    [InlineData("auto", null, null, 1000)]
+    [InlineData(null, 2000, null, 2000)]
+    [InlineData("manual", 400, 400, null)]
+    [InlineData("m", null, 1000, null)]
+    public async Task ArmCreateDatabase_ExplicitOptions_ProvisionsSharedThroughput(string? scale, int? ru, int? manual, int? autoscale)
+    {
+        var (context, databases) = CreateArmContext(Provisioned());
+        CosmosDBSqlDatabaseCreateOrUpdateContent? sent = null;
+        databases.CreateOrUpdateAsync(WaitUntil.Completed, "db", Arg.Do<CosmosDBSqlDatabaseCreateOrUpdateContent>(c => sent = c), Arg.Any<CancellationToken>())
+            .Returns(Substitute.For<ArmOperation<CosmosDBSqlDatabaseResource>>());
+
+        await CosmosArmResourceProvider.CreateDatabaseAsync(context, "db", scale, ru, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(sent!.Options);
+        Assert.Equal(manual, sent.Options.Throughput);
+        Assert.Equal(autoscale, sent.Options.AutoscaleMaxThroughput);
+    }
+
+    [Fact]
+    public async Task ArmCreateContainer_ProvisionedWithoutOptions_KeepsDefaultAutoscale()
+    {
+        var (context, containers) = CreateArmContainerContext(Provisioned());
+        CosmosDBSqlContainerCreateOrUpdateContent? sent = null;
+        containers.CreateOrUpdateAsync(WaitUntil.Completed, "Items", Arg.Do<CosmosDBSqlContainerCreateOrUpdateContent>(c => sent = c), Arg.Any<CancellationToken>())
+            .Returns(Substitute.For<ArmOperation<CosmosDBSqlContainerResource>>());
+
+        await CosmosArmResourceProvider.CreateContainerAsync(
+            context, "db", "Items", ["/pk"], null, null, null, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1000, sent!.Options.AutoscaleMaxThroughput);
+    }
+
+    [Fact]
+    public async Task ArmCreateContainer_Serverless_SendsPayloadWithoutThroughput()
+    {
+        var (context, containers) = CreateArmContainerContext(ServerlessByCapacityMode());
+        CosmosDBSqlContainerCreateOrUpdateContent? sent = null;
+        containers.CreateOrUpdateAsync(WaitUntil.Completed, "Items", Arg.Do<CosmosDBSqlContainerCreateOrUpdateContent>(c => sent = c), Arg.Any<CancellationToken>())
+            .Returns(Substitute.For<ArmOperation<CosmosDBSqlContainerResource>>());
+
+        await CosmosArmResourceProvider.CreateContainerAsync(
+            context, "db", "Items", ["/tenantId", "/userId"], "/email", null, null, null, TestContext.Current.CancellationToken);
+
+        var json = CosmosArmResourceProvider.WriteArmModel(Assert.IsType<CosmosDBSqlContainerCreateOrUpdateContent>(sent));
+        Assert.DoesNotContain("throughput", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("autoscaleSettings", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("/tenantId", json);
+        Assert.Contains("/userId", json);
+        Assert.Contains("/email", json);
+    }
+
+    [Fact]
+    public async Task ArmCreateContainer_ServerlessWithOptions_ThrowsBeforeSending()
+    {
+        var (context, containers) = CreateArmContainerContext(ServerlessByCapability());
+
+        await Assert.ThrowsAsync<ServerlessThroughputNotSupportedException>(
+            () => CosmosArmResourceProvider.CreateContainerAsync(
+                context, "db", "Items", ["/pk"], null, null, "auto", 1000, TestContext.Current.CancellationToken));
+
+        await containers.DidNotReceiveWithAnyArgs().CreateOrUpdateAsync(default, default!, default!, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task Fallback_ServerlessRejectionWithoutOptions_RetriesWithoutThroughput()
+    {
+        var sent = new List<ThroughputProperties?>();
+
+        var result = await DataPlaneCosmosResourceOperations.CreateWithServerlessFallbackAsync(null, null, throughput =>
+        {
+            sent.Add(throughput);
+            return sent.Count == 1 ? throw ServerlessRejection() : Task.FromResult("created");
+        });
+
+        Assert.Equal("created", result);
+        Assert.Equal(2, sent.Count);
+        Assert.Equal(1000, sent[0]!.AutoscaleMaxThroughput);
+        Assert.Null(sent[1]);
+    }
+
+    [Theory]
+    [InlineData("manual", 400)]
+    [InlineData("auto", null)]
+    [InlineData(" ", null)]
+    [InlineData(null, 1000)]
+    public async Task Fallback_ServerlessRejectionWithOptions_ThrowsWithoutRetrying(string? scale, int? ru)
+    {
+        var calls = 0;
+
+        var ex = await Assert.ThrowsAsync<ServerlessThroughputNotSupportedException>(() =>
+            DataPlaneCosmosResourceOperations.CreateWithServerlessFallbackAsync<string>(scale, ru, _ =>
+            {
+                calls++;
+                throw ServerlessRejection();
+            }));
+
+        Assert.Equal(1, calls);
+        Assert.IsType<CosmosException>(ex.InnerException);
+    }
+
+    public static TheoryData<Exception> UnrelatedFailures => new()
+    {
+        new CosmosException("Request rate is large", HttpStatusCode.BadRequest, 0, "a", 0),
+        new CosmosException("The serverless account policy rejected the request.", HttpStatusCode.BadRequest, 0, "a", 0),
+        new CosmosException("serverless principal is not authorized", HttpStatusCode.Forbidden, 0, "a", 0),
+        new CosmosException("serverless token invalid", HttpStatusCode.Unauthorized, 0, "a", 0),
+        new OperationCanceledException(),
+    };
+
+    [Theory]
+    [MemberData(nameof(UnrelatedFailures))]
+    public async Task Fallback_UnrelatedFailure_PropagatesWithoutRetrying(Exception failure)
+    {
+        var calls = 0;
+
+        var thrown = await Assert.ThrowsAnyAsync<Exception>(() =>
+            DataPlaneCosmosResourceOperations.CreateWithServerlessFallbackAsync<string>(null, null, _ =>
+            {
+                calls++;
+                throw failure;
+            }));
+
+        Assert.Same(failure, thrown);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task Mkcon_ServerlessDataPlane_RetriesWithSameContainerDefinition()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var (client, database) = CreateDataPlaneClient();
+        var sentThroughput = new List<ThroughputProperties?>();
+        var sentProperties = new List<ContainerProperties>();
+        var created = Substitute.For<ContainerResponse>();
+        created.Container.Id.Returns("Items");
+        database.CreateContainerIfNotExistsAsync(
+                Arg.Do<ContainerProperties>(sentProperties.Add),
+                Arg.Do<ThroughputProperties?>(sentThroughput.Add),
+                Arg.Any<RequestOptions>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException<ContainerResponse>(ServerlessRejection()), _ => Task.FromResult(created));
+        shell.State = new DatabaseState("db", client);
+
+        var result = await new MakeContainerCommand
+        {
+            Name = "Items",
+            PartitionKey = "/tenantId,/userId",
+            UniqueKey = "/email",
+            IndexPolicy = "{\"indexingMode\":\"consistent\"}",
+        }.ExecuteAsync(shell, new CommandState(), "mkcon", TestContext.Current.CancellationToken);
+
+        Assert.Equal("Items", ((ShellJson)result.Result!).Value.GetProperty("id").GetString());
+        Assert.Equal(1000, sentThroughput[0]!.AutoscaleMaxThroughput);
+        Assert.Null(sentThroughput[1]);
+        Assert.Same(sentProperties[0], sentProperties[1]);
+        Assert.Equal(["/tenantId", "/userId"], sentProperties[1].PartitionKeyPaths);
+        Assert.Equal("/email", Assert.Single(Assert.Single(sentProperties[1].UniqueKeyPolicy.UniqueKeys).Paths));
+        Assert.Equal(IndexingMode.Consistent, sentProperties[1].IndexingPolicy.IndexingMode);
+    }
+
+    [Theory]
+    [InlineData("mkdb NewDb")]
+    [InlineData("create database NewDb")]
+    [InlineData("create db NewDb")]
+    public async Task CreateDatabase_WithoutOptions_OmitsSharedThroughputOnFirstRequest(string command)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var (client, _) = CreateDataPlaneClient();
+        var sent = new List<ThroughputProperties?>();
+        var created = Substitute.For<DatabaseResponse>();
+        created.Database.Id.Returns("NewDb");
+        created.StatusCode.Returns(HttpStatusCode.Created);
+        client.CreateDatabaseIfNotExistsAsync("NewDb", Arg.Do<ThroughputProperties?>(sent.Add), Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(created);
+        shell.State = new ConnectedState(client);
+
+        var result = await shell.RunCommandAsync(new CommandState(), command, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsError);
+        Assert.Null(Assert.Single(sent));
+        Assert.True(Assert.IsType<ShellJson>(result.Result).Value.GetProperty("created").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("mkdb NewDb --scale=auto")]
+    [InlineData("create database NewDb --ru=1000")]
+    public async Task CreateDatabase_ServerlessWithExplicitOptions_ReportsActionableErrorWithoutRetry(string command)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var (client, _) = CreateDataPlaneClient();
+        client.CreateDatabaseIfNotExistsAsync("NewDb", Arg.Any<ThroughputProperties?>(), Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(ServerlessRejection());
+        shell.State = new ConnectedState(client);
+
+        var ex = await Assert.ThrowsAsync<CommandException>(
+            () => shell.RunCommandAsync(new CommandState(), command, TestContext.Current.CancellationToken));
+
+        Assert.Equal(MessageService.GetString("error-serverless_throughput_not_supported"), ex.Message);
+        await client.ReceivedWithAnyArgs(1).CreateDatabaseIfNotExistsAsync(default!, default(ThroughputProperties?), default, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task Mkcon_ServerlessWithExplicitRu_ReportsActionableError()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var (client, database) = CreateDataPlaneClient();
+        database.CreateContainerIfNotExistsAsync(Arg.Any<ContainerProperties>(), Arg.Any<ThroughputProperties?>(), Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(ServerlessRejection());
+        shell.State = new DatabaseState("db", client);
+
+        var ex = await Assert.ThrowsAsync<CommandException>(() => new CreateCommand { Item = "container", Name = "Items", PartitionKey = "/pk", MaxRU = 400 }
+            .ExecuteAsync(shell, new CommandState(), "create container", TestContext.Current.CancellationToken));
+
+        Assert.Equal(MessageService.GetString("error-serverless_throughput_not_supported"), ex.Message);
+        await database.ReceivedWithAnyArgs(1).CreateContainerIfNotExistsAsync(default(ContainerProperties)!, default(ThroughputProperties?), default, TestContext.Current.CancellationToken);
+    }
+
+    [Theory]
+    [InlineData("mkdb Shared --scale=manual --ru=400", 400, null)]
+    [InlineData("mkdb Shared --scale=m", 1000, null)]
+    [InlineData("mkdb Shared --scale=auto", null, 1000)]
+    [InlineData("mkdb Shared --ru=2000", null, 2000)]
+    [InlineData("create database Shared --scale=manual --ru=400", 400, null)]
+    [InlineData("create database Shared --scale=m", 1000, null)]
+    [InlineData("create database Shared --scale=auto --ru=4000", null, 4000)]
+    [InlineData("create db Shared --ru=2000", null, 2000)]
+    public async Task CreateDatabase_ExplicitOptions_ProvisionsSharedThroughputOnce(string command, int? manual, int? autoscale)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var (client, _) = CreateDataPlaneClient();
+        var sent = new List<ThroughputProperties?>();
+        var created = Substitute.For<DatabaseResponse>();
+        created.Database.Id.Returns("Shared");
+        client.CreateDatabaseIfNotExistsAsync("Shared", Arg.Do<ThroughputProperties?>(sent.Add), Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(created);
+        shell.State = new ConnectedState(client);
+
+        var result = await shell.RunCommandAsync(new CommandState(), command, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsError);
+        var throughput = Assert.IsType<ThroughputProperties>(Assert.Single(sent));
+        Assert.Equal(manual, throughput.Throughput);
+        Assert.Equal(autoscale, throughput.AutoscaleMaxThroughput);
+    }
+
+    [Fact]
+    public async Task Mkcon_ProvisionedAccount_KeepsDefaultAutoscale()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var (client, database) = CreateDataPlaneClient();
+        var sent = new List<ThroughputProperties?>();
+        var created = Substitute.For<ContainerResponse>();
+        created.Container.Id.Returns("Items");
+        database.CreateContainerIfNotExistsAsync(Arg.Any<ContainerProperties>(), Arg.Do<ThroughputProperties?>(sent.Add), Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(created);
+        shell.State = new DatabaseState("db", client);
+
+        await new MakeContainerCommand { Name = "Items", PartitionKey = "/pk" }
+            .ExecuteAsync(shell, new CommandState(), "mkcon", TestContext.Current.CancellationToken);
+
+        Assert.Equal(1000, Assert.Single(sent)!.AutoscaleMaxThroughput);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExistingResource_ServerlessWithExplicitThroughput_RejectsOptions(bool isContainer)
+    {
+        var (operations, database, container) = CreateResourceOperations(HttpStatusCode.OK);
+        var rejection = new CosmosException(
+            "Reading or replacing offers is not supported for serverless accounts.", HttpStatusCode.BadRequest, 0, "a", 1.5);
+        database.ReadThroughputAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).ThrowsAsync(rejection);
+        container.ReadThroughputAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).ThrowsAsync(rejection);
+
+        var exception = await Assert.ThrowsAsync<ServerlessThroughputNotSupportedException>(
+            () => CreateResourceAsync(operations, isContainer, null, 400));
+
+        Assert.Same(rejection, exception.InnerException);
+    }
+
+    [Theory]
+    [InlineData(false, HttpStatusCode.Created, 400)]
+    [InlineData(true, HttpStatusCode.Created, 400)]
+    [InlineData(false, HttpStatusCode.OK, null)]
+    [InlineData(true, HttpStatusCode.OK, null)]
+    public async Task Resource_WithoutExistingExplicitThroughput_DoesNotReadOffers(bool isContainer, HttpStatusCode status, int? ru)
+    {
+        var (operations, database, container) = CreateResourceOperations(status);
+
+        await CreateResourceAsync(operations, isContainer, null, ru);
+
+        await database.DidNotReceiveWithAnyArgs().ReadThroughputAsync(default(RequestOptions)!, TestContext.Current.CancellationToken);
+        await container.DidNotReceiveWithAnyArgs().ReadThroughputAsync(default(RequestOptions)!, TestContext.Current.CancellationToken);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExistingResource_ProvisionedWithExplicitThroughput_PreservesSuccess(bool isContainer)
+    {
+        var (operations, database, container) = CreateResourceOperations(HttpStatusCode.OK);
+        var throughput = Substitute.For<ThroughputResponse>();
+        database.ReadThroughputAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).Returns(throughput);
+        container.ReadThroughputAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).Returns(throughput);
+
+        var result = await CreateResourceAsync(operations, isContainer, "manual", 400);
+
+        Assert.Equal(isContainer ? "Items" : "db", result.Id);
+        Assert.Equal(ResourceCreationOutcome.Existing, result.Outcome);
+    }
+
+    [Theory]
+    [InlineData(false, HttpStatusCode.NotFound)]
+    [InlineData(true, HttpStatusCode.NotFound)]
+    [InlineData(false, HttpStatusCode.Forbidden)]
+    [InlineData(true, HttpStatusCode.Forbidden)]
+    [InlineData(false, HttpStatusCode.BadRequest)]
+    [InlineData(true, HttpStatusCode.BadRequest)]
+    public async Task ExistingResource_OfferReadFailure_OnlyMissingOfferPreservesSuccess(bool isContainer, HttpStatusCode status)
+    {
+        var (operations, database, container) = CreateResourceOperations(HttpStatusCode.OK);
+        var failure = new CosmosException("Offer read failed.", status, 0, "a", 1.5);
+        database.ReadThroughputAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).ThrowsAsync(failure);
+        container.ReadThroughputAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).ThrowsAsync(failure);
+
+        if (status == HttpStatusCode.NotFound)
+        {
+            Assert.Equal(isContainer ? "Items" : "db", (await CreateResourceAsync(operations, isContainer, null, 400)).Id);
+        }
+        else
+        {
+            var exception = await Assert.ThrowsAsync<CosmosException>(
+                () => CreateResourceAsync(operations, isContainer, null, 400));
+            Assert.Same(failure, exception);
+        }
+    }
+
+    private static Task<ResourceCreationResult> CreateResourceAsync(DataPlaneCosmosResourceOperations operations, bool isContainer, string? scale, int? ru)
+        => isContainer
+            ? operations.CreateContainerAsync("db", "Items", ["/pk"], null, null, scale, ru, TestContext.Current.CancellationToken)
+            : operations.CreateDatabaseAsync("db", scale, ru, TestContext.Current.CancellationToken);
+
+    private static (DataPlaneCosmosResourceOperations Operations, Database Database, Container Container) CreateResourceOperations(HttpStatusCode status)
+    {
+        var (client, database) = CreateDataPlaneClient();
+        var container = Substitute.For<Container>();
+        database.Id.Returns("db");
+        container.Id.Returns("Items");
+        var databaseResponse = Substitute.For<DatabaseResponse>();
+        databaseResponse.StatusCode.Returns(status);
+        databaseResponse.Database.Returns(database);
+        client.CreateDatabaseIfNotExistsAsync("db", Arg.Any<ThroughputProperties?>(), Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(databaseResponse);
+        var containerResponse = Substitute.For<ContainerResponse>();
+        containerResponse.StatusCode.Returns(status);
+        containerResponse.Container.Returns(container);
+        database.CreateContainerIfNotExistsAsync(Arg.Any<ContainerProperties>(), Arg.Any<ThroughputProperties?>(), Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(containerResponse);
+        return (new DataPlaneCosmosResourceOperations(client), database, container);
+    }
+
+    private static CosmosException ServerlessRejection() => new(ServerlessMessage, HttpStatusCode.BadRequest, 0, "a", 1.5);
+
+    private static (CosmosClient Client, Database Database) CreateDataPlaneClient()
+    {
+        var client = Substitute.For<CosmosClient>();
+        var database = Substitute.For<Database>();
+        var existing = Substitute.For<DatabaseResponse>();
+        existing.StatusCode.Returns(HttpStatusCode.OK);
+        database.ReadAsync(Arg.Any<RequestOptions>(), Arg.Any<CancellationToken>()).Returns(existing);
+        client.GetDatabase(Arg.Any<string>()).Returns(database);
+        return (client, database);
+    }
+
+    private static (ArmCosmosContext Context, CosmosDBSqlDatabaseCollection Databases) CreateArmContext(CosmosDBAccountData data)
+    {
+        var account = Substitute.For<CosmosDBAccountResource>();
+        account.Data.Returns(data);
+        var databases = Substitute.For<CosmosDBSqlDatabaseCollection>();
+        account.GetCosmosDBSqlDatabases().Returns(databases);
+        var id = new ResourceIdentifier("/subscriptions/s/resourceGroups/rg/providers/Microsoft.DocumentDB/databaseAccounts/a");
+        return (new ArmCosmosContext(Substitute.For<ArmClient>(), id, "s", "rg", "a", new Uri("https://a.documents.azure.com"), account), databases);
+    }
+
+    private static (ArmCosmosContext Context, CosmosDBSqlContainerCollection Containers) CreateArmContainerContext(CosmosDBAccountData data)
+    {
+        var (context, databases) = CreateArmContext(data);
+        var database = Substitute.For<CosmosDBSqlDatabaseResource>();
+        databases.GetIfExistsAsync("db", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<NullableResponse<CosmosDBSqlDatabaseResource>>(
+                Response.FromValue(database, Substitute.For<Response>())));
+        var containers = Substitute.For<CosmosDBSqlContainerCollection>();
+        database.GetCosmosDBSqlContainers().Returns(containers);
+        return (context, containers);
+    }
+
+    private static CosmosDBAccountData ServerlessByCapability() =>
+        System.ClientModel.Primitives.ModelReaderWriter.Read<CosmosDBAccountData>(
+            BinaryData.FromString("""{"location":"westus","properties":{"capabilities":[{"name":"EnableServerless"}]}}"""))!;
+
+    private static CosmosDBAccountData ServerlessByCapacityMode() =>
+        System.ClientModel.Primitives.ModelReaderWriter.Read<CosmosDBAccountData>(
+            BinaryData.FromString("""{"location":"westus","properties":{"capacityMode":"Serverless"}}"""))!;
+
+    private static CosmosDBAccountData Provisioned() =>
+        System.ClientModel.Primitives.ModelReaderWriter.Read<CosmosDBAccountData>(
+            BinaryData.FromString("""{"location":"westus","properties":{"capabilities":[{"name":"EnableServerlessLike"}],"capacityMode":"Provisioned"}}"""))!;
+}

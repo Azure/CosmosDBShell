@@ -10,10 +10,15 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Navigate with `ls` and `cd` (Account -> Databases -> Containers -> Items)
 - Inspect the current location with `pwd`
 - Inspect the connected identity with `whoami`, and probe data-plane access with `can-i` (both support `--format` table/json/csv)
+- Diagnose environment and connectivity with read-only `doctor` checks, versioned JSON reports, and optional query and ARM probes; use `doctor who` for known identity and access context ([troubleshooting](docs/commands.md#doctor))
 - Create, query, replace, patch, delete: `mkdb`, `mkcon`, `mkitem`, `query`, `replace`, `patch`, `rm`
+- Point-read typed, undefined, or hierarchical keys with `print <id> <key>`: `680` is numeric, `'"680"'` is a string, `'{}'` is an undefined key, and `'[1001,{}]'` is hierarchical ([docs](docs/commands.md#print)).
+- Create databases and containers on serverless accounts with `mkdb` and `mkcon` without specifying `--scale` or `--ru` ([command details](docs/commands.md#mkdb))
+- Delete a single item safely with `rm <id> --key=id --partition-key=<pk> --etag=<etag>`: point operations scoped to one logical partition, with server-enforced ETag checks ([docs](docs/commands.md#deleting-a-single-item-safely))
 - Inspect a query's execution plan and index usage with `query "<sql>" --explain`
 - Atomic multi-operation transactions on a single partition key: `batch`
-- Bulk roundtrip with `import` / `export` for JSON Lines and JSON array files, plus CSV import/export (CSV import coerces values to strings; `--partition-key` nests a CSV column under a nested partition key path)
+- Non-transactional `bulk` writes across partitions, using the same operation JSON and `run`/`begin`/`add`/`execute` workflow as `batch`, plus `bulk patch --where` and `bulk delete --where` for query-driven migrations, bounded concurrency, dry-run, saved plans, and integrity-checked resumable journals. Stateful jobs are capped at 10,000 operations and 64 MiB of canonical JSON; use streamed `bulk run <file>` for larger jobs. Journaled stateful jobs cannot be extended after execution records outcomes. Use `replace`, not `upsert`, for conditional ETag updates ([bulk operations](docs/commands.md#bulk)).
+- Bulk roundtrip with `import` / `export` using JSON array files compatible with the Azure Databases extension for VS Code, plus CSV import/export selected by a `.csv` file name (CSV import coerces values to strings; `--partition-key` nests a CSV column under a nested partition key path). Import automatically detects single JSON objects and sequences of JSON objects, including JSON Lines and multiple objects on one line. `--format` controls the command-result presentation, not the file contents.
 - Manage container indexing policies with `index` (`show`, `add`, `remove`, `set`)
 - Inspect container/database/account configuration and usage statistics with `info` (partition key, throughput, policies, indexing policy summary, document count, storage size, regions; `--partitions` and `--detailed` for distribution analysis)
 - Discover a container's structure with `schema` — partition key, indexing policy summary, estimated document count, and inferred field types from a bounded sample (`--sample`, default 20); use `--fields-only`/`--short` for field-only output without a metadata read; also exposed as a read-only MCP tool
@@ -26,17 +31,31 @@ A terminal-native shell for Azure Cosmos DB — navigate databases like a filesy
 - Tail the change feed of a container with `watch` (alias `tail`)
 - Database and container management commands prefer Azure Resource Manager when connected with Entra ID, with data-plane fallback for key, emulator, and static-token connections
 - Pipelines and scripting with variables, loops, functions
-- Transform piped JSON output with `filter` using jq-inspired expressions (field access, indexing, `map`, `length`, pipelines)
+- Transform piped JSON output with `filter` using jq-inspired expressions (field access, indexing, `map`, `length`, pipelines). Indexes larger than `2147483647` are rejected; valid indexes beyond the array length return `null`.
 - Edit local files in your external editor with `edit`, and customize REPL colors with `theme` (`list`, `show`, `use`, `load`, `validate`, `save`, `edit`; built-in default/light/dark/monochrome)
 - Multi-line input at the prompt — automatic continuation for unclosed blocks/strings, plus explicit `\` line continuation ([docs](docs/navigation.md#multi-line-input))
 - MCP server for AI/tool integration
 - Distributed tracing via OpenTelemetry (`--otel`): emits a sampled W3C `traceparent` on Cosmos requests, with optional OTLP export
+
+Exports replace their destination only after successful completion, preserving an existing file on failure or cancellation. Imports stream records with up to 16 concurrent writes by default; set `--concurrency` to tune this, or use `--concurrency=1` for sequential, file-order writes. Concurrent writes can finish out of order, and in-flight writes may finish after an error. CSV exports use temporary disk storage to discover columns without retaining all documents in memory. Scalar CSV results use an empty column header by default; set `COSMOSDB_SHELL_CSV_SCALAR_COLUMN` to name it. An import rejects populated columns with empty headers rather than discarding their values. See [import/export](docs/commands.md#export).
+
+`import --dry-run` validates input and item IDs offline without writes or target requests. It reports `validated` records and `imported: 0`; it does not verify target partition keys, permissions, conflicts, or other service constraints. See [dry-run limits](docs/commands.md#dry-run-validation-scope).
+
+MCP command execution is serialized with the shell, and destructive confirmations are invalidated by connection or navigation changes. Ordinary explicit null MCP arguments are omitted; null continuation tokens and null `rm` partition-key/ETag safety options are rejected. MCP invocations are echoed in the shell so their activity stays visible, and they are recorded in history alongside interactive commands. Concurrent shells merge history under a shared lock and publish complete replacements instead of truncating the saved file. History remains fully replayable, including connection strings; treat its file as sensitive. See [MCP security](docs/mcp.md#security) and [history](docs/navigation.md#history).
+
+MCP clients supporting resource subscriptions can watch `cosmos://shell/current-location` for interactive navigation and connection changes; the resource includes the current account endpoint separately from the location. The resource list is static, so the server does not advertise `resources.listChanged`. See [MCP location updates](docs/mcp.md#shell-location-updates).
+
+`--mcp` supports Streamable HTTP at `http://127.0.0.1:6128/` and legacy SSE at `http://127.0.0.1:6128/sse` on the same server, without an extra option. Both share the interactive shell's state. Use trusted local clients; prefer Streamable HTTP when available. See [MCP transports](docs/mcp.md#start-mcp-server).
+
+Legacy SSE allows at most 16 outstanding MCP requests across all sessions; excess requests receive HTTP 429 before reaching the SDK, without being queued. Replies and cancellation notifications remain available.
 
 ## Quick Start
 
 **Requirements:** .NET SDK 10.0+.
 
 The .NET runtime alone is not enough for the commands below. `dotnet run` and `dotnet tool install` are SDK commands. To verify the SDK is installed, run `dotnet --list-sdks`.
+
+In Linux containers without ICU, the shell also supports .NET globalization-invariant mode and falls back to its bundled English messages.
 
 ```bash
 dotnet run --project CosmosDBShell
@@ -53,6 +72,13 @@ cd MyContainer
 query "SELECT * FROM c"
 ```
 
+Cosmos DB SDK requests identify the shell as `CosmosDBShell/<version>` in the user agent, using the version reported by the `version` command.
+
+Automatic emulator authentication and certificate-validation bypass apply only
+when the parsed HTTP(S) endpoint host is `localhost` or `127.0.0.1`, not when those
+strings occur elsewhere in the URL or connection string. See the
+[connection guide](docs/connect.md#emulator).
+
 ## Build from Source
 
 ```bash
@@ -67,6 +93,12 @@ Run the tests:
 ```bash
 dotnet test CosmosDBShell.sln
 ```
+
+The first-run welcome screen and `welcome` command use the OS UI language when
+translations are available. Command-example descriptions, theme-preview labels,
+and scripting and endpoint-validation messages also use localization resources.
+New text remains in English until translated; executable examples and option names
+remain unchanged.
 
 ## Install from Lightweight RPM Artifacts
 
@@ -90,7 +122,10 @@ sudo tdnf install ./cosmosdbshell-lite-<version>-<release>.<architecture>.rpm
 cosmosdbshell
 ```
 
-On other RPM-based distributions, use `dnf`:
+For evaluation on other RPM-based distributions, first enable a package repository
+that provides `dotnet-runtime-10.0` (such as Microsoft's .NET RPM repository), then
+use `dnf`. A runtime installed outside the package manager does not satisfy this
+RPM dependency:
 
 ```bash
 sudo dnf install ./cosmosdbshell-lite-<version>-<release>.<architecture>.rpm
@@ -237,7 +272,7 @@ Packaging runs produce preview versions in the form `1.0.<run>-preview.<branch>`
 | `--theme <name>` | Color theme profile to apply at startup (`default`, `light`, `dark`, `monochrome`). Falls back to `COSMOSDB_SHELL_THEME`. |
 | `--help` | Show help |
 
-MCP `query` and container-item `ls` calls return bounded, resumable pages. They default to at most 100 items and include a continuation token for the next call; see [MCP pagination](docs/mcp.md#pagination).
+MCP `query` and container-item `ls` calls return bounded pages. They default to at most 100 items and include a continuation token for the next call. Some query plans cannot be resumed and report `resultIncomplete` instead of a token; see [MCP pagination](docs/mcp.md#pagination).
 
 Examples:
 
@@ -255,6 +290,22 @@ cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..." -c seed.csh mydb my
 # Run a script from piped command text.
 echo "seed.csh mydb mycontainer" | cosmosdbshell --connect "AccountEndpoint=...;AccountKey=..."
 ```
+
+Scripts are parsed and validated before their statements execute. Functions preserve argument types and keep assignments local; `return`, `break`, and `continue` propagate through nested blocks to their owning function, script, or loop. Integer overflow is reported as an error. See the [language rules and compatibility notes](docs/programming.md#operators), including operator precedence, compound assignment, numeric promotion, and runtime errors. Runtime failures do not roll back earlier successful operations.
+
+Parser nesting, expression tree depth, and active function/script calls have fixed [resource limits](docs/programming.md#resource-limits). Limit violations fail with diagnostics rather than continuing recursive parsing or execution.
+
+Loop headers reject misspelled `in` and `while` keywords before execution, and `filter` rejects overflowing array indexes rather than selecting element zero. JSON numeric strings use the same decimal conversion as shell strings. Dynamic `exec` calls accept normal command options, negative arguments, and shell words. See [programming](docs/programming.md) and the [filter language](docs/filter-v1-spec.md).
+
+Script diagnostics preserve source files, runtime failure categories, and function/script call sites. The language server shares the runtime's control-flow and duplicate-parameter checks, recognizes document-local functions, and checks nested commands and options. Incorrect function argument counts produce usage exit code `2`. See [validation and errors](docs/programming.md#validation-and-errors).
+
+Dynamic `exec` calls accept the same options and shell words as direct commands. Built-in commands bind options normally; functions and script files receive option-shaped arguments as positional text. See [exec](docs/programming.md#exec).
+
+Loops and functions preserve JSON `null` values. Numeric conditions use the same zero/nonzero rule for shell values and JSON properties, including fractional numbers. See [value conversion rules](docs/programming.md#numbers).
+
+JSON strings use the same `+` concatenation rules as shell strings. A bare `return` is valid immediately before a closing block brace. Editor variable symbols distinguish case-sensitive names such as `$value` and `$Value`.
+
+JSON objects and arrays preserve decimal number types across roundtrips: constructing `{"value":3.0}` no longer changes subsequent division into integer arithmetic.
 
 ## Deterministic Exit Codes
 
@@ -330,6 +381,18 @@ unknown_command = "bold red"
 Color values must be empty or one standard ANSI 16 color name (`black`, `maroon`, `green`, `olive`, `navy`, `purple`, `teal`, `silver`, `grey`, `red`, `lime`, `yellow`, `blue`, `fuchsia`, `aqua`, `white`). Style values may combine modifiers (`bold`, `dim`, `italic`, `underline`, `strikethrough`, `invert`, `conceal`, `slowblink`, `rapidblink`) with at most one ANSI 16 color. Empty string means "use the terminal's default foreground".
 
 The `literal` key colors every JSON/JavaScript literal at once. To match an editor more closely you can override individual literal types with `string`, `number`, `boolean`, and `null`; any you leave unset fall back to `literal`. The `string_escape` key colors backslash escape sequences (`\n`, `\"`, `\uXXXX`) inside strings; leave it unset to color escapes the same as the surrounding string.
+
+The `success`, `warning`, `error`, and `muted` keys color status verdicts such as the `PASS`, `WARN`, `FAIL`, and `SKIP` columns in `doctor`.
+Doctor keeps wrapped diagnostic messages aligned and reports explicit reasons for credential-blocked probes.
+It shows per-check duration and observed RUs, plus verdict counts and total elapsed time.
+Clock-offset estimates reuse existing response headers without extra requests; missing
+headers are reported as unassessed rather than implying that the clock is correct.
+Doctor also checks public GitHub releases for newer shell versions, including without
+a Cosmos connection. Preview installations include preview releases; stable installations
+consider stable releases only. Use `doctor --no-update-check` to suppress this external
+lookup. Updates are advisory and are never downloaded or installed automatically.
+
+Doctor distinguishes DNS, TLS, socket, proxy-authentication, and credential failures without exposing raw exception text. ARM permission failures include management-plane guidance rather than data-plane role advice.
 
 Runtime commands for working with files:
 

@@ -15,14 +15,14 @@ using Microsoft.Azure.Cosmos.Scripts;
 using Spectre.Console;
 
 [CosmosCommand("sproc")]
-[CosmosExample("sproc list", Description = "List the stored procedures in the current container")]
-[CosmosExample("sproc show myProc", Description = "Display the body of a stored procedure")]
-[CosmosExample("sproc exists myProc", Description = "Check whether a stored procedure exists (usable in if conditions)")]
-[CosmosExample("sproc create myProc ./myProc.js", Description = "Create a stored procedure from a JavaScript file")]
-[CosmosExample("sproc create myProc ./myProc.js --force", Description = "Create or replace a stored procedure")]
-[CosmosExample("sproc edit myProc", Description = "Edit a stored procedure body in an external editor")]
-[CosmosExample("sproc exec myProc '[\"param1\", \"param2\"]' --partition-key pk1", Description = "Execute a stored procedure with parameters")]
-[CosmosExample("sproc delete myProc", Description = "Delete a stored procedure")]
+[CosmosExample("sproc list", DescriptionKey = "command-sproc-example-1")]
+[CosmosExample("sproc show myProc", DescriptionKey = "command-sproc-example-2")]
+[CosmosExample("sproc exists myProc", DescriptionKey = "command-sproc-example-3")]
+[CosmosExample("sproc create myProc ./myProc.js", DescriptionKey = "command-sproc-example-4")]
+[CosmosExample("sproc create myProc ./myProc.js --force", DescriptionKey = "command-sproc-example-5")]
+[CosmosExample("sproc edit myProc", DescriptionKey = "command-sproc-example-6")]
+[CosmosExample("sproc exec myProc '[\"param1\", \"param2\"]' --partition-key pk1", DescriptionKey = "command-sproc-example-7")]
+[CosmosExample("sproc delete myProc", DescriptionKey = "command-sproc-example-8")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "Stored Procedures",
@@ -120,16 +120,30 @@ internal class SprocCommand : CosmosCommand
     /// (including JSON arrays for hierarchical partition keys). Object-shaped or otherwise
     /// malformed JSON is rejected with a clear error rather than silently coerced.
     /// </summary>
-    internal static PartitionKey ParsePartitionKey(string value)
+    internal static PartitionKey ParsePartitionKey(string value) =>
+        CreatePartitionKeyFromArgument(value, "sproc", "command-sproc-error-invalid_pk");
+
+    /// <summary>
+    /// Reads a stored procedure response body. A procedure that never calls <c>setBody</c>
+    /// returns no content; that is a successful execution with a JSON <c>null</c> result,
+    /// not a parse failure reported after the procedure's writes have committed.
+    /// </summary>
+    internal static async Task<JsonElement> ReadExecResultAsync(Stream? content, CancellationToken token)
     {
-        try
+        if (content == null)
         {
-            return CreatePartitionKeyFromArgument(value);
+            return JsonSerializer.SerializeToElement<object?>(null);
         }
-        catch (JsonException ex)
+
+        using var reader = new StreamReader(content, leaveOpen: true);
+        var text = await reader.ReadToEndAsync(token);
+        if (string.IsNullOrWhiteSpace(text))
         {
-            throw new CommandException("sproc", MessageService.GetString("command-sproc-error-invalid_pk"), ex);
+            return JsonSerializer.SerializeToElement<object?>(null);
         }
+
+        using var document = JsonDocument.Parse(text);
+        return document.RootElement.Clone();
     }
 
     private static CommandException NotFound(string name, Exception inner) =>
@@ -359,7 +373,7 @@ internal class SprocCommand : CosmosCommand
         }
 
         var seed = existingBody ?? DefaultStoredProcedureBody();
-        var edited = await this.LaunchEditorAsync(seed, name, token);
+        var edited = await this.LaunchEditorAsync(shell, seed, name, token);
 
         if (!string.IsNullOrWhiteSpace(edited))
         {
@@ -370,7 +384,7 @@ internal class SprocCommand : CosmosCommand
             ShellInterpreter.WriteLine();
         }
 
-        if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-sproc-create-confirm"))
+        if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-sproc-create-confirm", shell))
         {
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "sproc", id = name, created = false }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-sproc-create-discarded", "name", name));
@@ -443,21 +457,22 @@ internal class SprocCommand : CosmosCommand
 
         try
         {
-            var response = await container.Scripts.ExecuteStoredProcedureAsync<JsonElement>(
+            using var response = await container.Scripts.ExecuteStoredProcedureStreamAsync(
                 name,
                 partitionKey,
                 parameters,
                 cancellationToken: token);
+            response.EnsureSuccessStatusCode();
+            commandState.RequestCharge = response.Headers.RequestCharge;
 
             ShellInterpreter.WriteLine(MessageService.GetArgsString(
                 "command-sproc-executed",
                 "name",
                 name,
                 "charge",
-                response.RequestCharge.ToString("F2")));
+                response.Headers.RequestCharge.ToString("F2")));
 
-            commandState.Result = new ShellJson(response.Resource.Clone());
-            commandState.RequestCharge = response.RequestCharge;
+            commandState.Result = new ShellJson(await ReadExecResultAsync(response.Content, token));
             return commandState;
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -510,7 +525,7 @@ internal class SprocCommand : CosmosCommand
             throw NotFound(name, ex);
         }
 
-        var newBody = await this.LaunchEditorAsync(existingBody, name, token);
+        var newBody = await this.LaunchEditorAsync(shell, existingBody, name, token);
 
         if (string.Equals(newBody, existingBody, StringComparison.Ordinal))
         {
@@ -538,7 +553,7 @@ internal class SprocCommand : CosmosCommand
     /// external editor, waits for the editor to close, and returns the edited
     /// contents. The temporary file is always removed.
     /// </summary>
-    private async Task<string> LaunchEditorAsync(string initialBody, string name, CancellationToken token)
+    private async Task<string> LaunchEditorAsync(ShellInterpreter shell, string initialBody, string name, CancellationToken token)
     {
         var editor = ExternalEditor.Resolve(null);
         if (editor is null)
@@ -553,6 +568,7 @@ internal class SprocCommand : CosmosCommand
         try
         {
             await File.WriteAllTextAsync(tempPath, initialBody, token);
+            using var pause = shell.PauseOperationTimeout();
 
             AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
                 "command-sproc-edit-launching",

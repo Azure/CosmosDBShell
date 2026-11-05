@@ -4,6 +4,9 @@
 
 namespace Azure.Data.Cosmos.Shell.Parser;
 
+using System.Globalization;
+using System.Text.Json;
+
 using Azure.Data.Cosmos.Shell.ArgumentParser;
 using Azure.Data.Cosmos.Shell.Util;
 
@@ -26,6 +29,12 @@ internal class ExpressionParser
     {
         get
         {
+            if (this.lexer.Budget.Exceeded)
+            {
+                this.aborted = true;
+                return null;
+            }
+
             this.Initialize();
             if (this.currentToken == null)
             {
@@ -37,7 +46,7 @@ internal class ExpressionParser
         }
     }
 
-    public bool IsAtEnd => this.currentToken == null || this.aborted;
+    public bool IsAtEnd => this.currentToken == null || this.aborted || this.lexer.Budget.Exceeded;
 
     /// <summary>
     /// Returns the token immediately following <see cref="Current"/> without consuming it.
@@ -173,7 +182,7 @@ internal class ExpressionParser
             return this.CreateAbortExpression();
         }
 
-        return this.ParseOr();
+        return this.ValidateDepth(this.ParseOr());
     }
 
     /// <summary>
@@ -194,7 +203,7 @@ internal class ExpressionParser
         this.inFilterMode = true;
         try
         {
-            return this.ParsePipeExpression();
+            return this.ValidateDepth(this.ParsePipeExpression());
         }
         finally
         {
@@ -210,7 +219,43 @@ internal class ExpressionParser
             return this.CreateAbortExpression();
         }
 
-        return this.ParsePrimary();
+        return this.ValidateDepth(this.ParsePrimary());
+    }
+
+    private Expression ValidateDepth(Expression expression)
+    {
+        var pending = new Stack<(Expression Expression, int Depth)>();
+        pending.Push((expression, 1));
+        while (pending.TryPop(out var current))
+        {
+            if (current.Depth > Lexer.ParsingBudget.MaximumExpressionDepth)
+            {
+                this.lexer.Budget.RejectExpressionDepth(this.lexer.Errors, this.currentToken ?? this.lastNonNullToken);
+                this.aborted = true;
+                return this.CreateAbortExpression();
+            }
+
+            IEnumerable<Expression> children = current.Expression switch
+            {
+                BinaryOperatorExpression binary => [binary.Left, binary.Right],
+                FilterPipeExpression pipe => [pipe.Left, pipe.Right],
+                UnaryOperatorExpression unary => [unary.Expression],
+                ParensExpression parens => [parens.InnerExpression],
+                JsonExpression json => json.Properties.Values,
+                JsonArrayExpression array => array.Expressions,
+                InterpolatedStringExpression interpolated => interpolated.Expressions,
+                FilterCallExpression call => call.Arguments,
+                CommandExpression command => command.Arguments,
+                CommandOption option when option.Value != null => [option.Value],
+                _ => [],
+            };
+            foreach (var child in children)
+            {
+                pending.Push((child, current.Depth + 1));
+            }
+        }
+
+        return expression;
     }
 
     private Expression ParsePipeExpression()
@@ -455,6 +500,11 @@ internal class ExpressionParser
     // Power operator (right associative)
     private Expression ParsePower()
     {
+        return this.ParseNested(this.ParsePowerCore);
+    }
+
+    private Expression ParsePowerCore()
+    {
         if (this.aborted)
         {
             return this.CreateAbortExpression();
@@ -484,6 +534,29 @@ internal class ExpressionParser
     // Unary operators (!, -, +)
     private Expression ParseUnary()
     {
+        return this.ParseNested(this.ParseUnaryCore);
+    }
+
+    private Expression ParseNested(Func<Expression> parse)
+    {
+        if (!this.lexer.Budget.TryEnter(this.lexer.Errors, this.currentToken))
+        {
+            this.aborted = true;
+            return this.CreateAbortExpression();
+        }
+
+        try
+        {
+            return this.ValidateDepth(parse());
+        }
+        finally
+        {
+            this.lexer.Budget.Exit();
+        }
+    }
+
+    private Expression ParseUnaryCore()
+    {
         if (this.aborted)
         {
             return this.CreateAbortExpression();
@@ -510,6 +583,11 @@ internal class ExpressionParser
 
     // Primary expressions (literals, variables, parentheses)
     private Expression ParsePrimary()
+    {
+        return this.ParseNested(this.ParsePrimaryCore);
+    }
+
+    private Expression ParsePrimaryCore()
     {
         if (this.aborted)
         {
@@ -598,7 +676,7 @@ internal class ExpressionParser
 
             this.Advance();
 
-            if (int.TryParse(token.Value, out int intValue))
+            if (int.TryParse(token.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
             {
                 return new ConstantExpression(token, new ShellNumber(intValue));
             }
@@ -618,7 +696,7 @@ internal class ExpressionParser
 
             this.Advance();
 
-            if (double.TryParse(token.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double doubleValue))
+            if (double.TryParse(token.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double doubleValue))
             {
                 return new ConstantExpression(token, new ShellDecimal(doubleValue));
             }
@@ -894,7 +972,7 @@ internal class ExpressionParser
                         if (rawStart >= 0 && rawEnd >= rawStart && rawEnd <= this.lexer.RawInput.Length)
                         {
                             var rawSlice = this.lexer.RawInput.Substring(rawStart, rawEnd - rawStart);
-                            var rawLexer = new Lexer(rawSlice, rawStartOuter);
+                            var rawLexer = new Lexer(rawSlice, rawStartOuter, this.lexer.Budget);
                             var rawParser = new ExpressionParser(rawLexer);
                             var expr = this.ValidateInterpolatedExpression(rawParser, rawParser.ParseExpression());
 
@@ -913,7 +991,7 @@ internal class ExpressionParser
                     // Token positions may drift through escape sequences but stay correct
                     // for escape-free interpolations, which covers the common case.
                     var innerOffset = OuterPos(startExprPos);
-                    var exprLexer = new Lexer(exprContent, innerOffset);
+                    var exprLexer = new Lexer(exprContent, innerOffset, this.lexer.Budget);
                     var exprParser = new ExpressionParser(exprLexer);
                     var expr2 = this.ValidateInterpolatedExpression(exprParser, exprParser.ParseExpression());
 
@@ -1158,7 +1236,7 @@ internal class ExpressionParser
             }
 
             // Parse property value as a full expression
-            var value = this.ParsePipeExpression();
+            var value = this.ParseJsonValueExpression();
 
             // Add to properties if key valid
             JsonProperty? propertyNode = null;
@@ -1287,7 +1365,7 @@ internal class ExpressionParser
             }
 
             // Parse next element as a full expression
-            var expr = this.ParsePipeExpression();
+            var expr = this.ParseJsonValueExpression();
             elements.Add(expr);
 
             this.SkipWhitespace();
@@ -1353,6 +1431,84 @@ internal class ExpressionParser
         this.ReportError(MessageService.GetString("expression_error_unmatched_brackets"), lbracket);
         var synthetic = this.CreateMissingToken(TokenType.CloseBracket, lbracket.Start + lbracket.Length);
         return new JsonArrayExpression(lbracket, synthetic, elements, commaTokens);
+    }
+
+    private Expression ParseJsonValueExpression()
+    {
+        if (this.TryParseLargeJsonIntegerLiteral(out var expression))
+        {
+            return expression!;
+        }
+
+        return this.ParsePipeExpression();
+    }
+
+    private bool TryParseLargeJsonIntegerLiteral(out Expression? expression)
+    {
+        expression = null;
+        if (this.aborted)
+        {
+            return false;
+        }
+
+        if (this.Check(TokenType.Number))
+        {
+            var token = this.Current;
+            if (token == null || int.TryParse(token.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return false;
+            }
+
+            expression = this.TryCreateJsonIntegerConstant(token, token.Value);
+            if (expression == null)
+            {
+                return false;
+            }
+
+            this.Advance();
+            return true;
+        }
+
+        if (this.Check(TokenType.Minus))
+        {
+            var minusToken = this.Current;
+            var numberToken = this.Peek();
+            if (minusToken == null ||
+                numberToken?.Type != TokenType.Number ||
+                int.TryParse(numberToken.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return false;
+            }
+
+            var value = "-" + numberToken.Value;
+            var token = new Token(TokenType.Number, value, minusToken.Start, numberToken.End - minusToken.Start);
+            expression = this.TryCreateJsonIntegerConstant(token, value);
+            if (expression == null)
+            {
+                return false;
+            }
+
+            this.Advance();
+            this.Advance();
+            return true;
+        }
+
+        return false;
+    }
+
+    private Expression? TryCreateJsonIntegerConstant(Token token, string value)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(value);
+            return document.RootElement.ValueKind == JsonValueKind.Number
+                ? new ConstantExpression(token, new ShellJson(document.RootElement.Clone()))
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private void ReportError(string message, Token? token, TokenType? expected = null, int? position = null, ParseErrorKind kind = ParseErrorKind.Generic)
@@ -1566,13 +1722,19 @@ internal class ExpressionParser
                 }
 
                 var indexToken = this.Consume(TokenType.Number, MessageService.GetString("expression_error_expected_array_index"));
-                int index = int.TryParse(indexToken.Value, out var parsedIndex) ? parsedIndex : 0;
+                bool validIndex = int.TryParse(indexToken.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index);
                 var indexedCloseBracket = this.Consume(TokenType.CloseBracket, MessageService.GetString("expression_error_expected_close_bracket"));
                 var indexQuestionToken = this.TryConsumeQuestion();
                 end = indexedCloseBracket.Start + indexedCloseBracket.Length;
                 if (indexQuestionToken != null)
                 {
                     end = indexQuestionToken.Start + indexQuestionToken.Length;
+                }
+
+                if (!validIndex)
+                {
+                    this.ReportError(MessageService.GetArgsString("expression_error_invalid_number", "value", indexToken.Value), indexToken);
+                    return new ErrorExpression(firstToken.Start, end - firstToken.Start);
                 }
 
                 segments.Add(new FilterIndexSegment(index, indexQuestionToken != null));

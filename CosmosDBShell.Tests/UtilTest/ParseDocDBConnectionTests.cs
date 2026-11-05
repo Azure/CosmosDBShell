@@ -9,6 +9,18 @@ namespace CosmosShell.Tests.UtilTest;
 public class ParseDocDBConnectionTests
 {
     [Fact]
+    public void InvalidEndpoints_UseLocalizedMessagesAndPreserveParameterNames()
+    {
+        var invalidUrl = Assert.Throws<ArgumentException>(() => ParsedDocDBConnectionString.BuildEmulatorConnectionString("not-an-endpoint"));
+        Assert.StartsWith(MessageService.GetString("connection-error-invalid-endpoint-url"), invalidUrl.Message, StringComparison.Ordinal);
+        Assert.Equal("endpoint", invalidUrl.ParamName);
+
+        var missingEndpoint = Assert.Throws<ArgumentException>(() => ParsedDocDBConnectionString.ExtractEndpoint("not-an-endpoint"));
+        Assert.StartsWith(MessageService.GetString("connection-error-undetermined-endpoint"), missingEndpoint.Message, StringComparison.Ordinal);
+        Assert.Equal("connectionStringOrUrl", missingEndpoint.ParamName);
+    }
+
+    [Fact]
     public void Test_EmptyDatabase()
     {
         ParsedDocDBConnectionString.TryParseDocDBConnectionString("AccountEndpoint=https://abcdef.documents.azure.com:443/;AccountKey=abcdef==", out var parsedCS);
@@ -225,6 +237,55 @@ public class ParseDocDBConnectionTests
     public void TestIsLocalEmulatorEndpoint_ConnectionStringWithoutKey()
     {
         Assert.True(ParsedDocDBConnectionString.IsLocalEmulatorEndpoint("AccountEndpoint=https://localhost:8081/;"));
+    }
+
+    [Theory]
+    [InlineData("http://localhost:8081/")]
+    [InlineData("https://LOCALHOST:8081/")]
+    [InlineData("https://127.0.0.1:8081/")]
+    [InlineData("AccountEndpoint=https://127.0.0.1:8081/;AccountKey=abc==;")]
+    [InlineData("AccountKey=abc==;accountendpoint=https://LOCALHOST:8081/;Database=test;")]
+    public void IsLocalEmulatorEndpoint_UsesParsedLocalHost(string input)
+    {
+        Assert.True(ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(input));
+    }
+
+    [Theory]
+    [InlineData("https://localhost-prod.documents.azure.com/")]
+    [InlineData("https://localhost.attacker.example/")]
+    [InlineData("https://127.0.0.1.attacker.example/")]
+    [InlineData("https://myaccount.documents.azure.com/localhost/")]
+    [InlineData("https://myaccount.documents.azure.com/?host=localhost")]
+    [InlineData("https://myaccount.documents.azure.com/#127.0.0.1")]
+    [InlineData("https://localhost@myaccount.documents.azure.com/")]
+    [InlineData("https://myaccount.documents.azure.com/?AccountEndpoint=https://localhost:8081/;")]
+    [InlineData("AccountEndpoint=https://localhost-prod.documents.azure.com/;AccountKey=abc==;")]
+    [InlineData("AccountEndpoint=https://myaccount.documents.azure.com/;Database=localhost;AccountKey=abc==;")]
+    [InlineData("AccountEndpoint=https://myaccount.documents.azure.com/;AccountKey=localhost;")]
+    [InlineData("AccountEndpoint=https://myaccount.documents.azure.com/?host=127.0.0.1;AccountKey=abc==;")]
+    [InlineData("Database=localhost;")]
+    [InlineData("localhost")]
+    [InlineData("not-a-url-localhost")]
+    [InlineData("ftp://localhost/")]
+    [InlineData("AccountEndpoint=ftp://localhost/;")]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData(null)]
+    public void IsLocalEmulatorEndpoint_DoesNotEnableEmulatorForNonLocalHttpEndpoint(string? input)
+    {
+        Assert.False(ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(input));
+    }
+
+    [Fact]
+    public void EmbeddedAccountEndpointText_DoesNotOverrideExactProperty()
+    {
+        const string connectionString =
+            "Metadata=AccountEndpoint=https://localhost:8081/;" +
+            "AccountEndpoint=https://remote.example/;AccountKey=abc==;";
+
+        Assert.False(ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(connectionString));
+        Assert.True(ParsedDocDBConnectionString.TryParseDocDBConnectionString(connectionString, out var parsed));
+        Assert.Equal("https://remote.example/", parsed?.Endpoint);
     }
 
     [Fact]

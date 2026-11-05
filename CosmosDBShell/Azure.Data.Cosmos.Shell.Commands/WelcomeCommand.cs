@@ -10,7 +10,7 @@ using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.Util;
 
 [CosmosCommand("welcome")]
-[CosmosExample("welcome", Description = "Display the welcome screen")]
+[CosmosExample("welcome", DescriptionKey = "command-welcome-example-1")]
 [McpAnnotation(Restricted = true, ReadOnly = true)]
 internal sealed class WelcomeCommand : CosmosCommand
 {

@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Parser;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 /// <summary>
 /// Represents a while loop statement that executes a statement repeatedly as long as a condition is true.
@@ -65,6 +66,7 @@ internal class WhileStatement : Statement
     {
         while (!commandState.IsError && await this.EvaluateConditionAsync(shell, commandState, token))
         {
+            token.ThrowIfCancellationRequested();
             try
             {
                 commandState = await this.Statement.RunAsync(shell, commandState, token);
@@ -73,7 +75,7 @@ internal class WhileStatement : Statement
             {
                 throw;
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
                 var content = shell.CurrentScriptContent;
                 var fileName = shell.CurrentScriptFileName;
@@ -86,6 +88,12 @@ internal class WhileStatement : Statement
                 throw;
             }
 
+            if (commandState.IsError || commandState.UserCancellationHandled || commandState.ReturnFunc)
+            {
+                return commandState;
+            }
+
+            commandState.ContinueBlock = false;
             if (commandState.BreakBlock)
             {
                 commandState.BreakBlock = false; // Reset break state
@@ -118,7 +126,7 @@ internal class WhileStatement : Statement
         var boolObj = conditionResult.ConvertShellObject(DataType.Boolean);
         if (boolObj == null)
         {
-            throw new InvalidOperationException("Condition evaluation returned null for while statement");
+            throw new InvalidOperationException(MessageService.GetString("statement-error-null-while-condition"));
         }
 
         return (bool)boolObj;

@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.Azure.Cosmos;
 
@@ -23,6 +24,86 @@ using Xunit.Sdk;
 public class ShellProcessTests
 {
     private static readonly Regex AnsiEscape = new("\x1b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
+
+    [Theory]
+    [InlineData("{\"name\":\"missing-id\"}")]
+    [InlineData("{\"id\":42}")]
+    public async Task ImportDryRun_InvalidId_ReturnsUsageExitCodeAndOfflineResult(string content)
+    {
+        var file = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(file, content, TestContext.Current.CancellationToken);
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: ["--output", "json", "-c", $"import {JsonSerializer.Serialize(file)} --dry-run"],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellExitCode.UsageError, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            using var error = JsonDocument.Parse(result.StdErr);
+            var import = error.RootElement.GetProperty("result");
+            Assert.Equal(0, import.GetProperty("imported").GetInt32());
+            Assert.Equal(0, import.GetProperty("validated").GetInt32());
+            Assert.Equal("offline", import.GetProperty("validationScope").GetString());
+            Assert.False(import.GetProperty("targetValidated").GetBoolean());
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
+    [InlineData("value", "identity", "1 argument, got 0")]
+    [InlineData("value", "identity 1 2", "1 argument, got 2")]
+    [InlineData("value", "$result = (identity)", "1 argument, got 0")]
+    [InlineData("", "identity 1", "0 arguments, got 1")]
+    [InlineData("first second", "identity", "2 arguments, got 0")]
+    public async Task WrongFunctionArgumentCount_ReturnsUsageExitCode(string parameters, string invocation, string expectedMessage)
+    {
+        var result = await RunShellAsync($"def identity [{parameters}] {{ return }}; {invocation}", cancellationToken: TestContext.Current.CancellationToken, extraArgs: ["--quiet"]);
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("expects " + expectedMessage, result.StdErr);
+    }
+
+    [Fact]
+    public async Task DeepExpression_FailsBeforeExecution_WithoutCrashingProcess()
+    {
+        var script = "echo BEFORE_DEPTH_ERROR; $value = " + string.Join(" + ", Enumerable.Repeat("1", 10001));
+        var result = await RunShellAsync(script, cancellationToken: TestContext.Current.CancellationToken, extraArgs: ["--quiet"]);
+        Assert.Equal(2, result.ExitCode);
+        Assert.DoesNotContain("BEFORE_DEPTH_ERROR", result.StdOut);
+        Assert.Contains("expression tree depth", result.StdErr);
+        Assert.DoesNotContain("Stack overflow", result.StdErr);
+    }
+
+    [Fact]
+    public async Task ExpressionAtDepthLimit_EvaluatesSuccessfully()
+    {
+        var script = "$value = " + string.Join(" + ", Enumerable.Repeat("1", 128)) + "; echo $value";
+        var result = await RunShellAsync(script, cancellationToken: TestContext.Current.CancellationToken, extraArgs: ["--quiet"]);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("128", result.StdOut);
+        Assert.Empty(result.StdErr);
+    }
+
+    [Theory]
+    [InlineData("doctor --no-update-check --format json", 0, "PASS")]
+    [InlineData("doctor --database missing --no-update-check --format json", 1, "FAIL")]
+    [InlineData("doctor --arm --no-update-check --format json", 1, "FAIL")]
+    public async Task Doctor_ReportsJsonAndRequiredCheckExitCode(string command, int exitCode, string status)
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--output", "json", "-c", command],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(exitCode, result.ExitCode);
+        using var report = JsonDocument.Parse(result.StdOut);
+        Assert.Equal(1, report.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(status, report.RootElement.GetProperty("status").GetString());
+    }
 
     [Fact]
     public async Task StdinPipedScript_VersionCommand_PrintsVersionLineAndExitsZero()
@@ -40,6 +121,23 @@ public class ShellProcessTests
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("hello from process", result.StdOut);
+    }
+
+    [Fact]
+    public async Task InvariantGlobalization_ExecuteCommand_LoadsEnglishCatalog()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--quiet", "-c", "def identity [value] { return }; identity"],
+            cancellationToken: TestContext.Current.CancellationToken,
+            environment: new Dictionary<string, string?>
+            {
+                ["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1",
+            });
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("expects 1 argument, got 0", result.StdErr);
+        Assert.DoesNotContain("1 arguments", result.StdErr);
     }
 
     [Fact]
@@ -204,7 +302,7 @@ public class ShellProcessTests
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.ExitCode);
-        Assert.Contains("Required option '--connect' is missing", result.StdOut + result.StdErr);
+        Assert.Contains("Option '--connect' has no value.", result.StdOut + result.StdErr);
     }
 
     [Fact]
@@ -371,6 +469,38 @@ public class ShellProcessTests
         Assert.Empty(result.StdOut.Trim());
     }
 
+    [Fact]
+    public async Task ClearHistory_WhenHistoryFileIsLocked_ReturnsFailure()
+    {
+        var configDir = Path.Join(Path.GetTempPath(), $"cosmosshell-clear-history-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(configDir);
+        var historyFile = Path.Join(configDir, "cmd_history");
+        await File.WriteAllTextAsync(historyFile, "echo retained", TestContext.Current.CancellationToken);
+        try
+        {
+            using var lockedStream = new FileStream(
+                historyFile,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.None);
+
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: ["--output", "json", "--clear-history"],
+                cancellationToken: TestContext.Current.CancellationToken,
+                configDirectory: configDir);
+
+            Assert.Equal(1, result.ExitCode);
+            Assert.Empty(result.StdOut.Trim());
+            Assert.Contains("\"status\":\"error\"", result.StdErr, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Failed to clear history", result.StdErr);
+        }
+        finally
+        {
+            Directory.Delete(configDir, recursive: true);
+        }
+    }
+
     private static async Task<ShellProcessResult> RunShellAsync(
         string stdinScript,
         CancellationToken cancellationToken)
@@ -381,7 +511,9 @@ public class ShellProcessTests
     private static async Task<ShellProcessResult> RunShellAsync(
         string? stdinScript,
         IEnumerable<string>? extraArgs,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? configDirectory = null,
+        IReadOnlyDictionary<string, string?>? environment = null)
     {
         var argsList = extraArgs?.ToList();
         var requiresOwnedStdin = stdinScript != null
@@ -399,7 +531,9 @@ public class ShellProcessTests
         // Isolate the shell's config directory so process-level tests (for example
         // --clear-history) never touch the developer's real command history under
         // %LocalAppData%\CosmosDBShell.
-        var isolatedConfigDir = Path.Join(Path.GetTempPath(), $"cosmosshell-test-{Guid.NewGuid():N}");
+        var ownsConfigDirectory = configDirectory == null;
+        var isolatedConfigDir = configDirectory
+            ?? Path.Join(Path.GetTempPath(), $"cosmosshell-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(isolatedConfigDir);
 
         try
@@ -430,6 +564,20 @@ public class ShellProcessTests
             startInfo.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
             startInfo.Environment.Remove("COSMOSDB_SHELL_FORMAT");
             startInfo.Environment["COSMOSDB_SHELL_CONFIG_DIR"] = isolatedConfigDir;
+            if (environment != null)
+            {
+                foreach (var (key, value) in environment)
+                {
+                    if (value == null)
+                    {
+                        startInfo.Environment.Remove(key);
+                    }
+                    else
+                    {
+                        startInfo.Environment[key] = value;
+                    }
+                }
+            }
 
             using var process = new Process { StartInfo = startInfo };
             var stdOut = new StringBuilder();
@@ -504,13 +652,16 @@ public class ShellProcessTests
         }
         finally
         {
-            try
+            if (ownsConfigDirectory)
             {
-                Directory.Delete(isolatedConfigDir, recursive: true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // Best-effort cleanup; the OS temp directory is reclaimed eventually.
+                try
+                {
+                    Directory.Delete(isolatedConfigDir, recursive: true);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Best-effort cleanup; the OS temp directory is reclaimed eventually.
+                }
             }
         }
     }

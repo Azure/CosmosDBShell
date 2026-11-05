@@ -4,6 +4,7 @@
 
 namespace Azure.Data.Cosmos.Shell.Core;
 
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Parser;
@@ -15,6 +16,14 @@ using Azure.Data.Cosmos.Shell.Util;
 public partial class CommandState
 {
     private OutputFormat outputFormat;
+    private List<CommandWarning> warnings = [];
+    private HashSet<CommandWarning> warningSet = [];
+    private Queue<CommandWarning> pendingWarnings = [];
+    private HashSet<CommandWarning> pendingWarningSet = [];
+    private Queue<CommandWarning> updatedWarnings = [];
+    private HashSet<CommandWarning> updatedWarningSet = [];
+    private Queue<CommandWarning> deferredWarnings = [];
+    private HashSet<CommandWarning> deferredWarningSet = [];
 
     /// <summary>
     /// Gets a value indicating whether this <see cref="CommandState"/> represents an error state.
@@ -33,7 +42,11 @@ public partial class CommandState
     /// </summary>
     public OutputFormat OutputFormat
     {
-        get => this.outputFormat;
+        get
+        {
+            return this.outputFormat;
+        }
+
         set
         {
             this.outputFormat = value;
@@ -50,7 +63,11 @@ public partial class CommandState
 
     internal ShellObject? Result { get; set; }
 
+    internal List<CommandWarning> Warnings => this.warnings;
+
     internal bool OutputRendered { get; set; }
+
+    internal bool UserCancellationHandled { get; set; }
 
     /// <summary>
     /// Gets or sets an optional delegate that renders the result for a human on an
@@ -75,9 +92,18 @@ public partial class CommandState
     internal bool IsPage { get; set; }
 
     /// <summary>
-    /// Gets or sets the token for retrieving the next page, or <see langword="null"/> when the result is exhausted.
+    /// Gets or sets the token for retrieving the next page. A <see langword="null"/> token
+    /// indicates exhaustion only when <see cref="IncompleteWithoutContinuation"/> is false;
+    /// otherwise the result is truncated and cannot be resumed.
     /// </summary>
     internal string? ContinuationToken { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the result stops short of the full result set and
+    /// cannot be resumed. Some Cosmos query pipelines complete successfully but never export a
+    /// continuation token, so a missing token alone must not be read as an exhausted result set.
+    /// </summary>
+    internal bool IncompleteWithoutContinuation { get; set; }
 
     /// <summary>
     /// Gets or sets the Cosmos DB request charge (in RUs) consumed by the command, when applicable.
@@ -92,6 +118,91 @@ public partial class CommandState
     internal bool ReturnFunc { get; set; } = false;
 
     internal ShellObject? ReturnValue { get; set; } = null;
+
+    internal CommandWarning AddWarning(string message)
+    {
+        var warning = new CommandWarning(message);
+        this.warnings.Add(warning);
+        this.warningSet.Add(warning);
+        this.pendingWarnings.Enqueue(warning);
+        this.pendingWarningSet.Add(warning);
+        return warning;
+    }
+
+    internal void UpdateWarning(CommandWarning warning, string message)
+    {
+        if (string.Equals(warning.Message, message, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        warning.UpdateMessage(message);
+        if (warning.IsRendered && this.updatedWarningSet.Add(warning))
+        {
+            this.updatedWarnings.Enqueue(warning);
+        }
+    }
+
+    internal List<CommandWarning> TakePendingWarnings() => this.TakeWarnings(this.pendingWarnings, this.pendingWarningSet);
+
+    internal List<CommandWarning> TakeUpdatedWarnings() => this.TakeWarnings(this.updatedWarnings, this.updatedWarningSet);
+
+    internal List<CommandWarning> TakeDeferredWarnings() => this.TakeWarnings(this.deferredWarnings, this.deferredWarningSet);
+
+    internal void DeferWarning(CommandWarning warning)
+    {
+        if (this.deferredWarningSet.Add(warning))
+        {
+            this.deferredWarnings.Enqueue(warning);
+        }
+    }
+
+    internal void ShareWarningsFrom(CommandState source)
+    {
+        if (!ReferenceEquals(this.warnings, source.warnings))
+        {
+            foreach (var warning in this.warnings.Where(warning => source.warningSet.Add(warning)))
+            {
+                source.warnings.Add(warning);
+            }
+
+            foreach (var warning in this.pendingWarnings.Where(warning => source.pendingWarningSet.Add(warning)))
+            {
+                source.pendingWarnings.Enqueue(warning);
+            }
+
+            foreach (var warning in this.updatedWarnings.Where(warning => source.updatedWarningSet.Add(warning)))
+            {
+                source.updatedWarnings.Enqueue(warning);
+            }
+
+            foreach (var warning in this.deferredWarnings.Where(warning => source.deferredWarningSet.Add(warning)))
+            {
+                source.deferredWarnings.Enqueue(warning);
+            }
+        }
+
+        this.warnings = source.warnings;
+        this.warningSet = source.warningSet;
+        this.pendingWarnings = source.pendingWarnings;
+        this.pendingWarningSet = source.pendingWarningSet;
+        this.updatedWarnings = source.updatedWarnings;
+        this.updatedWarningSet = source.updatedWarningSet;
+        this.deferredWarnings = source.deferredWarnings;
+        this.deferredWarningSet = source.deferredWarningSet;
+    }
+
+    private List<CommandWarning> TakeWarnings(Queue<CommandWarning> queue, HashSet<CommandWarning> set)
+    {
+        var result = new List<CommandWarning>(queue.Count);
+        while (queue.TryDequeue(out var warning))
+        {
+            set.Remove(warning);
+            result.Add(warning);
+        }
+
+        return result;
+    }
 
     internal void ResetOutputFormat()
     {
@@ -185,5 +296,23 @@ public partial class CommandState
             default:
                 throw new InvalidOperationException("OutputFormat invalid " + this.OutputFormat);
         }
+    }
+
+    internal sealed class HandledCancellationException(CommandState state, CancellationToken token) : OperationCanceledException(token)
+    {
+        internal CommandState State { get; } = state;
+    }
+
+    internal sealed class FailureException : Exception
+    {
+        public FailureException(CommandState state)
+            : base(
+                state is ParserErrorCommandState parserError ? string.Join("; ", parserError.Errors.Select(error => error.Message)) : (state as ErrorCommandState)?.Exception.Message ?? MessageService.GetString("script-error-expression-failed"),
+                (state as ErrorCommandState)?.Exception)
+        {
+            this.State = state;
+        }
+
+        public CommandState State { get; }
     }
 }

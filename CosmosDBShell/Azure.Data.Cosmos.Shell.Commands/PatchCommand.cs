@@ -11,12 +11,12 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
 [CosmosCommand("patch")]
-[CosmosExample("patch set order-42 customer-7 /status active", Description = "Set a field to a string value")]
-[CosmosExample("patch set order-42 customer-7 /count 42", Description = "Set a field to a number")]
-[CosmosExample("patch incr order-42 customer-7 /count 1", Description = "Increment a numeric field")]
-[CosmosExample("patch remove order-42 customer-7 /oldField", Description = "Remove a field")]
-[CosmosExample("patch add order-42 customer-7 /tags/0 urgent", Description = "Insert at the start of an array")]
-[CosmosExample("patch set order-42 customer-7 /name \"Ada Lovelace\" --etag=\"etag-value\"", Description = "Patch with optimistic concurrency")]
+[CosmosExample("patch set order-42 customer-7 /status active", DescriptionKey = "command-patch-example-1")]
+[CosmosExample("patch set order-42 customer-7 /count 42", DescriptionKey = "command-patch-example-2")]
+[CosmosExample("patch incr order-42 customer-7 /count 1", DescriptionKey = "command-patch-example-3")]
+[CosmosExample("patch remove order-42 customer-7 /oldField", DescriptionKey = "command-patch-example-4")]
+[CosmosExample("patch add order-42 customer-7 /tags/0 urgent", DescriptionKey = "command-patch-example-5")]
+[CosmosExample("patch set order-42 customer-7 /name \"Ada Lovelace\" --etag=\"etag-value\"", DescriptionKey = "command-patch-example-6")]
 internal class PatchCommand : CosmosCommand
 {
     [CosmosParameter("op", RequiredErrorKey = "command-patch-error-missing_op")]
@@ -101,15 +101,7 @@ internal class PatchCommand : CosmosCommand
 
         try
         {
-            PartitionKey partitionKey;
-            try
-            {
-                partitionKey = CreatePartitionKeyFromArgument(this.Key);
-            }
-            catch (JsonException ex)
-            {
-                throw new CommandException("patch", MessageService.GetString("command-patch-error-invalid_pk_json"), ex);
-            }
+            var partitionKey = CreatePartitionKeyFromArgument(this.Key, "patch", "command-patch-error-invalid_pk_json");
 
             var response = await container.PatchItemAsync<JsonElement>(
                 this.Id,
@@ -123,7 +115,6 @@ internal class PatchCommand : CosmosCommand
                 throw new CommandException("patch", MessageService.GetArgsString("command-patch-error-status-returned", "status", response.StatusCode.ToString()));
             }
 
-            ShellInterpreter.WriteLine(MessageService.GetArgsString("command-patch-success", "charge", response.RequestCharge.ToString("F2")));
             return new CommandState
             {
                 Result = new ShellJson(JsonSerializer.SerializeToElement(new
@@ -134,6 +125,7 @@ internal class PatchCommand : CosmosCommand
                     requestCharge = response.RequestCharge,
                 })),
                 RequestCharge = response.RequestCharge,
+                RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-patch-success", "charge", response.RequestCharge.ToString("F2"))),
             };
         }
         catch (CosmosException ce) when (ce.StatusCode == System.Net.HttpStatusCode.NotFound)

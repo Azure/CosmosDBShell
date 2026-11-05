@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Parser;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal class ShellBool : ShellObject
 {
@@ -29,7 +30,7 @@ internal class ShellBool : ShellObject
             case DataType.Decimal:
                 return this.Value ? 1.0 : 0.0;
             default:
-                throw new InvalidOperationException($"Cannot convert boolean to {type}");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-boolean-type", "type", type));
         }
     }
 }

@@ -2,6 +2,10 @@
 
 Parameters with whitespace must be quoted. Escape character: `\`
 
+In-shell example descriptions and `theme show` labels use the OS UI language when
+translations are available, with English fallback for pending translations.
+Executable examples, command names, and flags are not translated.
+
 ## Connection
 
 ### connect
@@ -35,6 +39,152 @@ Usage: disconnect
 ```
 
 ## Diagnostics
+
+### doctor
+
+Run bounded, read-only checks without changing the connection, navigation, or settings.
+`doctor` also works while disconnected. It reports observed results, not a guarantee
+that every operation or partition is healthy.
+
+```text
+doctor
+doctor --database MyDb --container Items
+doctor --database MyDb --container Items --query --format json
+doctor --arm --timeout 30
+doctor who
+doctor --who --database MyDb --container Items --query --format json
+doctor --no-update-check
+```
+
+| Option | Behavior |
+| ------ | -------- |
+| `--database`, `--db` | Check this database instead of the current one. An explicit database does not inherit the current container. |
+| `--container`, `--con` | Check this container in the explicit or current database. |
+| `--query` | Read one query response page using `SELECT TOP 1 VALUE 1 FROM c`. Requires a container, consumes RUs, and returns no document data. |
+| `--arm` | Require an ARM account read. If no context exists, opt into account discovery using the existing noninteractive Entra credential. |
+| `--who` | Include known credential type, selected scope, and an explicit unassessed-write-access entry. `doctor who` is an alias. |
+| `--no-update-check` | Skip the public GitHub release lookup. Other requested network checks still run. |
+| `--timeout` | Overall network-check deadline, 1-120 seconds (default 20). Each check has a five-second limit. |
+| `--format`, `-f` | Standard shell formats: `user`, `json`, `table`, or `csv`. Otherwise inherit the session format. |
+
+Local checks report shell version, runtime, platform, and whether proxy environment
+variables are present. Proxy values are never shown. The shell version uses the same
+display version as `version`, including preview labels.
+
+The `updates` check replaces the former `installation` entry. By default, it makes
+one unauthenticated HTTPS request to `api.github.com/repos/Azure/CosmosDBShell/releases?per_page=100`,
+including while disconnected from Cosmos DB. It runs after connection diagnostics,
+with a five-second limit inside the overall `--timeout` budget. The response is capped
+at 5 MiB; there are no retries, pagination, downloads, installation changes, or caching.
+Only a fixed User-Agent is sent, not Cosmos credentials, resource names, or the installed
+version. Normal HTTP networking exposes the client's network address to GitHub and
+may use configured proxies. Use `--no-update-check` to disable this lookup, including
+for offline or restricted environments. This does not disable Cosmos or ARM probes.
+
+Versions are compared semantically, ignoring build metadata. Stable installations
+consider only stable releases; preview installations also consider prereleases.
+GitHub's prerelease flag is honored even for numeric tags such as `v1.1.209`.
+A newer eligible version produces `WARN` / `update-available`, with a release-page
+link and nullable `latestVersion` in JSON. It does not cause exit code 1. Otherwise,
+`PASS` / `update-current` means no newer version was found among the checked releases,
+not that every package-manager feed has been checked. Network or rate-limit failures,
+invalid responses, unknown versions, exhausted budgets, or no eligible releases produce
+`SKIP`; they never imply the installed version is current. Updates remain manual,
+using the original installation method.
+
+Connected checks resolve the account hostname and read account, database, or container
+metadata through the existing SDK client. A metadata read does not prove item access
+or Direct-mode replica connectivity. `--query` adds a bounded query probe, not a scan
+or a write-permission test. Reported RUs include charges returned by completed probes;
+they do not estimate charges for operations whose response was not observed.
+
+ARM checks run automatically only when a context is already attached. Missing ARM
+context is normally `SKIP`; failure of an automatic ARM check is `WARN`. With `--arm`,
+an unavailable or failing ARM check is `FAIL`. Discovery is bounded and its result is
+not attached to the shell. Key and emulator connections cannot acquire ARM context
+just by specifying a subscription or resource group.
+
+Credentials that may launch interactive authentication, including this shell's
+`DefaultAzureCredential`, are not probed. Unknown credential types are also skipped
+conservatively. Reconnect with Azure CLI or managed identity for these checks. An
+explicit target, `--query`, or `--arm` makes this inability to probe a failure;
+otherwise it is a warning. Doctor never starts a new login flow itself.
+
+Results use `PASS`, `WARN`, `FAIL`, and `SKIP`. In the text format these verdicts use the
+active theme's `success`, `warning`, `error`, and `muted` colors, so `--theme monochrome`,
+redirection, and machine mode stay uncolored. DNS and data-plane probes on a connected
+client are required. Failed prerequisites skip their dependent checks. Without a
+connection, local checks still run; an explicitly requested remote target fails.
+Credential-blocked access and requested query probes use `interactive-credential`
+instead of a generic dependency failure. Text messages wrap within their column,
+keeping continuation lines aligned beneath the message rather than the status.
+Each check shows milliseconds and observed RUs. Wide terminals use separate numeric
+columns; narrow terminals include these values in the message column. A final summary
+counts all four verdicts and reports elapsed command time and total observed RUs.
+Elapsed command time is measured separately, not summed from individual checks, and
+excludes rendering. Local/unmeasured checks show `0 ms`; sub-millisecond probes can
+also round down to zero. Unknown RU charges appear as `-`, not as a measured zero.
+The command returns exit code 1 if any required check fails, otherwise 0. Invalid
+arguments and caller cancellation follow the shell's existing error contract.
+
+The `who` subcommand ignores case and surrounding whitespace, so `doctor WHO` is
+equivalent to `doctor who`.
+`doctor who` runs the normal checks and adds `identity`, `scope`, and `write-access`
+entries. Known credential types (including `AccountKey` and `Emulator`) are reported
+from connection metadata, not by invoking `whoami` or acquiring an additional token.
+`PASS` on identity or scope means the configuration is known, not that a principal
+or permission was verified. Unknown credential types and disconnected identity are
+`SKIP`. Scope respects the current location and explicit database/container options;
+resource names, principal IDs, and tenant IDs are omitted. Write access is always
+`SKIP`: successful metadata/query/ARM reads never establish write permissions or
+effective roles. The text format starts with `Doctor Who?`; JSON and MCP do not.
+
+The `clock` check uses an RFC 1123 `Date` header from an already successful database,
+container, query, or ARM response. It sends no additional requests. If multiple samples
+exist, it uses the one with the shortest request interval. The server time is compared
+with the local UTC midpoint of that interval, allowing half the interval plus one second
+for uncertainty. An absolute offset exceeding five minutes plus that uncertainty is
+`WARN` (`clock-skew`), otherwise `PASS` (`clock-within-tolerance`). Missing or invalid
+headers yield `SKIP` (`clock-unavailable`), including disconnected runs and account-only
+reads without another usable response. The account-read SDK API exposes no Date header.
+This is not a trusted time source or proof of an authentication problem: proxies,
+server clocks, and changes to local time during a probe can affect the estimate.
+
+JSON has `schemaVersion: 1`, an aggregate `status`, a `summary`, and a `checks` array.
+The additive `summary` fields are `pass`, `warn`, `fail`, `skip`, `durationMs`, and nullable
+`requestCharge`. Each check
+contains stable `id`, `status`, and `code` fields, a localized `message`, `durationMs`,
+and nullable `requestCharge`, `credentialType`, `latestVersion`, `clockOffsetSeconds`, and
+`clockUncertaintySeconds` fields. Only the `clock` entry populates clock values; a
+positive offset means the response clock is ahead of the local clock.
+`credentialType` is populated
+only for a known identity entry. Parse IDs and codes, not message text. The same report
+is returned for failing checks and over MCP.
+
+#### Troubleshooting
+
+- `dns-failed`: check DNS and private-endpoint resolution.
+- `unauthorized`: check credential expiry and authentication configuration, then reconnect.
+- `forbidden`: for `access`/`query`, check data-plane permissions at the selected scope and account network restrictions. For `arm`, check management-plane RBAC on the account or inherited resource-group/subscription scope; data-plane roles do not grant ARM access. A generic 403 does not identify a missing role.
+- `unreachable` or `timeout`: check routing, proxy, and firewall settings. For Direct-mode failures, try gateway mode (`connect --mode gateway <endpoint>`, or startup `--connect-mode gateway`).
+- `tls-failed`: check certificate trust and hostname configuration; do not disable certificate validation for non-emulator endpoints.
+- `connection-refused`: check the endpoint port, service/emulator availability, and firewall or proxy routing.
+- `connection-reset`: retry and check network stability and intermediaries.
+- `proxy-authentication-required`: HTTP 407 requires proxy authentication, not Cosmos DB role changes.
+- `credential-unavailable` / `authentication-failed`: check credential configuration or token acquisition, respectively. Neither proves a missing Cosmos DB role.
+- `clock-skew`: check local time synchronization, considering that intermediary or server clocks can also affect the estimate.
+
+Classification uses HTTP status codes, structured HTTP/socket errors, and known inner
+exceptions, not exception message text. HTTP 408 is a timeout; HTTP 503 remains
+`unreachable`. Exception traversal is bounded and ambiguous multi-error aggregates
+are not attributed to an arbitrary inner failure. Raw exceptions remain omitted.
+
+The report omits endpoints, account and target names, keys, tokens, connection strings,
+proxy values, document data, and raw exception messages. It does not inspect role
+assignments, scan port ranges, or independently validate emulator
+certificates. Existing client TLS policy remains in effect. A timed-out SDK operation
+that lacks cancellation support may finish in the background; doctor stops waiting
+at the deadline and never disposes the shared client.
 
 ### whoami
 
@@ -155,7 +305,7 @@ such as `cd /MyDb/customers`. See [Navigation](navigation.md) for more.
 
 ### pwd
 
-Show the current shell location.
+Show the current Cosmos DB location and the shell process's local working directory. This also works when disconnected.
 
 ```text
 Usage: pwd
@@ -164,14 +314,18 @@ Usage: pwd
 Examples:
 
 ```bash
-pwd                    # not connected
+pwd                    # Cosmos location: not connected
 connect "AccountEndpoint=...;AccountKey=..."
-pwd                    # /
+pwd                    # Cosmos location: /
 cd MyDb
-pwd                    # /MyDb
+pwd                    # Cosmos location: /MyDb
 cd MyContainer
-pwd                    # /MyDb/MyContainer
+pwd                    # Cosmos location: /MyDb/MyContainer
 ```
+
+Each call also prints `Local directory: <absolute path>`. Relative file paths, such as `export test.csv`, are resolved against that directory, independently of Cosmos DB navigation. `cd` changes the Cosmos DB location, not the local directory. With MCP, the directory is on the machine running the shell server, not necessarily the client machine.
+
+Structured output retains `type`, `database`, `container`, and `currentLocation`, and adds `localDirectory`.
 
 ## Appearance
 
@@ -242,7 +396,9 @@ Options:
 
 `query` does not apply a default item limit. Use `--max <n>` to cap returned items when needed, or `--max 0` to disable the limit explicitly.
 
-When called through MCP, `query` and container-item `ls` return one page at a time. `max` must be positive; omitted or non-positive values use the safe default of `100` items. The MCP result includes `continuationToken`; pass a non-null value back as the tool's `continuation` argument, with the same query and options, to retrieve the next page. A null token means there are no more pages. `continuation` is an MCP-only argument and is deliberately not a shell option, so interactive and scripted commands are unaffected and retain their existing multi-page behavior.
+When called through MCP, `query` and container-item `ls` return one page at a time. `max` must be positive; omitted or non-positive values use the safe default of `100` items. The MCP result includes `continuationToken`; pass a non-null value back as the tool's `continuation` argument, with the same query and options, to retrieve the next page. A null token means there are no more pages, unless the result also sets `resultIncomplete`, which marks a truncated result that cannot be resumed. `continuation` is an MCP-only argument and is deliberately not a shell option, so interactive and scripted commands are unaffected and retain their existing multi-page behavior.
+
+Some query shapes execute normally but cannot be resumed: vector `ORDER BY`, `ORDER BY RANK` relevance ranking, and `DISTINCT` projections whose execution plan cannot export a token never produce a continuation token. Whether a `DISTINCT` query is resumable is decided by its plan, not by the presence of an `ORDER BY` clause: `SELECT DISTINCT c.category FROM c ORDER BY c.category` is not resumable, while the scalar `SELECT DISTINCT VALUE c.category FROM c ORDER BY c.category` is. Such queries run to completion within the requested limit instead of failing. Because they cannot be paged, MCP calls keep reading the same query until the limit is reached rather than returning after one page. If the limit truncates the results, the shell reports that they cannot be resumed and the MCP result sets `resultIncomplete` to `true`; raise `--max`, use `--max 0` for no limit, or narrow the query to get the full result set.
 
 #### Explain a query
 
@@ -257,15 +413,52 @@ To keep the cost low, `--explain` executes only the first page of the query (`Ma
 
 ### print
 
-Get item by id and partition key.
+Read one item by ID and its complete partition key using a point read, without a query fallback.
 
 ```text
-Usage: print id key
+Usage: print id key [--database <ARG>] [--container <ARG>]
 
 Arguments:
     id          The ID of the item
-    key         The partition key of the item
+    key         Complete partition key: a JSON scalar or an ordered JSON array
+
+Options:
+    --database, --db
+                Override database name
+    --container, --con
+                Override container name
 ```
+
+The key uses the same typed syntax as the positional `pk` in `patch` (and `--partition-key` in `rm`, `batch`, `sproc`, and `watch`). JSON scalar literals preserve their types; other text is a string. Hierarchical keys use a JSON array with every component in container path order. Objects, nested arrays, empty arrays, arrays with more than three components, and non-finite numbers are rejected. `print` also checks that the component count matches the container. Invalid input is reported separately from a valid key that addresses a missing item.
+
+Examples inside Cosmos DB Shell:
+
+```text
+print product-680 680                           # Number 680
+print product-680 '"680"'                       # String "680"
+print customer-1001 '[1001,"customer-1001"]'
+print order-42 '["tenant-1",680,true]'
+print item-1 true                               # Boolean true
+print item-1 '"true"'                           # String "true"
+print item-1 null                               # Null
+print item-1 '"null"'                           # String "null"
+print item-1 '{}'                               # Undefined / missing partition-key property
+print item-1 customer-1                         # String "customer-1"
+```
+
+The outer single quotes preserve the inner JSON double quotes. `"680"` alone does **not** preserve a JSON string literal: shell quoting is removed, so the key is parsed as a number. Unquoted numeric tokens are normalized by the shell, so quote text such as `'001'` to keep it as the string `"001"`. Invoking these commands from a host shell may require additional escaping; see [quoting and escaping](navigation.md). In MCP, the `key` argument is a string containing this value, for example `"680"`, `"\"680\""`, or `"[1001,\"customer-1001\"]"`; use the string `"null"` for a null key, not JSON null.
+
+> **Note:** Earlier versions always treated this key as a string, so `print item-1 680` read string `"680"`. To address a string key that looks like a number, boolean, null, or JSON array, quote it as a JSON string, for example `print item-1 '"680"'`.
+
+#### Undefined partition keys
+
+Use the empty JSON object `{}` to address Cosmos DB's undefined partition-key value (`PartitionKey.None`). This is distinct from JSON `null` (`PartitionKey.Null`) and the strings `"none"` and `"undefined"`. In hierarchical keys, use `{}` for each missing component, for example `'["tenant-1",{}]'`.
+
+The syntax applies to `print`, `patch`, `batch`, `sproc exec`, `rm --partition-key`, and `watch --partition-key`. Quote `{}` or a hierarchical JSON array in the interactive shell so it remains one argument. MCP callers pass the same syntax as a string.
+
+When `mkitem`, `create item`, `import`, `replace`, or scan-based `rm` derives a partition key from item content and a configured path is absent, the command uses `PartitionKey.None`. Interactively, mutations warn before writing; bulk operations report a bounded summary count. Import displays a notice before its first affected write, then updates it with the final scheduled-write count. In machine mode (`--output json` or `csv`, `--quiet`, or `-c`), warnings for a redirected stderr are written to that file before the affected writes. Console-bound warnings for inferred-key mutations are emitted before the write as JSON Lines records on stderr; a final count uses a `warning-update` record, and any later structured error remains a separate valid JSON record. Other console-bound warnings are reported when the command finishes. Each warning goes to the stderr destination that was active when it was raised. Scan-based `rm` counts only matching delete candidates. Explicitly targeting `{}` does not warn, and reads never warn.
+
+Undefined partition keys are supported for legacy, transitional, and exceptional data. For new data, follow Microsoft's [partition-key guidance](https://learn.microsoft.com/azure/cosmos-db/partitioning-overview#choose-a-partition-key): choose a stable, high-cardinality property and include a value on every item.
 
 ### mkitem
 
@@ -306,7 +499,7 @@ Options:
                Override container name (Optional)
 ```
 
-`replace` derives the partition key from the item JSON and supports hierarchical partition key containers. The `--etag` option is only supported for single-object input because each item has its own ETag. `replace` fails when the target item does not already exist.
+`replace` derives the partition key from the item JSON and supports hierarchical partition key containers. A missing configured path is treated as an undefined component and produces a warning before mutation. The `--etag` option is only supported for single-object input because each item has its own ETag. `replace` fails when the target item does not already exist.
 
 ### patch
 
@@ -359,7 +552,7 @@ The `value` argument is parsed as JSON when it looks like a JSON literal. Otherw
 
 Quoting rules follow the shell: wrap values that contain spaces or shell metacharacters in quotes. Use single quotes around JSON object/array literals so the shell does not try to interpret them.
 
-The `pk` argument follows the same JSON-literal typing for numbers, booleans, and null. For hierarchical partition keys, pass the key components as a JSON array, for example `'["tenant-1","order-42"]'`.
+The `pk` argument follows the same JSON-literal typing for numbers, booleans, and null. Use `'{}'` for an undefined value. For hierarchical partition keys, pass the key components as a JSON array, for example `'["tenant-1",{}]'`.
 
 #### Examples
 
@@ -387,7 +580,7 @@ patch set order-42 customer-7 /name "Ada Lovelace" --etag="<etag-from-read>"
 
 ### batch
 
-Execute multiple write operations against a single partition key as one atomic Cosmos DB transactional batch. Either run a batch in a single call, or build one up statefully across several commands. Every operation in a batch must share the same partition key, execution requires between 1 and 100 operations, and if any operation fails the entire batch is rolled back. A pending stateful batch may be empty until operations are added.
+Execute multiple write operations against a single partition key as one atomic Cosmos DB transactional batch. Either run a batch in a single call, or build one up statefully across several commands. Every operation in a batch must share the same partition key, execution requires between 1 and 100 operations, and if any operation fails the entire batch is rolled back. A pending stateful batch may be empty until operations are added. For more than 100 operations, or operations across partition keys that may succeed independently, use [`bulk`](#bulk), which accepts the same operation JSON.
 
 ```text
 Usage: batch subcommand [data] [--partition-key <ARG>] [-database <ARG>] [-container <ARG>]
@@ -476,6 +669,139 @@ batch execute
 - More than 100 operations is rejected before any call to Cosmos DB.
 - A transactional failure prints a one-line message, returns a result summary with `success` set to `false` and per-operation status codes, and rolls back every operation.
 
+### bulk
+
+Execute many **independent** write operations with bounded concurrency. `bulk` uses the same operation JSON and subcommands as [`batch`](#batch), with different execution semantics:
+
+During write execution, human-readable output shows progress about every two seconds, including processed/total operations, successes, failures, elapsed seconds, average processing rate, and observed RU charge. The progress line is updated in place and removed when the command finishes. Updates continue while writes are waiting; unchanged counts do not by themselves indicate a stalled job. Validation, selection, confirmation, and journal verification happen before this execution progress starts. Progress appears only when standard output is a terminal; quiet mode, structured output, shell or operating-system output redirection, operating-system pipes, and MCP calls do not emit it. Within an in-shell `|` pipeline, an earlier stage still shows progress on the terminal; it is erased before the next stage runs and is never part of the piped data. See [ingestion sizing and limitations](ingestion.md) for planning guidance and emulator measurements.
+
+| | `batch` | `bulk` |
+|-|-|-|
+| Partition keys | One per batch (`--partition-key`) | Per operation `partitionKey`, or `--partition-key` as a default |
+| Size | 1-100 operations | Streamed files for `run`; stateful jobs capped at 10,000 operations and 64 MiB of canonical JSON |
+| Atomicity | All operations succeed or all roll back | Each operation succeeds or fails on its own; nothing is rolled back |
+| Execution | One transactional request | Up to `--concurrency` requests in flight |
+
+```text
+Usage: bulk subcommand [data] [options]
+
+Arguments:
+    subcommand  run, patch, delete, begin, add, execute, cancel, status, or show
+    [data]      For run and add: operations as a JSON array or object, or a path
+                to a JSON array or JSON Lines file. Also reads piped input.
+
+Options:
+    --where                       For patch and delete: Cosmos SQL predicate over alias c.
+    --operations                  For patch: JSON array of 1-10 patch operations.
+    --partition-key, --pk         Default partition key for delete and patch operations.
+    --database, --db              Target database (defaults to the navigation context).
+    --container, --con            Target container (defaults to the navigation context).
+    --concurrency, --max-parallelism
+                                  Maximum in-flight writes (default 16, positive integer).
+    --max-items                   For patch and delete: maximum number of selected items.
+    --max-ru                      Positive observed RU budget for this invocation.
+    --dry-run                     Validate or select without sending writes.
+    --yes, -y                     Approve writes; required in scripts and non-interactive use.
+    --continue-on-error           Keep scheduling writes after an operation fails.
+    --etag                        For patch and delete: use each item's _etag as ifMatch.
+    --save                        For patch and delete: write the generated operations to a new file.
+    --journal                     Record attempts and outcomes; resume skips succeeded writes.
+    --retry-uncertain             Also retry writes whose earlier outcome is unknown.
+```
+
+Options are validated by whether they were supplied, even when a boolean value is explicitly `false`. For example, `bulk status --dry-run=false` is rejected because `status` does not support `--dry-run`.
+
+#### Subcommands
+
+|Subcommand|Description|
+|-|-|
+|`run <json-or-file>`|Validate every operation, then execute them. Also reads piped input.|
+|`patch --where <predicate> --operations <json>`|Select matching items and apply the same patch to each item.|
+|`delete --where <predicate>`|Select matching items and delete each item.|
+|`begin [--partition-key <pk>]`|Start a stateful bulk job bound to a database and container, with an optional default partition key.|
+|`add <json-or-file>`|Validate and queue one operation (JSON object) or several (JSON array or file).|
+|`execute` (`exec`, `commit`)|Execute the queued operations. The job is cleared only if every operation succeeds.|
+|`cancel` (`abort`)|Discard the active bulk job.|
+|`status`|Report the target, default partition key, queued operation count, earlier outcomes, and up to 100 operations.|
+|`show`|Print the queued operations in canonical form, which `bulk run` accepts.|
+
+When a stateful job is active, the prompt shows `[bulk:N]`. Connecting or disconnecting discards it, like a pending batch.
+`bulk status` shows succeeded, failed, and uncertain outcome counts in both the interactive table and JSON. Interrupted write intents count as uncertain.
+
+#### Operation schema
+
+Operations use the [batch operation schema](#operation-schema) with two optional additions:
+
+|Field|Description|
+|-|-|
+|`partitionKey`|The item's complete partition key: a scalar, or a JSON array for hierarchical keys. Use `{}` for an undefined component and `null` for a JSON null value. Required for `delete` and `patch` unless `--partition-key` is supplied. For `create`, `upsert`, and `replace`, the key is read from `item`; a supplied value or default must match it.|
+|`ifMatch`|An ETag for `replace`, `delete`, or `patch`. The write fails with `412` if the item changed. Rejected for `create` and `upsert`; use `replace` for conditional item updates so a missing or concurrently deleted item is not recreated.|
+
+```json
+{"op":"upsert","item":{"id":"1","tenantId":"t1","name":"Ada"}}
+{"op":"delete","id":"2","partitionKey":"t2"}
+{"op":"patch","id":"3","partitionKey":["t3","west"],"ifMatch":"\"etag\"","operations":[{"op":"set","path":"/schemaVersion","value":2},{"op":"remove","path":"/legacyField"}]}
+```
+
+IDs must be nonempty strings. Patch operations are limited to 1-10 per item and apply atomically to that item; paths must start with `/`. `remove` fails if the property does not exist. Operations on the same item run in list order; operations on different items can complete in any order.
+
+`--partition-key` defaults beginning with `[`, `{`, or `"` must be valid JSON. Encode a literal string as a JSON string if it starts with one of these characters. Ambiguous scalar values such as `001` remain string keys.
+
+#### Examples
+
+```bash
+bulk run '[{"op":"upsert","item":{"id":"1","pk":"a"}},{"op":"delete","id":"2","partitionKey":"b"}]' --yes
+echo '[{"op":"delete","id":"1"},{"op":"delete","id":"2"}]' | bulk run --partition-key a --yes
+bulk run operations.jsonl --concurrency 32 --journal operations.journal --yes
+
+bulk delete --where "c.expired = true" --dry-run
+bulk delete --where "c.expired = true" --max-items 500 --etag --yes
+
+bulk begin --partition-key supplier-42
+bulk add '{"op":"patch","id":"order-1","operations":[{"op":"set","path":"/status","value":"done"}]}'
+bulk add '{"op":"delete","id":"order-2"}'
+bulk status
+bulk execute --yes
+```
+
+#### Query-driven migrations: plan, review, apply
+
+`patch` and `delete` run `SELECT c.id, c._etag, <partition-key paths> FROM c WHERE (<predicate>)`, generate one operation per row, and validate the whole selection before writing. Missing partition-key components are preserved as undefined, separately from `null`. The predicate is inserted as written; it is a Cosmos SQL predicate, not an `UPDATE` statement.
+
+With `--save`, the generated operations are written to a new JSON Lines file that `bulk run` accepts. This separates planning from applying:
+
+```bash
+bulk patch --where "c.tenantId = 'supplier-42' AND c.schemaVersion = 1" --operations '[{"op":"set","path":"/schemaVersion","value":2},{"op":"remove","path":"/legacyField"}]' --etag --dry-run --save migration.jsonl
+bulk run migration.jsonl --journal migration.journal --yes
+```
+
+The saved file is the reviewed snapshot: rerunning it targets the same items even after earlier writes change which items match the predicate. With `--etag`, any item changed after selection fails with `412` instead of being overwritten. `--save` never overwrites an existing file, and an incomplete selection or failed final flush deletes the partial file.
+
+#### Journals and resuming
+
+`--journal <file>` records each write intent before the write is sent, then its outcome. The journal is bound to the account endpoint, the container's resource ID, and a hash of the canonical operation list, so it cannot be reused with different operations or a recreated container. The journal is opened exclusively for the duration of the run, preventing concurrent use on Windows and Linux. Read or copy it only after the run finishes. Rerunning the same operations with the same journal:
+
+- skips operations that succeeded;
+- retries operations that definitively failed, such as throttled (`429`), conflicting, or missing items;
+- holds back operations whose outcome is unknown — sent before an interruption, a timeout, or a server error — and reports them as failed and `uncertain`. Later writes for that same item ID and partition key are also held back to preserve ordering; unrelated items can continue. Retrying them blindly could, for example, apply an `incr` twice. Inspect or reconcile them, or pass `--retry-uncertain` when the operations are idempotent or use `ifMatch`.
+
+A torn final journal line from a crash is discarded only after the complete header and preceding records have been validated. Unrelated or mismatched files are rejected without modification. Journal format version 2 checksums every outcome and validates resumed outcomes against the operation list before any write; older journal versions are rejected rather than resumed without integrity checks. Other damage is rejected rather than guessed around. For `--where`, `--journal` requires `--save`; resume with `bulk run <saved-file> --journal <file>`, because a new selection can match different items. A stateful job keeps outcomes in memory the same way, so running `bulk execute` again after a partial failure retries only failed operations. Stateful retries must keep the same journal choice as the first execution: if a journal was supplied, reuse its original path; if none was supplied, retries remain in-memory only. Adding, changing, or omitting a journal after writes have started is rejected. After a journaled execution records any outcomes, `bulk add` is rejected to keep the journal's operation list unchanged.
+
+If another shell resumes the same journal between stateful execution attempts, subsequent retries respect its newer recorded successes and uncertain outcomes rather than replaying them. Successful writes retained by the original shell after a journal write failure are persisted on retry before later operations run or the job is cleared. Recovery matches the original write attempt and does not overwrite a newer unresolved attempt from another shell.
+
+After a journal write or flush fails, no further records are appended during that execution. Started writes are still settled and stateful outcomes retained, so reopening the original journal can recover its torn tail before retrying.
+
+#### Limits, failures, and output
+
+- All input is validated before any write. `run`, `patch`, and `delete` spool operations to a private temporary file that is deleted when the command ends. Stateful `begin`/`add` jobs retain operations in memory and are limited to 10,000 operations and 64 MiB of canonical UTF-8 JSON. An `add` that exceeds either limit is rejected in full, leaving the existing job unchanged. Use `bulk run <file>` for larger jobs.
+- By default, the first failed write stops scheduling new writes; `--continue-on-error` keeps unrelated items going, but later writes to the same item ID and partition key wait for a retry after any failed or uncertain write. This preserves operation order across retries. Started writes are always awaited and reported, including after cancellation. Cancellation, journal write errors, and unexpected execution failures return an incomplete summary with settled counts while preserving the original error classification; cancellation never reports success.
+- `--max-ru` counts the container metadata read, selection pages, and completed writes for the current invocation. No new request starts once it is reached; requests already in flight can exceed it. Local journal skips still proceed when the metadata read reaches the budget, so a fully completed journal can be resumed without a budget error or new writes. A budget stop returns exit code `6`. Resume writes only with the same journal supplied to the original run: creating a new journal cannot identify earlier successes and can replay non-idempotent writes. Without the original journal, reconcile completed writes before retrying. If the budget was exhausted during selection before any writes began, no execution journal was opened; increase the budget and select again.
+- `--max-items` limits selected items and caps the requested query page size when below 1,000; `selectionLimited` reports that more items may match.
+- `--dry-run` validates and selects without writing. Selection reads consume RUs. It cannot check service-side conditions such as missing fields or permissions.
+- Writes are individual point operations with response bodies disabled, not transactional batches or SDK bulk execution. SDK retry handling for throttling still applies, and higher concurrency does not add provisioned RU/s.
+- Interactive runs show progress every two seconds. The result contains `operationCount`, `attempted`, `succeeded`, `failed`, `skipped`, `uncertain`, `requestCharge`, `dryRun`, `resultIncomplete`, `budgetExceeded`, `selectionLimited`, `success`, and up to 20 `errors`. Incomplete or failed runs return a nonzero exit code; use `--journal` for every outcome.
+- Saved plans and journals contain item IDs, partition keys, ETags, and operation values (including upsert documents). Store them securely and delete them when no longer needed.
+- Numeric partition keys use the Cosmos SDK's double-precision representation, including when an integer is supplied. Store keys that require exact large-integer precision as strings, and supply a JSON string key. Canonical plans preserve the original JSON digits but cannot override the SDK's numeric precision limits.
 ### rm
 
 Remove items from container.
@@ -493,16 +819,53 @@ Options:
                 Container containing the items to remove
     --key, -k   Property name to match the pattern against (defaults to partition key)
     --dry-run   Preview how many items would be deleted without deleting them
+    --partition-key, --pk
+                Restrict removal to one complete logical partition key
+    --etag      Delete only if the item's current ETag matches (exact id and partition key only)
 ```
 
 Examples:
 
 - `rm test-*` deletes every item whose partition key starts with `test-`.
+- `rm *` also matches items whose configured partition-key path is missing.
 - `rm test-* --dry-run` reports how many items match without deleting anything.
+- `rm tmp-* --key=id --partition-key=customer-42 --dry-run` counts matching items only in the `customer-42` logical partition.
+
+Pattern-based and piped removals show progress about every two seconds in human-readable output: items scanned, items deleted (or that would be deleted in a dry run), elapsed seconds, and observed RU charge. The progress line is updated in place and removed when the command finishes. Unscoped deletes scan the whole container before deleting, so the scanned count stops rising while the deleted count catches up. Items are deleted one at a time. Progress appears only when standard output is a terminal; quiet mode, structured output, output redirection, operating-system pipes, and MCP calls suppress it without changing the result.
+
+#### Partition-key scoping
+
+`--partition-key` (alias `--pk`) restricts both the dry run and the deletion to a single logical partition. It uses the same typed parsing as `patch` and `batch`: JSON scalars keep their type (`--pk=7` targets the number `7`, `--pk='"7"'` targets the string `"7"`), `{}` targets an undefined value, and hierarchical keys are passed as a JSON array (`--pk='["tenant-1",{}]'`). The value must supply every component of the container's partition key; a prefix of a hierarchical key is rejected. Piped items outside the partition are skipped.
+
+Piped items may be projections, so `rm` does not infer an undefined key for a piped item that omits a partition-key path; such items are skipped. To delete piped items from the undefined partition, scope the command explicitly, for example `--partition-key '{}'`.
+
+#### Deleting a single item safely
+
+When the pattern is an exact id (no `*` or `?`), `--key=id` is set, and `--partition-key` is supplied, `rm` targets exactly one item with a point read or point delete on `(id, partitionKey)` instead of scanning the container. The dry-run result keeps the `count` and adds the item's `id`, `partitionKey`, and current `etag`:
+
+```text
+rm order-123 --key=id --partition-key=customer-42 --dry-run
+```
+
+```json
+{ "type": "item", "count": 1, "dryRun": true, "partitionKey": "customer-42", "id": "order-123", "etag": "\"00000000-0000-0000-0000-000000000000\"" }
+```
+
+Pass that ETag to `--etag` to delete the item only if it has not changed since the dry run. ETags contain double quotes, so wrap the value in single quotes:
+
+```text
+rm order-123 --key=id --partition-key=customer-42 --etag '"00000000-0000-0000-0000-000000000000"'
+```
+
+The condition is enforced by Cosmos DB (`If-Match`). If the item was updated or recreated after the dry run, the command fails with `Item '<id>' was modified since it was last read (ETag mismatch). The item was not deleted.` and nothing is retried. A dry run with `--etag` reports the same mismatch without deleting anything.
+
+`--etag` is rejected before any deletion when the pattern contains wildcards, `--key=id` is missing, input is piped, the value is empty, or `--partition-key` is omitted.
 
 ### export
 
-Stream items from a container to a local file. Default format is JSON Lines (one compact JSON object per line); pass `--format=array` for a single JSON array, or `--format=csv` for CSV. Items are streamed end-to-end for JSON formats; CSV buffers items to compute the column set. The CSV separator follows the `COSMOSDB_SHELL_CSVSEP` environment variable (default `;`).
+Stream items from a container to a local file. A `.csv` file name (case-insensitive) writes CSV; any other file name writes a single indented JSON array, the same document shape the Azure Databases extension for VS Code imports and exports. `--format` does not change the file contents. JSON Lines output is not supported. JSON export streams incrementally. CSV spools documents to a private temporary file to compute the complete column set, keeping only the column names and current record in memory. Allow enough temporary disk space for the JSON spool as well as the destination export. The CSV separator follows the `COSMOSDB_SHELL_CSVSEP` environment variable (default `;`). Non-object query results are written to a column with an empty header by default; set `COSMOSDB_SHELL_CSV_SCALAR_COLUMN` to name it. Mixed object and non-object results include both object property columns and the scalar column. If its header conflicts with an object property, export fails instead of combining their values. Scalar CSV exports cannot be imported as items without supplying item IDs and any required partition keys.
+
+All formats write to a temporary file in the destination directory and move it into place only after successful completion. An existing destination requires `--force` and is preserved if reading, writing, or cancellation interrupts the export. Temporary files are removed on normal completion and handled failures; an abrupt process termination can leave an unfinished destination-directory temporary file. Once `--max` items have been emitted, no further query pages are requested.
 
 ```text
 Usage: export <file> [options]
@@ -515,22 +878,30 @@ Options:
     --con, --container   Source container (defaults to the current navigation context).
     --query, -q          SELECT query whose results are exported (default: SELECT * FROM c).
     --max, -m            Maximum number of items to export. 0 means no limit.
-    --format, -f         Output format: jsonl (default), array, or csv.
+    --format, -f         Command result format: user, json, csv, or table.
+                         Does not change the exported file.
     --force              Overwrite the destination file if it already exists.
 ```
 
 Examples:
 
-- `export items.jsonl` exports every item in the current container.
-- `export active.jsonl --query="SELECT * FROM c WHERE c.status = 'active'"` exports a filtered subset.
-- `export snapshot.json --format=array --force` exports as a JSON array, replacing any existing file.
-- `export items.csv --format=csv` exports as CSV with one column per top-level property (nested values are written as compact JSON).
+- `export items.json` exports every item in the current container as a JSON array.
+- `export active.json --query="SELECT * FROM c WHERE c.status = 'active'"` exports a filtered subset.
+- `export snapshot.json --force` replaces any existing file.
+- `export items.csv` exports as CSV with one column per top-level property (nested values are written as compact JSON).
+- `export items.json --format=csv` writes a JSON array file and presents the export summary as CSV.
 
-The summary line reports the number of items written and the total RU charge.
+Normal output shows a readable summary with the number of items written, the absolute destination path, and the total RU charge. Relative destination paths are resolved against the local working directory shown by `pwd`, not the current Cosmos DB location. The structured result's `file` field retains the path supplied to the command. `--format=json`, `--format=csv`, and `--format=table` change only this command result, not the exported data. When `--format` is omitted, the result inherits the shell's output settings.
 
 ### import
 
-Bulk-load items from a JSON Lines, JSON array, or CSV file into a container. Format is auto-detected: a `.csv` extension selects CSV, otherwise the first non-whitespace character is inspected (`[` ⇒ array, otherwise JSON Lines). It can be forced with `--format`. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist. For CSV, the header row defines property names and every value is imported as a string; the CSV separator follows `COSMOSDB_SHELL_CSVSEP` (default `;`). JSON Lines and JSON array inputs are streamed item-by-item, but CSV import reads and parses the entire file into memory before importing, so very large CSV files can cause a significant memory spike.
+Successful imports display a readable summary in normal output mode. `--format=json`, `--format=csv`, and `--format=table` select the command-result presentation; they do not change how the input file is read. When `--format` is omitted, the result inherits the shell's output settings.
+
+Human-readable output shows progress about every two seconds: completed item counts, imported/failed counts, elapsed seconds, average processing rate, and observed write RU charge. The progress line is updated in place and removed when the command finishes. Updates continue while reads or writes are waiting. Dry runs report offline validation counts instead. Because input is streamed without a counting pass, import does not report a total, percentage, or ETA. Progress appears only when standard output is a terminal; quiet mode, structured output, output redirection, operating-system pipes, and MCP calls suppress it without changing the final result. See [ingestion sizing and limitations](ingestion.md) for planning guidance and emulator measurements.
+
+Invalid result formats are rejected before accessing the target container or writing items. Diagnostics for JSON object sequences and CSV records use physical start-line numbers; JSON arrays use 1-based item indexes. Non-object roots in an object sequence are rejected before their contents are loaded.
+
+Bulk-load items from a JSON, JSON Lines, or CSV file into a container. A `.csv` extension selects CSV. For every other file, import detects the structure from its contents: a top-level `[` selects an array of items (the format the Azure Databases extension for VS Code imports and exports); otherwise it reads a single object or a sequence of objects. Sequences support JSON Lines, multiple objects on one line, and objects spanning several lines, without commas between objects or an enclosing array. No `--legacy` flag is needed, regardless of the filename extension. Malformed JSON, non-object items, and trailing garbage still fail import. Default mode is `insert`; pass `--mode=upsert` to replace items that already exist. For CSV, the header row defines property names and every value is imported as a string; the CSV separator follows `COSMOSDB_SHELL_CSVSEP` (default `;`). Empty headers with empty cells are ignored; a value under an empty header fails import with its line and column instead of being silently discarded. All formats are read incrementally rather than loading the complete file into memory. CSV supports quoted separators, escaped quotes, and multiline fields; malformed records abort the import with their physical start line. When an imported item omits a configured partition-key path, Cosmos DB infers an undefined value. Interactively and when stderr is redirected, import displays a notice before the first affected write, then reports one final bounded warning counted from writes scheduled. Machine mode with console stderr emits the pre-write notice and final count as JSON Lines warning and `warning-update` records. Invalid partition-key values are reported as per-item failures; `--continue-on-error` continues with subsequent rows. Earlier writes are not rolled back, so use `--dry-run` first when the entire file must be validated before any writes.
 
 ```text
 Usage: import <file> [options]
@@ -542,24 +913,44 @@ Options:
     --db, --database              Target database (defaults to the current navigation context).
     --con, --container            Target container (defaults to the current navigation context).
     --mode                        Write mode: insert (default) or upsert.
-    --format, -f                  Input format: auto (default), jsonl, array, or csv.
+    --format, -f                  Command result format: user, json, csv, or table.
+                                  Does not change how the input file is read.
+    --concurrency                 Maximum in-flight writes (default: 16; positive integer).
+                                  Use 1 for sequential writes in file order.
     --partition-key, --pk         For CSV import, the partition key path. Nested paths
                                   (e.g. /address/city) nest the matching column.
     --continue, --continue-on-error
                                   Continue importing after individual item failures.
-    --dry-run                     Parse the file without writing any items (validation only).
+    --dry-run                     Validate file syntax and item IDs offline; no writes or target access.
+                                  Does not check target partition keys, permissions, conflicts,
+                                  or other service constraints.
 ```
 
 Examples:
 
-- `import items.jsonl` inserts every item from a JSON Lines file.
-- `import items.json --format=array` reads a JSON array file.
+- `import items.json` inserts every item from a JSON file containing an array of items or a single item.
+- `import items.json --concurrency=32` allows up to 32 writes in flight.
+- `import items.json --concurrency=1` writes sequentially in file order.
+- `import items.jsonl` automatically reads a JSON Lines file; multiple objects per line are also accepted.
+- `import items.json --format=csv` reads the JSON input and presents the import summary as CSV.
 - `import items.csv` imports a CSV file, mapping each header column to a string property.
 - `import items.csv --partition-key=/address/city` nests the `city` column under `address` for a nested partition key. If a scalar column already occupies an intermediate path segment (for example an `address` column), the import fails with a conflict error rather than silently overwriting it.
-- `import items.jsonl --mode=upsert --continue-on-error` upserts items and keeps going on per-item failures.
-- `import items.jsonl --dry-run` validates the file without writing anything; useful before a real run.
+- `import items.json --mode=upsert --continue-on-error` upserts items and keeps going on per-item failures.
+- `import items.json --dry-run` validates file syntax and item IDs offline without writing anything; useful before a real run, but not a guarantee that the target will accept the items.
 
-By default, the first failure stops the import. With `--continue-on-error` the command keeps going after per-item *write* failures (for example a Cosmos write that throws) and the final summary reports how many items succeeded and how many failed. Parse and validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) still abort the import immediately. The command exits with an error status if any items failed.
+Imports keep up to 16 writes in flight by default without loading the entire file. `--concurrency` controls this bound; it must be a positive integer. Completion order is not guaranteed when concurrency exceeds 1. Use `--concurrency=1` when repeated IDs must be processed in file order (especially with upsert), or when exact sequential stop-on-error behavior is required. Higher concurrency can hide network latency but does not increase provisioned RU/s or avoid throttling; Cosmos SDK retry handling remains unchanged. Dry runs only validate input and do not start writes.
+
+By default, the first observed write failure stops scheduling new writes. Already-started writes are awaited and included in the final success/failure counts and request charge; they may succeed after the failure. With `--continue-on-error` the command keeps going after per-item *write* failures (for example a Cosmos write that throws) and the final summary reports how many items succeeded and how many failed. Parse and validation errors (invalid JSON, non-object rows, CSV partition-key conflicts) always stop scheduling writes, even with `--continue-on-error`, and in-flight writes are awaited before the error is returned. Cancellation is passed to both input reads and writes, and the command waits for started writes to settle before returning. Earlier writes are never rolled back. The command exits with an error status if any items failed.
+
+Write failures and input parse/read failures retain a structured import result, including `imported`, `failed`, and observed write `requestCharge`. `failed` counts failed writes, not unread or malformed records. Failed results also include `error` and `exitCode`, classified from the input failure that stopped the import or, otherwise, the first observed write failure. Only that representative error is retained, keeping results bounded for large imports. In machine mode the result is carried in the JSON error envelope on stderr; MCP returns it as `result` with `isError: true`. Human-readable output reports the summary and representative error.
+
+#### Dry-run validation scope
+
+`--dry-run` is always offline, even when connected or given `--database`/`--container`. It makes no target requests and performs no writes. It checks input syntax, object records, CSV structure/mapping, and each item's `id`: a non-empty string of at most 1023 UTF-8 bytes containing neither `/` nor `\`. Unicode IDs are allowed; the limit is measured in bytes, not characters. Local validation failures stop the dry run with a non-zero exit status, even with `--continue-on-error`.
+
+Dry runs do **not** validate the target container's partition-key definition or values, permissions, existing-ID conflicts, or other service constraints such as item-size limits. In particular, a property named `pk` cannot be validated as a partition key without knowing the target definition. Missing partition-key properties are not necessarily invalid because Cosmos DB supports undefined keys. Passing the dry run is not a promise that a real import will succeed.
+
+Dry-run results set `imported: 0`, `failed: 0`, `requestCharge: 0`, and `dryRun: true`. The additional `validated` field counts records that passed local validation before completion or the first error; `validationScope: "offline"` and `targetValidated: false` state the limits explicitly. These fields are also present in failed dry-run results and MCP responses. Normal imports retain their existing result shape.
 
 ### watch
 
@@ -586,6 +977,8 @@ Options:
 
 By default `watch` starts from now and follows the container, printing each change as highlighted JSON until you press Ctrl+C. Use `--from-beginning` to replay existing items first, `--partition-key` to scope the feed to one partition, and `--max` to stop automatically after a number of changes. Use `--interval` to change how long the shell waits between polls once it has caught up (default 1 second; values below 0.1 are clamped to avoid hammering the container). The change feed surfaces creates and updates (not deletes). This command is interactive and streaming, so it is not exposed over MCP.
 
+On a local emulator, intentional waits between polls do not count toward the 10-second inactivity timeout. A stalled request still times out and disconnects; Ctrl+C remains a normal way to stop watching.
+
 ```bash
 watch
 watch --from-beginning
@@ -611,12 +1004,15 @@ Arguments:
 Notes:
 
 - If `expression` evaluates to an existing file path, it is executed as a `.csh` script.
+- Arguments use direct-command shell-word and option syntax, including short options, `--name=value`, `--name:value`, and quoted or computed values. Built-in commands bind options normally; functions and scripts receive option-shaped words as positional text.
 
 Examples:
 
 ```bash
 $script = {path: "myscript.csh"}
 exec $script.path arg1 arg2
+
+exec "info" --db=mydb --con=mycontainer
 
 for $file in (dir "*.csh") { exec $file.path }
 ```
@@ -645,33 +1041,71 @@ The editor is resolved from `$VISUAL`, then `$EDITOR`, then a platform default (
 
 Database and container management commands prefer Azure Resource Manager when an ARM context is attached (Entra ID connections, optionally specifying `--subscription` and `--resource-group` for explicit account targeting). The account name is inferred from the endpoint. Account-key, emulator, and static-token connections do not attach ARM context, so these commands automatically fall back to the Cosmos DB data plane and use the connection's existing credentials.
 
+`mkdb` / `create database` and `mkcon` / `create container` return `type`, `id`,
+`created`, and `outcome` in structured results:
+
+| Backend result | `created` | `outcome` | Human-readable status |
+| --- | --- | --- | --- |
+| Data plane: newly created (HTTP 201) | `true` | `created` | Created database/container |
+| Data plane: existing resource reused (HTTP 200) | `false` | `existing` | Using existing database/container |
+| ARM: successful create-or-update | `null` | `createdOrUpdated` | Created or updated database/container |
+
+Data-plane replay preserves the existing resource rather than recreating it; incompatible
+partition keys and other service errors still fail. ARM retains its create-or-update
+behavior and can update an existing resource. Its API does not distinguish creation
+from update, so `null` means unknown, not `false`. The shell does not infer creation
+from a preflight existence check.
+
 ### mkdb
 
 Create database.
 
 ```text
-Usage: mkdb name
+Usage: mkdb name [options]
 
 Arguments:
     name        The database name to create
+
+Options:
+    --scale     Provision shared throughput: manual (m) or auto
+    --ru        Shared RU/s (autoscale maximum in auto mode)
+
+Examples:
+    mkdb MyDatabase
+    mkdb SharedDatabase --scale=auto --ru=1000
+    mkdb SharedManual --scale=manual --ru=400
 ```
+
+Omitting both options creates a database **without shared throughput**, on both provisioned and serverless accounts. On provisioned accounts, provision throughput on its individual containers with `mkcon` or `create container`. This does not change the account to serverless.
+
+On provisioned accounts, specifying either `--scale` or `--ru` opts into **shared database throughput**. The mode defaults to autoscale when only `--ru` is supplied, and RU/s defaults to 1000 when only `--scale` is supplied. For example, `mkdb SharedDatabase --scale=auto --ru=1000` retains the previous shared autoscale default. Omitted options do not remove shared throughput from an existing database.
+
+On serverless accounts, explicit `--scale` or `--ru` options produce an actionable error. ARM connections detect this before sending the creation request. Data-plane connections omit throughput on the first request when neither option is supplied; explicit options are rejected when the service reports unsupported serverless throughput. If a database already exists and either option was supplied, the data-plane path reads its throughput to detect serverless and reject the unsupported options. Existing provisioned databases retain their throughput on data-plane connections; ARM connections retain their create-or-update behavior.
 
 ### mkcon
 
 Create container.
 
 ```text
-Usage: mkcon name partition_key [unique_key]
+Usage: mkcon name partition_key [unique_key] [options]
 
 Arguments:
     name            The container to create
     partition_key   The partition key path. For hierarchical partition keys, use comma-separated paths such as /tenantId,/userId,/sessionId
     [unique_key]    Unique key paths (Optional)
 
+Options:
+    --scale         Throughput mode: manual (m) or auto (default)
+    --ru            Max RU/s (default: 1000)
+
 Examples:
     mkcon Products /categoryId
     mkcon Orders /customerId,/orderId
 ```
+
+Unlike `mkdb`, container creation on provisioned accounts still defaults to dedicated autoscale throughput with a maximum of 1000 RU/s. On serverless accounts, omit both options: data-plane connections retry without throughput when the service rejects the default throughput, and ARM connections omit it directly. Explicit `--scale` or `--ru` options are rejected on serverless accounts.
+
+`create database` follows the `mkdb` defaults; `create container` follows the `mkcon` defaults.
 
 ### rmdb
 
@@ -720,7 +1154,11 @@ Arguments:
 Options:
     -force, -upsert
                     Create or replace items when creating an item (upsert behavior)
+    --scale         Database/container throughput mode: manual (m) or auto
+    --ru            Database/container RU/s (autoscale maximum in auto mode)
 ```
+
+`create database MyDatabase` creates a database without shared throughput. Specify `--scale` or `--ru` to provision shared database throughput, for example `create database SharedDatabase --scale=auto --ru=1000`. Container creation retains its default dedicated autoscale throughput (1000 RU/s maximum) on provisioned accounts. See [mkdb](#mkdb) and [mkcon](#mkcon) for defaults and serverless behavior.
 
 ### delete
 
@@ -774,6 +1212,9 @@ Options:
 |`set`|Updates the indexing policy. Pass `--mode` (`consistent` or `none`, case-insensitive) and/or `--automatic` to patch the current policy, or provide a full indexing policy JSON document to replace it.|
 
 Paths use the Cosmos DB indexing path syntax, for example `/address/*` or `/name/?`.
+These paths can be passed unquoted; the trailing `?` is preserved. Successful policy
+readback confirms the configured metadata, not whether an emulator implements the
+corresponding index-performance behavior.
 
 #### Examples
 
@@ -1006,6 +1447,8 @@ The command operates on a container. By default it targets the current container
 `--path` applies only to last-writer-wins mode and `--procedure` applies only to custom mode; combining them with the wrong mode is rejected before the request is sent.
 
 Conflict resolution policies only take effect on accounts configured for multi-region writes.
+
+When an existing custom policy has no resolution stored procedure, `conflict show` reports that conflicts require manual resolution.
 
 #### Examples
 
@@ -1451,12 +1894,16 @@ Show help for commands.
 Usage: help [-details] [-plain] [command]
 
 Arguments:
-    [command]       Command to show help for (Optional)
+    [command]       Command, statement, or help topic to show help for (Optional)
 
 Options:
     -details, -d    Show detailed help for all commands
     -plain          Disable colors/styling
 ```
+
+Help topics:
+
+- `help shortcuts` — keyboard shortcuts for the interactive prompt, such as `Ctrl+R` history search. See [Keyboard Shortcuts](./navigation.md#keyboard-shortcuts).
 
 ### version
 
@@ -1469,6 +1916,9 @@ Usage: version
 ### welcome
 
 Display the welcome screen.
+
+Headings and descriptions use the OS UI language when translations are available,
+with English text for untranslated entries. Command examples and URLs remain unchanged.
 
 ```text
 Usage: welcome

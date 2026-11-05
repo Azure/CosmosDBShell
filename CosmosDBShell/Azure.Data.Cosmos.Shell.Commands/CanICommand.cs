@@ -15,10 +15,10 @@ using Azure.Data.Cosmos.Shell.Util;
 using Spectre.Console;
 
 [CosmosCommand("can-i")]
-[CosmosExample("can-i read", Description = "Probe whether the current identity can read items in the current container")]
-[CosmosExample("can-i query --database=MyDB --container=Products", Description = "Probe query access against a specific container")]
-[CosmosExample("can-i write", Description = "Probe write access using a safe, non-mutating operation")]
-[CosmosExample("can-i read --format=json", Description = "Emit the access check as a JSON object")]
+[CosmosExample("can-i read", DescriptionKey = "command-can-i-example-1")]
+[CosmosExample("can-i query --database=MyDB --container=Products", DescriptionKey = "command-can-i-example-2")]
+[CosmosExample("can-i write", DescriptionKey = "command-can-i-example-3")]
+[CosmosExample("can-i read --format=json", DescriptionKey = "command-can-i-example-4")]
 [McpAnnotation(
     Description = @"
 Probes whether the current identity can perform an action against a container without mutating data.

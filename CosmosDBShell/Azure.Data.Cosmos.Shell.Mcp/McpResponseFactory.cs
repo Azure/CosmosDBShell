@@ -27,12 +27,22 @@ internal static class McpResponseFactory
         return CreateResponse(CreateSuccessPayload(commandState), shellState, commandState.IsError);
     }
 
-    public static CallToolResult CreateError(string message, State shellState, double? requestCharge = null)
+    public static CallToolResult CreateError(
+        string message,
+        State shellState,
+        double? requestCharge = null,
+        IEnumerable<CommandWarning>? warnings = null)
     {
         var payload = new JsonObject
         {
             ["error"] = message,
         };
+        var warningMessages = warnings?.Select(warning => warning.Message).ToArray();
+        if (warningMessages is { Length: > 0 })
+        {
+            payload["warnings"] = JsonSerializer.SerializeToNode(warningMessages);
+        }
+
         if (requestCharge is not null)
         {
             payload["requestCharge"] = requestCharge.Value;
@@ -76,7 +86,7 @@ internal static class McpResponseFactory
                 new TextContentBlock
                 {
                     Text = structuredContent.GetRawText(),
-                }
+                },
             ],
             IsError = isError,
         };
@@ -89,6 +99,21 @@ internal static class McpResponseFactory
         if (commandState.RequestCharge.HasValue)
         {
             payload["requestCharge"] = commandState.RequestCharge.Value;
+        }
+
+        if (commandState.Warnings.Count > 0)
+        {
+            payload["warnings"] = JsonSerializer.SerializeToNode(
+                commandState.Warnings.Select(warning => warning.Message));
+        }
+
+        if (commandState.OutputFormat == OutputFormat.CSV)
+        {
+            var outputText = commandState.GenerateOutputText();
+            if (!string.IsNullOrWhiteSpace(outputText))
+            {
+                payload["outputText"] = outputText;
+            }
         }
 
         if (commandState.IsError)
@@ -115,13 +140,9 @@ internal static class McpResponseFactory
             payload["continuationToken"] = commandState.ContinuationToken;
         }
 
-        if (commandState.OutputFormat == OutputFormat.CSV)
+        if (commandState.IncompleteWithoutContinuation)
         {
-            var outputText = commandState.GenerateOutputText();
-            if (!string.IsNullOrWhiteSpace(outputText))
-            {
-                payload["outputText"] = outputText;
-            }
+            payload["resultIncomplete"] = true;
         }
 
         return payload;

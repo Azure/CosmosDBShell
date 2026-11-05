@@ -17,9 +17,9 @@ internal static class MessageService
     {
         var contexts = new List<MessageContext>();
 
-        if (CultureInfo.CurrentUICulture.TwoLetterISOLanguageName != "en")
+        foreach (var cultureName in GetCultureFallbacks(CultureInfo.CurrentUICulture))
         {
-            var lang = LoadMessageContext(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName);
+            var lang = LoadMessageContext(cultureName);
             if (lang != null)
             {
                 contexts.Add(lang);
@@ -37,6 +37,25 @@ internal static class MessageService
         }
 
         MessageService.Contexts = contexts;
+    }
+
+    internal static IReadOnlyList<string> GetCultureFallbacks(CultureInfo culture)
+    {
+        var names = new List<string>();
+        for (var current = culture; !string.IsNullOrEmpty(current.Name); current = current.Parent)
+        {
+            if (current.Name.Equals("en", StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            if (!names.Contains(current.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                names.Add(current.Name);
+            }
+        }
+
+        return names;
     }
 
     public static Dictionary<string, object> Args(string? name, object value, params object[] args)
@@ -133,7 +152,7 @@ internal static class MessageService
         var options = new MessageContextOptions { UseIsolating = false };
         foreach (var res in Assembly.GetExecutingAssembly().GetManifestResourceNames())
         {
-            if (!res.EndsWith($"{resourceName}.ftl"))
+            if (!res.EndsWith($"lang.{resourceName}.ftl", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -145,7 +164,7 @@ internal static class MessageService
             }
 
             using var sr = new StreamReader(stream);
-            var mc = new MessageContext(resourceName, options);
+            var mc = CreateMessageContext(resourceName, options);
             var errors = mc.AddMessages(sr);
             if (errors.Any())
             {
@@ -161,5 +180,22 @@ internal static class MessageService
         }
 
         return null;
+    }
+
+    internal static MessageContext CreateMessageContext(
+        string locale,
+        MessageContextOptions options,
+        Func<IEnumerable<string>, MessageContext>? factory = null)
+    {
+        factory ??= locales => new MessageContext(locales, options);
+
+        try
+        {
+            return factory([locale]);
+        }
+        catch (CultureNotFoundException) when (!string.IsNullOrEmpty(locale))
+        {
+            return factory([CultureInfo.InvariantCulture.Name, locale]);
+        }
     }
 }

@@ -15,13 +15,13 @@ using Microsoft.Azure.Cosmos.Scripts;
 using Spectre.Console;
 
 [CosmosCommand("trigger")]
-[CosmosExample("trigger list", Description = "List the triggers in the current container")]
-[CosmosExample("trigger show myTrigger", Description = "Display the body of a trigger")]
-[CosmosExample("trigger exists myTrigger", Description = "Check whether a trigger exists (usable in if conditions)")]
-[CosmosExample("trigger create myTrigger ./myTrigger.js --type pre --operation create", Description = "Create a pre-trigger for create operations")]
-[CosmosExample("trigger create myTrigger ./myTrigger.js --type post --operation all --force", Description = "Create or replace a post-trigger for all operations")]
-[CosmosExample("trigger edit myTrigger", Description = "Edit a trigger body in an external editor")]
-[CosmosExample("trigger delete myTrigger", Description = "Delete a trigger")]
+[CosmosExample("trigger list", DescriptionKey = "command-trigger-example-1")]
+[CosmosExample("trigger show myTrigger", DescriptionKey = "command-trigger-example-2")]
+[CosmosExample("trigger exists myTrigger", DescriptionKey = "command-trigger-example-3")]
+[CosmosExample("trigger create myTrigger ./myTrigger.js --type pre --operation create", DescriptionKey = "command-trigger-example-4")]
+[CosmosExample("trigger create myTrigger ./myTrigger.js --type post --operation all --force", DescriptionKey = "command-trigger-example-5")]
+[CosmosExample("trigger edit myTrigger", DescriptionKey = "command-trigger-example-6")]
+[CosmosExample("trigger delete myTrigger", DescriptionKey = "command-trigger-example-7")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "Triggers",
@@ -342,7 +342,7 @@ internal class TriggerCommand : CosmosCommand
         }
 
         var seed = existingBody ?? DefaultTriggerBody();
-        var edited = await this.LaunchEditorAsync(seed, name, token);
+        var edited = await this.LaunchEditorAsync(shell, seed, name, token);
 
         if (!string.IsNullOrWhiteSpace(edited))
         {
@@ -353,7 +353,7 @@ internal class TriggerCommand : CosmosCommand
             ShellInterpreter.WriteLine();
         }
 
-        if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-trigger-create-confirm"))
+        if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-trigger-create-confirm", shell))
         {
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "trigger", id = name, created = false }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-trigger-create-discarded", "name", name));
@@ -470,7 +470,7 @@ internal class TriggerCommand : CosmosCommand
         }
 
         var existingBody = existing.Body ?? string.Empty;
-        var newBody = await this.LaunchEditorAsync(existingBody, name, token);
+        var newBody = await this.LaunchEditorAsync(shell, existingBody, name, token);
 
         if (string.Equals(newBody, existingBody, StringComparison.Ordinal))
         {
@@ -504,7 +504,7 @@ internal class TriggerCommand : CosmosCommand
     /// external editor, waits for the editor to close, and returns the edited
     /// contents. The temporary file is always removed.
     /// </summary>
-    private async Task<string> LaunchEditorAsync(string initialBody, string name, CancellationToken token)
+    private async Task<string> LaunchEditorAsync(ShellInterpreter shell, string initialBody, string name, CancellationToken token)
     {
         var editor = ExternalEditor.Resolve(null);
         if (editor is null)
@@ -519,6 +519,7 @@ internal class TriggerCommand : CosmosCommand
         try
         {
             await File.WriteAllTextAsync(tempPath, initialBody, token);
+            using var pause = shell.PauseOperationTimeout();
 
             AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
                 "command-trigger-edit-launching",

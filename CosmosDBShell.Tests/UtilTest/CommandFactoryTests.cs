@@ -7,6 +7,8 @@ using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Util;
 
 [CosmosCommand("simple")]
+[CosmosExample("simple", DescriptionKey = "help-examples")]
+[CosmosExample("simple legacy", Description = "Legacy description")]
 internal class SimpleCommand : CosmosCommand
 {
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
@@ -58,6 +60,15 @@ internal class BoolCommand : CosmosCommand
 
 public class CommandFactoryTests
 {
+    [Fact]
+    public void ExamplesResolveDescriptionKeysAndPreserveLegacyDescriptions()
+    {
+        Assert.True(CommandFactory.TryCreateFactory(typeof(SimpleCommand), out var factory));
+        Assert.Contains(("simple", MessageService.GetString("help-examples")), factory.ExamplesWithDescriptions);
+        Assert.Contains(("simple legacy", "Legacy description"), factory.ExamplesWithDescriptions);
+        Assert.Equal(new[] { "simple", "simple legacy" }, factory.Examples);
+    }
+
     [Fact]
     public void TestFail()
     {

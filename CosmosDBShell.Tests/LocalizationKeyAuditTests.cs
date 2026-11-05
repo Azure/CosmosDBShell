@@ -53,6 +53,27 @@ public class LocalizationKeyAuditTests
     }
 
     [Fact]
+    public void BuiltInExampleDescriptions_UseDefinedLocalizationKeys()
+    {
+        var relativeLocalizationPath = Path.Join("CosmosDBShell", "lang", "en.ftl");
+        Assert.False(Path.IsPathRooted(relativeLocalizationPath));
+        var definedKeys = LoadDefinedKeys(Path.Join(FindRepositoryRoot(), relativeLocalizationPath));
+        var commands = typeof(CosmosCommandAttribute).Assembly.GetTypes()
+            .Where(type => type.GetCustomAttribute<CosmosCommandAttribute>() is not null);
+
+        foreach (var command in commands)
+        {
+            foreach (var example in command.GetCustomAttributes<CosmosExampleAttribute>())
+            {
+                Assert.Null(example.Description);
+                Assert.False(string.IsNullOrWhiteSpace(example.DescriptionKey));
+                Assert.Contains(example.DescriptionKey, definedKeys);
+                Assert.False(string.IsNullOrWhiteSpace(MessageService.GetString(example.DescriptionKey)));
+            }
+        }
+    }
+
+    [Fact]
     public void ReferencedLocalizationKeys_AreDefinedInEnglishResource()
     {
         var root = FindRepositoryRoot();

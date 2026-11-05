@@ -28,6 +28,7 @@ filter <expression>
 
 - `expression` is required.
 - The expression is usually quoted at the shell level, for example: `filter '.items[0]'`.
+- Array indexes must be integer literals between `0` and `2147483647`. Larger indexes are rejected, including optional paths (`?`); valid indexes beyond the array length return `null`.
 - Input comes from the current pipeline value.
 - Output is written back into the shell's structured command result.
 
@@ -200,6 +201,7 @@ Examples:
 
 - If the input is an array and the index exists, the element is returned.
 - If the index is out of range, the result is `null`.
+- Index literals must fit in a non-negative signed 32-bit integer (`0` through `2147483647`). Larger literals are parse errors, including with optional access; they are never substituted with index zero.
 - If the input is not an array, evaluation fails unless optional access is used.
 
 Examples:

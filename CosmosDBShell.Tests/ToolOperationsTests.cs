@@ -13,6 +13,63 @@ using Azure.Data.Cosmos.Shell.Util;
 
 public class ToolOperationsTests
 {
+    [Theory]
+    [InlineData("import")]
+    [InlineData("export")]
+    public void GetTool_FileTransferFormat_ListsOnlyCanonicalResultFormats(string commandName)
+    {
+        var tool = ToolOperations.GetTool(new CommandRunner().Commands[commandName]);
+        var format = tool.InputSchema.GetProperty("properties").GetProperty("format");
+
+        Assert.Equal("string", format.GetProperty("type").GetString());
+        var values = format.GetProperty("enum").EnumerateArray().Select(value => value.GetString()).ToArray();
+        Assert.Equal(["user", "json", "csv", "table"], values);
+        Assert.All(values, value => Assert.True(OutputFormats.TryParse(value, out _)));
+        Assert.Contains("Aliases: f", format.GetProperty("description").GetString());
+        Assert.False(format.TryGetProperty("default", out _));
+        if (tool.InputSchema.TryGetProperty("required", out var required))
+        {
+            Assert.DoesNotContain(required.EnumerateArray(), value => value.GetString() == "format");
+        }
+    }
+
+    [Fact]
+    public void GetTool_Import_ExplainsAutomaticInputDetectionAndResultPresentation()
+    {
+        var tool = ToolOperations.GetTool(new CommandRunner().Commands["import"]);
+        var properties = tool.InputSchema.GetProperty("properties");
+
+        Assert.Contains("detected automatically", properties.GetProperty("file").GetProperty("description").GetString());
+        var formatDescription = properties.GetProperty("format").GetProperty("description").GetString();
+        Assert.Contains("Command result presentation only", formatDescription);
+        Assert.Contains("array and jsonl are not valid values", formatDescription);
+        Assert.Contains("format option controls the command result, not the input file", tool.Description);
+    }
+
+    [Fact]
+    public void GetTool_UnrelatedStringOptions_AreNotConstrainedToResultFormats()
+    {
+        var tool = ToolOperations.GetTool(new CommandRunner().Commands["import"]);
+        var properties = tool.InputSchema.GetProperty("properties");
+
+        Assert.False(properties.GetProperty("file").TryGetProperty("enum", out _));
+        Assert.False(properties.GetProperty("database").TryGetProperty("enum", out _));
+        Assert.False(properties.GetProperty("container").TryGetProperty("enum", out _));
+    }
+
+    [Fact]
+    public void GetTool_ImportExposesConfigurableConcurrencyWithDefault()
+    {
+        var factory = new CommandRunner().Commands["import"];
+        var tool = ToolOperations.GetTool(factory);
+        var property = tool.InputSchema.GetProperty("properties").GetProperty("concurrency");
+
+        Assert.Equal("integer", property.GetProperty("type").GetString());
+        Assert.Equal(16, property.GetProperty("default").GetInt32());
+        Assert.Equal(1, property.GetProperty("minimum").GetInt32());
+        Assert.Contains("sequential", property.GetProperty("description").GetString());
+    }
+
     [Fact]
     public void GetTool_IncludesCommandOptionsInInputSchema()
     {
@@ -29,6 +86,7 @@ public class ToolOperationsTests
         Assert.Equal("string", queryProperty.GetProperty("type").GetString());
         Assert.Equal("string", databaseProperty.GetProperty("type").GetString());
         Assert.Equal("string", containerProperty.GetProperty("type").GetString());
+        Assert.False(containerProperty.TryGetProperty("minimum", out _));
         Assert.Equal("integer", maxProperty.GetProperty("type").GetString());
         Assert.Equal(ToolOperations.DefaultPageSize, maxProperty.GetProperty("default").GetInt32());
         Assert.Equal(1, maxProperty.GetProperty("minimum").GetInt32());
@@ -48,6 +106,7 @@ public class ToolOperationsTests
         var maxDescription = schema.GetProperty("properties").GetProperty("max").GetProperty("description").GetString();
 
         Assert.Contains("continuationToken", maxDescription);
+        Assert.Contains("resultIncomplete", maxDescription);
 
         var shellDescription = factory.Options.Single(option => option.Name[0] == "max").GetDescription(commandName);
         Assert.DoesNotContain("continuationToken", shellDescription);
@@ -158,6 +217,10 @@ public class ToolOperationsTests
         var continuation = schema.GetProperty("properties").GetProperty("continuation");
 
         Assert.Equal("string", continuation.GetProperty("type").GetString());
+        var description = continuation.GetProperty("description").GetString();
+        Assert.Contains("unless resultIncomplete is true", description);
+        Assert.Contains("truncated and cannot be resumed", description);
+        Assert.Contains("Never pass back a null token", description);
     }
 
     [Fact]
@@ -335,6 +398,25 @@ public class ToolOperationsTests
     }
 
     [Fact]
+    public void GetTool_RmExposesPartitionKeyAndETagOptions()
+    {
+        var factory = new CommandRunner().Commands["rm"];
+
+        var tool = ToolOperations.GetTool(factory);
+        var properties = tool.InputSchema.GetProperty("properties");
+
+        var partitionKey = properties.GetProperty("partition-key");
+        Assert.Equal("string", partitionKey.GetProperty("type").GetString());
+        Assert.Contains("Aliases: pk", partitionKey.GetProperty("description").GetString());
+        Assert.Contains("logical partition key", partitionKey.GetProperty("description").GetString());
+        Assert.Contains("{}", partitionKey.GetProperty("description").GetString());
+
+        var etag = properties.GetProperty("etag");
+        Assert.Equal("string", etag.GetProperty("type").GetString());
+        Assert.Contains("--partition-key", etag.GetProperty("description").GetString());
+    }
+
+    [Fact]
     public void GetTool_RendersEnumOptionAsStringSchemaWithValues()
     {
         var factory = new CommandRunner().Commands["query"];
@@ -348,6 +430,21 @@ public class ToolOperationsTests
         Assert.Contains("Display", enumValues);
         Assert.Contains("File", enumValues);
         Assert.Equal("Display", metrics.GetProperty("default").GetString());
+    }
+
+    [Fact]
+    public void GetTool_PrintRequiresTypedPositionalKey()
+    {
+        var tool = ToolOperations.GetTool(new CommandRunner().Commands["print"]);
+        var properties = tool.InputSchema.GetProperty("properties");
+
+        Assert.False(properties.TryGetProperty("partition-key", out _));
+        Assert.False(properties.TryGetProperty("pk", out _));
+        var key = properties.GetProperty("key");
+        Assert.Equal("string", key.GetProperty("type").GetString());
+        Assert.Contains("JSON", key.GetProperty("description").GetString());
+        Assert.Contains("{}", key.GetProperty("description").GetString());
+        Assert.Equal(["id", "key"], tool.InputSchema.GetProperty("required").EnumerateArray().Select(value => value.GetString()));
     }
 
     private static JsonElement Json(string raw)

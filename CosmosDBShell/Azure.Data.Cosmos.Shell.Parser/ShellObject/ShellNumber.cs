@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal class ShellNumber : ShellObject
 {
@@ -17,6 +18,16 @@ internal class ShellNumber : ShellObject
     }
 
     public int Value { get; }
+
+    internal static ShellObject FromJson(JsonElement value)
+    {
+        return value.TryGetInt32(out var number) ? new ShellNumber(number) : new ShellDecimal(value.GetDouble());
+    }
+
+    internal static ShellObject Normalize(ShellObject value)
+    {
+        return value is ShellJson json && json.Value.ValueKind == JsonValueKind.Number ? FromJson(json.Value) : value;
+    }
 
     public override object ConvertShellObject(DataType type)
     {
@@ -33,7 +44,7 @@ internal class ShellNumber : ShellObject
             case DataType.Json:
                 return JsonDocument.Parse(this.Value.ToString()).RootElement;
             default:
-                throw new InvalidOperationException($"Cannot convert number to {type}");
+                throw new InvalidOperationException(MessageService.GetArgsString("conversion-error-number-type", "type", type));
         }
     }
 }

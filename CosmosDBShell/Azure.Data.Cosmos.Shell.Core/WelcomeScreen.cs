@@ -4,13 +4,23 @@
 
 namespace Azure.Data.Cosmos.Shell.Core;
 
+using System.Text.RegularExpressions;
+using Azure.Data.Cosmos.Shell.Util;
+
 internal static class WelcomeScreen
 {
     private const string ResourceSuffix = "cosmos_welcome.ans";
-    private const string VersionPlaceholder = "{{VERSION}}";
     private static readonly Lazy<string> Content = new(Load);
 
     internal static string Text => Content.Value;
+
+    internal static string Render(string template, string version, Func<string, string> getString)
+    {
+        return Regex.Replace(
+            template,
+            @"\{\{(VERSION|shell-welcome-[a-z-]+)\}\}",
+            match => match.Groups[1].Value == "VERSION" ? version : getString(match.Groups[1].Value));
+    }
 
     internal static void WriteTo(TextWriter writer)
     {
@@ -32,8 +42,9 @@ internal static class WelcomeScreen
         using var stream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException($"Stream for embedded resource '{resourceName}' not found.");
         using var reader = new StreamReader(stream);
-        return reader.ReadToEnd()
-            .TrimStart('\uFEFF')
-            .Replace(VersionPlaceholder, ShellInterpreter.GetDisplayVersion(assembly), StringComparison.Ordinal);
+        return Render(
+            reader.ReadToEnd().TrimStart('\uFEFF'),
+            ShellInterpreter.GetDisplayVersion(assembly),
+            key => MessageService.GetString(key));
     }
 }

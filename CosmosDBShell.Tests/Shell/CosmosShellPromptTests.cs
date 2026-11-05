@@ -67,4 +67,17 @@ public class CosmosShellPromptTests
         Assert.Contains(Markup.Escape("[batch:0]"), prompt);
         Assert.DoesNotContain(Markup.Escape(Markup.Escape("[batch:0]")), prompt);
     }
+
+    [Fact]
+    public void GetPromptString_WithActiveBulk_ShowsOperationCount()
+    {
+        var shell = ShellInterpreter.CreateInstance();
+        shell.State = new DisconnectedState();
+        shell.CurrentBulk = new PendingBulkState("TestDatabase", "TestContainer", "rid", ["/pk"], null, null);
+        shell.CurrentBulk.Operations.Add(new Azure.Data.Cosmos.Shell.Commands.BulkOperation(0, "delete", "1", "[\"a\"]", "{}"));
+
+        var prompt = new CosmosShellPrompt(shell).GetPromptString();
+
+        Assert.Contains(Markup.Escape("[bulk:1]"), prompt);
+    }
 }

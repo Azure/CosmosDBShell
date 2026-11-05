@@ -15,13 +15,13 @@ using Microsoft.Azure.Cosmos.Scripts;
 using Spectre.Console;
 
 [CosmosCommand("udf")]
-[CosmosExample("udf list", Description = "List the user-defined functions in the current container")]
-[CosmosExample("udf show myFunc", Description = "Display the body of a user-defined function")]
-[CosmosExample("udf exists myFunc", Description = "Check whether a user-defined function exists (usable in if conditions)")]
-[CosmosExample("udf create myFunc ./myFunc.js", Description = "Create a user-defined function from a JavaScript file")]
-[CosmosExample("udf create myFunc ./myFunc.js --force", Description = "Create or replace a user-defined function")]
-[CosmosExample("udf edit myFunc", Description = "Edit a user-defined function body in an external editor")]
-[CosmosExample("udf delete myFunc", Description = "Delete a user-defined function")]
+[CosmosExample("udf list", DescriptionKey = "command-udf-example-1")]
+[CosmosExample("udf show myFunc", DescriptionKey = "command-udf-example-2")]
+[CosmosExample("udf exists myFunc", DescriptionKey = "command-udf-example-3")]
+[CosmosExample("udf create myFunc ./myFunc.js", DescriptionKey = "command-udf-example-4")]
+[CosmosExample("udf create myFunc ./myFunc.js --force", DescriptionKey = "command-udf-example-5")]
+[CosmosExample("udf edit myFunc", DescriptionKey = "command-udf-example-6")]
+[CosmosExample("udf delete myFunc", DescriptionKey = "command-udf-example-7")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "User-Defined Functions",
@@ -281,7 +281,7 @@ internal class UdfCommand : CosmosCommand
         }
 
         var seed = existingBody ?? DefaultUserDefinedFunctionBody();
-        var edited = await this.LaunchEditorAsync(seed, name, token);
+        var edited = await this.LaunchEditorAsync(shell, seed, name, token);
 
         if (!string.IsNullOrWhiteSpace(edited))
         {
@@ -292,7 +292,7 @@ internal class UdfCommand : CosmosCommand
             ShellInterpreter.WriteLine();
         }
 
-        if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-udf-create-confirm"))
+        if (string.IsNullOrWhiteSpace(edited) || !ShellInterpreter.Confirm("command-udf-create-confirm", shell))
         {
             commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(new { type = "udf", id = name, created = false }));
             commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString("command-udf-create-discarded", "name", name));
@@ -395,7 +395,7 @@ internal class UdfCommand : CosmosCommand
             throw NotFound(name, ex);
         }
 
-        var newBody = await this.LaunchEditorAsync(existingBody, name, token);
+        var newBody = await this.LaunchEditorAsync(shell, existingBody, name, token);
 
         if (string.Equals(newBody, existingBody, StringComparison.Ordinal))
         {
@@ -423,7 +423,7 @@ internal class UdfCommand : CosmosCommand
     /// external editor, waits for the editor to close, and returns the edited
     /// contents. The temporary file is always removed.
     /// </summary>
-    private async Task<string> LaunchEditorAsync(string initialBody, string name, CancellationToken token)
+    private async Task<string> LaunchEditorAsync(ShellInterpreter shell, string initialBody, string name, CancellationToken token)
     {
         var editor = ExternalEditor.Resolve(null);
         if (editor is null)
@@ -438,6 +438,7 @@ internal class UdfCommand : CosmosCommand
         try
         {
             await File.WriteAllTextAsync(tempPath, initialBody, token);
+            using var pause = shell.PauseOperationTimeout();
 
             AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetArgsString(
                 "command-udf-edit-launching",

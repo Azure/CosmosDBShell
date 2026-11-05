@@ -5,11 +5,121 @@
 namespace CosmosShell.Tests.Shell;
 
 using System.Text.Json;
+using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
 
+[Collection(ConsoleOutputTestCollection.Name)]
 public class ExecuteCommandExceptionTests
 {
+    [CosmosCommand("warning-error-test")]
+    internal sealed class WarningErrorTestCommand : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(
+            ShellInterpreter shell,
+            CommandState commandState,
+            string commandText,
+            CancellationToken token)
+        {
+            commandState.AddWarning("inferred key warning");
+            shell.RenderWarnings(commandState);
+            throw new CommandException("warning-error-test", "operation failed");
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task FileParserError_ReportsItsOwnSource(bool expression, bool machineMode)
+    {
+        using var interpreter = CreateInterpreter();
+        var script = Path.GetTempFileName().Replace('\\', '/');
+        var output = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(script, "\n}", TestContext.Current.CancellationToken);
+            interpreter.ErrOutRedirect = output;
+            if (machineMode)
+            {
+                interpreter.Options = new Program.CosmosShellOptions { Output = "json" };
+            }
+
+            var command = expression ? $"def invoke {{ exec \"{script}\" }}; $value = (invoke)" : $"exec \"{script}\"";
+            var state = await interpreter.ExecuteCommandAsync(command, CancellationToken.None);
+            Assert.Equal(ShellExitCode.UsageError, state.ExitCode);
+            var content = File.ReadAllText(output);
+            if (machineMode)
+            {
+                using var json = JsonDocument.Parse(content);
+                content = json.RootElement.GetProperty("error").GetString()!;
+                Assert.Contains(":2:1:", content);
+            }
+            else
+            {
+                Assert.Contains(":2:1:", content);
+                Assert.Contains("}", content);
+            }
+
+            Assert.Contains(Path.GetFileName(script), content);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(script);
+            File.Delete(output);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NestedScriptError_ReportsOriginAndRetainsCaller(bool machineMode)
+    {
+        using var interpreter = CreateInterpreter();
+        var child = Path.GetTempFileName().Replace('\\', '/');
+        var parent = Path.GetTempFileName().Replace('\\', '/');
+        var output = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(child, "\n$invalid = 1 / 0", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(parent, $"exec \"{child}\"", TestContext.Current.CancellationToken);
+            interpreter.ErrOutRedirect = output;
+            if (machineMode)
+            {
+                interpreter.Options = new Program.CosmosShellOptions { Output = "json" };
+            }
+
+            var state = Assert.IsType<ErrorCommandState>(await interpreter.ExecuteCommandAsync($"exec \"{parent}\"", CancellationToken.None));
+            Assert.Equal(ShellExitCode.GeneralFailure, state.ExitCode);
+            var frames = PositionalException.GetSourceTrace(state.Exception);
+            Assert.Equal(child, frames[0].FileName);
+            Assert.Equal(2, frames[0].Line);
+            Assert.Contains(frames, frame => frame.FileName == parent);
+            var content = File.ReadAllText(output);
+            if (machineMode)
+            {
+                using var json = JsonDocument.Parse(content);
+                content = json.RootElement.GetProperty("error").GetString()!;
+            }
+            else
+            {
+                Assert.Contains($"at {parent}:1:1", content);
+            }
+
+            Assert.Contains($"{Path.GetFileName(child)}:2:1", content);
+            Assert.Null(interpreter.CurrentScriptFileName);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(child);
+            File.Delete(parent);
+            File.Delete(output);
+        }
+    }
+
     private ShellInterpreter CreateInterpreter()
     {
         return new ShellInterpreter();
@@ -44,6 +154,160 @@ public class ExecuteCommandExceptionTests
             interpreter.StdOutRedirect = null;
             interpreter.ErrOutRedirect = null;
             File.Delete(stdoutFile);
+            File.Delete(stderrFile);
+        }
+    }
+
+    [Fact]
+    public void PrintState_SharedWarning_IsRenderedOnlyOnce()
+    {
+        using var interpreter = CreateInterpreter();
+        interpreter.Options = new Program.CosmosShellOptions { Quiet = true };
+        var sourceState = new CommandState();
+        var warning = sourceState.AddWarning("warning");
+        var resultState = new CommandState();
+        resultState.ShareWarningsFrom(sourceState);
+        var originalError = Console.Error;
+        using var errorOutput = new StringWriter();
+        Console.SetError(errorOutput);
+        try
+        {
+            interpreter.PrintState(resultState);
+            interpreter.PrintState(sourceState);
+
+            Assert.True(warning.IsRendered);
+            Assert.Equal($"warning{Environment.NewLine}", errorOutput.ToString());
+        }
+        finally
+        {
+            Console.SetError(originalError);
+        }
+    }
+
+    [Fact]
+    public void PrintState_MachineError_IncludesWarningsInErrorEnvelope()
+    {
+        using var interpreter = CreateInterpreter();
+        var stderrFile = Path.GetTempFileName();
+        interpreter.Options = new Program.CosmosShellOptions { Output = "json" };
+        interpreter.ErrOutRedirect = stderrFile;
+        try
+        {
+            var state = new StructuredErrorCommandState(
+                new CommandException("replace", "Replacement failed."),
+                new ShellJson(JsonSerializer.SerializeToElement(new { replaced = 0 })));
+            var warning = state.AddWarning("An inferred undefined partition key was used for 1 item.");
+
+            interpreter.PrintState(state);
+
+            using var document = JsonDocument.Parse(File.ReadAllText(stderrFile));
+            Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+            Assert.Equal("Replacement failed.", document.RootElement.GetProperty("error").GetString());
+            Assert.Equal(
+                "An inferred undefined partition key was used for 1 item.",
+                Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+            Assert.True(warning.IsRendered);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(stderrFile);
+        }
+    }
+
+    [Fact]
+    public void PrintState_Warning_UsesErrorRedirection()
+    {
+        using var interpreter = CreateInterpreter();
+        var stderrFile = Path.GetTempFileName();
+        interpreter.ErrOutRedirect = stderrFile;
+        try
+        {
+            var state = new CommandState();
+            state.AddWarning("warning");
+
+            interpreter.PrintState(state);
+
+            Assert.Equal($"warning{Environment.NewLine}", File.ReadAllText(stderrFile));
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(stderrFile);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteCommandAsync_FailedWarningCommandPreservesWarningsInErrorOutput(bool machineMode)
+    {
+        using var interpreter = CreateInterpreter();
+        Assert.True(CommandFactory.TryCreateFactory(typeof(WarningErrorTestCommand), out var factory));
+        interpreter.App.Commands["warning-error-test"] = factory;
+        var stderrFile = Path.GetTempFileName();
+        interpreter.ErrOutRedirect = stderrFile;
+        if (machineMode)
+        {
+            interpreter.Options = new Program.CosmosShellOptions { Output = "json" };
+        }
+
+        try
+        {
+            var state = await interpreter.ExecuteCommandAsync(
+                "warning-error-test",
+                TestContext.Current.CancellationToken);
+
+            Assert.True(state.IsError);
+            var output = File.ReadAllText(stderrFile);
+            if (machineMode)
+            {
+                using var document = JsonDocument.Parse(output);
+                Assert.Equal("error", document.RootElement.GetProperty("status").GetString());
+                Assert.Equal("operation failed", document.RootElement.GetProperty("error").GetString());
+                Assert.Equal(
+                    "inferred key warning",
+                    Assert.Single(document.RootElement.GetProperty("warnings").EnumerateArray()).GetString());
+            }
+            else
+            {
+                Assert.StartsWith($"inferred key warning{Environment.NewLine}", output);
+                Assert.Contains("operation failed", output);
+            }
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
+            File.Delete(stderrFile);
+        }
+    }
+
+    [Fact]
+    public void PrintState_StructuredErrorWithScriptLocationInUserMode_ReportsLocationAndKeepsRenderer()
+    {
+        using var interpreter = CreateInterpreter();
+        var stderrFile = Path.GetTempFileName();
+        interpreter.ErrOutRedirect = stderrFile;
+        try
+        {
+            var rendered = false;
+            var state = new StructuredErrorCommandState(
+                new PositionalException("script.csh", new CommandException("batch", "Batch failed."), 4, 7, "batch items.json"),
+                new ShellJson(JsonSerializer.SerializeToElement(new { success = false })))
+            {
+                RenderUser = () => rendered = true,
+            };
+
+            interpreter.PrintState(state);
+
+            Assert.True(rendered);
+            var content = File.ReadAllText(stderrFile);
+            Assert.Contains("script.csh:4:7", content);
+            Assert.Contains("Batch failed.", content);
+        }
+        finally
+        {
+            interpreter.ErrOutRedirect = null;
             File.Delete(stderrFile);
         }
     }

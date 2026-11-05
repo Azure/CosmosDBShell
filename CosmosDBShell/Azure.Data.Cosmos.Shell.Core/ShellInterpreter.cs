@@ -5,7 +5,10 @@
 namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Globalization;
+using System.Linq;
 using System.Reflection;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Azure.Data.Cosmos.Shell.Commands;
@@ -31,11 +34,21 @@ public partial class ShellInterpreter : IDisposable
 
     private const string SessionRequestChargeWarningThresholdVariable = "sessionRequestChargeWarningThreshold";
 
+    // Declared before Instance: static initializers run in order and the constructor reads history.
+    private static readonly object HistoryFileLock = new();
+
     internal static readonly ShellInterpreter Instance = new();
 
     private const int MAXHISTORYITEMS = 60;
 
+    private const int HistoryFileOpenRetryCount = 10;
+
     private const int OptionalArmDiscoveryTimeoutSeconds = 3;
+
+    // A constant, not a static TimeSpan field: Instance is constructed before later static initializers run.
+    private const int LocalEmulatorOperationTimeoutSeconds = 10;
+
+    internal const int MaximumCallDepth = 64;
 
     private const string EncodedHistoryLinePrefix = "CosmosDBShellHistoryV1:";
 
@@ -44,7 +57,7 @@ public partial class ShellInterpreter : IDisposable
     // user command that just happens to start with the prefix string.
     private const string EncodedHistoryLineMarker = "E:";
 
-    private static readonly TimeSpan LocalEmulatorOperationTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan HistoryFileOpenRetryDelay = TimeSpan.FromMilliseconds(25);
 
     private static CancellationTokenSource? currentTokenSource;
 
@@ -56,9 +69,32 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly object sessionRequestChargeLock = new();
 
+    private readonly object historyLock = new();
+
+    private readonly object transientLineLock = new();
+
+    private readonly List<string> pendingHistoryEntries = [];
+
+    private readonly object lineEditorLock = new();
+
+    private readonly SemaphoreSlim executionGate = new(1, 1);
+
+    private long stateVersion;
+
+    private OperationInactivityTimeout? localEmulatorDeadline;
+    private CancellationToken cancellationErrorToken;
+
+    private int activeInterruptOutputFormat = -1;
+
+    private int transientLineLength;
+
+    private int callDepth;
+
     private TokenCredential? activeCredential;
 
     private LineEditor? lineEditor;
+
+    private bool lineEditorCreationAttempted;
 
     private CosmosShellPrompt? cosmosShellPrompt;
 
@@ -77,9 +113,7 @@ public partial class ShellInterpreter : IDisposable
     private long sessionChargedOperationCount;
 
     private double sessionRequestChargeWarningThreshold;
-
     private bool sessionRequestChargeWarningIssued;
-
     private long sessionRequestChargeGeneration;
 
     internal ShellInterpreter(string? configPath = null)
@@ -101,24 +135,53 @@ public partial class ShellInterpreter : IDisposable
         this.HistoryFile = Path.Join(this.cfgPath, "cmd_history");
         this.welcomeMarkerFile = Path.Join(this.cfgPath, "welcome_seen");
 
-        if (File.Exists(this.HistoryFile))
+        try
         {
-            foreach (var line in File.ReadAllLines(this.HistoryFile))
+            List<string> entries = [];
+            lock (HistoryFileLock)
             {
-                var decoded = DecodeHistoryLine(line);
-                this.history.Remove(decoded);
-                this.history.Add(decoded);
+                if (File.Exists(this.HistoryFile))
+                {
+                    using var stream = this.OpenHistoryFileWithExclusiveLock(FileAccess.Read);
+                    entries = ReadHistoryEntries(stream);
+                }
             }
+
+            foreach (var entry in entries)
+            {
+                this.RecordHistoryEntry(entry, persist: false);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
         }
 
         Console.CancelKeyPress += this.Console_CancelKeyPress;
         this.editorCancelTokenSource = new CancellationTokenSource();
     }
 
+    internal event Action? LocationChanged;
+
     /// <summary>
     /// Gets the line editor instance used by the shell, or <c>null</c> if not available.
     /// </summary>
-    public LineEditor? Editor { get => this.lineEditor ??= this.CreateLineEditor(); }
+    public LineEditor? Editor
+    {
+        get
+        {
+            lock (this.lineEditorLock)
+            {
+                if (!this.lineEditorCreationAttempted)
+                {
+                    this.lineEditorCreationAttempted = true;
+                    this.lineEditor = this.CreateLineEditor();
+                }
+
+                return this.lineEditor;
+            }
+        }
+    }
 
     /// <summary>
     /// Gets or sets a value indicating whether the shell is currently running.
@@ -242,10 +305,59 @@ public partial class ShellInterpreter : IDisposable
 
     internal string WelcomeMarkerFile => this.welcomeMarkerFile;
 
+    /// <summary>
+    /// Gets or sets how long a command connected to a local emulator may run without reporting
+    /// progress before it is canceled. Each <see cref="ReportOperationProgress"/> call restarts it.
+    /// </summary>
+    internal TimeSpan LocalEmulatorInactivityTimeout { get; set; } = TimeSpan.FromSeconds(LocalEmulatorOperationTimeoutSeconds);
+
+    /// <summary>
+    /// Gets or sets the clock for the local-emulator inactivity timeout. Tests set a manual clock;
+    /// when <see langword="null"/>, the timeout uses the system clock.
+    /// </summary>
+    internal TimeProvider? LocalEmulatorTimeProvider { get; set; }
+
     internal Func<bool> IsInteractiveSession { get; set; } =
         static () => !Console.IsInputRedirected && !Console.IsOutputRedirected;
 
-    internal IReadOnlyList<string> History => this.history;
+    /// <summary>
+    /// Gets or sets a value indicating whether standard output is a terminal that can redraw a
+    /// line in place. Progress falls back to one line per update when it is not.
+    /// </summary>
+    internal Func<bool> IsOutputTerminal { get; set; } = static () => !Console.IsOutputRedirected;
+
+    /// <summary>
+    /// Gets or sets the console width used to fit in-place status lines; 0 means unknown.
+    /// </summary>
+    internal Func<int> ConsoleWidth { get; set; } = GetConsoleWidth;
+
+    internal Func<bool> IsInputRedirected { get; set; } = static () => Console.IsInputRedirected;
+
+    // RadLine detects terminal capabilities itself when no console is supplied.
+    internal IAnsiConsole? LineEditorTerminal { get; set; }
+
+    internal IReadOnlyList<string> History
+    {
+        get
+        {
+            // Snapshot: interactive readers must not enumerate the list while an MCP echo mutates it.
+            lock (this.historyLock)
+            {
+                return this.history.ToArray();
+            }
+        }
+    }
+
+    internal int PendingHistoryCount
+    {
+        get
+        {
+            lock (this.historyLock)
+            {
+                return this.pendingHistoryEntries.Count;
+            }
+        }
+    }
 
     internal string? LastBuffer { get; set; }
 
@@ -261,11 +373,36 @@ public partial class ShellInterpreter : IDisposable
 
     internal string? ErrOutRedirect { get; set; }
 
+    /// <summary>
+    /// Gets or sets the warning tracking for the active error redirect. A statement that
+    /// establishes its own redirect installs a fresh scope; enclosing scopes restore the
+    /// previous instance, so writes made to an inherited destination during nested
+    /// execution are retained.
+    /// </summary>
+    internal ErrorRedirectWarningScope ErrorRedirectWarnings { get; set; } = new();
+
     internal bool AppendOutRedirection { get; set; }
 
     internal bool AppendErrRedirection { get; set; }
 
-    internal State State { get; set; }
+    internal long StateVersion => Interlocked.Read(ref this.stateVersion);
+
+    internal State State
+    {
+        get;
+        set
+        {
+            var oldState = field;
+            field = value;
+            Interlocked.Increment(ref this.stateVersion);
+            if (oldState != null
+                && (ShellLocation.GetCurrentLocation(oldState) != ShellLocation.GetCurrentLocation(value)
+                    || (oldState as ConnectedState)?.Client != (value as ConnectedState)?.Client))
+            {
+                this.LocationChanged?.Invoke();
+            }
+        }
+    }
 
     internal Program.CosmosShellOptions? Options { get; set; }
 
@@ -273,9 +410,13 @@ public partial class ShellInterpreter : IDisposable
 
     internal int? McpPort { get; set; }
 
+    internal bool IsMcpInvocation { get; set; }
+
     internal PendingBatchState? CurrentBatch { get; set; }
 
-    internal Queue<VariableContainer> VariableContainers { get; } = new();
+    internal PendingBulkState? CurrentBulk { get; set; }
+
+    internal Stack<VariableContainer> VariableContainers { get; } = new();
 
     /// <summary>
     /// Gets a value indicating whether the shell is running in machine mode, where
@@ -404,14 +545,19 @@ public partial class ShellInterpreter : IDisposable
     /// Prompts the user for confirmation with a yes/no question.
     /// </summary>
     /// <param name="message">The message to display to the user.</param>
+    /// <param name="shell">The interpreter executing the command, whose inactivity timeout is paused while waiting for the answer. Defaults to <see cref="Instance"/>.</param>
     /// <returns><c>true</c> if the user confirms; otherwise, <c>false</c>.</returns>
-    public static bool Confirm(string message)
+    public static bool Confirm(string message, ShellInterpreter? shell = null)
+        => Confirm(message, shell ?? Instance, static () => Console.ReadKey(intercept: true));
+
+    internal static bool Confirm(string message, ShellInterpreter shell, Func<ConsoleKeyInfo> readKey)
     {
+        using var pause = shell.PauseOperationTimeout();
         var yes = char.ToUpper(MessageService.GetString("yes_char")[0]);
         var no = char.ToUpper(MessageService.GetString("no_char")[0]);
 
         // Take over Ctrl+C handling for the lifetime of the prompt so it cancels the
-        // question (returns false) instead of being swallowed by the global cancel-key
+        // operation instead of being swallowed by the global cancel-key
         // handler, which would leave this blocking ReadKey loop spinning forever.
         var restoreControlC = TrySetTreatControlCAsInput(true, out var originalTreatControlCAsInput);
         try
@@ -423,7 +569,7 @@ public partial class ShellInterpreter : IDisposable
                 ConsoleKeyInfo key;
                 try
                 {
-                    key = Console.ReadKey(intercept: true);
+                    key = readKey();
                 }
                 catch (InvalidOperationException)
                 {
@@ -435,8 +581,8 @@ public partial class ShellInterpreter : IDisposable
 
                 if (key.Key == ConsoleKey.C && key.Modifiers.HasFlag(ConsoleModifiers.Control))
                 {
-                    WriteLine("^C");
-                    return false;
+                    shell.CancelPrompt();
+                    throw new OperationCanceledException();
                 }
 
                 if (key.Key == ConsoleKey.Escape)
@@ -508,6 +654,11 @@ public partial class ShellInterpreter : IDisposable
             }
         }
 
+        this.RefreshPrompt();
+    }
+
+    internal void RefreshPrompt()
+    {
         this.editorCancelTokenSource.Cancel();
         this.editorCancelTokenSource = new CancellationTokenSource();
     }
@@ -517,8 +668,50 @@ public partial class ShellInterpreter : IDisposable
     /// </summary>
     /// <param name="command">The command string to execute.</param>
     /// <param name="token">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <param name="cancellationIsError">Whether unhandled caller cancellation should be reported as a failure.</param>
     /// <returns>A <see cref="CommandState"/> representing the result of the command execution.</returns>
-    public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token)
+    public async Task<CommandState> ExecuteCommandAsync(string command, CancellationToken token, bool cancellationIsError = false)
+    {
+        try
+        {
+            return await this.RunSerializedAsync(() => this.ExecuteCommandCoreAsync(command, token, cancellationIsError), token);
+        }
+        catch (OperationCanceledException e) when (token.IsCancellationRequested)
+        {
+            this.Diagnostics?.LogCancelled(0, command);
+            return cancellationIsError ? this.ReportCancellation(e, new CommandState(), command) : new CommandState();
+        }
+    }
+
+    private CommandState ReportCancellation(OperationCanceledException exception, CommandState state, string command)
+    {
+        var error = new ErrorCommandState(new ShellException(MessageService.GetString("runtime-error-canceled"), exception))
+        {
+            RequestCharge = state.RequestCharge,
+        };
+        error.ShareWarningsFrom(state);
+        this.RenderWarnings(error, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, deferToErrorEnvelope: true);
+        this.ReportExecutionError(error.Exception, command, error.Warnings);
+        return error;
+    }
+
+    /// <remarks>
+    /// Callers must not already hold the gate; nested work runs through the ungated core methods.
+    /// </remarks>
+    internal async Task<T> RunSerializedAsync<T>(Func<Task<T>> operation, CancellationToken token)
+    {
+        await this.executionGate.WaitAsync(token);
+        try
+        {
+            return await operation();
+        }
+        finally
+        {
+            this.executionGate.Release();
+        }
+    }
+
+    private async Task<CommandState> ExecuteCommandCoreAsync(string command, CancellationToken token, bool cancellationIsError)
     {
         using var activity = TracingBootstrap.StartCommandActivity("cosmosdbshell.command");
         var isLocalEmulatorOperation = this.State is ConnectedState connectedState
@@ -531,6 +724,8 @@ public partial class ShellInterpreter : IDisposable
         var savedAppendOut = this.AppendOutRedirection;
         var savedErrOut = this.ErrOutRedirect;
         var savedAppendErr = this.AppendErrRedirection;
+        var savedErrorRedirectWarnings = this.ErrorRedirectWarnings;
+        this.ErrorRedirectWarnings = new ErrorRedirectWarningScope();
 
         var diagnostics = this.Diagnostics;
         var stopwatch = diagnostics is null ? null : System.Diagnostics.Stopwatch.StartNew();
@@ -538,76 +733,191 @@ public partial class ShellInterpreter : IDisposable
         CommandState? result = null;
         var wasCancelled = false;
         using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
-        if (isLocalEmulatorOperation)
+        var previousLocalEmulatorDeadline = this.localEmulatorDeadline;
+        var previousCancellationErrorToken = this.cancellationErrorToken;
+        this.cancellationErrorToken = cancellationIsError ? token : default;
+        using var deadline = isLocalEmulatorOperation
+            ? new OperationInactivityTimeout(operationTokenSource, this.LocalEmulatorInactivityTimeout, token, this.LocalEmulatorTimeProvider)
+            : null;
+        if (deadline is not null)
         {
-            operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+            Volatile.Write(ref this.localEmulatorDeadline, deadline);
         }
 
         try
         {
+            CommandState PrintStructuredError(StructuredErrorCommandState structuredError)
+            {
+                // A command can turn the inactivity cancellation into a structured partial result
+                // (bulk does); still report it as an emulator timeout and disconnect.
+                var timedOut = isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested && !token.IsCancellationRequested;
+                if (timedOut)
+                {
+                    structuredError.Exception = CreateEmulatorTimeoutException(structuredError.Exception);
+                    if (structuredError.Result is ShellJson json
+                        && json.Value.ValueKind == JsonValueKind.Object
+                        && json.Value.TryGetProperty("exitCode", out _))
+                    {
+                        var payload = JsonSerializer.SerializeToNode(json.Value)!.AsObject();
+                        payload["exitCode"] = structuredError.ExitCode;
+                        if (payload.ContainsKey("error"))
+                        {
+                            payload["error"] = structuredError.Exception.Message;
+                        }
+
+                        structuredError.Result = new ShellJson(JsonSerializer.SerializeToElement(payload));
+                    }
+                }
+
+                var printed = this.PrintState(structuredError);
+                if (timedOut)
+                {
+                    // PrintState already reports positional and redirected structured errors.
+                    if (!this.IsMachineMode
+                        && this.ErrOutRedirect == null
+                        && structuredError.Exception is not Parser.PositionalException)
+                    {
+                        this.ReportExecutionError(structuredError.Exception);
+                    }
+
+                    this.Disconnect();
+                }
+
+                return printed;
+            }
+
             try
             {
                 state = await this.RunCommandAsync(state, command, operationTokenSource.Token);
+                if (state is not StructuredErrorCommandState)
+                {
+                    // Some commands consume cancellation and return partial results as a normal state.
+                    Volatile.Read(ref this.localEmulatorDeadline)?.ThrowIfTimedOut();
+                }
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            catch (CommandState.HandledCancellationException e) when (token.IsCancellationRequested)
             {
                 wasCancelled = true;
+                e.State.ShareWarningsFrom(state);
+                result = this.PrintState(e.State);
+                return result;
+            }
+            catch (OperationCanceledException e) when (token.IsCancellationRequested)
+            {
+                wasCancelled = true;
+                if (cancellationIsError)
+                {
+                    result = this.ReportCancellation(e, state, command);
+                    return result;
+                }
+
                 result = new CommandState();
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
                 return result;
             }
             catch (OperationCanceledException e) when (isLocalEmulatorOperation && operationTokenSource.IsCancellationRequested)
             {
-                var shellException = new ShellException(
-                    CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, e.Message),
-                    e);
-                this.ReportExecutionError(shellException, command);
-                this.Disconnect();
+                var message = CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, e.Message);
+                var shellException = new ShellException(message, new TimeoutException(message, e));
                 result = new ErrorCommandState(shellException);
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, deferToErrorEnvelope: true);
+                this.ReportExecutionError(shellException, command, result.Warnings);
+                this.Disconnect();
                 return result;
             }
             catch (TaskCanceledException e)
             {
                 var shellException = new ShellException(CommandException.GetDisplayMessage(e), e);
-                this.ReportExecutionError(shellException, command);
-                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 result = new ErrorCommandState(shellException);
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, deferToErrorEnvelope: true);
+                this.ReportExecutionError(shellException, command, result.Warnings);
+                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 return result;
             }
             catch (Exception e)
             {
-                this.ReportExecutionError(e, command);
-                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
-                var inner = e is PositionalException pe ? (pe.InnerException ?? pe) : e;
-                result = new ErrorCommandState(inner)
+                if (FindException<CommandState.FailureException>(e)?.State is StructuredErrorCommandState structuredError)
+                {
+                    structuredError.ShareWarningsFrom(state);
+                    if (e is PositionalException)
+                    {
+                        structuredError.Exception = e;
+                    }
+
+                    result = PrintStructuredError(structuredError);
+                    return result;
+                }
+
+                result = new ErrorCommandState(e)
                 {
                     RequestCharge = RequestChargeContext.GetExceptionCharge(e),
                 };
+                result.ShareWarningsFrom(state);
+                this.RenderWarnings(
+                    result,
+                    !string.IsNullOrEmpty(this.StdOutRedirect),
+                    this.IsMachineMode,
+                    deferToErrorEnvelope: !ContainsException<CommandReportedException>(e),
+                    flushConsoleWarnings: true);
+                this.ReportExecutionError(e, command, result.Warnings);
+                this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
                 return result;
             }
 
             if (token.IsCancellationRequested)
             {
                 wasCancelled = true;
+                if (state is StructuredErrorCommandState canceledStructuredError)
+                {
+                    result = PrintStructuredError(canceledStructuredError);
+                    return result;
+                }
+
+                if (state.UserCancellationHandled)
+                {
+                    result = this.PrintState(state);
+                    return result;
+                }
+
+                if (cancellationIsError)
+                {
+                    result = this.ReportCancellation(new OperationCanceledException(token), state, command);
+                    return result;
+                }
+
                 result = state;
+                this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
                 return result;
             }
 
             if (state is ParserErrorCommandState parserErrorState)
             {
-                this.ReportParserErrors(parserErrorState.Errors, command);
+                this.ReportParserErrors(
+                    parserErrorState.Errors,
+                    parserErrorState.SourceText ?? command,
+                    parserErrorState.SourceName,
+                    parserErrorState.Warnings);
                 result = state;
                 return result;
             }
 
-            result = this.PrintState(state);
+            result = state is StructuredErrorCommandState returnedStructuredError
+                ? PrintStructuredError(returnedStructuredError)
+                : this.PrintState(state);
             return result;
         }
         finally
         {
+            Volatile.Write(ref this.localEmulatorDeadline, previousLocalEmulatorDeadline);
+            this.cancellationErrorToken = previousCancellationErrorToken;
             this.StdOutRedirect = savedStdOut;
             this.AppendOutRedirection = savedAppendOut;
             this.ErrOutRedirect = savedErrOut;
             this.AppendErrRedirection = savedAppendErr;
+            this.ErrorRedirectWarnings = savedErrorRedirectWarnings;
 
             if (diagnostics is not null && stopwatch is not null)
             {
@@ -627,7 +937,7 @@ public partial class ShellInterpreter : IDisposable
                         }
                         else if (result is ParserErrorCommandState parserErrorResult)
                         {
-                            diagnostics.LogParserErrors(command, parserErrorResult.Errors);
+                            diagnostics.LogParserErrors(command, parserErrorResult.Errors, parserErrorResult.SourceName, parserErrorResult.SourceText);
                         }
                     }
 
@@ -889,7 +1199,16 @@ public partial class ShellInterpreter : IDisposable
             try
             {
                 this.ClearHighlightStatements();
-                var input = this.Editor != null ? await this.Editor.ReadLine(this.editorCancelTokenSource.Token) : PromptFallback();
+
+                // RadLine polls Console.KeyAvailable, which throws when stdin is redirected.
+                var editor = this.IsInputRedirected() ? null : this.Editor;
+                var input = editor != null ? await editor.ReadLine(this.editorCancelTokenSource.Token) : PromptFallback();
+                if (editor == null && input == null)
+                {
+                    this.IsRunning = false;
+                    break;
+                }
+
                 var command = ProcessInteractiveLine(
                     input,
                     ref this.pendingMultiLineBuffer,
@@ -902,8 +1221,7 @@ public partial class ShellInterpreter : IDisposable
 
                 if (!string.IsNullOrWhiteSpace(command))
                 {
-                    this.history.Remove(command);
-                    this.history.Add(command);
+                    this.RecordHistoryEntry(command);
                     this.SaveHistory();
                     CancellationToken token = UserCancellationTokenSource.Token;
                     await this.ExecuteCommandAsync(command, token);
@@ -925,10 +1243,18 @@ public partial class ShellInterpreter : IDisposable
 
     internal async Task<CommandState> RunCommandAsync(CommandState currentState, string commandText, CancellationToken token)
     {
-        var lexer = new Lexer(commandText);
-        var parser = new StatementParser(lexer);
+        var parser = StatementParser.ScriptParseResult.Parse(commandText);
+        if (parser.Errors.HasErrors)
+        {
+            if (LooksLikeConnectionStringLine(commandText))
+            {
+                parser.Errors.Add(new ParseError(0, 1, MessageService.GetString("error-command-not-found-connection-string"), ErrorLevel.Warning));
+            }
 
-        foreach (var statements in parser.ParseStatements())
+            return new ParserErrorCommandState(parser.Errors);
+        }
+
+        foreach (var statements in parser.Statements)
         {
             if (token.IsCancellationRequested)
             {
@@ -1000,20 +1326,44 @@ public partial class ShellInterpreter : IDisposable
     internal void RecordRequestCharge(CommandState commandState)
         => this.RecordRequestCharge(commandState, this.SessionRequestChargeGeneration);
 
-    internal async Task<CommandState> ExecuteCosmosCommandAsync(
+    internal Task<CommandState> ExecuteCosmosCommandAsync(
         CosmosCommand command,
         CommandState commandState,
         string commandText,
-        CancellationToken token)
+        CancellationToken token,
+        bool isExternal = false)
+        => this.ExecuteCosmosCommandCoreAsync(command, commandState, commandText, token, isExternal);
+
+    private async Task<CommandState> ExecuteCosmosCommandCoreAsync(
+        CosmosCommand command,
+        CommandState commandState,
+        string commandText,
+        CancellationToken token,
+        bool isExternal)
     {
+        using var localWorkPause = isExternal ? this.PauseOperationTimeout() : null;
+
         // CommandState is intentionally reused by pipelines and expressions. Clear the
         // previous command's charge so an uninstrumented command cannot count it again.
         commandState.RequestCharge = null;
         var generation = this.SessionRequestChargeGeneration;
         using var requestChargeScope = RequestChargeContext.Begin();
+        var previousInterruptFormat = Volatile.Read(ref this.activeInterruptOutputFormat);
+        var formatProperty = command.GetType().GetProperties().FirstOrDefault(property =>
+            property.GetCustomAttribute<CosmosOptionAttribute>()?.Names.Contains("format", StringComparer.OrdinalIgnoreCase) == true);
+        var effectiveFormat = OutputFormats.TryParse(formatProperty?.GetValue(command) as string, out var selectedFormat)
+            ? selectedFormat
+            : commandState.OutputFormatExplicitlySet ? commandState.OutputFormat : this.DefaultOutputFormat;
+
+        // Nested command output must not add terminal markers to an enclosing structured result.
+        var interruptFormat = previousInterruptFormat >= 0 && OutputPolicy.IsStructuredFormat((OutputFormat)previousInterruptFormat)
+            ? previousInterruptFormat
+            : (int)effectiveFormat;
+        Volatile.Write(ref this.activeInterruptOutputFormat, interruptFormat);
         try
         {
             var result = await command.ExecuteAsync(this, commandState, commandText, token);
+            result.ShareWarningsFrom(commandState);
             if (requestChargeScope.RequestCharge > 0)
             {
                 result.RequestCharge = (result.RequestCharge ?? 0) + requestChargeScope.RequestCharge;
@@ -1032,6 +1382,10 @@ public partial class ShellInterpreter : IDisposable
             }
 
             throw;
+        }
+        finally
+        {
+            Volatile.Write(ref this.activeInterruptOutputFormat, previousInterruptFormat);
         }
     }
 
@@ -1144,13 +1498,18 @@ public partial class ShellInterpreter : IDisposable
             WriteLine(MessageService.GetString("shell-connect-key-auth"));
             var keyMode = mode ?? (isEmulator ? ConnectionMode.Gateway : ConnectionMode.Direct);
             var keyOptions = CreateClientOptions(keyMode, isEmulator);
+            if (isEmulator)
+            {
+                keyOptions.CustomHandlers.Add(new OperationProgressHandler(this));
+            }
+
             client = new CosmosClient(connectionString, keyOptions);
 
             AccountProperties keyProps;
             using var operationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
             if (isEmulator)
             {
-                operationTokenSource.CancelAfter(LocalEmulatorOperationTimeout);
+                operationTokenSource.CancelAfter(TimeSpan.FromSeconds(LocalEmulatorOperationTimeoutSeconds));
             }
 
             try
@@ -1374,6 +1733,24 @@ public partial class ShellInterpreter : IDisposable
     {
         token.ThrowIfCancellationRequested();
         return await client.ReadAccountAsync().WaitAsync(token);
+    }
+
+    /// <summary>
+    /// Re-labels an exception caused by the local-emulator inactivity timeout. Script location
+    /// frames stay outermost so diagnostics still identify the failing statement, and the cause
+    /// becomes a <see cref="TimeoutException"/> so the exit code reports a connection error.
+    /// </summary>
+    /// <param name="exception">The exception produced when the inactivity timeout canceled the command.</param>
+    /// <returns>The equivalent timeout exception.</returns>
+    internal static Exception CreateEmulatorTimeoutException(Exception exception)
+    {
+        if (exception is Parser.PositionalException { InnerException: { } inner } frame)
+        {
+            return new Parser.PositionalException(frame.FileName, CreateEmulatorTimeoutException(inner), frame.Line, frame.Column, frame.LineText);
+        }
+
+        var message = CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, exception.Message);
+        return new ShellException(message, new TimeoutException(message, exception));
     }
 
     internal static string GetLocalEmulatorConnectionFailureMessage(Uri endpoint)
@@ -1695,6 +2072,7 @@ public partial class ShellInterpreter : IDisposable
         this.activeCredential = credential;
         this.ActiveCredentialType = credentialTypeOverride ?? credential?.GetType().Name;
         this.CurrentBatch = null;
+        this.CurrentBulk = null;
         CosmosCompleteCommand.ClearDatabases();
         CosmosCompleteCommand.ClearContainers();
         this.Diagnostics?.LogConnect(client.Endpoint, client.ClientOptions.ConnectionMode);
@@ -1762,6 +2140,7 @@ public partial class ShellInterpreter : IDisposable
         this.activeCredential = null;
         this.ActiveCredentialType = null;
         this.CurrentBatch = null;
+        this.CurrentBulk = null;
     }
 
     internal void DisconnectLocalEmulatorAfterConnectivityFailure(Exception exception)
@@ -1774,33 +2153,175 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    /// <summary>
+    /// Restarts the local-emulator inactivity timeout for the running command, so long-running
+    /// work is canceled only after it stops making progress. Has no effect for other connections.
+    /// </summary>
+    internal void ReportOperationProgress() => Volatile.Read(ref this.localEmulatorDeadline)?.ReportProgress();
+
+    /// <summary>
+    /// Suspends the local-emulator inactivity timeout while waiting for the user, such as at a
+    /// confirmation prompt or in an external editor. Dispose the result to resume it.
+    /// </summary>
+    /// <returns>A scope that resumes the timeout when disposed.</returns>
+    internal IDisposable PauseOperationTimeout() =>
+        Volatile.Read(ref this.localEmulatorDeadline)?.Pause() ?? OperationInactivityTimeout.NoPause;
+
+    /// <summary>
+    /// Draws a status line that replaces the previous one in place, such as command progress.
+    /// When the text does not fit the console width, the compact form is used instead, and is
+    /// truncated if necessary, so the line never wraps.
+    /// </summary>
+    /// <param name="text">The status text, without a line break.</param>
+    /// <param name="compactText">A shorter form that keeps the key values, used on narrow consoles.</param>
+    internal void WriteTransientLine(string text, string? compactText = null)
+    {
+        lock (this.transientLineLock)
+        {
+            var width = this.ConsoleWidth();
+            if (width > 1 && text.Length >= width)
+            {
+                text = compactText ?? text;
+                if (text.Length >= width)
+                {
+                    text = text[..(width - 1)];
+                }
+            }
+
+            Write("\r" + text + new string(' ', Math.Max(0, this.transientLineLength - text.Length)));
+            this.transientLineLength = text.Length;
+        }
+    }
+
+    /// <summary>
+    /// Erases the status line drawn by <see cref="WriteTransientLine"/>, if any, so subsequent
+    /// output starts on a clean line.
+    /// </summary>
+    internal void ClearTransientLine()
+    {
+        lock (this.transientLineLock)
+        {
+            if (this.transientLineLength == 0)
+            {
+                return;
+            }
+
+            Write("\r" + new string(' ', this.transientLineLength) + "\r");
+            this.transientLineLength = 0;
+        }
+    }
+
+    private static int GetConsoleWidth()
+    {
+        try
+        {
+            return Console.WindowWidth;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or PlatformNotSupportedException)
+        {
+            return 0;
+        }
+    }
+
     internal void PrintCommand(string cmdString)
     {
         // Print the shell prompt similar to how it appears when typing command
         //        AnsiConsole.Markup(new CosmosShellPrompt(this).GetPromptString());
         //        AnsiConsole.Write(" ");
-        var txt = ((IHighlighter)Instance).BuildHighlightedText(cmdString);
-        AnsiConsole.Write(txt);
-        AnsiConsole.WriteLine(); // Ensure the next output starts on a new line
-
-        this.history.Remove(cmdString);
-        this.history.Add(cmdString);
-        this.Editor?.History.Add(cmdString);
-    }
-
-    internal CommandState PrintState(CommandState state, bool markAsRendered = false)
-    {
-        if (state.OutputRendered)
-        {
-            // Once rendered, stay rendered: a later PrintState call with the default
-            // markAsRendered:false (e.g. ExecuteCommandAsync's final call) must not
-            // unmark it, or a subsequent PrintState call on the same state would
-            // re-render output that was already shown.
-            return state;
-        }
+        this.RecordHistoryEntry(cmdString);
 
         try
         {
+            this.SaveHistory();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // History is best-effort; an unwritable history file must not fail the command.
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
+
+        // Echoing and the line editor both need an ANSI terminal, which an MCP host may not
+        // provide. Neither may fail the command being announced.
+        try
+        {
+            var txt = ((IHighlighter)Instance).BuildHighlightedText(cmdString);
+            AnsiConsole.Write(txt);
+            AnsiConsole.WriteLine(); // Ensure the next output starts on a new line
+            this.Editor?.History.Add(cmdString);
+        }
+        catch (NotSupportedException)
+        {
+            Console.Out.WriteLine(cmdString);
+        }
+    }
+
+    /// <summary>
+    /// Renders a command state's output and pending warnings.
+    /// </summary>
+    /// <param name="state">The state to render.</param>
+    /// <param name="markAsRendered">Whether to mark the state's output as rendered.</param>
+    /// <param name="deferMachineModeWarnings">
+    /// Whether this is an intermediate render inside one top-level command (a script, block,
+    /// or pipeline). Machine-mode warnings bound for the console are then left pending so a
+    /// later failure can still report them in its single JSON error payload.
+    /// </param>
+    /// <returns>The rendered state, or an error state when rendering failed.</returns>
+    internal CommandState PrintState(CommandState state, bool markAsRendered = false, bool deferMachineModeWarnings = false)
+    {
+        if (deferMachineModeWarnings && state is not StructuredErrorCommandState)
+        {
+            Volatile.Read(ref this.localEmulatorDeadline)?.ThrowIfTimedOut();
+            if (!state.UserCancellationHandled)
+            {
+                this.cancellationErrorToken.ThrowIfCancellationRequested();
+            }
+        }
+
+        var result = this.PrintStateCore(state, markAsRendered);
+        if (!ReferenceEquals(result, state))
+        {
+            result.ShareWarningsFrom(state);
+        }
+
+        // Console-bound machine-mode warnings are written only once the command's output was
+        // handled. Warnings already carried by an error envelope are marked rendered and skipped;
+        // any still pending (for example after a verbose render failure) are written here.
+        if (!deferMachineModeWarnings)
+        {
+            this.RenderWarnings(result, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode, flushConsoleWarnings: true);
+        }
+
+        return result;
+    }
+
+    private CommandState PrintStateCore(CommandState state, bool markAsRendered)
+    {
+        try
+        {
+            var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
+            var inMachineMode = this.IsMachineMode;
+
+            // Console-bound machine-mode warnings stay pending here so failures can include
+            // them in the structured error envelope. Pre-write mutation warnings have already
+            // been emitted as JSON Lines records. File-bound warnings are written immediately.
+            // Warnings are flushed even for already-rendered states because later statements
+            // (for example a false condition) can add warnings to a state they return unchanged.
+            this.DeferMachineModeConsoleWarnings(state);
+            this.RenderWarnings(
+                state,
+                redirected,
+                inMachineMode,
+                deferToErrorEnvelope: state is StructuredErrorCommandState);
+
+            if (state.OutputRendered)
+            {
+                // Once rendered, stay rendered: a later PrintState call with the default
+                // markAsRendered:false (e.g. ExecuteCommandAsync's final call) must not
+                // unmark it, or a subsequent PrintState call on the same state would
+                // re-render output that was already shown.
+                return state;
+            }
+
             // Apply the session default format when the command did not choose one itself.
             // This is the single place the global format (from --output) is applied, so
             // commands never need to read it and new commands inherit it automatically.
@@ -1809,8 +2330,22 @@ public partial class ShellInterpreter : IDisposable
                 state.OutputFormat = this.DefaultOutputFormat;
             }
 
-            var redirected = !string.IsNullOrEmpty(this.StdOutRedirect);
-            var inMachineMode = this.IsMachineMode;
+            // Structured failures bypass ReportExecutionError, so the script location the
+            // statement attached and any `2>`/`2>>` redirection would otherwise be dropped
+            // from the human-readable output. Emit the diagnostic here and let the
+            // structured result render itself below.
+            if (!inMachineMode
+                && state is StructuredErrorCommandState humanStructuredError
+                && humanStructuredError.Exception is PositionalException positionalError)
+            {
+                this.ReportPositionalError(positionalError);
+            }
+            else if (!inMachineMode
+                && state is StructuredErrorCommandState redirectedError
+                && this.ErrOutRedirect != null)
+            {
+                this.ReportExecutionError(redirectedError.Exception);
+            }
 
             // Interactive, user-facing view: when the command supplied a custom renderer and
             // the effective format is User, let it draw. Redirection, piping, and machine
@@ -1826,7 +2361,15 @@ public partial class ShellInterpreter : IDisposable
 
             if (inMachineMode && state is StructuredErrorCommandState structuredError)
             {
-                this.WriteMachineError(structuredError.Exception.Message, structuredError.Result);
+                // PositionalException.Message carries only the inner message, so prepend the
+                // location here the same way ReportExecutionError does for ordinary failures.
+                var errorLocation = PositionalException.GetSourceTrace(structuredError.Exception).FirstOrDefault();
+                this.WriteMachineError(
+                    errorLocation == null
+                        ? structuredError.Exception.Message
+                        : $"{errorLocation.FileName}:{errorLocation.Line}:{errorLocation.Column}: {structuredError.Exception.Message}",
+                    structuredError.Result,
+                    state.Warnings);
                 return state;
             }
 
@@ -1845,7 +2388,32 @@ public partial class ShellInterpreter : IDisposable
                     var element = (JsonElement?)state.Result.ConvertShellObject(Parser.DataType.Json);
                     if (element.HasValue)
                     {
-                        AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
+                        var jsonText = state.GenerateOutputText();
+                        var lineStart = 0;
+                        var hasLongLine = false;
+                        for (var index = 0; index < jsonText.Length; index++)
+                        {
+                            if (jsonText[index] == '\n')
+                            {
+                                if (index - lineStart >= AnsiConsole.Console.Profile.Width)
+                                {
+                                    hasLongLine = true;
+                                    break;
+                                }
+
+                                lineStart = index + 1;
+                            }
+                        }
+
+                        if (hasLongLine || jsonText.Length - lineStart >= AnsiConsole.Console.Profile.Width)
+                        {
+                            Console.Out.WriteLine(jsonText);
+                        }
+                        else
+                        {
+                            AnsiConsole.MarkupLine(JsonOutputHighlighter.BuildMarkup(element.Value));
+                        }
+
                         return state;
                     }
                 }
@@ -1901,7 +2469,7 @@ public partial class ShellInterpreter : IDisposable
 
                 if (inMachineMode)
                 {
-                    this.WriteMachineError(string.IsNullOrEmpty(canceled) ? e.Message : canceled);
+                    this.WriteMachineError(string.IsNullOrEmpty(canceled) ? e.Message : canceled, warnings: state.Warnings);
                 }
                 else if (!string.IsNullOrEmpty(canceled))
                 {
@@ -1913,7 +2481,7 @@ public partial class ShellInterpreter : IDisposable
 
             if (inMachineMode)
             {
-                this.WriteMachineError(e.Message);
+                this.WriteMachineError(e.Message, warnings: state.Warnings);
             }
             else
             {
@@ -1945,9 +2513,189 @@ public partial class ShellInterpreter : IDisposable
         return state;
     }
 
+    internal void RenderWarnings(CommandState state)
+    {
+        if (this.IsMcpInvocation || this.DeferMachineModeConsoleWarnings(state))
+        {
+            return;
+        }
+
+        this.RenderWarnings(state, !string.IsNullOrEmpty(this.StdOutRedirect), this.IsMachineMode);
+    }
+
+    internal void RenderMutationWarnings(CommandState state)
+    {
+        if (this.IsMcpInvocation)
+        {
+            return;
+        }
+
+        this.RenderWarnings(
+            state,
+            !string.IsNullOrEmpty(this.StdOutRedirect),
+            this.IsMachineMode,
+            machineModeWarningRecords: this.IsMachineMode && this.ErrOutRedirect == null);
+    }
+
+    internal void RenderUpdatedWarnings(CommandState state)
+    {
+        if (this.IsMcpInvocation)
+        {
+            return;
+        }
+
+        var machineModeWarningRecords = this.IsMachineMode && this.ErrOutRedirect == null;
+        if (!machineModeWarningRecords && this.DeferMachineModeConsoleWarnings(state))
+        {
+            return;
+        }
+
+        this.RenderWarnings(
+            state,
+            !string.IsNullOrEmpty(this.StdOutRedirect),
+            this.IsMachineMode,
+            renderUpdates: true,
+            machineModeWarningRecords: machineModeWarningRecords);
+    }
+
+    /// <summary>
+    /// In machine mode, console warnings are held until the command completes so they can be
+    /// included in a single JSON error payload. Pre-write mutation warnings use JSON Lines
+    /// records instead. Deferred warnings are marked as console-bound so a later statement's
+    /// <c>2&gt;</c> cannot capture them. Warnings for redirected stderr are written immediately.
+    /// </summary>
+    /// <returns><see langword="true"/> when the warnings were deferred.</returns>
+    private bool DeferMachineModeConsoleWarnings(CommandState state)
+    {
+        if (!this.IsMachineMode || this.ErrOutRedirect != null)
+        {
+            return false;
+        }
+
+        foreach (var warning in state.TakePendingWarnings().Where(warning => !warning.IsRendered))
+        {
+            warning.DeferredToConsole = true;
+            state.DeferWarning(warning);
+        }
+
+        return true;
+    }
+
+    private void RenderWarnings(
+        CommandState state,
+        bool redirected,
+        bool inMachineMode,
+        bool renderUpdates = false,
+        bool deferToErrorEnvelope = false,
+        bool flushConsoleWarnings = false,
+        bool machineModeWarningRecords = false)
+    {
+        if (inMachineMode && deferToErrorEnvelope)
+        {
+            return;
+        }
+
+        var warnings = state.TakePendingWarnings();
+        if (renderUpdates)
+        {
+            warnings.AddRange(state.TakeUpdatedWarnings());
+        }
+
+        if (flushConsoleWarnings)
+        {
+            warnings.AddRange(state.TakeDeferredWarnings());
+        }
+
+        // A warning raised mid-command must not be appended to an in-place progress line. Hold the
+        // progress-line lock until the warnings are written so a heartbeat cannot redraw in between.
+        var holdsProgressLine = false;
+        try
+        {
+            if (warnings.Count > 0)
+            {
+                Monitor.Enter(this.transientLineLock, ref holdsProgressLine);
+                this.ClearTransientLine();
+            }
+
+            foreach (var warning in warnings)
+            {
+                if (warning.IsRendered
+                    && (!renderUpdates || string.Equals(warning.LastRenderedMessage, warning.Message, StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                if (machineModeWarningRecords
+                    && (!warning.IsRendered || (renderUpdates && warning.EmittedAsMachineModeWarningRecord)))
+                {
+                    Console.Error.WriteLine(JsonSerializer.Serialize(new
+                    {
+                        status = renderUpdates && warning.EmittedAsMachineModeWarningRecord ? "warning-update" : "warning",
+                        warning = warning.Message,
+                    }));
+                    warning.EmittedAsMachineModeWarningRecord = true;
+                }
+                else if (warning.DeferredToConsole)
+                {
+                    // Held until the top-level command finalizes; see DeferMachineModeConsoleWarnings.
+                    if (!flushConsoleWarnings)
+                    {
+                        continue;
+                    }
+
+                    Console.Error.WriteLine(warning.Message);
+                }
+                else if (this.ErrOutRedirect != null)
+                {
+                    this.WriteErrorRedirect(warning.Message + Environment.NewLine);
+                    this.ErrorRedirectWarnings.HasWarning = true;
+                }
+                else if (!redirected && !inMachineMode)
+                {
+                    AnsiConsole.MarkupLine(Theme.FormatWarning(Markup.Escape(warning.Message)));
+                }
+                else
+                {
+                    Console.Error.WriteLine(warning.Message);
+                }
+
+                warning.IsRendered = true;
+                warning.LastRenderedMessage = warning.Message;
+                warning.RenderedErrorRedirect = warning.DeferredToConsole || this.ErrOutRedirect == null
+                    ? null
+                    : Path.GetFullPath(this.ErrOutRedirect);
+            }
+        }
+        finally
+        {
+            if (holdsProgressLine)
+            {
+                Monitor.Exit(this.transientLineLock);
+            }
+        }
+    }
+
     internal void DeclareFunction(DefStatement defStatement)
     {
         this.Functions[defStatement.Name] = defStatement;
+    }
+
+    internal void PushCallScope(VariableContainer frame, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (this.callDepth >= MaximumCallDepth)
+        {
+            throw new ShellException(MessageService.GetArgsString("script-error-call-depth", "limit", MaximumCallDepth));
+        }
+
+        this.VariableContainers.Push(frame);
+        this.callDepth++;
+    }
+
+    internal void PopCallScope()
+    {
+        this.VariableContainers.Pop();
+        this.callDepth--;
     }
 
     internal void SetVariable(string variableName, ShellObject value)
@@ -1967,23 +2715,10 @@ public partial class ShellInterpreter : IDisposable
         // Ensure we have at least one variable container (global scope)
         if (this.VariableContainers.Count == 0)
         {
-            this.VariableContainers.Enqueue(new VariableContainer());
+            this.VariableContainers.Push(new VariableContainer());
         }
 
-        // When running inside a script, always write to the current (script) frame.
-        // This ensures script-local assignments don't modify variables in caller scopes.
-        // Outside of scripts, search for existing variable to maintain back-compat.
-        VariableContainer currentScope;
-        if (!string.IsNullOrEmpty(this.CurrentScriptFileName))
-        {
-            // Script execution: always use current frame (script-local by default)
-            currentScope = this.VariableContainers.Last();
-        }
-        else
-        {
-            // Interactive/global: update existing variable if found, else use current frame
-            currentScope = this.GetScope(variableName) ?? this.VariableContainers.Last();
-        }
+        var currentScope = this.VariableContainers.Peek();
 
         var targetType = value.DataType;
 
@@ -2087,6 +2822,7 @@ public partial class ShellInterpreter : IDisposable
                 this.editorCancelTokenSource?.Dispose();
                 this.State?.Dispose();
                 this.Diagnostics?.Dispose();
+                this.executionGate.Dispose();
             }
 
             this.disposedValue = true;
@@ -2103,7 +2839,7 @@ public partial class ShellInterpreter : IDisposable
     {
         var options = new CosmosClientOptions
         {
-            ApplicationName = "CosmosDBShell",
+            ApplicationName = $"CosmosDBShell/{GetDisplayVersion(typeof(VersionCommand).Assembly)}",
             ConnectionMode = requestedMode,
             CosmosClientTelemetryOptions = new CosmosClientTelemetryOptions
             {
@@ -2123,53 +2859,53 @@ public partial class ShellInterpreter : IDisposable
         return options;
     }
 
-    private LineEditor CreateLineEditor()
+    private LineEditor? CreateLineEditor()
     {
         try
         {
             this.cosmosShellPrompt = new CosmosShellPrompt(this);
-            var lineEditor = new LineEditor()
+            var editor = new LineEditor(this.LineEditorTerminal)
             {
                 Prompt = this.cosmosShellPrompt,
                 LineDecorationRenderer = new CosmosCompletionRenderer(this),
                 Highlighter = this,
             };
-            lineEditor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.UpArrow);
-            lineEditor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.DownArrow);
+            editor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.UpArrow);
+            editor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.DownArrow);
 
-            lineEditor.KeyBindings.Add<ClearCurrentLineCommand>(ConsoleKey.Escape);
-            lineEditor.KeyBindings.Add<ClearScreenCommand>(ConsoleKey.L, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<MoveToStartOfLineCommand>(ConsoleKey.A, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<MoveToEndOfLineCommand>(ConsoleKey.E, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<DeleteToStartOfLineCommand>(ConsoleKey.U, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<DeleteToEndOfLineCommand>(ConsoleKey.K, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<DeletePreviousWordCommand>(ConsoleKey.W, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.P, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.N, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<MoveCursorLeftCommand>(ConsoleKey.B, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add<MoveCursorRightCommand>(ConsoleKey.F, ConsoleModifiers.Control);
-            lineEditor.KeyBindings.Add(ConsoleKey.D, ConsoleModifiers.Control, () => new ExitShellCommand(this));
-            lineEditor.KeyBindings.Add(ConsoleKey.R, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this));
-            lineEditor.KeyBindings.Add(ConsoleKey.S, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this, startsForward: true));
-            lineEditor.KeyBindings.Add(ConsoleKey.Tab, () => new CosmosCompleteCommand(this, AutoComplete.Next));
-            lineEditor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Control, () => new CosmosCompleteCommand(this, AutoComplete.Previous));
-            foreach (var line in this.history)
+            editor.KeyBindings.Add<ClearCurrentLineCommand>(ConsoleKey.Escape);
+            editor.KeyBindings.Add<ClearScreenCommand>(ConsoleKey.L, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<MoveToStartOfLineCommand>(ConsoleKey.A, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<MoveToEndOfLineCommand>(ConsoleKey.E, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<DeleteToStartOfLineCommand>(ConsoleKey.U, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<DeleteToEndOfLineCommand>(ConsoleKey.K, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<DeletePreviousWordCommand>(ConsoleKey.W, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.P, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.N, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<MoveCursorLeftCommand>(ConsoleKey.B, ConsoleModifiers.Control);
+            editor.KeyBindings.Add<MoveCursorRightCommand>(ConsoleKey.F, ConsoleModifiers.Control);
+            editor.KeyBindings.Add(ConsoleKey.D, ConsoleModifiers.Control, () => new ExitShellCommand(this));
+            editor.KeyBindings.Add(ConsoleKey.R, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this));
+            editor.KeyBindings.Add(ConsoleKey.S, ConsoleModifiers.Control, () => new ReverseSearchHistoryCommand(this, startsForward: true));
+            editor.KeyBindings.Add(ConsoleKey.Tab, () => new CosmosCompleteCommand(this, AutoComplete.Next));
+            editor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Control, () => new CosmosCompleteCommand(this, AutoComplete.Previous));
+            foreach (var line in this.History)
             {
-                lineEditor.History.Add(line);
+                editor.History.Add(line);
             }
 
-            return lineEditor;
+            return editor;
         }
         catch (Exception e)
         {
             Console.Error.WriteLine(e.Message);
-            return new LineEditor();
+            return null;
         }
     }
 
     private VariableContainer? GetScope(string name)
     {
-        foreach (var container in this.VariableContainers.Reverse())
+        foreach (var container in this.VariableContainers)
         {
             if (container.Variables.ContainsKey(name))
             {
@@ -2190,18 +2926,240 @@ public partial class ShellInterpreter : IDisposable
             this.cosmosShellPrompt.InContinuation = false;
         }
 
+        var activeFormat = Volatile.Read(ref this.activeInterruptOutputFormat);
+        var effectiveFormat = activeFormat >= 0 ? (OutputFormat)activeFormat : this.DefaultOutputFormat;
+        var showMarker = !this.IsMachineMode
+            && !OutputPolicy.IsStructuredFormat(effectiveFormat)
+            && this.IsOutputTerminal()
+            && string.IsNullOrEmpty(this.StdOutRedirect);
         this.CancelPrompt();
-        WriteLine("̂C");
+        if (showMarker)
+        {
+            WriteLine("^C");
+        }
     }
 
     private void SaveHistory()
     {
-        if (this.history.Count > MAXHISTORYITEMS)
+        try
         {
-            this.history = [.. this.history.Skip(this.history.Count - MAXHISTORYITEMS)];
+            this.SaveHistoryCore();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
+    }
+
+    internal void ClearHistory()
+    {
+        lock (this.historyLock)
+        {
+            lock (HistoryFileLock)
+            {
+                using var historyFileLock = this.OpenHistoryFileWithExclusiveLock(path: this.HistoryFile + ".lock");
+                if (File.Exists(this.HistoryFile))
+                {
+                    RestrictHistoryFileToOwner(this.HistoryFile);
+                    using var stream = this.OpenHistoryFileWithExclusiveLock(FileAccess.Read);
+                }
+
+                WriteHistoryAtomically(this.HistoryFile, static stream => stream.SetLength(0));
+            }
+
+            this.history.Clear();
+            this.pendingHistoryEntries.Clear();
+        }
+    }
+
+    private void SaveHistoryCore()
+    {
+        lock (this.historyLock)
+        {
+            TrimHistoryEntries(this.history);
+            TrimHistoryEntries(this.pendingHistoryEntries);
+
+            if (this.pendingHistoryEntries.Count == 0)
+            {
+                return;
+            }
+
+            // Written under the locks so concurrent interactive and MCP saves, and shells
+            // sharing the history file, cannot interleave.
+            lock (HistoryFileLock)
+            {
+                // The lock file remains in place when the history file is atomically replaced.
+                using var historyFileLock = this.OpenHistoryFileWithExclusiveLock(path: this.HistoryFile + ".lock");
+                List<string> mergedHistory = [];
+                if (File.Exists(this.HistoryFile))
+                {
+                    RestrictHistoryFileToOwner(this.HistoryFile);
+                    using var stream = this.OpenHistoryFileWithExclusiveLock(FileAccess.Read);
+                    mergedHistory = ReadHistoryEntries(stream);
+                }
+
+                foreach (var entry in this.pendingHistoryEntries)
+                {
+                    mergedHistory.Remove(entry);
+                    mergedHistory.Add(entry);
+                }
+
+                TrimHistoryEntries(mergedHistory);
+
+                WriteHistoryAtomically(this.HistoryFile, stream =>
+                {
+                    using var writer = new StreamWriter(
+                        stream,
+                        new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                        bufferSize: 1024,
+                        leaveOpen: true);
+                    foreach (var line in mergedHistory)
+                    {
+                        writer.WriteLine(EncodeHistoryLine(line));
+                    }
+                });
+
+                this.pendingHistoryEntries.Clear();
+            }
+        }
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    internal static void WriteHistoryAtomically(string historyFile, Action<Stream> write)
+    {
+        var temporary = historyFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        var created = false;
+        try
+        {
+            using (var stream = CreateHistoryTemporaryFile(temporary, historyFile))
+            {
+                created = true;
+                write(stream);
+                stream.Flush(flushToDisk: true);
+            }
+
+            File.Move(temporary, historyFile, overwrite: true);
+        }
+        finally
+        {
+            if (created)
+            {
+                File.Delete(temporary);
+            }
+        }
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    private static FileStream CreateHistoryTemporaryFile(string temporary, string historyFile)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            FileSecurity security;
+            if (File.Exists(historyFile))
+            {
+                security = new FileInfo(historyFile).GetAccessControl(AccessControlSections.Access);
+            }
+            else
+            {
+                using var identity = WindowsIdentity.GetCurrent();
+                var owner = identity.User ?? throw new UnauthorizedAccessException("The current Windows user SID is unavailable.");
+                security = new FileSecurity();
+                security.AddAccessRule(new FileSystemAccessRule(owner, FileSystemRights.FullControl, AccessControlType.Allow));
+            }
+
+            // Apply the DACL at creation, without inheriting broader directory permissions.
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: true);
+            return new FileInfo(temporary).Create(
+                FileMode.CreateNew, FileSystemRights.Write, FileShare.None, 4096, FileOptions.None, security);
         }
 
-        File.WriteAllLines(this.HistoryFile, this.history.Select(EncodeHistoryLine));
+        return new FileStream(temporary, new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
+        });
+    }
+
+    private FileStream OpenHistoryFileWithExclusiveLock(FileAccess access = FileAccess.ReadWrite, string? path = null)
+    {
+        path ??= this.HistoryFile;
+        if (access != FileAccess.Read && File.Exists(path))
+        {
+            RestrictHistoryFileToOwner(path);
+        }
+
+        var options = new FileStreamOptions
+        {
+            Mode = access == FileAccess.Read ? FileMode.Open : FileMode.OpenOrCreate,
+            Access = access,
+            Share = FileShare.None,
+        };
+        if (access != FileAccess.Read && !OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return new FileStream(path, options);
+            }
+            catch (IOException) when (attempt < HistoryFileOpenRetryCount)
+            {
+                Thread.Sleep(HistoryFileOpenRetryDelay);
+            }
+        }
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    private static List<string> ReadHistoryEntries(Stream stream)
+    {
+        stream.Position = 0;
+        using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+        var entries = new List<string>();
+        while (reader.ReadLine() is { } line)
+        {
+            var decoded = DecodeHistoryLine(line);
+            entries.Remove(decoded);
+            entries.Add(decoded);
+        }
+
+        return entries;
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    private static void RestrictHistoryFileToOwner(string historyFile)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(historyFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
+    private static void TrimHistoryEntries(List<string> entries)
+    {
+        if (entries.Count > MAXHISTORYITEMS)
+        {
+            entries.RemoveRange(0, entries.Count - MAXHISTORYITEMS);
+        }
+    }
+
+    private void RecordHistoryEntry(string entry, bool persist = true)
+    {
+        lock (this.historyLock)
+        {
+            this.history.Remove(entry);
+            this.history.Add(entry);
+            if (persist)
+            {
+                this.pendingHistoryEntries.Remove(entry);
+                this.pendingHistoryEntries.Add(entry);
+            }
+        }
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1204", Justification = "History helpers are grouped with SaveHistory for cohesion.")]
@@ -2442,13 +3400,40 @@ public partial class ShellInterpreter : IDisposable
     // redirection (`ErrOutRedirect` / `2>` / `2>>`) so scripts that redirect
     // stderr still capture errors in --quiet / --output json modes; otherwise
     // the object is written to the process stderr.
-    private void WriteMachineError(string errorMessage, ShellObject? result = null)
+    private void WriteMachineError(
+        string errorMessage,
+        ShellObject? result = null,
+        IEnumerable<CommandWarning>? warnings = null)
     {
         var error = new Dictionary<string, object?>
         {
             ["status"] = "error",
             ["error"] = errorMessage,
         };
+
+        if (this.ErrOutRedirect != null && warnings != null)
+        {
+            // Warnings deferred while stderr was the console belong there, not in this file.
+            foreach (var warning in warnings.Where(warning => !warning.IsRendered && warning.DeferredToConsole))
+            {
+                Console.Error.WriteLine(warning.Message);
+                warning.IsRendered = true;
+                warning.LastRenderedMessage = warning.Message;
+            }
+        }
+
+        var replacedRedirectPath = this.ErrOutRedirect != null && !this.AppendErrRedirection
+            ? Path.GetFullPath(this.ErrOutRedirect)
+            : null;
+        var outputWarnings = warnings?.Where(warning =>
+            !warning.IsRendered
+            || (replacedRedirectPath != null
+                && warning.RenderedErrorRedirect != null
+                && this.PathsEqual(warning.RenderedErrorRedirect, replacedRedirectPath))).ToArray() ?? [];
+        if (outputWarnings.Length > 0)
+        {
+            error["warnings"] = outputWarnings.Select(warning => warning.Message).ToArray();
+        }
 
         if (result?.ConvertShellObject(Parser.DataType.Json) is JsonElement resultElement)
         {
@@ -2472,6 +3457,38 @@ public partial class ShellInterpreter : IDisposable
         else
         {
             Console.Error.WriteLine(json);
+        }
+
+        foreach (var warning in outputWarnings)
+        {
+            warning.IsRendered = true;
+            warning.LastRenderedMessage = warning.Message;
+            warning.RenderedErrorRedirect = this.ErrOutRedirect == null
+                ? null
+                : Path.GetFullPath(this.ErrOutRedirect);
+        }
+    }
+
+    private bool PathsEqual(string first, string second) =>
+        string.Equals(
+            first,
+            second,
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+    private void WriteErrorRedirect(string text)
+    {
+        if (this.ErrOutRedirect == null)
+        {
+            throw new InvalidOperationException("Cannot redirect error output without an error redirection path.");
+        }
+
+        if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
+        {
+            File.AppendAllText(this.ErrOutRedirect, text);
+        }
+        else
+        {
+            File.WriteAllText(this.ErrOutRedirect, text);
         }
     }
 
@@ -2528,7 +3545,10 @@ public partial class ShellInterpreter : IDisposable
         AnsiConsole.MarkupLine(Theme.FormatMuted(MessageService.GetString("shell-connect-verbose-hint")));
     }
 
-    private void ReportExecutionError(Exception e, string? sourceText = null)
+    private void ReportExecutionError(
+        Exception e,
+        string? sourceText = null,
+        IEnumerable<CommandWarning>? warnings = null)
     {
         // The command already emitted a friendly diagnostic; do not print again.
         if (ContainsException<CommandReportedException>(e))
@@ -2536,9 +3556,23 @@ public partial class ShellInterpreter : IDisposable
             return;
         }
 
+        if (FindException<CommandState.FailureException>(e)?.State is ParserErrorCommandState parserError)
+        {
+            this.ReportParserErrors(
+                parserError.Errors,
+                parserError.SourceText ?? sourceText ?? string.Empty,
+                parserError.SourceName,
+                warnings);
+            return;
+        }
+
         if (this.IsMachineMode)
         {
-            this.WriteMachineError(e.Message);
+            var sourceTrace = PositionalException.GetSourceTrace(e);
+            var location = sourceTrace.FirstOrDefault();
+            this.WriteMachineError(
+                location == null ? e.Message : $"{location.FileName}:{location.Line}:{location.Column}: {e.Message}",
+                warnings: warnings);
             return;
         }
 
@@ -2569,7 +3603,7 @@ public partial class ShellInterpreter : IDisposable
                 : prefix + e.Message
                     + (!string.IsNullOrEmpty(hint) ? Environment.NewLine + hint : string.Empty)
                     + (showInner ? Environment.NewLine + FormatInnerExceptionMessages(e.InnerException) : string.Empty);
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect, errTxt);
             }
@@ -2666,7 +3700,7 @@ public partial class ShellInterpreter : IDisposable
         if (fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }
@@ -2691,16 +3725,24 @@ public partial class ShellInterpreter : IDisposable
 
     private void ReportPositionalError(PositionalException pe)
     {
+        var frames = PositionalException.GetSourceTrace(pe);
+        pe = frames[0];
+        var callTrace = frames.Skip(1).Select(frame => $"  at {frame.FileName}:{frame.Line}:{frame.Column}").ToArray();
         if (this.ErrOutRedirect != null)
         {
-            var errorMessage = $"[{Path.GetFileName(pe.FileName)}:{pe.Line}:{pe.Column}]: error: {pe.Message}";
+            var errorMessage = $"[{Path.GetFileName(pe.FileName)}:{pe.Line}:{pe.Column}]: {MessageService.GetString("runtime-error-prefix")}: {pe.Message}";
             if (pe.LineText != null)
             {
                 errorMessage += Environment.NewLine + pe.LineText;
                 errorMessage += Environment.NewLine + new string(' ', Math.Max(0, pe.Column - 1)) + "^";
             }
 
-            if (this.AppendErrRedirection)
+            if (callTrace.Length > 0)
+            {
+                errorMessage += Environment.NewLine + string.Join(Environment.NewLine, callTrace);
+            }
+
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect, errorMessage);
             }
@@ -2711,11 +3753,16 @@ public partial class ShellInterpreter : IDisposable
         }
         else
         {
-            AnsiConsole.MarkupLine($"{Markup.Escape($"{pe.FileName}:{pe.Line}:{pe.Column}:")} {Theme.FormatError("error:")} {Markup.Escape(pe.Message)}");
+            AnsiConsole.MarkupLine($"{Markup.Escape($"{pe.FileName}:{pe.Line}:{pe.Column}:")} {Theme.FormatError(MessageService.GetString("runtime-error-prefix") + ":")} {Markup.Escape(pe.Message)}");
             if (pe.LineText != null)
             {
                 AnsiConsole.MarkupLine("  " + Theme.FormatMuted(pe.LineText));
                 AnsiConsole.MarkupLine("  " + Theme.FormatError(new string(' ', Math.Max(0, pe.Column - 1)) + "^"));
+            }
+
+            foreach (var frame in callTrace)
+            {
+                AnsiConsole.MarkupLine(Theme.FormatMuted(frame));
             }
         }
     }
@@ -2764,7 +3811,11 @@ public partial class ShellInterpreter : IDisposable
         return (line, column);
     }
 
-    private void ReportParserErrors(ErrorList errors, string commandText)
+    private void ReportParserErrors(
+        ErrorList errors,
+        string commandText,
+        string? sourceName = null,
+        IEnumerable<CommandWarning>? warnings = null)
     {
         if (this.IsMachineMode
             && errors != null && errors.Count > 0)
@@ -2774,13 +3825,14 @@ public partial class ShellInterpreter : IDisposable
             {
                 if (err != null && err.ErrorLevel == ErrorLevel.Error)
                 {
-                    errorStrings.Add(err.Message ?? "Parser error");
+                    var (line, column) = this.OffsetToLineColumn(commandText, err.Start);
+                    errorStrings.Add(sourceName == null ? err.Message : $"{sourceName}:{line + 1}:{column + 1}: {err.Message}");
                 }
             }
 
             if (errorStrings.Count > 0)
             {
-                this.WriteMachineError(string.Join("; ", errorStrings));
+                this.WriteMachineError(string.Join("; ", errorStrings), warnings: warnings);
                 return;
             }
         }
@@ -2830,13 +3882,13 @@ public partial class ShellInterpreter : IDisposable
                 error.Message,
                 lineNumber,
                 rendered,
-                origin: this.GetDiagnosticOrigin(this.CurrentScriptFileName));
+                origin: this.GetDiagnosticOrigin(sourceName ?? this.CurrentScriptFileName));
         }
 
         if (redirected && fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }
@@ -2888,7 +3940,7 @@ public partial class ShellInterpreter : IDisposable
         if (fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }

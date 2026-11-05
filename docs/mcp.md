@@ -2,6 +2,13 @@
 
 Model Context Protocol (MCP) allows AI clients to control CosmosDBShell programmatically.
 
+Database/container creation tools expose `created: true` and `outcome: "created"`
+for a new data-plane resource, or `created: false` and `outcome: "existing"` when
+reusing one. ARM create-or-update returns `created: null` and
+`outcome: "createdOrUpdated"` because the API cannot distinguish the two.
+Do not count that unknown outcome as a confirmed creation.
+See [management result semantics](commands.md#management).
+
 ## Start MCP Server
 
 ```bash
@@ -10,6 +17,33 @@ dotnet run --project CosmosDBShell -- --mcp 5050
 ```
 
 Bare `--mcp` starts the HTTP server on the default port `6128`.
+
+The same server supports both transports without an extra option:
+
+- **Streamable HTTP:** `http://127.0.0.1:6128/` (unchanged).
+- **Legacy HTTP+SSE:** `http://127.0.0.1:6128/sse`. Clients send requests to
+  the `/message` URL announced by the SSE endpoint event, including its session
+  query parameter.
+
+Both transports use the MCP SDK's protocol handling and share the interactive
+shell's connection, navigation, tools, and resources. For a custom port, replace
+`6128` with that port. Prefer Streamable HTTP when the client supports it.
+The server remains bound to loopback with Origin/Host validation; use only
+trusted local clients. Legacy SSE acknowledges request POSTs immediately and
+does not provide HTTP-level backpressure on outstanding handlers. The shell
+therefore admits at most **16 outstanding legacy MCP requests across all SSE
+sessions**, including requests waiting for the shell execution gate or user
+confirmation. Excess requests receive **HTTP 429** with `Retry-After: 1` before
+reaching the SDK, without being queued; retry after an outstanding request
+completes. Admission remains held until the SSE response has been written,
+including error responses, or the request is cancelled or its session ends.
+Accepted HTTP POSTs return `202 Accepted`, which is not command success.
+Replies and notifications, including cancellation, do not consume permits.
+This limit does not apply to Streamable HTTP.
+
+Session cleanup is independent of the originating HTTP request's lifetime.
+Ending a session releases its location subscriptions and any outstanding legacy
+SSE admission state, even after the initialization request has ended.
 
 ## VS Code Setup
 
@@ -32,6 +66,33 @@ MCP servers will start automatically without manual refresh.
 
 ## Security
 
+### Read-Only Diagnostics
+
+The `doctor` tool reports local environment and current-connection diagnostics without
+changing connection, navigation, or settings. Pass `database` and `container` for an
+explicit target, `query: true` for a bounded constant-projection query (consumes RUs),
+or `arm: true` to require an ARM check and opt into bounded discovery. It does not
+initiate interactive login. See [doctor](commands.md#doctor) for limits and verdicts.
+
+Pass `who: true` (or `subcommand: "who"`) to include known credential type, selected
+scope, and unassessed write access. This adds no token acquisition or network probes.
+The identity entry's `credentialType` describes configuration, not a verified
+principal. The text-only `Doctor Who?` heading is not part of the structured report.
+The structured report also includes a `summary` with verdict counts, elapsed
+`durationMs`, and nullable total `requestCharge`. The `clock` check estimates offset
+only from existing successful response Date headers; it never adds a network probe.
+Its nullable `clockOffsetSeconds` and `clockUncertaintySeconds` describe an estimate,
+not trusted time. Missing usable headers produce `clock-unavailable` (`SKIP`).
+The `updates` check performs one bounded, unauthenticated public GitHub release lookup,
+even without a Cosmos connection. Pass `no-update-check: true` to prevent this request.
+The lookup sends no Cosmos credentials or target names and installs nothing. Newer
+eligible releases produce `WARN` and `latestVersion`; unavailable checks produce `SKIP`.
+
+The versioned report is available in `result`, including when `isError` is true.
+Doctor's report omits secrets, raw exception messages, and document data. The standard
+MCP envelope still includes `currentLocation`; review resource names before sharing
+the complete MCP response outside your organization.
+
 ### How MCP Works
 
 The MCP server runs locally with your user permissions. Connected clients can execute shell commands, which means they can:
@@ -46,21 +107,66 @@ Transactional batches invoked through MCP must use the one-shot `batch run` subc
 
 ### Destructive Command Confirmation
 
-Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an explicit user confirmation. When a client invokes one, the server sends an MCP elicitation prompt describing the exact command line before anything runs:
+Destructive commands (`delete`, `rm`, `rmcon`, `rmdb`) are gated behind an explicit user confirmation. When a client invokes one, the server sends the client an elicitation prompt describing the exact command line and waits for the user's answer before anything runs:
 
 - **Approved** — the command executes normally.
 - **Declined or cancelled** — nothing is executed and the tool call returns an error explaining that the user did not approve.
 - **Client cannot confirm** — if the connected client does not support elicitation, the command is refused (fail-closed) and the response suggests running it manually in the shell.
 
-This replaces any opt-in write flag: destructive commands are always allowed to be invoked, but always require confirmation.
+The prompt is sent as a multi-round-trip request: the tool call returns an input-required result, and the client shows the prompt and retries the call with the answer. For clients that use the `initialize` handshake, the server sends a standard `elicitation/create` request on the session and retries the call itself, so those clients see the same prompt as before. The retry carries a server-signed state that ties the answer to the exact command line and shell context. Each state can be answered once and expires after 10 minutes. At most 1,024 confirmations are tracked at a time; beyond that the oldest pending one is dropped and must be confirmed again. An answer for a different command, a reused or expired state, or a missing or altered state is refused without executing. Argument order does not matter: the command line is built with positionals in shell order and options in declaration order.
+
+This replaces any opt-in write flag: destructive writes are allowed to be invoked, but always require confirmation. The `bulk` tool's `dry-run: true` mode is exempt only without `save`; saving a plan creates a server-local file and requires confirmation.
+
+Confirmation includes the connected account endpoint and current navigation location alongside the command and its explicit target arguments. If the connection or navigation state changes while confirmation is pending, the approved command is refused without executing; retry it to confirm the new context. Even navigating away and back invalidates the pending confirmation. A pending confirmation also expires when the MCP server restarts.
+
+Shell and MCP command execution is serialized against the shared interpreter. Confirmation prompts do not hold the execution lock, so the shell remains usable while waiting. Clients still share a connection and navigation context: pass explicit `database` and `container` arguments for independent operations rather than relying on an earlier `cd` call.
 
 The MCP confirmation applies even when a command is invoked with a force / no-prompt argument (for example `rmdb OldDB true`). That argument only skips the *interactive shell* prompt; it does not bypass the MCP elicitation gate.
 
+For single-item deletions, prefer `rm` with `key: "id"`, `partition-key`, and `dry-run: true` first, then repeat the call with the returned `etag` in the `etag` argument. The confirmation prompt shows the `--partition-key` and `--etag` values, and the delete only succeeds if the item still has the reviewed ETag, including when the item changes while the confirmation is pending. See [Deleting a single item safely](commands.md#deleting-a-single-item-safely).
+
 Database and container resource actions are executed through Azure Resource Manager when an ARM context is attached (Entra ID connections). MCP sessions connected with account keys, emulator credentials, or static data-plane tokens fall back to the Cosmos DB data plane for these actions.
+
+On serverless accounts, `mkdb`, `mkcon`, and their `create` aliases omit throughput when neither `--scale` nor `--ru` is supplied. Explicit throughput options are rejected on serverless accounts for both ARM and data-plane connections. See [database and container creation](commands.md#mkdb).
 
 For deterministic ARM routing in multi-subscription environments, start the shell with `--connect-subscription` and `--connect-resource-group`.
 
+MCP `import` uses the same bounded concurrency as the CLI: up to 16 writes in flight by default, configurable with the `concurrency` argument. Its schema requires a positive integer (`minimum: 1`). Use `concurrency: 1` for sequential, file-order writes. In-flight writes may complete after an error; imports are not transactional. See [import](commands.md#import) for error and cancellation behavior.
+
+The CLI's periodic ingestion messages are terminal-only: MCP `import` and `bulk` calls do not emit them or add progress fields to their final results. See [ingestion sizing and limitations](ingestion.md) before planning large jobs.
+
+### Bulk Operations
+
+The `bulk` tool exposes the stateless `run`, `patch`, and `delete` subcommands, with the same operation schema, selection, journal, and reporting semantics as the [CLI command](commands.md#bulk). Stateful subcommands (`begin`, `add`, `execute`, `cancel`, `status`, and `show`) are restricted to the interactive shell, like stateful batches. Writes always require MCP elicitation, even with `yes: true`; once approved, no second terminal prompt is shown. `dry-run: true` validates or selects without database writes, but selection reads consume RUs. Only dry runs without `save` skip elicitation: saving a plan creates a server-local file and requires confirmation.
+
+Pass operations as JSON text or a file path in `data`, or use `where` with `operations` for query-driven patches. `concurrency` defaults to 16 and must be positive; optional `max-items` and `max-ru` must also be positive. Explicit `false` boolean values still count as supplied arguments and are rejected when the subcommand does not support them. File paths for `data`, `save`, and `journal` are local to the shell server.
+
+These are independent writes, **not** transactions across partitions. Failed or incomplete runs include their summary alongside the MCP error. The command-level `result.resultIncomplete` and `result.budgetExceeded` flags describe job execution and are distinct from the envelope's query-paging `resultIncomplete`. Resume only with the same journal from the original run; adding a new journal cannot prevent replaying earlier successes. Without the original journal, reconcile completed writes before retrying. A journal never automatically retries a write whose outcome is unknown unless `retry-uncertain` is set; later writes for the same item ID and partition key are also held back.
+
+### Shell Location Updates
+
+Clients can read the `cosmos://shell/current-location` MCP resource. Its JSON content has a `currentLocation` field (`null` when disconnected, `/` at the account root, or `/database[/container]`) and a separate `currentAccountEndpoint` field (the connected Cosmos DB account URL, or `null` when disconnected). For example: `{"currentLocation":"/myDb/myContainer","currentAccountEndpoint":"https://myaccount.documents.azure.com/"}`. Clients that support resource subscriptions receive `notifications/resources/updated` when the shared shell location or connection changes, including changes made interactively. On notification, read the resource again for the new values; the notification itself contains only the URI. Rapid consecutive changes may be coalesced into a single notification.
+
+The resource list is static, so the server does not advertise `resources.listChanged` or honor resource-list-change subscriptions. Resource-content subscriptions for `cosmos://shell/current-location` remain supported.
+
+How a client subscribes depends on its protocol revision:
+
+- **`2026-07-28` clients** send `subscriptions/listen` with `resourceSubscriptions` containing `cosmos://shell/current-location`. The server first sends `notifications/subscriptions/acknowledged` listing the subscriptions it honors, then streams updates on the same response. Every notification on the stream carries the listen request ID in `_meta["io.modelcontextprotocol/subscriptionId"]`. Only `cosmos://shell/current-location` is honored; other resource URIs and list-changed filters are left out of the acknowledgement. If nothing is honored, the listen request completes right after the acknowledgement. Otherwise the subscription lasts until the client cancels the request or closes the connection.
+- **Clients that use the `initialize` handshake** subscribe with `resources/subscribe` and unsubscribe with `resources/unsubscribe`. Subscribing to any URI other than `cosmos://shell/current-location`, including the documentation resources, returns an invalid-params error. Notifications are delivered on the session's GET stream. A subscription lasts as long as its MCP session: it ends when the client deletes the session or when the session has had no open request (including the GET stream) for 10 minutes. After that the server returns 404 for the session and the client must start a new session and subscribe again.
+
+The HTTP server serves `2026-07-28` requests without a session and gives a session only to clients that use the `initialize` handshake. A notification does not guarantee that a client refreshes the model's context. Every tool response also includes `currentLocation`, and explicit `database` / `container` arguments remain the reliable way to target independent operations.
+
 ### Data Exposure
+
+MCP tool invocations are echoed as command lines in the shell window, so anyone watching the terminal can see what a connected client is doing. They are also recorded in the shell history. History entries are complete and replayable, including any supplied connection strings. Protect the history file accordingly. On Linux and macOS, the shell restricts the history file to its owner.
+
+Positional arguments must be supplied without gaps: a call that provides a positional parameter while omitting an earlier one is rejected, because the equivalent shell command line would bind the value to the omitted slot.
+
+Explicit `null` argument values are treated as omitted and are not echoed into shell history. The paging `continuation` argument is an exception: a `null` output token means the result set is exhausted unless `resultIncomplete` is `true`, in which case results were truncated and cannot be resumed. A `null` token must never be passed back as `continuation`; doing so is rejected in either case. For incomplete results, retry with a larger `max` or a narrower query. The `rm` safety options `partition-key` (including alias `pk`) and `etag` also reject explicit `null` values rather than silently dropping the partition scope or concurrency check.
+
+For `print`, the `key` argument uses the same typed syntax as `patch`: `"680"` selects a number, `"\"680\""` selects a string, and `"[1001,\"customer-1001\"]"` selects a hierarchical key. Pass `"null"` for a null partition key; explicit JSON `null` is treated as omitted and reported as a missing key. See [print](commands.md#print).
+
+Pass `"{}"` to explicitly target an undefined partition-key value (`PartitionKey.None`), or include `{}` in a hierarchical key string such as `"[\"tenant-1\",{}]"`. This is distinct from `"null"` and from the literal strings `"none"` and `"undefined"`. Explicit undefined targets do not warn. Commands that infer an undefined key from missing item content emit one bounded mutation warning; reads do not warn. See [Undefined partition keys](commands.md#undefined-partition-keys).
 
 Your MCP client may use a remote LLM. Command outputs, query results, and file contents could be transmitted to external services. **Treat all shell output as potentially shared.**
 
@@ -99,8 +205,9 @@ Both representations are always byte-for-byte equivalent.
 | Field | When present | Description |
 | ----- | ------------ | ----------- |
 | `result` | Commands that produce output | The command result as JSON (objects, arrays, or a scalar). Text-only results are represented as a JSON string. Failed transactional batches include their per-operation summary here alongside `error`. |
-| `outputText` | CSV output commands with non-empty text | The CSV rendering of the result. Omitted when the CSV output is empty or whitespace. |
-| `continuationToken` | Paged `query` and container-item `ls` results | Opaque token for the next page, or `null` when no more results are available. Omitted for `query --explain` and database/container name listings, which are not paged. |
+| `outputText` | CSV output commands with non-empty text, including structured failures | The CSV rendering of the result. Omitted when the CSV output is empty or whitespace. Failed imports retain their partial-result CSV alongside `error` and `result`, with `isError: true`. |
+| `continuationToken` | Paged `query` and container-item `ls` results | Opaque token for the next page, or `null` when no more results are available — unless `resultIncomplete` is `true`, where a `null` token accompanies a truncated result that cannot be resumed. Omitted for `query --explain` and database/container name listings, which are not paged. |
+| `resultIncomplete` | Truncated results that cannot be resumed | `true` when the result stops at the requested limit and the query cannot produce a continuation token. Omitted otherwise. |
 | `requestCharge` | Charged data-plane command results | The Cosmos DB request charge (in RUs) consumed by the command, as a number. This is omitted for commands that do not issue a billable request. |
 | `error` | Failed commands | The error message. |
 | `currentLocation` | Always | The shell's current navigation path (for example `/MyDatabase/MyContainer`), or `null` when disconnected. |
@@ -120,13 +227,30 @@ operations rather than individual query pages or transactional batch items. If
 the shell variable `$sessionRequestChargeWarningThreshold` is set to a positive value, the
 session object also includes `session.requestChargeWarningThreshold`.
 
+### Import and export `format`
+
+The `format` argument of `import` and `export` affects only the summary that the
+command reports, such as item counts and request charges. It never changes the
+file that is read or written:
+
+- `import` reads CSV for `.csv` paths and otherwise automatically detects a JSON
+  array, a single JSON object, or a sequence of objects (including JSON Lines).
+- `export` writes CSV for `.csv` paths and an indented JSON array otherwise.
+
+The schemas accept `user`, `json`, `csv`, and `table`. Values such as `array` or
+`jsonl` are not file-format selectors and are rejected. The summary is always
+returned in `result`; `csv` additionally returns its CSV rendering in
+`outputText`. Omit `format` to keep the current output setting.
+
 ### Pagination
 
-MCP calls to `query` and container-item `ls` return one Cosmos DB page per call. `max` must be positive; when it is omitted or non-positive, the server applies a safe default cap of `100` items. To continue, pass a non-null returned `continuationToken` as the next call's `continuation` argument while keeping the query and other options unchanged. The token is opaque; do not parse or edit it. When the token is `null`, the result set is exhausted: stop paging and do not send another request with `continuation`.
+MCP calls to `query` and container-item `ls` return one Cosmos DB page per call. `max` must be positive; when it is omitted or non-positive, the server applies a safe default cap of `100` items. To continue, pass a non-null returned `continuationToken` as the next call's `continuation` argument while keeping the query and other options unchanged. The token is opaque; do not parse or edit it. When the token is `null` and the response does not set `resultIncomplete`, the result set is exhausted: stop paging and do not send another request with `continuation`.
 
 `continuation` is exposed only to MCP callers — there is no corresponding shell option, and the token is never echoed into the shell's command output.
 
-Because `max` bounds a single page, a call can return fewer items than requested and still have more available; treat a non-null `continuationToken` as the only signal that more results exist. For `ls`, the `result.limitReached` flag reports that same condition and is kept for parity with shell and script output.
+Because `max` bounds a single page, a call can return fewer items than requested and still have more available; while `resultIncomplete` is absent or `false`, treat a non-null `continuationToken` as the only signal that more results exist. For `ls`, the `result.limitReached` flag reports that same condition and is kept for parity with shell and script output. `ls` always produces resumable pages, so its results never set `resultIncomplete`.
+
+Some queries cannot be paged at all. Vector `ORDER BY`, `ORDER BY RANK` relevance ranking, and `DISTINCT` projections whose plan cannot export a token execute normally but never return a continuation token. For `DISTINCT` this is decided by the query plan rather than by the SQL text: `SELECT DISTINCT c.category FROM c ORDER BY c.category` is not resumable even though it has an `ORDER BY`, while the scalar `SELECT DISTINCT VALUE c.category FROM c ORDER BY c.category` is. For those queries the server keeps reading until `max` is reached and returns a `null` token. If the limit truncated the results, the response also sets `resultIncomplete` to `true`; a `null` token combined with `resultIncomplete` means the result set was **not** exhausted and cannot be resumed. Retry with a larger `max` or a narrower query instead of sending a `continuation`.
 
 ```json
 {
@@ -135,4 +259,3 @@ Because `max` bounds a single page, a call can return fewer items than requested
 	"continuation": "<token from the previous result>"
 }
 ```
-

@@ -29,12 +29,13 @@ public sealed class SemanticModel
     public IReadOnlyList<SemanticDiagnostic> Diagnostics { get; init; } = Array.Empty<SemanticDiagnostic>();
 
     /// <summary>
-    /// Returns the symbol whose defining span contains the specified absolute position,
-    /// or null if no symbol definition covers that point.
+    /// Returns the symbol whose definition or reference contains the specified absolute position,
+    /// or null if no symbol occurrence covers that point.
     /// </summary>
     /// <param name="position">Zero-based absolute character offset in the source text.</param>
     public Symbol? GetSymbolAt(int position)
-        => this.Symbols.FirstOrDefault(s => position >= s.Start && position < s.Start + s.Length);
+        => this.References.FirstOrDefault(reference => position >= reference.Start && position < reference.Start + reference.Length)?.Symbol
+            ?? this.Symbols.FirstOrDefault(s => position >= s.Start && position < s.Start + s.Length);
 
     /// <summary>
     /// Finds all recorded references associated with the given symbol instance.

@@ -35,6 +35,15 @@ public class FilterBuiltinsTests
     private static string TypeName(ShellObject result) => Assert.IsType<ShellText>(result).Text;
 
     [Fact]
+    public async Task Map_PreservesIntegralDecimalThroughPipeline()
+    {
+        var result = await EvalAsync(". | map(3.0) | .[0]", new[] { 1 });
+        var json = FilterExpressionUtilities.ToJsonElement(result);
+        Assert.Equal("3.0", json.GetRawText());
+        Assert.IsType<ShellDecimal>(ShellNumber.FromJson(json));
+    }
+
+    [Fact]
     public async Task Type_Object_ReturnsObject()
         => Assert.Equal("object", TypeName(await EvalAsync(". | type", new { a = 1 })));
 

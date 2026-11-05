@@ -13,9 +13,9 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
 [CosmosCommand("conflict", Aliases = ["conflictpolicy"])]
-[CosmosExample("conflict show", Description = "Display the current container's conflict resolution policy")]
-[CosmosExample("conflict set --mode lastWriterWins --path /_ts", Description = "Use last-writer-wins resolution based on the /_ts path")]
-[CosmosExample("conflict set --mode custom --procedure resolveConflicts", Description = "Use a stored procedure to resolve conflicts")]
+[CosmosExample("conflict show", DescriptionKey = "command-conflict-example-1")]
+[CosmosExample("conflict set --mode lastWriterWins --path /_ts", DescriptionKey = "command-conflict-example-2")]
+[CosmosExample("conflict set --mode custom --procedure resolveConflicts", DescriptionKey = "command-conflict-example-3")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "Conflict",
@@ -130,9 +130,18 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         };
 
         using var jsonDoc = JsonDocument.Parse(root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        var messageId = IsCustom(view.Mode)
+            ? string.IsNullOrEmpty(view.ResolutionProcedure) ? "command-conflict-status-custom-manual" : "command-conflict-status-custom"
+            : "command-conflict-status-lww";
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
+            RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                messageId,
+                "container",
+                containerName,
+                "value",
+                IsCustom(view.Mode) ? view.ResolutionProcedure ?? string.Empty : view.ResolutionPath ?? string.Empty)),
         };
     }
 
@@ -235,7 +244,8 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         }
 
         var view = await CosmosResourceFacade.ReplaceConflictResolutionPolicyAsync(state, databaseName, containerName, update, token);
-        ShellInterpreter.WriteLine(MessageService.GetString("command-conflict-updated"));
-        return BuildResult(containerName, view);
+        var result = BuildResult(containerName, view);
+        result.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-conflict-updated"));
+        return result;
     }
 }

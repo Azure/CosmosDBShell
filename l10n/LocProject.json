@@ -1,0 +1,14 @@
+{
+  "Projects": [
+    {
+      "LanguageSet": "VS_Main_Languages",
+      "LocItems": [
+        {
+          "SourceFile": "l10n\\CosmosDBShell.json",
+          "CopyOption": "LangIDOnName",
+          "OutputPath": "l10n"
+        }
+      ]
+    }
+  ]
+}

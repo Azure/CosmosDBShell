@@ -49,9 +49,9 @@ internal class FilterCallExpression : Expression
             "keys" => EvaluateKeys(currentJson, this.Arguments.Count, this.Name),
             "type" => EvaluateType(currentJson, this.Arguments.Count, this.Name),
             "contains" => await this.EvaluateContainsAsync(interpreter, currentState, currentJson, cancellationToken),
-            "map" => await this.EvaluateMapAsync(interpreter, currentJson, cancellationToken),
-            "select" => await this.EvaluateSelectAsync(interpreter, currentJson, cancellationToken),
-            "sort_by" => await this.EvaluateSortByAsync(interpreter, currentJson, cancellationToken),
+            "map" => await this.EvaluateMapAsync(interpreter, currentState, currentJson, cancellationToken),
+            "select" => await this.EvaluateSelectAsync(interpreter, currentState, currentJson, cancellationToken),
+            "sort_by" => await this.EvaluateSortByAsync(interpreter, currentState, currentJson, cancellationToken),
             _ => throw new CommandException(
                 "filter",
                 MessageService.GetString(
@@ -138,7 +138,7 @@ internal class FilterCallExpression : Expression
         return new ShellBool(FilterExpressionUtilities.Contains(currentJson, FilterExpressionUtilities.ToJsonElement(target)));
     }
 
-    private async Task<ShellObject> EvaluateMapAsync(ShellInterpreter interpreter, JsonElement currentJson, CancellationToken cancellationToken)
+    private async Task<ShellObject> EvaluateMapAsync(ShellInterpreter interpreter, CommandState currentState, JsonElement currentJson, CancellationToken cancellationToken)
     {
         this.RequireArgumentCount(1);
         if (currentJson.ValueKind != JsonValueKind.Array)
@@ -154,7 +154,7 @@ internal class FilterCallExpression : Expression
         foreach (var item in currentJson.EnumerateArray())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var nestedState = new CommandState { Result = new ShellJson(item.Clone()) };
+            var nestedState = FilterExpressionUtilities.CreateNestedState(currentState, new ShellJson(item.Clone()));
             var evaluated = await this.Arguments[0].EvaluateAsync(interpreter, nestedState, cancellationToken);
             if (evaluated is ShellSequence sequence)
             {
@@ -169,7 +169,7 @@ internal class FilterCallExpression : Expression
         return new ShellJson(FilterExpressionUtilities.ToJsonArray(results));
     }
 
-    private async Task<ShellObject> EvaluateSelectAsync(ShellInterpreter interpreter, JsonElement currentJson, CancellationToken cancellationToken)
+    private async Task<ShellObject> EvaluateSelectAsync(ShellInterpreter interpreter, CommandState currentState, JsonElement currentJson, CancellationToken cancellationToken)
     {
         this.RequireArgumentCount(1);
         if (currentJson.ValueKind != JsonValueKind.Array)
@@ -185,7 +185,7 @@ internal class FilterCallExpression : Expression
         foreach (var item in currentJson.EnumerateArray())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var nestedState = new CommandState { Result = new ShellJson(item.Clone()) };
+            var nestedState = FilterExpressionUtilities.CreateNestedState(currentState, new ShellJson(item.Clone()));
             var evaluated = await this.Arguments[0].EvaluateAsync(interpreter, nestedState, cancellationToken);
             if (evaluated is ShellBool shellBool && shellBool.Value)
             {
@@ -200,7 +200,7 @@ internal class FilterCallExpression : Expression
         return new ShellJson(FilterExpressionUtilities.ToJsonArray(results));
     }
 
-    private async Task<ShellObject> EvaluateSortByAsync(ShellInterpreter interpreter, JsonElement currentJson, CancellationToken cancellationToken)
+    private async Task<ShellObject> EvaluateSortByAsync(ShellInterpreter interpreter, CommandState currentState, JsonElement currentJson, CancellationToken cancellationToken)
     {
         this.RequireArgumentCount(1);
         if (currentJson.ValueKind != JsonValueKind.Array)
@@ -216,7 +216,7 @@ internal class FilterCallExpression : Expression
         foreach (var item in currentJson.EnumerateArray())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var nestedState = new CommandState { Result = new ShellJson(item.Clone()) };
+            var nestedState = FilterExpressionUtilities.CreateNestedState(currentState, new ShellJson(item.Clone()));
             var evaluated = await this.Arguments[0].EvaluateAsync(interpreter, nestedState, cancellationToken);
             items.Add((item.Clone(), FilterExpressionUtilities.ToJsonElement(evaluated)));
         }

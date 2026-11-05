@@ -13,6 +13,8 @@ trigger: # https://aka.ms/obpipelines/triggers
     include:
       - "main"
 
+pr: none
+
 parameters: # parameters are shown up in ADO UI in a build queue time
   - name: "debug"
     displayName: "Enable debug output"
@@ -96,6 +98,18 @@ extends:
               # ob_sdl_suppression_suppressionFile: $(Build.SourcesDirectory)\.gdn\job.gdnsuppress
 
             steps:
+              # Enable after OneLoc onboarding and dependency feed access are configured.
+              # - task: OneLocBuild@3
+              #   displayName: "OneLoc localization build"
+              #   inputs:
+              #     locProj: "l10n/LocProject.json"
+              #     outDir: "$(Build.ArtifactStagingDirectory)"
+              #     lclSource: "lclFilesInRepo"
+              #     isCreatePrSelected: false
+              #     repoType: "gitHub"
+              #     packageSourceAuth: "patAuth"
+              #     dependencyPackageSource: "https://pkgs.dev.azure.com/msdata/CosmosDB/_packaging/CosmosDB_PublicPackages/nuget/v3/index.json"
+
               - task: UseDotNet@2
                 continueOnError: true
                 inputs:
@@ -139,6 +153,12 @@ extends:
                   projects: $(BuildSolution)
                   custom: "restore"
                   arguments: "--configfile $(Build.SourcesDirectory)\\.pipelines\\nuget.config"
+
+              - task: PowerShell@2
+                displayName: "Validate and generate localized resources"
+                inputs:
+                  filePath: "$(Build.SourcesDirectory)\\tools\\Localization\\build-localized-resources.ps1"
+                  pwsh: true
 
               - task: ComponentGovernanceComponentDetection@0
                 displayName: "Component Governance - Component Detection"
@@ -769,6 +789,8 @@ extends:
                       "$(Build.SourcesDirectory)\CosmosDBShell.Fuzzer\obj",
                       "$(Build.SourcesDirectory)\CosmosDBShell.Analyzer\bin",
                       "$(Build.SourcesDirectory)\CosmosDBShell.Analyzer\obj",
+                      "$(Build.SourcesDirectory)\tools\Localization\bin",
+                      "$(Build.SourcesDirectory)\tools\Localization\obj",
                       "$(Build.SourcesDirectory)\TestResults"
                     )
                     foreach ($d in $dirs) {
@@ -867,65 +889,14 @@ extends:
                       echo "rpmbuild is unavailable and tdnf is not installed; run this job in the configured Azure Linux container." >&2
                       exit 1
                     fi
-                    tdnf install -y rpm-build
+                    tdnf install -y rpm-build cpio
                   fi
 
-                  rpm_root="$(Build.SourcesDirectory)/.rpmbuild"
-                  output_dir="$(Build.SourcesDirectory)/out/rpm"
-                  mkdir -p "$rpm_root"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} "$output_dir"
-                  cp "$(Build.SourcesDirectory)/packaging/rpm/cosmosdbshell-lite.spec" "$rpm_root/SPECS/"
-                  cp "$(Build.SourcesDirectory)/LICENSE.md" "$(Build.SourcesDirectory)/NOTICE.html" "$rpm_root/SOURCES/"
-
-                  for entry in "linux-x64:x86_64" "linux-arm64:aarch64"; do
-                    rid="${entry%%:*}"
-                    rpm_arch="${entry##*:}"
-                    publish_dir="$(Build.SourcesDirectory)/.rpm-publish/$rid"
-
-                    rm -rf "$publish_dir"
-                    dotnet publish "$(Build.SourcesDirectory)/CosmosDBShell/CosmosDBShell.csproj" \
-                      --configuration "$(BuildConfiguration)" \
-                      --runtime "$rid" \
-                      --self-contained false \
-                      -p:PublishSingleFile=false \
-                      -p:PackAsTool=false \
-                      -p:CosmosDBShellExcludeMsalRuntime=true \
-                      -p:CosmosDBShellExcludeMcpAndLsp=true \
-                      --output "$publish_dir" \
-                      --configfile "$(Build.SourcesDirectory)/.pipelines/nuget.config"
-
-                    # Ships for linux-x64 only and doubles the package size. The VS Code
-                    # broker credential falls back when it is absent, as it already does
-                    # on linux-arm64, where this library does not exist at all.
-                    rm -f "$publish_dir/libmsalruntime.so"
-
-                    for required in CosmosDBShell CosmosDBShell.dll; do
-                      if [[ ! -f "$publish_dir/$required" ]]; then
-                        echo "Expected $required in $publish_dir." >&2
-                        exit 1
-                      fi
-                    done
-
-                    set +e
-                    "$publish_dir/CosmosDBShell" --output json --lsp >lsp.stdout 2>lsp.stderr
-                    lsp_exit=$?
-                    set -e
-                    if [[ $lsp_exit -ne 2 || -s lsp.stdout ]]; then
-                      echo "Lightweight --lsp smoke test did not return a machine-mode usage error." >&2
-                      exit 1
-                    fi
-                    grep -F '"status":"error"' lsp.stderr
-                    grep -F '"error":"LSP support is not included in this build."' lsp.stderr
-                    rm -f lsp.stdout lsp.stderr
-
-                    tar -czf "$rpm_root/SOURCES/cosmosdbshell-lite-payload.tar.gz" -C "$publish_dir" .
-                    rpmbuild -bb "$rpm_root/SPECS/cosmosdbshell-lite.spec" \
-                      --target "$rpm_arch" \
-                      --define "_topdir $rpm_root" \
-                      --define "package_version $(CosmosDBShell_RpmVersion)" \
-                      --define "package_release $(CosmosDBShell_RpmRelease)"
+                  for rid in linux-x64 linux-arm64; do
+                    bash "$(Build.SourcesDirectory)/packaging/rpm/build.sh" \
+                      "$rid" "$(CosmosDBShell_RpmVersion)" "$(CosmosDBShell_RpmRelease)" \
+                      "$(BuildConfiguration)" "$(Build.SourcesDirectory)/.pipelines/nuget.config"
                   done
-
-                  find "$rpm_root/RPMS" -type f -name 'cosmosdbshell-lite-*.rpm' -exec cp {} "$output_dir/" \;
                 displayName: Build lightweight framework-dependent RPMs
 
               - script: |
@@ -937,26 +908,8 @@ extends:
                     exit 1
                   fi
 
-                  for package in "${packages[@]}"; do
-                    size="$(stat -c %s "$package")"
-                    if (( size > 25000000 )); then
-                      echo "$(basename "$package") is $size bytes and exceeds the 25 MB Cloud Shell limit." >&2
-                      exit 1
-                    fi
-                    rpm -qp --queryformat '%{NAME}\n' "$package" | grep -Fx 'cosmosdbshell-lite'
-                    rpm -qpR "$package" | grep -Fx 'dotnet-runtime-10.0 >= 10.0'
-                    rpm -qlp "$package" | grep -Fx '/usr/bin/cosmosdbshell'
-                    rpm -qlp "$package" | grep -Fx '/usr/libexec/cosmosdbshell/CosmosDBShell'
-                    rpm -qlp "$package" | grep -Fx '/usr/libexec/cosmosdbshell/CosmosDBShell.dll'
-                    if rpm -qlp "$package" | grep -q 'libmsalruntime\.so'; then
-                      echo "$(basename "$package") still carries libmsalruntime.so." >&2
-                      exit 1
-                    fi
-                    if rpm -qlp "$package" | grep -Eq '/(ModelContextProtocol|OmniSharp|Azure\.Identity\.Broker|Microsoft\.Identity\.Client\.Broker).*\.dll$'; then
-                      echo "$(basename "$package") unexpectedly contains an excluded feature assembly." >&2
-                      exit 1
-                    fi
-                    echo "Validated $(basename "$package") [$size bytes]"
+                  for arch in x86_64 aarch64; do
+                    find "$output_dir" -maxdepth 1 -name "cosmosdbshell-lite-*.$arch.rpm" | grep .
                   done
                 displayName: Validate lightweight RPM packages
 

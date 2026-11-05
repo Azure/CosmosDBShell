@@ -16,9 +16,9 @@ using global::Azure.Identity;
 using Spectre.Console;
 
 [CosmosCommand("whoami")]
-[CosmosExample("whoami", Description = "Show the authenticated identity and credential type")]
-[CosmosExample("whoami --format=json", Description = "Emit the identity as a JSON object")]
-[CosmosExample("whoami --format=csv", Description = "Emit the identity as a single CSV row")]
+[CosmosExample("whoami", DescriptionKey = "command-whoami-example-1")]
+[CosmosExample("whoami --format=json", DescriptionKey = "command-whoami-example-2")]
+[CosmosExample("whoami --format=csv", DescriptionKey = "command-whoami-example-3")]
 [McpAnnotation(
     Description = @"
 Shows the authenticated identity for the current connection.

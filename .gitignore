@@ -367,3 +367,7 @@ FodyWeavers.xsd
 
 
 CosmosShell.Fuzzer/findings
+
+# Generated from localized OneLoc JSON catalogs during the build.
+CosmosDBShell/lang/*.ftl
+!CosmosDBShell/lang/en.ftl

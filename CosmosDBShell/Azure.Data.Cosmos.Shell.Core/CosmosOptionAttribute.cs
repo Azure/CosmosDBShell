@@ -19,5 +19,7 @@ internal class CosmosOptionAttribute : Attribute
 
     public object? DefaultValue { get; set; }
 
+    public object? MinimumValue { get; set; }
+
     public bool Hidden { get; set; }
 }

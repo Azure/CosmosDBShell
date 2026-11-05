@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System.Globalization;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Parser;
+using Azure.Data.Cosmos.Shell.Util;
 
 internal abstract class ShellObject
 {
@@ -23,7 +24,7 @@ internal abstract class ShellObject
 
         if (!tokens.MoveNext())
         {
-            throw new InvalidOperationException("No tokens to parse");
+            throw new InvalidOperationException(MessageService.GetString("expression-error-no-tokens"));
         }
 
         var token = tokens.Current;
@@ -43,7 +44,7 @@ internal abstract class ShellObject
                 }
 
                 // Check if it's a number
-                if (int.TryParse(token.Value, out int intValue))
+                if (int.TryParse(token.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
                 {
                     return new ShellNumber(intValue);
                 }

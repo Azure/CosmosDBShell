@@ -10,8 +10,8 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using Spectre.Console;
 
 [CosmosCommand("cls", Aliases = ["clear"])]
-[CosmosExample("cls", Description = "Clear the console screen")]
-[CosmosExample("clear", Description = "Clear the console screen")]
+[CosmosExample("cls", DescriptionKey = "command-cls-example-1")]
+[CosmosExample("clear", DescriptionKey = "command-cls-example-2")]
 internal class ClsCommand : CosmosCommand
 {
     public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)

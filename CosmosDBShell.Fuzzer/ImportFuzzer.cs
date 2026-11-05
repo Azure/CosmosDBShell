@@ -90,9 +90,8 @@ internal static class ImportFuzzer
     /// </summary>
     private static async Task DriveParsersAsync(string content)
     {
-        // Format detection must never throw, regardless of input.
-        var detected = ImportCommand.DetectFormat(content);
-        _ = detected;
+        // Format resolution must never throw, regardless of input.
+        _ = ImportCommand.ResolveFormat(content);
 
         // JSON Lines path.
         using (var reader = new StringReader(content))
@@ -100,11 +99,11 @@ internal static class ImportFuzzer
             await ConsumeJsonLinesAsync(reader);
         }
 
-        // JSON array path.
+        // JSON document path (array or single object).
         var bytes = Encoding.UTF8.GetBytes(content);
         using (var stream = new MemoryStream(bytes))
         {
-            await ConsumeArrayAsync(stream);
+            await ConsumeJsonDocumentAsync(stream);
         }
 
         // CSV path, exercised with several separators and partition-key shapes.
@@ -116,7 +115,7 @@ internal static class ImportFuzzer
             var pk = ImportCommand.ParsePartitionKeySegments(RandomPartitionKey());
             for (var r = 1; r < records.Count; r++)
             {
-                _ = ImportCommand.BuildCsvObject(headers, records[r], pk);
+                _ = ImportCommand.BuildCsvObject(headers, records[r], pk, r + 1);
             }
         }
     }
@@ -129,9 +128,9 @@ internal static class ImportFuzzer
         }
     }
 
-    private static async Task ConsumeArrayAsync(Stream stream)
+    private static async Task ConsumeJsonDocumentAsync(Stream stream)
     {
-        await foreach (var (_, item) in ImportCommand.EnumerateArrayAsync(stream, CancellationToken.None))
+        await foreach (var (_, item) in ImportCommand.EnumerateJsonDocumentAsync(stream, CancellationToken.None))
         {
             _ = item.ValueKind;
         }

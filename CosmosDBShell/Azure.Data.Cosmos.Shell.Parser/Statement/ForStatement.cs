@@ -7,6 +7,7 @@ namespace Azure.Data.Cosmos.Shell.Parser;
 using System.Text.Json;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Util;
 
 /// <summary>
 /// Represents a for-in loop statement that iterates over elements in a collection.
@@ -93,20 +94,22 @@ internal class ForStatement : Statement
     {
         var evaluatedCollection = await this.Collection.EvaluateAsync(shell, commandState, token);
         var collectionResult = evaluatedCollection.ConvertShellObject(DataType.Json);
-        if (collectionResult is not JsonElement collection)
+        if (collectionResult is not JsonElement collection ||
+            collection.ValueKind != JsonValueKind.Array)
         {
-            throw new InvalidOperationException("Collection must evaluate to a JSON array");
+            throw new InvalidOperationException(MessageService.GetString("statement-error-for-collection"));
         }
 
         foreach (var arr in collection.EnumerateArray())
         {
+            token.ThrowIfCancellationRequested();
             ShellObject elementValue = arr.ValueKind switch
             {
-                JsonValueKind.Number => new ShellNumber(arr.GetInt32()),
+                JsonValueKind.Number => ShellNumber.FromJson(arr),
                 JsonValueKind.String => new ShellText(arr.GetString() ?? string.Empty),
                 JsonValueKind.True => new ShellBool(true),
                 JsonValueKind.False => new ShellBool(false),
-                JsonValueKind.Null => new ShellText("null"),
+                JsonValueKind.Null => new ShellJson(arr),
                 JsonValueKind.Object or JsonValueKind.Array => new ShellJson(arr),
                 _ => new ShellText(arr.ToString()),
             };
@@ -120,7 +123,7 @@ internal class ForStatement : Statement
             {
                 throw;
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
                 var content = shell.CurrentScriptContent;
                 var fileName = shell.CurrentScriptFileName;
@@ -133,6 +136,12 @@ internal class ForStatement : Statement
                 throw;
             }
 
+            if (commandState.IsError || commandState.UserCancellationHandled || commandState.ReturnFunc)
+            {
+                return commandState;
+            }
+
+            commandState.ContinueBlock = false;
             if (commandState.BreakBlock)
             {
                 commandState.BreakBlock = false; // Reset break state

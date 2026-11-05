@@ -64,6 +64,7 @@ internal static class ThemeFile
             ["operator"] = (o => o.OperatorColor, (o, v) => o with { OperatorColor = v }),
             ["table_value"] = (o => o.TableValueColor, (o, v) => o with { TableValueColor = v }),
             ["warning"] = (o => o.WarningColor, (o, v) => o with { WarningColor = v }),
+            ["success"] = (o => o.SuccessColor, (o, v) => o with { SuccessColor = v }),
             ["directory"] = (o => o.DirectoryColor, (o, v) => o with { DirectoryColor = v }),
             ["muted"] = (o => o.MutedColor, (o, v) => o with { MutedColor = v }),
             ["help_accent"] = (o => o.HelpAccentColor, (o, v) => o with { HelpAccentColor = v }),
@@ -116,14 +117,19 @@ internal static class ThemeFile
         var warnings = new List<string>();
         var errors = new List<string>();
 
-        if (!Toml.TryToModel(text, out TomlTable? model, out var diagnostics))
+        TomlTable model;
+        try
+        {
+            model = TomlSerializer.Deserialize<TomlTable>(text)!;
+        }
+        catch (TomlException ex)
         {
             throw new ThemeLoadException(MessageService.GetArgsString(
                 "theme-file-error-parse",
                 "source",
                 sourceLabel,
                 "details",
-                string.Join("; ", diagnostics.Select(d => d.Message))));
+                ex.Message));
         }
 
         var name = ReadString(model, "name") ?? Path.GetFileNameWithoutExtension(sourceLabel);

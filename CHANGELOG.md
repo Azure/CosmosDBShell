@@ -2,14 +2,179 @@
 
 ## Unreleased
 
-### Improvements
+### Breaking changes
 
-- Cosmos DB data-plane commands now consistently expose their aggregate observed request charge in structured output and connection-scoped `info` telemetry, including metadata/configuration operations, scripts, change feed reads, paginated operations, handled probes, and charged failures. Azure Resource Manager control-plane operations remain uncharged.
-- Added `$sessionRequestCharge` and `$sessionChargedOperationCount` as read-only shell variables. Set `$sessionRequestChargeWarningThreshold` to a positive RU threshold to print one warning when the current connection reaches it; `info` reports it as `session.requestChargeWarningThreshold`.
+- Structured `help` results now include a `topics` array alongside `help`, `commands`, and `statements`. Consumers that require an exact set of JSON fields must accept the new field. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
+- `pwd` now prints labeled Cosmos location and local directory lines. Structured results retain the existing fields and add `localDirectory`; consumers that require an exact JSON shape must accept the new field. ([#269](https://github.com/Azure/CosmosDBShell/issues/269))
+- `mkdb` and `create database` now create databases without shared throughput when `--scale` and `--ru` are omitted. Provision throughput on individual containers, or specify `--scale=auto --ru=1000` to retain the previous shared autoscale default. Container creation defaults are unchanged. ([#268](https://github.com/Azure/CosmosDBShell/issues/268))
+
+### New features
 
 ### Fixes
 
-- Local emulator outages are now detected across Cosmos DB commands. Requests fail promptly with an error and return the shell to its disconnected state instead of leaving an unresponsive session labeled as connected.
+- Show endpoint-only account and emulator examples when running `connect` offline; keep the connection-string alternative in `help connect`. ([#270](https://github.com/Azure/CosmosDBShell/issues/270))
+- Add `help shortcuts` to list keyboard shortcuts, including history search with `Ctrl+R` and `Ctrl+S`; the `help` overview lists it under Help Topics. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
+- Show the absolute destination path in export success messages so exported files can be located. The structured result's `file` field continues to contain the supplied path. ([#269](https://github.com/Azure/CosmosDBShell/issues/269))
+
+### Improvements
+
+## 1.1.295 — 2026-11-03
+
+### Breaking changes
+
+- On Entra ID (Azure Resource Manager) connections, `mkdb`, `mkcon`, `create database`, and `create container` now return `created: null` with `outcome: "createdOrUpdated"` instead of `created: true`, because the ARM create-or-update API cannot distinguish a new resource from an existing one. Scripts that treat `created` as a boolean should check `outcome` instead. ([#261](https://github.com/Azure/CosmosDBShell/issues/261))
+
+### New features
+
+### Fixes
+
+- Preserve `?` in unquoted command arguments so scalar indexing paths such as `index add /city/?` and `index remove /city/?` reach Cosmos DB unchanged. ([#260](https://github.com/Azure/CosmosDBShell/issues/260))
+- Long-running commands and scripts against a local emulator no longer fail with a timeout and disconnect after 10 seconds while the emulator is still responding. The 10-second limit now applies only when nothing makes progress, and it is paused while confirmation prompts and external editors wait for input.
+- Preserve partial bulk write counts through pipelines on emulator timeouts, report consumed inactivity cancellations as failures, and keep active bulk selection, export, and piped removal scans from timing out during local processing.
+- Prevent scripts from rendering timed-out partial results as successful, pause emulator inactivity deadlines during file/theme editing and change-feed polling intervals, and cancel stalled change-feed requests.
+- Keep Ctrl+C effective for startup commands and redirected scripts, and exclude local external tools such as `jq` from emulator inactivity deadlines.
+- Report interrupted startup commands as failures, retain structured partial write results, and prevent MCP prompt refreshes from canceling queued startup work.
+- Retain settled import counts and RUs on cancellation, prevent interrupted startup scripts from writing partial success output, and keep intentional watch stops successful through pipelines, blocks, and scripts.
+- Stop follow-up startup commands after an intentional watch stop in redirected stdin, and align timed-out import result error messages and exit codes with the command failure.
+- Keep import progress counts and observed RUs current when writes finish while the next input record is still being read.
+- Keep bulk completion counts current during slow input reads, allow cancellation while loading resume journals, and recognize active local validation, removal scans, and successful journal recording without treating failed requests as activity.
+- Stop interrupted startup stdin reads, confirmation prompts, and watch expressions before subsequent work; keep machine-readable stdout clean on Ctrl+C and exclude external command expressions from emulator inactivity deadlines.
+- Database and container creation on key, emulator, and static-token connections now report `created: false` and `outcome: "existing"` when an existing resource is reused, instead of always reporting `created: true`. Human-readable output says "Using existing database/container" in that case. ([#261](https://github.com/Azure/CosmosDBShell/issues/261))
+
+### Improvements
+
+- Show periodic progress for `import`, `bulk`, and pattern-based `rm`, including elapsed time, counts, and observed RU usage, even while requests are waiting. In a terminal, a single progress line is updated in place and removed when the command finishes. Structured output and MCP responses remain unchanged.
+
+## 1.1.291 — 2026-10-26
+
+### Breaking changes
+
+- `print <id> <key>` now parses the key with the same typed syntax as `patch`, so `print item-1 680` reads numeric key `680` instead of string `"680"`. To address a string key that looks like a number, boolean, null, or JSON array, quote it as a JSON string: `print item-1 '"680"'`. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
+- `import` and `export` now use the JSON format of the Azure Databases extension for VS Code. `export` writes an indented JSON array, or CSV when the file name ends in `.csv`; JSON Lines output is no longer supported. `import` automatically detects JSON arrays, single objects, and sequences of objects (including JSON Lines) in non-CSV files; no `--legacy` flag is needed. On both commands, `--format` / `-f` selects the command-result presentation (`user`, `json`, `csv`, or `table`), not the file contents.
+- `import --dry-run` now reports locally validated records in `validated` and always sets `imported` to `0`. Dry-run results explicitly identify offline validation and an unchecked target.
+
+### New features
+
+- **Non-transactional `bulk` command.** Run unlimited independent `create`, `upsert`, `replace`, `delete`, and `patch` operations across partition keys with bounded concurrency (default 16). It uses the batch operation schema, plus optional per-operation `partitionKey` and `ifMatch`, and the same `run`/`begin`/`add`/`execute`/`cancel`/`status`/`show` subcommands. `bulk patch --where` and `bulk delete --where` select items by predicate, including complete hierarchical partition keys. Add `--save` to write a reviewable plan for `bulk run`. Safeguards include dry-run, confirmation, item and observed-RU limits, and ETag checks. Journals skip succeeded writes on rerun, retry failed writes, and hold back writes with unknown outcomes. MCP exposes `run`, `patch`, and `delete`. ([#107](https://github.com/Azure/CosmosDBShell/issues/107))
+
+### Fixes
+
+- Item commands now support undefined partition-key values (`PartitionKey.None`) with the explicit `{}` syntax, including missing components in hierarchical keys. Mutations that infer undefined keys from item content emit bounded warnings. ([#251](https://github.com/Azure/CosmosDBShell/issues/251))
+- Emit inferred-key warnings before bulk mutations and retain them across partial failures, MCP responses, expressions, and pipelines; wildcard `rm *` also matches items with missing partition-key paths.
+- Route inferred-key warnings through stderr redirection and include pending warnings in machine-readable errors; import and scan-based `rm` counts reflect only scheduled writes and selected delete candidates.
+- Emit machine-readable warnings for inferred partition-key mutations before the writes as JSON Lines records on console stderr.
+- Report invalid import partition-key values as per-item failures with `--continue-on-error`, show the final scheduled-write count in bulk warnings, and preserve prior warnings in script machine-mode errors.
+- Partition-key paths with quoted property names, such as `/"tenant id"`, are now resolved correctly when inferring keys from item content and when matching items or typing CSV import columns.
+- `sproc exec` now returns `null` for a stored procedure that completes without setting a response body, instead of reporting a failure after the procedure's writes have committed.
+- `print` now reads items with typed scalar and complete hierarchical partition keys, for example `print customer-1001 '[1001,"customer-1001"]'`. Invalid keys are distinguished from missing items. Shared argument parsing rejects object/nested-array components and non-finite numbers instead of coercing them. ([#244](https://github.com/Azure/CosmosDBShell/issues/244))
+- Avoid accessing an expired HTTP request during MCP session teardown, preventing disposal errors while releasing location subscriptions and legacy SSE admission state. ([#249](https://github.com/Azure/CosmosDBShell/issues/249))
+- Keep CLI inferred-key warnings visible before writes when the MCP listener is enabled; MCP calls continue to return warnings in their responses.
+- Show successful imports as a readable summary in normal output mode without appending JSON; structured output modes receive only the result.
+- Keep export, item-write, TTL, conflict-policy, and indexing-policy confirmations readable in normal output mode rather than appending status JSON. Requested structured results retain their existing data.
+- Preserve import counts and observed write RUs in structured CLI and MCP errors after partial imports or invalid input. Import failures retain the underlying error classification and report a bounded representative error.
+- Validate item IDs during import dry runs and report local validation failures with usage exit code `2`. Help and results clarify that dry runs do not check target partition keys, permissions, conflicts, or other service constraints.
+- Reject non-object values in JSON object sequences before buffering their bodies, report physical start lines for sequence items, and validate import result formats before accessing the target container or writing items.
+- Restore actionable missing-value diagnostics for startup options such as `--connect` and keep literal help/version command tails separate from startup handling.
+- Include requested CSV result text in MCP responses for failed imports and other structured failures, alongside the error and partial results.
+- Preserve partial bulk results after execution errors or cancellation, decode quoted partition-key paths consistently, and prevent retries from replaying newer journal outcomes or reordering writes after a failure.
+- Remove incomplete bulk saved plans when the final file flush fails, so a truncated plan cannot be mistaken for a complete job.
+- Restore actionable missing-value diagnostics for startup options such as `--connect` and keep literal help/version command tails separate from startup handling.
+- Release bulk temporary files promptly after a final spool flush fails, preventing retained disk space from hindering recovery.
+- Report invalid Unicode item IDs in import dry runs as validation errors, preserving the validated count, selected result format, and usage exit code.
+- Reject malformed BOM-encoded UTF-16/UTF-32 import files instead of silently replacing characters in item IDs; retain partial results and the requested result format when decoding fails.
+- Count invalid Unicode partition-key strings as per-item import failures without losing concurrent write results or the selected output format.
+- Describe existing custom conflict policies without a stored procedure as requiring manual resolution rather than displaying an empty procedure name.
+- Validate UTF-8 throughout JSON import files, including non-ID fields, and retain structured partial results when malformed bytes are found.
+- Avoid repeatedly parsing incomplete JSON objects during import when large records arrive in short reads.
+- Preserve completed import writes, observed request charges, and structured partial results when an SDK request timeout occurs alongside other in-flight writes; explicit caller cancellation still stops the import.
+- Restore BOM-aware UTF-16/UTF-32 JSON import support, including JSON Lines, while streaming the input.
+- Honor `2>` and `2>>` for structured command failure diagnostics in normal output mode, including import dry-run validation errors.
+- Reject malformed JSON object prefixes before growing the import buffer, preventing invalid input followed by a large whitespace tail from exhausting memory, including during dry runs.
+- Keep terminal JSON output valid on narrow consoles by avoiding inserted line breaks inside long JSON strings. Shorter JSON output remains syntax-highlighted.
+
+### Improvements
+
+- `import` now streams documents with up to 16 concurrent writes by default. Use `--concurrency` to tune the limit or `--concurrency=1` for sequential, file-order writes. On a failure, imports stop scheduling new writes and wait for in-flight writes; `--continue-on-error` continues after per-item write failures.
+- Refresh dependencies, including the stable Cosmos DB client SDK, .NET 10 hosting libraries, command-line parsing, theme loading, editor/LSP support, authentication, diagnostics, serialization, and test/build tooling. Preserve existing CLI options and theme files while migrating to the current library APIs.
+
+## 1.1.280 — 2026-10-09
+
+### Fixes
+
+- Restore legacy MCP HTTP+SSE endpoints alongside Streamable HTTP on the same `--mcp` server using SDK 2.2. No extra option is required. Bound outstanding legacy requests to 16 across all sessions and reject excess requests without queuing.
+- Parse `exec` options and shell words like direct commands. Bind built-in options normally and pass option-shaped words to functions and script files as positional text.
+- `for` and `do` loops now reject misspelled `in` and `while` keywords before any statements in the input execute. They previously accepted any identifier in those positions.
+- `filter` now rejects array index literals larger than `2147483647`, including optional access, instead of silently selecting element zero. Representable indexes beyond the array length still return `null`.
+- Decimal arithmetic and comparisons involving JSON numeric strings now use the same culture-invariant `double` conversion as shell strings instead of failing with a `Decimal`-to-`Double` cast error. String concatenation with `+` is unchanged.
+- `exec` now accepts normal command options, negative arguments, URLs, and file patterns while preserving variable, JSON, and parenthesized-expression arguments. Options previously failed to parse, including the documented `exec $cmd -m 5` form.
+- Detect local Cosmos DB emulator connections by the parsed HTTP(S) endpoint host, preventing misleading remote URLs or unrelated connection-string fields from automatically disabling TLS certificate validation.
+
+## 1.1.271-preview — 2026-10-02
+
+### New features
+
+- **Transactional `batch` command.** Execute 1-100 `create`, `upsert`, `replace`, `delete`, or `patch` operations atomically within one partition key with `batch run <json> --partition-key <pk>`. Interactive shells can also assemble a batch with `begin`/`add`/`execute`, inspect it with `status`/`show`, or discard it with `cancel`. A failed operation rolls back the entire batch. MCP exposes only the one-shot `run` mode because clients share shell state. ([#135](https://github.com/Azure/CosmosDBShell/pull/135))
+- **`query --explain`.** Inspect index usage, utilized and potential indexes, index-hit ratio, request charge, and a plain-language evaluation instead of returning documents. The probe reads only the first query page with `MaxItemCount = 1`; its metrics are estimates, and unavailable index metrics are reported as unknown rather than as a full scan. Available in interactive, machine-readable, and MCP output. ([#131](https://github.com/Azure/CosmosDBShell/pull/131))
+- **Read-only `doctor` diagnostics.** Run bounded local, DNS, data-plane, and optional ARM checks without changing connection or navigation or initiating interactive login. Supports explicit database/container targets, an opt-in constant-projection query, timeout controls, and structured reports with verdicts, timings, and observed RUs. `doctor who` adds known credential and scope information without claiming verified write access. Clock-skew estimates reuse existing response headers; a bounded public GitHub release lookup reports available updates and can be disabled with `--no-update-check`. ([#209](https://github.com/Azure/CosmosDBShell/pull/209))
+- **Live MCP shell-location resource.** Read `cosmos://shell/current-location` for both `currentLocation` and `currentAccountEndpoint`, and subscribe to updates caused by interactive or MCP navigation and connection changes. MCP `2026-07-28` clients use `subscriptions/listen`; clients using the `initialize` handshake use `resources/subscribe` and the session's GET stream. Notifications signal clients to reread the resource; explicit database/container arguments remain the reliable way to target independent operations. ([#223](https://github.com/Azure/CosmosDBShell/pull/223), [#231](https://github.com/Azure/CosmosDBShell/pull/231), [#232](https://github.com/Azure/CosmosDBShell/pull/232))
+
+### Improvements
+
+- Cosmos DB data-plane commands now consistently expose their aggregate observed request charge in structured output and connection-scoped `info` telemetry, including metadata/configuration operations, scripts, change feed reads, paginated operations, handled probes, and charged failures. MCP results carry the observed cost in a top-level `requestCharge` field, including charged failures. Azure Resource Manager control-plane operations remain uncharged. ([#171](https://github.com/Azure/CosmosDBShell/pull/171))
+- Added `$sessionRequestCharge` and `$sessionChargedOperationCount` as read-only shell variables. Set `$sessionRequestChargeWarningThreshold` to a positive RU threshold to print one warning when the current connection reaches it; `info` reports it as `session.requestChargeWarningThreshold`. ([#171](https://github.com/Azure/CosmosDBShell/pull/171))
+- MCP `query` and container-item `ls` calls now return bounded, resumable pages with an opaque `continuationToken`. Pass a non-null token back as `continuation` with the same query and options to retrieve the next page. Database/container name listings remain complete, and interactive and scripted commands retain their existing multi-page behavior. ([#204](https://github.com/Azure/CosmosDBShell/pull/204))
+- The HTTP MCP server supports protocol `2026-07-28` without a session, including streamed `subscriptions/listen` updates and multi-round-trip destructive confirmations. Confirmation retries carry server-signed, single-use state tied to the exact command and shell context, expiring after 10 minutes. Clients using the `initialize` handshake retain session-based `elicitation/create`; their location subscriptions end when the session is deleted or has no open requests for 10 minutes. ([#231](https://github.com/Azure/CosmosDBShell/pull/231), [#232](https://github.com/Azure/CosmosDBShell/pull/232))
+- The welcome screen, command-example descriptions, runtime errors, and theme-preview labels now use localization resources and the OS UI language when translations are available, with English fallback for untranslated text. Added and refreshed catalogs for Czech, German, Spanish, French, Italian, Japanese, Korean, Polish, Brazilian Portuguese, Russian, Turkish, and Simplified and Traditional Chinese. Executable examples, command names, and flags remain unchanged. ([#206](https://github.com/Azure/CosmosDBShell/pull/206), [#211](https://github.com/Azure/CosmosDBShell/pull/211), [#212](https://github.com/Azure/CosmosDBShell/pull/212), [#213](https://github.com/Azure/CosmosDBShell/pull/213), [#216](https://github.com/Azure/CosmosDBShell/pull/216), [#217](https://github.com/Azure/CosmosDBShell/pull/217))
+- Cosmos DB SDK requests now include the shell application version in the user agent, making client versions identifiable in service diagnostics. ([#210](https://github.com/Azure/CosmosDBShell/pull/210))
+- Destructive MCP confirmations now identify their target. The elicitation prompt adds the connected account endpoint and the current database/container location, and notes that explicit `--db`/`--con` arguments override that location. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- Import and export no longer hold entire files in memory. CSV imports are parsed incrementally, and CSV exports spool documents to a private temporary file to determine the complete column set, so transfers no longer scale with document count. Allow temporary disk space for the CSV export spool in addition to the destination file. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- Script diagnostics now report where a failure happened. Human-readable output shows the innermost source location first followed by the recorded function and script call sites, JSON errors carry the originating file, line, and column, and diagnostic logs retain both through the existing secret-redaction pipeline. Functions keep their defining file's location even when invoked from another file. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- The language server now applies the same validation as script execution: control-flow placement, duplicate function parameters, document-local function names, and commands and built-in options nested inside blocks, branches, loops, pipelines, and command expressions. Variable and function symbols are case-sensitive, so `$value` and `$Value` stay distinct. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- Host-requested cancellation now propagates through script files, blocks, loops, and function calls without being turned into a positional runtime error. The shell reports a neutral result, records the cancellation in the diagnostic log, and restores call scopes and source context. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- Documented the shell language in [programming](docs/programming.md): operator precedence and associativity, compound assignment, numeric promotion, a statement grammar, validation rules, and resource limits. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- `rm` accepts `--partition-key` (`--pk`) to restrict both the dry run and the deletion to one complete logical partition key, including typed and hierarchical keys. `rm <id> --key=id --partition-key=<pk>` uses a point read or point delete instead of scanning the container, and its dry run reports the item's `id`, `partitionKey`, and `etag`. The new `--etag` option deletes that item only if its ETag still matches; a mismatch fails without retrying. ([#230](https://github.com/Azure/CosmosDBShell/pull/230), [#229](https://github.com/Azure/CosmosDBShell/issues/229))
+
+### Breaking changes
+
+- MCP `query` and container-item `ls` no longer aggregate all pages in a single call. `max` bounds one page and must be positive; omitted or non-positive values use a default cap of 100. Clients must follow non-null `continuationToken` values rather than assuming a short page means exhaustion. A null token marks exhaustion unless `resultIncomplete` is true. ([#204](https://github.com/Azure/CosmosDBShell/pull/204))
+- Malformed CSV files are now rejected instead of being silently misread. An unterminated or misplaced quote previously caused the remainder of the file to be absorbed into a single field, so the import reported success while writing corrupted items. Such files now abort with `Invalid CSV record at line <n>`. Imports that previously appeared to succeed may now fail and require the source file to be corrected. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- Command text and script files are now fully parsed and validated before any of their statements run, so a syntax or semantic error prevents the entire input from executing rather than failing part-way through. Invalid control flow is rejected: `return` requires an enclosing function or script file, `break` and `continue` require an enclosing loop in the same function or script, and duplicate function parameter names are refused. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- Calling a function with too few or too many arguments is now a usage error that exits with code `2`, including calls inside expressions. The function body does not run. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- Integer arithmetic now reports overflow as an error instead of wrapping. Shell integer literal magnitudes must be between `0` and `2147483647`; because the minus sign is a separate unary operator, the minimum shell integer must be written as `-2147483647 - 1`. Standalone large integer literals inside JSON objects and arrays are preserved as JSON numbers instead of being rejected; this does not extend the shell's integer arithmetic range. ([#208](https://github.com/Azure/CosmosDBShell/pull/208), [#225](https://github.com/Azure/CosmosDBShell/pull/225))
+- JSON construction now preserves decimal types, so `$object = {"value":3.0}` stores JSON `3.0` and `$object.value / 2` produces `1.5`. It previously stored `3` and performed integer division, producing `1`. Scripts that relied on the old truncation must be reviewed. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- A failed command expression now propagates its error instead of silently producing an empty result. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- Scripts are subject to fixed resource limits: a shared parser nesting budget of 128 entries, a maximum expression tree depth of 128 nodes, and at most 64 active function and script-file calls. Exceeding a limit fails with a diagnostic instead of continuing recursive parsing or execution. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+
+### Fixes
+
+- Explicit JSON `null` values in ordinary MCP arguments are treated as omitted rather than failing nullable option binding, and are not echoed into history. Required arguments still fail validation when absent. `continuation` and the `rm` safety options `partition-key`/`pk` and `etag` reject explicit nulls instead of silently removing paging or deletion safeguards. Numeric arguments in echoed commands, confirmations, and history now use invariant formatting so they replay correctly under comma-decimal locales. ([#227](https://github.com/Azure/CosmosDBShell/pull/227))
+- Concurrent shell processes now merge saved history under a shared lock instead of overwriting each other's entries. Saves and clears publish a complete, flushed replacement, preserving the existing file on failed writes; failed clears report an error without discarding loaded history. Temporary history files use restricted permissions, including preserved access rules or owner-only access on Windows. ([#228](https://github.com/Azure/CosmosDBShell/pull/228))
+- CSV export now preserves scalar, array, and null query results in a scalar column, including results mixed with objects. The header is empty by default and can be named with `COSMOSDB_SHELL_CSV_SCALAR_COLUMN`; a collision with an object property fails explicitly. CSV import ignores empty headers only for empty cells and reports a line/column error for non-empty values under an empty header. ([#224](https://github.com/Azure/CosmosDBShell/pull/224))
+- Startup and interactive output no longer crash on terminals without ANSI support. Linux containers without ICU can run in .NET globalization-invariant mode using bundled English messages. ([#226](https://github.com/Azure/CosmosDBShell/pull/226))
+- Numeric parsing and conversion now use invariant culture, so decimal values in scripts and JSON properties behave consistently under comma-decimal locales. Large integer literals in JSON objects and arrays retain their exact JSON representation rather than overflowing the shell's 32-bit integer parser. ([#225](https://github.com/Azure/CosmosDBShell/pull/225))
+- Data-plane indexing-policy reads and replacements now preserve included/excluded paths, composite indexes, spatial indexes, and vector indexes instead of losing SDK collection properties during serialization. The policy conversion uses the Cosmos SDK's Newtonsoft.Json contract; document serialization remains on System.Text.Json. ([#215](https://github.com/Azure/CosmosDBShell/pull/215))
+- `mkdb`, `mkcon`, `create database`, and `create container` now work on serverless accounts. They previously requested autoscale throughput even when `--scale` and `--ru` were omitted, which serverless accounts reject. Omitting both options now creates the resource without throughput settings; supplying either option on a serverless account fails with an explanation. Provisioned accounts keep the existing autoscale default of 1000 RU/s. ([#222](https://github.com/Azure/CosmosDBShell/pull/222), [#218](https://github.com/Azure/CosmosDBShell/issues/218))
+- Vector `ORDER BY`, `ORDER BY RANK` relevance ranking, and object-shaped `DISTINCT` projections no longer fail with a continuation-token error. These query pipelines execute successfully but cannot export a resumable token, which was previously reported as a command failure. Such queries now return their documents; through MCP they keep reading until the requested limit instead of stopping after one page, and a truncated result is reported as `resultIncomplete` rather than as an exhausted result set. ([#221](https://github.com/Azure/CosmosDBShell/pull/221), [#219](https://github.com/Azure/CosmosDBShell/issues/219))
+- Local emulator outages are now detected across Cosmos DB commands. Requests fail promptly with an error and return the shell to its disconnected state instead of leaving an unresponsive session labeled as connected. ([#200](https://github.com/Azure/CosmosDBShell/pull/200))
+- A failed or cancelled export no longer destroys its destination file. Exports are written to a temporary file in the destination directory and moved into place only after they complete, so an existing file survives query failures, write failures, and cancellation. An abrupt process termination can leave an unfinished `.cosmos-export-*.tmp` file behind. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- `export --max` no longer requests a further query page once the limit is reached, so the reported request charge no longer includes a page whose items were discarded. Query iterators are now disposed. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- Shell and MCP command execution is serialized, including nested shell calls, so concurrent requests can no longer interleave and corrupt the shared connection and navigation state. Waiting for a destructive confirmation does not hold the execution lock. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- A destructive MCP command is refused when the connection or navigation context changes while its confirmation is pending, including navigating away and back. It previously ran against the changed context. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- Echoing an MCP command line no longer fails the command it announces on hosts without an ANSI terminal, which previously reported `Terminal does not support ANSI` instead of running it. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- `export` now rejects a directory as its destination and rejects an existing file before running its query instead of after. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- `return` no longer leaves the previous statement's custom renderer and explicit output format active, which could display an earlier command's output in place of the returned value. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- Attaching a source location to a runtime failure no longer changes its exit-code category, so authentication, throttling, connectivity, and arithmetic failures are no longer reported as usage errors. Parser errors raised from a script file keep that file's name and source text, including when reached through a command expression. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- Loops and functions preserve JSON `null` values, and numeric conditions use the same zero/nonzero rule for shell values and JSON properties, including fractional numbers. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- The language server records a `do` loop's body before its condition and records a `for` binder as the loop variable's definition, so hover and go-to-definition no longer resolve to the wrong occurrence. ([#208](https://github.com/Azure/CosmosDBShell/pull/208))
+- MCP command lines now list positional arguments in the order the command binds them. A destructive confirmation and the recorded history entry previously followed the client's argument order, so `rmdb` could display its `force` flag in place of the database name. A call that supplies a positional argument while omitting an earlier one is now rejected, because the shell cannot express that call and the recorded command would bind differently on replay. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- MCP invocations are now saved to the history file as they run and are bounded by the history size limit. They were previously saved only when a later interactive command was entered. On Linux and macOS, the history file is now restricted to its owner, including an existing file that was previously readable by other users. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+
+### Build & pipeline
+
+- Added a dependency on CsvHelper 33.1.0 for CSV parsing. ([#207](https://github.com/Azure/CosmosDBShell/pull/207))
+- Upgraded ModelContextProtocol and ModelContextProtocol.AspNetCore to 2.2.0 for the updated HTTP transport and subscription lifecycle. ([#231](https://github.com/Azure/CosmosDBShell/pull/231), [#232](https://github.com/Azure/CosmosDBShell/pull/232))
+- Added OneLoc catalog export, translation-resource generation, and CI checks that reject missing or stale committed localization catalogs. Local builds refresh the source catalog; CI verifies it without rewriting it. The localization tool project is now included in the solution. ([#206](https://github.com/Azure/CosmosDBShell/pull/206), [#220](https://github.com/Azure/CosmosDBShell/pull/220))
+- Pinned GitHub Actions to full-length commit SHAs and updated the grouped Actions dependencies. ([#202](https://github.com/Azure/CosmosDBShell/pull/202), [#203](https://github.com/Azure/CosmosDBShell/pull/203))
 
 ## 1.1.209-preview — 2026-08-26
 

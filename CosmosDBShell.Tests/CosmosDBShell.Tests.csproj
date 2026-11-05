@@ -10,6 +10,8 @@
     <IsPackable>false</IsPackable>
     <IsPublishable>false</IsPublishable>
     <IsTestProject>true</IsTestProject>
+    <!-- Keep the VSTest runner used by CI filters and the Coverlet collector. -->
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(CosmosRequireEmulator)' == 'true'">
@@ -32,6 +34,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CosmosDBShell\CosmosDBShell.csproj" />
+    <ProjectReference Include="..\tools\Localization\CosmosDBShell.Localization.csproj" />
   </ItemGroup>
 
   <ItemGroup>

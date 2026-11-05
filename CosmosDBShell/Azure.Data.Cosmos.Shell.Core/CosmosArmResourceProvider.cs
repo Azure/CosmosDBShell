@@ -222,7 +222,9 @@ internal static class CosmosArmResourceProvider
             context.Account.Data.Location,
             new CosmosDBSqlDatabaseResourceInfo(databaseName))
         {
-            Options = CreateUpdateConfig(scale, maxRu),
+            Options = CreationThroughput.IsSpecified(scale, maxRu)
+                ? CreateUpdateConfig(context.Account.Data, scale, maxRu)
+                : null,
         };
 
         var operation = await context.Account.GetCosmosDBSqlDatabases().CreateOrUpdateAsync(WaitUntil.Completed, databaseName, content, token);
@@ -273,7 +275,7 @@ internal static class CosmosArmResourceProvider
 
         var content = new CosmosDBSqlContainerCreateOrUpdateContent(context.Account.Data.Location, resource)
         {
-            Options = CreateUpdateConfig(scale, maxRu),
+            Options = CreateUpdateConfig(context.Account.Data, scale, maxRu),
         };
 
         var operation = await database.GetCosmosDBSqlContainers().CreateOrUpdateAsync(WaitUntil.Completed, containerName, content, token);
@@ -297,11 +299,17 @@ internal static class CosmosArmResourceProvider
         return container.Data.Resource.PartitionKey?.Paths?.ToArray() ?? [];
     }
 
-    public static CosmosDBCreateUpdateConfig CreateUpdateConfig(string? scale, int? maxRu)
+    public static CosmosDBCreateUpdateConfig? CreateUpdateConfig(CosmosDBAccountData account, string? scale, int? maxRu)
     {
-        var ru = maxRu ?? 1000;
-        if (string.Equals(scale, "manual", StringComparison.InvariantCultureIgnoreCase) ||
-            string.Equals(scale, "m", StringComparison.InvariantCultureIgnoreCase))
+        if (IsServerless(account))
+        {
+            return CreationThroughput.IsSpecified(scale, maxRu)
+                ? throw new ServerlessThroughputNotSupportedException()
+                : null;
+        }
+
+        var ru = maxRu ?? CreationThroughput.DefaultMaxRu;
+        if (CreationThroughput.IsManual(scale))
         {
             return new CosmosDBCreateUpdateConfig
             {
@@ -313,6 +321,12 @@ internal static class CosmosArmResourceProvider
         {
             AutoscaleMaxThroughput = ru,
         };
+    }
+
+    internal static bool IsServerless(CosmosDBAccountData account)
+    {
+        return account.CapacityMode == CapacityMode.Serverless
+            || account.Capabilities.Any(capability => string.Equals(capability.Name, "EnableServerless", StringComparison.OrdinalIgnoreCase));
     }
 
     public static string WriteArmModel<T>(T model)

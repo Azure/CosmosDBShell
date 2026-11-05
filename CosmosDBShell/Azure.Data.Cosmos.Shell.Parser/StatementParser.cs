@@ -82,6 +82,44 @@ internal class StatementParser
 
     public Statement? ParseStatement()
     {
+        if (this.expressionParser.IsAtEnd || !this.lexer.Budget.TryEnter(this.Errors, this.expressionParser.Current))
+        {
+            return null;
+        }
+
+        try
+        {
+            return this.ParseStatementCore();
+        }
+        finally
+        {
+            this.lexer.Budget.Exit();
+        }
+    }
+
+    private static string RedirectLabel(Token redirectToken)
+        => redirectToken.Type switch
+        {
+            TokenType.RedirectOutput => ">",
+            TokenType.RedirectAppendOutput => ">>",
+            TokenType.RedirectError => "2>",
+            TokenType.RedirectAppendError => "2>>",
+            _ => redirectToken.Value,
+        };
+
+    private static bool IsCommandTerminator(Token token)
+        => token.Type == TokenType.Semicolon ||
+           token.Type == TokenType.Eol ||
+           token.Type == TokenType.CloseBrace ||
+           token.Type == TokenType.Pipe ||
+           token.Type == TokenType.GreaterThan ||
+           token.Type == TokenType.RedirectOutput ||
+           token.Type == TokenType.RedirectAppendOutput ||
+           token.Type == TokenType.RedirectError ||
+           token.Type == TokenType.RedirectAppendError;
+
+    private Statement? ParseStatementCore()
+    {
         if (this.expressionParser.IsAtEnd)
         {
             return null;
@@ -148,27 +186,6 @@ internal class StatementParser
         return segments[0];
     }
 
-    private static string RedirectLabel(Token redirectToken)
-        => redirectToken.Type switch
-        {
-            TokenType.RedirectOutput => ">",
-            TokenType.RedirectAppendOutput => ">>",
-            TokenType.RedirectError => "2>",
-            TokenType.RedirectAppendError => "2>>",
-            _ => redirectToken.Value,
-        };
-
-    private static bool IsCommandTerminator(Token token)
-        => token.Type == TokenType.Semicolon ||
-           token.Type == TokenType.Eol ||
-           token.Type == TokenType.CloseBrace ||
-           token.Type == TokenType.Pipe ||
-           token.Type == TokenType.GreaterThan ||
-           token.Type == TokenType.RedirectOutput ||
-           token.Type == TokenType.RedirectAppendOutput ||
-           token.Type == TokenType.RedirectError ||
-           token.Type == TokenType.RedirectAppendError;
-
     /// <summary>
     /// Detects the start of a '2&gt;' or '2&gt;&gt;' stderr redirect in command context.
     /// True when <see cref="ExpressionParser.Current"/> is a Number token with value "2"
@@ -210,6 +227,17 @@ internal class StatementParser
         {
             this.expressionParser.Advance();
         }
+    }
+
+    private Token ConsumeKeyword(string keyword, string message)
+    {
+        var token = this.expressionParser.Consume(TokenType.Identifier, message);
+        if (token.Length > 0 && !token.Value.Equals(keyword, StringComparison.OrdinalIgnoreCase))
+        {
+            this.ReportError(message, token);
+        }
+
+        return token;
     }
 
     private Statement? ParseSingleStatement()
@@ -370,8 +398,7 @@ internal class StatementParser
                 return null;
             }
 
-            var inToken = this.expressionParser.Current;
-            this.expressionParser.Consume(TokenType.Identifier, MessageService.GetString("statement_error_expected_in"));
+            var inToken = this.ConsumeKeyword("in", MessageService.GetString("statement_error_expected_in"));
 
             var collection = this.expressionParser.ParseExpression();
             var statement = this.ParseStatement();
@@ -418,8 +445,7 @@ internal class StatementParser
                 return null;
             }
 
-            var whileToken = this.expressionParser.Current;
-            this.expressionParser.Consume(TokenType.Identifier, MessageService.GetString("statement_error_expected_while"));
+            var whileToken = this.ConsumeKeyword("while", MessageService.GetString("statement_error_expected_while"));
 
             var condition = this.expressionParser.ParseExpression();
             return new DoWhileStatement(doToken, statement, whileToken, condition);
@@ -490,7 +516,12 @@ internal class StatementParser
                    this.expressionParser.Current.Type != TokenType.CloseBrace &&
                    this.expressionParser.Current.Type != TokenType.Pipe)
             {
-                var arg = this.expressionParser.ParsePrimaryExpression();
+                var arg = this.ParseCommandArgument();
+                if (arg == null)
+                {
+                    break;
+                }
+
                 arguments.Add(arg);
             }
 
@@ -702,6 +733,7 @@ internal class StatementParser
             if (!this.expressionParser.IsAtEnd &&
                 this.expressionParser.Current != null &&
                 this.expressionParser.Current.Type != TokenType.Semicolon &&
+                this.expressionParser.Current.Type != TokenType.CloseBrace &&
                 this.expressionParser.Current.Type != TokenType.Eol)
             {
                 value = this.expressionParser.ParseExpression();
@@ -851,6 +883,19 @@ internal class StatementParser
                 var current = this.expressionParser.Current;
                 this.expressionParser.Advance();
 
+                var compoundOperator = this.expressionParser.IsAtEnd ? null : this.expressionParser.Current;
+                if (compoundOperator?.Type is TokenType.Plus or TokenType.Minus or TokenType.Multiply or TokenType.Divide &&
+                    this.expressionParser.Peek() is { Type: TokenType.Assignment } equals &&
+                    compoundOperator.Start + compoundOperator.Length == equals.Start)
+                {
+                    this.expressionParser.Advance();
+                    this.expressionParser.Advance();
+                    var value = this.expressionParser.ParseExpression();
+                    var variable = new VariableExpression(current, current.Value.StartsWith('$') ? current.Value[1..] : current.Value);
+                    var assignmentToken = new Token(TokenType.Assignment, compoundOperator.Value + "=", compoundOperator.Start, compoundOperator.Length + equals.Length);
+                    return new AssignmentStatement(variable, assignmentToken, value);
+                }
+
                 if (!this.expressionParser.IsAtEnd &&
                     this.expressionParser.Current != null &&
                     this.expressionParser.Current.Type == TokenType.Assignment)
@@ -874,6 +919,56 @@ internal class StatementParser
             this.ReportError(ex.Message, this.expressionParser.Current);
             return null;
         }
+    }
+
+    private Expression? ParseCommandArgument()
+    {
+        var commandWordParser = this.CreateCommandShellWordParser();
+        var current = this.expressionParser.Current;
+        if (current?.Type != TokenType.Minus || !commandWordParser.IsCommandOptionStart())
+        {
+            return commandWordParser.ParseShellWord();
+        }
+
+        var optionStartToken = current;
+        this.expressionParser.Advance();
+
+        bool doubleDash = false;
+        if (!this.expressionParser.IsAtEnd &&
+            this.expressionParser.Current?.Type == TokenType.Minus)
+        {
+            doubleDash = true;
+            this.expressionParser.Advance();
+        }
+
+        if (this.expressionParser.IsAtEnd ||
+            this.expressionParser.Current is not { Type: TokenType.Identifier } optionNameToken)
+        {
+            this.ReportError(
+                MessageService.GetArgsString("statement_error_expected_option_name", "prefix", doubleDash ? "--" : "-"),
+                this.expressionParser.Current);
+            return null;
+        }
+
+        this.expressionParser.Advance();
+
+        Token? separatorToken = null;
+        Expression? optionValue = null;
+        if (!this.expressionParser.IsAtEnd &&
+            this.expressionParser.Current is { Type: TokenType.Colon or TokenType.Assignment } separator)
+        {
+            separatorToken = separator;
+            this.expressionParser.Advance();
+            optionValue = commandWordParser.ParseShellWord();
+            if (optionValue == null)
+            {
+                this.ReportError(
+                    MessageService.GetArgsString("statement_error_invalid_option_value", "option", optionNameToken.Value),
+                    this.expressionParser.Current);
+            }
+        }
+
+        return new CommandOption(optionStartToken, optionNameToken, separatorToken, optionValue);
     }
 
     private CommandStatement? ParseCommandStatement(Token? optToken = null)
@@ -916,83 +1011,13 @@ internal class StatementParser
                    this.expressionParser.Current.Type != TokenType.RedirectAppendError &&
                    !this.IsStderrRedirectStart())
             {
-                var commandWordParser = this.CreateCommandShellWordParser();
-
-                // In command mode an argument is either a structured option (`-name`, `--name[=:]value`)
-                // or a "shell word": a maximal run of adjacent simple tokens concatenated as text.
-                // Strings, interpolated strings, $-variables and (expr)/[..]/{..} drop into expression
-                // mode unchanged so existing scripting features keep working.
-                if (this.expressionParser.Current.Type == TokenType.Minus &&
-                    commandWordParser.IsCommandOptionStart())
+                var arg = this.ParseCommandArgument();
+                if (arg == null)
                 {
-                    var optionStartToken = this.expressionParser.Current;
-                    this.expressionParser.Advance();
-
-                    bool doubleDash = false;
-                    if (!this.expressionParser.IsAtEnd &&
-                        this.expressionParser.Current != null &&
-                        this.expressionParser.Current.Type == TokenType.Minus)
-                    {
-                        doubleDash = true;
-                        this.expressionParser.Advance();
-                    }
-
-                    if (this.expressionParser.IsAtEnd ||
-                        this.expressionParser.Current == null ||
-                        this.expressionParser.Current.Type != TokenType.Identifier)
-                    {
-                        this.ReportError(
-                            MessageService.GetArgsString("statement_error_expected_option_name", "prefix", doubleDash ? "--" : "-"),
-                            this.expressionParser.Current);
-                        break;
-                    }
-
-                    var optionNameToken = this.expressionParser.Current;
-                    var optionName = optionNameToken.Value;
-                    this.expressionParser.Advance();
-
-                    Token? separatorToken = null;
-                    Expression? optionValue = null;
-                    if (!this.expressionParser.IsAtEnd &&
-                        this.expressionParser.Current != null &&
-                        (this.expressionParser.Current.Type == TokenType.Colon ||
-                         this.expressionParser.Current.Type == TokenType.Assignment))
-                    {
-                        separatorToken = this.expressionParser.Current;
-                        this.expressionParser.Advance();
-
-                        if (!this.expressionParser.IsAtEnd &&
-                            this.expressionParser.Current != null)
-                        {
-                            optionValue = commandWordParser.ParseShellWord();
-
-                            if (optionValue == null)
-                            {
-                                this.ReportError(
-                                    MessageService.GetArgsString("statement_error_invalid_option_value", "option", optionName),
-                                    this.expressionParser.Current);
-                            }
-                        }
-                        else
-                        {
-                            this.ReportError(
-                                MessageService.GetArgsString("statement_error_invalid_option_value", "option", optionName),
-                                this.expressionParser.Current);
-                        }
-                    }
-
-                    command.Arguments.Add(new CommandOption(optionStartToken, optionNameToken, separatorToken, optionValue));
+                    break;
                 }
-                else
-                {
-                    var arg = commandWordParser.ParseShellWord();
-                    if (arg == null)
-                    {
-                        break;
-                    }
 
-                    command.Arguments.Add(arg);
-                }
+                command.Arguments.Add(arg);
             }
 
             while (!this.expressionParser.IsAtEnd &&
@@ -1187,6 +1212,98 @@ internal class StatementParser
             }
 
             this.expressionParser.Advance();
+        }
+    }
+
+    internal sealed class ScriptParseResult
+    {
+        private ScriptParseResult(IReadOnlyList<Statement> statements, ErrorList errors)
+        {
+            this.Statements = statements;
+            this.Errors = errors;
+        }
+
+        public IReadOnlyList<Statement> Statements { get; }
+
+        public ErrorList Errors { get; }
+
+        public static ScriptParseResult Parse(string source, bool allowReturn = false)
+        {
+            var parser = new StatementParser(source);
+            var statements = parser.ParseStatements();
+            if (!parser.Errors.HasErrors)
+            {
+                ValidateStatements(statements, parser.Errors, allowReturn);
+            }
+
+            return new ScriptParseResult(statements.AsReadOnly(), parser.Errors);
+        }
+
+        internal static void ValidateStatements(IEnumerable<Statement> statements, ErrorList errors, bool allowReturn)
+        {
+            foreach (var statement in statements)
+            {
+                Validate(statement, errors, inFunction: allowReturn, loopDepth: 0);
+            }
+        }
+
+        private static void Validate(Statement statement, ErrorList errors, bool inFunction, int loopDepth)
+        {
+            switch (statement)
+            {
+                case BreakStatement or ContinueStatement when loopDepth == 0:
+                    errors.Add(new ParseError(statement.Start, statement.Length, MessageService.GetString("script-error-loop-control")));
+                    break;
+                case ReturnStatement when !inFunction:
+                    errors.Add(new ParseError(statement.Start, statement.Length, MessageService.GetString("script-error-return-context")));
+                    break;
+                case DefStatement function:
+                    var names = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var parameter in function.Parameters)
+                    {
+                        if (!names.Add(parameter.TrimStart('$')))
+                        {
+                            errors.Add(new ParseError(function.Start, function.Length, MessageService.GetArgsString("script-error-duplicate-parameter", "name", parameter)));
+                        }
+                    }
+
+                    Validate(function.Statement, errors, inFunction: true, loopDepth: 0);
+                    break;
+                case BlockStatement block:
+                    foreach (var child in block.Statements)
+                    {
+                        Validate(child, errors, inFunction, loopDepth);
+                    }
+
+                    break;
+                case PipeStatement pipe:
+                    foreach (var child in pipe.Statements)
+                    {
+                        Validate(child, errors, inFunction, loopDepth);
+                    }
+
+                    break;
+                case IfStatement conditional:
+                    Validate(conditional.Statement, errors, inFunction, loopDepth);
+                    if (conditional.ElseStatement != null)
+                    {
+                        Validate(conditional.ElseStatement, errors, inFunction, loopDepth);
+                    }
+
+                    break;
+                case ForStatement forLoop:
+                    Validate(forLoop.Statement, errors, inFunction, loopDepth + 1);
+                    break;
+                case WhileStatement whileLoop:
+                    Validate(whileLoop.Statement, errors, inFunction, loopDepth + 1);
+                    break;
+                case DoWhileStatement doLoop:
+                    Validate(doLoop.Statement, errors, inFunction, loopDepth + 1);
+                    break;
+                case LoopStatement loop:
+                    Validate(loop.Statement, errors, inFunction, loopDepth + 1);
+                    break;
+            }
         }
     }
 }

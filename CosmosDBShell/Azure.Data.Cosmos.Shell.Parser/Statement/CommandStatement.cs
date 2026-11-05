@@ -163,18 +163,21 @@ internal class CommandStatement : Statement
         {
             shell.ErrOutRedirect = this.ErrorRedirect;
             shell.AppendErrRedirection = this.AppendError;
+            shell.ErrorRedirectWarnings = new ErrorRedirectWarningScope();
         }
 
         if (shell.Functions.TryGetValue(this.Name, out var function))
         {
-            var args = new List<string>();
+            var args = new List<ShellObject>();
             foreach (var a in this.Arguments)
             {
                 var evaluated = await a.EvaluateAsync(shell, commandState, token);
-                args.Add(evaluated?.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty);
+                args.Add(evaluated);
             }
 
-            return await function.ExecuteFunctionAsync(shell, commandState, token, args.ToArray());
+            var functionResult = await function.ExecuteCallAsync(shell, commandState, token, this.Start, args.ToArray());
+            functionResult.ShareWarningsFrom(commandState);
+            return functionResult;
         }
 
         if (shell.App.Commands.TryGetValue(this.Name, out var factory))
@@ -182,16 +185,34 @@ internal class CommandStatement : Statement
             bool showHelp = this.Arguments.OfType<CommandOption>().Any(arg => arg.Name == "help" || arg.Name == "?");
             if (showHelp)
             {
-                return HelpCommand.PrintCommandHelp(this.Name, shell.App, false);
+                var helpResult = HelpCommand.PrintCommandHelp(this.Name, shell.App, false);
+                helpResult.ShareWarningsFrom(commandState);
+                return helpResult;
             }
 
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
-            return await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token);
+            var result = await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token, factory.IsExternal);
+            if (result is ErrorCommandState error && shell.CurrentScriptFileName is { } sourceName && shell.CurrentScriptContent is { } sourceText)
+            {
+                var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(sourceText, this.Start);
+                var positionalException = new PositionalException(sourceName, error.Exception, line, column, lineText);
+                if (result is StructuredErrorCommandState structuredError)
+                {
+                    structuredError.Exception = positionalException;
+                    return structuredError;
+                }
+
+                throw positionalException;
+            }
+
+            return result;
         }
 
         if (File.Exists(this.Name))
         {
-            return await this.RunScriptAsync(shell, commandState, token);
+            var scriptResult = await this.RunScriptAsync(shell, commandState, token);
+            scriptResult.ShareWarningsFrom(commandState);
+            return scriptResult;
         }
 
         throw new CommandNotFoundException(this.Name, SuggestCommand(shell, this.Name), this.Start, this.CommandToken.Length);
@@ -254,9 +275,10 @@ internal class CommandStatement : Statement
 
             var pi = matchingProperty.Prop;
             var attr = matchingProperty.Attr;
+            var optionValue = opt.Value;
 
             // If option already has an inline value (e.g. -opt:VAL parsed earlier) leave it.
-            if (!IsBoolean(pi) && opt.Value == null)
+            if (!IsBoolean(pi) && optionValue == null)
             {
                 int nextIndex = i + 1;
                 if (nextIndex < this.Arguments.Count &&
@@ -264,15 +286,15 @@ internal class CommandStatement : Statement
                     !consumedArgumentIndices.Contains(nextIndex))
                 {
                     // Treat next expression as the value of this non-boolean option.
-                    opt.Value = this.Arguments[nextIndex];
+                    optionValue = this.Arguments[nextIndex];
                     consumedArgumentIndices.Add(nextIndex);
                 }
             }
 
             // Now assign the option value to the command instance.
-            if (opt.Value != null)
+            if (optionValue != null)
             {
-                var evaluatedValue = await opt.Value.EvaluateAsync(shell, commandState, token);
+                var evaluatedValue = await optionValue.EvaluateAsync(shell, commandState, token);
                 var stringValue = evaluatedValue.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty;
 
                 var targetType = Nullable.GetUnderlyingType(pi.PropertyType) ?? pi.PropertyType;
@@ -371,7 +393,7 @@ internal class CommandStatement : Statement
         return cmd;
     }
 
-    public async Task<CommandState> RunScriptAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token)
+    public async Task<CommandState> RunScriptAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, bool renderOutput = true)
     {
         var fileName = this.Name;
 
@@ -387,7 +409,7 @@ internal class CommandStatement : Statement
         {
             foreach (var kvp in container.Variables)
             {
-                frame.Variables[kvp.Key] = kvp.Value;
+                frame.Variables.TryAdd(kvp.Key, kvp.Value);
             }
         }
 
@@ -399,7 +421,7 @@ internal class CommandStatement : Statement
             frame.Set((i + 1).ToString(), new ShellText(evaluated.ConvertShellObject(DataType.Text)?.ToString() ?? string.Empty));
         }
 
-        shell.VariableContainers.Enqueue(frame);
+        shell.PushCallScope(frame, token);
         var currentState = commandState;
         string scriptContent = string.Empty;
         var priorFileName = shell.CurrentScriptFileName;
@@ -410,44 +432,87 @@ internal class CommandStatement : Statement
             scriptContent = File.ReadAllText(fileName);
             shell.CurrentScriptFileName = fileName;
             shell.CurrentScriptContent = scriptContent;
-            var lexer = new Lexer(scriptContent);
-            var parser = new StatementParser(lexer);
-            foreach (var statement in parser.ParseStatements())
+            var parser = StatementParser.ScriptParseResult.Parse(scriptContent, allowReturn: true);
+            if (parser.Errors.HasErrors)
             {
-                if (token.IsCancellationRequested)
-                {
-                    break;
-                }
+                var parserError = new ParserErrorCommandState(parser.Errors, fileName, scriptContent);
+                parserError.ShareWarningsFrom(commandState);
+                return parserError;
+            }
+
+            foreach (var statement in parser.Statements)
+            {
+                token.ThrowIfCancellationRequested();
+                var savedStdOut = shell.StdOutRedirect;
+                var savedAppendOut = shell.AppendOutRedirection;
+                var savedErrOut = shell.ErrOutRedirect;
+                var savedAppendErr = shell.AppendErrRedirection;
+                var savedErrorRedirectWarnings = shell.ErrorRedirectWarnings;
 
                 try
                 {
                     // Run the parsed statements
                     currentState = await statement.RunAsync(shell, currentState, token);
-                    if (currentState.IsError)
+                    if (currentState.IsError || currentState.UserCancellationHandled)
                     {
                         break;
                     }
 
-                    shell.StdOutRedirect = this.OutputRedirect;
-                    shell.AppendOutRedirection = this.AppendOutput;
-
-                    shell.ErrOutRedirect = this.ErrorRedirect;
-                    shell.AppendErrRedirection = this.AppendError;
-
-                    try
+                    if (currentState.ReturnFunc)
                     {
-                        currentState = shell.PrintState(currentState, markAsRendered: true);
+                        currentState.ReturnFunc = false;
+                        currentState.Result = currentState.ReturnValue;
+                        currentState.ReturnValue = null;
+                        currentState.OutputRendered = false;
+                        return currentState;
                     }
-                    finally
+
+                    if (renderOutput)
                     {
-                        shell.StdOutRedirect = null;
-                        shell.ErrOutRedirect = null;
+                        if (this.OutRedirectToken != null)
+                        {
+                            shell.StdOutRedirect = this.OutputRedirect;
+                            shell.AppendOutRedirection = this.AppendOutput;
+                        }
+
+                        if (this.ErrRedirectToken != null)
+                        {
+                            shell.ErrOutRedirect = this.ErrorRedirect;
+                            shell.AppendErrRedirection = this.AppendError;
+                            shell.ErrorRedirectWarnings = savedErrorRedirectWarnings;
+                        }
+
+                        currentState = shell.PrintState(currentState, markAsRendered: true, deferMachineModeWarnings: true);
+                    }
+
+                    if (currentState.IsError)
+                    {
+                        if (currentState is ErrorCommandState renderError && renderError.Exception is not PositionalException)
+                        {
+                            var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(scriptContent, statement.Start);
+                            renderError.Exception = new PositionalException(fileName, renderError.Exception, line, column, lineText);
+                        }
+
+                        break;
                     }
                 }
-                catch (Exception e)
+                catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
                 {
                     var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(scriptContent, statement.Start);
+                    if (e is PositionalException positional && positional.FileName == fileName && positional.Line == line && positional.Column == column)
+                    {
+                        throw;
+                    }
+
                     throw new PositionalException(fileName, e, line, column, lineText);
+                }
+                finally
+                {
+                    shell.StdOutRedirect = savedStdOut;
+                    shell.AppendOutRedirection = savedAppendOut;
+                    shell.ErrOutRedirect = savedErrOut;
+                    shell.AppendErrRedirection = savedAppendErr;
+                    shell.ErrorRedirectWarnings = savedErrorRedirectWarnings;
                 }
             }
         }
@@ -456,22 +521,7 @@ internal class CommandStatement : Statement
             shell.CurrentScriptFileName = priorFileName;
             shell.CurrentScriptContent = priorContent;
 
-            // Remove the script frame we pushed. Since VariableContainers is a Queue (FIFO),
-            // we need to rotate all elements except the last one to the back, then dequeue the last one.
-            // Example: [A, B, C] where C (script frame) needs to be removed:
-            //   Rotate A: [B, C, A], Rotate B: [C, A, B], Dequeue C: [A, B]
-            var count = shell.VariableContainers.Count;
-            if (count > 0)
-            {
-                // Rotate (count - 1) elements to the back
-                for (int i = 0; i < count - 1; i++)
-                {
-                    shell.VariableContainers.Enqueue(shell.VariableContainers.Dequeue());
-                }
-
-                // Now the script frame is at the front, dequeue it
-                shell.VariableContainers.Dequeue();
-            }
+            shell.PopCallScope();
         }
 
         /*
@@ -519,6 +569,12 @@ internal class CommandStatement : Statement
                 break;
             }
         }*/
+
+        if (currentState is ErrorCommandState error && priorFileName is not null && priorContent is not null)
+        {
+            var (line, column, lineText) = PositionalErrorHelper.GetLineAndColumn(priorContent, this.Start);
+            error.Exception = new PositionalException(priorFileName, error.Exception, line, column, lineText);
+        }
 
         return currentState;
     }

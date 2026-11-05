@@ -77,7 +77,9 @@ internal class CommandFactory(Type commandType, CosmosCommandAttribute attr)
         get
         {
             return commandType.GetCustomAttributes<CosmosExampleAttribute>()
-                .Select(attr => (attr.Example, attr.Description))
+                .Select(attr => (attr.Example, attr.DescriptionKey is null
+                    ? attr.Description
+                    : MessageService.GetString(attr.DescriptionKey)))
                 .ToList();
         }
     }

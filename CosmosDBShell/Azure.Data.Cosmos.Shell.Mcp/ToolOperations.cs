@@ -4,12 +4,14 @@
 
 namespace Azure.Data.Cosmos.Shell.Mcp;
 
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.Extensions.Logging;
@@ -24,15 +26,22 @@ internal class ToolOperations
 
     private const string MaxArgument = "max";
 
+    private const string ConfirmationInputKey = "confirm";
+
+    private const string ContextChangedMessage =
+        "The shell context changed while awaiting confirmation. Nothing was executed. Retry the command and confirm its current target.";
+
     private const string ContinuationDescription =
-        "Non-null continuation token returned by a previous call to this tool. Pass it back to fetch the next page, or omit this argument to start from the beginning. A null output token means the result is exhausted and no further call should be made. The value is opaque; do not modify it.";
+        "Non-null continuation token returned by a previous call to this tool. Pass it back to fetch the next page, or omit this argument to start from the beginning. A null output token means the result is exhausted unless resultIncomplete is true, in which case results were truncated and cannot be resumed. Never pass back a null token. For incomplete results, retry with a larger max or a narrower query. The value is opaque; do not modify it.";
 
     private readonly ILogger<ToolOperations> logger;
+    private readonly LocationResourceSubscriptions locationSubscriptions;
     private readonly Lazy<List<Tool>> cachedTools;
 
-    public ToolOperations(ILogger<ToolOperations> logger)
+    public ToolOperations(ILogger<ToolOperations> logger, LocationResourceSubscriptions locationSubscriptions)
     {
         this.logger = logger;
+        this.locationSubscriptions = locationSubscriptions;
         this.cachedTools = new Lazy<List<Tool>>(
             () => ShellInterpreter.Instance.App.Commands.Values
                 .DistinctBy(c => c.CommandName)
@@ -41,9 +50,30 @@ internal class ToolOperations
             LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
+    internal delegate ValueTask<ElicitResult> ConfirmationPrompt(
+        ElicitRequestParams request,
+        long stateVersion,
+        CancellationToken cancellationToken);
+
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult> ListToolsHandler => this.OnListToolsAsync;
 
     public McpRequestHandler<CallToolRequestParams, CallToolResult> CallToolHandler => this.OnCallToolsAsync;
+
+    public McpRequestHandler<SubscribeRequestParams, EmptyResult> SubscribeToResourcesHandler => this.SubscribeToResourcesAsync;
+
+    public McpRequestHandler<UnsubscribeRequestParams, EmptyResult> UnsubscribeFromResourcesHandler => this.UnsubscribeFromResourcesAsync;
+
+    private ValueTask<EmptyResult> SubscribeToResourcesAsync(RequestContext<SubscribeRequestParams> context, CancellationToken cancellationToken)
+    {
+        this.locationSubscriptions.Subscribe(context.Server.SessionId, context.Params?.Uri ?? string.Empty);
+        return ValueTask.FromResult(new EmptyResult());
+    }
+
+    private ValueTask<EmptyResult> UnsubscribeFromResourcesAsync(RequestContext<UnsubscribeRequestParams> context, CancellationToken cancellationToken)
+    {
+        this.locationSubscriptions.Unsubscribe(context.Server.SessionId, context.Params?.Uri ?? string.Empty);
+        return ValueTask.FromResult(new EmptyResult());
+    }
 
     internal static Tool GetTool(CommandFactory command)
     {
@@ -60,7 +90,9 @@ internal class ToolOperations
 
             if (RequiresConfirmation(command))
             {
-                description += "Warning: This command is destructive. When invoked through MCP it always requires explicit user confirmation before it runs — even when a force or no-prompt argument is supplied. If the client cannot confirm, the command is refused.";
+                description += command.CommandName == "bulk"
+                    ? "Warning: Bulk writes and dry-run selections that save a plan require explicit user confirmation, even with yes=true. Only dry runs without save skip confirmation and issue no database writes. Bulk operations are not transactions."
+                    : "Warning: This command is destructive. When invoked through MCP it always requires explicit user confirmation before it runs — even when a force or no-prompt argument is supplied. If the client cannot confirm, the command is refused.";
             }
             else
             {
@@ -106,9 +138,32 @@ internal class ToolOperations
                 GetMcpOptionDescription(command, option),
                 option.Name,
                 GetMcpDefaultValue(command, option));
+            if (option.MinimumValue is not null)
+            {
+                propertySchema["minimum"] = JsonSerializer.SerializeToNode(option.MinimumValue);
+            }
+
+            if (command.CommandName is "import" or "export" && option.MatchesArgument("format"))
+            {
+                propertySchema["enum"] = JsonSerializer.SerializeToNode(
+                    Enum.GetNames<OutputFormat>().Select(name => name.ToLowerInvariant()));
+            }
+
             if (IsPagedMaxOption(command, option))
             {
                 propertySchema["minimum"] = 1;
+            }
+
+            if (command.CommandName == "bulk")
+            {
+                if (option.Name[0] is "concurrency" or "max-items")
+                {
+                    propertySchema["minimum"] = 1;
+                }
+                else if (option.Name[0] == "max-ru")
+                {
+                    propertySchema["exclusiveMinimum"] = 0;
+                }
             }
 
             properties[option.Name[0]] = propertySchema;
@@ -205,7 +260,65 @@ internal class ToolOperations
 
     internal static string FormatOptionForHistory(Option option, object? value)
     {
-        return $" --{option.Name[0]} {ShellLiteral.Quote(value?.ToString())}";
+        return $" --{option.Name[0]} {ShellLiteral.Quote(FormatValueForHistory(value))}";
+    }
+
+    // Shell syntax cannot skip a positional, so a later value would bind to the omitted slot on replay.
+    internal static string? FindPositionalGap(IReadOnlyList<Parameter> parameters, IReadOnlyDictionary<Parameter, object?> values)
+    {
+        Parameter? firstOmitted = null;
+        foreach (var parameter in parameters)
+        {
+            if (!IsPositionalSupplied(values, parameter))
+            {
+                firstOmitted ??= parameter;
+            }
+            else if (firstOmitted != null)
+            {
+                return $"Parameter '{parameter.Name[0]}' requires the preceding positional parameter '{firstOmitted.Name[0]}'. Supply '{firstOmitted.Name[0]}' as well.";
+            }
+        }
+
+        return null;
+    }
+
+    internal static string FormatPositionalsForHistory(IReadOnlyList<Parameter> parameters, IReadOnlyDictionary<Parameter, object?> values)
+    {
+        var sb = new StringBuilder();
+        foreach (var parameter in parameters)
+        {
+            if (!IsPositionalSupplied(values, parameter))
+            {
+                break;
+            }
+
+            var value = values[parameter];
+            if (value is Array array)
+            {
+                foreach (var element in array)
+                {
+                    sb.Append(' ').Append(ShellLiteral.Quote(FormatValueForHistory(element)));
+                }
+            }
+            else
+            {
+                sb.Append(' ').Append(ShellLiteral.Quote(FormatValueForHistory(value)));
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static string? FormatValueForHistory(object? value)
+    {
+        return Convert.ToString(value, CultureInfo.InvariantCulture);
+    }
+
+    private static bool IsPositionalSupplied(IReadOnlyDictionary<Parameter, object?> values, Parameter parameter)
+    {
+        return values.TryGetValue(parameter, out var value)
+            && value != null
+            && (value is not Array array || array.Length > 0);
     }
 
     internal static void ConfigurePaging(object command)
@@ -247,7 +360,7 @@ internal class ToolOperations
     {
         var description = option.GetDescription(command.CommandName);
         return IsPagedMaxOption(command, option)
-            ? $"{description} Through MCP this must be positive and bounds a single page rather than the whole result set. Omitted or non-positive values use the default of {DefaultPageSize}. A call can return fewer items and still have more available; use continuationToken to detect the end."
+            ? $"{description} Through MCP this must be positive and bounds a single page rather than the whole result set. Omitted or non-positive values use the default of {DefaultPageSize}. A call can return fewer items and still have more available; a null continuationToken marks the end of the results unless the response sets resultIncomplete, which reports results that were cut off and cannot be resumed."
             : description;
     }
 
@@ -352,6 +465,11 @@ internal class ToolOperations
             && annotation.Destructive;
     }
 
+    private static bool IsExplicitJsonNull(JsonElement value)
+    {
+        return value.ValueKind is JsonValueKind.Null;
+    }
+
     private CallToolResult? BindMember(
         object cmd,
         PropertyInfo property,
@@ -372,7 +490,7 @@ internal class ToolOperations
         {
             convertedValue = rawValue is JsonElement jsonElement
                 ? ConvertJsonElement(jsonElement, targetType)
-                : Convert.ChangeType(rawValue, targetType);
+                : Convert.ChangeType(rawValue, targetType, CultureInfo.InvariantCulture);
         }
         catch (Exception ex)
         {
@@ -457,6 +575,8 @@ internal class ToolOperations
         var cmd = command.CreateCommand();
         ConfigurePaging(cmd);
         var suppliedParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var positionalValues = new Dictionary<Parameter, object?>();
+        var optionTexts = new List<(int Order, string Text)>();
 
         if (parameters.Params.Arguments != null)
         {
@@ -470,6 +590,26 @@ internal class ToolOperations
                 var option = command.Options.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (option != null)
                 {
+                    if (IsExplicitJsonNull(par.Value))
+                    {
+                        var safetyErrorKey = cmd is RmCommand
+                            ? option.PropertyInfo.Name switch
+                            {
+                                nameof(RmCommand.ETag) => "command-rm-error-etag_empty",
+                                nameof(RmCommand.PartitionKeyArgument) => "command-rm-error-partition_key_missing_value",
+                                _ => null,
+                            }
+                            : null;
+                        if (safetyErrorKey != null)
+                        {
+                            var errorMessage = MessageService.GetString(safetyErrorKey);
+                            this.logger?.LogWarning("{Message}", errorMessage);
+                            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
+                        }
+
+                        continue;
+                    }
+
                     var bindError = this.BindMember(
                         cmd,
                         option.PropertyInfo,
@@ -477,7 +617,7 @@ internal class ToolOperations
                         memberKind: "option",
                         memberDisplay: $"--{option.Name[0]}",
                         commandName: command.CommandName,
-                        appendToHistory: value => sb.Append(FormatOptionForHistory(option, value)));
+                        appendToHistory: value => optionTexts.Add((command.Options.IndexOf(option), FormatOptionForHistory(option, value))));
                     if (bindError != null)
                     {
                         return bindError;
@@ -489,6 +629,11 @@ internal class ToolOperations
                 var parameter = command.Parameters.FirstOrDefault(a => MatchesArgumentName(a.Name, par.Key));
                 if (parameter != null)
                 {
+                    if (IsExplicitJsonNull(par.Value))
+                    {
+                        continue;
+                    }
+
                     var bindError = this.BindMember(
                         cmd,
                         parameter.PropertyInfo,
@@ -496,7 +641,7 @@ internal class ToolOperations
                         memberKind: "parameter",
                         memberDisplay: parameter.Name[0],
                         commandName: command.CommandName,
-                        appendToHistory: value => sb.Append(' ').Append(ShellLiteral.Quote(value?.ToString())));
+                        appendToHistory: value => positionalValues[parameter] = value);
                     if (bindError != null)
                     {
                         return bindError;
@@ -549,6 +694,14 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(missingMessage, ShellInterpreter.Instance.State);
         }
 
+        var positionalGap = FindPositionalGap(command.Parameters, positionalValues);
+        if (positionalGap != null)
+        {
+            var gapMessage = $"Invalid positional arguments for command '{command.CommandName}': {positionalGap}";
+            this.logger?.LogWarning("{Message}", gapMessage);
+            return McpResponseFactory.CreateError(gapMessage, ShellInterpreter.Instance.State);
+        }
+
         var batchSubcommand = (cmd as BatchCommand)?.Subcommand?.Trim();
         if (!string.IsNullOrEmpty(batchSubcommand)
             && !string.Equals(batchSubcommand, "run", StringComparison.OrdinalIgnoreCase))
@@ -558,27 +711,106 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
         }
 
-        if (RequiresConfirmation(command))
+        if (cmd is BulkCommand bulkCommand
+            && !BulkCommand.McpSubcommands.Contains(BulkCommand.NormalizeSubcommand(bulkCommand.Subcommand)))
         {
-            var server = parameters.Server;
-            Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit =
-                server?.ClientCapabilities?.Elicitation != null ? server.ElicitAsync : null;
+            const string errorMessage = "MCP supports only the stateless 'bulk run', 'bulk patch', and 'bulk delete' subcommands. Run stateful bulk commands manually in the shell.";
+            this.logger?.LogWarning(errorMessage);
+            return McpResponseFactory.CreateError(errorMessage, ShellInterpreter.Instance.State);
+        }
 
-            var confirmation = await this.ConfirmDestructiveAsync(elicit, command.CommandName, sb.ToString(), cancellationToken);
+        // MCP argument order is not semantic, so render positionals in the order the shell binds them.
+        sb.Append(FormatPositionalsForHistory(command.Parameters, positionalValues));
+
+        // Likewise render options in declaration order, so the confirmed command line does not depend on argument order.
+        foreach (var (_, text) in optionTexts.OrderBy(entry => entry.Order))
+        {
+            sb.Append(text);
+        }
+
+        var commandLine = sb.ToString();
+        var server = parameters.Server;
+        ConfirmationPrompt? prompt = null;
+
+        // Stateless 2026-07-28 requests declare capabilities per request, which the SDK does not
+        // surface through ClientCapabilities.
+        var clientCapabilities = server?.ClientCapabilities ?? parameters.JsonRpcRequest?.Context?.ClientCapabilities;
+        if (clientCapabilities?.Elicitation != null && server!.IsMrtrSupported)
+        {
+            // Multi-round-trip request: the client prompts the user and retries this call with the answer.
+            // On sessions that predate MRTR, the SDK sends an elicitation request and retries for us.
+            prompt = (request, stateVersion, _) => throw new InputRequiredException(
+                inputRequests: new Dictionary<string, InputRequest>
+                {
+                    [ConfirmationInputKey] = InputRequest.ForElicitation(request),
+                },
+                requestState: ConfirmationRequestState.Create(commandLine, stateVersion));
+        }
+
+        return await this.ExecuteToolAsync(command, cmd, commandLine, prompt, cancellationToken, parameters.Params);
+    }
+
+    internal async Task<CallToolResult> ExecuteToolAsync(
+        CommandFactory command,
+        CosmosCommand cmd,
+        string commandLine,
+        ConfirmationPrompt? prompt,
+        CancellationToken cancellationToken,
+        RequestParams? requestParams = null)
+    {
+        var shell = ShellInterpreter.Instance;
+        long? confirmedVersion = null;
+        if (RequiresConfirmation(command) && cmd is not BulkCommand { DryRun: true, Save: null })
+        {
+            var snapshot = await shell.RunSerializedAsync(
+                () => Task.FromResult((Version: shell.StateVersion, Context: DescribeContext(shell.State))), cancellationToken);
+            var confirmation = requestParams?.InputResponses?.TryGetValue(ConfirmationInputKey, out var response) == true
+                ? this.EvaluateConfirmationResponse(
+                    response, requestParams.RequestState, command.CommandName, commandLine, snapshot.Version)
+                : await this.ConfirmDestructiveAsync(
+                    prompt, command.CommandName, commandLine, cancellationToken, snapshot.Context, snapshot.Version);
+
             if (confirmation != null)
             {
                 return confirmation;
             }
+
+            confirmedVersion = snapshot.Version;
         }
 
-        this.logger?.LogTrace($"Invoking '{command.CommandName}'.");
+        this.logger?.LogTrace($"Requested '{command.CommandName}'.");
 
+        var commandState = new CommandState();
         try
         {
-            ShellInterpreter.Instance.PrintCommand(sb.ToString());
-            var response = await ShellInterpreter.Instance.ExecuteCosmosCommandAsync(cmd, new CommandState(), command.CommandName, cancellationToken);
-            ShellInterpreter.Instance.CancelPrompt();
-            return McpResponseFactory.CreateSuccess(response, ShellInterpreter.Instance.State);
+            return await shell.RunSerializedAsync(
+                async () =>
+                {
+                    if (confirmedVersion.HasValue && confirmedVersion.Value != shell.StateVersion)
+                    {
+                        return McpResponseFactory.CreateError(ContextChangedMessage, shell.State);
+                    }
+
+                    var previousMcpInvocation = shell.IsMcpInvocation;
+                    shell.IsMcpInvocation = true;
+                    try
+                    {
+                        shell.PrintCommand(commandLine);
+                        if (cmd is BulkCommand bulk)
+                        {
+                            bulk.ConfirmationApproved = confirmedVersion.HasValue;
+                        }
+
+                        var response = await shell.ExecuteCosmosCommandAsync(cmd, commandState, command.CommandName, cancellationToken, command.IsExternal);
+                        shell.RefreshPrompt();
+                        return McpResponseFactory.CreateSuccess(response, shell.State);
+                    }
+                    finally
+                    {
+                        shell.IsMcpInvocation = previousMcpInvocation;
+                    }
+                },
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -587,26 +819,73 @@ internal class ToolOperations
             return McpResponseFactory.CreateError(
                 $"Error executing command '{command.CommandName}': {ex.Message}",
                 ShellInterpreter.Instance.State,
-                RequestChargeContext.GetExceptionCharge(ex));
+                RequestChargeContext.GetExceptionCharge(ex),
+                commandState.Warnings);
         }
         finally
         {
-            this.logger?.LogTrace($"Finished executing '{command.CommandName}'.");
+            this.logger?.LogTrace($"Finished handling request for '{command.CommandName}'.");
         }
     }
 
-    // Gates a destructive command behind an MCP elicitation confirmation. Returns
-    // null when the operation is approved and should proceed; otherwise returns the
-    // CallToolResult to send back (refusal, denial, or a failed confirmation).
-    // Fails closed: when the client cannot elicit, the command is refused rather
-    // than executed.
-    internal async ValueTask<CallToolResult?> ConfirmDestructiveAsync(
-        Func<ElicitRequestParams, CancellationToken, ValueTask<ElicitResult>>? elicit,
+    private static string DescribeContext(State state)
+    {
+        var endpoint = state is ConnectedState connected ? connected.Client.Endpoint.ToString() : "(disconnected)";
+        return $"Account: {endpoint}\nCurrent location: {McpResponseFactory.GetCurrentLocation(state) ?? "(none)"}\nExplicit database/container arguments in the command override this location.";
+    }
+
+    // Validates the client's answer to a confirmation input request. Returns null when the
+    // operation is approved for the current shell context; otherwise returns the refusal.
+    internal CallToolResult? EvaluateConfirmationResponse(
+        InputResponse response,
+        string? requestState,
         string commandName,
         string commandLine,
-        CancellationToken cancellationToken)
+        long currentStateVersion)
     {
-        if (elicit == null)
+        if (!ConfirmationRequestState.TryRead(requestState, commandLine, out var confirmedStateVersion))
+        {
+            this.logger?.LogWarning(
+                "Rejected a confirmation response for '{Command}' whose request state does not match the command.",
+                commandName);
+            return McpResponseFactory.CreateError(
+                $"The confirmation for '{commandName}' does not match this command. Nothing was executed. Retry the command and confirm it again.",
+                ShellInterpreter.Instance.State);
+        }
+
+        if (confirmedStateVersion != currentStateVersion)
+        {
+            return McpResponseFactory.CreateError(ContextChangedMessage, ShellInterpreter.Instance.State);
+        }
+
+        ElicitResult? result;
+        try
+        {
+            result = response.Deserialize(InputResponse.ElicitResultJsonTypeInfo);
+        }
+        catch (JsonException)
+        {
+            result = null;
+        }
+
+        return this.EvaluateElicitResult(result, commandName);
+    }
+
+    // Gates a destructive command behind a user confirmation. Returns null when the
+    // operation is approved and should proceed; otherwise returns the CallToolResult
+    // to send back (refusal, denial, or a failed confirmation). A prompt may instead
+    // throw InputRequiredException, which ends this call and asks the client to retry
+    // with the user's answer. Fails closed: when the client cannot confirm, the
+    // command is refused rather than executed.
+    internal async ValueTask<CallToolResult?> ConfirmDestructiveAsync(
+        ConfirmationPrompt? prompt,
+        string commandName,
+        string commandLine,
+        CancellationToken cancellationToken,
+        string? context = null,
+        long stateVersion = 0)
+    {
+        if (prompt == null)
         {
             this.logger?.LogWarning(
                 "Destructive command '{Command}' requires confirmation, but the MCP client does not support elicitation.",
@@ -620,6 +899,7 @@ internal class ToolOperations
         {
             Message =
                 $"Confirm destructive operation. The agent wants to run: {commandLine}\n" +
+                (context is null ? string.Empty : context + "\n") +
                 "This can permanently change or delete data in the connected Azure Cosmos DB account and cannot be undone. Approve this operation?",
             RequestedSchema = new ElicitRequestParams.RequestSchema(),
         };
@@ -627,9 +907,13 @@ internal class ToolOperations
         ElicitResult result;
         try
         {
-            result = await elicit(request, cancellationToken);
+            result = await prompt(request, stateVersion, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (InputRequiredException)
         {
             throw;
         }
@@ -641,9 +925,14 @@ internal class ToolOperations
                 ShellInterpreter.Instance.State);
         }
 
-        if (!result.IsAccepted)
+        return this.EvaluateElicitResult(result, commandName);
+    }
+
+    private CallToolResult? EvaluateElicitResult(ElicitResult? result, string commandName)
+    {
+        if (result?.IsAccepted != true)
         {
-            var action = string.IsNullOrEmpty(result.Action) ? "cancel" : result.Action;
+            var action = string.IsNullOrEmpty(result?.Action) ? "cancel" : result.Action;
             this.logger?.LogInformation(
                 "User did not approve destructive command '{Command}' (action={Action}).",
                 commandName,

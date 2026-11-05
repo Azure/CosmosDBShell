@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
+using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -26,6 +27,8 @@ using static Program;
 /// </summary>
 internal class McpServer
 {
+    internal static readonly TimeSpan SessionIdleTimeout = TimeSpan.FromMinutes(10);
+
     public static IHost CreateHost(CosmosShellOptions serverArguments)
     {
         var builder = WebApplication.CreateBuilder([]);
@@ -43,6 +46,8 @@ internal class McpServer
             });
         var application = builder.Build();
         application.UseOriginValidation();
+        application.Use((context, next) =>
+            context.RequestServices.GetRequiredService<LegacyHttpAdmission>().InvokeAsync(context, next));
         application.MapMcp();
         return application;
     }
@@ -50,8 +55,12 @@ internal class McpServer
     private static void ConfigureMcpServer(IServiceCollection services)
     {
         services.AddSingleton<ToolOperations>();
+        services.AddSingleton<LegacyRequestLimiter>();
+        services.AddSingleton<LegacyHttpAdmission>();
+        services.AddSingleton<LocationResourceSubscriptions>();
+        services.AddHostedService(services => services.GetRequiredService<LocationResourceSubscriptions>());
         services.AddOptions<McpServerOptions>()
-            .Configure<ToolOperations>((mcpServerOptions, toolOperations) =>
+            .Configure<ToolOperations, LocationResourceSubscriptions>((mcpServerOptions, toolOperations, locationSubscriptions) =>
             {
                 var entryAssembly = Assembly.GetEntryAssembly();
                 var assemblyName = entryAssembly?.GetName();
@@ -66,21 +75,74 @@ internal class McpServer
                 mcpServerOptions.Capabilities = new ServerCapabilities
                 {
                     Tools = new ToolsCapability(),
-                    Resources = new ResourcesCapability(),
+                    Resources = new ResourcesCapability { Subscribe = true, ListChanged = false },
                 };
 
                 mcpServerOptions.Handlers = new McpServerHandlers
                 {
                     CallToolHandler = toolOperations.CallToolHandler,
                     ListToolsHandler = toolOperations.ListToolsHandler,
+                    ListResourcesHandler = ResourceOperations.ListResourcesAsync,
+                    ReadResourceHandler = ResourceOperations.ReadResourceAsync,
+                    SubscribeToResourcesHandler = toolOperations.SubscribeToResourcesHandler,
+                    UnsubscribeFromResourcesHandler = toolOperations.UnsubscribeFromResourcesHandler,
+                    SubscriptionsListenHandler = locationSubscriptions.ListenAsync,
                 };
 
                 mcpServerOptions.ServerInstructions = LoadServerInstructions();
             });
 
+        // SDK resource collections advertise list changes even when configured otherwise.
         var mcpServerBuilder = services.AddMcpServer();
-        mcpServerBuilder.WithResources<ResourceOperations>();
-        mcpServerBuilder.WithHttpTransport();
+        mcpServerBuilder.WithHttpTransport(ConfigureHttpTransport);
+    }
+
+    internal static void ConfigureHttpTransport(HttpServerTransportOptions options)
+    {
+        // 2026-07-28 clients are served statelessly (confirmation via MRTR, updates via subscriptions/listen).
+        // Clients that use the initialize handshake still get a session for elicitation and resources/subscribe.
+        options.SessionMode = HttpServerSessionMode.StatefulForInitializeClients;
+#pragma warning disable MCP9004 // Legacy transport compatibility is intentional for trusted loopback clients.
+        options.EnableLegacySse = true;
+#pragma warning restore MCP9004
+        options.ConfigureSessionOptions = (httpContext, serverOptions, cancellationToken) =>
+        {
+            if (httpContext.Request.Path == "/sse")
+            {
+                var limiter = httpContext.RequestServices.GetRequiredService<LegacyRequestLimiter>();
+                var admission = httpContext.RequestServices.GetRequiredService<LegacyHttpAdmission>();
+                serverOptions.Filters.Message.IncomingFilters.Add(admission.TrackIncoming);
+                serverOptions.Filters.Message.IncomingFilters.Add(limiter.Limit);
+                serverOptions.Filters.Message.OutgoingFilters.Add(admission.TrackOutgoing);
+            }
+
+            return Task.CompletedTask;
+        };
+
+        // Sessions with an open GET stream never go idle. Once a client disconnects without DELETE,
+        // the session is disposed after this timeout, which also ends its location subscription.
+#pragma warning disable MCP9006 // Stateful Streamable HTTP options are required for session-bound features.
+        options.IdleTimeout = SessionIdleTimeout;
+#pragma warning restore MCP9006
+
+#pragma warning disable MCPEXP002 // RunSessionHandler is the only hook that observes the session lifetime.
+        options.RunSessionHandler = async (httpContext, server, cancellationToken) =>
+        {
+            // The session can outlive its originating HTTP request.
+            var subscriptions = httpContext.RequestServices.GetRequiredService<LocationResourceSubscriptions>();
+            var legacyAdmission = httpContext.Request.Path == "/sse"
+                ? httpContext.RequestServices.GetRequiredService<LegacyHttpAdmission>()
+                : null;
+            try
+            {
+                await subscriptions.RunSessionAsync(server, cancellationToken);
+            }
+            finally
+            {
+                legacyAdmission?.EndSession(server.SessionId);
+            }
+        };
+#pragma warning restore MCPEXP002
     }
 
     private static string LoadServerInstructions()

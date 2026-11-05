@@ -13,14 +13,14 @@ using global::Azure.Data.Cosmos.Shell.Core;
 using global::Azure.Data.Cosmos.Shell.States;
 
 [CosmosCommand("ttl")]
-[CosmosExample("ttl show", Description = "Display the current container's default time-to-live configuration")]
-[CosmosExample("ttl set 86400", Description = "Expire items 86400 seconds (1 day) after they were last modified")]
-[CosmosExample("ttl on", Description = "Enable TTL with no container default, so only items with their own 'ttl' expire")]
-[CosmosExample("ttl off", Description = "Disable TTL so items never expire")]
-[CosmosExample("ttl show --analytical", Description = "Display the current container's analytical store time-to-live configuration")]
-[CosmosExample("ttl set 2592000 --analytical", Description = "Retain analytical store data for 2592000 seconds (30 days)")]
-[CosmosExample("ttl on --analytical", Description = "Enable the analytical store with indefinite retention")]
-[CosmosExample("ttl off --analytical", Description = "Disable the analytical store")]
+[CosmosExample("ttl show", DescriptionKey = "command-ttl-example-1")]
+[CosmosExample("ttl set 86400", DescriptionKey = "command-ttl-example-2")]
+[CosmosExample("ttl on", DescriptionKey = "command-ttl-example-3")]
+[CosmosExample("ttl off", DescriptionKey = "command-ttl-example-4")]
+[CosmosExample("ttl show --analytical", DescriptionKey = "command-ttl-example-5")]
+[CosmosExample("ttl set 2592000 --analytical", DescriptionKey = "command-ttl-example-6")]
+[CosmosExample("ttl on --analytical", DescriptionKey = "command-ttl-example-7")]
+[CosmosExample("ttl off --analytical", DescriptionKey = "command-ttl-example-8")]
 #pragma warning disable SA1118 // Parameter should not span multiple lines
 [McpAnnotation(
     Title = "Ttl",
@@ -137,6 +137,12 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
+            RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                "command-ttl-status-" + StatusFor(view.DefaultTimeToLive),
+                "container",
+                containerName,
+                "seconds",
+                view.DefaultTimeToLive ?? 0)),
         };
     }
 
@@ -154,6 +160,16 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
+            RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+                view.AnalyticalTimeToLiveSeconds is null or 0
+                    ? "command-ttl-analytical-status-disabled"
+                    : view.AnalyticalTimeToLiveSeconds == -1
+                        ? "command-ttl-analytical-status-indefinite"
+                        : "command-ttl-analytical-status-enabled",
+                "container",
+                containerName,
+                "seconds",
+                view.AnalyticalTimeToLiveSeconds ?? 0)),
         };
     }
 
@@ -201,8 +217,9 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
             }
 
             var analyticalView = await CosmosResourceFacade.ReplaceAnalyticalTimeToLiveAsync(state, databaseName, containerName, targetTtl, token);
-            ShellInterpreter.WriteLine(MessageService.GetString("command-ttl-analytical-updated"));
-            return BuildAnalyticalResult(containerName, analyticalView);
+            var analyticalResult = BuildAnalyticalResult(containerName, analyticalView);
+            analyticalResult.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-ttl-analytical-updated"));
+            return analyticalResult;
         }
 
         if (isShow)
@@ -212,8 +229,9 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
         }
 
         var view = await CosmosResourceFacade.ReplaceTimeToLiveAsync(state, databaseName, containerName, targetTtl, token);
-        ShellInterpreter.WriteLine(MessageService.GetString("command-ttl-updated"));
-        return BuildResult(containerName, view);
+        var result = BuildResult(containerName, view);
+        result.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-ttl-updated"));
+        return result;
     }
 
     private int RequireSeconds()
