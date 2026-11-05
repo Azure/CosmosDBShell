@@ -186,6 +186,10 @@ public class ShellProcessTests
     [InlineData("ftab --take=invalid")]
     [InlineData("ftab --take=999999999999999999999999999")]
     [InlineData("echo --unknown-usage-test-option")]
+    [InlineData("query 'SELECT * FROM c' --bucket=99")]
+    [InlineData("watch")]
+    [InlineData("watch --max=0")]
+    [InlineData("watch --max=-1")]
     public async Task InvalidCommandArguments_ReturnUsageExitCode(string command)
     {
         var result = await RunShellAsync(

@@ -211,6 +211,7 @@ public class WatchCommandTests
             () => command.ExecuteAsync(shell, new CommandState(), "watch", TestContext.Current.CancellationToken));
 
         Assert.Contains("positive --max", error.Message);
+        Assert.Equal(ShellExitCode.UsageError, ShellExitCode.FromException(error));
     }
 
     [Theory]
@@ -228,6 +229,7 @@ public class WatchCommandTests
             () => command.ExecuteAsync(shell, new CommandState(), "watch", TestContext.Current.CancellationToken));
 
         Assert.Contains("positive --max", error.Message);
+        Assert.Equal(ShellExitCode.UsageError, ShellExitCode.FromException(error));
     }
 
     [Theory]
