@@ -2308,7 +2308,7 @@ public partial class ShellInterpreter : IDisposable
             var txt = ((IHighlighter)Instance).BuildHighlightedText(cmdString);
             AnsiConsole.Write(txt);
             AnsiConsole.WriteLine(); // Ensure the next output starts on a new line
-            this.Editor?.History.Add(cmdString);
+            this.Editor?.History.Add(SecretRedactor.MaskHistory(cmdString));
         }
         catch (NotSupportedException)
         {
@@ -3183,7 +3183,7 @@ public partial class ShellInterpreter : IDisposable
         var entries = new List<string>();
         while (reader.ReadLine() is { } line)
         {
-            var decoded = DecodeHistoryLine(line);
+            var decoded = SecretRedactor.MaskHistory(DecodeHistoryLine(line));
             entries.Remove(decoded);
             entries.Add(decoded);
         }
@@ -3211,6 +3211,7 @@ public partial class ShellInterpreter : IDisposable
 
     private void RecordHistoryEntry(string entry, bool persist = true)
     {
+        entry = SecretRedactor.MaskHistory(entry);
         lock (this.historyLock)
         {
             this.history.Remove(entry);
