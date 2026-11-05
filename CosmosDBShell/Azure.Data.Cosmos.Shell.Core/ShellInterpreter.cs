@@ -827,6 +827,14 @@ public partial class ShellInterpreter : IDisposable
             }
             catch (Exception e)
             {
+                if (FindException<CommandState.FailureException>(e)?.State is { OutputRendered: true } reportedError)
+                {
+                    reportedError.ShareWarningsFrom(state);
+                    result = this.PrintState(reportedError);
+                    this.DisconnectLocalEmulatorAfterConnectivityFailure(e);
+                    return result;
+                }
+
                 if (FindException<CommandState.FailureException>(e)?.State is StructuredErrorCommandState structuredError)
                 {
                     structuredError.ShareWarningsFrom(state);

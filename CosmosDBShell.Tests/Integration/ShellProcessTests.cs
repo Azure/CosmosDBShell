@@ -141,6 +141,9 @@ public class ShellProcessTests
     [InlineData("theme use missing-bug-bash-theme | echo")]
     [InlineData("{ theme use missing-bug-bash-theme }")]
     [InlineData("$value = (theme use missing-bug-bash-theme)")]
+    [InlineData("def fail { echo ignored | theme use missing-bug-bash-theme }; $value = (fail)")]
+    [InlineData("def fail { echo ignored | theme use missing-bug-bash-theme }; echo (fail)")]
+    [InlineData("render-expression")]
     [InlineData("script")]
     public async Task ReturnedCommandError_ThroughScriptOrExpression_IsReportedOnce(string command)
     {
@@ -151,6 +154,11 @@ public class ShellProcessTests
             {
                 await File.WriteAllTextAsync(script, "theme use missing-bug-bash-theme", TestContext.Current.CancellationToken);
                 command = Path.GetFileName(script);
+            }
+            else if (command == "render-expression")
+            {
+                var destination = Path.Join(Path.GetTempPath(), $"missing-bug-bash-theme-{Guid.NewGuid():N}", "output.txt");
+                command = $"def fail {{ echo ignored > {JsonSerializer.Serialize(destination)} }}; echo (fail)";
             }
 
             var result = await RunShellAsync(null, ["--quiet", "-c", command], TestContext.Current.CancellationToken);
