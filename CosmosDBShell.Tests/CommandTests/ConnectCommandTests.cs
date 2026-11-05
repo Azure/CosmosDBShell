@@ -74,6 +74,8 @@ public class ConnectCommandTests
     public async Task ConnectAsync_McpStdioWithTenant_UsesDeviceCodeWithoutBrowser()
     {
         var shell = ShellInterpreter.Instance;
+        var originalAccountKey = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_ACCOUNT_KEY");
+        var originalToken = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_TOKEN");
         var originalOptions = shell.Options;
         var originalError = Console.Error;
         var originalOut = Console.Out;
@@ -82,6 +84,8 @@ public class ConnectCommandTests
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         try
         {
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_ACCOUNT_KEY", null);
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_TOKEN", null);
             shell.Options = new Program.CosmosShellOptions { McpStdio = true };
             Console.SetError(error);
             Console.SetOut(output);
@@ -96,6 +100,8 @@ public class ConnectCommandTests
         }
         finally
         {
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_ACCOUNT_KEY", originalAccountKey);
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_TOKEN", originalToken);
             Console.SetError(originalError);
             Console.SetOut(originalOut);
             shell.Options = originalOptions;
