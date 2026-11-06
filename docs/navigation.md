@@ -329,6 +329,11 @@ Start the shell with options to customize behavior:
 | `--help` | Show usage information |
 | `--version` | Show version |
 
+The internal `cosmosdbshell-lite` RPM does not include MCP or LSP. Its `--mcp`,
+`--lsp`, and `--stdio` options return usage exit code `2` before connecting or
+starting diagnostic logging. In machine mode (for example, `--output json`),
+the error is a JSON object on stderr and stdout remains empty.
+
 ### Machine Mode And Exit Codes
 
 For automation and agentic wrappers, the shell can emit deterministic, machine-consumable

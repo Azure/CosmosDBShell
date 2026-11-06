@@ -33,6 +33,10 @@ variables:
   BuildConfiguration: Release
 
   WindowsContainerImage: "onebranch.azurecr.io/windows/ltsc2022/vse2022:latest" # Docker image which is used to build the project https://aka.ms/obpipelines/containers
+  # Azure Linux is RPM-native and resolves packages from packages.microsoft.com.
+  # The build containers cannot reach the public Ubuntu archives, so an
+  # Ubuntu image cannot install the RPM tooling the rpm job needs.
+  LinuxContainerImage: "mcr.microsoft.com/onebranch/azurelinux/build:3.0"
 
 resources:
   repositories:
@@ -843,6 +847,73 @@ extends:
                       nuGetFeedType: "internal"
                       publishVstsFeed: "CosmosDB/CosmosDBShell"
                       allowPackageConflicts: true
+
+          - job: rpm
+            displayName: Build lightweight RPM packages
+            pool:
+              type: linux
+            variables:
+              ob_outputDirectory: "$(Build.SourcesDirectory)/out"
+              ob_artifactBaseName: cosmos_shell_lite_rpm
+              ob_git_fetchDepth: -1
+            steps:
+              - task: UseDotNet@2
+                inputs:
+                  packageType: "sdk"
+                  useGlobalJson: true
+                  performMultiLevelLookup: true
+
+              - script: |
+                  set -euo pipefail
+                  dotnet tool restore --configfile "$(Build.SourcesDirectory)/.pipelines/nuget.config"
+                  package_version="$(dotnet tool run nbgv get-version -v NuGetPackageVersion)"
+                  package_version="${package_version%%+*}"
+                  if [[ ! "$package_version" =~ ^([0-9]+\.[0-9]+\.[0-9]+)(-(.+))?$ ]]; then
+                    echo "Unsupported RPM package version: $package_version" >&2
+                    exit 1
+                  fi
+
+                  echo "##vso[task.setvariable variable=CosmosDBShell_RpmVersion]${BASH_REMATCH[1]}"
+                  if [[ -n "${BASH_REMATCH[3]:-}" ]]; then
+                    rpm_release="0.${BASH_REMATCH[3]//[^[:alnum:].]/.}"
+                  else
+                    rpm_release="1"
+                  fi
+                  echo "##vso[task.setvariable variable=CosmosDBShell_RpmRelease]$rpm_release"
+                displayName: Compute RPM version
+
+              - script: |
+                  set -euo pipefail
+                  if ! command -v rpmbuild >/dev/null 2>&1 ||
+                     ! command -v rpm2cpio >/dev/null 2>&1 ||
+                     ! command -v cpio >/dev/null 2>&1; then
+                    if ! command -v tdnf >/dev/null 2>&1; then
+                      echo "RPM build/extraction tools are unavailable and tdnf is not installed; run this job in the configured Azure Linux container." >&2
+                      exit 1
+                    fi
+                    tdnf install -y rpm-build cpio
+                  fi
+
+                  for rid in linux-x64 linux-arm64; do
+                    bash "$(Build.SourcesDirectory)/packaging/rpm/build.sh" \
+                      "$rid" "$(CosmosDBShell_RpmVersion)" "$(CosmosDBShell_RpmRelease)" \
+                      "$(BuildConfiguration)" "$(Build.SourcesDirectory)/.pipelines/nuget.config"
+                  done
+                displayName: Build lightweight framework-dependent RPMs
+
+              - script: |
+                  set -euo pipefail
+                  output_dir="$(Build.SourcesDirectory)/out/rpm"
+                  mapfile -t packages < <(find "$output_dir" -maxdepth 1 -type f -name 'cosmosdbshell-lite-*.rpm' | sort)
+                  if [[ ${#packages[@]} -ne 2 ]]; then
+                    echo "Expected two RPM packages; found ${#packages[@]}." >&2
+                    exit 1
+                  fi
+
+                  for arch in x86_64 aarch64; do
+                    find "$output_dir" -maxdepth 1 -name "cosmosdbshell-lite-*.$arch.rpm" | grep .
+                  done
+                displayName: Validate lightweight RPM packages
 
           - job: CodeQLAnalyze
             displayName: CodeQL (C#)
