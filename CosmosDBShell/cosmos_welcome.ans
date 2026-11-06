@@ -38,6 +38,6 @@
 [1;36m{{shell-welcome-examples}}[0m
     [34mhttps://github.com/Azure/CosmosDBShell/tree/main/examples[0m
 
-[1;33m{{shell-welcome-preview}} {{VERSION}}[0m
-[1;37m{{shell-welcome-preview-warning}}[0m
-
+[1;33m{{PREVIEW}}{{shell-welcome-preview}} {{END_PREVIEW}}{{VERSION}}[0m
+{{PREVIEW}}[1;37m{{shell-welcome-preview-warning}}[0m
+{{END_PREVIEW}}
