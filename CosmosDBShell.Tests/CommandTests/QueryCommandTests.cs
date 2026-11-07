@@ -729,6 +729,65 @@ public class QueryCommandTests
         Assert.DoesNotContain("cannot be resumed", output.Text);
     }
 
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(true, null)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task ExecuteQueryAsync_LimitWarnings_UseExecutingShellOutput(bool quiet, bool? append)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Output = "json", Quiet = quiet };
+        var singletonOptions = ShellInterpreter.Instance.Options;
+        var originalOut = Console.Out;
+        var originalError = Console.Error;
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        var errorFile = Path.Join(Path.GetTempPath(), $"cosmosshell-query-warnings-{Guid.NewGuid():N}.log");
+        try
+        {
+            ShellInterpreter.Instance.Options = new Program.CosmosShellOptions { Output = "user" };
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            if (append.HasValue)
+            {
+                await File.WriteAllTextAsync(errorFile, "existing\n", TestContext.Current.CancellationToken);
+                shell.ErrOutRedirect = errorFile;
+                shell.AppendErrRedirection = append.Value;
+            }
+
+            using var iterator = new FakeFeedIterator(
+                NonResumablePage("Continuation tokens are not supported.", 1, "1", "2", "3"));
+            var command = new QueryCommand { Query = "SELECT * FROM c", Max = 2 };
+            var output = await CaptureConsoleAsync(
+                () => command.ExecuteQueryAsync(CreateContainer(iterator), shell, TestContext.Current.CancellationToken));
+
+            Assert.Equal(["1", "2"], ReadIds(output.Result));
+            Assert.Empty(output.Text);
+            Assert.Empty(stdout.ToString());
+            var diagnostics = append.HasValue
+                ? await File.ReadAllTextAsync(errorFile, TestContext.Current.CancellationToken)
+                : stderr.ToString();
+            Assert.Contains("Results limited to 2 items", diagnostics);
+            Assert.Contains("cannot be resumed", diagnostics);
+            Assert.DoesNotContain("\u001b", diagnostics, StringComparison.Ordinal);
+            if (append.HasValue)
+            {
+                Assert.Empty(stderr.ToString());
+                Assert.Equal(append.Value, diagnostics.StartsWith("existing", StringComparison.Ordinal));
+            }
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalError);
+            ShellInterpreter.Instance.Options = singletonOptions;
+            File.Delete(errorFile);
+        }
+    }
+
     private static Container CreateContainer(FeedIterator iterator)
     {
         var container = Substitute.For<Container>();

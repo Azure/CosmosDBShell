@@ -732,6 +732,7 @@ internal class ImportCommand : CosmosCommand
         var partitionKeySegments = ParsePartitionKeySegments(this.PartitionKey);
 
         var progress = new ImportProgress();
+        var errors = shell.IsMachineMode ? new BulkWriteDiagnostics() : null;
         var reporter = new IngestionProgress(
             shell,
             selectedFormat,
@@ -758,7 +759,8 @@ internal class ImportCommand : CosmosCommand
                 commandState,
                 progress,
                 token,
-                UpdateProgress));
+                UpdateProgress,
+                errors));
         }
         catch (DecoderFallbackException ex)
         {
@@ -841,12 +843,20 @@ internal class ImportCommand : CosmosCommand
         }
 
         CommandState resultState;
+        var failureMessage = failure?.Message;
+        if (errors is { Count: > 0 })
+        {
+            failureMessage = ReferenceEquals(failure, progress.FirstFailure)
+                ? errors.GetMessage()
+                : failureMessage + Environment.NewLine + errors.GetMessage();
+        }
+
         if (failure != null)
         {
-            payload["error"] = failure.Message;
+            payload["error"] = failureMessage;
             payload["exitCode"] = ShellExitCode.FromException(failure);
             resultState = new StructuredErrorCommandState(
-                new CommandException("import", $"{summary} {failure.Message}", failure),
+                new CommandException("import", $"{summary} {failureMessage}", failure),
                 new ShellJson(JsonSerializer.SerializeToElement(payload)));
         }
         else
@@ -864,10 +874,10 @@ internal class ImportCommand : CosmosCommand
         resultState.RequestCharge = charge > 0 ? charge : null;
         resultState.RenderUser = () =>
         {
-            ShellInterpreter.WriteLine(summary);
+            shell.Output.WriteLine(ShellMessageKind.Result, summary);
             if (failure != null && shell.ErrOutRedirect == null)
             {
-                ShellInterpreter.WriteLine(failure.Message);
+                shell.Output.WriteLine(ShellMessageKind.Error, failureMessage!);
             }
         };
         return resultState;
@@ -887,7 +897,8 @@ internal class ImportCommand : CosmosCommand
         CommandState commandState,
         ImportProgress progress,
         CancellationToken token,
-        Action progressChanged)
+        Action progressChanged,
+        BulkWriteDiagnostics? errors)
     {
         FileStream? stream = null;
         IAsyncEnumerable<(int LineNumber, JsonElement Item)> source;
@@ -928,7 +939,8 @@ internal class ImportCommand : CosmosCommand
                 token,
                 warningShell: shell,
                 progress: progress,
-                progressChanged: progressChanged);
+                progressChanged: progressChanged,
+                errors: errors);
         }
         finally
         {
@@ -990,7 +1002,8 @@ internal class ImportCommand : CosmosCommand
         CancellationToken token,
         ShellInterpreter? warningShell = null,
         ImportProgress? progress = null,
-        Action? progressChanged = null)
+        Action? progressChanged = null,
+        BulkWriteDiagnostics? errors = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         progress ??= new ImportProgress();
@@ -1009,6 +1022,7 @@ internal class ImportCommand : CosmosCommand
             {
                 progress.Failed++;
                 progress.FirstFailure ??= result.Error;
+                errors?.Add(result.Error.Message);
             }
 
             progressChanged?.Invoke();

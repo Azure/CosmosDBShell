@@ -122,7 +122,7 @@ internal class WhoamiCommand : CosmosCommand
 
     private static void RenderTable(string credentialType, Dictionary<string, object?>? identity, string? note)
     {
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-whoami-title")));
+        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatSectionHeader(MessageService.GetString("command-whoami-title")));
 
         var table = new Table();
         table.AddColumns(string.Empty, string.Empty);
@@ -141,11 +141,11 @@ internal class WhoamiCommand : CosmosCommand
             AddRow(table, "command-whoami-token-expires", identity["tokenExpiresOn"]);
         }
 
-        AnsiConsole.Write(table);
+        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
 
         if (!string.IsNullOrEmpty(note))
         {
-            AnsiConsole.MarkupLine(Theme.FormatMuted(note));
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatMuted(note));
         }
     }
 

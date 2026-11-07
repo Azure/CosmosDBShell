@@ -11,3 +11,4 @@ using System.Diagnostics.CodeAnalysis;
 
 [assembly: SuppressMessage("MicrosoftCodeAnalysisReleaseTracking", "RS2008:Enable analyzer release tracking", Justification = "<Pending>", Scope = "member", Target = "~F:CosmosShell.Analyzer.EmptyCatchClauseAnalyzer.Rule")]
 [assembly: SuppressMessage("MicrosoftCodeAnalysisReleaseTracking", "RS2008:Enable analyzer release tracking", Justification = "<Pending>", Scope = "member", Target = "~F:CosmosShell.Analyzer.WriteLineAnalyzer.Rule")]
+[assembly: SuppressMessage("MicrosoftCodeAnalysisReleaseTracking", "RS2008:Enable analyzer release tracking", Justification = "<Pending>", Scope = "member", Target = "~F:CosmosShell.Analyzer.DirectConsoleOutputAnalyzer.Rule")]

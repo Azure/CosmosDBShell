@@ -566,14 +566,14 @@ internal sealed class BulkCommand : CosmosCommand
                 ["uncertain"] = uncertain,
                 ["operations"] = operations,
             };
-            renderUser = () => RenderStatus(bulk, succeeded, failed, uncertain);
+            renderUser = () => RenderStatus(shell, bulk, succeeded, failed, uncertain);
         }
 
         using var document = JsonDocument.Parse(root.ToJsonString());
         return new CommandState { Result = new ShellJson(document.RootElement.Clone()), RenderUser = renderUser };
     }
 
-    private static void RenderStatus(PendingBulkState bulk, int succeeded, int failed, int uncertain)
+    private static void RenderStatus(ShellInterpreter shell, PendingBulkState bulk, int succeeded, int failed, int uncertain)
     {
         var details = new Table().HideHeaders();
         details.AddColumn(string.Empty);
@@ -593,7 +593,7 @@ internal sealed class BulkCommand : CosmosCommand
         AddDetail("command-bulk-status-succeeded", succeeded.ToString(CultureInfo.InvariantCulture));
         AddDetail("command-bulk-status-failed", failed.ToString(CultureInfo.InvariantCulture));
         AddDetail("command-bulk-status-uncertain", uncertain.ToString(CultureInfo.InvariantCulture));
-        AnsiConsole.Write(details);
+        shell.Output.Render(ShellMessageKind.Result, details);
         if (bulk.Operations.Count == 0)
         {
             return;
@@ -611,10 +611,10 @@ internal sealed class BulkCommand : CosmosCommand
                 Theme.FormatTableValue(Markup.Escape(operation.Id)));
         }
 
-        AnsiConsole.Write(operations);
+        shell.Output.Render(ShellMessageKind.Result, operations);
         if (bulk.Operations.Count > StatusPreviewCount)
         {
-            ShellInterpreter.WriteLine(MessageService.GetArgsString("command-bulk-status-more", "count", bulk.Operations.Count - StatusPreviewCount));
+            shell.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString("command-bulk-status-more", "count", bulk.Operations.Count - StatusPreviewCount));
         }
     }
 

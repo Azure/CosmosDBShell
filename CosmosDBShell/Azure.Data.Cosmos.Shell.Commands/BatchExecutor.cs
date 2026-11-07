@@ -17,6 +17,7 @@ internal static class BatchExecutor
     internal const int MaxOperations = 100;
 
     public static async Task<CommandState> ExecuteAsync(
+        ShellInterpreter shell,
         string commandName,
         Container container,
         PartitionKey partitionKey,
@@ -74,7 +75,7 @@ internal static class BatchExecutor
                 operations.Count,
                 "charge",
                 response.RequestCharge.ToString("F2", CultureInfo.InvariantCulture));
-            return CreateResultState(summary, successMessage, response.RequestCharge);
+            return CreateResultState(shell, summary, successMessage, response.RequestCharge);
         }
 
         var errorMessage = MessageService.GetArgsString(
@@ -92,18 +93,24 @@ internal static class BatchExecutor
         {
             RequestCharge = response.RequestCharge,
         };
-        errorState.RenderUser = () => ShellInterpreter.WriteLine(errorMessage);
+        errorState.RenderUser = () =>
+        {
+            if (shell.ErrOutRedirect == null)
+            {
+                shell.Output.WriteLine(ShellMessageKind.Error, errorMessage);
+            }
+        };
         return errorState;
     }
 
-    internal static CommandState CreateResultState(JsonElement summary, string message, double requestCharge)
+    internal static CommandState CreateResultState(ShellInterpreter shell, JsonElement summary, string message, double requestCharge)
     {
         var state = new CommandState
         {
             Result = new ShellJson(summary),
             RequestCharge = requestCharge,
         };
-        state.RenderUser = () => ShellInterpreter.WriteLine(message);
+        state.RenderUser = () => shell.Output.WriteLine(ShellMessageKind.Result, message);
         return state;
     }
 

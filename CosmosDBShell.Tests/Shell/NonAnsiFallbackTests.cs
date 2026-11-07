@@ -10,6 +10,55 @@ using Spectre.Console;
 [Collection(ThemeStateTestCollection.Name)]
 public class NonAnsiFallbackTests
 {
+    [Theory]
+    [InlineData("echo QUIET_HISTORY", "echo QUIET_HISTORY")]
+    [InlineData("connect 'AccountKey=example-key==;'", "connect 'AccountKey=[REDACTED];'")]
+    public void PrintCommand_Quiet_RecordsInExistingEditorHistoryWithoutEcho(string command, string expectedHistory)
+    {
+        var configPath = CreateConfigPath();
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        var savedError = Console.Error;
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        try
+        {
+            var ansiConsole = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.Yes,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+                Enrichment = new ProfileEnrichment { UseDefaultEnrichers = false },
+            });
+            AnsiConsole.Console = ansiConsole;
+            Console.SetOut(output);
+            Console.SetError(error);
+            using var shell = new ShellInterpreter(configPath)
+            {
+                Options = new Program.CosmosShellOptions { Quiet = true },
+                LineEditorTerminal = ansiConsole,
+            };
+            var editor = shell.Editor;
+            Assert.NotNull(editor);
+            var historyCount = editor.History.Count;
+
+            shell.PrintCommand(command);
+
+            Assert.Equal(historyCount + 1, editor.History.Count);
+            Assert.Contains(expectedHistory, shell.History);
+            Assert.Contains(expectedHistory, File.ReadAllText(shell.HistoryFile));
+            Assert.Empty(output.ToString());
+            Assert.Empty(error.ToString());
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            Console.SetError(savedError);
+            AnsiConsole.Console = savedConsole;
+            DeleteConfigPath(configPath);
+        }
+    }
+
     [Fact]
     public async Task RunAsync_WhenLineEditorCannotBeCreated_UsesPromptFallbackAndExitsOnEof()
     {

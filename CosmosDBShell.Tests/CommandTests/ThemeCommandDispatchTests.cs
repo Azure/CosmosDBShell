@@ -123,9 +123,7 @@ public class ThemeCommandDispatchTests
     [Fact]
     public async Task Show_UnknownTheme_ReturnsError()
     {
-        var state = await RunAsync(new ThemeCommand { Action = "show", Name = "does-not-exist-xyz" });
-
-        Assert.IsType<ErrorCommandState>(state);
+        await Assert.ThrowsAsync<CommandException>(() => RunAsync(new ThemeCommand { Action = "show", Name = "does-not-exist-xyz" }));
     }
 
     [Fact]
@@ -167,25 +165,19 @@ public class ThemeCommandDispatchTests
     [Fact]
     public async Task Use_MissingName_ReturnsError()
     {
-        var state = await RunAsync(new ThemeCommand { Action = "use" });
-
-        Assert.IsType<ErrorCommandState>(state);
+        await Assert.ThrowsAsync<CommandException>(() => RunAsync(new ThemeCommand { Action = "use" }));
     }
 
     [Fact]
     public async Task Use_UnknownName_ReturnsError()
     {
-        var state = await RunAsync(new ThemeCommand { Action = "use", Name = "nope-xyz" });
-
-        Assert.IsType<ErrorCommandState>(state);
+        await Assert.ThrowsAsync<CommandException>(() => RunAsync(new ThemeCommand { Action = "use", Name = "nope-xyz" }));
     }
 
     [Fact]
     public async Task Load_MissingPath_ReturnsError()
     {
-        var state = await RunAsync(new ThemeCommand { Action = "load" });
-
-        Assert.IsType<ErrorCommandState>(state);
+        await Assert.ThrowsAsync<CommandException>(() => RunAsync(new ThemeCommand { Action = "load" }));
     }
 
     [Fact]
@@ -214,9 +206,7 @@ public class ThemeCommandDispatchTests
     {
         var path = Path.Combine(Path.GetTempPath(), $"missing-{Guid.NewGuid():N}.toml");
 
-        var state = await RunAsync(new ThemeCommand { Action = "load", Name = path });
-
-        Assert.IsType<ErrorCommandState>(state);
+        await Assert.ThrowsAsync<CommandException>(() => RunAsync(new ThemeCommand { Action = "load", Name = path }));
     }
 
     [Fact]
@@ -225,9 +215,7 @@ public class ThemeCommandDispatchTests
         var path = WriteTempToml($"bad-{Guid.NewGuid():N}", "this is = = not valid toml [[[");
         try
         {
-            var state = await RunAsync(new ThemeCommand { Action = "load", Name = path });
-
-            Assert.IsType<ErrorCommandState>(state);
+            await Assert.ThrowsAsync<CommandException>(() => RunAsync(new ThemeCommand { Action = "load", Name = path }));
         }
         finally
         {
@@ -238,17 +226,13 @@ public class ThemeCommandDispatchTests
     [Fact]
     public async Task Save_MissingName_ReturnsError()
     {
-        var state = await RunAsync(new ThemeCommand { Action = "save" });
-
-        Assert.IsType<ErrorCommandState>(state);
+        await Assert.ThrowsAsync<CommandException>(() => RunAsync(new ThemeCommand { Action = "save" }));
     }
 
     [Fact]
     public async Task Save_InvalidName_ReturnsError()
     {
-        var state = await RunAsync(new ThemeCommand { Action = "save", Name = "../escape" });
-
-        Assert.IsType<ErrorCommandState>(state);
+        await Assert.ThrowsAsync<CommandException>(() => RunAsync(new ThemeCommand { Action = "save", Name = "../escape" }));
     }
 
     [Fact]
@@ -280,9 +264,7 @@ public class ThemeCommandDispatchTests
         File.WriteAllText(path, "name = \"existing\"");
         try
         {
-            var state = await RunAsync(new ThemeCommand { Action = "save", Name = "exported", Path = path });
-
-            Assert.IsType<ErrorCommandState>(state);
+            await Assert.ThrowsAsync<CommandException>(() => RunAsync(new ThemeCommand { Action = "save", Name = "exported", Path = path }));
         }
         finally
         {
@@ -321,9 +303,7 @@ public class ThemeCommandDispatchTests
     [Fact]
     public async Task UnknownAction_ReturnsError()
     {
-        var state = await RunAsync(new ThemeCommand { Action = "frobnicate" });
-
-        Assert.IsType<ErrorCommandState>(state);
+        await Assert.ThrowsAsync<CommandException>(() => RunAsync(new ThemeCommand { Action = "frobnicate" }));
     }
 
     private static Task<CommandState> RunAsync(ThemeCommand command) =>

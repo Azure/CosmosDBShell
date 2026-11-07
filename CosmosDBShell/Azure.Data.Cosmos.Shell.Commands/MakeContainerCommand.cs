@@ -67,7 +67,7 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
     {
         if (!string.IsNullOrEmpty(this.Database))
         {
-            return await this.CreateContainerInDatabaseAsync(state, this.Database, token);
+            return await this.CreateContainerInDatabaseAsync(state, shell, this.Database, token);
         }
 
         throw new NotInDatabaseException("mkcon");
@@ -128,10 +128,10 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
     {
         if (!string.IsNullOrEmpty(this.Database) && !string.Equals(this.Database, state.DatabaseName, StringComparison.OrdinalIgnoreCase))
         {
-            return await this.CreateContainerInDatabaseAsync(state, this.Database, token);
+            return await this.CreateContainerInDatabaseAsync(state, shell, this.Database, token);
         }
 
-        return await this.CreateContainerInDatabaseAsync(state, state.DatabaseName, token);
+        return await this.CreateContainerInDatabaseAsync(state, shell, state.DatabaseName, token);
     }
 
     Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitContainerStateAsync(ContainerState state, ShellInterpreter shell, CancellationToken token)
@@ -144,7 +144,7 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
         throw new CommandException("mkcon", MessageService.GetString("error-not_allowed_in_container"));
     }
 
-    private async Task<CommandState> CreateContainerInDatabaseAsync(ConnectedState state, string databaseName, CancellationToken token)
+    private async Task<CommandState> CreateContainerInDatabaseAsync(ConnectedState state, ShellInterpreter shell, string databaseName, CancellationToken token)
     {
         // Validate database exists
         await ValidateDatabaseExistsAsync(state, databaseName, "mkcon", token);
@@ -189,7 +189,7 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
             ResourceCreationOutcome.CreatedOrUpdated => "command-mkcon-container_created_or_updated",
             _ => throw new UnreachableException(),
         };
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString(messageKey, new Dictionary<string, object> { { "container", creation.Id } }));
+        commandState.RenderUser = () => shell.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString(messageKey, new Dictionary<string, object> { { "container", creation.Id } }));
         return commandState;
     }
 
