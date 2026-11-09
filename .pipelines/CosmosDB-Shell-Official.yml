@@ -12,7 +12,7 @@ trigger: # https://aka.ms/obpipelines/triggers
   branches:
     include:
       - "main"
-      - "release"
+      - "rel/*"
 
 pr: none
 
