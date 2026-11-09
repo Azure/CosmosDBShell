@@ -196,7 +196,7 @@ dotnet test CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --filter "Category=Li
 ### CI Pipelines
 
 - **GitHub Actions** ([.github/workflows/validate-and-package.yml](.github/workflows/validate-and-package.yml)) runs validation on pull requests, and on branch pushes also builds NuGet tool packages.
-- **Azure Pipelines** ([.pipelines/CosmosDB-Shell-Official.yml](.pipelines/CosmosDB-Shell-Official.yml)) handles signed builds and publishing from `main`.
+- **Azure Pipelines** ([.pipelines/CosmosDB-Shell-Official.yml](.pipelines/CosmosDB-Shell-Official.yml)) handles signed builds from `main` and `release`. Publishing to the internal NuGet feed remains limited to `main`.
 
 Local builds use the default NuGet sources (nuget.org).
 
