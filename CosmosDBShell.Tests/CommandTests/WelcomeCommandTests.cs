@@ -19,9 +19,8 @@ public sealed class WelcomeCommandTests
         var expectedVersion = ShellInterpreter.GetDisplayVersion(typeof(WelcomeScreen).Assembly);
 
         Assert.Contains(expectedVersion, WelcomeScreen.Text, StringComparison.Ordinal);
-        Assert.Equal(
-            ShellInterpreter.IsPrereleaseVersion(expectedVersion),
-            WelcomeScreen.Text.Contains(MessageService.GetString("shell-welcome-preview"), StringComparison.Ordinal));
+        Assert.Contains(MessageService.GetString("shell-welcome-version"), WelcomeScreen.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain(MessageService.GetString("shell-welcome-preview"), WelcomeScreen.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("{{", WelcomeScreen.Text, StringComparison.Ordinal);
         Assert.Contains(MessageService.GetString("shell-welcome-start"), WelcomeScreen.Text, StringComparison.Ordinal);
         Assert.Contains(MessageService.GetString("shell-welcome-resources"), WelcomeScreen.Text, StringComparison.Ordinal);
@@ -29,7 +28,7 @@ public sealed class WelcomeCommandTests
     }
 
     [Theory]
-    [InlineData("1.2.3-preview", "shell-welcome-preview", 14)]
+    [InlineData("1.2.3-preview", "shell-welcome-version", 14)]
     [InlineData("1.2.3", "shell-welcome-version", 14)]
     public void WelcomeScreen_RenderUsesLocalizedTextAndPreservesCommands(string version, string versionLabelKey, int expectedKeyCount)
     {
@@ -56,14 +55,14 @@ public sealed class WelcomeCommandTests
     }
 
     [Theory]
-    [InlineData("1.2.3", false)]
-    [InlineData("1.2.3+preview", false)]
-    [InlineData("1.2.3-preview", true)]
-    [InlineData("1.2.3-preview.2+abc", true)]
-    [InlineData("1.2.3-beta.1", true)]
-    [InlineData("1.2.3-rc.1", true)]
-    [InlineData("unknown", false)]
-    public void WelcomeScreen_RenderShowsPreviewTextOnlyForPrereleases(string version, bool isPrerelease)
+    [InlineData("1.2.3")]
+    [InlineData("1.2.3+preview")]
+    [InlineData("1.2.3-preview")]
+    [InlineData("1.2.3-preview.2+abc")]
+    [InlineData("1.2.3-beta.1")]
+    [InlineData("1.2.3-rc.1")]
+    [InlineData("unknown")]
+    public void WelcomeScreen_RenderCentersVersionBelowShellLogo(string version)
     {
         var assembly = typeof(WelcomeScreen).Assembly;
         var resourceName = Assert.Single(assembly.GetManifestResourceNames(), name => name.EndsWith("cosmos_welcome.ans", StringComparison.Ordinal));
@@ -73,20 +72,24 @@ public sealed class WelcomeCommandTests
         var rendered = WelcomeScreen.Render(reader.ReadToEnd(), version, key => MessageService.GetString(key));
 
         Assert.DoesNotContain("{{", rendered, StringComparison.Ordinal);
-        Assert.Equal(isPrerelease, rendered.Contains(MessageService.GetString("shell-welcome-preview"), StringComparison.Ordinal));
+        Assert.DoesNotContain(MessageService.GetString("shell-welcome-preview"), rendered, StringComparison.Ordinal);
         Assert.DoesNotContain(MessageService.GetString("shell-welcome-preview-warning"), rendered, StringComparison.Ordinal);
         var lines = Regex.Replace(rendered, @"\x1b\[[0-9;]*m", string.Empty).ReplaceLineEndings("\n").Split('\n');
-        var versionLabel = MessageService.GetString(isPrerelease ? "shell-welcome-preview" : "shell-welcome-version");
-        Assert.Equal($"{versionLabel} {version}".PadLeft(75), lines[12]);
-        Assert.True(Array.FindIndex(lines, line => line.Contains(MessageService.GetString("shell-welcome-start"), StringComparison.Ordinal)) > 12);
+        var versionLine = $"{MessageService.GetString("shell-welcome-version")} {version}";
+        var padding = 37 - ((versionLine.Length + 1) / 2);
+        Assert.Equal(string.Empty, lines[12]);
+        Assert.Equal(new string(' ', padding) + versionLine, lines[13]);
+        Assert.Equal(string.Empty, lines[14]);
+        Assert.Contains($"\u001b[37m{lines[13]}\u001b[0m", rendered, StringComparison.Ordinal);
+        Assert.True(Array.FindIndex(lines, line => line.Contains(MessageService.GetString("shell-welcome-start"), StringComparison.Ordinal)) > 14);
         Assert.Single(lines, line => line.Contains(version, StringComparison.Ordinal));
         Assert.DoesNotContain(version, lines);
         Assert.Contains(MessageService.GetString("shell-welcome-start"), rendered, StringComparison.Ordinal);
     }
 
     [Theory]
-    [InlineData("VERSION", 62)]
-    [InlineData("版本", 65)]
+    [InlineData("VERSION", 30)]
+    [InlineData("版本", 32)]
     public void WelcomeScreen_VersionAlignmentUsesDisplayWidth(string label, int padding)
     {
         var rendered = WelcomeScreen.Render("{{VERSION_LINE}}", "1.2.3", _ => label);

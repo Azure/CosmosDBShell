@@ -1926,10 +1926,10 @@ Usage: welcome
 
 The welcome screen is shown automatically on the first interactive startup. Later
 startups show a compact line containing the shell version and MCP server status.
-The welcome screen shows the version directly below the logo, right-aligned with
-the logo's edge: `VERSION 1.2.3` for stable releases or `PREVIEW VERSION 1.3.0-preview`
-for prereleases. Neither the welcome screen nor the compact startup status prints
-an explanatory prerelease warning.
+The welcome screen centers the version below the `SHELL` logo in light gray, with
+a blank line separating it from the artwork: `VERSION 1.2.3` for stable releases or
+`VERSION 1.3.0-preview` for prereleases. Neither the welcome screen nor the compact
+startup status prints an explanatory prerelease warning.
 
 ### cls
 

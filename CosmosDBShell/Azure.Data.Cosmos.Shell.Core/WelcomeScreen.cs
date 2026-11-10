@@ -11,16 +11,16 @@ using Spectre.Console;
 internal static class WelcomeScreen
 {
     private const string ResourceSuffix = "cosmos_welcome.ans";
-    private const int LogoWidth = 75;
+    private const int ShellLogoCenter = 37;
     private static readonly Lazy<string> Content = new(Load);
 
     internal static string Text => Content.Value;
 
     internal static string Render(string template, string version, Func<string, string> getString)
     {
-        var versionLabel = getString(ShellInterpreter.IsPrereleaseVersion(version) ? "shell-welcome-preview" : "shell-welcome-version");
+        var versionLabel = getString("shell-welcome-version");
         var versionLine = $"{versionLabel} {version}";
-        versionLine = new string(' ', Math.Max(0, LogoWidth - versionLine.GetCellWidth())) + versionLine;
+        versionLine = new string(' ', Math.Max(0, ShellLogoCenter - ((versionLine.GetCellWidth() + 1) / 2))) + versionLine;
         return Regex.Replace(
             template,
             @"\{\{(VERSION_LINE|shell-welcome-[a-z-]+)\}\}",
