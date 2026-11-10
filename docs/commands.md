@@ -1928,6 +1928,7 @@ The welcome screen is shown automatically on the first interactive startup. Late
 startups show a compact line containing the shell version and MCP server status.
 The welcome screen and startup status show preview warnings only when the running
 version is a prerelease (for example, `-preview`, `-beta`, or `-rc`).
+For stable releases, the welcome screen labels the version as `VERSION 1.2.3`.
 
 ### cls
 

@@ -19,8 +19,8 @@ internal static class WelcomeScreen
         var isPrerelease = ShellInterpreter.IsPrereleaseVersion(version);
         template = Regex.Replace(
             template,
-            @"\{\{PREVIEW\}\}(.*?)\{\{END_PREVIEW\}\}",
-            match => isPrerelease ? match.Groups[1].Value : string.Empty,
+            @"\{\{(PREVIEW|RELEASE)\}\}(.*?)\{\{END_\1\}\}",
+            match => (match.Groups[1].Value == "PREVIEW") == isPrerelease ? match.Groups[2].Value : string.Empty,
             RegexOptions.Singleline);
         return Regex.Replace(
             template,
