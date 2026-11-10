@@ -6,26 +6,25 @@ namespace Azure.Data.Cosmos.Shell.Core;
 
 using System.Text.RegularExpressions;
 using Azure.Data.Cosmos.Shell.Util;
+using Spectre.Console;
 
 internal static class WelcomeScreen
 {
     private const string ResourceSuffix = "cosmos_welcome.ans";
+    private const int LogoWidth = 75;
     private static readonly Lazy<string> Content = new(Load);
 
     internal static string Text => Content.Value;
 
     internal static string Render(string template, string version, Func<string, string> getString)
     {
-        var isPrerelease = ShellInterpreter.IsPrereleaseVersion(version);
-        template = Regex.Replace(
-            template,
-            @"\{\{(PREVIEW|RELEASE)\}\}(.*?)\{\{END_\1\}\}",
-            match => (match.Groups[1].Value == "PREVIEW") == isPrerelease ? match.Groups[2].Value : string.Empty,
-            RegexOptions.Singleline);
+        var versionLabel = getString(ShellInterpreter.IsPrereleaseVersion(version) ? "shell-welcome-preview" : "shell-welcome-version");
+        var versionLine = $"{versionLabel} {version}";
+        versionLine = new string(' ', Math.Max(0, LogoWidth - versionLine.GetCellWidth())) + versionLine;
         return Regex.Replace(
             template,
-            @"\{\{(VERSION|shell-welcome-[a-z-]+)\}\}",
-            match => match.Groups[1].Value == "VERSION" ? version : getString(match.Groups[1].Value));
+            @"\{\{(VERSION_LINE|shell-welcome-[a-z-]+)\}\}",
+            match => match.Groups[1].Value == "VERSION_LINE" ? versionLine : getString(match.Groups[1].Value));
     }
 
     internal static void WriteTo(TextWriter writer)
