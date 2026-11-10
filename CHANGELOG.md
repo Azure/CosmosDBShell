@@ -4,19 +4,40 @@
 
 ### Breaking changes
 
+### New features
+
+### Fixes
+
+### Improvements
+
+## 1.2.4 — 2026-11-10
+
+### Breaking changes
+
 - Structured `help` results now include a `topics` array alongside `help`, `commands`, and `statements`. Consumers that require an exact set of JSON fields must accept the new field. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
 - `pwd` now prints labeled Cosmos location and local directory lines. Structured results retain the existing fields and add `localDirectory`; consumers that require an exact JSON shape must accept the new field. ([#269](https://github.com/Azure/CosmosDBShell/issues/269))
 - `mkdb` and `create database` now create databases without shared throughput when `--scale` and `--ru` are omitted. Provision throughput on individual containers, or specify `--scale=auto --ru=1000` to retain the previous shared autoscale default. Container creation defaults are unchanged. ([#268](https://github.com/Azure/CosmosDBShell/issues/268))
 
 ### New features
 
+- Add `help shortcuts` to list keyboard shortcuts, including history search with `Ctrl+R` and `Ctrl+S`; the `help` overview lists it under Help Topics. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
+
 ### Fixes
 
 - Show endpoint-only account and emulator examples when running `connect` offline; keep the connection-string alternative in `help connect`. ([#270](https://github.com/Azure/CosmosDBShell/issues/270))
-- Add `help shortcuts` to list keyboard shortcuts, including history search with `Ctrl+R` and `Ctrl+S`; the `help` overview lists it under Help Topics. ([#267](https://github.com/Azure/CosmosDBShell/issues/267))
 - Show the absolute destination path in export success messages so exported files can be located. The structured result's `file` field continues to contain the supplied path. ([#269](https://github.com/Azure/CosmosDBShell/issues/269))
+- Return exit code `5` when `print` cannot find an item, instead of the generic failure code `1`, while retaining the item and partition-key diagnostic. ([#288](https://github.com/Azure/CosmosDBShell/pull/288))
+- Show concise, actionable Azure and Cosmos DB service errors, including account throughput-limit failures, instead of nested service error payloads. MCP logs include full exception details only with `--verbose`. ([#283](https://github.com/Azure/CosmosDBShell/pull/283))
+- Preserve output and redirections for every statement in multi-statement `-c` / `-k` input and redirected stdin, including output before a later runtime failure. Redirecting a script with `>` truncates the destination once and retains all statement output; `>>` appends without truncating. ([#286](https://github.com/Azure/CosmosDBShell/pull/286))
+- Redact recognized connection credentials from persisted command history, including existing entries when history is next saved successfully. Recalled key-based connections require a fresh key or Entra ID authentication. Existing backups, command echoes, and command output are not cleaned by history filtering. ([#291](https://github.com/Azure/CosmosDBShell/pull/291))
+- Return usage exit code `2` consistently for rejected command arguments and invalid input, while preserving operational and service failure exit codes. ([#289](https://github.com/Azure/CosmosDBShell/pull/289))
+- Emit structured JSON diagnostics on stderr for returned command errors in machine mode, including failed `theme` commands and rejected non-interactive `edit` calls. Preserve structured failure payloads and stderr redirection without duplicate diagnostics. ([#287](https://github.com/Azure/CosmosDBShell/pull/287))
+- Stop independent script statements from passing earlier results implicitly into `rm` and other input-consuming commands. Use an explicit `|` to pass pipeline input; explicit pipelines continue to work through functions, scripts, and dynamic `exec`. ([#292](https://github.com/Azure/CosmosDBShell/pull/292))
 
 ### Improvements
+
+- Clarify that MCP `import` and `export` accept `user`, `json`, `csv`, or `table` for command-result presentation, not input or output file encoding. Import file formats are detected automatically; `array` and `jsonl` are not valid `format` values. ([#285](https://github.com/Azure/CosmosDBShell/pull/285))
+- Show a consistent `VERSION` label centered below the welcome screen's `SHELL` logo in light gray. Prerelease versions retain their suffix without a duplicate preview label; explanatory prerelease warnings are removed from the welcome screen and compact startup status. ([#296](https://github.com/Azure/CosmosDBShell/pull/296))
 
 ## 1.1.295 — 2026-11-03
 
