@@ -1210,10 +1210,6 @@ public partial class ShellInterpreter : IDisposable
             version,
             "mcp_status",
             mcpStatus));
-        if (IsPrereleaseVersion(version))
-        {
-            WriteLine(MessageService.GetString("shell-startup-preview-warning"));
-        }
     }
 
     internal async Task<int> RunAsync()

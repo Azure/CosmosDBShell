@@ -10,6 +10,7 @@
 [18C\   \   |   __   | |  __|  | |    | |[0m
 [15C[1;30m.---)   |  |  |  |  | | |____ | `---.| `---. [0m
 [15C[1;30m|_[5b/   |__|  |__| |_[5b||_[4b||_[4b| [0m
+[1;33m{{VERSION_LINE}}[0m
 [0m
 [48;2;85;255;255m [30m{{shell-welcome-start}} [0m
 [0m
@@ -37,7 +38,3 @@
     [34mhttps://github.com/Azure/CosmosDBShell/blob/main/README.md[0m
 [1;36m{{shell-welcome-examples}}[0m
     [34mhttps://github.com/Azure/CosmosDBShell/tree/main/examples[0m
-
-[1;33m{{PREVIEW}}{{shell-welcome-preview}} {{END_PREVIEW}}{{RELEASE}}{{shell-welcome-version}} {{END_RELEASE}}{{VERSION}}[0m
-{{PREVIEW}}[1;37m{{shell-welcome-preview-warning}}[0m
-{{END_PREVIEW}}

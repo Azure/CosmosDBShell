@@ -29,7 +29,7 @@ public sealed class WelcomeCommandTests
     }
 
     [Theory]
-    [InlineData("1.2.3-preview", "shell-welcome-preview", 15)]
+    [InlineData("1.2.3-preview", "shell-welcome-preview", 14)]
     [InlineData("1.2.3", "shell-welcome-version", 14)]
     public void WelcomeScreen_RenderUsesLocalizedTextAndPreservesCommands(string version, string versionLabelKey, int expectedKeyCount)
     {
@@ -74,12 +74,32 @@ public sealed class WelcomeCommandTests
 
         Assert.DoesNotContain("{{", rendered, StringComparison.Ordinal);
         Assert.Equal(isPrerelease, rendered.Contains(MessageService.GetString("shell-welcome-preview"), StringComparison.Ordinal));
-        Assert.Equal(isPrerelease, rendered.Contains(MessageService.GetString("shell-welcome-preview-warning"), StringComparison.Ordinal));
+        Assert.DoesNotContain(MessageService.GetString("shell-welcome-preview-warning"), rendered, StringComparison.Ordinal);
         var lines = Regex.Replace(rendered, @"\x1b\[[0-9;]*m", string.Empty).ReplaceLineEndings("\n").Split('\n');
         var versionLabel = MessageService.GetString(isPrerelease ? "shell-welcome-preview" : "shell-welcome-version");
-        Assert.Contains($"{versionLabel} {version}", lines);
+        Assert.Equal($"{versionLabel} {version}".PadLeft(75), lines[12]);
+        Assert.True(Array.FindIndex(lines, line => line.Contains(MessageService.GetString("shell-welcome-start"), StringComparison.Ordinal)) > 12);
+        Assert.Single(lines, line => line.Contains(version, StringComparison.Ordinal));
         Assert.DoesNotContain(version, lines);
         Assert.Contains(MessageService.GetString("shell-welcome-start"), rendered, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("VERSION", 62)]
+    [InlineData("版本", 65)]
+    public void WelcomeScreen_VersionAlignmentUsesDisplayWidth(string label, int padding)
+    {
+        var rendered = WelcomeScreen.Render("{{VERSION_LINE}}", "1.2.3", _ => label);
+
+        Assert.Equal(new string(' ', padding) + label + " 1.2.3", rendered);
+    }
+
+    [Fact]
+    public void WelcomeScreen_LongVersionLabelIsNotTruncated()
+    {
+        var label = new string('X', 120);
+
+        Assert.Equal(label + " 1.2.3", WelcomeScreen.Render("{{VERSION_LINE}}", "1.2.3", _ => label));
     }
 
     [Fact]
@@ -166,14 +186,14 @@ public sealed class WelcomeCommandTests
     }
 
     [Theory]
-    [InlineData("1.2.3", false)]
-    [InlineData("1.2.3+preview", false)]
-    [InlineData("1.2.3-preview", true)]
-    [InlineData("1.2.3-preview.2+abc", true)]
-    [InlineData("1.2.3-beta.1", true)]
-    [InlineData("1.2.3-rc.1", true)]
-    [InlineData("unknown", false)]
-    public void PrintStartupStatus_PrintsPreviewWarningOnlyForPrereleases(string version, bool isPrerelease)
+    [InlineData("1.2.3")]
+    [InlineData("1.2.3+preview")]
+    [InlineData("1.2.3-preview")]
+    [InlineData("1.2.3-preview.2+abc")]
+    [InlineData("1.2.3-beta.1")]
+    [InlineData("1.2.3-rc.1")]
+    [InlineData("unknown")]
+    public void PrintStartupStatus_PrintsSingleLineWithoutPreviewWarning(string version)
     {
         var configPath = Path.Join(Path.GetTempPath(), $"cosmosshell-welcome-{Guid.NewGuid():N}");
         var originalOut = Console.Out;
@@ -187,17 +207,13 @@ public sealed class WelcomeCommandTests
             shell.PrintStartupStatus(version);
 
             var status = output.ToString();
-            Assert.StartsWith(
+            Assert.Equal(
                 MessageService.GetArgsString(
                     "shell-startup-status",
                     "version", version,
-                    "mcp_status", MessageService.GetString("shell-startup-mcp-off")),
-                status,
-                StringComparison.Ordinal);
-            Assert.Equal(
-                isPrerelease,
-                status.Contains($"{Environment.NewLine}{MessageService.GetString("shell-startup-preview-warning")}{Environment.NewLine}", StringComparison.Ordinal));
-            Assert.Equal(isPrerelease ? 2 : 1, status.Count(character => character == '\n'));
+                    "mcp_status", MessageService.GetString("shell-startup-mcp-off")) + Environment.NewLine,
+                status);
+            Assert.Equal(1, status.Count(character => character == '\n'));
         }
         finally
         {
