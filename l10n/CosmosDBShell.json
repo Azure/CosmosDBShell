@@ -1614,6 +1614,7 @@
   "shell-welcome-query-description": "Run Cosmos DB SQL interactively",
   "shell-welcome-resources": "RESOURCES",
   "shell-welcome-start": "START HERE",
+  "shell-welcome-version": "VERSION",
   "statement-break-description": "Exits the nearest enclosing loop immediately.",
   "statement-break-example": "while ($count \u003C 10) {\n    if ($count == 5) {\n        echo \u0022Stopping at 5\u0022\n        break\n    }\n    echo $count\n    $count = $count \u002B 1\n}",
   "statement-break-syntax": "break",
