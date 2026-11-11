@@ -308,7 +308,7 @@ Start the shell with options to customize behavior:
 | Option | Description |
 | ------ | ----------- |
 | `--output <format>` | Output format for command results: `user` (default interactive view), `json`, `table`, or `csv`. Alias: `-o`. Selecting `json` or `csv` enables machine mode. Falls back to `COSMOSDB_SHELL_FORMAT`. |
-| `--quiet` | Suppress standard informational output (banners, connection logs). Enables machine mode. Alias: `-q` |
+| `--quiet` | Suppress informational messages, progress, banners, and command echoes. Preserve results, warnings, errors, and required authentication instructions. Enables machine mode. Alias: `-q` |
 | `-c <cmd>` | Execute command and exit. Everything after `-c` is taken as the command, so app-level options must come before `-c`. Windows-style `/c` is also accepted. |
 | `-k <cmd>` | Execute command and stay in shell. Everything after `-k` is taken as the command, so app-level options must come before `-k`. Windows-style `/k` is also accepted. |
 | `--connect <str>` | Connect with this connection string or endpoint on startup |
@@ -343,10 +343,23 @@ banners, emits command results as the selected structured format (JSON or CSV) o
 and writes parser, connection, and command failures (including `theme` errors and rejected
 non-interactive `edit` calls) as a structured `{ "status": "error", "error": ... }` object
 on `STDERR`. In-shell `2>` / `2>>` redirection sends that error object to the specified
-file instead. Inferred partition-key mutation warnings are emitted before writes as
+file instead. `STDOUT` carries only the command result; tables and other interactive
+views are not rendered. Inferred partition-key mutation warnings are emitted before writes as
 JSON Lines records on console stderr; a later error is emitted as a separate JSON record.
 The human-facing `user` and `table` formats are not machine mode; `user`
 falls back to JSON whenever output is redirected, piped, or run in machine mode.
+
+Quiet is not a universal mute: warnings, errors, and required instructions (such as
+authentication prompts and previews shown before a confirmation) remain visible on
+`STDERR`, without ANSI styling. Explicit diagnostic logging is unaffected.
+Command results are separate from informational messages and remain on `STDOUT`.
+Bulk-write errors include per-item diagnostics in that single structured error:
+imports identify source lines, and item-array writes identify 1-based item positions.
+Up to 100 item diagnostics are listed, followed by a count of any omitted ones.
+`--verbose` does not replace machine-mode errors with raw stack traces; shell `2>`
+and `2>>` redirection still applies and also captures warnings and required instructions.
+Outside machine mode, `2>` and `2>>` capture warnings and errors, while confirmation
+prompts and other required instructions stay on the terminal.
 
 In normal `user` mode, command confirmations and status messages are readable text,
 not JSON status objects. Commands that display document or policy data can still show

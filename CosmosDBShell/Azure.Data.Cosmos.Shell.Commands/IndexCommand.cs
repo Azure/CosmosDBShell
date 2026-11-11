@@ -63,7 +63,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
     {
         if (!string.IsNullOrEmpty(this.Database) && !string.IsNullOrEmpty(this.Container))
         {
-            return await this.ExecuteOnContainerAsync(state, this.Database, this.Container, token);
+            return await this.ExecuteOnContainerAsync(state, shell, this.Database, this.Container, token);
         }
 
         throw new NotInContainerException("index");
@@ -75,7 +75,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
 
         if (!string.IsNullOrEmpty(this.Container))
         {
-            return await this.ExecuteOnContainerAsync(state, databaseName, this.Container, token);
+            return await this.ExecuteOnContainerAsync(state, shell, databaseName, this.Container, token);
         }
 
         throw new NotInContainerException("index");
@@ -86,7 +86,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
         string databaseName = this.Database ?? state.DatabaseName;
         string containerName = this.Container ?? state.ContainerName;
 
-        return await this.ExecuteOnContainerAsync(state, databaseName, containerName, token);
+        return await this.ExecuteOnContainerAsync(state, shell, databaseName, containerName, token);
     }
 
     /// <summary>
@@ -309,7 +309,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
         };
     }
 
-    private async Task<CommandState> ExecuteOnContainerAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    private async Task<CommandState> ExecuteOnContainerAsync(ConnectedState state, ShellInterpreter shell, string databaseName, string containerName, CancellationToken token)
     {
         await ValidateContainerExistsAsync(state, databaseName, containerName, "index", token);
 
@@ -318,11 +318,11 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
             case "show":
                 return await this.ShowAsync(state, databaseName, containerName, token);
             case "add":
-                return await this.AddAsync(state, databaseName, containerName, token);
+                return await this.AddAsync(state, shell, databaseName, containerName, token);
             case "remove":
-                return await this.RemoveAsync(state, databaseName, containerName, token);
+                return await this.RemoveAsync(state, shell, databaseName, containerName, token);
             case "set":
-                return await this.SetAsync(state, databaseName, containerName, token);
+                return await this.SetAsync(state, shell, databaseName, containerName, token);
             default:
                 throw CommandException.Usage(
                     "index",
@@ -342,23 +342,23 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
         return BuildResult(json);
     }
 
-    private async Task<CommandState> AddAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    private async Task<CommandState> AddAsync(ConnectedState state, ShellInterpreter shell, string databaseName, string containerName, CancellationToken token)
     {
         var paths = this.RequirePaths();
         string current = await this.ReadPolicyAsync(state, databaseName, containerName, token);
         string updated = AddIncludedPaths(current, paths);
-        return await this.WritePolicyAsync(state, databaseName, containerName, updated, token);
+        return await this.WritePolicyAsync(state, shell, databaseName, containerName, updated, token);
     }
 
-    private async Task<CommandState> RemoveAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    private async Task<CommandState> RemoveAsync(ConnectedState state, ShellInterpreter shell, string databaseName, string containerName, CancellationToken token)
     {
         var paths = this.RequirePaths();
         string current = await this.ReadPolicyAsync(state, databaseName, containerName, token);
         string updated = RemovePaths(current, paths);
-        return await this.WritePolicyAsync(state, databaseName, containerName, updated, token);
+        return await this.WritePolicyAsync(state, shell, databaseName, containerName, updated, token);
     }
 
-    private async Task<CommandState> SetAsync(ConnectedState state, string databaseName, string containerName, CancellationToken token)
+    private async Task<CommandState> SetAsync(ConnectedState state, ShellInterpreter shell, string databaseName, string containerName, CancellationToken token)
     {
         bool? automatic = ParseAutomatic(this.Automatic);
         string? policyArgument = this.PolicyArgument();
@@ -370,7 +370,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
 
         string baseJson = policyArgument ?? await this.ReadPolicyAsync(state, databaseName, containerName, token);
         string updated = ApplySettings(baseJson, this.Mode, automatic);
-        return await this.WritePolicyAsync(state, databaseName, containerName, updated, token);
+        return await this.WritePolicyAsync(state, shell, databaseName, containerName, updated, token);
     }
 
     private string[] RequirePaths()
@@ -406,7 +406,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
         }
     }
 
-    private async Task<CommandState> WritePolicyAsync(ConnectedState state, string databaseName, string containerName, string policyJson, CancellationToken token)
+    private async Task<CommandState> WritePolicyAsync(ConnectedState state, ShellInterpreter shell, string databaseName, string containerName, string policyJson, CancellationToken token)
     {
         string updatedJson;
         try
@@ -419,7 +419,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
         }
 
         var result = BuildResult(updatedJson);
-        result.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-index-updated"));
+        result.RenderUser = () => shell.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-index-updated"));
         return result;
     }
 }

@@ -88,7 +88,7 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
                 {
                     this.SetOutcome(
                         JsonSerializer.SerializeToElement(new { type = "database", id = databaseName, deleted = false, dryRun = true }),
-                        () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-dry-run-plan", new Dictionary<string, object> { { "db", Markup.Escape(databaseName) } })));
+                        () => ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-rmdb-dry-run-plan", new Dictionary<string, object> { { "db", Markup.Escape(databaseName) } })));
                     return 0;
                 }
 
@@ -99,7 +99,7 @@ internal class RmDbCommand : CosmosCommand, IStateVisitor<ExitCode, ShellInterpr
                     CosmosCompleteCommand.ClearDatabases();
                     this.SetOutcome(
                         JsonSerializer.SerializeToElement(new { type = "database", id = databaseName, deleted = true, dryRun = false }),
-                        () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmdb-deleted_db", new Dictionary<string, object> { { "db", Markup.Escape(databaseName) } })));
+                        () => ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-rmdb-deleted_db", new Dictionary<string, object> { { "db", Markup.Escape(databaseName) } })));
                 }
                 else
                 {
