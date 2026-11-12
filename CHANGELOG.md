@@ -10,7 +10,7 @@
 
 ### Improvements
 
-## 1.2.4 — 2026-11-10
+## 1.2.4 — 2026-11-12
 
 ### Breaking changes
 
