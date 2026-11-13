@@ -864,10 +864,10 @@ internal class ImportCommand : CosmosCommand
         resultState.RequestCharge = charge > 0 ? charge : null;
         resultState.RenderUser = () =>
         {
-            ShellInterpreter.WriteLine(summary);
+            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, summary);
             if (failure != null && shell.ErrOutRedirect == null)
             {
-                ShellInterpreter.WriteLine(failure.Message);
+                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, failure.Message);
             }
         };
         return resultState;

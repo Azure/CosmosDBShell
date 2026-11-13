@@ -42,6 +42,17 @@ internal class CommandRunner
         return false;
     }
 
+    /// <summary>
+    /// Removes every command matching <paramref name="predicate"/>, including all of its aliases.
+    /// </summary>
+    internal void RemoveCommands(Func<CommandFactory, bool> predicate)
+    {
+        foreach (var name in this.Commands.Where(entry => predicate(entry.Value)).Select(entry => entry.Key).ToList())
+        {
+            this.Commands.Remove(name);
+        }
+    }
+
     internal bool IsOptionPrefix(string? currentCommand, string name)
     {
         if (currentCommand == null)

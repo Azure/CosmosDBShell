@@ -189,7 +189,7 @@ internal class MakeContainerCommand : CosmosCommand, IStateVisitor<CommandState,
             ResourceCreationOutcome.CreatedOrUpdated => "command-mkcon-container_created_or_updated",
             _ => throw new UnreachableException(),
         };
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString(messageKey, new Dictionary<string, object> { { "container", creation.Id } }));
+        commandState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString(messageKey, new Dictionary<string, object> { { "container", creation.Id } }));
         return commandState;
     }
 

@@ -47,8 +47,8 @@ internal class PwdCommand : CosmosCommand
             var cosmosLabel = MessageService.GetString("command-pwd-cosmos-location") + ":";
             var localLabel = MessageService.GetString("command-pwd-local-directory") + ":";
             var width = Math.Max(cosmosLabel.Length, localLabel.Length) + 1;
-            AnsiConsole.MarkupLine(Theme.FormatMuted(cosmosLabel.PadRight(width)) + currentLocationMarkup);
-            AnsiConsole.MarkupLine(Theme.FormatMuted(localLabel.PadRight(width)) + Theme.FormatDirectory(localDirectory));
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatMuted(cosmosLabel.PadRight(width)) + currentLocationMarkup);
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatMuted(localLabel.PadRight(width)) + Theme.FormatDirectory(localDirectory));
         };
         return Task.FromResult(commandState);
     }

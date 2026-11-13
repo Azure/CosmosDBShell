@@ -36,6 +36,83 @@ public class ConnectCommandTests
         Assert.Equal(TimeSpan.FromSeconds(5), options.RequestTimeout);
     }
 
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void AllowsInteractiveBrowser_IsDisabledOnlyForMcpStdio(bool mcpStdio, bool expected)
+    {
+        Assert.Equal(expected, ShellInterpreter.AllowsInteractiveBrowser(mcpStdio));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CreateDefaultCredentialOptions_ExcludesBrowserWhenNotAllowed(bool allowInteractiveBrowser)
+    {
+        var authority = new Uri("https://login.example.test/");
+
+        var options = ShellInterpreter.CreateDefaultCredentialOptions(authority, allowInteractiveBrowser);
+
+        Assert.Equal(!allowInteractiveBrowser, options.ExcludeInteractiveBrowserCredential);
+        Assert.Equal(!allowInteractiveBrowser, options.ExcludeBrokerCredential);
+        Assert.Equal(authority, options.AuthorityHost);
+        Assert.False(options.ExcludeAzureCliCredential);
+        Assert.False(options.ExcludeManagedIdentityCredential);
+    }
+
+    [Fact]
+    public void IsMcpStdio_FollowsOptions()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        Assert.False(shell.IsMcpStdio);
+
+        shell.Options = new Program.CosmosShellOptions { McpStdio = true };
+        Assert.True(shell.IsMcpStdio);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_McpStdioWithTenant_UsesDeviceCodeWithoutBrowser()
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalAccountKey = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_ACCOUNT_KEY");
+        var originalToken = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_TOKEN");
+        var originalOptions = shell.Options;
+        var originalError = Console.Error;
+        var originalOut = Console.Out;
+        using var error = new StringWriter();
+        using var output = new StringWriter();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        try
+        {
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_ACCOUNT_KEY", null);
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_TOKEN", null);
+            shell.Options = new Program.CosmosShellOptions { McpStdio = true };
+            Console.SetError(error);
+            Console.SetOut(output);
+            timeout.CancelAfter(TimeSpan.FromSeconds(2));
+
+            // Device code polling cannot complete here: the attempt ends by cancellation or,
+            // without network access, by an authentication failure. Neither may open a browser.
+            await Assert.ThrowsAnyAsync<Exception>(() => shell.ConnectAsync(
+                "https://stdio-auth-test.documents.azure.com:443/",
+                tenantId: "00000000-0000-0000-0000-000000000000",
+                token: timeout.Token));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_ACCOUNT_KEY", originalAccountKey);
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_TOKEN", originalToken);
+            Console.SetError(originalError);
+            Console.SetOut(originalOut);
+            shell.Options = originalOptions;
+        }
+
+        var stderr = error.ToString();
+        Assert.Contains(MessageService.GetString("shell-connect-devicecode-stdio"), stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain(MessageService.GetString("shell-connect-browser-auth"), stderr + output, StringComparison.Ordinal);
+        Assert.IsNotType<ConnectedState>(shell.State);
+    }
+
     [Fact]
     public void LocalEmulatorInactivityTimeout_IsInitializedOnSharedAndNewInstances()
     {

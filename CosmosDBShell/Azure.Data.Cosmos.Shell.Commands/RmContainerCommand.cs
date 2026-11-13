@@ -94,7 +94,7 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
                 {
                     this.SetOutcome(
                         JsonSerializer.SerializeToElement(new { type = "container", id = containerName, deleted = false, dryRun = true }),
-                        () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-dry-run-plan", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } })));
+                        () => ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-rmcon-dry-run-plan", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } })));
                     return 0;
                 }
 
@@ -104,7 +104,7 @@ internal class RmContainerCommand : CosmosCommand, IStateVisitor<ExitCode, Shell
                     CosmosCompleteCommand.ClearContainers();
                     this.SetOutcome(
                         JsonSerializer.SerializeToElement(new { type = "container", id = containerName, deleted = true, dryRun = false }),
-                        () => AnsiConsole.MarkupLine(MessageService.GetString("command-rmcon-deleted_container", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } })));
+                        () => ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-rmcon-deleted_container", new Dictionary<string, object> { { "container", Markup.Escape(containerName) } })));
                 }
                 else
                 {

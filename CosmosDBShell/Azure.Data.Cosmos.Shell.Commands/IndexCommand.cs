@@ -419,7 +419,7 @@ internal class IndexCommand : CosmosCommand, IStateVisitor<CommandState, ShellIn
         }
 
         var result = BuildResult(updatedJson);
-        result.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-index-updated"));
+        result.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-index-updated"));
         return result;
     }
 }

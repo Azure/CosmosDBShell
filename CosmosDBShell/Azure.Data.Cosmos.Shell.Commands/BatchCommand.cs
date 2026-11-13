@@ -95,7 +95,7 @@ internal class BatchCommand : CosmosCommand
             "command-batch-cancelled",
             "count",
             count);
-        return new CommandState { RenderUser = () => ShellInterpreter.WriteLine(message) };
+        return new CommandState { RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, message) };
     }
 
     private static CommandState Status(ShellInterpreter shell)
@@ -106,7 +106,7 @@ internal class BatchCommand : CosmosCommand
         if (batch is null)
         {
             root = new JsonObject { ["active"] = false };
-            renderUser = () => ShellInterpreter.WriteLine(MessageService.GetString("command-batch-status-inactive"));
+            renderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-batch-status-inactive"));
         }
         else
         {
@@ -155,7 +155,7 @@ internal class BatchCommand : CosmosCommand
         AddDetail("command-batch-status-target", $"{batch.DatabaseName}/{batch.ContainerName}");
         AddDetail("command-batch-status-partition-key", batch.PartitionKeyArgument);
         AddDetail("command-batch-status-operation-count", batch.Operations.Count.ToString(CultureInfo.InvariantCulture));
-        AnsiConsole.Write(details);
+        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, details);
 
         if (batch.Operations.Count == 0)
         {
@@ -175,7 +175,7 @@ internal class BatchCommand : CosmosCommand
                 Theme.FormatTableValue(Markup.Escape(operation.Id ?? string.Empty)));
         }
 
-        AnsiConsole.Write(operations);
+        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, operations);
     }
 
     private static CommandState Show(ShellInterpreter shell)
@@ -269,7 +269,7 @@ internal class BatchCommand : CosmosCommand
             databaseName!,
             "container",
             containerName!);
-        return new CommandState { RenderUser = () => ShellInterpreter.WriteLine(message) };
+        return new CommandState { RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, message) };
     }
 
     private CommandState Add(ShellInterpreter shell, CommandState commandState)
@@ -297,7 +297,7 @@ internal class BatchCommand : CosmosCommand
             specs.Count,
             "total",
             batch.Operations.Count);
-        return new CommandState { RenderUser = () => ShellInterpreter.WriteLine(message) };
+        return new CommandState { RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, message) };
     }
 
     private async Task<CommandState> ExecuteBatchAsync(ShellInterpreter shell, CancellationToken token)
