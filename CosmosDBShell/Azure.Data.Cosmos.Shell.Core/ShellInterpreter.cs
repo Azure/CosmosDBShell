@@ -2312,6 +2312,23 @@ public partial class ShellInterpreter : IDisposable
         }
     }
 
+    internal CommandState PrintCommandResult(CommandState state, string? sourceText = null)
+    {
+        if (!state.OutputRendered && state is ErrorCommandState error && state is not StructuredErrorCommandState)
+        {
+            this.RenderWarnings(
+                state,
+                !string.IsNullOrEmpty(this.StdOutRedirect),
+                this.IsMachineMode,
+                deferToErrorEnvelope: !ContainsException<CommandReportedException>(error.Exception),
+                flushConsoleWarnings: true);
+            this.ReportExecutionError(error.Exception, sourceText, state.Warnings);
+            state.OutputRendered = true;
+        }
+
+        return this.PrintState(state, markAsRendered: true);
+    }
+
     /// <summary>
     /// Renders a command state's output and pending warnings.
     /// </summary>
