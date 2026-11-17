@@ -116,6 +116,7 @@ shell-welcome-project = Project
 shell-welcome-docs = Docs
 shell-welcome-examples = Examples
 shell-welcome-preview = PREVIEW VERSION
+shell-welcome-version = VERSION
 shell-welcome-preview-warning = Commands, output, and behavior may change before general availability.
 shell-hisory_file_deleted = History deleted.
 shell-history-clear-error = Failed to clear history: { $message }

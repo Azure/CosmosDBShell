@@ -113,6 +113,11 @@ internal class DefStatement : Statement
             arguments.Set(this.Parameters[i].TrimStart('$'), argument);
         }
 
+        if (!commandState.HasPipelineInput)
+        {
+            commandState.Result = null;
+        }
+
         shell.PushCallScope(arguments, token);
         var callerName = shell.CurrentScriptFileName;
         var callerText = shell.CurrentScriptContent;
@@ -129,6 +134,7 @@ internal class DefStatement : Statement
                 result.OutputRendered = false;
             }
 
+            result.HasPipelineInput = false;
             return result;
         }
         catch (Exception exception) when (exception is not PositionalException && (exception is not OperationCanceledException || !token.IsCancellationRequested) && this.sourceName != null && this.sourceText != null)
@@ -138,6 +144,7 @@ internal class DefStatement : Statement
         }
         finally
         {
+            commandState.HasPipelineInput = false;
             shell.CurrentScriptFileName = callerName;
             shell.CurrentScriptContent = callerText;
             shell.PopCallScope();
