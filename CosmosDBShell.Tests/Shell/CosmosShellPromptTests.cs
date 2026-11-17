@@ -42,6 +42,38 @@ public class CosmosShellPromptTests
         Assert.DoesNotContain(Markup.Escape(Markup.Escape("Con[tainer]")), prompt);
     }
 
+    [Theory]
+    [InlineData("https://127.0.0.1:8081/")]
+    [InlineData("https://localhost:8081/")]
+    [InlineData("http://localhost:8081/")]
+    [InlineData("https://example.documents.azure.com/")]
+    public void GetPromptString_ConnectedScopes_ShowAccountOrEmulatorLabel(string endpoint)
+    {
+        using var client = new CosmosClient(endpoint, FakeKey);
+        var shell = ShellInterpreter.CreateInstance();
+        var label = endpoint.Contains("example", StringComparison.Ordinal) ? "example" : "emulator";
+        State[] states =
+        [
+            new ConnectedState(client),
+            new DatabaseState("MyDb", client),
+            new ContainerState("MyContainer", "MyDb", client),
+        ];
+
+        foreach (var state in states)
+        {
+            shell.State = state;
+            var prompt = Markup.Remove(new CosmosShellPrompt(shell).GetPromptString());
+            var scope = state switch
+            {
+                ContainerState => "MyDb/MyContainer ",
+                DatabaseState => "MyDb ",
+                _ => string.Empty,
+            };
+
+            Assert.Equal($"{label} {scope}{CosmosShellPrompt.PromptMarker}", prompt);
+        }
+    }
+
     [Fact]
     public void GetPromptString_InDatabaseState_EscapesMarkupCharactersOnce()
     {

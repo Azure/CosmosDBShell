@@ -1026,6 +1026,7 @@ command-connect-description-subscription = Azure subscription ID for ARM databas
 command-connect-description-resource-group = Azure resource group name for ARM database and container operations. Must be paired with --subscription.
 command-connect-error-no_endpoint = An account endpoint or connection string must be specified.
 command-connect-connected = Connected to account '{ $account }'
+command-connect-emulator-connected = Connected to local Cosmos DB emulator at { $endpoint }
 command-connect-emulator-detected = Emulator endpoint detected, using well-known account key and gateway mode.
 command-connect-switching = Disconnecting from '{ $endpoint }'...
 command-connect-not_connected = Not connected to any Cosmos DB account.
