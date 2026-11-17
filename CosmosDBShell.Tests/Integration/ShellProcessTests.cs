@@ -842,8 +842,8 @@ public class ShellProcessTests
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("Connected to account", result.StdOut, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("localhost", result.StdOut, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains($"Connected to local Cosmos DB emulator at {EmulatorTestBase.EmulatorEndpoint}/", result.StdOut, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Connected to account", result.StdOut, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Current Location", result.StdOut, StringComparison.OrdinalIgnoreCase);
     }
 
