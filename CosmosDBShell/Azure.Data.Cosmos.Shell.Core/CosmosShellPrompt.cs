@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Core;
 
 using Azure.Data.Cosmos.Shell.States;
+using Azure.Data.Cosmos.Shell.Util;
 
 using RadLine;
 
@@ -103,7 +104,9 @@ internal class CosmosShellPrompt(ShellInterpreter shell) : ILineEditorPrompt, IS
 
     private static string GetAccountSegment(ConnectedState state)
     {
-        var account = state.ArmContext?.AccountName ?? CosmosArmResourceProvider.GetAccountNameFromEndpoint(state.Client.Endpoint);
+        var account = ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(state.Client.Endpoint.ToString())
+            ? "emulator"
+            : state.ArmContext?.AccountName ?? CosmosArmResourceProvider.GetAccountNameFromEndpoint(state.Client.Endpoint);
         return string.IsNullOrEmpty(account) ? string.Empty : $"{Theme.ConnectedStatePromt(account)} ";
     }
 
