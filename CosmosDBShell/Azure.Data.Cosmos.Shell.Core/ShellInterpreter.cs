@@ -1598,7 +1598,7 @@ public partial class ShellInterpreter : IDisposable
                 throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
             }
 
-            WriteLine(MessageService.GetArgsString("command-connect-connected", "account", keyProps.Id));
+            WriteLine(GetConnectionSuccessMessage(client.Endpoint, keyProps.Id));
             this.Connect(client, credentialTypeOverride: isEmulator ? "Emulator" : "AccountKey");
             return;
         }
@@ -1808,6 +1808,13 @@ public partial class ShellInterpreter : IDisposable
 
         var message = CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, exception.Message);
         return new ShellException(message, new TimeoutException(message, exception));
+    }
+
+    internal static string GetConnectionSuccessMessage(Uri endpoint, string accountId)
+    {
+        return ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(endpoint.ToString())
+            ? MessageService.GetArgsString("command-connect-emulator-connected", "endpoint", endpoint.ToString())
+            : MessageService.GetArgsString("command-connect-connected", "account", accountId);
     }
 
     internal static string GetLocalEmulatorConnectionFailureMessage(Uri endpoint)
