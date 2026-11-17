@@ -18,6 +18,7 @@ using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using NSubstitute;
+using Spectre.Console;
 
 [Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class McpLocationSubscriptionTests
@@ -432,6 +433,34 @@ public class McpLocationSubscriptionTests
                 var result = await client.CallToolAsync("version", cancellationToken: timeout.Token);
                 Assert.False(result.IsError == true);
                 Assert.NotEmpty(result.Content);
+
+                var savedConsole = AnsiConsole.Console;
+                var savedOut = Console.Out;
+                using var output = new StringWriter();
+                try
+                {
+                    AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+                    {
+                        Ansi = AnsiSupport.No,
+                        ColorSystem = ColorSystemSupport.NoColors,
+                        Out = new AnsiConsoleOutput(output),
+                    });
+                    Console.SetOut(output);
+                    const string message = "mcp-terminal-result";
+
+                    var echo = await client.CallToolAsync(
+                        "echo", new Dictionary<string, object?> { ["messages"] = new[] { message } }, cancellationToken: timeout.Token);
+
+                    Assert.False(echo.IsError == true);
+                    Assert.Equal(message, echo.StructuredContent!.Value.GetProperty("result").GetString());
+                    Assert.Contains($"echo \"{message}\"", output.ToString());
+                    Assert.Single(output.ToString().Split(Environment.NewLine), line => line == message);
+                }
+                finally
+                {
+                    Console.SetOut(savedOut);
+                    AnsiConsole.Console = savedConsole;
+                }
             }
         }
         finally
