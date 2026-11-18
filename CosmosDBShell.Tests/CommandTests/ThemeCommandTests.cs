@@ -81,10 +81,44 @@ public class ThemeCommandTests
             Name = dir.Path,
         };
 
-        var state = await command.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), "", CancellationToken.None);
-        var error = Assert.IsType<ErrorCommandState>(state);
+        var error = await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), "", CancellationToken.None));
 
-        Assert.Contains("1 of 2", error.Exception.Message);
+        Assert.Contains("1 of 2", error.Message);
+    }
+
+    [Fact]
+    public async Task Validate_DirectoryUsesExecutingShellMachineMode()
+    {
+        using var dir = new TempDirectory();
+        var broken = Path.Join(dir.Path, "broken.toml");
+        File.WriteAllText(broken,
+            """
+            name = "broken"
+
+            [colors]
+            literal = "lightyellow3"
+            """);
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Output = "json" };
+        var command = new ThemeCommand
+        {
+            Action = "validate",
+            Name = dir.Path,
+        };
+        var savedOut = Console.Out;
+        using var stdout = new StringWriter();
+        try
+        {
+            Console.SetOut(stdout);
+            var error = await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(shell, new CommandState(), "", CancellationToken.None));
+
+            Assert.Contains(broken, error.Message);
+            Assert.Empty(stdout.ToString());
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+        }
     }
 
     [Fact]
@@ -109,9 +143,8 @@ public class ThemeCommandTests
                 Strict = true,
             };
 
-            var state = await command.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), "", CancellationToken.None);
-            var error = Assert.IsType<ErrorCommandState>(state);
-            Assert.Contains("strict mode", error.Exception.Message);
+            var error = await Assert.ThrowsAsync<CommandException>(() => command.ExecuteAsync(ShellInterpreter.Instance, new CommandState(), "", CancellationToken.None));
+            Assert.Contains("strict mode", error.Message);
         }
         finally
         {

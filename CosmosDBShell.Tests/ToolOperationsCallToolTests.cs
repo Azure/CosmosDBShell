@@ -524,7 +524,9 @@ public class ToolOperationsCallToolTests : IDisposable
 
             Assert.False(result.IsError == true);
             var actual = output.ToString();
-            var echoEnd = actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
+            var echoEnd = shell.IsMachineMode
+                ? 0
+                : actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
             Assert.Equal(expected, actual[echoEnd..]);
             Assert.True(result.StructuredContent!.Value.TryGetProperty("result", out _));
         }
@@ -570,7 +572,9 @@ public class ToolOperationsCallToolTests : IDisposable
             Assert.Equal("hello", root.GetProperty("result").GetString());
             Assert.Equal("hello", root.GetProperty("outputText").GetString());
             var actual = output.ToString();
-            var echoEnd = actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
+            var echoEnd = shell.IsMachineMode
+                ? 0
+                : actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
             Assert.Equal("hello" + Environment.NewLine, actual[echoEnd..]);
         }
         finally
@@ -582,24 +586,48 @@ public class ToolOperationsCallToolTests : IDisposable
         }
     }
 
+    public static IEnumerable<object?[]> CommandFailureOutputCases()
+    {
+        (string Command, string? Action)[] commands =
+        [
+            ("theme", "use"),
+            ("theme", "show"),
+            ("theme", "edit"),
+            ("theme", null),
+            ("help", null),
+        ];
+        foreach (var (command, action) in commands)
+        {
+            foreach (var format in new[] { "user", "json", "csv" })
+            {
+                foreach (var redirect in new[] { false, true })
+                {
+                    yield return [command, action, format, redirect];
+                }
+            }
+        }
+    }
+
     [Theory]
-    [InlineData("theme", "use")]
-    [InlineData("theme", "show")]
-    [InlineData("theme", "edit")]
-    [InlineData("theme", null)]
-    [InlineData("help", null)]
-    public async Task CallTool_AlreadyReportedFailure_IsDisplayedOnce(string command, string? action)
+    [MemberData(nameof(CommandFailureOutputCases))]
+    public async Task CallTool_CommandFailure_IsDisplayedOnce(string command, string? action, string format, bool redirect)
     {
         const string unknownName = "nonexistent-mcp-test-name";
         var shell = ShellInterpreter.Instance;
         var originalOptions = shell.Options;
+        var originalErrorRedirect = shell.ErrOutRedirect;
+        var originalErrorAppend = shell.AppendErrRedirection;
         var savedConsole = AnsiConsole.Console;
         var savedOut = Console.Out;
         var savedError = Console.Error;
         using var output = new StringWriter();
+        using var diagnostics = new StringWriter();
+        var errorFile = Path.GetTempFileName();
         try
         {
-            shell.Options = new Program.CosmosShellOptions { Output = "user" };
+            shell.Options = new Program.CosmosShellOptions { Output = format };
+            shell.ErrOutRedirect = redirect ? errorFile : null;
+            shell.AppendErrRedirection = false;
             AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
             {
                 Ansi = AnsiSupport.No,
@@ -608,7 +636,7 @@ public class ToolOperationsCallToolTests : IDisposable
             });
             AnsiConsole.Console.Profile.Width = 200;
             Console.SetOut(output);
-            Console.SetError(output);
+            Console.SetError(diagnostics);
             var arguments = new Dictionary<string, JsonElement>();
             if (command == "help")
             {
@@ -629,8 +657,31 @@ public class ToolOperationsCallToolTests : IDisposable
             Assert.True(result.IsError);
             Assert.Contains(unknownName, result.StructuredContent!.Value.GetProperty("error").GetString());
             var actual = output.ToString();
-            var echoEnd = actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
-            Assert.Equal(1, actual[echoEnd..].Split(unknownName, StringSplitOptions.None).Length - 1);
+            if (format == "user")
+            {
+                var echoEnd = actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
+                actual = actual[echoEnd..];
+            }
+            else
+            {
+                Assert.Empty(actual);
+            }
+
+            var errorText = redirect
+                ? await File.ReadAllTextAsync(errorFile, TestContext.Current.CancellationToken)
+                : diagnostics.ToString();
+            Assert.Equal(1, (actual + errorText).Split(unknownName, StringSplitOptions.None).Length - 1);
+            if (format != "user")
+            {
+                using var error = JsonDocument.Parse(errorText);
+                Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+                Assert.Contains(unknownName, error.RootElement.GetProperty("error").GetString());
+            }
+
+            if (redirect)
+            {
+                Assert.Empty(diagnostics.ToString());
+            }
         }
         finally
         {
@@ -638,6 +689,9 @@ public class ToolOperationsCallToolTests : IDisposable
             Console.SetError(savedError);
             AnsiConsole.Console = savedConsole;
             shell.Options = originalOptions;
+            shell.ErrOutRedirect = originalErrorRedirect;
+            shell.AppendErrRedirection = originalErrorAppend;
+            File.Delete(errorFile);
         }
     }
 
@@ -680,7 +734,8 @@ public class ToolOperationsCallToolTests : IDisposable
             var result = await CreateToolOperations().ExecuteToolAsync(
                 shell.App.Commands["echo"], command, "echo presentation", null, TestContext.Current.CancellationToken);
 
-            Assert.Equal("echo presentation" + Environment.NewLine + expected, output.ToString());
+            var echo = shell.IsMachineMode ? string.Empty : "echo presentation" + Environment.NewLine;
+            Assert.Equal(echo + expected, output.ToString());
             Assert.False(result.IsError == true);
             var root = result.StructuredContent!.Value;
             Assert.Equal("value", Assert.Single(root.GetProperty("result").EnumerateArray()).GetProperty("name").GetString());

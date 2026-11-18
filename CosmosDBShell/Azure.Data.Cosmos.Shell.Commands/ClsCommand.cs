@@ -18,7 +18,7 @@ internal class ClsCommand : CosmosCommand
     {
         try
         {
-            AnsiConsole.Clear();
+            shell.Output.ClearScreen();
         }
         catch (IOException)
         {

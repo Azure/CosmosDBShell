@@ -214,7 +214,7 @@ internal class CanICommand : CosmosCommand
 
     private void RenderTable(string action, string? databaseName, string? containerName, string decision, string method, int? statusCode, string? note)
     {
-        AnsiConsole.MarkupLine(Theme.FormatSectionHeader(MessageService.GetString("command-can-i-title")));
+        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatSectionHeader(MessageService.GetString("command-can-i-title")));
 
         var table = new Table();
         table.AddColumns(string.Empty, string.Empty);
@@ -233,11 +233,11 @@ internal class CanICommand : CosmosCommand
             table.AddRow(MessageService.GetString("command-can-i-status"), Theme.FormatTableValue(code.ToString()));
         }
 
-        AnsiConsole.Write(table);
+        ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
 
         if (!string.IsNullOrEmpty(note))
         {
-            AnsiConsole.MarkupLine(Theme.FormatMuted(note));
+            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, Theme.FormatMuted(note));
         }
     }
 

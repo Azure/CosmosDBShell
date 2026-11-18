@@ -240,6 +240,26 @@ public class ConnectCommandTests
         Assert.Contains("docker run", message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData("https://127.0.0.1:8081/")]
+    [InlineData("https://localhost:8081/")]
+    [InlineData("http://localhost:8081/")]
+    public void ConnectionSuccessMessage_LocalEmulator_ShowsEndpointInsteadOfAccountId(string endpoint)
+    {
+        var message = ShellInterpreter.GetConnectionSuccessMessage(new Uri(endpoint), "cosmosdev");
+
+        Assert.Equal($"Connected to local Cosmos DB emulator at {endpoint}", message);
+        Assert.DoesNotContain("cosmosdev", message);
+    }
+
+    [Fact]
+    public void ConnectionSuccessMessage_CloudAccount_PreservesAccountMessage()
+    {
+        var message = ShellInterpreter.GetConnectionSuccessMessage(new Uri("https://example.documents.azure.com/"), "example");
+
+        Assert.Equal(MessageService.GetArgsString("command-connect-connected", "account", "example"), message);
+    }
+
     [Fact]
     public void LocalEmulatorConnectionFailureMessage_SuggestsHttpsWhenHttpFails()
     {

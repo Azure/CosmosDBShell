@@ -161,7 +161,9 @@ The HTTP server serves `2026-07-28` requests without a session and gives a sessi
 MCP tool invocations are echoed as command lines in the shell window, followed by
 their results, warnings, or errors as if the commands had been entered manually.
 Terminal output honors the command's `format` option (`user`, `json`, `csv`, or
-`table`), or the shell's current output setting when omitted. The MCP client still
+`table`), or the shell's current output setting when omitted. Quiet and machine
+mode suppress the command echo; machine-mode errors use the normal JSON
+diagnostic on stderr, including `2>`/`2>>` redirection. The MCP client still
 receives the structured response described below, including paging metadata.
 
 Invocations are also recorded in the shell history, with recognized credentials such as connection-string account keys replaced by `[REDACTED]`. Recalled key-based connections require a fresh key. Existing saved credentials are removed on the next successful history save; this does not clean backups or mask the command echo. Continue to protect the history file, since arbitrary secrets under unrelated names may not be recognized. On Linux and macOS, the shell restricts the history file to its owner. See [history](navigation.md#history) for details.
