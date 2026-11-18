@@ -216,7 +216,7 @@ Both representations are always byte-for-byte equivalent.
 | `outputText` | CSV output commands with non-empty text, including structured failures | The CSV rendering of structured results, or the unchanged text for plain-text results such as `echo`. Omitted when the output is empty or whitespace. Failed imports retain their partial-result CSV alongside `error` and `result`, with `isError: true`. |
 | `continuationToken` | Paged `query` and container-item `ls` results | Opaque token for the next page, or `null` when no more results are available — unless `resultIncomplete` is `true`, where a `null` token accompanies a truncated result that cannot be resumed. Omitted for `query --explain` and database/container name listings, which are not paged. |
 | `resultIncomplete` | Truncated results that cannot be resumed | `true` when the result stops at the requested limit and the query cannot produce a continuation token. Omitted otherwise. |
-| `requestCharge` | Charged data-plane command results | The Cosmos DB request charge (in RUs) consumed by the command, as a number. This is omitted for commands that do not issue a billable request. |
+| `requestCharge` | Charged data-plane command results | The Cosmos DB request charge (in RUs) consumed by the command, as a number. Retained if terminal rendering fails after execution. This is omitted for commands that do not issue a billable request. |
 | `error` | Failed commands | The error message. |
 | `currentLocation` | Always | The shell's current navigation path (for example `/MyDatabase/MyContainer`), or `null` when disconnected. |
 

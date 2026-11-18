@@ -2345,6 +2345,7 @@ public partial class ShellInterpreter : IDisposable
         if (!ReferenceEquals(result, state))
         {
             result.ShareWarningsFrom(state);
+            result.RequestCharge ??= state.RequestCharge;
         }
 
         // Console-bound machine-mode warnings are written only once the command's output was

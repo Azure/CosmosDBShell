@@ -830,8 +830,14 @@ public class ToolOperationsCallToolTests : IDisposable
         }
     }
 
-    [Fact]
-    public async Task ExecuteTool_RenderingFailure_IsReportedToTerminalAndMcpClient()
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(false, 0.0)]
+    [InlineData(false, 2.5)]
+    [InlineData(true, null)]
+    [InlineData(true, 0.0)]
+    [InlineData(true, 2.5)]
+    public async Task ExecuteTool_RenderingFailure_IsReportedToTerminalAndMcpClient(bool verbose, double? requestCharge)
     {
         var shell = ShellInterpreter.Instance;
         var originalOptions = shell.Options;
@@ -839,14 +845,18 @@ public class ToolOperationsCallToolTests : IDisposable
         using var output = new StringWriter();
         try
         {
-            shell.Options = new Program.CosmosShellOptions { Output = "user" };
+            shell.Options = new Program.CosmosShellOptions { Output = "user", Verbose = verbose };
             AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
             {
                 Ansi = AnsiSupport.No,
                 ColorSystem = ColorSystemSupport.NoColors,
                 Out = new AnsiConsoleOutput(output),
             });
-            var state = new CommandState { RenderUser = () => throw new InvalidOperationException("rendering failed") };
+            var state = new CommandState
+            {
+                RenderUser = () => throw new InvalidOperationException("rendering failed"),
+                RequestCharge = requestCharge,
+            };
 
             var result = await CreateToolOperations().ExecuteToolAsync(
                 shell.App.Commands["echo"], new ResultCommand(state), "echo render", null, TestContext.Current.CancellationToken);
@@ -854,6 +864,12 @@ public class ToolOperationsCallToolTests : IDisposable
             Assert.True(result.IsError);
             Assert.Contains("rendering failed", output.ToString());
             Assert.Contains("rendering failed", result.StructuredContent!.Value.GetProperty("error").GetString());
+            var hasRequestCharge = result.StructuredContent.Value.TryGetProperty("requestCharge", out var charge);
+            Assert.Equal(requestCharge.HasValue, hasRequestCharge);
+            if (requestCharge.HasValue)
+            {
+                Assert.Equal(requestCharge.Value, charge.GetDouble());
+            }
             Assert.False(shell.IsMcpInvocation);
         }
         finally

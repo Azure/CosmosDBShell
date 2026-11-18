@@ -287,10 +287,11 @@ public class ExecuteCommandExceptionTests
         try
         {
             Console.SetError(stderr);
-            var state = new CommandState { Result = new ShellText("value") };
+            var state = new CommandState { Result = new ShellText("value"), RequestCharge = 2.5 };
             interpreter.StdOutRedirect = Path.Join(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "missing", "out.txt");
 
             var error = Assert.IsType<ErrorCommandState>(interpreter.PrintState(state, markAsRendered: true));
+            Assert.Equal(2.5, error.RequestCharge);
             interpreter.PrintState(error);
 
             using var document = JsonDocument.Parse(stderr.ToString());
