@@ -781,6 +781,7 @@ internal class ToolOperations
         this.logger?.LogTrace($"Requested '{command.CommandName}'.");
 
         var commandState = new CommandState();
+        var errorReported = false;
         try
         {
             return await shell.RunSerializedAsync(
@@ -811,6 +812,7 @@ internal class ToolOperations
                             var error = new ErrorCommandState(ex);
                             error.ShareWarningsFrom(commandState);
                             shell.PrintCommandResult(error, commandLine);
+                            errorReported = true;
                             throw;
                         }
 
@@ -828,13 +830,16 @@ internal class ToolOperations
         catch (Exception ex)
         {
             var message = CommandException.GetSummaryMessage(ex);
+
+            // The host's console logger must not repeat a diagnostic already shown by the shell.
+            var logLevel = errorReported ? LogLevel.Debug : LogLevel.Error;
             if (shell.Options?.Verbose == true)
             {
-                this.logger?.LogError(ex, "An exception occurred running '{Command}'.", command.CommandName);
+                this.logger?.Log(logLevel, ex, "An exception occurred running '{Command}'.", command.CommandName);
             }
             else
             {
-                this.logger?.LogError("Error executing command '{Command}': {Message}", command.CommandName, message);
+                this.logger?.Log(logLevel, "Error executing command '{Command}': {Message}", command.CommandName, message);
             }
 
             return McpResponseFactory.CreateError(

@@ -39,7 +39,7 @@ public class ToolOperationsCallToolTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ExecuteTool_ServiceFailure_LogsFullExceptionOnlyWhenVerbose(bool verbose)
+    public async Task ExecuteTool_ReportedServiceFailure_LogsDebugWithFullExceptionOnlyWhenVerbose(bool verbose)
     {
         var shell = ShellInterpreter.Instance;
         var originalOptions = shell.Options;
@@ -63,7 +63,8 @@ public class ToolOperationsCallToolTests : IDisposable
                     root.GetProperty("error").GetString());
             }
 
-            var log = Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Error);
+            Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Error);
+            var log = Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Debug);
             if (verbose)
             {
                 var exception = Assert.IsAssignableFrom<Exception>(log.Exception);
