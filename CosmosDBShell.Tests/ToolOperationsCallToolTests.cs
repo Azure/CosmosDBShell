@@ -539,6 +539,109 @@ public class ToolOperationsCallToolTests : IDisposable
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CallTool_EchoWithCsvSessionDefault_PreservesTextResult(bool environmentDefault)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var originalFormat = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        using var output = new StringWriter();
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = environmentDefault ? null : "csv" };
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", environmentDefault ? "csv" : null);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            Console.SetOut(output);
+
+            var result = await CreateToolOperations().CallToolHandler(
+                CallContext("echo", new Dictionary<string, JsonElement> { ["messages"] = Json("[\"hello\"]") }),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError == true);
+            var root = result.StructuredContent!.Value;
+            Assert.Equal("hello", root.GetProperty("result").GetString());
+            Assert.Equal("hello", root.GetProperty("outputText").GetString());
+            var actual = output.ToString();
+            var echoEnd = actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
+            Assert.Equal("hello" + Environment.NewLine, actual[echoEnd..]);
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            AnsiConsole.Console = savedConsole;
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", originalFormat);
+            shell.Options = originalOptions;
+        }
+    }
+
+    [Theory]
+    [InlineData("theme", "use")]
+    [InlineData("theme", "show")]
+    [InlineData("theme", "edit")]
+    [InlineData("theme", null)]
+    [InlineData("help", null)]
+    public async Task CallTool_AlreadyReportedFailure_IsDisplayedOnce(string command, string? action)
+    {
+        const string unknownName = "nonexistent-mcp-test-name";
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        var savedError = Console.Error;
+        using var output = new StringWriter();
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = "user" };
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            AnsiConsole.Console.Profile.Width = 200;
+            Console.SetOut(output);
+            Console.SetError(output);
+            var arguments = new Dictionary<string, JsonElement>();
+            if (command == "help")
+            {
+                arguments["command"] = JsonSerializer.SerializeToElement(unknownName);
+            }
+            else
+            {
+                arguments["action"] = JsonSerializer.SerializeToElement(action ?? unknownName);
+                if (action != null)
+                {
+                    arguments["name"] = JsonSerializer.SerializeToElement(unknownName);
+                }
+            }
+
+            var result = await CreateToolOperations().CallToolHandler(
+                CallContext(command, arguments), TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            Assert.Contains(unknownName, result.StructuredContent!.Value.GetProperty("error").GetString());
+            var actual = output.ToString();
+            var echoEnd = actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
+            Assert.Equal(1, actual[echoEnd..].Split(unknownName, StringSplitOptions.None).Length - 1);
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            Console.SetError(savedError);
+            AnsiConsole.Console = savedConsole;
+            shell.Options = originalOptions;
+        }
+    }
+
+    [Theory]
     [InlineData(null, null)]
     [InlineData("user", null)]
     [InlineData("json", null)]
@@ -651,15 +754,16 @@ public class ToolOperationsCallToolTests : IDisposable
             Assert.Contains("terminal failure", root.GetProperty("error").GetString());
             Assert.Equal("terminal warning", Assert.Single(root.GetProperty("warnings").EnumerateArray()).GetString());
             Assert.True(state.OutputRendered);
-            Assert.Contains("terminal warning", output.ToString() + diagnostics.ToString());
+            var combinedOutput = $"{output}{diagnostics}";
+            Assert.Contains("terminal warning", combinedOutput);
             if (structured)
             {
                 Assert.Equal(1, root.GetProperty("result").GetProperty("failed").GetInt32());
-                Assert.Contains("\"failed\"", output.ToString() + diagnostics.ToString());
+                Assert.Contains("\"failed\"", combinedOutput);
             }
             else
             {
-                Assert.Contains("terminal failure", output.ToString() + diagnostics.ToString());
+                Assert.Contains("terminal failure", combinedOutput);
             }
         }
         finally

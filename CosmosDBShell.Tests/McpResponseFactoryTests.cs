@@ -103,12 +103,17 @@ public class McpResponseFactoryTests
         Assert.Contains("alpha", outputText.GetString());
     }
 
-    [Fact]
-    public void CreateSuccess_WrapsTextResultAsJsonString()
+    [Theory]
+    [InlineData(OutputFormat.User, "plain text")]
+    [InlineData(OutputFormat.CSV, "plain text")]
+    [InlineData(OutputFormat.CSV, "")]
+    [InlineData(OutputFormat.CSV, " ")]
+    public void CreateSuccess_WrapsTextResultAsJsonString(OutputFormat format, string value)
     {
         var commandState = new CommandState
         {
-            Result = new ShellText("plain text"),
+            OutputFormat = format,
+            Result = new ShellText(value),
         };
 
         var result = McpResponseFactory.CreateSuccess(commandState, new ConnectedState(null!));
@@ -116,7 +121,13 @@ public class McpResponseFactoryTests
 
         using var document = JsonDocument.Parse(text);
         Assert.False(result.IsError);
-        Assert.Equal("plain text", document.RootElement.GetProperty("result").GetString());
+        Assert.Equal(value, document.RootElement.GetProperty("result").GetString());
+        var hasOutputText = document.RootElement.TryGetProperty("outputText", out var outputText);
+        Assert.Equal(format == OutputFormat.CSV && !string.IsNullOrWhiteSpace(value), hasOutputText);
+        if (hasOutputText)
+        {
+            Assert.Equal(value, outputText.GetString());
+        }
     }
 
     [Fact]
