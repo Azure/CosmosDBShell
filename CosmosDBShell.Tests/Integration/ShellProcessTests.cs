@@ -186,6 +186,10 @@ public class ShellProcessTests
     [InlineData("ftab --take=invalid")]
     [InlineData("ftab --take=999999999999999999999999999")]
     [InlineData("echo --unknown-usage-test-option")]
+    [InlineData("query 'SELECT * FROM c' --bucket=99")]
+    [InlineData("watch")]
+    [InlineData("watch --max=0")]
+    [InlineData("watch --max=-1")]
     public async Task InvalidCommandArguments_ReturnUsageExitCode(string command)
     {
         var result = await RunShellAsync(
@@ -215,6 +219,114 @@ public class ShellProcessTests
             Assert.Empty(result.StdOut);
             using var error = JsonDocument.Parse(result.StdErr);
             Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task MachineMode_OutputFailure_RemainsStructuredAndHonorsStderrRedirection(bool verbose, bool redirectError)
+    {
+        var directory = Path.Join(Path.GetTempPath(), $"cosmosshell-output-errors-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var outputFile = Path.Join(directory, "missing", "out.txt");
+        var errorFile = Path.Join(directory, "error.json");
+        try
+        {
+            var command = $"echo ok > '{outputFile}'" + (redirectError ? $" 2> '{errorFile}'" : string.Empty);
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: verbose ? ["--verbose", "-c", command] : ["-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            var errors = redirectError
+                ? await File.ReadAllTextAsync(errorFile, TestContext.Current.CancellationToken)
+                : result.StdErr;
+            if (redirectError)
+            {
+                Assert.Empty(result.StdErr);
+            }
+
+            var line = Assert.Single(errors.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+            using var error = JsonDocument.Parse(line);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            Assert.Contains(outputFile, error.RootElement.GetProperty("error").GetString());
+            Assert.DoesNotContain("\u001b", errors + result.RawStdOut + result.RawStdErr, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(errorFile);
+            Directory.Delete(directory);
+        }
+    }
+
+    [Theory]
+    [InlineData("theme use MACHINE_NOPE", "MACHINE_NOPE", ShellExitCode.GeneralFailure)]
+    [InlineData("help MACHINE_MISSING", "MACHINE_MISSING", ShellExitCode.UsageError)]
+    [InlineData("edit machine.txt", "interactive terminal", ShellExitCode.GeneralFailure)]
+    public async Task MachineMode_CommandFailure_ReportsSingleStructuredError(string command, string expected, int expectedExitCode)
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["-c", command],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectedExitCode, result.ExitCode);
+        Assert.Empty(result.StdOut);
+        var line = Assert.Single(result.StdErr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+        using var error = JsonDocument.Parse(line);
+        Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+        Assert.Contains(expected, error.RootElement.GetProperty("error").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Quiet_PreservesResultsAndStartupWarningsWithoutAnsi()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--quiet", "--theme", "QUIET_UNKNOWN_THEME", "-c", "echo QUIET_RESULT"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("QUIET_RESULT", result.StdOut.Trim());
+        Assert.Contains("QUIET_UNKNOWN_THEME", result.StdErr);
+        Assert.DoesNotContain("Cosmos Shell version:", result.StdOut);
+        Assert.DoesNotContain("\u001b", result.RawStdOut + result.RawStdErr, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("save", "saved")]
+    [InlineData("load", "loaded")]
+    [InlineData("validate", "valid")]
+    public async Task Quiet_SuppressesCommandInformationButPreservesStructuredResult(string action, string resultProperty)
+    {
+        var file = Path.Join(Path.GetTempPath(), $"cosmosshell-output-{Guid.NewGuid():N}.toml");
+        try
+        {
+            if (action != "save")
+            {
+                await File.WriteAllTextAsync(file, "name = \"OUTPUT_TEST\"\n[colors]\nliteral = \"purple\"\n", TestContext.Current.CancellationToken);
+            }
+
+            var command = action == "save"
+                ? $"theme save OUTPUT_TEST '{file}' --force"
+                : $"theme {action} '{file}'";
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: ["--quiet", "-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(0, result.ExitCode);
+            using var json = JsonDocument.Parse(result.StdOut);
+            Assert.True(json.RootElement.GetProperty(resultProperty).GetBoolean());
+            Assert.Empty(result.StdErr);
         }
         finally
         {
@@ -576,6 +688,171 @@ public class ShellProcessTests
         {
             File.Delete(file);
         }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ThemeValidation_Success_PreservesWarningsOnStderr(bool quiet, bool directory)
+    {
+        var path = Path.Join(Path.GetTempPath(), $"cosmosshell-theme-warnings-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(path);
+        try
+        {
+            var file = Path.Join(path, "warning.toml");
+            await File.WriteAllTextAsync(
+                file,
+                "name = \"WARNING_TEST\"\n[colors]\nunknown_warning_slot = \"red\"\n",
+                TestContext.Current.CancellationToken);
+            var target = directory ? path : file;
+            var command = $"theme validate '{target}'";
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: quiet ? ["--quiet", "-c", command] : ["-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            using var json = JsonDocument.Parse(result.StdOut);
+            var validation = directory ? json.RootElement.GetProperty("values")[0] : json.RootElement;
+            Assert.True(validation.GetProperty("valid").GetBoolean());
+            Assert.NotEqual(0, validation.GetProperty("warnings").GetArrayLength());
+            Assert.Contains("unknown_warning_slot", result.StdErr);
+            Assert.DoesNotContain("\u001b", result.RawStdOut + result.RawStdErr, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(Path.Join(path, "warning.toml"));
+            Directory.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ThemeValidation_FailedDirectoryScan_ReportsOnlyStructuredError(bool quiet, bool strict)
+    {
+        var path = Path.Join(Path.GetTempPath(), $"cosmosshell-theme-errors-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(path);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Join(path, "a-warning.toml"),
+                "name = \"WARNING_TEST\"\n[colors]\nunknown_warning_slot = \"red\"\n",
+                TestContext.Current.CancellationToken);
+            if (!strict)
+            {
+                await File.WriteAllTextAsync(
+                    Path.Join(path, "z-broken.toml"),
+                    "name = \"BROKEN_TEST\"\n[colors]\nliteral = \"not_a_color\"\n",
+                    TestContext.Current.CancellationToken);
+            }
+
+            var command = $"theme validate '{path}'" + (strict ? " --strict" : string.Empty);
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: quiet ? ["--quiet", "-c", command] : ["-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            var line = Assert.Single(result.StdErr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+            using var error = JsonDocument.Parse(line);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            var message = error.RootElement.GetProperty("error").GetString();
+            Assert.NotNull(message);
+            if (strict)
+            {
+                Assert.Contains(Path.Join(path, "a-warning.toml"), message);
+                Assert.Contains("unknown_warning_slot", message);
+            }
+            else
+            {
+                Assert.Contains(Path.Join(path, "z-broken.toml"), message);
+                Assert.Contains("not_a_color", message);
+                Assert.DoesNotContain("unknown_warning_slot", message);
+            }
+
+            Assert.DoesNotContain("\u001b", result.RawStdOut + result.RawStdErr, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(Path.Join(path, "a-warning.toml"));
+            File.Delete(Path.Join(path, "z-broken.toml"));
+            Directory.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ThemeValidation_StrictFileFailure_IncludesDiagnosticsInSingleStructuredError(bool quiet)
+    {
+        var file = Path.Join(Path.GetTempPath(), $"cosmosshell-theme-strict-{Guid.NewGuid():N}.toml");
+        try
+        {
+            await File.WriteAllTextAsync(
+                file,
+                "name = \"STRICT_WARNING_TEST\"\n[colors]\nunknown_warning_slot = \"red\"\n[styles]\nunknown_style_slot = \"bold\"\n",
+                TestContext.Current.CancellationToken);
+            var command = $"theme validate '{file}' --strict";
+            var result = await RunShellAsync(
+                stdinScript: null,
+                extraArgs: quiet ? ["--quiet", "-c", command] : ["--output", "json", "-c", command],
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.ExitCode);
+            Assert.Empty(result.StdOut);
+            var line = Assert.Single(result.StdErr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+            using var error = JsonDocument.Parse(line);
+            Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            var message = error.RootElement.GetProperty("error").GetString();
+            Assert.NotNull(message);
+            Assert.Contains(file, message);
+            Assert.Contains("unknown_warning_slot", message);
+            Assert.Contains("unknown_style_slot", message);
+            Assert.DoesNotContain("\u001b", result.RawStdOut + result.RawStdErr, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
+    [InlineData("--help", "USAGE:")]
+    [InlineData("--version", "Cosmos")]
+    public async Task Quiet_ExplicitStartupResult_RemainsVisible(string option, string expected)
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--quiet", option],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(expected, result.StdOut);
+        Assert.Empty(result.StdErr);
+    }
+
+    [Theory]
+    [InlineData("help theme")]
+    [InlineData("theme list")]
+    [InlineData("version")]
+    public async Task MachineMode_HumanViews_ReturnOnlyStructuredResult(string command)
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--output", "json", "-c", command],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.ExitCode);
+        using var json = JsonDocument.Parse(result.StdOut);
+        Assert.NotEqual(JsonValueKind.Undefined, json.RootElement.ValueKind);
+        Assert.Empty(result.StdErr);
+        Assert.DoesNotContain("\u001b", result.RawStdOut, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -1174,6 +1451,7 @@ public class ShellProcessTests
                 process.ExitCode,
                 Strip(stdOut.ToString()),
                 Strip(rawStdErr),
+                stdOut.ToString(),
                 rawStdErr);
         }
         finally
@@ -1210,5 +1488,5 @@ public class ShellProcessTests
         return AnsiEscape.Replace(text, string.Empty);
     }
 
-    private sealed record ShellProcessResult(int ExitCode, string StdOut, string StdErr, string RawStdErr);
+    private sealed record ShellProcessResult(int ExitCode, string StdOut, string StdErr, string RawStdOut, string RawStdErr);
 }

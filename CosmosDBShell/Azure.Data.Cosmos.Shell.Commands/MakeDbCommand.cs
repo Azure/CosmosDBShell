@@ -70,7 +70,7 @@ internal class MakeDbCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             ResourceCreationOutcome.CreatedOrUpdated => "command-mkdb-database_created_or_updated",
             _ => throw new UnreachableException(),
         };
-        commandState.RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetString(messageKey, new Dictionary<string, object> { { "db", creation.Id } }));
+        commandState.RenderUser = () => shell.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString(messageKey, new Dictionary<string, object> { { "db", creation.Id } }));
         return commandState;
     }
 

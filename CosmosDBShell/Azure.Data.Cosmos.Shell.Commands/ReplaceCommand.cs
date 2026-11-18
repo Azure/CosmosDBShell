@@ -62,7 +62,7 @@ internal class ReplaceCommand : CosmosCommand
                 requestCharge = summary.RequestCharge,
             })),
             RequestCharge = summary.RequestCharge,
-            RenderUser = () => ShellInterpreter.WriteLine(summary.Message),
+            RenderUser = () => shell.Output.WriteLine(ShellMessageKind.Result, summary.Message),
         };
         return resultState;
     }
@@ -94,7 +94,7 @@ internal class ReplaceCommand : CosmosCommand
                             && HasUndefinedPartitionKeyComponent(item, partitionKeyPaths));
                 AddUndefinedPartitionKeyWarning(commandState, undefinedPartitionKeyCount);
                 shell.RenderMutationWarnings(commandState);
-                return await ReplaceArrayAsync(container, partitionKeyPaths, root, token);
+                return await ReplaceArrayAsync(shell, container, partitionKeyPaths, root, token);
             }
 
             var undefinedCount = root.ValueKind == JsonValueKind.Object && HasUndefinedPartitionKeyComponent(root, partitionKeyPaths) ? 1 : 0;
@@ -109,15 +109,18 @@ internal class ReplaceCommand : CosmosCommand
         }
     }
 
-    private static async Task<ReplaceSummary> ReplaceArrayAsync(Container container, IReadOnlyList<string> partitionKeyPaths, JsonElement arrayRoot, CancellationToken token)
+    private static async Task<ReplaceSummary> ReplaceArrayAsync(ShellInterpreter shell, Container container, IReadOnlyList<string> partitionKeyPaths, JsonElement arrayRoot, CancellationToken token)
     {
         int successCount = 0;
         int failCount = 0;
         bool hasUsageError = false;
         double charge = 0.0;
+        var errors = shell.IsMachineMode ? new BulkWriteDiagnostics() : null;
+        var itemIndex = 0;
 
         foreach (var element in arrayRoot.EnumerateArray())
         {
+            itemIndex++;
             try
             {
                 var itemCharge = await ReplaceOneAsync(container, partitionKeyPaths, element, etag: null, token);
@@ -129,7 +132,14 @@ internal class ReplaceCommand : CosmosCommand
                 hasUsageError |= ShellExitCode.FromException(ex) == ShellExitCode.UsageError;
                 RequestChargeContext.Record(RequestChargeContext.GetCosmosExceptionCharge(ex));
                 failCount++;
-                ShellInterpreter.WriteLine(ex.Message);
+                if (errors != null)
+                {
+                    errors.Add(MessageService.GetArgsString("error-bulk-item", "index", itemIndex, "message", ex.Message));
+                }
+                else
+                {
+                    shell.Output.WriteLine(ShellMessageKind.Error, ex.Message);
+                }
             }
         }
 
@@ -149,7 +159,11 @@ internal class ReplaceCommand : CosmosCommand
 
         if (failCount > 0)
         {
-            ShellInterpreter.WriteLine(summary);
+            if (!shell.IsMachineMode)
+            {
+                shell.Output.WriteLine(ShellMessageKind.Error, summary);
+            }
+
             RequestChargeContext.Record(charge);
             var message = MessageService.GetArgsString(
                 "command-replace-error-array_failed",
@@ -157,6 +171,11 @@ internal class ReplaceCommand : CosmosCommand
                 failCount,
                 "total",
                 successCount + failCount);
+            if (errors != null)
+            {
+                message += Environment.NewLine + errors.GetMessage();
+            }
+
             throw hasUsageError
                 ? CommandException.Usage("replace", message)
                 : new CommandException("replace", message);

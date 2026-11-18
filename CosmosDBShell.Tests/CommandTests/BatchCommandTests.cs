@@ -249,7 +249,7 @@ public class BatchCommandTests
     public async Task Execute_WithoutOperations_Throws()
     {
         await Assert.ThrowsAsync<CommandException>(
-            () => BatchExecutor.ExecuteAsync("batch", null!, default, [], CancellationToken.None));
+            () => BatchExecutor.ExecuteAsync(null!, "batch", null!, default, [], CancellationToken.None));
     }
 
     [Fact]
@@ -259,7 +259,7 @@ public class BatchCommandTests
         var operations = Enumerable.Repeat(operation, BatchExecutor.MaxOperations + 1).ToArray();
 
         await Assert.ThrowsAsync<CommandException>(
-            () => BatchExecutor.ExecuteAsync("batch", null!, default, operations, CancellationToken.None));
+            () => BatchExecutor.ExecuteAsync(null!, "batch", null!, default, operations, CancellationToken.None));
     }
 
     [Fact]
@@ -271,7 +271,8 @@ public class BatchCommandTests
             requestCharge = 4.25,
         });
 
-        var state = BatchExecutor.CreateResultState(summary, "Batch committed.", 4.25);
+        using var shell = ShellInterpreter.CreateInstance();
+        var state = BatchExecutor.CreateResultState(shell, summary, "Batch committed.", 4.25);
 
         Assert.Equal(4.25, state.RequestCharge);
         var result = Assert.IsType<ShellJson>(state.Result).Value;

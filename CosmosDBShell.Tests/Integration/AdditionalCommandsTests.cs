@@ -71,12 +71,10 @@ public class AdditionalCommandsTests : EmulatorFixtureTestBase
     }
 
     [Fact]
-    public async Task Bucket_InvalidValue_DoesNotErrorButDoesNotSet()
+    public async Task Bucket_InvalidValue_ReturnsError()
     {
-        // CheckBucket prints a message for out-of-range values but returns an empty state
-        // rather than throwing. We still ensure it does not crash the shell.
         var state = await ExecuteAsync("bucket 99");
-        Assert.False(state.IsError, IntegrationTestBase.FormatError(state));
+        Assert.True(state.IsError);
     }
 
     [Fact]

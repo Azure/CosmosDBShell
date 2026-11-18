@@ -130,6 +130,10 @@ public class CommandUsageErrorTests
     [InlineData("rm")]
     [InlineData("rm '*' --etag value")]
     [InlineData("watch --interval=NaN")]
+    [InlineData("bucket 99")]
+    [InlineData("bucket -1")]
+    [InlineData("query 'SELECT * FROM c' --bucket=99")]
+    [InlineData("query 'SELECT * FROM c' --bucket=-1")]
     public async Task CommandValidation_ReturnsUsageError(string text)
     {
         using var shell = ShellInterpreter.CreateInstance();

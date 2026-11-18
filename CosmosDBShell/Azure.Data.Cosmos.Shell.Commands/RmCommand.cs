@@ -416,10 +416,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
                 });
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(this.CreateResult(totalCount, dryRun)));
-        commandState.RenderUser = () =>
-        {
-            AnsiConsole.MarkupLine(renderMessage);
-        };
+        commandState.RenderUser = () => ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, renderMessage);
 
         commandState.RequestCharge = totalCharge > 0 ? totalCharge : null;
         return new ExitCode(0);
@@ -556,7 +553,7 @@ internal class RmCommand : CosmosCommand, IStateVisitor<ExitCode, CommandState>
         }
 
         commandState.Result = new ShellJson(JsonSerializer.SerializeToElement(result));
-        commandState.RenderUser = () => AnsiConsole.WriteLine(renderMessage);
+        commandState.RenderUser = () => ShellInterpreter.Instance.Output.RenderLine(ShellMessageKind.Result, renderMessage);
         commandState.RequestCharge = requestCharge > 0 ? requestCharge : null;
         return new ExitCode(0);
 
