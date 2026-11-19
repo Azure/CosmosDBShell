@@ -128,8 +128,8 @@ exit codes, and independently verified emulator side effects. Add cases there
 for externally observable command/script behavior so the same contracts can
 validate the future Rust implementation without a .NET test host.
 
-Keep the existing xUnit tests for internal assertions and any behavior not yet
-fully covered by portable cases. The suite's migration inventory reports links
+Keep the existing xUnit tests for the official build, which does not yet run the
+portable suite, and for internal assertions. The suite's migration inventory reports links
 and remaining coverage; a linked case does not imply a whole theory was migrated.
 See the guide for Python setup, launcher selection, output capture, emulator
 profiles, and strict comparison rules.

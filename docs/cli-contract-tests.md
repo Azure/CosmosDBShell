@@ -214,36 +214,19 @@ equivalent external coverage. AST types, internal scope ownership, iterator/clie
 lifetimes, request counts, races, MCP/LSP wire protocols and interactive editor
 behavior remain implementation-specific.
 
-Once every observable assertion and theory row has equivalent passing contracts,
-remove the redundant xUnit method and record its original `source`, exact
+Keep the xUnit behavioral assertions while the official OneBranch pipeline runs
+only xUnit. Once all required pipelines run equivalent passing contracts for
+every observable assertion and theory row, removed methods must record their original `source`, exact
 replacement `cases`, and review `reason` in `migratedMethods` in the migration map.
 The inventory rejects entries for still-existing methods, unknown removed sources,
 missing replacement cases and differences between reviewed and actual case links.
 Migration history is reported separately from active methods; a partial source
 link never becomes a completed migration automatically.
 
-`FilterCommandTests` is the first migrated block: 20 methods (24 executed test
-rows) have been replaced by portable contracts. Five methods in C# check
-state/result identity, normalization to `ShellJson` before rendering, renderer
-ownership, cancellation and exception wrapping. The seven output-only methods
-from `FilterIntegrationTests` and `EchoTests` now run as portable contracts.
-
-The four `OutputRedirectionTests` and three output-only `ScriptArgumentTests`
-methods have also migrated. Contracts distinguish human-readable and JSON error
-redirection, verify the actual script path and argument values (including spaces),
-and prove that a successfully executed child script does not leak its variable.
-The remaining script control-flow method keeps its internal result-type and
-function-registry assertions in C#; its numeric return value is also checked by a
-strict JSON contract.
-
-Version/help output and filter builtin/path values have also migrated. Both
-shortcut-help variants check the complete ordered shortcut list, nonblank metadata
-and search-direction descriptions. Filter cases exercise scalar inputs directly,
-mixed-kind and array-key sorting, nested-array equality and every overflow-index
-variant. C# keeps consolidated theories for the original internal result and
-exception types, plus the original decimal-representation, sequence and parser
-error-position checks. These are behavior migrations, not removal of all
-implementation-specific coverage.
+The portable suite covers behavior from the filter, echo, output redirection,
+script argument, and version/help tests without removing the original xUnit
+checks. The contracts verify output details such as mixed-kind filter sorting,
+scope isolation, stderr routing, and the complete ordered shortcut list.
 
 Add reviewed expectations alongside each behavior change. Never generate
 expected files from whatever the current implementation happens to print and
