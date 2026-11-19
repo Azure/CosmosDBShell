@@ -160,6 +160,31 @@ scenario, rather than merely ignoring those fields.
 
 ## Migration and maintenance
 
+### C# code coverage
+
+The Validate And Package workflow runs the offline Python suite under
+`dotnet-coverage`. Its profiler follows the shell child processes, so the report
+measures C# product code exercised by the contracts, not Python code. The runner
+and contract expectations are unchanged. CI fails if no shell product lines are
+covered, and ReportGenerator merges this report with xUnit coverage before the
+existing GitHub Code Quality upload. Both runs use the same collector and product
+module filter (shell, localization and analyzer). This avoids counting generated
+async classes twice due to different class names from different collectors.
+Test assemblies and dependencies are excluded. Emulator contracts are not
+included in this coverage run.
+
+To collect the same coverage locally after building the C# reference:
+
+```powershell
+dotnet tool restore
+dotnet tool run dotnet-coverage collect --settings tests\cli-contracts\coverage.config --output TestResults\cli-contracts\coverage.cobertura.xml --output-format cobertura python -m pytest tests\cli-contracts --profile offline --shell-executable dotnet --shell-prefix-arg CosmosDBShell\bin\Debug\net10.0\CosmosDBShell.dll -q
+```
+
+This instrumentation is specific to the C# reference. A future Rust executable
+will need its own coverage collector while using the same portable contracts.
+
+### Tracking migration
+
 The [migration map](../tests/cli-contracts/migration-map.json) and
 [inventory tool](../tests/cli-contracts/inventory.py) track source methods,
 portable coverage links, remaining implementation assertions and environment
@@ -189,6 +214,23 @@ rows) have been replaced by portable contracts. Five methods in C# check
 state/result identity, normalization to `ShellJson` before rendering, renderer
 ownership, cancellation and exception wrapping. The seven output-only methods
 from `FilterIntegrationTests` and `EchoTests` now run as portable contracts.
+
+The four `OutputRedirectionTests` and three output-only `ScriptArgumentTests`
+methods have also migrated. Contracts distinguish human-readable and JSON error
+redirection, verify the actual script path and argument values (including spaces),
+and prove that a successfully executed child script does not leak its variable.
+The remaining script control-flow method keeps its internal result-type and
+function-registry assertions in C#; its numeric return value is also checked by a
+strict JSON contract.
+
+Version/help output and filter builtin/path values have also migrated. Both
+shortcut-help variants check the complete ordered shortcut list, nonblank metadata
+and search-direction descriptions. Filter cases exercise scalar inputs directly,
+mixed-kind and array-key sorting, nested-array equality and every overflow-index
+variant. C# keeps consolidated theories for the original internal result and
+exception types, plus the original decimal-representation, sequence and parser
+error-position checks. These are behavior migrations, not removal of all
+implementation-specific coverage.
 
 Add reviewed expectations alongside each behavior change. Never generate
 expected files from whatever the current implementation happens to print and
