@@ -38,7 +38,10 @@ jobs:
           cache-dependency-path: tests/cli-contracts/requirements*.txt
 
       - name: Build C# reference
-        run: dotnet build CosmosDBShell/CosmosDBShell.csproj
+        shell: pwsh
+        run: |
+          Copy-Item tests/cli-contracts/fixtures/locale.de-DE.ftl CosmosDBShell/lang/de-DE.ftl
+          dotnet build CosmosDBShell/CosmosDBShell.csproj
 
       - name: Install contract runner
         run: python -m pip install -r tests/cli-contracts/requirements.txt
@@ -49,13 +52,17 @@ jobs:
       - name: Run runner self-tests and offline contracts
         shell: pwsh
         env:
-          COSMOSDB_SHELL_UI_LANGUAGE: de
-        run: >-
-          python -m pytest tests/cli-contracts --profile offline
-          --shell-executable dotnet
-          --shell-prefix-arg (& ./tests/cli-contracts/resolve-shell-assembly.ps1)
-          --contract-artifacts artifacts/cli-contract-failures
-          --junitxml artifacts/cli-contracts.xml -q
+          COSMOSDB_SHELL_UI_LANGUAGE: de-DE
+        run: |
+          $assembly = & ./tests/cli-contracts/resolve-shell-assembly.ps1
+          $localizedHelp = dotnet $assembly --help
+          if ($LASTEXITCODE -ne 0 -or ($localizedHelp -join "`n") -notmatch 'Testkatalog: Ausgabeformat') {
+            throw 'The reference did not load the non-English fixture catalog.'
+          }
+          python -m pytest tests/cli-contracts --profile offline `
+            --shell-executable dotnet --shell-prefix-arg $assembly `
+            --contract-artifacts artifacts/cli-contract-failures `
+            --junitxml artifacts/cli-contracts.xml -q
 
       - name: Upload contract report and synthetic failure data
         if: always()
