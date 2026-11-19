@@ -75,7 +75,10 @@ internal class Program
         {
             if (Environment.GetEnvironmentVariable("COSMOSDB_SHELL_UI_LANGUAGE") is { Length: > 0 } language)
             {
-                var culture = CultureInfo.GetCultureInfo(language);
+                // MessageService uses the English catalog for the invariant UI culture.
+                var culture = language.Equals("en", StringComparison.OrdinalIgnoreCase)
+                    ? CultureInfo.InvariantCulture
+                    : CultureInfo.GetCultureInfo(language);
                 CultureInfo.DefaultThreadCurrentUICulture = culture;
                 CultureInfo.CurrentUICulture = culture;
             }

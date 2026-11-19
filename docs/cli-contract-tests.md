@@ -36,6 +36,7 @@ argument beginning with `-`). Launchers are never evaluated by an OS shell.
 Relative executable/assembly paths are resolved before changing directories.
 The runner requests English application messages with
 `COSMOSDB_SHELL_UI_LANGUAGE=en`, independently of the parent process's language.
+The English catalog is also available with .NET invariant globalization enabled.
 
 Run just the runner/comparator self-tests without building a shell:
 

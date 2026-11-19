@@ -934,6 +934,7 @@ public class ShellProcessTests
             environment: new Dictionary<string, string?>
             {
                 ["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1",
+                ["COSMOSDB_SHELL_UI_LANGUAGE"] = "en",
             });
 
         Assert.Equal(2, result.ExitCode);
