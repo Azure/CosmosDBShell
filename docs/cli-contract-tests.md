@@ -185,9 +185,10 @@ Migration history is reported separately from active methods; a partial source
 link never becomes a completed migration automatically.
 
 `FilterCommandTests` is the first migrated block: 20 methods (24 executed test
-rows) have been replaced by portable contracts. Four methods remain in C# for
-state/result identity, renderer ownership, cancellation and exception wrapping.
-Their observable output/error behavior is covered separately in the corpus.
+rows) have been replaced by portable contracts. Five methods in C# check
+state/result identity, normalization to `ShellJson` before rendering, renderer
+ownership, cancellation and exception wrapping. The seven output-only methods
+from `FilterIntegrationTests` and `EchoTests` now run as portable contracts.
 
 Add reviewed expectations alongside each behavior change. Never generate
 expected files from whatever the current implementation happens to print and

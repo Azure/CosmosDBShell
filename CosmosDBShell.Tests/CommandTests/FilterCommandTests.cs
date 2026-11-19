@@ -12,6 +12,24 @@ using Azure.Data.Cosmos.Shell.Parser;
 public class FilterCommandTests
 {
     [Theory]
+    [InlineData("type")]
+    [InlineData("true")]
+    [InlineData(".items[] | .id")]
+    public async Task ExecuteAsync_NormalizesExpressionResultToShellJson(string expression)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        var state = new CommandState
+        {
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { items = new[] { new { id = "1" }, new { id = "2" } } })),
+        };
+        var command = new FilterCommand { ExpressionText = expression };
+
+        var result = await command.ExecuteAsync(shell, state, string.Empty, TestContext.Current.CancellationToken);
+
+        Assert.IsType<ShellJson>(result.Result);
+    }
+
+    [Theory]
     [InlineData(".[2147483648]", "2147483648")]
     [InlineData(".[2147483648]?", "2147483648")]
     [InlineData(".[999999999999999999999999999999]", "999999999999999999999999999999")]

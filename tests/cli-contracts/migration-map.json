@@ -1,6 +1,13 @@
 {
   "schemaVersion": 1,
   "migratedMethods": [
+    {"source":"CosmosDBShell.Tests/Integration/EchoTests.cs::Echo_SimpleMessage_PrintsText","cases":["echo.simple"],"reason":"A quoted message with a space is written as one output line on success."},
+    {"source":"CosmosDBShell.Tests/Integration/EchoTests.cs::Echo_MultipleArguments_JoinsWithSpaces","cases":["echo.multiple"],"reason":"Three quoted arguments produce one space-separated output line."},
+    {"source":"CosmosDBShell.Tests/Integration/EchoTests.cs::Echo_WithStringInterpolation","cases":["echo.interpolation"],"reason":"The script sets the variable and writes the interpolated greeting on success."},
+    {"source":"CosmosDBShell.Tests/Integration/EchoTests.cs::Echo_PipedInput_PrintsPipedResult","cases":["echo.pipeline"],"reason":"A text variable piped through echo is written by the argumentless echo."},
+    {"source":"CosmosDBShell.Tests/Integration/FilterIntegrationTests.cs::Filter_PipelineProjectsQuotedProperties","cases":["filter.quoted-projection"],"reason":"Both projected objects match exactly, including the spaced field name and the absence of Region."},
+    {"source":"CosmosDBShell.Tests/Integration/FilterIntegrationTests.cs::Filter_PipelineContainsStringLiteralReturnsJsonBoolean","cases":["filter.tags.contains"],"reason":"The string-literal membership test writes JSON boolean true rather than text."},
+    {"source":"CosmosDBShell.Tests/Integration/FilterIntegrationTests.cs::Filter_PipelineTypeReturnsJsonString","cases":["filter.type.object"],"reason":"Filtering the piped object by type writes the JSON string object."},
     {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_AppliesMapProjection","cases":["filter.command.map"],"reason":"Exact ordered JSON array covers both projected properties and item values."},
     {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_NormalizesSequenceResult_ToJsonArray","cases":["filter.command.sequence"],"reason":"Exact JSON array preserves sequence normalization, element types and order."},
     {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_ArrayCollectorFlattensIterationSequence","cases":["filter.command.collector"],"reason":"Exact three-element JSON array covers flattening, length, values and order."},
@@ -25,7 +32,7 @@
   "groups": [
     {
       "disposition": "retained_implementation",
-      "reason": "Observable filter behavior migrated to portable contracts. Retain state/result identity, renderer ownership, cancellation-token propagation and CLR exception wrapping checks.",
+      "reason": "Observable filter behavior migrated to portable contracts. Retain state/result identity, ShellJson normalization for text, boolean and sequence results, renderer ownership, cancellation-token propagation and CLR exception wrapping checks.",
       "files": ["CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs"]
     },
     {
@@ -41,8 +48,6 @@
         "CosmosDBShell.Tests/CommandTests/ThemeCommandTests.cs",
         "CosmosDBShell.Tests/CommandTests/WelcomeCommandTests.cs",
         "CosmosDBShell.Tests/Integration/ControlFlowTests.cs",
-        "CosmosDBShell.Tests/Integration/EchoTests.cs",
-        "CosmosDBShell.Tests/Integration/FilterIntegrationTests.cs",
         "CosmosDBShell.Tests/Integration/OutputRedirectionTests.cs",
         "CosmosDBShell.Tests/Integration/ScriptArgumentTests.cs",
         "CosmosDBShell.Tests/Integration/VersionAndHelpTests.cs",
