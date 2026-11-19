@@ -20,7 +20,8 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r tests\cli-contracts\requirements.txt
 dotnet build CosmosDBShell\CosmosDBShell.csproj
-python -m pytest tests\cli-contracts --profile offline --shell-executable dotnet --shell-prefix-arg CosmosDBShell\bin\Debug\net10.0\CosmosDBShell.dll -q
+$assembly = & .\tests\cli-contracts\resolve-shell-assembly.ps1
+python -m pytest tests\cli-contracts --profile offline --shell-executable dotnet --shell-prefix-arg $assembly -q
 ```
 
 On Linux/macOS, activate `.venv/bin/activate` and use `/` in paths.
@@ -33,6 +34,8 @@ python -m pytest tests\cli-contracts --profile offline --shell-executable C:\pat
 `--shell-prefix-arg` is repeatable (use `--shell-prefix-arg=-flag` for a prefix
 argument beginning with `-`). Launchers are never evaluated by an OS shell.
 Relative executable/assembly paths are resolved before changing directories.
+The runner requests English application messages with
+`COSMOSDB_SHELL_UI_LANGUAGE=en`, independently of the parent process's language.
 
 Run just the runner/comparator self-tests without building a shell:
 
@@ -55,7 +58,7 @@ bounded change feed results, and stored procedure, trigger, and UDF registration
 lifecycles (not script execution). Missing executables,
 an unavailable selected emulator, malformed cases, and missing output files
 **fail**; they are not skipped. `--emulator-endpoint` defaults to
-`https://localhost:8081` and permits only local loopback endpoints.
+`https://localhost:8081` and permits only `localhost` and `127.0.0.1`.
 
 The command smoke cases exercise real invocations, not just option parsing.
 `edit` is covered by its noninteractive diagnostic and must not create a file;
@@ -185,7 +188,8 @@ To collect the same coverage locally after building the C# reference:
 
 ```powershell
 dotnet tool restore
-dotnet tool run dotnet-coverage collect --settings tests\cli-contracts\coverage.config --output TestResults\cli-contracts\coverage.cobertura.xml --output-format cobertura python -m pytest tests\cli-contracts --profile offline --shell-executable dotnet --shell-prefix-arg CosmosDBShell\bin\Debug\net10.0\CosmosDBShell.dll -q
+$assembly = & .\tests\cli-contracts\resolve-shell-assembly.ps1
+dotnet tool run dotnet-coverage collect --settings tests\cli-contracts\coverage.config --output TestResults\cli-contracts\coverage.cobertura.xml --output-format cobertura python -m pytest tests\cli-contracts --profile offline --shell-executable dotnet --shell-prefix-arg $assembly -q
 ```
 
 This instrumentation is specific to the C# reference. A future Rust executable

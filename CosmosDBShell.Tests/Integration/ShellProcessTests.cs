@@ -941,6 +941,24 @@ public class ShellProcessTests
         Assert.DoesNotContain("1 arguments", result.StdErr);
     }
 
+    [Theory]
+    [InlineData("de", "Das zu verwendende Ausgabeformat")]
+    [InlineData("en", "The output format to use")]
+    public async Task HelpOption_UsesRequestedApplicationUiLanguage(string language, string expectedText)
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--help"],
+            cancellationToken: TestContext.Current.CancellationToken,
+            environment: new Dictionary<string, string?>
+            {
+                ["COSMOSDB_SHELL_UI_LANGUAGE"] = language,
+            });
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(expectedText, result.StdOut);
+    }
+
     [Fact]
     public async Task StdinPipedScript_MultipleCommands_AllRunAndLastOutputVisible()
     {

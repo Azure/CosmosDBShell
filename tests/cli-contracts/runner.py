@@ -97,6 +97,7 @@ def _environment(work, overrides):
         "APPDATA": str(config), "LOCALAPPDATA": str(config),
         "XDG_CONFIG_HOME": str(config), "XDG_DATA_HOME": str(home / "data"),
         "COSMOSDB_SHELL_CONFIG_DIR": str(config),
+        "COSMOSDB_SHELL_UI_LANGUAGE": "en",
         "TEMP": str(temporary), "TMP": str(temporary), "TMPDIR": str(temporary),
         "DOTNET_CLI_UI_LANGUAGE": "en", "NO_COLOR": "1", "TERM": "dumb", "TZ": "UTC",
     })

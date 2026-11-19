@@ -7,7 +7,6 @@ No setup command is executed through the shell under test.
 """
 
 from contextlib import contextmanager
-import ipaddress
 import json
 from pathlib import Path
 import sys
@@ -27,10 +26,7 @@ def validate_endpoint(endpoint: str) -> str:
     """Reject nonlocal targets before importing the SDK or making any request."""
     try:
         parsed = urlsplit(endpoint)
-        host = parsed.hostname
-        local = host == "localhost" or (
-            host is not None and ipaddress.ip_address(host).is_loopback
-        )
+        local = parsed.hostname in ("localhost", "127.0.0.1")
         port = parsed.port
     except (ValueError, TypeError):
         local = False
@@ -47,7 +43,7 @@ def validate_endpoint(endpoint: str) -> str:
         or any(character.isspace() for character in endpoint)
         or "\\" in endpoint
     ):
-        raise ValueError("Emulator endpoint must be a loopback HTTP(S) origin.")
+        raise ValueError("Emulator endpoint must be an HTTP(S) origin at localhost or 127.0.0.1.")
     return endpoint.rstrip("/")
 
 

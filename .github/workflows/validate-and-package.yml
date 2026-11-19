@@ -238,13 +238,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $assembly = & ./tests/cli-contracts/resolve-shell-assembly.ps1 -Configuration $env:BUILD_CONFIGURATION
           dotnet tool run dotnet-coverage collect `
             --settings tests/cli-contracts/coverage.config `
             --output TestResults/cli-contracts/coverage.cobertura.xml `
             --output-format cobertura `
             python -m pytest tests/cli-contracts --profile offline `
               --shell-executable dotnet `
-              --shell-prefix-arg CosmosDBShell/bin/$env:BUILD_CONFIGURATION/net10.0/CosmosDBShell.dll `
+              --shell-prefix-arg $assembly `
               --contract-artifacts TestResults/cli-contract-failures `
               --junitxml TestResults/cli-contracts.xml -q
           if ($LASTEXITCODE -ne 0) {

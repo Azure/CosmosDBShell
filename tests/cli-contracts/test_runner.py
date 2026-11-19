@@ -24,12 +24,14 @@ def fake(code):
 
 def test_process_gets_closed_stdin_and_isolated_paths_environment(tmp_path, monkeypatch):
     monkeypatch.setenv("COSMOSDB_SHELL_FORMAT", "csv")
+    monkeypatch.setenv("COSMOSDB_SHELL_UI_LANGUAGE", "de")
     monkeypatch.setenv("AZURE_CLIENT_SECRET", "must-not-reach-child")
     work = tmp_path / "space and apostrophe's path"
     code = (
         "import os,sys,json; from pathlib import Path; "
         "assert sys.stdin.read() == ''; "
         "assert 'COSMOSDB_SHELL_FORMAT' not in os.environ; "
+        "assert os.environ['COSMOSDB_SHELL_UI_LANGUAGE'] == 'en'; "
         "assert 'AZURE_CLIENT_SECRET' not in os.environ; "
         "assert Path(os.environ['COSMOSDB_SHELL_CONFIG_DIR']).parent == Path.cwd(); "
         "assert Path(os.environ['HOME']).parent == Path.cwd(); "

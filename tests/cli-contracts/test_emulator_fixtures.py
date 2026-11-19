@@ -28,7 +28,6 @@ class EmulatorFixtureTests(unittest.TestCase):
     def test_loopback_origins(self):
         for endpoint in (
             "https://localhost:8081", "http://127.0.0.1:8081/",
-            "https://[::1]:8081", "http://127.2.3.4",
         ):
             with self.subTest(endpoint=endpoint):
                 self.assertEqual(endpoint.rstrip("/"), emulator.validate_endpoint(endpoint))
@@ -40,6 +39,7 @@ class EmulatorFixtureTests(unittest.TestCase):
             "https://localhost:8081/dbs", "https://localhost:8081?key=x",
             "https://localhost:8081/#fragment", "ftp://localhost",
             "https://192.168.1.1", "https://0.0.0.0", "https://[::]",
+            "https://[::1]:8081", "http://127.2.3.4",
             "http://169.254.169.254", "https://localhost:0", "https://localhost:bad",
             "https://localhost\\@evil.test", " https://localhost", "",
         ):
