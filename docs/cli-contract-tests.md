@@ -86,7 +86,8 @@ files and assert the process exit code.
 
 [schema.json](../tests/cli-contracts/schema.json) validates every manifest before
 selection. Files contain `schemaVersion: 1` and a `cases` array. IDs are unique
-across the entire corpus. Source links reference existing xUnit method names.
+across the entire corpus. Source links reference existing xUnit method names or
+explicitly reviewed removed methods in the migration map.
 
 ```json
 {
@@ -173,7 +174,20 @@ assertion/theory row has been migrated. The inventory must report remaining
 coverage honestly. Keep xUnit tests until all their relevant assertions have
 equivalent external coverage. AST types, internal scope ownership, iterator/client
 lifetimes, request counts, races, MCP/LSP wire protocols and interactive editor
-behavior remain implementation-specific. Existing xUnit checks are not replaced.
+behavior remain implementation-specific.
+
+Once every observable assertion and theory row has equivalent passing contracts,
+remove the redundant xUnit method and record its original `source`, exact
+replacement `cases`, and review `reason` in `migratedMethods` in the migration map.
+The inventory rejects entries for still-existing methods, unknown removed sources,
+missing replacement cases and differences between reviewed and actual case links.
+Migration history is reported separately from active methods; a partial source
+link never becomes a completed migration automatically.
+
+`FilterCommandTests` is the first migrated block: 20 methods (24 executed test
+rows) have been replaced by portable contracts. Four methods remain in C# for
+state/result identity, renderer ownership, cancellation and exception wrapping.
+Their observable output/error behavior is covered separately in the corpus.
 
 Add reviewed expectations alongside each behavior change. Never generate
 expected files from whatever the current implementation happens to print and

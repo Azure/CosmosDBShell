@@ -1,6 +1,33 @@
 {
   "schemaVersion": 1,
+  "migratedMethods": [
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_AppliesMapProjection","cases":["filter.command.map"],"reason":"Exact ordered JSON array covers both projected properties and item values."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_NormalizesSequenceResult_ToJsonArray","cases":["filter.command.sequence"],"reason":"Exact JSON array preserves sequence normalization, element types and order."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_ArrayCollectorFlattensIterationSequence","cases":["filter.command.collector"],"reason":"Exact three-element JSON array covers flattening, length, values and order."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_NormalizesTextResult_ToJsonString","cases":["filter.type.object"],"reason":"JSON comparison requires the string object, not an unquoted token or wrapper."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_NormalizesBooleanResult_ToJsonBoolean","cases":["filter.literal.boolean"],"reason":"Strict JSON comparison distinguishes boolean true from text and numbers."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_ThrowsWhenInputMissing","cases":["error.filter.no-input"],"reason":"Usage exit code and structured diagnostic preserve the missing piped JSON error."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_ThrowsWhenExpressionInvalid","cases":["error.filter.invalid-expression"],"reason":"Invalid syntax must fail with usage exit code and nonempty structured error."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_SortBy_IsStableForEqualKeys","cases":["filter.command.sort-stable"],"reason":"All four equal-key objects must retain their original order."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_SortBy_OrdersByKey","cases":["filter.command.sort-key"],"reason":"Exact ordered objects verify ascending key sort without dropping properties."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_ThrowsOnTrailingTokens","cases":["filter.error.trailing-tokens"],"reason":"Trailing tokens must produce a usage error containing Unexpected, with no stdout."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_ParenthesizedPath_EvaluatesAsExpression","cases":["filter.command.parenthesized-path"],"reason":"Exact JSON string verifies the parenthesized property expression."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_ParenthesizedComparison_EvaluatesAsBoolean","cases":["filter.command.parenthesized-comparison"],"reason":"Exact JSON boolean verifies the parenthesized comparison."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_ParenthesizedExpression_InPipeline","cases":["filter.command.parenthesized-pipeline"],"reason":"Exact JSON string verifies the parenthesized pipeline expression."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_RuntimeTypeError_ThrowsLocalizedCommandException","cases":["filter.error.length-type","filter.error.keys-type","filter.error.map-type","filter.error.select-type","filter.error.sort-type"],"reason":"All five InlineData rows preserve their input/expression, localized diagnostic fragment, absence of System. and usage failure."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_PropertyAccessOnNonObject_ThrowsLocalizedCommandException","cases":["filter.error.property-type"],"reason":"Numeric input property access fails with its localized diagnostic and usage exit code."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_OptionalPropertyOnNonObject_ReturnsNull","cases":["filter.command.optional-property"],"reason":"The same numeric input and optional id access must produce JSON null."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_SortBy_HandlesNumbersOutsideDecimalRange","cases":["filter.command.sort-large-numbers"],"reason":"Raw JSON fixture preserves 1e308 input; exact decimal comparison verifies all sorted values."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_Comparison_HandlesNumbersOutsideDecimalRange","cases":["filter.command.compare-large-number"],"reason":"Raw JSON fixture preserves 1e308 input; comparison must produce boolean true."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_Comparison_HandlesDecimalOperands","cases":["filter.command.compare-decimal"],"reason":"The original fractional operand must compare numerically to produce boolean true."},
+    {"source":"CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs::ExecuteAsync_Arithmetic_PreservesJsonNumberPrecision","cases":["filter.command.arithmetic-decimal"],"reason":"Exact JSON number 4.5 preserves fractional arithmetic and numeric output type."}
+  ],
   "groups": [
+    {
+      "disposition": "retained_implementation",
+      "reason": "Observable filter behavior migrated to portable contracts. Retain state/result identity, renderer ownership, cancellation-token propagation and CLR exception wrapping checks.",
+      "files": ["CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs"]
+    },
     {
       "disposition": "pending_external",
       "reason": "Offline command/result semantics are observable. Corpus links cover only the cited scenarios; remaining assertions and variants await external migration.",
@@ -8,7 +35,6 @@
         "CosmosDBShell.Tests/Contract/JsonResultContractTests.cs",
         "CosmosDBShell.Tests/CommandTests/CatCommandTests.cs",
         "CosmosDBShell.Tests/CommandTests/CsvScalarColumnEnvironmentTests.cs",
-        "CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs",
         "CosmosDBShell.Tests/CommandTests/FtabCommandTests.cs",
         "CosmosDBShell.Tests/CommandTests/ImportDryRunValidationTests.cs",
         "CosmosDBShell.Tests/CommandTests/ThemeCommandDispatchTests.cs",

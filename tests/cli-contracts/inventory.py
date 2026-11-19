@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only xUnit source/corpus inventory. Links are evidence, not migration completion."""
+"""Read-only xUnit inventory with explicit, reviewed external migration history."""
 
 import argparse
 from collections import Counter, defaultdict
@@ -87,6 +87,22 @@ def build_report(root=ROOT, suite=SUITE):
     for name in sorted(policies.keys() - actual_files):
         errors.append(f"Stale file policy: {name}")
 
+    migrated = {}
+    for entry in mapping.get("migratedMethods", []):
+        source = entry["source"]
+        if source in migrated:
+            errors.append(f"Duplicate migrated source: {source}")
+        if source in methods:
+            errors.append(f"Migrated source still exists: {source}")
+        if not re.fullmatch(r"CosmosDBShell\.Tests/[^:]+\.cs::[A-Za-z_]\w*", source):
+            errors.append(f"Invalid migrated source: {source}")
+        if not entry["reason"].strip():
+            errors.append(f"Empty migration reason: {source}")
+        cases = entry["cases"]
+        if not cases or len(cases) != len(set(cases)):
+            errors.append(f"Empty or duplicate migration cases: {source}")
+        migrated[source] = {**entry, "linkedCases": []}
+
     case_ids = set()
     profile_cases = Counter()
     for path in sorted((suite / "cases").rglob("*.json")):
@@ -103,10 +119,18 @@ def build_report(root=ROOT, suite=SUITE):
             if not case.get("sources"):
                 errors.append(f"Case has no source evidence: {case_id}")
             for source in case.get("sources", []):
-                if source not in methods:
-                    errors.append(f"Stale or undiscovered source: {case_id}: {source}")
-                else:
+                if source in methods:
                     methods[source]["cases"].append(case_id)
+                elif source in migrated:
+                    migrated[source]["linkedCases"].append(case_id)
+                else:
+                    errors.append(f"Stale or undiscovered source: {case_id}: {source}")
+
+    for source, entry in migrated.items():
+        if set(entry["cases"]) != set(entry["linkedCases"]):
+            errors.append(f"Migration case links do not match reviewed cases: {source}")
+        for case_id in sorted(set(entry["cases"]) - case_ids):
+            errors.append(f"Missing migration case: {source}: {case_id}")
 
     statuses = Counter()
     dispositions = Counter()
@@ -118,6 +142,7 @@ def build_report(root=ROOT, suite=SUITE):
     totals = {
         "files": len(files),
         "methods": len(methods),
+        "migratedMethods": len(migrated),
         "facts": sum(method["kind"] == "Fact" for method in methods.values()),
         "theories": sum(method["kind"] == "Theory" for method in methods.values()),
         "inlineVariants": sum(method["inlineVariants"] for method in methods.values()),
@@ -136,11 +161,15 @@ def build_report(root=ROOT, suite=SUITE):
             "pending_external": "Observable behavior still needs complete language-neutral coverage.",
             "environment_specific": "Needs emulator, Azure, interactive terminal or external tool; any offline subset is only a partial link.",
             "counts": "Fact/Theory declarations and literal InlineData attributes only; MemberData/ClassData cardinality is unknown.",
-            "retention": "All original xUnit tests remain. No method is declared fully migrated.",
+            "retention": "Active method links remain partial. Only explicitly reviewed migratedMethods entries record removed xUnit methods and their exact replacement cases.",
         },
         "totals": totals,
         "files": files,
         "methods": [methods[key] for key in sorted(methods)],
+        "migratedMethods": [
+            {key: value for key, value in migrated[source].items() if key != "linkedCases"}
+            for source in sorted(migrated)
+        ],
         "errors": sorted(errors),
     }
 
