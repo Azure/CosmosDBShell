@@ -1,0 +1,73 @@
+{
+  "schemaVersion":1,
+  "cases":[
+    {
+      "id":"emulator.batch.create-patch-atomic",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/BatchOperationTests.cs::BatchRun_CreateThenPatch_AppliesBoth","CosmosDBShell.Tests/Integration/BatchOperationTests.cs::BatchRun_MultipleCreates_CommitsAtomically"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; batch run '[{\"op\":\"create\",\"item\":{\"id\":\"a\",\"pk\":\"tenant\",\"status\":\"new\"}},{\"op\":\"patch\",\"id\":\"a\",\"operations\":[{\"op\":\"set\",\"path\":\"/status\",\"value\":\"done\"}]}]' --partition-key tenant > 'result.json'; query \"SELECT c.id,c.pk,c.status FROM c\" > 'items.json'",
+      "exitCode":0,
+      "emulator":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[]}],"verify":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[{"id":"a","pk":"tenant","status":"done"}]}]}},
+      "files":{
+        "result.json":{"mode":"json","schema":{"type":"object","required":["success","statusCode","requestCharge","operationCount","operations"],"additionalProperties":false,"properties":{"success":{"const":true},"statusCode":{"const":200},"requestCharge":{"type":"number","exclusiveMinimum":0,"maximum":100},"operationCount":{"const":2},"operations":{"type":"array","minItems":2,"maxItems":2,"prefixItems":[{"type":"object","required":["index","op","statusCode"],"properties":{"index":{"const":0},"op":{"const":"create"},"statusCode":{"const":201}}},{"type":"object","required":["index","op","id","statusCode"],"properties":{"index":{"const":1},"op":{"const":"patch"},"id":{"const":"a"},"statusCode":{"const":200}}}]}}}},
+        "items.json":{"mode":"json","expected":{"type":"item","values":[{"id":"a","pk":"tenant","status":"done"}]}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"emulator.batch.rollback",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/BatchOperationTests.cs::BatchRun_FailingOperation_RollsBackEntireBatch"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; batch run '[{\"op\":\"create\",\"item\":{\"id\":\"fresh\",\"pk\":\"tenant\"}},{\"op\":\"create\",\"item\":{\"id\":\"existing\",\"pk\":\"tenant\"}}]' --partition-key tenant 2> 'error.json'",
+      "exitCode":1,
+      "emulator":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[{"id":"existing","pk":"tenant"}]}]},
+      "files":{
+        "error.json":{"mode":"json","schema":{"type":"object","required":["status","error","result"],"properties":{"status":{"const":"error"},"error":{"type":"string","minLength":1},"result":{"type":"object","required":["success","operationCount","statusCode","requestCharge","operations"],"properties":{"success":{"const":false},"operationCount":{"const":2},"statusCode":{"const":409},"requestCharge":{"type":"number","exclusiveMinimum":0},"operations":{"type":"array","minItems":2,"maxItems":2}}}}}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"emulator.batch.stateful",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/BatchOperationTests.cs::StatefulBatch_BeginAddExecute_CommitsQueuedOperations"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; batch begin --partition-key tenant; batch add '{\"op\":\"create\",\"item\":{\"id\":\"a\",\"pk\":\"tenant\"}}'; batch add '{\"op\":\"patch\",\"id\":\"a\",\"operations\":[{\"op\":\"set\",\"path\":\"/status\",\"value\":\"done\"}]}'; batch status > 'before.json'; batch execute > 'execution.json'; batch status > 'after.json'",
+      "exitCode":0,
+      "emulator":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[]}],"verify":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[{"id":"a","pk":"tenant","status":"done"}]}]}},
+      "files":{
+        "before.json":{"mode":"json","schema":{"type":"object","required":["active","operationCount"],"properties":{"active":{"const":true},"operationCount":{"const":2}}}},
+        "execution.json":{"mode":"json","schema":{"type":"object","required":["success","operationCount","requestCharge"],"properties":{"success":{"const":true},"operationCount":{"const":2},"requestCharge":{"type":"number","exclusiveMinimum":0}}}},
+        "after.json":{"mode":"json","schema":{"type":"object","required":["active"],"properties":{"active":{"const":false}}}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"emulator.files.import-export-json",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/CommandTests/ImportCommandTests.cs::EnumerateJsonDocumentAsync_ObjectSequence_YieldsItems","CosmosDBShell.Tests/CommandTests/ExportCommandTests.cs::WriteArrayAsync_WritesValidStreamingArray"],
+      "fixtures":{"input.jsonl":"{\"id\":\"a\",\"pk\":\"tenant\",\"name\":\"first\"}\n{\"id\":\"b\",\"pk\":\"tenant\",\"name\":\"second\"}\n"},
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; import input.jsonl > 'imported.json'; export exported.json --query \"SELECT c.id,c.pk,c.name FROM c ORDER BY c.id\" > 'exported-summary.json'",
+      "exitCode":0,
+      "emulator":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[]}],"verify":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[{"id":"a","pk":"tenant","name":"first"},{"id":"b","pk":"tenant","name":"second"}]}]}},
+      "files":{
+        "imported.json":{"mode":"json","expected":{"type":"import","file":"input.jsonl","imported":2,"failed":0,"requestCharge":null,"dryRun":false},"dynamic":{"/requestCharge":{"type":"number","exclusiveMinimum":0,"maximum":100}}},
+        "exported-summary.json":{"mode":"json","expected":{"type":"export","file":"exported.json","exported":2,"requestCharge":null},"dynamic":{"/requestCharge":{"type":"number","exclusiveMinimum":0,"maximum":100}}},
+        "exported.json":{"mode":"json","expected":[{"id":"a","pk":"tenant","name":"first"},{"id":"b","pk":"tenant","name":"second"}]},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"emulator.files.export-csv-unicode-quotes-newlines",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/CommandTests/ExportCommandTests.cs::WriteCsvAsync_EscapesSeparatorsQuotesAndNewlines"],
+      "environment":{"COSMOSDB_SHELL_CSVSEP":","},
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; export exported.csv --query \"SELECT c.id,c.name,c.note FROM c ORDER BY c.id\" > 'result.json'",
+      "exitCode":0,
+      "emulator":{"containers":[{"id":"items","partitionKey":["/id"],"items":[{"id":"a","name":"Gr\u00fc\u00dfe, \"quoted\"","note":" line1\nline2"},{"id":"b","name":"","note":"last"}]}]},
+      "files":{
+        "exported.csv":{"mode":"csv","expected":[["id","name","note"],["a","Gr\u00fc\u00dfe, \"quoted\""," line1\nline2"],["b","","last"]]},
+        "result.json":{"mode":"json","expected":{"type":"export","file":"exported.csv","exported":2,"requestCharge":null},"dynamic":{"/requestCharge":{"type":"number","exclusiveMinimum":0,"maximum":100}}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    }
+  ]
+}

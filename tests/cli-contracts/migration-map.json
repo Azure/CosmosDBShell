@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "groups": [
+    {
+      "disposition": "pending_external",
+      "reason": "Offline command/result semantics are observable. Corpus links cover only the cited scenarios; remaining assertions and variants await external migration.",
+      "files": [
+        "CosmosDBShell.Tests/Contract/JsonResultContractTests.cs",
+        "CosmosDBShell.Tests/CommandTests/CatCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/CsvScalarColumnEnvironmentTests.cs",
+        "CosmosDBShell.Tests/CommandTests/FilterCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/FtabCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ImportDryRunValidationTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ThemeCommandDispatchTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ThemeCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/WelcomeCommandTests.cs",
+        "CosmosDBShell.Tests/Integration/ControlFlowTests.cs",
+        "CosmosDBShell.Tests/Integration/EchoTests.cs",
+        "CosmosDBShell.Tests/Integration/FilterIntegrationTests.cs",
+        "CosmosDBShell.Tests/Integration/OutputRedirectionTests.cs",
+        "CosmosDBShell.Tests/Integration/ScriptArgumentTests.cs",
+        "CosmosDBShell.Tests/Integration/VersionAndHelpTests.cs",
+        "CosmosDBShell.Tests/Parser/CultureInvariantConversionTests.cs",
+        "CosmosDBShell.Tests/Parser/DoWhileStatementTests.cs",
+        "CosmosDBShell.Tests/Parser/FilterBuiltinsTests.cs",
+        "CosmosDBShell.Tests/Parser/FilterPathExpressionTests.cs",
+        "CosmosDBShell.Tests/Parser/ForStatementTests.cs",
+        "CosmosDBShell.Tests/Parser/FunctionDefinitionTests.cs",
+        "CosmosDBShell.Tests/Parser/InterpolatedStringExpressionTests.cs",
+        "CosmosDBShell.Tests/Parser/JsonConstructionTests.cs",
+        "CosmosDBShell.Tests/Parser/LoopStatementTests.cs",
+        "CosmosDBShell.Tests/Parser/OperatorEvaluationTests.cs",
+        "CosmosDBShell.Tests/Parser/WhileStatementTests.cs",
+        "CosmosDBShell.Tests/Runtime/AssignmentTests.cs",
+        "CosmosDBShell.Tests/Runtime/LoopTests.cs"
+      ]
+    },
+    {
+      "disposition": "pending_external",
+      "reason": "Process suite mixes startup, stream, stdin, environment, rendering and error variants. Script/args cases can migrate many scenarios, but stdin/interactive variants and remaining rows are not claimed covered.",
+      "files": ["CosmosDBShell.Tests/Integration/ShellProcessTests.cs"]
+    },
+    {
+      "disposition": "retained_implementation",
+      "reason": "Binding/exit-code tests include reflection-only custom target types and exception classification. Built-in CLI binding scenarios are linked separately; internal conversion/classification assertions remain C# coverage.",
+      "files": [
+        "CosmosDBShell.Tests/CommandTests/CommandUsageErrorTests.cs",
+        "CosmosDBShell.Tests/Runtime/ShellExitCodeTests.cs"
+      ]
+    },
+    {
+      "disposition": "retained_implementation",
+      "reason": "Write-error tests inject SDK BadRequest/Forbidden responses, earlier-write failures and bounded diagnostic buffers through C# collaborators. These deterministic service failures and internal buffer limits remain implementation coverage.",
+      "files": ["CosmosDBShell.Tests/CommandTests/MachineModeWriteErrorTests.cs"]
+    },
+    {
+      "disposition": "retained_implementation",
+      "reason": "Mocked Cosmos SDK/control-plane calls, state visitors, request options, resource lifetimes or in-memory command results cannot be asserted equivalently by an offline child executable. Any externally migrated subset remains a partial link.",
+      "files": [
+        "CosmosDBShell.Tests/CommandTests/BatchCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/BucketCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/BulkCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/CanICommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/CdCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/CommandStatusOutputTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ConflictCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ConnectCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ContainerScopedCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/CosmosCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/CreateCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/DataPlaneCosmosResourceOperationsTests.cs",
+        "CosmosDBShell.Tests/CommandTests/DeleteCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/DoctorCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ExportCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ImportCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ImportConcurrencyTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ImportFailureResultTests.cs",
+        "CosmosDBShell.Tests/CommandTests/IndexCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/InfoCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/IngestionProgressTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ItemWriteCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ListCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/MakeContainerCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/MakeDbCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/MakeItemCommand.cs",
+        "CosmosDBShell.Tests/CommandTests/PipelineInputTests.cs",
+        "CosmosDBShell.Tests/CommandTests/PrintCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/QueryCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ResourceCreationResultTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ResultLimitTests.cs",
+        "CosmosDBShell.Tests/CommandTests/RmCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/RmDbCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/SchemaCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ServerlessCreationThroughputTests.cs",
+        "CosmosDBShell.Tests/CommandTests/SessionRequestChargeTests.cs",
+        "CosmosDBShell.Tests/CommandTests/SprocCommandExecutionTests.cs",
+        "CosmosDBShell.Tests/CommandTests/SprocCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/ThroughputCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/TriggerCommandExecutionTests.cs",
+        "CosmosDBShell.Tests/CommandTests/TriggerCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/TtlCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/UdfCommandExecutionTests.cs",
+        "CosmosDBShell.Tests/CommandTests/UdfCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/WatchCommandTests.cs",
+        "CosmosDBShell.Tests/CommandTests/WhoamiCommandTests.cs"
+      ]
+    },
+    {
+      "disposition": "retained_implementation",
+      "reason": "Update transport/cache/version-selection tests use .NET-specific collaborators and simulated responses, not stable offline CLI inputs.",
+      "files": ["CosmosDBShell.Tests/CommandTests/ShellUpdateCheckerTests.cs"]
+    },
+    {
+      "disposition": "retained_implementation",
+      "reason": "AST/token structure, direct ShellObject conversion, parser visitor dispatch or in-process interpreter state are implementation contracts. Publicly observable expression subsets can be linked without replacing these assertions.",
+      "files": [
+        "CosmosDBShell.Tests/Parser/AstVisitorWalkTests.cs",
+        "CosmosDBShell.Tests/Parser/CommandExecutionTests.cs",
+        "CosmosDBShell.Tests/Parser/CommandExpressionTests.cs",
+        "CosmosDBShell.Tests/Parser/CommandNotFoundExceptionTests.cs",
+        "CosmosDBShell.Tests/Parser/CommandStatementTests.cs",
+        "CosmosDBShell.Tests/Parser/ExpressionParserErrorTests.cs",
+        "CosmosDBShell.Tests/Parser/ExpressionTests.cs",
+        "CosmosDBShell.Tests/Parser/JSonArrayExpressionTests.cs",
+        "CosmosDBShell.Tests/Parser/JsonExpressionTests.cs",
+        "CosmosDBShell.Tests/Parser/LexerTests.cs",
+        "CosmosDBShell.Tests/Parser/MachineModeConsoleWarningTests.cs",
+        "CosmosDBShell.Tests/Parser/PositionalErrorTests.cs",
+        "CosmosDBShell.Tests/Parser/ShellObjectConversionTests.cs",
+        "CosmosDBShell.Tests/Parser/ShellObjectParseTests.cs",
+        "CosmosDBShell.Tests/Parser/StatementExecutionTests.cs",
+        "CosmosDBShell.Tests/Parser/StatementParserEdgeTests.cs",
+        "CosmosDBShell.Tests/Parser/StatementParserStructureTests.cs",
+        "CosmosDBShell.Tests/Parser/StatementPositionalErrorTests.cs",
+        "CosmosDBShell.Tests/Parser/StatementTests.cs",
+        "CosmosDBShell.Tests/Parser/ToStringTests.cs"
+      ]
+    },
+    {
+      "disposition": "retained_implementation",
+      "reason": "Tracing, diagnostic logging, redaction helper and serialized-execution implementation tests retain direct .NET instrumentation coverage; observable process behavior requires separate cases.",
+      "files": [
+        "CosmosDBShell.Tests/Runtime/DiagnosticLogTests.cs",
+        "CosmosDBShell.Tests/Runtime/SecretRedactorTests.cs",
+        "CosmosDBShell.Tests/Runtime/SerializedExecutionTests.cs",
+        "CosmosDBShell.Tests/Runtime/TracingBootstrapTests.cs"
+      ]
+    },
+    {
+      "disposition": "environment_specific",
+      "reason": "Live Cosmos emulator connection, resources, queries or writes are prerequisites. Offline corpus cannot replace this behavior; emulator corpus links are partial evidence only.",
+      "files": [
+        "CosmosDBShell.Tests/Integration/AdditionalCommandsTests.cs",
+        "CosmosDBShell.Tests/Integration/BatchOperationTests.cs",
+        "CosmosDBShell.Tests/Integration/BulkOperationTests.cs",
+        "CosmosDBShell.Tests/Integration/ConnectionTests.cs",
+        "CosmosDBShell.Tests/Integration/DataOperationTests.cs",
+        "CosmosDBShell.Tests/Integration/EndToEndScriptTests.cs",
+        "CosmosDBShell.Tests/Integration/ErrorHandlingTests.cs",
+        "CosmosDBShell.Tests/Integration/IndexPolicyTests.cs",
+        "CosmosDBShell.Tests/Integration/InfoCommandIntegrationTests.cs",
+        "CosmosDBShell.Tests/Integration/LocalEmulatorInactivityTimeoutTests.cs",
+        "CosmosDBShell.Tests/Integration/NavigationTests.cs",
+        "CosmosDBShell.Tests/Integration/PrintPartitionKeyTests.cs",
+        "CosmosDBShell.Tests/Integration/QueryCommandTests.cs",
+        "CosmosDBShell.Tests/Integration/ResourceCreationTests.cs",
+        "CosmosDBShell.Tests/Integration/ResourceManagementTests.cs",
+        "CosmosDBShell.Tests/Integration/RmPartitionKeyETagTests.cs",
+        "CosmosDBShell.Tests/Integration/ServerSideProgrammingCapabilityTests.cs",
+        "CosmosDBShell.Tests/Integration/ServerSideProgrammingTests.cs",
+        "CosmosDBShell.Tests/Integration/UndefinedPartitionKeyTests.cs",
+        "CosmosDBShell.Tests/Integration/UserDefinedFunctionTests.cs"
+      ]
+    },
+    {
+      "disposition": "environment_specific",
+      "reason": "These suites mix offline scenarios with interactive console, external jq, filesystem setup or connection behavior. Offline links deliberately cover only selected rows.",
+      "files": [
+        "CosmosDBShell.Tests/Integration/BasicCommandsTests.cs",
+        "CosmosDBShell.Tests/Integration/CatTests.cs",
+        "CosmosDBShell.Tests/Integration/DirTests.cs",
+        "CosmosDBShell.Tests/Integration/PipingTests.cs"
+      ]
+    },
+    {
+      "disposition": "environment_specific",
+      "reason": "Explicit benchmark workloads or Azure/serverless account configuration are opt-in environment-specific tests, not offline correctness scenarios.",
+      "files": [
+        "CosmosDBShell.Tests/Integration/AzureIngestionBenchmarkTests.cs",
+        "CosmosDBShell.Tests/Integration/IngestionBenchmarkTests.cs",
+        "CosmosDBShell.Tests/Integration/ServerlessCreationSmokeTests.cs"
+      ]
+    },
+    {
+      "disposition": "retained_implementation",
+      "reason": "C# fixture, mock, probe or test-base infrastructure; discovered for completeness even when it declares no Fact/Theory methods.",
+      "files": [
+        "CosmosDBShell.Tests/CommandTests/ScriptMocks.cs",
+        "CosmosDBShell.Tests/Integration/ConnectedEmulatorTestBase.cs",
+        "CosmosDBShell.Tests/Integration/EmulatorDatabaseFixture.cs",
+        "CosmosDBShell.Tests/Integration/EmulatorFixtureTestBase.cs",
+        "CosmosDBShell.Tests/Integration/EmulatorProbe.cs",
+        "CosmosDBShell.Tests/Integration/EmulatorTestBase.cs",
+        "CosmosDBShell.Tests/Integration/ExternalToolCheck.cs",
+        "CosmosDBShell.Tests/Integration/IngestionBenchmarkWorkload.cs",
+        "CosmosDBShell.Tests/Integration/IntegrationTestBase.cs",
+        "CosmosDBShell.Tests/Parser/TestBase.cs"
+      ]
+    }
+  ]
+}

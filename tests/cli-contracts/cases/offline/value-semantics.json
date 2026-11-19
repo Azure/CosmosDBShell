@@ -1,0 +1,79 @@
+{
+  "schemaVersion":1,
+  "cases":[
+    {
+      "id":"values.integral-decimal-origins",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/Parser/StatementExecutionTests.cs::Operators_PreserveResultsAcrossValueOrigins","CosmosDBShell.Tests/Parser/StatementExecutionTests.cs::DecimalValues_SurviveRepeatedJsonConstruction"],
+      "fixtures":{"source.json":"{\"value\":3.0}"},
+      "script":"def identity [value] { return $value }; def readraw { cat source.json | filter '.' }; $literal = 3.0; $raw = (readraw); $constructed = {\"value\":$literal}; for $item in [$constructed.value] { $loop = (identity $item) / 2 }; echo {\"literal\":(3.0 / 2),\"variable\":($literal / 2),\"raw\":($raw.value / 2),\"constructed\":($constructed.value / 2),\"loop\":$loop} > 'result.json'",
+      "exitCode":0,
+      "files":{"result.json":{"mode":"json","expected":{"literal":1.5,"variable":1.5,"raw":1.5,"constructed":1.5,"loop":1.5}},"stderr.txt":{"mode":"empty"}}
+    },
+    {
+      "id":"values.integer-division-origins",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/Parser/StatementExecutionTests.cs::Operators_PreserveResultsAcrossValueOrigins"],
+      "fixtures":{"source.json":"{\"value\":3}"},
+      "script":"def identity [value] { return $value }; def readraw { cat source.json | filter '.' }; $literal = 3; $raw = (readraw); $constructed = {\"value\":$literal}; for $item in [$constructed.value] { $loop = (identity $item) / 2 }; echo {\"literal\":(3 / 2),\"variable\":($literal / 2),\"raw\":($raw.value / 2),\"constructed\":($constructed.value / 2),\"loop\":$loop} > 'result.json'",
+      "exitCode":0,
+      "files":{"result.json":{"mode":"json","expected":{"literal":1,"variable":1,"raw":1,"constructed":1,"loop":1}},"stderr.txt":{"mode":"empty"}}
+    },
+    {
+      "id":"values.mixed-text-arithmetic",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/Parser/StatementExecutionTests.cs::Operators_PreserveResultsAcrossValueOrigins"],
+      "script":"$source = {\"left\":3.0,\"right\":\"2.5\"}; def identity [value] { return $value }; for $left in [$source.left] { for $right in [$source.right] { $loop = (identity $left) * (identity $right) } }; echo {\"sum\":(\"2\" + \"2\"),\"suffix\":(2 + \"px\"),\"product\":$loop,\"difference\":($source.left - $source.right),\"quotient\":($source.left / $source.right),\"modulo\":($source.left % $source.right),\"comparison\":($source.left > $source.right)} > 'result.json'",
+      "exitCode":0,
+      "files":{"result.json":{"mode":"json","expected":{"sum":"22","suffix":"2px","product":7.5,"difference":0.5,"quotient":1.2,"modulo":0.5,"comparison":true}},"stderr.txt":{"mode":"empty"}}
+    },
+    {
+      "id":"values.repeated-json-reconstruction",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/Parser/StatementExecutionTests.cs::DecimalValues_SurviveRepeatedJsonConstruction"],
+      "script":"$initial = -3.0; $object = {\"value\":$initial}; $array = [$object.value]; for $item in $array { $rebuilt = {\"value\":$item}; $result = $rebuilt.value / 2 }; echo {\"rebuilt\":$rebuilt,\"result\":$result} > 'result.json'",
+      "exitCode":0,
+      "files":{"result.json":{"mode":"json","expected":{"rebuilt":{"value":-3.0},"result":-1.5}},"stderr.txt":{"mode":"empty"}}
+    },
+    {
+      "id":"values.null-through-function-loop",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/Parser/StatementExecutionTests.cs::For_OverNull_PreservesNullThroughFunctionAndArray"],
+      "script":"def identity [value] { return $value }; for $item in [null] { $result = (identity $item) }; echo {\"value\":$result,\"array\":[$result]} > 'result.json'",
+      "exitCode":0,
+      "files":{"result.json":{"mode":"json","expected":{"value":null,"array":[null]}},"stderr.txt":{"mode":"empty"}}
+    },
+    {
+      "id":"values.json-construction-mixed",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/Parser/JsonConstructionTests.cs::Object_WithMixedValueTypes_BuildsJsonObject","CosmosDBShell.Tests/Parser/JsonConstructionTests.cs::Array_WithNestedArray_BuildsNestedJson","CosmosDBShell.Tests/Parser/JsonConstructionTests.cs::Object_WithNullValue_SerializesNull"],
+      "script":"echo {\"integer\":42,\"decimal\":1.5,\"text\":\"42\",\"boolean\":true,\"null\":null,\"array\":[1,[2,3],false],\"object\":{\"id\":\"a\"}} > 'result.json'",
+      "exitCode":0,
+      "files":{"result.json":{"mode":"json","expected":{"integer":42,"decimal":1.5,"text":"42","boolean":true,"null":null,"array":[1,[2,3],false],"object":{"id":"a"}}},"stderr.txt":{"mode":"empty"}}
+    },
+    {
+      "id":"values.function-scope",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/Parser/StatementExecutionTests.cs::CompoundAssignment_InFunction_RemainsLocal"],
+      "script":"$value = 10; def local { $value += 5; return $value }; $inside = (local); echo {\"outside\":$value,\"inside\":$inside} > 'result.json'",
+      "exitCode":0,
+      "files":{"result.json":{"mode":"json","expected":{"outside":10,"inside":15}},"stderr.txt":{"mode":"empty"}}
+    },
+    {
+      "id":"values.for-continue",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/Parser/StatementExecutionTests.cs::For_Continue_SkipsSelectedIterations"],
+      "script":"$sum = 0; for $item in [1,2,3,4,5] { if ($item == 3) { continue }; $sum += $item }; echo {\"sum\":$sum} > 'result.json'",
+      "exitCode":0,
+      "files":{"result.json":{"mode":"json","expected":{"sum":12}},"stderr.txt":{"mode":"empty"}}
+    },
+    {
+      "id":"values.nested-return",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/Parser/StatementExecutionTests.cs::NestedReturn_ExitsFunction"],
+      "script":"def nested { loop { if true { return 7 }; echo UNREACHABLE } }; echo {\"result\":(nested)} > 'result.json'",
+      "exitCode":0,
+      "files":{"result.json":{"mode":"json","expected":{"result":7}},"stdout.txt":{"mode":"empty"},"stderr.txt":{"mode":"empty"}}
+    }
+  ]
+}

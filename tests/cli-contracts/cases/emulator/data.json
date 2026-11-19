@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "emulator.items.create-replace-patch",
+      "profiles": ["emulator-linux", "emulator-windows"],
+      "sources": [
+        "CosmosDBShell.Tests/Integration/DataOperationTests.cs::MkItem_CreatesItem_LsShowsIt",
+        "CosmosDBShell.Tests/Integration/DataOperationTests.cs::Replace_UpdatesExistingItem",
+        "CosmosDBShell.Tests/Integration/DataOperationTests.cs::Patch_UpdatesField",
+        "CosmosDBShell.Tests/Integration/DataOperationTests.cs::Patch_TypedValuesAreParsedAsJson"
+      ],
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; mkitem '{\"id\":\"a\",\"pk\":\"tenant\",\"name\":\"before\",\"count\":1}' > 'created.json'; replace '{\"id\":\"a\",\"pk\":\"tenant\",\"name\":\"replaced\",\"count\":1}' > 'replaced.json'; patch set a tenant /name after > 'patched.json'; patch incr a tenant /count 2; patch set a tenant /enabled true; query \"SELECT c.id,c.pk,c.name,c.count,c.enabled FROM c\" > 'result.json'",
+      "exitCode": 0,
+      "emulator": {
+        "containers": [{"id":"items","partitionKey":["/pk"],"items":[]}],
+        "verify": {"containers": [{"id":"items","partitionKey":["/pk"],"items":[{"id":"a","pk":"tenant","name":"after","count":3,"enabled":true}]}]}
+      },
+      "files": {
+        "created.json": {"mode":"json","expected":{"type":"item","created":1,"replaced":0,"failed":0,"requestCharge":null},"dynamic":{"/requestCharge":{"type":"number","exclusiveMinimum":0,"maximum":100}}},
+        "replaced.json": {"mode":"json","expected":{"type":"item","replaced":1,"failed":0,"requestCharge":null},"dynamic":{"/requestCharge":{"type":"number","exclusiveMinimum":0,"maximum":100}}},
+        "patched.json": {"mode":"json","expected":{"type":"item","id":"a","patched":true,"requestCharge":null},"dynamic":{"/requestCharge":{"type":"number","exclusiveMinimum":0,"maximum":100}}},
+        "result.json": {"mode":"json","expected":{"type":"item","values":[{"id":"a","pk":"tenant","name":"after","count":3,"enabled":true}]}},
+        "stderr.txt": {"mode":"empty"}
+      }
+    },
+    {
+      "id": "emulator.items.force-upsert-alias",
+      "profiles": ["emulator-linux", "emulator-windows"],
+      "sources": ["CosmosDBShell.Tests/Integration/DataOperationTests.cs::MkItem_Force_ReplacesExistingItem","CosmosDBShell.Tests/Integration/DataOperationTests.cs::CreateItem_ForceAndUpsert_ReplaceExistingItem"],
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; mkitem --force '{\"id\":\"a\",\"pk\":7,\"value\":\"force\"}' > 'force.json'; create item '{\"id\":\"a\",\"pk\":7,\"value\":\"upsert\"}' --upsert > 'upsert.json'; query \"SELECT c.id,c.pk,c[\\\"value\\\"] FROM c\" > 'result.json'",
+      "exitCode":0,
+      "emulator": {
+        "containers":[{"id":"items","partitionKey":["/pk"],"items":[{"id":"a","pk":7,"value":"before"}]}],
+        "verify":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[{"id":"a","pk":7,"value":"upsert"}]}]}
+      },
+      "files": {
+        "force.json":{"mode":"json","expected":{"type":"item","created":0,"replaced":1,"failed":0,"requestCharge":null},"dynamic":{"/requestCharge":{"type":"number","exclusiveMinimum":0,"maximum":100}}},
+        "upsert.json":{"mode":"json","expected":{"type":"item","created":0,"replaced":1,"failed":0,"requestCharge":null},"dynamic":{"/requestCharge":{"type":"number","exclusiveMinimum":0,"maximum":100}}},
+        "result.json":{"mode":"json","expected":{"type":"item","values":[{"id":"a","pk":7,"value":"upsert"}]}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"emulator.items.delete",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/DataOperationTests.cs::Rm_DeletesItem_NoLongerInLs"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; rm a --key id --partition-key tenant > 'deleted.json'; ls > 'result.json'",
+      "exitCode":0,
+      "emulator":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[{"id":"a","pk":"tenant"}]}],"verify":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[]}]}},
+      "files":{
+        "deleted.json":{"mode":"json","schema":{"type":"object","required":["count","dryRun","id","partitionKey"],"properties":{"count":{"const":1},"dryRun":{"const":false},"id":{"const":"a"},"partitionKey":{"const":"tenant"}}}},
+        "result.json":{"mode":"json","expected":{"type":"item","values":[],"limitReached":false}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"emulator.query.projection-filter-limit",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/QueryCommandTests.cs::Query_SelectSpecificFields_ReturnsProjection","CosmosDBShell.Tests/Integration/QueryCommandTests.cs::Query_WithFilter_ReturnsFilteredResults","CosmosDBShell.Tests/Integration/QueryCommandTests.cs::Query_MaxOption_LimitsResults"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; query \"SELECT c.id,c.score FROM c WHERE c.category = 'alpha' ORDER BY c.id\" > 'filtered.json'; query \"SELECT c.id,c.score FROM c ORDER BY c.id\" --max 2 > 'limited.json'; query \"SELECT VALUE COUNT(1) FROM c\" > 'count.json'",
+      "exitCode":0,
+      "emulator":{"containers":[{"id":"items","partitionKey":["/id"],"items":[{"id":"a","score":10,"category":"alpha"},{"id":"b","score":20,"category":"alpha"},{"id":"c","score":30,"category":"beta"}]}]},
+      "files":{
+        "filtered.json":{"mode":"json","expected":{"type":"item","values":[{"id":"a","score":10},{"id":"b","score":20}]}},
+        "limited.json":{"mode":"json","expected":{"type":"item","values":[{"id":"a","score":10},{"id":"b","score":20}]}},
+        "count.json":{"mode":"json","expected":{"type":"item","values":[3]}},
+        "stderr.txt":{"mode":"text","contains":["Use --max to change the limit","--max 0"],"occurrences":{"Results limited to 2 items.":1},"notContains":["error","cannot be resumed"]}
+      }
+    },
+    {
+      "id":"emulator.items.hierarchical",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/DataOperationTests.cs::PatchAndReplace_HierarchicalPartitionKey_Succeed"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; patch set a '[\"tenant\",7]' /value patched; replace '{\"id\":\"a\",\"tenant\":\"tenant\",\"pk\":7,\"value\":\"replaced\"}' > 'replaced.json'; query \"SELECT c.id,c.tenant,c.pk,c[\\\"value\\\"] FROM c\" > 'result.json'",
+      "exitCode":0,
+      "emulator":{"containers":[{"id":"items","partitionKey":["/tenant","/pk"],"items":[{"id":"a","tenant":"tenant","pk":7,"value":"before"}]}],"verify":{"containers":[{"id":"items","partitionKey":["/tenant","/pk"],"items":[{"id":"a","tenant":"tenant","pk":7,"value":"replaced"}]}]}},
+      "files":{
+        "replaced.json":{"mode":"json","expected":{"type":"item","replaced":1,"failed":0,"requestCharge":null},"dynamic":{"/requestCharge":{"type":"number","exclusiveMinimum":0,"maximum":100}}},
+        "result.json":{"mode":"json","expected":{"type":"item","values":[{"id":"a","tenant":"tenant","pk":7,"value":"replaced"}]}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"emulator.items.undefined-key",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/UndefinedPartitionKeyTests.cs::ItemCommands_AddressUndefinedScalarPartition"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; mkitem '{\"id\":\"a\",\"value\":1}'; patch set a '{}' /value 2; replace '{\"id\":\"a\",\"value\":3}'; query \"SELECT c.id,c[\\\"value\\\"] FROM c\" > 'result.json'; rm a --key id --partition-key '{}' > 'deleted.json'",
+      "exitCode":0,
+      "emulator":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[]}],"verify":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[]}]}},
+      "files":{
+        "result.json":{"mode":"json","expected":{"type":"item","values":[{"id":"a","value":3}]}},
+        "deleted.json":{"mode":"json","schema":{"type":"object","required":["count","dryRun","partitionKey"],"properties":{"count":{"const":1},"dryRun":{"const":false},"partitionKey":{"const":{}}}}},
+        "stderr.txt":{"mode":"jsonl","expected":[{"status":"warning","warning":"Warning: 1 item(s) use an implicitly inferred undefined partition-key value. Use a present, stable, high-cardinality partition key for new data."},{"status":"warning","warning":"Warning: 1 item(s) use an implicitly inferred undefined partition-key value. Use a present, stable, high-cardinality partition key for new data."}]}
+      }
+    },
+    {
+      "id":"emulator.items.etag-reuse",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/RmPartitionKeyETagTests.cs::Rm_ExactIdWithPartitionKey_DryRunExposesTargetAndDeletesOnlyThatPartition"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; $preview = (rm a --key id --partition-key tenant --dry-run); echo $preview > 'preview.json'; $deleted = (rm a --key id --partition-key tenant --etag $preview.etag); echo $deleted > 'deleted.json'; echo ($preview.etag == $deleted.ifMatchEtag) > 'etag-equal.txt'",
+      "exitCode":0,
+      "emulator":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[{"id":"a","pk":"tenant"}]}],"verify":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[]}]}},
+      "files":{
+        "preview.json":{"mode":"json","schema":{"type":"object","required":["count","dryRun","etag","partitionKey"],"properties":{"count":{"const":1},"dryRun":{"const":true},"etag":{"type":"string","minLength":1},"partitionKey":{"const":"tenant"}}}},
+        "deleted.json":{"mode":"json","schema":{"type":"object","required":["count","dryRun","ifMatchEtag"],"properties":{"count":{"const":1},"dryRun":{"const":false},"ifMatchEtag":{"type":"string","minLength":1}}}},
+        "etag-equal.txt":{"mode":"text","lineCounts":{"true":1}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"emulator.items.stale-etag",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/RmPartitionKeyETagTests.cs::Rm_StaleETagAfterUpdate_RejectsDeletionWithoutRetry"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; $preview = (rm a --key id --partition-key tenant --dry-run); replace '{\"id\":\"a\",\"pk\":\"tenant\",\"value\":\"changed\"}'; rm a --key id --partition-key tenant --etag $preview.etag 2> 'error.json'",
+      "exitCode":1,
+      "emulator":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[{"id":"a","pk":"tenant","value":"before"}]}],"verify":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[{"id":"a","pk":"tenant","value":"changed"}]}]}},
+      "files":{
+        "error.json":{"mode":"json","schema":{"type":"object","required":["status","error"],"properties":{"status":{"const":"error"},"error":{"type":"string","pattern":"ETag mismatch"}}}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"emulator.items.missing-container",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/DataOperationTests.cs::ItemWrites_ReportMissingContainerAndDatabase"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; mkitem '{\"id\":\"a\"}' --database '${DB}' --container missing 2> 'error.json'",
+      "exitCode":1,
+      "emulator":{},
+      "files":{
+        "error.json":{"mode":"json","expected":{"status":"error","error":"Container 'missing' not found in database '${DB}'.\nUse 'ls --database ${DB}' to see available containers."}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"emulator.items.missing-database",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/DataOperationTests.cs::ItemWrites_ReportMissingContainerAndDatabase"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; replace '{\"id\":\"a\"}' --database '${DB_NEW}' --container missing 2> 'error.json'",
+      "exitCode":1,
+      "emulator":{},
+      "files":{
+        "error.json":{"mode":"json","expected":{"status":"error","error":"Database '${DB_NEW}' not found.\nUse 'ls' to see available databases."}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    }
+  ]
+}

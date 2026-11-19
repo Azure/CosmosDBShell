@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "emulator-connect-navigation-pwd",
+      "profiles": ["emulator-linux", "emulator-windows"],
+      "sources": [
+        "CosmosDBShell.Tests/Integration/ConnectionTests.cs::Connect_ToEmulator_Succeeds",
+        "CosmosDBShell.Tests/Integration/NavigationTests.cs::Cd_DotDot_FromContainerReturnsToDatabase",
+        "CosmosDBShell.Tests/Integration/NavigationTests.cs::Cd_NoArgs_ReturnsToRoot",
+        "CosmosDBShell.Tests/Integration/AdditionalCommandsTests.cs::Pwd_ReturnsCurrentLocation"
+      ],
+      "format": "json",
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway > 'connection.json'; cd '${DB}/${CONTAINER}'; pwd > 'container.json'; cd ..; pwd > 'database.json'; cd; pwd > 'root.json'",
+      "exitCode": 0,
+      "emulator": {"containers": [{"id": "items", "partitionKey": ["/pk"], "items": []}]},
+      "files": {
+        "connection.json": {"mode": "json", "expected": {"type": "connection", "connected": true, "endpoint": "${ENDPOINT}"}},
+        "container.json": {"mode": "json", "expected": {"type": "location", "database": "${DB}", "container": "items", "currentLocation": "/${DB}/items", "localDirectory": "${WORK}"}},
+        "database.json": {"mode": "json", "expected": {"type": "location", "database": "${DB}", "container": null, "currentLocation": "/${DB}", "localDirectory": "${WORK}"}},
+        "root.json": {"mode": "json", "expected": {"type": "location", "database": null, "container": null, "currentLocation": "/", "localDirectory": "${WORK}"}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-database-create-existing-alias",
+      "profiles": ["emulator-linux", "emulator-windows"],
+      "sources": ["CosmosDBShell.Tests/Integration/ResourceCreationTests.cs::DatabaseCreation_ReportsCreatedThenExisting"],
+      "format": "json",
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; mkdb '${DB_NEW}' > 'created.json'; create database '${DB_NEW}' > 'existing.json'",
+      "exitCode": 0,
+      "emulator": {"verify": {"containers": [], "newDatabaseExists": true}},
+      "files": {
+        "created.json": {"mode": "json", "expected": {"type": "database", "id": "${DB_NEW}", "created": true, "outcome": "created"}},
+        "existing.json": {"mode": "json", "expected": {"type": "database", "id": "${DB_NEW}", "created": false, "outcome": "existing"}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-container-create-existing-preserves-data",
+      "profiles": ["emulator-linux", "emulator-windows"],
+      "sources": ["CosmosDBShell.Tests/Integration/ResourceCreationTests.cs::ContainerCreation_PreservesExistingResourceAndData"],
+      "format": "json",
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; mkcon items /pk --database '${DB}' > 'existing.json'; create container extra /tenant --database '${DB}' > 'created.json'; ls --database '${DB}' extra > 'list.json'",
+      "exitCode": 0,
+      "emulator": {
+        "containers": [{"id": "items", "partitionKey": ["/pk"], "items": [{"id": "retained", "pk": "a", "email": "test@example.test"}]}],
+        "verify": {"containers": [
+          {"id": "items", "partitionKey": ["/pk"], "items": [{"id": "retained", "pk": "a", "email": "test@example.test"}]},
+          {"id": "extra", "partitionKey": ["/tenant"], "items": []}
+        ]}
+      },
+      "files": {
+        "existing.json": {"mode": "json", "expected": {"type": "container", "id": "items", "created": false, "outcome": "existing"}},
+        "created.json": {"mode": "json", "expected": {"type": "container", "id": "extra", "created": true, "outcome": "created"}},
+        "list.json": {"mode": "json", "expected": {"type": "container", "values": ["extra"]}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-container-delete",
+      "profiles": ["emulator-linux", "emulator-windows"],
+      "sources": ["CosmosDBShell.Tests/Integration/ResourceManagementTests.cs::RmCon_RemovesContainer"],
+      "format": "json",
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}'; rmcon items true > 'deleted.json'; ls > 'list.json'",
+      "exitCode": 0,
+      "emulator": {"containers": [{"id": "items", "partitionKey": ["/pk"], "items": [{"id": "a", "pk": "a"}]}], "verify": {"containers": []}},
+      "files": {
+        "deleted.json": {"mode": "json", "expected": {"type": "container", "id": "items", "deleted": true, "dryRun": false}},
+        "list.json": {"mode": "json", "expected": {"type": "container", "values": []}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-database-delete",
+      "profiles": ["emulator-linux", "emulator-windows"],
+      "sources": ["CosmosDBShell.Tests/Integration/ResourceManagementTests.cs::RmDb_RemovesDatabase"],
+      "format": "json",
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; rmdb '${DB}' true > 'deleted.json'; ls '${DB}' > 'list.json'",
+      "exitCode": 0,
+      "emulator": {"verify": {"databaseExists": false}},
+      "files": {
+        "deleted.json": {"mode": "json", "expected": {"type": "database", "id": "${DB}", "deleted": true, "dryRun": false}},
+        "list.json": {"mode": "json", "expected": {"type": "database", "values": []}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-disconnect",
+      "profiles": ["emulator-linux", "emulator-windows"],
+      "sources": ["CosmosDBShell.Tests/Integration/ConnectionTests.cs::Disconnect_AfterConnect_ReturnsToDisconnected"],
+      "format": "json",
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; disconnect > 'result.json'; pwd > 'location.json'",
+      "exitCode": 0,
+      "emulator": {},
+      "files": {
+        "result.json": {"mode": "json", "expected": {"type": "connection", "disconnected": true, "endpoint": "${ENDPOINT_HOST}"}},
+        "location.json": {"mode": "json", "expected": {"type": "location", "database": null, "container": null, "currentLocation": null, "localDirectory": "${WORK}"}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    }
+  ]
+}
