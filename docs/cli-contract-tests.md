@@ -49,11 +49,18 @@ python -m pytest tests\cli-contracts\test_contracts.py --profile emulator-window
 ```
 
 Use `--profile emulator-linux` for the Linux preview emulator. These are server
-profiles, not implementation capabilities; Windows-only partition-key collision
-cases must also pass for Rust against the Windows emulator. Missing executables,
+profiles, not implementation capabilities. The Windows profile also checks
+partition-key collisions, Windows emulator policy defaults and offer metadata,
+bounded change feed results, and stored procedure, trigger, and UDF registration
+lifecycles (not script execution). Missing executables,
 an unavailable selected emulator, malformed cases, and missing output files
 **fail**; they are not skipped. `--emulator-endpoint` defaults to
 `https://localhost:8081` and permits only local loopback endpoints.
+
+The command smoke cases exercise real invocations, not just option parsing.
+`edit` is covered by its noninteractive diagnostic and must not create a file;
+opening an editor interactively requires a terminal harness. `jq` is outside
+the current compatibility contract.
 
 The Python Azure Cosmos SDK creates fresh, uniquely named, owned databases,
 seeds data independently of the shell, verifies mutations, and cleans up on
@@ -166,8 +173,9 @@ The Validate And Package workflow runs the offline Python suite under
 `dotnet-coverage`. Its profiler follows the shell child processes, so the report
 measures C# product code exercised by the contracts, not Python code. The runner
 and contract expectations are unchanged. CI fails if no shell product lines are
-covered, and ReportGenerator merges this report with xUnit coverage before the
-existing GitHub Code Quality upload. Both runs use the same collector and product
+covered. ReportGenerator merges the reports for the GitHub Code Quality upload
+only after both runs succeed and record shell product hits. Raw reports remain
+available as diagnostic artifacts on failure. Both runs use the same collector and product
 module filter (shell, localization and analyzer). This avoids counting generated
 async classes twice due to different class names from different collectors.
 Test assemblies and dependencies are excluded. Emulator contracts are not
