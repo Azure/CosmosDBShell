@@ -47,20 +47,28 @@ internal class ThemeCommand : CosmosCommand
     {
         var action = (this.Action ?? "current").Trim().ToLowerInvariant();
 
-        return action switch
+        var result = action switch
         {
-            "current" => Task.FromResult(this.RunCurrent(commandState)),
-            "list" => Task.FromResult(this.RunList(commandState)),
-            "show" => Task.FromResult(this.RunShow(commandState)),
-            "use" or "set" => Task.FromResult(this.RunUse(commandState)),
-            "load" => Task.FromResult(this.RunLoad(commandState)),
-            "validate" => Task.FromResult(this.RunValidate(commandState)),
-            "save" => Task.FromResult(this.RunSave(commandState)),
-            "edit" => Task.FromResult(this.RunEdit(shell, commandState)),
-            "open" => Task.FromResult(this.RunOpen(commandState)),
-            "reload" => Task.FromResult(this.RunReload(commandState)),
-            _ => Task.FromResult(this.RunUnknownAction(commandState, action)),
+            "current" => this.RunCurrent(commandState),
+            "list" => this.RunList(commandState),
+            "show" => this.RunShow(commandState),
+            "use" or "set" => this.RunUse(commandState),
+            "load" => this.RunLoad(commandState),
+            "validate" => this.RunValidate(commandState),
+            "save" => this.RunSave(commandState),
+            "edit" => this.RunEdit(shell, commandState),
+            "open" => this.RunOpen(commandState),
+            "reload" => this.RunReload(commandState),
+            _ => this.RunUnknownAction(commandState, action),
         };
+
+        // Suppressed or redirected diagnostics still need the shell's error reporting.
+        if (result.IsError && !shell.IsMachineMode && shell.ErrOutRedirect == null)
+        {
+            result.OutputRendered = true;
+        }
+
+        return Task.FromResult(result);
     }
 
     private static CommandState ReportUnknownTheme(CommandState commandState, string requested)
