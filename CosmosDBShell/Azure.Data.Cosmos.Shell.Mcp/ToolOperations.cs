@@ -263,6 +263,11 @@ internal class ToolOperations
 
     internal static string FormatOptionForHistory(Option option, object? value)
     {
+        if (value is bool flag)
+        {
+            return $" --{option.Name[0]}={(flag ? "true" : "false")}";
+        }
+
         return $" --{option.Name[0]} {ShellLiteral.Quote(FormatValueForHistory(value))}";
     }
 
