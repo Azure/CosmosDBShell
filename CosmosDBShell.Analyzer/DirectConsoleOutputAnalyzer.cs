@@ -12,8 +12,8 @@ namespace CosmosShell.Analyzer
 {
     /// <summary>
     /// Requires user-facing console output to go through ShellOutput, which applies the
-    /// quiet and machine-mode presentation policies. Direct writes bypass those
-    /// policies and can corrupt structured stdout.
+    /// quiet, machine-mode, and MCP stdio presentation policies. Direct writes bypass those
+    /// policies and can corrupt structured stdout or the MCP protocol stream.
     /// </summary>
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public class DirectConsoleOutputAnalyzer : DiagnosticAnalyzer
@@ -30,7 +30,7 @@ namespace CosmosShell.Analyzer
             Category,
             DiagnosticSeverity.Error,
             isEnabledByDefault: true,
-            description: "User-facing output must go through ShellOutput so --quiet and machine mode are honored.");
+            description: "User-facing output must go through ShellOutput so --quiet, machine mode, and MCP stdio are honored.");
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get { return ImmutableArray.Create(Rule); } }
 

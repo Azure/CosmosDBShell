@@ -35,11 +35,6 @@ public partial class ShellInterpreter : IDisposable
 
     private const string SessionRequestChargeWarningThresholdVariable = "sessionRequestChargeWarningThreshold";
 
-    // Declared before Instance: static initializers run in order and the constructor reads history.
-    private static readonly object HistoryFileLock = new();
-
-    internal static readonly ShellInterpreter Instance = new();
-
     private const int MAXHISTORYITEMS = 60;
 
     private const int HistoryFileOpenRetryCount = 10;
@@ -58,9 +53,15 @@ public partial class ShellInterpreter : IDisposable
     // user command that just happens to start with the prefix string.
     private const string EncodedHistoryLineMarker = "E:";
 
+    private static readonly object HistoryFileLock = new();
+
+    private static readonly Lazy<ShellInterpreter> SharedInstance = new(() => new ShellInterpreter(historyEnabled: !stdioStartup));
+
     private static readonly TimeSpan HistoryFileOpenRetryDelay = TimeSpan.FromMilliseconds(25);
 
     private static CancellationTokenSource? currentTokenSource;
+
+    private static bool stdioStartup;
 
     private readonly string cfgPath;
 
@@ -119,13 +120,14 @@ public partial class ShellInterpreter : IDisposable
     private bool sessionRequestChargeWarningIssued;
     private long sessionRequestChargeGeneration;
 
-    internal ShellInterpreter(string? configPath = null)
+    internal ShellInterpreter(string? configPath = null, bool historyEnabled = true)
     {
         this.State = new DisconnectedState();
         this.errorRedirectWriter = new ErrorRedirectWriter(this);
         this.Output = new ShellOutput(
             () => this.Options?.Quiet == true,
-            () => this.IsMachineMode,
+            () => this.IsMcpStdio,
+            () => stdioStartup || this.IsMachineMode,
             standardError: () => this.ErrOutRedirect != null ? this.errorRedirectWriter : Console.Error,
             errorRedirected: () => this.ErrOutRedirect != null);
 
@@ -144,26 +146,29 @@ public partial class ShellInterpreter : IDisposable
         this.HistoryFile = Path.Join(this.cfgPath, "cmd_history");
         this.welcomeMarkerFile = Path.Join(this.cfgPath, "welcome_seen");
 
-        try
+        if (historyEnabled)
         {
-            List<string> entries = [];
-            lock (HistoryFileLock)
+            try
             {
-                if (File.Exists(this.HistoryFile))
+                List<string> entries = [];
+                lock (HistoryFileLock)
                 {
-                    using var stream = this.OpenHistoryFileWithExclusiveLock(FileAccess.Read);
-                    entries = ReadHistoryEntries(stream);
+                    if (File.Exists(this.HistoryFile))
+                    {
+                        using var stream = this.OpenHistoryFileWithExclusiveLock(FileAccess.Read);
+                        entries = ReadHistoryEntries(stream);
+                    }
+                }
+
+                foreach (var entry in entries)
+                {
+                    this.RecordHistoryEntry(entry, persist: false);
                 }
             }
-
-            foreach (var entry in entries)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                this.RecordHistoryEntry(entry, persist: false);
+                System.Diagnostics.Debug.WriteLine(ex);
             }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            System.Diagnostics.Debug.WriteLine(ex);
         }
 
         Console.CancelKeyPress += this.Console_CancelKeyPress;
@@ -172,7 +177,15 @@ public partial class ShellInterpreter : IDisposable
 
     internal event Action? LocationChanged;
 
+    internal static ShellInterpreter Instance => SharedInstance.Value;
+
     internal ShellOutput Output { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the shell runs as a headless MCP stdio server,
+    /// including during startup before options are applied.
+    /// </summary>
+    internal bool IsMcpStdio => stdioStartup || this.Options?.McpStdio == true;
 
     /// <summary>
     /// Gets the line editor instance used by the shell, or <c>null</c> if not available.
@@ -424,13 +437,15 @@ public partial class ShellInterpreter : IDisposable
     /// interactive rendering (friendly views, ANSI colors, banners) is suppressed in
     /// favor of deterministic structured output. Machine mode is entered via
     /// <c>--quiet</c>, a structured output format (<c>--output json</c> or <c>--output csv</c>),
-    /// or an execute-and-quit (<c>-c</c>) invocation. The human-facing <c>table</c> and
+    /// a headless <c>--mcp-stdio</c> server, or an execute-and-quit (<c>-c</c>) invocation. The human-facing <c>table</c> and
     /// <c>user</c> formats are not machine mode. See <see cref="OutputPolicy"/>.
     /// </summary>
-    internal bool IsMachineMode => OutputPolicy.IsMachineMode(
+    internal bool IsMachineMode => this.Options?.McpStdio == true || OutputPolicy.IsMachineMode(
         this.Options?.Output,
         this.Options?.Quiet == true,
         !string.IsNullOrWhiteSpace(this.Options?.ExecuteAndQuit));
+
+    internal bool McpConfirmationApproved { get; set; }
 
     /// <summary>
     /// Gets the session default <see cref="OutputFormat"/>, resolved from the global
@@ -460,6 +475,19 @@ public partial class ShellInterpreter : IDisposable
 
             return this.IsMachineMode ? OutputFormat.JSon : OutputFormat.User;
         }
+    }
+
+    /// <summary>
+    /// Disables history loading before the shared stdio interpreter is constructed.
+    /// </summary>
+    internal static void ConfigureStdioStartup()
+    {
+        if (SharedInstance.IsValueCreated)
+        {
+            throw new InvalidOperationException("Stdio mode must be configured before creating the shell interpreter.");
+        }
+
+        stdioStartup = true;
     }
 
     /// <summary>
@@ -528,6 +556,16 @@ public partial class ShellInterpreter : IDisposable
 
     internal static bool Confirm(string message, ShellInterpreter shell, Func<ConsoleKeyInfo> readKey)
     {
+        if (shell.Options?.McpStdio == true)
+        {
+            if (shell.McpConfirmationApproved)
+            {
+                return true;
+            }
+
+            throw new CommandException("confirm", MessageService.GetString("mcp-error-stdio-console-input"));
+        }
+
         using var pause = shell.PauseOperationTimeout();
         var yes = char.ToUpper(MessageService.GetString("yes_char")[0]);
         var no = char.ToUpper(MessageService.GetString("no_char")[0]);
@@ -1099,34 +1137,39 @@ public partial class ShellInterpreter : IDisposable
     {
         var version = GetDisplayVersion(typeof(VersionCommand).Assembly);
         var port = this.McpPort;
+        var stdio = this.Options?.McpStdio == true;
         var repoUrl = GetRepositoryUrl(typeof(VersionCommand).Assembly);
 
         if (commandState == null)
         {
-            RenderVersionBanner(this.Output, ShellMessageKind.Information, version, port, repoUrl);
+            RenderVersionBanner(this.Output, ShellMessageKind.Information, version, port, repoUrl, stdio);
             return;
         }
 
         var json = new Dictionary<string, object?>
         {
             ["version"] = version,
-            ["mcpEnabled"] = port != null,
+            ["mcpEnabled"] = port != null || stdio,
             ["mcpPort"] = port, // will be null if not enabled
-            ["mcpStatus"] = port != null ? "on" : "off",
+            ["mcpStatus"] = port != null || stdio ? "on" : "off",
             ["repository"] = repoUrl,
         };
 
         var jsonElement = System.Text.Json.JsonSerializer.SerializeToElement(json);
         commandState.Result = new ShellJson(jsonElement);
-        commandState.RenderUser = () => RenderVersionBanner(this.Output, ShellMessageKind.Result, version, port, repoUrl);
+        commandState.RenderUser = () => RenderVersionBanner(this.Output, ShellMessageKind.Result, version, port, repoUrl, stdio);
     }
 
-    private static void RenderVersionBanner(ShellOutput output, ShellMessageKind kind, string version, int? port, string repoUrl)
+    private static void RenderVersionBanner(ShellOutput output, ShellMessageKind kind, string version, int? port, string repoUrl, bool stdio)
     {
         var versionString = MessageService.GetArgsString("command-version", "version", version);
         output.MarkupLine(kind, versionString);
 
-        if (port != null)
+        if (stdio)
+        {
+            output.MarkupLine(kind, Theme.FormatWarning(MessageService.GetString("command-version-mcp-stdio")));
+        }
+        else if (port != null)
         {
             var mcpPortString = MessageService.GetArgsString("command-version-mcp", "mcp_port", port?.ToString() ?? string.Empty);
             output.MarkupLine(kind, Theme.FormatWarning(mcpPortString));
@@ -1673,34 +1716,42 @@ public partial class ShellInterpreter : IDisposable
         // which has its own dedicated step below and honors --tenant there.
         if (client == null && credentialMethod != CredentialMethod.AzureCli && (!string.IsNullOrWhiteSpace(tenantId) || !string.IsNullOrWhiteSpace(loginHint)))
         {
-            var browserOptions = new InteractiveBrowserCredentialOptions
+            if (AllowsInteractiveBrowser(this.IsMcpStdio))
             {
-                RedirectUri = new Uri(ConnectCommand.EntraRedirectUrl),
-            };
-            if (!string.IsNullOrWhiteSpace(tenantId))
+                var browserOptions = new InteractiveBrowserCredentialOptions
+                {
+                    RedirectUri = new Uri(ConnectCommand.EntraRedirectUrl),
+                };
+                if (!string.IsNullOrWhiteSpace(tenantId))
+                {
+                    browserOptions.TenantId = tenantId;
+                }
+
+                if (!string.IsNullOrWhiteSpace(loginHint))
+                {
+                    browserOptions.LoginHint = loginHint;
+                }
+
+                if (authorityHostUri != null)
+                {
+                    browserOptions.AuthorityHost = authorityHostUri;
+                }
+
+                WriteLine(MessageService.GetString("shell-connect-browser-auth"));
+                var browserCredential = new InteractiveBrowserCredential(browserOptions);
+                if (await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, browserCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: true, token))
+                {
+                    return;
+                }
+
+                // Browser auth failed; fall back to device code.
+                WriteLine(MessageService.GetString("shell-connect-devicecode-fallback"));
+            }
+            else
             {
-                browserOptions.TenantId = tenantId;
+                this.Output.WriteLine(ShellMessageKind.RequiredInstruction, MessageService.GetString("shell-connect-devicecode-stdio"));
             }
 
-            if (!string.IsNullOrWhiteSpace(loginHint))
-            {
-                browserOptions.LoginHint = loginHint;
-            }
-
-            if (authorityHostUri != null)
-            {
-                browserOptions.AuthorityHost = authorityHostUri;
-            }
-
-            WriteLine(MessageService.GetString("shell-connect-browser-auth"));
-            var browserCredential = new InteractiveBrowserCredential(browserOptions);
-            if (await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, browserCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: true, token))
-            {
-                return;
-            }
-
-            // Browser auth failed; fall back to device code.
-            WriteLine(MessageService.GetString("shell-connect-devicecode-fallback"));
             var deviceCodeOptions = new DeviceCodeCredentialOptions
             {
                 DeviceCodeCallback = (code, cancellationToken) =>
@@ -1755,15 +1806,7 @@ public partial class ShellInterpreter : IDisposable
         if (client == null)
         {
             WriteLine(MessageService.GetString("shell-connect-default-auth"));
-            var dacOptions = new DefaultAzureCredentialOptions
-            {
-                ExcludeInteractiveBrowserCredential = false,
-            };
-            if (authorityHostUri != null)
-            {
-                dacOptions.AuthorityHost = authorityHostUri;
-            }
-
+            var dacOptions = CreateDefaultCredentialOptions(authorityHostUri, AllowsInteractiveBrowser(this.IsMcpStdio));
             var dacCredential = new DefaultAzureCredential(dacOptions); // CodeQL [SM05137] Interactive developer CLI, not a hosted service: this is the last-resort fallback that adopts the developer's local identity (Azure CLI/azd, Visual Studio, env vars, or VM managed identity). No fixed service identity exists to pin to.
             await this.TryConnectWithTokenCredentialAsync(tokenEndpoint, dacCredential, options, subscriptionId, resourceGroupName, authorityHostUri, allowCredentialFallback: false, token);
         }
@@ -2272,6 +2315,11 @@ public partial class ShellInterpreter : IDisposable
 
     internal void PrintCommand(string cmdString)
     {
+        if (this.Options?.McpStdio == true)
+        {
+            return;
+        }
+
         // Print the shell prompt similar to how it appears when typing command
         //        AnsiConsole.Markup(new CosmosShellPrompt(this).GetPromptString());
         //        AnsiConsole.Write(" ");
@@ -2886,6 +2934,30 @@ public partial class ShellInterpreter : IDisposable
     {
         Instance.Output.Write(ShellMessageKind.RequiredInstruction, CosmosShellPrompt.PromptMarker + " ");
         return Console.ReadLine();
+    }
+
+    /// <summary>
+    /// Determines whether a sign-in may open a browser. A headless MCP stdio server has
+    /// no user at the terminal, and the platform browser launcher (for example
+    /// <c>xdg-open</c>) inherits the process stdout that carries the MCP protocol.
+    /// </summary>
+    /// <param name="mcpStdio">Whether the shell runs as an MCP stdio server.</param>
+    /// <returns><see langword="true"/> when interactive browser sign-in is allowed.</returns>
+    internal static bool AllowsInteractiveBrowser(bool mcpStdio) => !mcpStdio;
+
+    internal static DefaultAzureCredentialOptions CreateDefaultCredentialOptions(Uri? authorityHost, bool allowInteractiveBrowser)
+    {
+        var options = new DefaultAzureCredentialOptions
+        {
+            ExcludeInteractiveBrowserCredential = !allowInteractiveBrowser,
+            ExcludeBrokerCredential = !allowInteractiveBrowser,
+        };
+        if (authorityHost != null)
+        {
+            options.AuthorityHost = authorityHost;
+        }
+
+        return options;
     }
 
     internal static CosmosClientOptions CreateClientOptions(ConnectionMode requestedMode, bool isEmulator = false)

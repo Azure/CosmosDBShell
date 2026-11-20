@@ -326,6 +326,7 @@ Start the shell with options to customize behavior:
 | `--database <id>` | Navigate to this database after connecting at startup |
 | `--container <id>` | Navigate to this container after connecting at startup. Requires `--database` |
 | `--mcp [port]` | Enable MCP server with Streamable HTTP and legacy SSE on the given port, or `6128` by default |
+| `--mcp-stdio` | Run a headless MCP server over stdin/stdout, with diagnostics on stderr and no listening port |
 | `--diagnostics [path]` | Write timestamped diagnostic logs (commands, timing, errors, connection events) to a file, or to a timestamped file in the config directory by default |
 | `--otel [endpoint]` | Enable distributed tracing so requests carry a sampled W3C `traceparent`. Optionally export spans to an OTLP `endpoint`; falls back to the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable |
 | `--color-system <n>` | Color scheme: 0=off, 1=standard, 2=truecolor (alias: `--cs`) |
@@ -356,7 +357,8 @@ falls back to JSON whenever output is redirected, piped, or run in machine mode.
 Quiet is not a universal mute: warnings, errors, and required instructions (such as
 authentication prompts and previews shown before a confirmation) remain visible on
 `STDERR`, without ANSI styling. Explicit diagnostic logging is unaffected.
-Command results are separate from informational messages and remain on `STDOUT`.
+Command results are separate from informational messages and remain on `STDOUT`
+(or in MCP responses for `--mcp-stdio`).
 Bulk-write errors include per-item diagnostics in that single structured error:
 imports identify source lines, and item-array writes identify 1-based item positions.
 Up to 100 item diagnostics are listed, followed by a count of any omitted ones.
@@ -438,6 +440,8 @@ cosmosdbshell --mcp
 cosmosdbshell --mcp 5050
 
 # The same server also accepts legacy clients at http://127.0.0.1:5050/sse
+# Client-owned, headless MCP server; stdin/stdout carry only MCP messages
+cosmosdbshell --mcp-stdio
 
 # Capture a diagnostic log to the default location in the config directory
 cosmosdbshell --diagnostics
@@ -451,3 +455,10 @@ cosmosdbshell --otel
 # Enable distributed tracing and export spans to an OTLP collector
 cosmosdbshell --otel http://localhost:4317
 ```
+
+`--mcp-stdio` is mutually exclusive with `--mcp`, `--lsp`/`--stdio`, `-c`, `-k`,
+and `--clear-history`. It does not read stdin as a shell script or start a prompt.
+Startup `--connect`, credential options, `--database`, and `--container` remain
+available. Startup connection and navigation share a 60-second timeout and are
+cancelled when stdin closes. A timeout is reported on stderr with exit code `4`.
+See [MCP stdio mode](mcp.md#stdio-headless-mode).

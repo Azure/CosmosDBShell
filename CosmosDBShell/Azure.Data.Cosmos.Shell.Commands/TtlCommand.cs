@@ -137,7 +137,7 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
-            RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
                 "command-ttl-status-" + StatusFor(view.DefaultTimeToLive),
                 "container",
                 containerName,
@@ -160,7 +160,7 @@ internal class TtlCommand : CosmosCommand, IStateVisitor<CommandState, ShellInte
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
-            RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
                 view.AnalyticalTimeToLiveSeconds is null or 0
                     ? "command-ttl-analytical-status-disabled"
                     : view.AnalyticalTimeToLiveSeconds == -1

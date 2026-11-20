@@ -21,6 +21,35 @@ using Spectre.Console;
 public class BucketCommandTests
 {
     [Theory]
+    [InlineData(null, 4)]
+    [InlineData("3", 3)]
+    [InlineData("0", null)]
+    public async Task ClientSelection_ReturnsStructuredResultInEveryMode(string? action, int? expected)
+    {
+        foreach (var options in new[]
+        {
+            new Program.CosmosShellOptions(),
+            new Program.CosmosShellOptions { Quiet = true },
+            new Program.CosmosShellOptions { Output = "json" },
+            new Program.CosmosShellOptions { McpStdio = true },
+        })
+        {
+            var client = CreateTestClient();
+            client.ClientOptions.ThroughputBucket = 4;
+            using var shell = ShellInterpreter.CreateInstance();
+            shell.Options = options;
+            shell.State = new DatabaseState("TestDatabase", client);
+            var command = new BucketCommand { Action = action };
+
+            var state = await command.ExecuteAsync(shell, new CommandState(), "bucket", TestContext.Current.CancellationToken);
+
+            var result = Assert.IsType<ShellJson>(state.Result).Value.GetProperty("clientBucket");
+            Assert.Equal(expected, result.ValueKind == System.Text.Json.JsonValueKind.Null ? (int?)null : result.GetInt32());
+            Assert.NotNull(state.RenderUser);
+        }
+    }
+
+    [Theory]
     [InlineData(null, false)]
     [InlineData("3", false)]
     [InlineData("0", false)]
@@ -173,9 +202,10 @@ public class BucketCommandTests
         shell.State = new DatabaseState("TestDatabase", client);
         var command = new BucketCommand { Action = "99" };
 
-        await Assert.ThrowsAsync<CommandException>(
+        var error = await Assert.ThrowsAsync<CommandException>(
             () => command.ExecuteAsync(shell, new CommandState(), "bucket 99", CancellationToken.None));
 
+        Assert.Equal(ShellExitCode.UsageError, ShellExitCode.FromException(error));
         Assert.Null(client.ClientOptions.ThroughputBucket);
     }
 

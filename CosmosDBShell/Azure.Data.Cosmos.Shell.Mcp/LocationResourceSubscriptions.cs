@@ -39,9 +39,16 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
 
     private readonly ILogger<LocationResourceSubscriptions> logger;
 
-    public LocationResourceSubscriptions(ILogger<LocationResourceSubscriptions> logger, IHostApplicationLifetime? lifetime = null)
+    private readonly bool isStdio;
+
+    private ModelContextProtocol.Server.McpServer? stdioServer;
+
+    private bool stdioSubscribed;
+
+    public LocationResourceSubscriptions(ILogger<LocationResourceSubscriptions> logger, IHostApplicationLifetime? lifetime = null, bool isStdio = false)
     {
         this.logger = logger;
+        this.isStdio = isStdio;
         this.stoppingRegistration = lifetime?.ApplicationStopping.Register(this.stopping.Cancel) ?? default;
         ShellInterpreter.Instance.LocationChanged += this.OnLocationChanged;
     }
@@ -52,7 +59,7 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
         {
             lock (this.sync)
             {
-                return this.subscribedSessionIds.Count;
+                return this.subscribedSessionIds.Count + (this.stdioSubscribed ? 1 : 0);
             }
         }
     }
@@ -103,9 +110,20 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
         }
     }
 
-    public void Subscribe(string? sessionId, string uri)
+    public void Subscribe(ModelContextProtocol.Server.McpServer server, string uri)
     {
         ValidateUri(uri);
+        lock (this.sync)
+        {
+            if (this.isStdio)
+            {
+                this.stdioServer = server;
+                this.stdioSubscribed = true;
+                return;
+            }
+        }
+
+        var sessionId = server.SessionId;
         if (string.IsNullOrEmpty(sessionId))
         {
             throw new McpProtocolException(
@@ -122,9 +140,20 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
         }
     }
 
-    public void Unsubscribe(string? sessionId, string uri)
+    public void Unsubscribe(ModelContextProtocol.Server.McpServer server, string uri)
     {
         ValidateUri(uri);
+        lock (this.sync)
+        {
+            if (this.isStdio)
+            {
+                this.stdioSubscribed = false;
+                this.stdioServer = null;
+                return;
+            }
+        }
+
+        var sessionId = server.SessionId;
         if (string.IsNullOrEmpty(sessionId))
         {
             return;
@@ -205,6 +234,12 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
+        lock (this.sync)
+        {
+            this.stdioSubscribed = false;
+            this.stdioServer = null;
+        }
+
         await this.stopping.CancelAsync();
         await base.StopAsync(cancellationToken);
     }
@@ -220,6 +255,11 @@ internal sealed class LocationResourceSubscriptions : BackgroundService
                     .Select(sessionId => this.sessions.TryGetValue(sessionId, out var server) ? server : null)
                     .OfType<ModelContextProtocol.Server.McpServer>()
                     .ToArray();
+                if (this.stdioSubscribed && this.stdioServer is not null)
+                {
+                    servers = [.. servers, this.stdioServer];
+                }
+
                 foreach (var stream in this.listenStreams)
                 {
                     stream.Updates.Writer.TryWrite(true);

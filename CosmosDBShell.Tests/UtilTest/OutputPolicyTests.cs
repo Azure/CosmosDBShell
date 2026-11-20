@@ -86,6 +86,17 @@ public class OutputPolicyTests
     }
 
     [Fact]
+    public void StdioMode_IsHeadlessWithoutSuppressingStderrDiagnostics()
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { McpStdio = true };
+        Assert.True(shell.IsMachineMode);
+        Assert.False(shell.Options.Quiet);
+        Assert.Equal(OutputFormat.JSon, shell.DefaultOutputFormat);
+        Assert.False(InfoCommand.ShouldRenderTables(null, shell, new CommandState()));
+    }
+
+    [Fact]
     public void DefaultOutputFormat_ExecuteAndQuitWithoutFormat_FallsBackToJson()
     {
         using var shell = ShellInterpreter.CreateInstance();

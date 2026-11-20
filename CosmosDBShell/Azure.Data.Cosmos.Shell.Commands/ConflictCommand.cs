@@ -136,7 +136,7 @@ internal class ConflictCommand : CosmosCommand, IStateVisitor<CommandState, Shel
         return new CommandState
         {
             Result = new ShellJson(jsonDoc.RootElement.Clone()),
-            RenderUser = () => ShellInterpreter.WriteLine(MessageService.GetArgsString(
+            RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
                 messageId,
                 "container",
                 containerName,

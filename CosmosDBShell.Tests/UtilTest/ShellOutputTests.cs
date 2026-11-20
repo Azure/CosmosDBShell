@@ -14,13 +14,13 @@ public class ShellOutputTests
     [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(true, true)]
-    public void Presentation_UsesCategoryPolicyForTextMarkupAndRenderables(bool quiet, bool machineMode)
+    public void Presentation_UsesCategoryPolicyForTextMarkupAndRenderables(bool quiet, bool stdio)
     {
         foreach (var kind in Enum.GetValues<ShellMessageKind>())
         {
             using var stdout = new StringWriter();
             using var stderr = new StringWriter();
-            var output = CreateOutput(quiet, machineMode, stdout, stderr);
+            var output = CreateOutput(quiet, stdio, stdout, stderr);
             var marker = kind.ToString();
 
             output.Write(kind, marker + "_text");
@@ -31,8 +31,11 @@ public class ShellOutputTests
             output.RenderLine(kind, marker + "_renderLine");
             output.WriteException(kind, new InvalidOperationException(marker + "_exception"));
 
-            var suppressed = ((quiet || machineMode) && kind is ShellMessageKind.Information or ShellMessageKind.Progress)
-                || (machineMode && kind == ShellMessageKind.Result);
+            // CreateOutput treats quiet or stdio as machine mode, which suppresses command-level
+            // result presentation; machine-mode results go through WriteResult instead.
+            var machineMode = quiet || stdio;
+            var suppressed = (machineMode && kind is ShellMessageKind.Information or ShellMessageKind.Progress)
+                || ((stdio || machineMode) && kind == ShellMessageKind.Result);
             if (suppressed)
             {
                 Assert.Empty(stdout.ToString());
@@ -40,7 +43,7 @@ public class ShellOutputTests
                 continue;
             }
 
-            var useStderr = machineMode && kind is ShellMessageKind.Warning or ShellMessageKind.Error or ShellMessageKind.RequiredInstruction;
+            var useStderr = stdio || (quiet && kind is ShellMessageKind.Warning or ShellMessageKind.Error or ShellMessageKind.RequiredInstruction);
             var visible = (useStderr ? stderr : stdout).ToString();
             Assert.Empty((useStderr ? stdout : stderr).ToString());
             foreach (var suffix in new[] { "_text", "_line", "_markup", "_markupLine", "_renderable", "_renderLine", "_exception" })
@@ -60,15 +63,17 @@ public class ShellOutputTests
     {
         using var stdout = new StringWriter();
         using var stderr = new StringWriter();
-        var output = CreateOutput(false, true, stdout, stderr);
+        var output = CreateOutput(false, false, stdout, stderr, machineMode: true);
         output.MarkupLine(ShellMessageKind.Warning, "[yellow]warning[/]");
         output.WriteLine(ShellMessageKind.Error, "error");
         output.WriteLine(ShellMessageKind.RequiredInstruction, "login");
+        output.WriteLine(ShellMessageKind.Information, "hidden information");
         output.WriteLine(ShellMessageKind.Result, "eager table");
         output.Render(ShellMessageKind.Result, new Text("eager renderable"));
         output.WriteResult("{\"result\":true}");
         Assert.Equal("{\"result\":true}" + Environment.NewLine, stdout.ToString());
         Assert.DoesNotContain("eager", stderr.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("hidden information", stdout.ToString(), StringComparison.Ordinal);
         Assert.Contains("warning", stderr.ToString());
         Assert.Contains("error", stderr.ToString());
         Assert.Contains("login", stderr.ToString());
@@ -81,23 +86,25 @@ public class ShellOutputTests
         using var stdout = new StringWriter();
         using var stderr = new StringWriter();
         var quiet = false;
-        var machineMode = false;
-        var output = new ShellOutput(() => quiet, () => machineMode, () => stdout, () => stderr);
+        var stdio = false;
+        var output = new ShellOutput(() => quiet, () => stdio, () => quiet || stdio, () => stdout, () => stderr);
         output.WriteLine(ShellMessageKind.Information, "before");
         quiet = true;
-        machineMode = true;
         output.WriteLine(ShellMessageKind.Information, "hidden");
         output.WriteLine(ShellMessageKind.Result, "command-level result hidden in machine mode");
         output.WriteResult("result");
+        stdio = true;
+        output.WriteResult("not a protocol response");
         output.WriteLine(ShellMessageKind.RequiredInstruction, "device code");
         Assert.Equal("before" + Environment.NewLine + "result" + Environment.NewLine, stdout.ToString());
         Assert.Equal("device code" + Environment.NewLine, stderr.ToString());
     }
 
     [Theory]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    public void ClearScreen_OnlyTouchesInteractiveTerminal(bool machineMode, bool cleared)
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    public void ClearScreen_OnlyTouchesInteractiveTerminal(bool machineMode, bool stdio, bool cleared)
     {
         using var stdout = new StringWriter();
         using var stderr = new StringWriter();
@@ -107,7 +114,7 @@ public class ShellOutputTests
             ColorSystem = ColorSystemSupport.NoColors,
             Out = new AnsiConsoleOutput(stdout),
         });
-        var output = new ShellOutput(() => false, () => machineMode, () => stdout, () => stderr, () => terminal);
+        var output = new ShellOutput(() => false, () => stdio, () => machineMode, () => stdout, () => stderr, () => terminal);
         output.ClearScreen();
         Assert.Equal(cleared, stdout.ToString().Length > 0);
         Assert.Empty(stderr.ToString());
@@ -136,10 +143,11 @@ public class ShellOutputTests
         Assert.Equal("{\"value\":1}{\"value\":2}" + Environment.NewLine + "formatted" + Environment.NewLine, stdout.ToString());
     }
 
-    private static ShellOutput CreateOutput(bool quiet, bool machineMode, StringWriter stdout, StringWriter stderr)
+    private static ShellOutput CreateOutput(bool quiet, bool stdio, StringWriter stdout, StringWriter stderr, bool machineMode = false)
         => new(
             () => quiet,
-            () => machineMode,
+            () => stdio,
+            () => machineMode || quiet || stdio,
             () => stdout,
             () => stderr,
             () => AnsiConsole.Create(new AnsiConsoleSettings

@@ -1830,6 +1830,7 @@ The `bucket` command has two surfaces:
   - `bucket` shows this client's current throughput bucket selection.
   - `bucket <1-5>` tags this client's requests with the given throughput bucket.
   - `bucket 0` clears the client-side selection.
+  - All three return a structured `clientBucket` value in machine mode and MCP responses (`null` when no bucket is selected); interactive output retains the readable selection message.
 - **Container limits** (read with `show`, change with `set`/`clear`):
   - `bucket show` lists the throughput bucket limits configured on the current container.
   - `bucket set <1-5> <1-100>` limits a bucket to a maximum percentage of the container's throughput.

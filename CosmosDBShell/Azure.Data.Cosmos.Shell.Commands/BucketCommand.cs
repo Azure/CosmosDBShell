@@ -195,11 +195,11 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
     {
         if (clientBucket.HasValue)
         {
-            shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetString("command-bucket-current", new Dictionary<string, object> { { "bucket", Theme.FormatTableValue(clientBucket.Value.ToString(CultureInfo.InvariantCulture)) } }));
+            shell.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-current", new Dictionary<string, object> { { "bucket", Theme.FormatTableValue(clientBucket.Value.ToString(CultureInfo.InvariantCulture)) } }));
         }
         else
         {
-            shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetString("command-bucket-no_bucket"));
+            shell.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-no_bucket"));
         }
     }
 
@@ -241,6 +241,7 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             throw CommandException.Usage("bucket", MessageService.GetString("command-bucket-error-unexpected_args"));
         }
 
+        string? message = null;
         if (this.Classify() == BucketActionKind.ClientSet)
         {
             int bucket = int.Parse(this.Action!.Trim(), CultureInfo.InvariantCulture);
@@ -254,26 +255,30 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             if (bucket == 0)
             {
                 client.ClientOptions.ThroughputBucket = null;
-                shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetString("command-bucket-reset_bucket"));
+                message = MessageService.GetString("command-bucket-reset_bucket");
             }
             else
             {
                 client.ClientOptions.ThroughputBucket = bucket;
-                shell.Output.MarkupLine(ShellMessageKind.Information, MessageService.GetString("command-bucket-switched_bucket", new Dictionary<string, object> { { "bucket", Theme.FormatTableValue(bucket.ToString(CultureInfo.InvariantCulture)) } }));
+                message = MessageService.GetString("command-bucket-switched_bucket", new Dictionary<string, object> { { "bucket", Theme.FormatTableValue(bucket.ToString(CultureInfo.InvariantCulture)) } });
             }
         }
-        else
-        {
-            WriteClientSelection(shell, client.ClientOptions.ThroughputBucket);
-        }
 
+        var clientBucket = client.ClientOptions.ThroughputBucket;
         return new CommandState
         {
-            Result = new ShellJson(JsonSerializer.SerializeToElement(new JsonObject
+            Result = new ShellJson(JsonSerializer.SerializeToElement(new { clientBucket })),
+            RenderUser = () =>
             {
-                ["clientBucket"] = client.ClientOptions.ThroughputBucket,
-            })),
-            RenderUser = () => { },
+                if (message is null)
+                {
+                    WriteClientSelection(shell, clientBucket);
+                }
+                else
+                {
+                    shell.Output.MarkupLine(ShellMessageKind.Result, message);
+                }
+            },
         };
     }
 

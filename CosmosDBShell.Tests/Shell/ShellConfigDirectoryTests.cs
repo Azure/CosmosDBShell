@@ -20,6 +20,26 @@ public sealed class ShellConfigDirectoryTestCollection
 public class ShellConfigDirectoryTests
 {
     [Fact]
+    public void DisabledHistory_DoesNotLoadExistingCommands()
+    {
+        var isolatedDir = Path.Join(Path.GetTempPath(), $"cosmosshell-no-history-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(isolatedDir);
+        var historyFile = Path.Join(isolatedDir, "cmd_history");
+        File.WriteAllText(historyFile, "echo HISTORY_SENTINEL\n");
+        try
+        {
+            using var shell = new ShellInterpreter(isolatedDir, historyEnabled: false);
+            Assert.Empty(shell.History);
+            Assert.Equal(0, shell.PendingHistoryCount);
+            Assert.Equal("echo HISTORY_SENTINEL\n", File.ReadAllText(historyFile));
+        }
+        finally
+        {
+            Directory.Delete(isolatedDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ConfigDirEnvVar_RedirectsHistoryFileAwayFromRealUserDirectory()
     {
         // Guards against process-level tests (for example --clear-history) deleting

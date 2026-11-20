@@ -19,6 +19,7 @@ internal enum ShellMessageKind
 
 internal sealed class ShellOutput(
     Func<bool> quiet,
+    Func<bool> stdio,
     Func<bool> machineMode,
     Func<TextWriter>? standardOutput = null,
     Func<TextWriter>? standardError = null,
@@ -32,15 +33,15 @@ internal sealed class ShellOutput(
     private IAnsiConsole? cachedPlainConsole;
 
     // Early failures and terminal initialization diagnostics always use stderr.
-    internal static ShellOutput StandardError { get; } = new(() => false, () => true);
+    internal static ShellOutput StandardError { get; } = new(() => false, () => false, () => true);
 
     /// <summary>
-    /// Clears the interactive terminal. Machine mode has no screen to clear,
+    /// Clears the interactive terminal. Machine mode and MCP stdio have no screen to clear,
     /// and emitting terminal control sequences there would corrupt their output streams.
     /// </summary>
     internal void ClearScreen()
     {
-        if (!machineMode())
+        if (!machineMode() && !stdio())
         {
             (console?.Invoke() ?? AnsiConsole.Console).Clear();
         }
@@ -49,11 +50,14 @@ internal sealed class ShellOutput(
     /// <summary>
     /// Writes the interpreter's final, already formatted command result. Unlike
     /// <see cref="ShellMessageKind.Result"/> presentation, this is the machine-mode
-    /// stdout contract.
+    /// stdout contract; MCP stdio returns results through the protocol instead.
     /// </summary>
     internal void WriteResult(string text)
     {
-        (standardOutput?.Invoke() ?? Console.Out).WriteLine(text);
+        if (!stdio())
+        {
+            (standardOutput?.Invoke() ?? Console.Out).WriteLine(text);
+        }
     }
 
     internal void WriteLine(ShellMessageKind kind, string message = "", params object[] args)
@@ -172,7 +176,7 @@ internal sealed class ShellOutput(
     {
         if (this.ShouldPresent(kind))
         {
-            if (machineMode())
+            if (machineMode() || stdio())
             {
                 this.GetWriter(kind).WriteLine(exception);
             }
@@ -184,10 +188,10 @@ internal sealed class ShellOutput(
     }
 
     private bool ShouldPresent(ShellMessageKind kind)
-        => OutputPolicy.ShouldPresent(kind, quiet(), machineMode());
+        => OutputPolicy.ShouldPresent(kind, quiet(), stdio(), machineMode());
 
     private bool UseStandardError(ShellMessageKind kind)
-        => OutputPolicy.UseStandardError(kind, machineMode(), errorRedirected?.Invoke() == true);
+        => OutputPolicy.UseStandardError(kind, machineMode(), stdio(), errorRedirected?.Invoke() == true);
 
     private TextWriter GetWriter(ShellMessageKind kind)
         => this.UseStandardError(kind)
@@ -196,7 +200,7 @@ internal sealed class ShellOutput(
 
     private IAnsiConsole GetConsole(ShellMessageKind kind)
     {
-        if (!machineMode() && !this.UseStandardError(kind))
+        if (!machineMode() && !stdio() && !this.UseStandardError(kind))
         {
             return console?.Invoke() ?? AnsiConsole.Console;
         }
