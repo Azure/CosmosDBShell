@@ -80,7 +80,7 @@ captures subprocess stdout and stderr into `stdout.txt` and `stderr.txt`.
 Structured contracts normally redirect each command's result inside the shell:
 
 ```text
-print {"id":"one","count":9007199254740993} > 'result.json'
+echo {"id":"one","count":9007199254740993} > 'result.json'
 ```
 
 Only declared output files are compared. An interactive prompt cannot contaminate
@@ -107,7 +107,7 @@ explicitly reviewed removed methods in the migration map.
     "id": "example.structured-result",
     "profiles": ["offline"],
     "sources": ["CosmosDBShell.Tests/Integration/OutputRedirectionTests.cs::Redirect_StdoutToFile_WritesOutput"],
-    "script": "print {\"id\":\"one\"} > 'result.json'",
+    "script": "echo {\"id\":\"one\"} > 'result.json'",
     "exitCode": 0,
     "files": {
       "result.json": {"mode": "json", "expected": {"id": "one"}},
