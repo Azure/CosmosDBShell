@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Mcp;
+using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 
 using Microsoft.Extensions.Logging.Abstractions;
@@ -247,9 +248,9 @@ public class ToolOperationsCallToolTests : IDisposable
     [InlineData("cat", "throw")]
     public async Task ExecuteTool_LocalFilesystemReads_OnlyAccessFilesAfterApproval(string commandName, string action)
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"cosmos-mcp-read-{Guid.NewGuid():N}");
+        var directory = Path.Join(Path.GetTempPath(), $"cosmos-mcp-read-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
-        var file = Path.Combine(directory, "sample.txt");
+        var file = Path.Join(directory, "sample.txt");
         const string content = "local file confirmation test";
         await File.WriteAllTextAsync(file, content, TestContext.Current.CancellationToken);
         var shell = ShellInterpreter.Instance;
@@ -329,7 +330,7 @@ public class ToolOperationsCallToolTests : IDisposable
                 inputRequests: new Dictionary<string, InputRequest> { ["confirm"] = InputRequest.ForElicitation(request) },
                 requestState: ConfirmationRequestState.Create(
                     differentDirectory
-                        ? JsonSerializer.Serialize(new[] { commandLine, Path.Combine(Directory.GetCurrentDirectory(), "other") })
+                        ? JsonSerializer.Serialize(new[] { commandLine, Path.Join(Directory.GetCurrentDirectory(), "other") })
                         : confirmationCommandLine,
                     stateVersion)),
             TestContext.Current.CancellationToken));
@@ -767,6 +768,22 @@ public class ToolOperationsCallToolTests : IDisposable
         {
             CultureInfo.CurrentCulture = originalCulture;
         }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task FormatOptionForHistory_BooleanRoundTripsWithoutAddingAFilter(bool recursive)
+    {
+        var shell = ShellInterpreter.Instance;
+        var factory = shell.App.Commands["dir"];
+        var option = factory.Options.Single(o => o.Name[0] == "recursive");
+        var parser = new StatementParser("dir" + ToolOperations.FormatOptionForHistory(option, recursive));
+        var statement = Assert.IsType<CommandStatement>(Assert.Single(parser.ParseStatements()));
+        var command = Assert.IsType<DirCommand>(await statement.CreateCommandAsync(factory, shell, new CommandState(), TestContext.Current.CancellationToken));
+
+        Assert.Equal(recursive, command.Recursive);
+        Assert.Null(command.Filter);
     }
 
     [Fact]

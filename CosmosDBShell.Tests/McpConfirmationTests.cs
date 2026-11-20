@@ -32,8 +32,8 @@ public class McpConfirmationTests
         timeout.CancelAfter(TimeSpan.FromSeconds(10));
         using var host = McpServer.CreateHost(new Program.CosmosShellOptions { McpPort = 0 });
         await host.StartAsync(timeout.Token);
-        var directory = Path.Combine(Path.GetTempPath(), $"mcp-local-read-{Guid.NewGuid():N}");
-        var file = Path.Combine(directory, "sample.txt");
+        var directory = Path.Join(Path.GetTempPath(), $"mcp-local-read-{Guid.NewGuid():N}");
+        var file = Path.Join(directory, "sample.txt");
         try
         {
             Directory.CreateDirectory(directory);
