@@ -53,7 +53,8 @@ internal class ToolOperations
     internal delegate ValueTask<ElicitResult> ConfirmationPrompt(
         ElicitRequestParams request,
         long stateVersion,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string confirmationCommandLine);
 
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult> ListToolsHandler => this.OnListToolsAsync;
 
@@ -90,9 +91,11 @@ internal class ToolOperations
 
             if (RequiresConfirmation(command))
             {
-                description += command.CommandName == "bulk"
-                    ? "Warning: Bulk writes and dry-run selections that save a plan require explicit user confirmation, even with yes=true. Only dry runs without save skip confirmation and issue no database writes. Bulk operations are not transactions."
-                    : "Warning: This command is destructive. When invoked through MCP it always requires explicit user confirmation before it runs — even when a force or no-prompt argument is supplied. If the client cannot confirm, the command is refused.";
+                description += command.CommandName is "dir" or "cat"
+                    ? "Warning: This command accesses the local filesystem and requires explicit user confirmation before it runs. File contents, names, and paths may contain sensitive information. If the client cannot confirm, the command is refused."
+                    : command.CommandName == "bulk"
+                        ? "Warning: Bulk writes and dry-run selections that save a plan require explicit user confirmation, even with yes=true. Only dry runs without save skip confirmation and issue no database writes. Bulk operations are not transactions."
+                        : "Warning: This command is destructive. When invoked through MCP it always requires explicit user confirmation before it runs — even when a force or no-prompt argument is supplied. If the client cannot confirm, the command is refused.";
             }
             else
             {
@@ -461,8 +464,7 @@ internal class ToolOperations
         var annotation = command.McpAnnotation;
         return command.McpRestricted
             && annotation is not null
-            && annotation.Confirmable
-            && annotation.Destructive;
+            && annotation.Confirmable;
     }
 
     private static bool IsExplicitJsonNull(JsonElement value)
@@ -739,12 +741,12 @@ internal class ToolOperations
         {
             // Multi-round-trip request: the client prompts the user and retries this call with the answer.
             // On sessions that predate MRTR, the SDK sends an elicitation request and retries for us.
-            prompt = (request, stateVersion, _) => throw new InputRequiredException(
+            prompt = (request, stateVersion, _, confirmationCommandLine) => throw new InputRequiredException(
                 inputRequests: new Dictionary<string, InputRequest>
                 {
                     [ConfirmationInputKey] = InputRequest.ForElicitation(request),
                 },
-                requestState: ConfirmationRequestState.Create(commandLine, stateVersion));
+                requestState: ConfirmationRequestState.Create(confirmationCommandLine, stateVersion));
         }
 
         return await this.ExecuteToolAsync(command, cmd, commandLine, prompt, cancellationToken, parameters.Params);
@@ -760,15 +762,25 @@ internal class ToolOperations
     {
         var shell = ShellInterpreter.Instance;
         long? confirmedVersion = null;
+        string? confirmedWorkingDirectory = null;
         if (RequiresConfirmation(command) && cmd is not BulkCommand { DryRun: true, Save: null })
         {
             var snapshot = await shell.RunSerializedAsync(
-                () => Task.FromResult((Version: shell.StateVersion, Context: DescribeContext(shell.State))), cancellationToken);
+                () =>
+                {
+                    var workingDirectory = command.CommandName is "dir" or "cat" ? Directory.GetCurrentDirectory() : null;
+                    var context = workingDirectory is null
+                        ? DescribeContext(shell.State)
+                        : $"Local working directory: {workingDirectory}";
+                    return Task.FromResult((Version: shell.StateVersion, Context: context, WorkingDirectory: workingDirectory));
+                },
+                cancellationToken);
+            var confirmationCommandLine = GetConfirmationCommandLine(commandLine, snapshot.WorkingDirectory);
             var confirmation = requestParams?.InputResponses?.TryGetValue(ConfirmationInputKey, out var response) == true
                 ? this.EvaluateConfirmationResponse(
-                    response, requestParams.RequestState, command.CommandName, commandLine, snapshot.Version)
-                : await this.ConfirmDestructiveAsync(
-                    prompt, command.CommandName, commandLine, cancellationToken, snapshot.Context, snapshot.Version);
+                    response, requestParams.RequestState, command.CommandName, confirmationCommandLine, snapshot.Version)
+                : await this.ConfirmCommandAsync(
+                    prompt, command.CommandName, commandLine, cancellationToken, snapshot.Context, snapshot.Version, snapshot.WorkingDirectory);
 
             if (confirmation != null)
             {
@@ -776,6 +788,7 @@ internal class ToolOperations
             }
 
             confirmedVersion = snapshot.Version;
+            confirmedWorkingDirectory = snapshot.WorkingDirectory;
         }
 
         this.logger?.LogTrace($"Requested '{command.CommandName}'.");
@@ -786,7 +799,9 @@ internal class ToolOperations
             return await shell.RunSerializedAsync(
                 async () =>
                 {
-                    if (confirmedVersion.HasValue && confirmedVersion.Value != shell.StateVersion)
+                    if ((confirmedVersion.HasValue && confirmedVersion.Value != shell.StateVersion)
+                        || (confirmedWorkingDirectory is not null
+                            && !string.Equals(confirmedWorkingDirectory, Directory.GetCurrentDirectory(), StringComparison.Ordinal)))
                     {
                         return McpResponseFactory.CreateError(ContextChangedMessage, shell.State);
                     }
@@ -879,43 +894,51 @@ internal class ToolOperations
         return this.EvaluateElicitResult(result, commandName);
     }
 
-    // Gates a destructive command behind a user confirmation. Returns null when the
+    private static string GetConfirmationCommandLine(string commandLine, string? workingDirectory)
+    {
+        return workingDirectory is null ? commandLine : JsonSerializer.Serialize(new[] { commandLine, workingDirectory });
+    }
+
+    // Gates a restricted command behind a user confirmation. Returns null when the
     // operation is approved and should proceed; otherwise returns the CallToolResult
     // to send back (refusal, denial, or a failed confirmation). A prompt may instead
     // throw InputRequiredException, which ends this call and asks the client to retry
     // with the user's answer. Fails closed: when the client cannot confirm, the
     // command is refused rather than executed.
-    internal async ValueTask<CallToolResult?> ConfirmDestructiveAsync(
+    internal async ValueTask<CallToolResult?> ConfirmCommandAsync(
         ConfirmationPrompt? prompt,
         string commandName,
         string commandLine,
         CancellationToken cancellationToken,
         string? context = null,
-        long stateVersion = 0)
+        long stateVersion = 0,
+        string? workingDirectory = null)
     {
         if (prompt == null)
         {
             this.logger?.LogWarning(
-                "Destructive command '{Command}' requires confirmation, but the MCP client does not support elicitation.",
+                "Command '{Command}' requires confirmation, but the MCP client does not support elicitation.",
                 commandName);
             return McpResponseFactory.CreateError(
-                $"Command '{commandName}' is destructive and needs your confirmation, but this MCP client does not support confirmation prompts (elicitation). Run '{commandLine}' manually in the shell.",
+                $"Command '{commandName}' {(workingDirectory is null ? "is destructive" : "accesses the local filesystem")} and needs your confirmation, but this MCP client does not support confirmation prompts (elicitation). Run '{commandLine}' manually in the shell.",
                 ShellInterpreter.Instance.State);
         }
 
         var request = new ElicitRequestParams
         {
             Message =
-                $"Confirm destructive operation. The agent wants to run: {commandLine}\n" +
+                $"Confirm {(workingDirectory is null ? "destructive operation" : "local filesystem access")}. The agent wants to run: {commandLine}\n" +
                 (context is null ? string.Empty : context + "\n") +
-                "This can permanently change or delete data in the connected Azure Cosmos DB account and cannot be undone. Approve this operation?",
+                (workingDirectory is null
+                    ? "This can permanently change or delete data in the connected Azure Cosmos DB account and cannot be undone. Approve this operation?"
+                    : "This reads local file contents or lists local files and directories. The results will be returned to the MCP client and may contain sensitive information. Approve this operation?"),
             RequestedSchema = new ElicitRequestParams.RequestSchema(),
         };
 
         ElicitResult result;
         try
         {
-            result = await prompt(request, stateVersion, cancellationToken);
+            result = await prompt(request, stateVersion, cancellationToken, GetConfirmationCommandLine(commandLine, workingDirectory));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -927,7 +950,7 @@ internal class ToolOperations
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            this.logger?.LogWarning(ex, "Confirmation prompt for destructive command '{Command}' failed.", commandName);
+            this.logger?.LogWarning(ex, "Confirmation prompt for command '{Command}' failed.", commandName);
             return McpResponseFactory.CreateError(
                 $"Confirmation for '{commandName}' could not be completed ({ex.GetType().Name}). Nothing was executed.",
                 ShellInterpreter.Instance.State);
@@ -942,7 +965,7 @@ internal class ToolOperations
         {
             var action = string.IsNullOrEmpty(result?.Action) ? "cancel" : result.Action;
             this.logger?.LogInformation(
-                "User did not approve destructive command '{Command}' (action={Action}).",
+                "User did not approve command '{Command}' (action={Action}).",
                 commandName,
                 action);
             return McpResponseFactory.CreateError(
@@ -950,7 +973,7 @@ internal class ToolOperations
                 ShellInterpreter.Instance.State);
         }
 
-        this.logger?.LogInformation("User approved destructive command '{Command}'.", commandName);
+        this.logger?.LogInformation("User approved command '{Command}'.", commandName);
         return null;
     }
 }

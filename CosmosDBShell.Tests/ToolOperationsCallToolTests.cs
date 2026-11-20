@@ -193,7 +193,7 @@ public class ToolOperationsCallToolTests : IDisposable
     {
         var tool = CreateToolOperations();
 
-        var result = await tool.ConfirmDestructiveAsync(
+        var result = await tool.ConfirmCommandAsync(
             null,
             "rmdb",
             "rmdb mydb",
@@ -208,6 +208,144 @@ public class ToolOperationsCallToolTests : IDisposable
             Assert.Contains("does not support confirmation prompts", error);
             Assert.Contains("rmdb mydb", error);
         }
+    }
+
+    [Theory]
+    [InlineData("dir", "{}")]
+    [InlineData("dir", "{\"filter\":\"*.json\"}")]
+    [InlineData("dir", "{\"directory\":\"missing-directory\",\"recursive\":true,\"list\":true}")]
+    [InlineData("dir", "{\"d\":\"missing-directory\",\"r\":true,\"l\":true}")]
+    [InlineData("cat", "{\"path\":\"missing-file.json\"}")]
+    public async Task CallTool_LocalFilesystemReadsWithoutConfirmation_RefuseBeforeAccess(string commandName, string argumentsJson)
+    {
+        var history = ShellInterpreter.Instance.History.ToArray();
+        var arguments = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argumentsJson);
+
+        var result = await CreateToolOperations().CallToolHandler(
+            CallContext(commandName, arguments), TestContext.Current.CancellationToken);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Contains("accesses the local filesystem", root.GetProperty("error").GetString());
+            Assert.Contains("does not support confirmation prompts", root.GetProperty("error").GetString());
+            Assert.DoesNotContain("is destructive", root.GetProperty("error").GetString());
+        }
+
+        Assert.Equal(history, ShellInterpreter.Instance.History);
+    }
+
+    [Theory]
+    [InlineData("dir", "accept")]
+    [InlineData("cat", "accept")]
+    [InlineData("dir", "decline")]
+    [InlineData("cat", "decline")]
+    [InlineData("dir", "cancel")]
+    [InlineData("cat", "cancel")]
+    [InlineData("dir", "throw")]
+    [InlineData("cat", "throw")]
+    public async Task ExecuteTool_LocalFilesystemReads_OnlyAccessFilesAfterApproval(string commandName, string action)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"cosmos-mcp-read-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var file = Path.Combine(directory, "sample.txt");
+        const string content = "local file confirmation test";
+        await File.WriteAllTextAsync(file, content, TestContext.Current.CancellationToken);
+        var shell = ShellInterpreter.Instance;
+        CosmosCommand command = commandName == "dir"
+            ? new DirCommand { Directory = directory, Filter = "*.txt", Recursive = true, ListOnly = true }
+            : new CatCommand { FilePath = file };
+        var commandLine = commandName == "dir"
+            ? $"dir \"*.txt\" --directory \"{directory}\" --recursive --list"
+            : $"cat \"{file}\"";
+        var history = shell.History.ToArray();
+        try
+        {
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands[commandName], command, commandLine,
+                (request, _, _, confirmationCommandLine) =>
+                {
+                    Assert.Contains("Confirm local filesystem access", request.Message);
+                    Assert.Contains(commandLine, request.Message);
+                    Assert.Contains(Directory.GetCurrentDirectory(), request.Message);
+                    Assert.Contains("returned to the MCP client", request.Message);
+                    Assert.DoesNotContain("permanently change or delete", request.Message);
+                    Assert.Equal(
+                        new[] { commandLine, Directory.GetCurrentDirectory() },
+                        JsonSerializer.Deserialize<string[]>(confirmationCommandLine));
+                    if (action == "throw")
+                    {
+                        throw new InvalidOperationException("prompt failed");
+                    }
+
+                    return new ValueTask<ElicitResult>(new ElicitResult { Action = action });
+                }, TestContext.Current.CancellationToken);
+
+            var (isError, root, document) = ReadResult(result);
+            using (document)
+            {
+                Assert.Equal(action != "accept", isError);
+                if (action == "accept")
+                {
+                    if (commandName == "cat")
+                    {
+                        Assert.Equal(content, root.GetProperty("result").GetString());
+                    }
+                    else
+                    {
+                        var entry = Assert.Single(root.GetProperty("result").GetProperty("values").EnumerateArray());
+                        Assert.Equal("sample.txt", entry.GetProperty("name").GetString());
+                        Assert.Equal(file, entry.GetProperty("path").GetString());
+                    }
+                }
+                else
+                {
+                    Assert.Equal(history, shell.History);
+                    Assert.False(root.TryGetProperty("result", out _));
+                }
+            }
+        }
+        finally
+        {
+            File.Delete(file);
+            Directory.Delete(directory);
+        }
+    }
+
+    [Theory]
+    [InlineData("dir", false)]
+    [InlineData("cat", false)]
+    [InlineData("dir", true)]
+    [InlineData("cat", true)]
+    public async Task ExecuteTool_LocalFilesystemConfirmationRetry_BindsWorkingDirectory(string commandName, bool differentDirectory)
+    {
+        var shell = ShellInterpreter.Instance;
+        var commandLine = $"{commandName} sample";
+        var command = new TrackingCommand();
+        var exception = await Assert.ThrowsAsync<InputRequiredException>(() => CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands[commandName], command, commandLine,
+            (request, stateVersion, _, confirmationCommandLine) => throw new InputRequiredException(
+                inputRequests: new Dictionary<string, InputRequest> { ["confirm"] = InputRequest.ForElicitation(request) },
+                requestState: ConfirmationRequestState.Create(
+                    differentDirectory
+                        ? JsonSerializer.Serialize(new[] { commandLine, Path.Combine(Directory.GetCurrentDirectory(), "other") })
+                        : confirmationCommandLine,
+                    stateVersion)),
+            TestContext.Current.CancellationToken));
+
+        Assert.False(command.Executed);
+        var retry = ConfirmationRetry("accept", exception.Result.RequestState!);
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands[commandName], command, commandLine, null, TestContext.Current.CancellationToken, retry);
+
+        Assert.Equal(differentDirectory, result.IsError == true);
+        Assert.Equal(!differentDirectory, command.Executed);
+        var replay = new TrackingCommand();
+        var replayResult = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands[commandName], replay, commandLine, null, TestContext.Current.CancellationToken, retry);
+        Assert.True(replayResult.IsError);
+        Assert.False(replay.Executed);
     }
 
     [Fact]
@@ -292,7 +430,7 @@ public class ToolOperationsCallToolTests : IDisposable
             factory,
             command,
             "rm \"order-123\" --key \"id\" --partition-key \"customer-42\"",
-            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            (_, _, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
             TestContext.Current.CancellationToken);
 
         Assert.True(result.IsError);
@@ -335,8 +473,8 @@ public class ToolOperationsCallToolTests : IDisposable
     {
         var tool = CreateToolOperations();
 
-        var result = await tool.ConfirmDestructiveAsync(
-            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+        var result = await tool.ConfirmCommandAsync(
+            (_, _, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
             "rmdb",
             "rmdb mydb",
             CancellationToken.None);
@@ -354,7 +492,7 @@ public class ToolOperationsCallToolTests : IDisposable
         {
             var result = await CreateToolOperations().ExecuteToolAsync(
                 shell.App.Commands["rm"], command, "rm test-*",
-                (request, _, _) =>
+                (request, _, _, _) =>
                 {
                     Assert.Contains("Account:", request.Message);
                     Assert.Contains("Current location:", request.Message);
@@ -458,7 +596,7 @@ public class ToolOperationsCallToolTests : IDisposable
         var command = new TrackingCommand();
         var result = await CreateToolOperations().ExecuteToolAsync(
             ShellInterpreter.Instance.App.Commands["rm"], command, "rm test-*",
-            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            (_, _, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
             TestContext.Current.CancellationToken);
         Assert.False(result.IsError == true);
         Assert.True(command.Executed);
@@ -484,7 +622,7 @@ public class ToolOperationsCallToolTests : IDisposable
 
             var result = await CreateToolOperations().ExecuteToolAsync(
                 ShellInterpreter.Instance.App.Commands["rm"], command, "rm test-*",
-                (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+                (_, _, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
                 TestContext.Current.CancellationToken);
 
             Assert.False(result.IsError == true);
@@ -507,8 +645,8 @@ public class ToolOperationsCallToolTests : IDisposable
     {
         var tool = CreateToolOperations();
 
-        var result = await tool.ConfirmDestructiveAsync(
-            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = action }),
+        var result = await tool.ConfirmCommandAsync(
+            (_, _, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = action }),
             "rmdb",
             "rmdb mydb",
             CancellationToken.None);
@@ -529,8 +667,8 @@ public class ToolOperationsCallToolTests : IDisposable
     {
         var tool = CreateToolOperations();
 
-        var result = await tool.ConfirmDestructiveAsync(
-            (_, _, _) => throw new InvalidOperationException("boom"),
+        var result = await tool.ConfirmCommandAsync(
+            (_, _, _, _) => throw new InvalidOperationException("boom"),
             "rmdb",
             "rmdb mydb",
             CancellationToken.None);
@@ -1111,9 +1249,9 @@ public class ToolOperationsCallToolTests : IDisposable
 
         var exception = await Assert.ThrowsAsync<InputRequiredException>(() => CreateToolOperations().ExecuteToolAsync(
             shell.App.Commands["rm"], command, "rm test-*",
-            (request, stateVersion, _) => throw new InputRequiredException(
+            (request, stateVersion, _, confirmationCommandLine) => throw new InputRequiredException(
                 inputRequests: new Dictionary<string, InputRequest> { ["confirm"] = InputRequest.ForElicitation(request) },
-                requestState: ConfirmationRequestState.Create("rm test-*", stateVersion)),
+                requestState: ConfirmationRequestState.Create(confirmationCommandLine, stateVersion)),
             TestContext.Current.CancellationToken));
 
         Assert.False(command.Executed);

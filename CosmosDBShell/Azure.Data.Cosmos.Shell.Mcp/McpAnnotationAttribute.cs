@@ -40,7 +40,7 @@ internal class McpAnnotationAttribute : Attribute
     public bool Destructive { get; set; }
 
     /// <summary>
-    /// Gets or sets a value indicating whether a restricted destructive command may run
+    /// Gets or sets a value indicating whether a restricted command may run
     /// over MCP after the user confirms it through an elicitation prompt, instead of being
     /// hard-blocked. Applies only when <see cref="Restricted"/> is also set.
     /// </summary>
