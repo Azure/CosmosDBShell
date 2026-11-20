@@ -1,0 +1,21 @@
+{
+  "schemaVersion":1,
+  "cases":[
+    {
+      "id":"emulator.bulk.mixed-partitions",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/BulkOperationTests.cs::Run_MixedOperationsAcrossPartitions_ExceedsBatchLimitAndPreservesItemOrder"],
+      "fixtures":{"operations.json":"[{\"op\":\"create\",\"item\":{\"id\":\"a\",\"pk\":\"a\",\"count\":0}},{\"op\":\"patch\",\"id\":\"a\",\"partitionKey\":\"a\",\"operations\":[{\"op\":\"incr\",\"path\":\"/count\",\"value\":1}]},{\"op\":\"upsert\",\"item\":{\"id\":\"b\",\"pk\":\"b\",\"count\":2}},{\"op\":\"delete\",\"id\":\"gone\",\"partitionKey\":\"c\"}]"},
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; bulk run operations.json --dry-run > 'preview.json'; query \"SELECT c.id,c.pk FROM c ORDER BY c.id\" > 'unchanged.json'; bulk run operations.json --concurrency 4 --yes > 'applied.json'; query \"SELECT c.id,c.pk,c.count FROM c ORDER BY c.id\" > 'items.json'",
+      "exitCode":0,
+      "emulator":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[{"id":"gone","pk":"c"}]}],"verify":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[{"id":"a","pk":"a","count":1},{"id":"b","pk":"b","count":2}]}]}},
+      "files":{
+        "preview.json":{"mode":"json","schema":{"type":"object","required":["type","operationCount","attempted","succeeded","failed","dryRun","requestCharge"],"properties":{"type":{"const":"bulk"},"operationCount":{"const":4},"attempted":{"const":0},"succeeded":{"const":0},"failed":{"const":0},"dryRun":{"const":true},"requestCharge":{"type":"number","exclusiveMinimum":0,"maximum":100}}}},
+        "unchanged.json":{"mode":"json","expected":{"type":"item","values":[{"id":"gone","pk":"c"}]}},
+        "applied.json":{"mode":"json","schema":{"type":"object","required":["type","success","operationCount","attempted","succeeded","failed","uncertain","dryRun","requestCharge"],"properties":{"type":{"const":"bulk"},"success":{"const":true},"operationCount":{"const":4},"attempted":{"const":4},"succeeded":{"const":4},"failed":{"const":0},"uncertain":{"const":0},"dryRun":{"const":false},"requestCharge":{"type":"number","exclusiveMinimum":0,"maximum":200}}}},
+        "items.json":{"mode":"json","expected":{"type":"item","values":[{"id":"a","pk":"a","count":1},{"id":"b","pk":"b","count":2}]}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    }
+  ]
+}

@@ -934,11 +934,28 @@ public class ShellProcessTests
             environment: new Dictionary<string, string?>
             {
                 ["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1",
+                ["COSMOSDB_SHELL_UI_LANGUAGE"] = "en",
             });
 
         Assert.Equal(2, result.ExitCode);
         Assert.Contains("expects 1 argument, got 0", result.StdErr);
         Assert.DoesNotContain("1 arguments", result.StdErr);
+    }
+
+    [Fact]
+    public async Task HelpOption_UsesEnglishWithExplicitApplicationUiLanguage()
+    {
+        var result = await RunShellAsync(
+            stdinScript: null,
+            extraArgs: ["--help"],
+            cancellationToken: TestContext.Current.CancellationToken,
+            environment: new Dictionary<string, string?>
+            {
+                ["COSMOSDB_SHELL_UI_LANGUAGE"] = "en",
+            });
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("The output format to use", result.StdOut);
     }
 
     [Fact]

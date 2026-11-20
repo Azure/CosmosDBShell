@@ -4,6 +4,7 @@
 
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Globalization;
 using System.Reflection;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Core;
@@ -72,6 +73,16 @@ internal class Program
         TracingBootstrap? tracing = null;
         try
         {
+            if (Environment.GetEnvironmentVariable("COSMOSDB_SHELL_UI_LANGUAGE") is { Length: > 0 } language)
+            {
+                // MessageService uses the English catalog for the invariant UI culture.
+                var culture = language.Equals("en", StringComparison.OrdinalIgnoreCase)
+                    ? CultureInfo.InvariantCulture
+                    : CultureInfo.GetCultureInfo(language);
+                CultureInfo.DefaultThreadCurrentUICulture = culture;
+                CultureInfo.CurrentUICulture = culture;
+            }
+
             // --help / --version handled manually so we can render our own
             // localized usage and version heading. Only inspect the prefix
             // before -c / -k so that a command tail of literally "--help" or

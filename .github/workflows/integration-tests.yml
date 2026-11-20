@@ -14,6 +14,67 @@ permissions:
   contents: read
 
 jobs:
+  cli-contracts:
+    name: Portable CLI Contracts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: tests/cli-contracts/requirements*.txt
+
+      - name: Build C# reference
+        shell: pwsh
+        run: |
+          Copy-Item tests/cli-contracts/fixtures/locale.de-DE.ftl CosmosDBShell/lang/de-DE.ftl
+          dotnet build CosmosDBShell/CosmosDBShell.csproj
+
+      - name: Install contract runner
+        run: python -m pip install -r tests/cli-contracts/requirements.txt
+
+      - name: Validate migration inventory
+        run: python tests/cli-contracts/inventory.py --output artifacts/cli-contract-inventory.json
+
+      - name: Run runner self-tests and offline contracts
+        shell: pwsh
+        env:
+          COSMOSDB_SHELL_UI_LANGUAGE: de-DE
+        run: |
+          $assembly = & ./tests/cli-contracts/resolve-shell-assembly.ps1
+          $localizedHelp = dotnet $assembly --help
+          if ($LASTEXITCODE -ne 0 -or ($localizedHelp -join "`n") -notmatch 'Testkatalog: Ausgabeformat') {
+            throw 'The reference did not load the non-English fixture catalog.'
+          }
+          python -m pytest tests/cli-contracts --profile offline `
+            --shell-executable dotnet --shell-prefix-arg $assembly `
+            --contract-artifacts artifacts/cli-contract-failures `
+            --junitxml artifacts/cli-contracts.xml -q
+
+      - name: Upload contract report and synthetic failure data
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-contracts-${{ matrix.os }}
+          path: |
+            artifacts/cli-contract-inventory.json
+            artifacts/cli-contracts.xml
+            artifacts/cli-contract-failures/
+          retention-days: 7
+
   offline-tests:
     name: Offline Integration Tests
     runs-on: ubuntu-latest
@@ -46,7 +107,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       cosmosdb:
-        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-EN20261117pre@sha256:11b42b669436fbbe00b33a58e9317dcc9f0cb23ed3196b0cbb1860e26527352c
         ports:
           - 8081:8081
         env:
@@ -101,6 +162,32 @@ jobs:
         # The Windows emulator job below exercises those collisions.
         run: dotnet test CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --filter "Category=Emulator&Feature!=PartitionKeyCollisions" --no-restore -p:CosmosRequireEmulator=true
 
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install independent emulator fixtures
+        run: python -m pip install -r tests/cli-contracts/requirements-emulator.txt
+
+      - name: Run portable Linux emulator contracts
+        shell: pwsh
+        run: >-
+          python -m pytest tests/cli-contracts/test_contracts.py --profile emulator-linux
+          --shell-executable dotnet
+          --shell-prefix-arg (& ./tests/cli-contracts/resolve-shell-assembly.ps1)
+          --contract-artifacts artifacts/cli-contract-failures
+          --junitxml artifacts/cli-contracts-linux-emulator.xml -q
+
+      - name: Upload emulator contract report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-contracts-linux-emulator
+          path: |
+            artifacts/cli-contracts-linux-emulator.xml
+            artifacts/cli-contract-failures/
+          retention-days: 7
+
   windows-partition-key-tests:
     name: Windows Partition-Key Integration Tests
     runs-on: windows-latest
@@ -151,3 +238,28 @@ jobs:
 
       - name: Run partition-key integration tests
         run: dotnet test .\CosmosDBShell.Tests\CosmosDBShell.Tests.csproj --filter "Category=Emulator&FullyQualifiedName~PrintPartitionKeyTests" --no-restore -p:CosmosRequireEmulator=true
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Install independent emulator fixtures
+        run: python -m pip install -r tests\cli-contracts\requirements-emulator.txt
+
+      - name: Run portable Windows emulator contracts
+        run: >-
+          python -m pytest tests\cli-contracts\test_contracts.py --profile emulator-windows
+          --shell-executable dotnet
+          --shell-prefix-arg (& ./tests/cli-contracts/resolve-shell-assembly.ps1)
+          --contract-artifacts artifacts\cli-contract-failures
+          --junitxml artifacts\cli-contracts-windows-emulator.xml -q
+
+      - name: Upload emulator contract report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-contracts-windows-emulator
+          path: |
+            artifacts/cli-contracts-windows-emulator.xml
+            artifacts/cli-contract-failures/
+          retention-days: 7

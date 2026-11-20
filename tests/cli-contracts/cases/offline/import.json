@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id":"import.dry-run.json",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/CommandTests/ImportCommandTests.cs::ExecuteAsync_DryRun_UsesSelectedOutputFormat","CosmosDBShell.Tests/CommandTests/ImportDryRunValidationTests.cs::Success_ReportsOfflineValidationWithoutAccessingConnectedTarget"],
+      "fixtures":{"input.json":"[{\"id\":\"a\"},{\"id\":\"b\"}]"},
+      "script":"import input.json --dry-run > 'result.json'",
+      "exitCode":0,
+      "files":{
+        "result.json":{"mode":"json","expected":{"type":"import","file":"input.json","imported":0,"failed":0,"requestCharge":0,"dryRun":true,"validated":2,"validationScope":"offline","targetValidated":false}},
+        "stdout.txt":{"mode":"empty"},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"import.dry-run.jsonl",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/CommandTests/ImportCommandTests.cs::EnumerateJsonDocumentAsync_ObjectSequence_YieldsItems","CosmosDBShell.Tests/CommandTests/ImportDryRunValidationTests.cs::Success_ReportsOfflineValidationWithoutAccessingConnectedTarget"],
+      "fixtures":{"input.jsonl":"{\"id\":\"a\"}\n{\"id\":\"b\"}\n"},
+      "script":"import input.jsonl --dry-run > 'result.json'",
+      "exitCode":0,
+      "files":{
+        "result.json":{"mode":"json","expected":{"type":"import","file":"input.jsonl","imported":0,"failed":0,"requestCharge":0,"dryRun":true,"validated":2,"validationScope":"offline","targetValidated":false}},
+        "stdout.txt":{"mode":"empty"},"stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"import.dry-run.multiline-csv",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/CommandTests/ImportCommandTests.cs::ParseCsv_HandlesQuotedFieldsWithSeparatorsAndNewlines","CosmosDBShell.Tests/CommandTests/ImportDryRunValidationTests.cs::Success_ReportsOfflineValidationWithoutAccessingConnectedTarget"],
+      "fixtures":{"input.csv":"id,name,note\na,\"comma,name\",\"line1\nline2\"\nb,plain,\"quote\"\"here\"\n"},
+      "environment":{"COSMOSDB_SHELL_CSVSEP":","},
+      "script":"import input.csv --dry-run > 'result.json'",
+      "exitCode":0,
+      "files":{
+        "result.json":{"mode":"json","expected":{"type":"import","file":"input.csv","imported":0,"failed":0,"requestCharge":0,"dryRun":true,"validated":2,"validationScope":"offline","targetValidated":false}},
+        "stdout.txt":{"mode":"empty"},"stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"import.dry-run.empty",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/CommandTests/ImportDryRunValidationTests.cs::Success_ReportsOfflineValidationWithoutAccessingConnectedTarget"],
+      "fixtures":{"input.json":"[]"},
+      "script":"import input.json --dry-run > 'result.json'",
+      "exitCode":0,
+      "files":{
+        "result.json":{"mode":"json","expected":{"type":"import","file":"input.json","imported":0,"failed":0,"requestCharge":0,"dryRun":true,"validated":0,"validationScope":"offline","targetValidated":false}},
+        "stdout.txt":{"mode":"empty"},"stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"import.dry-run.user-renderer",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/CommandTests/ImportCommandTests.cs::ExecuteAsync_DryRun_UsesSelectedOutputFormat"],
+      "fixtures":{"input.json":"[{\"id\":\"a\"},{\"id\":\"b\"}]"},
+      "format":"user",
+      "script":"import input.json --dry-run",
+      "exitCode":0,
+      "files":{
+        "stdout.txt":{"mode":"text","contains":["Dry run: 2","offline validation","no items were written.","not checked."],"occurrences":{"Dry run:":1},"notContains":["\"type\"","\"validated\""]},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"import.dry-run.table-renderer",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/CommandTests/ImportCommandTests.cs::ExecuteAsync_DryRun_UsesSelectedOutputFormat"],
+      "fixtures":{"input.json":"[{\"id\":\"a\"},{\"id\":\"b\"}]"},
+      "format":"table",
+      "script":"import input.json --dry-run",
+      "exitCode":0,
+      "files":{
+        "stdout.txt":{"mode":"text","contains":["type","file","failed","dryRun","import","True","False"],"occurrences":{"True":1,"False":1},"notContains":["Dry run:","\"type\":"]},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"import.dry-run.csv-renderer",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/CommandTests/ImportCommandTests.cs::ExecuteAsync_DryRun_UsesSelectedOutputFormat"],
+      "fixtures":{"input.json":"[{\"id\":\"a\"},{\"id\":\"b\"}]"},
+      "format":"csv",
+      "script":"import input.json --dry-run",
+      "exitCode":0,
+      "files":{
+        "stdout.txt":{"mode":"csv","delimiter":";","expected":[["type","file","imported","failed","requestCharge","dryRun","validated","validationScope","targetValidated"],["import","input.json","0","0","0","True","2","offline","False"],[]]},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"import.dry-run.invalid-id",
+      "profiles":["offline"],
+      "sources":["CosmosDBShell.Tests/CommandTests/ImportDryRunValidationTests.cs::InvalidId_FailsWithUsageErrorAndNoWrites"],
+      "fixtures":{"input.json":"[{\"id\":\"first\"},{\"id\":42}]"},
+      "script":"import input.json --dry-run --continue-on-error 2> 'error.json'",
+      "exitCode":2,
+      "files":{
+        "error.json":{"mode":"json","schema":{"type":"object","required":["status","error","result"],"properties":{"status":{"const":"error"},"error":{"type":"string","pattern":"Line 2: 'id'"},"result":{"type":"object","required":["validated","imported","failed","dryRun","validationScope","targetValidated","exitCode"],"properties":{"validated":{"const":1},"imported":{"const":0},"failed":{"const":0},"dryRun":{"const":true},"validationScope":{"const":"offline"},"targetValidated":{"const":false},"exitCode":{"const":2}}}}}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    }
+  ]
+}
