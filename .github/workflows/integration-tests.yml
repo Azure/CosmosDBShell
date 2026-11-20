@@ -104,11 +104,10 @@ jobs:
 
   emulator-tests:
     name: Emulator Integration Tests
-    # The preview emulator returns PostgreSQL 58P01 during fixture cleanup on the Ubuntu 26.04 runner.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     services:
       cosmosdb:
-        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-EN20261117pre@sha256:11b42b669436fbbe00b33a58e9317dcc9f0cb23ed3196b0cbb1860e26527352c
         ports:
           - 8081:8081
         env:

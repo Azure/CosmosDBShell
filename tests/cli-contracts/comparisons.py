@@ -205,7 +205,9 @@ def compare_file(path: Path, spec: dict):
         if mode == "json":
             _compare_json(parse_json(text), spec)
         elif mode == "jsonl":
-            lines = text.splitlines()
+            lines = text.split("\n")
+            if lines[-1] == "":
+                lines.pop()
             assert all(line.strip() for line in lines), "JSONL contains an empty record"
             _compare_json([parse_json(line) for line in lines], spec)
         elif mode == "csv":

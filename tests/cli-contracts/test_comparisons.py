@@ -103,6 +103,14 @@ def test_json_pointer_escaping(tmp_path):
     })
 
 
+@pytest.mark.parametrize("separator", ["\u0085", "\u2028", "\u2029"])
+def test_jsonl_preserves_unicode_separators_in_strings(tmp_path, separator):
+    path = tmp_path / "result"
+    value = f"a{separator}b"
+    path.write_bytes(f'"{value}"\r\n"{value}"\n'.encode("utf-8"))
+    compare_file(path, {"mode": "jsonl", "expected": [value, value]})
+
+
 def test_jsonl_is_not_pretty_printed_json_or_multiple_json(tmp_path):
     path = tmp_path / "result"
     path.write_text('{"id":1}\n{"id":2}\n', encoding="utf-8")
