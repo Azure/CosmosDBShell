@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Commands;
 
 using Azure.Data.Cosmos.Shell.Core;
+using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 using Azure.Data.Cosmos.Shell.Util;
@@ -12,6 +13,7 @@ using Azure.Data.Cosmos.Shell.Util;
 [CosmosCommand("cat")]
 [CosmosExample("cat config.json", DescriptionKey = "command-cat-example-1")]
 [CosmosExample("cat data.txt", DescriptionKey = "command-cat-example-2")]
+[McpAnnotation(Restricted = true, Confirmable = true, ReadOnly = true, Idempotent = true)]
 internal class CatCommand : CosmosCommand, IStateVisitor<int, string>
 {
     [CosmosParameter("path", IsRequired = false, ParameterType = ParameterType.File)]

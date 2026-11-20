@@ -6,6 +6,7 @@ namespace CosmosShell.Tests;
 
 using System.Text.Json;
 using Azure.Data.Cosmos.Shell.Mcp;
+using Azure.Data.Cosmos.Shell.Util;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +17,83 @@ using ModelContextProtocol.Protocol;
 [Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class McpConfirmationTests
 {
+    [Theory]
+    [InlineData("dir", "accept", null)]
+    [InlineData("cat", "accept", null)]
+    [InlineData("dir", "decline", null)]
+    [InlineData("cat", "decline", null)]
+    [InlineData("dir", "accept", "2025-11-25")]
+    [InlineData("cat", "accept", "2025-11-25")]
+    [InlineData("dir", "decline", "2025-11-25")]
+    [InlineData("cat", "decline", "2025-11-25")]
+    public async Task LocalFilesystemRead_OverHttp_RequiresApproval(string commandName, string action, string? requestedVersion)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        using var host = McpServer.CreateHost(new Program.CosmosShellOptions { McpPort = 0 });
+        await host.StartAsync(timeout.Token);
+        var directory = Path.Join(Path.GetTempPath(), $"mcp-local-read-{Guid.NewGuid():N}");
+        var file = Path.Join(directory, "sample.txt");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(file, "approved local content", timeout.Token);
+            var prompts = new List<string?>();
+            var address = host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+            var transport = new HttpClientTransport(new HttpClientTransportOptions { Endpoint = new Uri(address.TrimEnd('/') + "/") });
+            await using var client = await McpClient.CreateAsync(
+                transport,
+                new McpClientOptions
+                {
+                    ProtocolVersion = requestedVersion,
+                    Handlers = new McpClientHandlers
+                    {
+                        ElicitationHandler = (request, _) =>
+                        {
+                            prompts.Add(request?.Message);
+                            return ValueTask.FromResult(new ElicitResult { Action = action });
+                        },
+                    },
+                },
+                cancellationToken: timeout.Token);
+            var arguments = commandName == "dir"
+                ? new Dictionary<string, object?> { ["directory"] = directory, ["filter"] = "*.txt" }
+                : new Dictionary<string, object?> { ["path"] = file };
+            var result = await client.CallToolAsync(commandName, arguments, cancellationToken: timeout.Token);
+
+            var prompt = Assert.Single(prompts);
+            Assert.Contains("Confirm local filesystem access", prompt);
+            Assert.Contains(ShellLiteral.Quote(commandName == "dir" ? directory : file), prompt);
+            Assert.Contains(Directory.GetCurrentDirectory(), prompt);
+            Assert.DoesNotContain("destructive", prompt);
+            Assert.Equal(action != "accept", result.IsError == true);
+            using var document = JsonDocument.Parse(Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+            if (action == "accept")
+            {
+                if (commandName == "cat")
+                {
+                    Assert.Equal("approved local content", document.RootElement.GetProperty("result").GetString());
+                }
+                else
+                {
+                    var entry = Assert.Single(document.RootElement.GetProperty("result").GetProperty("values").EnumerateArray());
+                    Assert.Equal("sample.txt", entry.GetProperty("name").GetString());
+                }
+            }
+            else
+            {
+                Assert.Contains("was not approved", document.RootElement.GetProperty("error").GetString());
+                Assert.False(document.RootElement.TryGetProperty("result", out _));
+            }
+        }
+        finally
+        {
+            await host.StopAsync(TestContext.Current.CancellationToken);
+            File.Delete(file);
+            Directory.Delete(directory);
+        }
+    }
+
     [Theory]
     [InlineData("run", false, 1, "was not approved")]
     [InlineData("run", true, 0, "not connected")]
