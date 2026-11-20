@@ -47,6 +47,9 @@ jobs:
     services:
       cosmosdb:
         image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+        # Prevent startup package updates from replacing modules under running PostgreSQL.
+        # Remove when Azure/azure-cosmos-db-emulator-docker#390 is fixed in this image.
+        options: --add-host packages.microsoft.com:127.0.0.1
         ports:
           - 8081:8081
         env:
