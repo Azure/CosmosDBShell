@@ -219,7 +219,7 @@ internal class BatchCommand : CosmosCommand
         var partitionKey = ParsePartitionKey(this.PartitionKeyArgument);
         try
         {
-            return await BatchExecutor.ExecuteAsync("batch", container, partitionKey, specs, token);
+            return await BatchExecutor.ExecuteAsync(shell, "batch", container, partitionKey, specs, token);
         }
         catch (CosmosException ce)
         {
@@ -319,7 +319,7 @@ internal class BatchCommand : CosmosCommand
 
         try
         {
-            var result = await BatchExecutor.ExecuteAsync("batch", container, batch.PartitionKey, batch.Operations, token);
+            var result = await BatchExecutor.ExecuteAsync(shell, "batch", container, batch.PartitionKey, batch.Operations, token);
             shell.CurrentBatch = null;
             return result;
         }

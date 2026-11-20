@@ -74,7 +74,7 @@ internal class MakeItemCommand : CosmosCommand
         {
             if (summary.Message is { } message)
             {
-                ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, message);
+                shell.Output.WriteLine(ShellMessageKind.Result, message);
             }
         };
         return returnState;
@@ -166,8 +166,23 @@ internal class MakeItemCommand : CosmosCommand
                     int replacedCount = 0;
                     int failCount = 0;
                     double charge = 0.0;
+                    var errors = shell.IsMachineMode ? new BulkWriteDiagnostics() : null;
+                    var itemIndex = 0;
+                    void RecordError(string message)
+                    {
+                        if (errors != null)
+                        {
+                            errors.Add(MessageService.GetArgsString("error-bulk-item", "index", itemIndex, "message", message));
+                        }
+                        else
+                        {
+                            shell.Output.WriteLine(ShellMessageKind.Error, message);
+                        }
+                    }
+
                     foreach (var element in root.EnumerateArray())
                     {
+                        itemIndex++;
                         try
                         {
                             var result = await WriteOneAsync(container, partitionKeyPaths, element, force, token);
@@ -183,8 +198,7 @@ internal class MakeItemCommand : CosmosCommand
                             else
                             {
                                 failCount++;
-                                ShellInterpreter.Instance.Output.WriteLine(
-                                    ShellMessageKind.Result,
+                                RecordError(
                                     MessageService.GetArgsString(
                                         "command-mkitem-error-status-returned",
                                         "status",
@@ -195,8 +209,7 @@ internal class MakeItemCommand : CosmosCommand
                         {
                             RequestChargeContext.Record(ce.RequestCharge);
                             failCount++;
-                            ShellInterpreter.Instance.Output.WriteLine(
-                                ShellMessageKind.Result,
+                            RecordError(
                                 MessageService.GetArgsString(
                                     "command-mkitem-error-creation-failed",
                                     "status",
@@ -207,8 +220,7 @@ internal class MakeItemCommand : CosmosCommand
                         catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
                         {
                             failCount++;
-                            ShellInterpreter.Instance.Output.WriteLine(
-                                ShellMessageKind.Result,
+                            RecordError(
                                 MessageService.GetArgsString(
                                     "command-mkitem-error-creation-failed",
                                     "status",
@@ -286,16 +298,24 @@ internal class MakeItemCommand : CosmosCommand
                     // treat a partial/total failure as success.
                     if (failCount > 0)
                     {
-                        ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, summaryMessage);
+                        if (!shell.IsMachineMode)
+                        {
+                            shell.Output.WriteLine(ShellMessageKind.Error, summaryMessage);
+                        }
+
                         var totalCount = createdCount + replacedCount + failCount;
-                        throw new CommandException(
-                            "mkitem",
-                            MessageService.GetArgsString(
+                        var message = MessageService.GetArgsString(
                                 "command-mkitem-error-array_failed",
                                 "failed",
                                 failCount,
                                 "total",
-                                totalCount));
+                                totalCount);
+                        if (errors != null)
+                        {
+                            message += Environment.NewLine + errors.GetMessage();
+                        }
+
+                        throw new CommandException("mkitem", message);
                     }
 
                     return new WriteSummary(createdCount, replacedCount, failCount, charge, summaryMessage);
@@ -329,11 +349,10 @@ internal class MakeItemCommand : CosmosCommand
                         }
                         else
                         {
-                            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
+                            throw new CommandException("mkitem", MessageService.GetArgsString(
                                 "command-mkitem-error-status-returned",
                                 "status",
                                 result.StatusCode.ToString()));
-                            return new WriteSummary(0, 0, 1, result.RequestCharge, null);
                         }
                     }
                     catch (CosmosException ce)

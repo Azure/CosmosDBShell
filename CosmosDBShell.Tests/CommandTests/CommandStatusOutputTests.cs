@@ -19,6 +19,66 @@ using Spectre.Console;
 public class CommandStatusOutputTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task BatchFailure_ErrorRedirectPreservesSingleDiagnostic(bool append, bool positional)
+    {
+        using var shell = ShellInterpreter.CreateInstance();
+        shell.Options = new Program.CosmosShellOptions { Output = "user", Verbose = !positional };
+        var file = Path.GetTempFileName();
+        var originalOut = Console.Out;
+        using var output = new StringWriter();
+        try
+        {
+            Console.SetOut(output);
+            await File.WriteAllTextAsync(file, "existing\n", TestContext.Current.CancellationToken);
+            shell.ErrOutRedirect = file;
+            shell.AppendErrRedirection = append;
+            var container = Substitute.For<Container>();
+            var batch = Substitute.For<TransactionalBatch>();
+            using var response = Substitute.For<TransactionalBatchResponse>();
+            response.StatusCode.Returns(HttpStatusCode.Conflict);
+            response.IsSuccessStatusCode.Returns(false);
+            response.RequestCharge.Returns(1.25);
+            container.CreateTransactionalBatch(Arg.Any<PartitionKey>()).Returns(batch);
+            batch.ExecuteAsync(Arg.Any<CancellationToken>()).Returns(response);
+            var operations = BatchOperationParser.Parse("batch", """{"op":"delete","id":"missing"}""");
+            var state = Assert.IsType<StructuredErrorCommandState>(await BatchExecutor.ExecuteAsync(
+                shell, "batch", container, new PartitionKey("pk"), operations, TestContext.Current.CancellationToken));
+            if (positional)
+            {
+                state.Exception = new PositionalException("batch.csh", state.Exception, 4, 7, "batch execute");
+            }
+
+            shell.PrintState(state);
+
+            var content = await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken);
+            Assert.Empty(output.ToString());
+            Assert.Equal(append, content.StartsWith("existing", StringComparison.Ordinal));
+            if (positional)
+            {
+                Assert.Contains("batch.csh:4:7", content);
+            }
+            else
+            {
+                Assert.Contains("CommandException", content);
+            }
+
+            var beforeRenderer = content;
+            state.RenderUser!();
+            Assert.Equal(beforeRenderer, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+            Assert.Empty(output.ToString());
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            File.Delete(file);
+        }
+    }
+
+    [Theory]
     [InlineData(".json", false)]
     [InlineData(".csv", false)]
     [InlineData(".json", true)]

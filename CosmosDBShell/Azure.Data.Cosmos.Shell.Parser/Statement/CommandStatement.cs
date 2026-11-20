@@ -195,6 +195,12 @@ internal class CommandStatement : Statement
             }
 
             var cmd = await this.CreateCommandAsync(factory, shell, commandState, token);
+            if (!commandState.HasPipelineInput)
+            {
+                commandState.Result = null;
+            }
+
+            commandState.HasPipelineInput = false;
             var result = await shell.ExecuteCosmosCommandAsync(cmd, commandState, string.Empty, token, factory.IsExternal);
             if (result is ErrorCommandState error && shell.CurrentScriptFileName is { } sourceName && shell.CurrentScriptContent is { } sourceText)
             {
@@ -398,7 +404,7 @@ internal class CommandStatement : Statement
         return cmd;
     }
 
-    public async Task<CommandState> RunScriptAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, bool renderOutput = true)
+    public async Task<CommandState> RunScriptAsync(ShellInterpreter shell, CommandState commandState, CancellationToken token, bool renderOutput = true, CommandState? executionState = null)
     {
         var fileName = this.Name;
 
@@ -427,7 +433,12 @@ internal class CommandStatement : Statement
         }
 
         shell.PushCallScope(frame, token);
-        var currentState = commandState;
+        var currentState = executionState ?? commandState;
+        if (!currentState.HasPipelineInput)
+        {
+            currentState.Result = null;
+        }
+
         string scriptContent = string.Empty;
         var priorFileName = shell.CurrentScriptFileName;
         var priorContent = shell.CurrentScriptContent;
@@ -539,6 +550,8 @@ internal class CommandStatement : Statement
         }
         finally
         {
+            currentState.HasPipelineInput = false;
+            (executionState ?? commandState).HasPipelineInput = false;
             shell.CurrentScriptFileName = priorFileName;
             shell.CurrentScriptContent = priorContent;
             shell.ScriptAuxiliaryOutputFiles = priorAuxiliaryFiles;

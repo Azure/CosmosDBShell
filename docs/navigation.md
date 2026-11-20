@@ -10,6 +10,10 @@ Account → Databases → Containers → Items
 
 There are **no folders inside a container** – containers hold items (JSON documents) directly. Use `ls` to list the current level and `cd` to change scope. The `pwd` command prints the current location explicitly.
 
+For a local Cosmos DB emulator connection (`localhost` or `127.0.0.1`), the
+connection message shows the emulator endpoint and the prompt uses `emulator`
+instead of an account name, for example `emulator >` or `emulator MyDb >`.
+
 ## Moving Around
 
 `doctor` checks the current scope without navigating. Its `--database` and
@@ -119,6 +123,12 @@ For point reads, `print <id> <key>` accepts the established typed-key syntax. In
 ## Pipes and JSON Flow
 
 The `|` operator pipes the JSON result of the left command into the right command. This enables powerful command chaining.
+
+Commands separated by a newline or `;` do not implicitly pass results to the next command. For example, `cd /db/items; rm safe-a --key=id --partition-key=p1 --dry-run` previews the exact item, not the result of `cd`. Use `|` when you intend to pass input.
+
+Explicit pipes within filter expressions also pass their own left-hand value to nested commands, for example `echo [1] | filter '. | (filter ".")'`.
+
+Function and script calls follow the same rule, including empty bodies and bodies that only return a value. Explicit arguments are evaluated before the call's input is cleared.
 
 ### How It Works
 
@@ -338,17 +348,24 @@ banners, emits command results as the selected structured format (JSON or CSV) o
 and writes parser, connection, and command failures (including `theme` errors and rejected
 non-interactive `edit` calls) as a structured `{ "status": "error", "error": ... }` object
 on `STDERR`. In-shell `2>` / `2>>` redirection sends that error object to the specified
-file instead. `STDOUT` carries only command results; tables and other interactive views are not rendered.
+file instead. `STDOUT` carries only the command result; tables and other interactive
+views are not rendered. Inferred partition-key mutation warnings are emitted before writes as
+JSON Lines records on console stderr; a later error is emitted as a separate JSON record.
 The human-facing `user` and `table` formats are not machine mode; `user`
 falls back to JSON whenever output is redirected, piped, or run in machine mode.
 
 Quiet is not a universal mute: warnings, errors, and required instructions (such as
 authentication prompts and previews shown before a confirmation) remain visible on
-`STDERR`, without ANSI styling. Explicit diagnostic
-logging is unaffected. Command results are separate from informational messages and
-remain on `STDOUT` (or in MCP responses for `--mcp-stdio`).
-
-Inferred partition-key mutation warnings are emitted before writes as JSON Lines records on stderr; a later error is a separate JSON record.
+`STDERR`, without ANSI styling. Explicit diagnostic logging is unaffected.
+Command results are separate from informational messages and remain on `STDOUT`
+(or in MCP responses for `--mcp-stdio`).
+Bulk-write errors include per-item diagnostics in that single structured error:
+imports identify source lines, and item-array writes identify 1-based item positions.
+Up to 100 item diagnostics are listed, followed by a count of any omitted ones.
+`--verbose` does not replace machine-mode errors with raw stack traces; shell `2>`
+and `2>>` redirection still applies and also captures warnings and required instructions.
+Outside machine mode, `2>` and `2>>` capture warnings and errors, while confirmation
+prompts and other required instructions stay on the terminal.
 
 In normal `user` mode, command confirmations and status messages are readable text,
 not JSON status objects. Commands that display document or policy data can still show

@@ -102,7 +102,7 @@ internal class ExportCommand : CosmosCommand
             requestCharge = charge,
         }));
         resultState.RequestCharge = charge;
-        resultState.RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
+        resultState.RenderUser = () => shell.Output.WriteLine(ShellMessageKind.Result, MessageService.GetArgsString(
             "command-export-success",
             "count",
             count,

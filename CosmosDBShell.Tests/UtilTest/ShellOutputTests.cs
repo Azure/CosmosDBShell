@@ -34,7 +34,7 @@ public class ShellOutputTests
             // CreateOutput treats quiet or stdio as machine mode, which suppresses command-level
             // result presentation; machine-mode results go through WriteResult instead.
             var machineMode = quiet || stdio;
-            var suppressed = (quiet && kind is ShellMessageKind.Information or ShellMessageKind.Progress)
+            var suppressed = (machineMode && kind is ShellMessageKind.Information or ShellMessageKind.Progress)
                 || ((stdio || machineMode) && kind == ShellMessageKind.Result);
             if (suppressed)
             {
@@ -67,11 +67,13 @@ public class ShellOutputTests
         output.MarkupLine(ShellMessageKind.Warning, "[yellow]warning[/]");
         output.WriteLine(ShellMessageKind.Error, "error");
         output.WriteLine(ShellMessageKind.RequiredInstruction, "login");
+        output.WriteLine(ShellMessageKind.Information, "hidden information");
         output.WriteLine(ShellMessageKind.Result, "eager table");
         output.Render(ShellMessageKind.Result, new Text("eager renderable"));
         output.WriteResult("{\"result\":true}");
         Assert.Equal("{\"result\":true}" + Environment.NewLine, stdout.ToString());
         Assert.DoesNotContain("eager", stderr.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("hidden information", stdout.ToString(), StringComparison.Ordinal);
         Assert.Contains("warning", stderr.ToString());
         Assert.Contains("error", stderr.ToString());
         Assert.Contains("login", stderr.ToString());

@@ -37,6 +37,7 @@ internal class FilterPipeExpression : Expression
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var nestedState = FilterExpressionUtilities.CreateNestedState(currentState, new ShellJson(element.Clone()));
+                nestedState.HasExpressionPipelineInput = true;
                 var rightResult = await this.Right.EvaluateAsync(interpreter, nestedState, cancellationToken);
                 if (rightResult is ShellSequence nestedSequence)
                 {
@@ -52,6 +53,7 @@ internal class FilterPipeExpression : Expression
         }
 
         var state = FilterExpressionUtilities.CreateNestedState(currentState, leftResult);
+        state.HasExpressionPipelineInput = true;
         return await this.Right.EvaluateAsync(interpreter, state, cancellationToken);
     }
 

@@ -11,4 +11,12 @@ namespace Azure.Data.Cosmos.Shell.Core;
 internal sealed class ErrorRedirectWarningScope
 {
     public bool HasWarning { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether shell output (warnings, errors, or required
+    /// instructions) was written to this destination, so a later machine-mode error appends.
+    /// </summary>
+    public bool HasOutput { get; set; }
+
+    public bool HasContent => this.HasWarning || this.HasOutput;
 }

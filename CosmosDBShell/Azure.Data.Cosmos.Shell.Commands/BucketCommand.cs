@@ -100,7 +100,7 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             return await this.ExecuteServerAsync(state, shell, database, NormalizeOption(this.Container), token);
         }
 
-        return this.RunClientCommand(state.Client);
+        return this.RunClientCommand(shell, state.Client);
     }
 
     async Task<CommandState> IStateVisitor<CommandState, ShellInterpreter>.VisitContainerStateAsync(ContainerState state, ShellInterpreter shell, CancellationToken token)
@@ -112,7 +112,7 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             return await this.ExecuteServerAsync(state, shell, database, containerName, token);
         }
 
-        return this.RunClientCommand(state.Client);
+        return this.RunClientCommand(shell, state.Client);
     }
 
     // Treat an explicitly empty option (e.g. --container "") as "not provided" so it
@@ -130,11 +130,11 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             return true;
         }
 
-        ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.RequiredInstruction, MessageService.GetArgsString(summaryKey, args));
+        shell.Output.MarkupLine(ShellMessageKind.RequiredInstruction, MessageService.GetArgsString(summaryKey, args));
         return ShellInterpreter.Confirm("command-bucket-confirm", shell);
     }
 
-    private static CommandState BuildShowResult(ConnectedState state, ThroughputBucketsView view)
+    private static CommandState BuildShowResult(ShellInterpreter shell, ConnectedState state, ThroughputBucketsView view)
     {
         var bucketsArray = new JsonArray();
         foreach (var bucket in view.Buckets)
@@ -169,7 +169,7 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             {
                 if (view.Buckets.Count == 0)
                 {
-                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetArgsString("command-bucket-no_limits", "resource", Markup.Escape(view.ResourceName)));
+                    shell.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetArgsString("command-bucket-no_limits", "resource", Markup.Escape(view.ResourceName)));
                 }
                 else
                 {
@@ -183,23 +183,23 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
                             Theme.FormatTableValue(bucket.MaxThroughputPercentage.ToString(CultureInfo.InvariantCulture) + "%"));
                     }
 
-                    ShellInterpreter.Instance.Output.Render(ShellMessageKind.Result, table);
+                    shell.Output.Render(ShellMessageKind.Result, table);
                 }
 
-                WriteClientSelection(clientBucket);
+                WriteClientSelection(shell, clientBucket);
             },
         };
     }
 
-    private static void WriteClientSelection(int? clientBucket)
+    private static void WriteClientSelection(ShellInterpreter shell, int? clientBucket)
     {
         if (clientBucket.HasValue)
         {
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-current", new Dictionary<string, object> { { "bucket", Theme.FormatTableValue(clientBucket.Value.ToString(CultureInfo.InvariantCulture)) } }));
+            shell.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-current", new Dictionary<string, object> { { "bucket", Theme.FormatTableValue(clientBucket.Value.ToString(CultureInfo.InvariantCulture)) } }));
         }
         else
         {
-            ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-no_bucket"));
+            shell.Output.MarkupLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-no_bucket"));
         }
     }
 
@@ -234,7 +234,7 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
     private bool IsServerAction() =>
         this.Classify() is BucketActionKind.ServerShow or BucketActionKind.ServerSet or BucketActionKind.ServerClear;
 
-    private CommandState RunClientCommand(CosmosClient client)
+    private CommandState RunClientCommand(ShellInterpreter shell, CosmosClient client)
     {
         if (this.Id.HasValue || this.Percent.HasValue)
         {
@@ -263,7 +263,6 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
                 message = MessageService.GetString("command-bucket-switched_bucket", new Dictionary<string, object> { { "bucket", Theme.FormatTableValue(bucket.ToString(CultureInfo.InvariantCulture)) } });
             }
         }
-
         var clientBucket = client.ClientOptions.ThroughputBucket;
         return new CommandState
         {
@@ -272,11 +271,11 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             {
                 if (message is null)
                 {
-                    WriteClientSelection(clientBucket);
+                    WriteClientSelection(shell, clientBucket);
                 }
                 else
                 {
-                    ShellInterpreter.Instance.Output.MarkupLine(ShellMessageKind.Result, message);
+                    shell.Output.MarkupLine(ShellMessageKind.Result, message);
                 }
             },
         };
@@ -309,7 +308,7 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
                 case BucketActionKind.ServerShow:
                 default:
                     var view = await CosmosResourceFacade.GetThroughputBucketsAsync(state, databaseName, containerName, token);
-                    return BuildShowResult(state, view);
+                    return BuildShowResult(shell, state, view);
             }
         }
         catch (ThroughputBucketsNotSupportedException ex)
@@ -336,16 +335,16 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             return new CommandState
             {
                 Result = new ShellJson(cancelledDoc.RootElement.Clone()),
-                RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-cancelled")),
+                RenderUser = () => shell.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-cancelled")),
             };
         }
 
         var view = await CosmosResourceFacade.SetThroughputBucketAsync(state, databaseName, containerName, bucketId, percent, token);
-        var setResult = BuildShowResult(state, view);
+        var setResult = BuildShowResult(shell, state, view);
         var renderSet = setResult.RenderUser;
         setResult.RenderUser = () =>
         {
-            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-set_done"));
+            shell.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-set_done"));
             renderSet?.Invoke();
         };
         return setResult;
@@ -361,16 +360,16 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
             return new CommandState
             {
                 Result = new ShellJson(cancelledDoc.RootElement.Clone()),
-                RenderUser = () => ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-cancelled")),
+                RenderUser = () => shell.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-cancelled")),
             };
         }
 
         var view = await CosmosResourceFacade.ClearThroughputBucketAsync(state, databaseName, containerName, bucketId, token);
-        var clearResult = BuildShowResult(state, view);
+        var clearResult = BuildShowResult(shell, state, view);
         var renderClear = clearResult.RenderUser;
         clearResult.RenderUser = () =>
         {
-            ShellInterpreter.Instance.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-clear_done"));
+            shell.Output.WriteLine(ShellMessageKind.Result, MessageService.GetString("command-bucket-clear_done"));
             renderClear?.Invoke();
         };
         return clearResult;

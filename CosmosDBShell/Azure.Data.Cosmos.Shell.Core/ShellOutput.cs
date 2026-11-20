@@ -23,7 +23,8 @@ internal sealed class ShellOutput(
     Func<bool> machineMode,
     Func<TextWriter>? standardOutput = null,
     Func<TextWriter>? standardError = null,
-    Func<IAnsiConsole>? console = null)
+    Func<IAnsiConsole>? console = null,
+    Func<bool>? errorRedirected = null)
 {
     private readonly object consoleCacheLock = new();
 
@@ -189,14 +190,17 @@ internal sealed class ShellOutput(
     private bool ShouldPresent(ShellMessageKind kind)
         => OutputPolicy.ShouldPresent(kind, quiet(), stdio(), machineMode());
 
+    private bool UseStandardError(ShellMessageKind kind)
+        => OutputPolicy.UseStandardError(kind, machineMode(), stdio(), errorRedirected?.Invoke() == true);
+
     private TextWriter GetWriter(ShellMessageKind kind)
-        => OutputPolicy.UseStandardError(kind, machineMode(), stdio())
+        => this.UseStandardError(kind)
             ? standardError?.Invoke() ?? Console.Error
             : standardOutput?.Invoke() ?? Console.Out;
 
     private IAnsiConsole GetConsole(ShellMessageKind kind)
     {
-        if (!machineMode() && !OutputPolicy.UseStandardError(kind, machineMode(), stdio()))
+        if (!machineMode() && !stdio() && !this.UseStandardError(kind))
         {
             return console?.Invoke() ?? AnsiConsole.Console;
         }
@@ -213,6 +217,9 @@ internal sealed class ShellOutput(
                     ColorSystem = ColorSystemSupport.NoColors,
                     Interactive = InteractionSupport.No,
                     Out = new AnsiConsoleOutput(writer),
+
+                    // CI enrichers (e.g. GitHub Actions) would otherwise re-enable ANSI escapes.
+                    Enrichment = new ProfileEnrichment { UseDefaultEnrichers = false },
                 });
             }
 

@@ -19,6 +19,7 @@ using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Core;
 using global::Azure.Identity;
 using Microsoft.Azure.Cosmos;
+using NuGet.Versioning;
 using RadLine;
 using Spectre.Console;
 
@@ -80,6 +81,8 @@ public partial class ShellInterpreter : IDisposable
 
     private readonly SemaphoreSlim executionGate = new(1, 1);
 
+    private readonly TextWriter errorRedirectWriter;
+
     private long stateVersion;
 
     private OperationInactivityTimeout? localEmulatorDeadline;
@@ -120,10 +123,13 @@ public partial class ShellInterpreter : IDisposable
     internal ShellInterpreter(string? configPath = null, bool historyEnabled = true)
     {
         this.State = new DisconnectedState();
+        this.errorRedirectWriter = new ErrorRedirectWriter(this);
         this.Output = new ShellOutput(
             () => this.Options?.Quiet == true,
             () => this.IsMcpStdio,
-            () => stdioStartup || this.IsMachineMode);
+            () => stdioStartup || this.IsMachineMode,
+            standardError: () => this.ErrOutRedirect != null ? this.errorRedirectWriter : Console.Error,
+            errorRedirected: () => this.ErrOutRedirect != null);
 
         // editor.KeyBindings.Add<ClearInputCommand>(ConsoleKey.Escape);
         // TODO: Support selection commands?
@@ -572,7 +578,7 @@ public partial class ShellInterpreter : IDisposable
         {
             while (true)
             {
-                Instance.Output.Write(ShellMessageKind.RequiredInstruction, $"{MessageService.GetString(message)} ({yes}/{no})?");
+                shell.Output.Write(ShellMessageKind.RequiredInstruction, $"{MessageService.GetString(message)} ({yes}/{no})?");
 
                 ConsoleKeyInfo key;
                 try
@@ -583,7 +589,7 @@ public partial class ShellInterpreter : IDisposable
                 {
                     // No interactive console available (e.g. redirected input). Treat as
                     // a declined prompt rather than throwing.
-                    Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction);
+                    shell.Output.WriteLine(ShellMessageKind.RequiredInstruction);
                     return false;
                 }
 
@@ -595,13 +601,13 @@ public partial class ShellInterpreter : IDisposable
 
                 if (key.Key == ConsoleKey.Escape)
                 {
-                    Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction);
+                    shell.Output.WriteLine(ShellMessageKind.RequiredInstruction);
                     return false;
                 }
 
                 // intercept:true suppresses the echo, so mirror the keystroke ourselves.
-                Instance.Output.Write(ShellMessageKind.RequiredInstruction, key.KeyChar.ToString());
-                Instance.Output.WriteLine(ShellMessageKind.RequiredInstruction);
+                shell.Output.Write(ShellMessageKind.RequiredInstruction, key.KeyChar.ToString());
+                shell.Output.WriteLine(ShellMessageKind.RequiredInstruction);
 
                 if (char.ToUpper(key.KeyChar) == yes)
                 {
@@ -1032,6 +1038,11 @@ public partial class ShellInterpreter : IDisposable
         return assembly.GetName().Version?.ToString() ?? "unknown";
     }
 
+    internal static bool IsPrereleaseVersion(string version)
+    {
+        return NuGetVersion.TryParse(version, out var parsedVersion) && parsedVersion.IsPrerelease;
+    }
+
     internal static string GetDisplayCommit(Assembly assembly)
     {
         return ExtractCommitMetadata(assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion);
@@ -1211,7 +1222,11 @@ public partial class ShellInterpreter : IDisposable
 
     internal void PrintStartupStatus()
     {
-        var version = GetDisplayVersion(typeof(VersionCommand).Assembly);
+        this.PrintStartupStatus(GetDisplayVersion(typeof(VersionCommand).Assembly));
+    }
+
+    internal void PrintStartupStatus(string version)
+    {
         var mcpStatus = this.McpPort is int port
             ? MessageService.GetArgsString("shell-startup-mcp-port", "port", port.ToString())
             : MessageService.GetString("shell-startup-mcp-off");
@@ -1221,7 +1236,6 @@ public partial class ShellInterpreter : IDisposable
             version,
             "mcp_status",
             mcpStatus));
-        WriteLine(MessageService.GetString("shell-startup-preview-warning"));
     }
 
     internal async Task<int> RunAsync()
@@ -1610,7 +1624,7 @@ public partial class ShellInterpreter : IDisposable
                 throw new ShellException(MessageService.GetString("error-connection_failed"), ex);
             }
 
-            WriteLine(MessageService.GetArgsString("command-connect-connected", "account", keyProps.Id));
+            WriteLine(GetConnectionSuccessMessage(client.Endpoint, keyProps.Id));
             this.Connect(client, credentialTypeOverride: isEmulator ? "Emulator" : "AccountKey");
             return;
         }
@@ -1820,6 +1834,13 @@ public partial class ShellInterpreter : IDisposable
 
         var message = CommandException.GetDisplayMessage(System.Net.HttpStatusCode.RequestTimeout, exception.Message);
         return new ShellException(message, new TimeoutException(message, exception));
+    }
+
+    internal static string GetConnectionSuccessMessage(Uri endpoint, string accountId)
+    {
+        return ParsedDocDBConnectionString.IsLocalEmulatorEndpoint(endpoint.ToString())
+            ? MessageService.GetArgsString("command-connect-emulator-connected", "endpoint", endpoint.ToString())
+            : MessageService.GetArgsString("command-connect-connected", "account", accountId);
     }
 
     internal static string GetLocalEmulatorConnectionFailureMessage(Uri endpoint)
@@ -2257,7 +2278,7 @@ public partial class ShellInterpreter : IDisposable
                 }
             }
 
-            Write("\r" + text + new string(' ', Math.Max(0, this.transientLineLength - text.Length)));
+            this.Output.Write(ShellMessageKind.Progress, "\r" + text + new string(' ', Math.Max(0, this.transientLineLength - text.Length)));
             this.transientLineLength = text.Length;
         }
     }
@@ -2275,7 +2296,7 @@ public partial class ShellInterpreter : IDisposable
                 return;
             }
 
-            Write("\r" + new string(' ', this.transientLineLength) + "\r");
+            this.Output.Write(ShellMessageKind.Progress, "\r" + new string(' ', this.transientLineLength) + "\r");
             this.transientLineLength = 0;
         }
     }
@@ -2492,7 +2513,7 @@ public partial class ShellInterpreter : IDisposable
 
                         if (hasLongLine || jsonText.Length - lineStart >= AnsiConsole.Console.Profile.Width)
                         {
-                            this.Output.WriteResult(jsonText);
+                            this.Output.WriteLine(ShellMessageKind.Result, jsonText);
                         }
                         else
                         {
@@ -2713,7 +2734,7 @@ public partial class ShellInterpreter : IDisposable
                 if (machineModeWarningRecords
                     && (!warning.IsRendered || (renderUpdates && warning.EmittedAsMachineModeWarningRecord)))
                 {
-                    this.Output.WriteLine(ShellMessageKind.Warning, JsonSerializer.Serialize(new
+                    ShellOutput.StandardError.WriteLine(ShellMessageKind.Warning, JsonSerializer.Serialize(new
                     {
                         status = renderUpdates && warning.EmittedAsMachineModeWarningRecord ? "warning-update" : "warning",
                         warning = warning.Message,
@@ -2728,7 +2749,7 @@ public partial class ShellInterpreter : IDisposable
                         continue;
                     }
 
-                    this.Output.WriteLine(ShellMessageKind.Warning, warning.Message);
+                    ShellOutput.StandardError.WriteLine(ShellMessageKind.Warning, warning.Message);
                 }
                 else if (this.ErrOutRedirect != null)
                 {
@@ -2741,7 +2762,7 @@ public partial class ShellInterpreter : IDisposable
                 }
                 else
                 {
-                    this.Output.WriteLine(ShellMessageKind.Warning, warning.Message);
+                    ShellOutput.StandardError.WriteLine(ShellMessageKind.Warning, warning.Message);
                 }
 
                 warning.IsRendered = true;
@@ -3526,13 +3547,14 @@ public partial class ShellInterpreter : IDisposable
             // Warnings deferred while stderr was the console belong there, not in this file.
             foreach (var warning in warnings.Where(warning => !warning.IsRendered && warning.DeferredToConsole))
             {
-                this.Output.WriteLine(ShellMessageKind.Warning, warning.Message);
+                ShellOutput.StandardError.WriteLine(ShellMessageKind.Warning, warning.Message);
                 warning.IsRendered = true;
                 warning.LastRenderedMessage = warning.Message;
             }
         }
 
-        var replacedRedirectPath = this.ErrOutRedirect != null && !this.AppendErrRedirection
+        var appendToErrorRedirect = this.AppendErrRedirection || this.ErrorRedirectWarnings.HasOutput;
+        var replacedRedirectPath = this.ErrOutRedirect != null && !appendToErrorRedirect
             ? Path.GetFullPath(this.ErrOutRedirect)
             : null;
         var outputWarnings = warnings?.Where(warning =>
@@ -3555,7 +3577,7 @@ public partial class ShellInterpreter : IDisposable
         if (this.ErrOutRedirect != null)
         {
             var payload = json + Environment.NewLine;
-            if (this.AppendErrRedirection)
+            if (appendToErrorRedirect)
             {
                 File.AppendAllText(this.ErrOutRedirect, payload);
             }
@@ -3592,7 +3614,7 @@ public partial class ShellInterpreter : IDisposable
             throw new InvalidOperationException("Cannot redirect error output without an error redirection path.");
         }
 
-        if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
+        if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasContent)
         {
             File.AppendAllText(this.ErrOutRedirect, text);
         }
@@ -3713,7 +3735,7 @@ public partial class ShellInterpreter : IDisposable
                 : prefix + e.Message
                     + (!string.IsNullOrEmpty(hint) ? Environment.NewLine + hint : string.Empty)
                     + (showInner ? Environment.NewLine + FormatInnerExceptionMessages(e.InnerException) : string.Empty);
-            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasContent)
             {
                 File.AppendAllText(this.ErrOutRedirect, errTxt);
             }
@@ -3810,7 +3832,7 @@ public partial class ShellInterpreter : IDisposable
         if (fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasContent)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }
@@ -3852,7 +3874,7 @@ public partial class ShellInterpreter : IDisposable
                 errorMessage += Environment.NewLine + string.Join(Environment.NewLine, callTrace);
             }
 
-            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasContent)
             {
                 File.AppendAllText(this.ErrOutRedirect, errorMessage);
             }
@@ -3998,7 +4020,7 @@ public partial class ShellInterpreter : IDisposable
         if (redirected && fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasContent)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }
@@ -4050,7 +4072,7 @@ public partial class ShellInterpreter : IDisposable
         if (fileBuffer != null)
         {
             var payload = fileBuffer.ToString();
-            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasWarning)
+            if (this.AppendErrRedirection || this.ErrorRedirectWarnings.HasContent)
             {
                 File.AppendAllText(this.ErrOutRedirect!, payload);
             }
@@ -4194,6 +4216,30 @@ public partial class ShellInterpreter : IDisposable
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Routes <see cref="ShellOutput"/> stderr writes to the active <c>2&gt;</c>/<c>2&gt;&gt;</c>
+    /// target. The first write in a redirect scope honors overwrite; later writes append.
+    /// </summary>
+    private sealed class ErrorRedirectWriter(ShellInterpreter shell) : TextWriter
+    {
+        public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
+
+        public override void Write(char value) => this.Write(value.ToString());
+
+        public override void Write(char[] buffer, int index, int count) => this.Write(new string(buffer, index, count));
+
+        public override void Write(string? value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return;
+            }
+
+            shell.WriteErrorRedirect(value);
+            shell.ErrorRedirectWarnings.HasOutput = true;
+        }
     }
 
     /*
