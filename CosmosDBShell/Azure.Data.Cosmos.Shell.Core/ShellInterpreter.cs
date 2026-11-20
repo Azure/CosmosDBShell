@@ -1749,7 +1749,7 @@ public partial class ShellInterpreter : IDisposable
             }
             else
             {
-                this.Output.WriteLine(ShellMessageKind.Information, MessageService.GetString("shell-connect-devicecode-stdio"));
+                this.Output.WriteLine(ShellMessageKind.RequiredInstruction, MessageService.GetString("shell-connect-devicecode-stdio"));
             }
 
             var deviceCodeOptions = new DeviceCodeCredentialOptions

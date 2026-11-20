@@ -263,6 +263,7 @@ internal class BucketCommand : CosmosCommand, IStateVisitor<CommandState, ShellI
                 message = MessageService.GetString("command-bucket-switched_bucket", new Dictionary<string, object> { { "bucket", Theme.FormatTableValue(bucket.ToString(CultureInfo.InvariantCulture)) } });
             }
         }
+
         var clientBucket = client.ClientOptions.ThroughputBucket;
         return new CommandState
         {

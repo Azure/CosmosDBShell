@@ -674,7 +674,7 @@ internal class Program
     {
         if (stdio)
         {
-            ShellOutput.StandardError.WriteLine(ShellMessageKind.Information, text);
+            ShellOutput.StandardError.WriteLine(ShellMessageKind.RequiredInstruction, text);
         }
         else
         {
