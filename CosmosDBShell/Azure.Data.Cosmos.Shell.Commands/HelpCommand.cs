@@ -94,7 +94,7 @@ internal class HelpCommand : CosmosCommand
             ShellInterpreter.WriteLine(MessageService.GetString("error-command-not-found", MessageService.Args("command", cmdStr)));
             return new ErrorCommandState(CommandException.Usage("help", cmdStr + " not found."))
             {
-                OutputRendered = true,
+                OutputRendered = !ShellInterpreter.Instance.IsMachineMode && ShellInterpreter.Instance.ErrOutRedirect == null,
             };
         }
 

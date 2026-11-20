@@ -62,8 +62,8 @@ internal class ThemeCommand : CosmosCommand
             _ => this.RunUnknownAction(commandState, action),
         };
 
-        // Theme actions print their own diagnostics before returning an error state.
-        if (result.IsError)
+        // Suppressed or redirected diagnostics still need the shell's error reporting.
+        if (result.IsError && !shell.IsMachineMode && shell.ErrOutRedirect == null)
         {
             result.OutputRendered = true;
         }

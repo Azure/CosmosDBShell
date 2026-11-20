@@ -27,7 +27,7 @@ public class ShellProcessTests
 
     public static IEnumerable<object?[]> ReturnedErrorCases()
     {
-        string[] commands = ["theme use missing-bug-bash-theme", "theme validate", "edit"];
+        string[] commands = ["theme use missing-bug-bash-theme", "theme validate", "edit", "help missing-bug-bash-theme"];
         string?[] modes = [null, "json", "csv", "quiet", "verbose"];
         foreach (var command in commands)
         {
@@ -76,7 +76,7 @@ public class ShellProcessTests
             args.AddRange(["-c", command]);
             var result = await RunShellAsync(null, args, TestContext.Current.CancellationToken);
 
-            Assert.Equal(ShellExitCode.GeneralFailure, result.ExitCode);
+            Assert.Equal(command.StartsWith("help ", StringComparison.Ordinal) ? ShellExitCode.UsageError : ShellExitCode.GeneralFailure, result.ExitCode);
             Assert.Empty(result.StdOut);
             using var error = JsonDocument.Parse(result.RawStdErr);
             Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
@@ -94,6 +94,8 @@ public class ShellProcessTests
     [Theory]
     [InlineData("theme use missing-bug-bash-theme", false)]
     [InlineData("theme use missing-bug-bash-theme", true)]
+    [InlineData("help missing-bug-bash-theme", false)]
+    [InlineData("help missing-bug-bash-theme", true)]
     [InlineData("edit", false)]
     [InlineData("edit", true)]
     public async Task ReturnedCommandError_HonorsStderrRedirection(string command, bool append)
@@ -113,7 +115,7 @@ public class ShellProcessTests
                 ["--output", "json", "-c", $"{command} {(append ? "2>>" : "2>")} {JsonSerializer.Serialize(errorFile)}"],
                 TestContext.Current.CancellationToken);
 
-            Assert.Equal(ShellExitCode.GeneralFailure, result.ExitCode);
+            Assert.Equal(command.StartsWith("help ", StringComparison.Ordinal) ? ShellExitCode.UsageError : ShellExitCode.GeneralFailure, result.ExitCode);
             Assert.Empty(result.StdOut);
             Assert.Empty(result.RawStdErr);
             var text = await File.ReadAllTextAsync(errorFile, TestContext.Current.CancellationToken);
