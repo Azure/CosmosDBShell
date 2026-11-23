@@ -217,7 +217,31 @@ public class ToolOperationsCallToolTests : IDisposable
     [InlineData("dir", "{\"directory\":\"missing-directory\",\"recursive\":true,\"list\":true}")]
     [InlineData("dir", "{\"d\":\"missing-directory\",\"r\":true,\"l\":true}")]
     [InlineData("cat", "{\"path\":\"missing-file.json\"}")]
-    public async Task CallTool_LocalFilesystemReadsWithoutConfirmation_RefuseBeforeAccess(string commandName, string argumentsJson)
+    [InlineData("jq", "{\"args\":[\"-n\",\"--rawfile\",\"text\",\"missing-file.json\",\"$text\"]}")]
+    public async Task CallTool_RestrictedFilesystemCommands_RefuseBeforeAccess(string commandName, string argumentsJson)
+    {
+        var history = ShellInterpreter.Instance.History.ToArray();
+        var arguments = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argumentsJson);
+        var result = await CreateToolOperations().CallToolHandler(
+            CallContext(commandName, arguments), TestContext.Current.CancellationToken);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Contains($"Command '{commandName}' is restricted for MCP", root.GetProperty("error").GetString());
+            Assert.DoesNotContain("needs your confirmation", root.GetProperty("error").GetString());
+        }
+
+        Assert.Equal(history, ShellInterpreter.Instance.History);
+    }
+
+    [Theory]
+    [InlineData("import", "{\"file\":\"missing-file.json\"}")]
+    [InlineData("import", "{\"file\":\"missing-file.json\",\"dry-run\":true}")]
+    [InlineData("export", "{\"file\":\"missing-file.json\"}")]
+    [InlineData("export", "{\"file\":\"missing-file.json\",\"force\":true}")]
+    public async Task CallTool_FileTransfersWithoutConfirmation_RefuseBeforeAccess(string commandName, string argumentsJson)
     {
         var history = ShellInterpreter.Instance.History.ToArray();
         var arguments = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argumentsJson);
@@ -238,87 +262,60 @@ public class ToolOperationsCallToolTests : IDisposable
     }
 
     [Theory]
-    [InlineData("dir", "accept")]
-    [InlineData("cat", "accept")]
-    [InlineData("dir", "decline")]
-    [InlineData("cat", "decline")]
-    [InlineData("dir", "cancel")]
-    [InlineData("cat", "cancel")]
-    [InlineData("dir", "throw")]
-    [InlineData("cat", "throw")]
-    public async Task ExecuteTool_LocalFilesystemReads_OnlyAccessFilesAfterApproval(string commandName, string action)
+    [InlineData("import", "accept")]
+    [InlineData("export", "accept")]
+    [InlineData("import", "decline")]
+    [InlineData("export", "decline")]
+    [InlineData("import", "cancel")]
+    [InlineData("export", "cancel")]
+    [InlineData("import", "throw")]
+    [InlineData("export", "throw")]
+    public async Task ExecuteTool_FileTransfers_OnlyExecuteAfterApproval(string commandName, string action)
     {
-        var directory = Path.Join(Path.GetTempPath(), $"cosmos-mcp-read-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
-        var file = Path.Join(directory, "sample.txt");
-        const string content = "local file confirmation test";
-        await File.WriteAllTextAsync(file, content, TestContext.Current.CancellationToken);
         var shell = ShellInterpreter.Instance;
-        CosmosCommand command = commandName == "dir"
-            ? new DirCommand { Directory = directory, Filter = "*.txt", Recursive = true, ListOnly = true }
-            : new CatCommand { FilePath = file };
-        var commandLine = commandName == "dir"
-            ? $"dir \"*.txt\" --directory \"{directory}\" --recursive --list"
-            : $"cat \"{file}\"";
+        var command = new TrackingCommand();
+        var commandLine = $"{commandName} \"sample.json\"";
         var history = shell.History.ToArray();
-        try
-        {
-            var result = await CreateToolOperations().ExecuteToolAsync(
-                shell.App.Commands[commandName], command, commandLine,
-                (request, _, _, confirmationCommandLine) =>
-                {
-                    Assert.Contains("Confirm local filesystem access", request.Message);
-                    Assert.Contains(commandLine, request.Message);
-                    Assert.Contains(Directory.GetCurrentDirectory(), request.Message);
-                    Assert.Contains("returned to the MCP client", request.Message);
-                    Assert.DoesNotContain("permanently change or delete", request.Message);
-                    Assert.Equal(
-                        new[] { commandLine, Directory.GetCurrentDirectory() },
-                        JsonSerializer.Deserialize<string[]>(confirmationCommandLine));
-                    if (action == "throw")
-                    {
-                        throw new InvalidOperationException("prompt failed");
-                    }
-
-                    return new ValueTask<ElicitResult>(new ElicitResult { Action = action });
-                }, TestContext.Current.CancellationToken);
-
-            var (isError, root, document) = ReadResult(result);
-            using (document)
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands[commandName], command, commandLine,
+            (request, _, _, confirmationCommandLine) =>
             {
-                Assert.Equal(action != "accept", isError);
-                if (action == "accept")
+                Assert.Contains("Confirm local filesystem access", request.Message);
+                Assert.Contains(commandLine, request.Message);
+                Assert.Contains(Directory.GetCurrentDirectory(), request.Message);
+                Assert.Contains("Account:", request.Message);
+                Assert.Contains("Current location:", request.Message);
+                Assert.Contains(commandName == "import" ? "upload its contents" : "overwrite an existing file", request.Message);
+                Assert.DoesNotContain("permanently change or delete", request.Message);
+                Assert.Equal(
+                    new[] { commandLine, Directory.GetCurrentDirectory() },
+                    JsonSerializer.Deserialize<string[]>(confirmationCommandLine));
+                if (action == "throw")
                 {
-                    if (commandName == "cat")
-                    {
-                        Assert.Equal(content, root.GetProperty("result").GetString());
-                    }
-                    else
-                    {
-                        var entry = Assert.Single(root.GetProperty("result").GetProperty("values").EnumerateArray());
-                        Assert.Equal("sample.txt", entry.GetProperty("name").GetString());
-                        Assert.Equal(file, entry.GetProperty("path").GetString());
-                    }
+                    throw new InvalidOperationException("prompt failed");
                 }
-                else
-                {
-                    Assert.Equal(history, shell.History);
-                    Assert.False(root.TryGetProperty("result", out _));
-                }
-            }
-        }
-        finally
+
+                return new ValueTask<ElicitResult>(new ElicitResult { Action = action });
+            }, TestContext.Current.CancellationToken);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
         {
-            File.Delete(file);
-            Directory.Delete(directory);
+            Assert.Equal(action != "accept", isError);
+            Assert.Equal(action == "accept", command.Executed);
+            if (action != "accept")
+            {
+                Assert.Equal(history, shell.History);
+                Assert.False(root.TryGetProperty("result", out _));
+            }
         }
     }
 
     [Theory]
-    [InlineData("dir", false)]
-    [InlineData("cat", false)]
-    [InlineData("dir", true)]
-    [InlineData("cat", true)]
+    [InlineData("import", false)]
+    [InlineData("export", false)]
+    [InlineData("import", true)]
+    [InlineData("export", true)]
     public async Task ExecuteTool_LocalFilesystemConfirmationRetry_BindsWorkingDirectory(string commandName, bool differentDirectory)
     {
         var shell = ShellInterpreter.Instance;

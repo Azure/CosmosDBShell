@@ -91,8 +91,8 @@ internal class ToolOperations
 
             if (RequiresConfirmation(command))
             {
-                description += command.CommandName is "dir" or "cat"
-                    ? "Warning: This command accesses the local filesystem and requires explicit user confirmation before it runs. File contents, names, and paths may contain sensitive information. If the client cannot confirm, the command is refused."
+                description += command.CommandName is "import" or "export"
+                    ? "Warning: This command transfers data between local files and Cosmos DB and requires explicit user confirmation before it runs, including import dry runs and forced exports. Imports can upload sensitive file contents and exports can overwrite local files. If the client cannot confirm, the command is refused."
                     : command.CommandName == "bulk"
                         ? "Warning: Bulk writes and dry-run selections that save a plan require explicit user confirmation, even with yes=true. Only dry runs without save skip confirmation and issue no database writes. Bulk operations are not transactions."
                         : "Warning: This command is destructive. When invoked through MCP it always requires explicit user confirmation before it runs — even when a force or no-prompt argument is supplied. If the client cannot confirm, the command is refused.";
@@ -773,10 +773,12 @@ internal class ToolOperations
             var snapshot = await shell.RunSerializedAsync(
                 () =>
                 {
-                    var workingDirectory = command.CommandName is "dir" or "cat" ? Directory.GetCurrentDirectory() : null;
-                    var context = workingDirectory is null
-                        ? DescribeContext(shell.State)
-                        : $"Local working directory: {workingDirectory}";
+                    var workingDirectory = command.CommandName is "import" or "export" ? Directory.GetCurrentDirectory() : null;
+                    var context = DescribeContext(shell.State);
+                    if (workingDirectory is not null)
+                    {
+                        context += $"\nLocal working directory: {workingDirectory}";
+                    }
                     return Task.FromResult((Version: shell.StateVersion, Context: context, WorkingDirectory: workingDirectory));
                 },
                 cancellationToken);
@@ -936,7 +938,9 @@ internal class ToolOperations
                 (context is null ? string.Empty : context + "\n") +
                 (workingDirectory is null
                     ? "This can permanently change or delete data in the connected Azure Cosmos DB account and cannot be undone. Approve this operation?"
-                    : "This reads local file contents or lists local files and directories. The results will be returned to the MCP client and may contain sensitive information. Approve this operation?"),
+                    : commandName == "import"
+                        ? "This reads a local data file and can upload its contents to the connected Azure Cosmos DB account. Dry runs still read and validate the file but do not upload it. The file may contain sensitive information. Approve this operation?"
+                        : "This exports data from the connected Azure Cosmos DB account into a local file and can overwrite an existing file when force is supplied. The exported data may contain sensitive information. Approve this operation?"),
             RequestedSchema = new ElicitRequestParams.RequestSchema(),
         };
 

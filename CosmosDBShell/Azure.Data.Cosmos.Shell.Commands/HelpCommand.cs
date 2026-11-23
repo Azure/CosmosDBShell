@@ -410,7 +410,7 @@ internal class HelpCommand : CosmosCommand
         {
             helpJson["isRestricted"] = cmd.CommandName == "bulk"
                 ? MessageService.GetString("command-bulk-mcp-help")
-                : cmd.CommandName is "dir" or "cat"
+                : cmd.CommandName is "import" or "export"
                     ? "Local filesystem access through MCP requires explicit user confirmation."
                     : "This tool can't be run via MCP. User only.";
         }
