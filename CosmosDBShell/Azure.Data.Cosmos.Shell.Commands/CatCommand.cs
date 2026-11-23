@@ -13,7 +13,7 @@ using Azure.Data.Cosmos.Shell.Util;
 [CosmosCommand("cat")]
 [CosmosExample("cat config.json", DescriptionKey = "command-cat-example-1")]
 [CosmosExample("cat data.txt", DescriptionKey = "command-cat-example-2")]
-[McpAnnotation(Restricted = true, Confirmable = true, ReadOnly = true, Idempotent = true)]
+[McpAnnotation(Restricted = true, ReadOnly = true, Idempotent = true)]
 internal class CatCommand : CosmosCommand, IStateVisitor<int, string>
 {
     [CosmosParameter("path", IsRequired = false, ParameterType = ParameterType.File)]

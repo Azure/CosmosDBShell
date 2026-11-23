@@ -24,7 +24,7 @@ using Spectre.Console;
 [CosmosExample("dir *.cs --directory=src", DescriptionKey = "command-dir-example-5")]
 [CosmosExample("dir -r", DescriptionKey = "command-dir-example-6")]
 [CosmosExample("dir -l", DescriptionKey = "command-dir-example-7")]
-[McpAnnotation(Restricted = true, Confirmable = true, ReadOnly = true, Idempotent = true)]
+[McpAnnotation(Restricted = true, ReadOnly = true, Idempotent = true)]
 internal class DirCommand : CosmosCommand
 {
     [CosmosParameter("filter", IsRequired = false)]
