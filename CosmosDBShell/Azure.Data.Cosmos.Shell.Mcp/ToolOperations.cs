@@ -779,6 +779,7 @@ internal class ToolOperations
                     {
                         context += $"\nLocal working directory: {workingDirectory}";
                     }
+
                     return Task.FromResult((Version: shell.StateVersion, Context: context, WorkingDirectory: workingDirectory));
                 },
                 cancellationToken);
