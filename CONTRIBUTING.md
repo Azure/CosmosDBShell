@@ -169,6 +169,9 @@ Repository administrators should keep that check required, or require
 
 ### Running Against the Emulator
 
+CI pins the Linux preview emulator image by digest to avoid rolling-tag regressions.
+Update the pin only after the full Linux emulator suite passes with the replacement.
+
 You can develop and test without an Azure subscription by using the [Azure Cosmos DB Emulator](https://learn.microsoft.com/azure/cosmos-db/emulator):
 
 ```bash
