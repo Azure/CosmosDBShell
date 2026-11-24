@@ -20,9 +20,12 @@ using Azure.Data.Cosmos.Shell.States;
 
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Azure.Cosmos;
 
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+
+using NSubstitute;
 
 using Spectre.Console;
 
@@ -523,7 +526,7 @@ public class ToolOperationsCallToolTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ExecuteTool_DefersWarningsAndRestoresInvocationScope(bool fail)
+    public async Task ExecuteTool_RendersDeferredWarningsAndRestoresInvocationScope(bool fail)
     {
         var shell = ShellInterpreter.Instance;
         var originalMcpPort = shell.McpPort;
@@ -545,8 +548,12 @@ public class ToolOperationsCallToolTests : IDisposable
             Assert.True(command.WasMcpInvocation);
             Assert.False(shell.IsMcpInvocation);
             Assert.NotNull(command.Warning);
-            Assert.False(command.Warning.IsRendered);
-            Assert.Empty(await File.ReadAllTextAsync(stderrFile, TestContext.Current.CancellationToken));
+            Assert.True(command.Warning.IsRendered);
+            Assert.True(command.WarningWasDeferredDuringExecution);
+            var diagnostics = await File.ReadAllTextAsync(stderrFile, TestContext.Current.CancellationToken);
+            Assert.Equal(1, diagnostics.Split("mutation warning", StringSplitOptions.None).Length - 1);
+            Assert.DoesNotContain("updated mutation warning", diagnostics);
+            Assert.Equal(fail, diagnostics.Contains("mutation failed", StringComparison.Ordinal));
             var (_, root, document) = ReadResult(result);
             using (document)
             {
@@ -570,6 +577,8 @@ public class ToolOperationsCallToolTests : IDisposable
 
         public CommandWarning? Warning { get; private set; }
 
+        public bool WarningWasDeferredDuringExecution { get; private set; }
+
         public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
         {
             this.WasMcpInvocation = shell.IsMcpInvocation;
@@ -579,6 +588,7 @@ public class ToolOperationsCallToolTests : IDisposable
             shell.RenderUpdatedWarnings(commandState);
             commandState.UpdateWarning(this.Warning, "mutation warning");
             shell.RenderWarnings(commandState);
+            this.WarningWasDeferredDuringExecution = !this.Warning.IsRendered;
             if (this.ShouldFail)
             {
                 throw new CommandException(commandText, "mutation failed");
@@ -598,6 +608,345 @@ public class ToolOperationsCallToolTests : IDisposable
             TestContext.Current.CancellationToken);
         Assert.False(result.IsError == true);
         Assert.True(command.Executed);
+    }
+
+    [Theory]
+    [InlineData("pwd", null)]
+    [InlineData("pwd", "json")]
+    [InlineData("pwd", "csv")]
+    [InlineData("pwd", "table")]
+    [InlineData("help", null)]
+    [InlineData("ls", null)]
+    [InlineData("ls", "json")]
+    [InlineData("ls", "csv")]
+    [InlineData("ls", "table")]
+    public async Task CallTool_RendersResultLikeTypedCommand(string command, string? sessionFormat)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var originalState = shell.State;
+        var originalFormat = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        using var output = new StringWriter();
+        using var client = Substitute.For<CosmosClient>();
+        client.Endpoint.Returns(new Uri("https://example.documents.azure.com/"));
+        client.GetDatabaseQueryIterator<DatabaseProperties>().Returns(Substitute.For<FeedIterator<DatabaseProperties>>());
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = sessionFormat };
+            shell.State = command == "ls" ? new ConnectedState(client) : new DisconnectedState();
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", null);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            Console.SetOut(output);
+            var arguments = command == "help"
+                ? new Dictionary<string, JsonElement> { ["command"] = Json("\"connect\""), ["plain"] = Json("true") }
+                : null;
+            var typedCommand = command == "help" ? "help connect --plain" : command;
+
+            var typed = await shell.ExecuteCommandAsync(typedCommand, TestContext.Current.CancellationToken);
+            Assert.False(typed.IsError);
+            var expected = output.ToString();
+            Assert.False(string.IsNullOrWhiteSpace(expected));
+            output.GetStringBuilder().Clear();
+
+            var result = await CreateToolOperations().CallToolHandler(CallContext(command, arguments), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError == true);
+            var actual = output.ToString();
+            var echoEnd = actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
+            Assert.Equal(expected, actual[echoEnd..]);
+            Assert.True(result.StructuredContent!.Value.TryGetProperty("result", out _));
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            AnsiConsole.Console = savedConsole;
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", originalFormat);
+            shell.State = originalState;
+            shell.Options = originalOptions;
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CallTool_EchoWithCsvSessionDefault_PreservesTextResult(bool environmentDefault)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var originalFormat = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        using var output = new StringWriter();
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = environmentDefault ? null : "csv" };
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", environmentDefault ? "csv" : null);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            Console.SetOut(output);
+
+            var result = await CreateToolOperations().CallToolHandler(
+                CallContext("echo", new Dictionary<string, JsonElement> { ["messages"] = Json("[\"hello\"]") }),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError == true);
+            var root = result.StructuredContent!.Value;
+            Assert.Equal("hello", root.GetProperty("result").GetString());
+            Assert.Equal("hello", root.GetProperty("outputText").GetString());
+            var actual = output.ToString();
+            var echoEnd = actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
+            Assert.Equal("hello" + Environment.NewLine, actual[echoEnd..]);
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            AnsiConsole.Console = savedConsole;
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", originalFormat);
+            shell.Options = originalOptions;
+        }
+    }
+
+    [Theory]
+    [InlineData("theme", "use")]
+    [InlineData("theme", "show")]
+    [InlineData("theme", "edit")]
+    [InlineData("theme", null)]
+    [InlineData("help", null)]
+    public async Task CallTool_AlreadyReportedFailure_IsDisplayedOnce(string command, string? action)
+    {
+        const string unknownName = "nonexistent-mcp-test-name";
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        var savedError = Console.Error;
+        using var output = new StringWriter();
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = "user" };
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            AnsiConsole.Console.Profile.Width = 200;
+            Console.SetOut(output);
+            Console.SetError(output);
+            var arguments = new Dictionary<string, JsonElement>();
+            if (command == "help")
+            {
+                arguments["command"] = JsonSerializer.SerializeToElement(unknownName);
+            }
+            else
+            {
+                arguments["action"] = JsonSerializer.SerializeToElement(action ?? unknownName);
+                if (action != null)
+                {
+                    arguments["name"] = JsonSerializer.SerializeToElement(unknownName);
+                }
+            }
+
+            var result = await CreateToolOperations().CallToolHandler(
+                CallContext(command, arguments), TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            Assert.Contains(unknownName, result.StructuredContent!.Value.GetProperty("error").GetString());
+            var actual = output.ToString();
+            var echoEnd = actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
+            Assert.Equal(1, actual[echoEnd..].Split(unknownName, StringSplitOptions.None).Length - 1);
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            Console.SetError(savedError);
+            AnsiConsole.Console = savedConsole;
+            shell.Options = originalOptions;
+        }
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("user", null)]
+    [InlineData("json", null)]
+    [InlineData("csv", null)]
+    [InlineData("table", null)]
+    [InlineData(null, "json")]
+    [InlineData(null, "csv")]
+    [InlineData("json", "csv")]
+    [InlineData("csv", "json")]
+    public async Task ExecuteTool_RendersSelectedFormatWithoutChangingMcpResult(string? format, string? sessionFormat)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var originalFormat = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        using var output = new StringWriter();
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = sessionFormat };
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", null);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            Console.SetOut(output);
+            var command = new PresentationCommand { Format = format };
+            var expectedState = await command.ExecuteAsync(shell, new CommandState(), "echo", TestContext.Current.CancellationToken);
+            shell.PrintState(expectedState);
+            var expected = output.ToString();
+            Assert.False(string.IsNullOrWhiteSpace(expected));
+            output.GetStringBuilder().Clear();
+
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["echo"], command, "echo presentation", null, TestContext.Current.CancellationToken);
+
+            Assert.Equal("echo presentation" + Environment.NewLine + expected, output.ToString());
+            Assert.False(result.IsError == true);
+            var root = result.StructuredContent!.Value;
+            Assert.Equal("value", Assert.Single(root.GetProperty("result").EnumerateArray()).GetProperty("name").GetString());
+            Assert.Equal("next-page", root.GetProperty("continuationToken").GetString());
+            if ((format ?? sessionFormat) == "csv")
+            {
+                Assert.Equal(expected.TrimEnd('\r', '\n'), root.GetProperty("outputText").GetString()!.TrimEnd('\r', '\n'));
+            }
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            AnsiConsole.Console = savedConsole;
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", originalFormat);
+            shell.Options = originalOptions;
+        }
+    }
+
+    private sealed class PresentationCommand : CosmosCommand
+    {
+        [CosmosOption("format")]
+        public string? Format { get; init; }
+
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            commandState.SetFormat(this.Format);
+            commandState.Result = new ShellJson(Json("[{\"name\":\"value\"}]"));
+            commandState.RenderUser = () => AnsiConsole.WriteLine("friendly value");
+            commandState.IsPage = true;
+            commandState.ContinuationToken = "next-page";
+            return Task.FromResult(commandState);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ExecuteTool_ReturnedFailure_IsVisibleAndPreservesStructuredResult(bool structured, bool machineMode)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        var savedError = Console.Error;
+        using var output = new StringWriter();
+        using var diagnostics = new StringWriter();
+        var exception = new CommandException("echo", "terminal failure");
+        CommandState state = structured
+            ? new StructuredErrorCommandState(exception, new ShellJson(Json("{\"failed\":1}")))
+            : new ErrorCommandState(exception);
+        state.AddWarning("terminal warning");
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = machineMode ? "json" : "user" };
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            Console.SetOut(output);
+            Console.SetError(diagnostics);
+
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["echo"], new ResultCommand(state), "echo failure", null, TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            var root = result.StructuredContent!.Value;
+            Assert.Contains("terminal failure", root.GetProperty("error").GetString());
+            Assert.Equal("terminal warning", Assert.Single(root.GetProperty("warnings").EnumerateArray()).GetString());
+            Assert.True(state.OutputRendered);
+            var combinedOutput = $"{output}{diagnostics}";
+            Assert.Contains("terminal warning", combinedOutput);
+            if (structured)
+            {
+                Assert.Equal(1, root.GetProperty("result").GetProperty("failed").GetInt32());
+                Assert.Contains("\"failed\"", combinedOutput);
+            }
+            else
+            {
+                Assert.Contains("terminal failure", combinedOutput);
+            }
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            Console.SetError(savedError);
+            AnsiConsole.Console = savedConsole;
+            shell.Options = originalOptions;
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteTool_RenderingFailure_IsReportedToTerminalAndMcpClient()
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var savedConsole = AnsiConsole.Console;
+        using var output = new StringWriter();
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = "user" };
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            var state = new CommandState { RenderUser = () => throw new InvalidOperationException("rendering failed") };
+
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["echo"], new ResultCommand(state), "echo render", null, TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            Assert.Contains("rendering failed", output.ToString());
+            Assert.Contains("rendering failed", result.StructuredContent!.Value.GetProperty("error").GetString());
+            Assert.False(shell.IsMcpInvocation);
+        }
+        finally
+        {
+            AnsiConsole.Console = savedConsole;
+            shell.Options = originalOptions;
+        }
+    }
+
+    private sealed class ResultCommand(CommandState result) : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+            => Task.FromResult(result);
     }
 
     [Fact]

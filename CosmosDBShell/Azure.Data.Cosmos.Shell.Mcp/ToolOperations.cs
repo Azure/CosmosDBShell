@@ -824,13 +824,26 @@ internal class ToolOperations
                             bulk.ConfirmationApproved = confirmedVersion.HasValue;
                         }
 
-                        var response = await shell.ExecuteCosmosCommandAsync(cmd, commandState, command.CommandName, cancellationToken, command.IsExternal);
-                        shell.RefreshPrompt();
+                        CommandState response;
+                        try
+                        {
+                            response = await shell.ExecuteCosmosCommandAsync(cmd, commandState, command.CommandName, cancellationToken, command.IsExternal);
+                        }
+                        catch (Exception ex)
+                        {
+                            var error = new ErrorCommandState(ex);
+                            error.ShareWarningsFrom(commandState);
+                            shell.PrintCommandResult(error, commandLine);
+                            throw;
+                        }
+
+                        response = shell.PrintCommandResult(response, commandLine);
                         return McpResponseFactory.CreateSuccess(response, shell.State);
                     }
                     finally
                     {
                         shell.IsMcpInvocation = previousMcpInvocation;
+                        shell.RefreshPrompt();
                     }
                 },
                 cancellationToken);

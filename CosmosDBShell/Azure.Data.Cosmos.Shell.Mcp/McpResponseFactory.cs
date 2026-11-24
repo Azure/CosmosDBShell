@@ -109,7 +109,9 @@ internal static class McpResponseFactory
 
         if (commandState.OutputFormat == OutputFormat.CSV)
         {
-            var outputText = commandState.GenerateOutputText();
+            var outputText = commandState.Result?.DataType == DataType.Json
+                ? commandState.GenerateOutputText()
+                : commandState.Result?.ConvertShellObject(DataType.Text) as string;
             if (!string.IsNullOrWhiteSpace(outputText))
             {
                 payload["outputText"] = outputText;

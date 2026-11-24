@@ -92,7 +92,10 @@ internal class HelpCommand : CosmosCommand
             // Neither command, statement, nor help topic
             AnsiConsole.Markup(Theme.FormatError(MessageService.GetString("error")) + " ");
             ShellInterpreter.WriteLine(MessageService.GetString("error-command-not-found", MessageService.Args("command", cmdStr)));
-            return new ErrorCommandState(CommandException.Usage("help", cmdStr + " not found."));
+            return new ErrorCommandState(CommandException.Usage("help", cmdStr + " not found."))
+            {
+                OutputRendered = !ShellInterpreter.Instance.IsMachineMode && ShellInterpreter.Instance.ErrOutRedirect == null,
+            };
         }
 
         if (cmd == null)
