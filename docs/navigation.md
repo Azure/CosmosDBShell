@@ -10,6 +10,10 @@ Account → Databases → Containers → Items
 
 There are **no folders inside a container** – containers hold items (JSON documents) directly. Use `ls` to list the current level and `cd` to change scope. The `pwd` command prints the current location explicitly.
 
+For a local Cosmos DB emulator connection (`localhost` or `127.0.0.1`), the
+connection message shows the emulator endpoint and the prompt uses `emulator`
+instead of an account name, for example `emulator >` or `emulator MyDb >`.
+
 ## Moving Around
 
 `doctor` checks the current scope without navigating. Its `--database` and

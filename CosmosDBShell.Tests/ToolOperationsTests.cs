@@ -328,6 +328,48 @@ public class ToolOperationsTests
         Assert.True(tool.Annotations.OpenWorldHint);
     }
 
+    [Theory]
+    [InlineData("dir")]
+    [InlineData("cat")]
+    [InlineData("jq")]
+    public void GetTool_LocalFilesystemCommands_AreRestricted(string commandName)
+    {
+        var factory = new CommandRunner().Commands[commandName];
+        var tool = ToolOperations.GetTool(factory);
+
+        Assert.True(factory.McpRestricted);
+        Assert.False(factory.McpAnnotation!.Confirmable);
+        Assert.Contains("cannot be invoked through MCP", tool.Description);
+        Assert.DoesNotContain("requires explicit user confirmation", tool.Description);
+
+        var help = HelpCommand.PrintCommandHelp(commandName, new CommandRunner(), plain: true);
+        var helpJson = Assert.IsType<ShellJson>(help.Result).Value;
+        Assert.Contains("can't be run via MCP", helpJson.GetProperty("isRestricted").GetString());
+    }
+
+    [Theory]
+    [InlineData("import")]
+    [InlineData("export")]
+    public void GetTool_FileTransfers_RequireConfirmationWithoutDestructiveHints(string commandName)
+    {
+        var factory = new CommandRunner().Commands[commandName];
+        var tool = ToolOperations.GetTool(factory);
+
+        Assert.True(factory.McpRestricted);
+        Assert.True(factory.McpAnnotation!.Confirmable);
+        Assert.False(factory.McpAnnotation.Destructive);
+        Assert.Contains("local files", tool.Description);
+        Assert.Contains("requires explicit user confirmation", tool.Description);
+        Assert.DoesNotContain("cannot be invoked through MCP", tool.Description);
+        Assert.NotNull(tool.Annotations);
+        Assert.NotEqual(true, tool.Annotations.ReadOnlyHint);
+        Assert.NotEqual(true, tool.Annotations.DestructiveHint);
+
+        var help = HelpCommand.PrintCommandHelp(commandName, new CommandRunner(), plain: true);
+        var helpJson = Assert.IsType<ShellJson>(help.Result).Value;
+        Assert.Contains("requires explicit user confirmation", helpJson.GetProperty("isRestricted").GetString());
+    }
+
     [Fact]
     public void GetTool_DoesNotAppendWarningForUnrestrictedCommands()
     {
