@@ -5,6 +5,7 @@
 namespace Azure.Data.Cosmos.Shell.Commands;
 
 using System.Diagnostics;
+using Azure.Data.Cosmos.Shell.Mcp;
 using Azure.Data.Cosmos.Shell.Util;
 using global::Azure.Data.Cosmos.Shell.Core;
 
@@ -12,6 +13,7 @@ using global::Azure.Data.Cosmos.Shell.Core;
 [CosmosExample("echo '{\"a\":1}' | jq", DescriptionKey = "command-jq-example-1")]
 [CosmosExample("query \"SELECT * FROM c\" | jq '.items[0]'", DescriptionKey = "command-jq-example-2")]
 [CosmosExample("ls | jq 'length'", DescriptionKey = "command-jq-example-3")]
+[McpAnnotation(Restricted = true)]
 internal class JqCommand : CosmosCommand
 {
     [CosmosParameter("args", IsRequired = false)]

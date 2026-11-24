@@ -121,6 +121,29 @@ Confirmation includes the connected account endpoint and current navigation loca
 
 Shell and MCP command execution is serialized against the shared interpreter. Confirmation prompts do not hold the execution lock, so the shell remains usable while waiting. Clients still share a connection and navigation context: pass explicit `database` and `container` arguments for independent operations rather than relying on an earlier `cd` call.
 
+### Local Filesystem Restrictions and Transfer Confirmation
+
+The `cat`, `dir`, and `jq` commands cannot be invoked through MCP, even by clients
+that support confirmation. Run them manually in the interactive shell.
+
+The `import` and `export` tools require explicit user confirmation before execution.
+Imports read local data files and can upload their contents to Cosmos DB; exports
+write database data to local files and can overwrite existing files with `force`.
+Import dry runs also require confirmation because they still read local files.
+The `force` argument does not bypass MCP confirmation.
+
+The prompt shows the exact command, including file paths and options, and the local
+working directory used for relative paths. Approval is bound to both that command
+and working directory, using the same single-use, expiring confirmation as
+destructive commands. Declined, cancelled, invalid, or unavailable confirmation
+prevents execution. A changed working directory or shell context requires a new
+confirmation.
+
+Interactive shell use is unchanged. Cosmos DB navigation with `cd` and listing
+with `ls` do not require this filesystem confirmation. These restrictions are not
+a filesystem sandbox: other commands, including `bulk` file inputs and theme
+operations, can still access local files. Use only trusted MCP clients.
+
 The MCP confirmation applies even when a command is invoked with a force / no-prompt argument (for example `rmdb OldDB true`). That argument only skips the *interactive shell* prompt; it does not bypass the MCP elicitation gate.
 
 For single-item deletions, prefer `rm` with `key: "id"`, `partition-key`, and `dry-run: true` first, then repeat the call with the returned `etag` in the `etag` argument. The confirmation prompt shows the `--partition-key` and `--etag` values, and the delete only succeeds if the item still has the reviewed ETag, including when the item changes while the confirmation is pending. See [Deleting a single item safely](commands.md#deleting-a-single-item-safely).
@@ -158,7 +181,15 @@ The HTTP server serves `2026-07-28` requests without a session and gives a sessi
 
 ### Data Exposure
 
-MCP tool invocations are echoed as command lines in the shell window, so anyone watching the terminal can see what a connected client is doing. They are also recorded in the shell history, with recognized credentials such as connection-string account keys replaced by `[REDACTED]`. Recalled key-based connections require a fresh key. Existing saved credentials are removed on the next successful history save; this does not clean backups or mask the command echo. Continue to protect the history file, since arbitrary secrets under unrelated names may not be recognized. On Linux and macOS, the shell restricts the history file to its owner. See [history](navigation.md#history) for details.
+MCP tool invocations are echoed as command lines in the shell window, followed by
+their results, warnings, or errors as if the commands had been entered manually.
+Terminal output honors the command's `format` option (`user`, `json`, `csv`, or
+`table`), or the shell's current output setting when omitted. Quiet and machine
+mode suppress the command echo; machine-mode errors use the normal JSON
+diagnostic on stderr, including `2>`/`2>>` redirection. The MCP client still
+receives the structured response described below, including paging metadata.
+
+Invocations are also recorded in the shell history, with recognized credentials such as connection-string account keys replaced by `[REDACTED]`. Recalled key-based connections require a fresh key. Existing saved credentials are removed on the next successful history save; this does not clean backups or mask the command echo. Continue to protect the history file, since arbitrary secrets under unrelated names may not be recognized. On Linux and macOS, the shell restricts the history file to its owner. See [history](navigation.md#history) for details.
 
 Positional arguments must be supplied without gaps: a call that provides a positional parameter while omitting an earlier one is rejected, because the equivalent shell command line would bind the value to the omitted slot.
 
@@ -205,10 +236,10 @@ Both representations are always byte-for-byte equivalent.
 | Field | When present | Description |
 | ----- | ------------ | ----------- |
 | `result` | Commands that produce output | The command result as JSON (objects, arrays, or a scalar). Text-only results are represented as a JSON string. Failed transactional batches include their per-operation summary here alongside `error`. |
-| `outputText` | CSV output commands with non-empty text, including structured failures | The CSV rendering of the result. Omitted when the CSV output is empty or whitespace. Failed imports retain their partial-result CSV alongside `error` and `result`, with `isError: true`. |
+| `outputText` | CSV output commands with non-empty text, including structured failures | The CSV rendering of structured results, or the unchanged text for plain-text results such as `echo`. Omitted when the output is empty or whitespace. Failed imports retain their partial-result CSV alongside `error` and `result`, with `isError: true`. |
 | `continuationToken` | Paged `query` and container-item `ls` results | Opaque token for the next page, or `null` when no more results are available — unless `resultIncomplete` is `true`, where a `null` token accompanies a truncated result that cannot be resumed. Omitted for `query --explain` and database/container name listings, which are not paged. |
 | `resultIncomplete` | Truncated results that cannot be resumed | `true` when the result stops at the requested limit and the query cannot produce a continuation token. Omitted otherwise. |
-| `requestCharge` | Charged data-plane command results | The Cosmos DB request charge (in RUs) consumed by the command, as a number. This is omitted for commands that do not issue a billable request. |
+| `requestCharge` | Charged data-plane command results | The Cosmos DB request charge (in RUs) consumed by the command, as a number. Retained if terminal rendering fails after execution. This is omitted for commands that do not issue a billable request. |
 | `error` | Failed commands | The error message. |
 | `currentLocation` | Always | The shell's current navigation path (for example `/MyDatabase/MyContainer`), or `null` when disconnected. |
 

@@ -185,16 +185,20 @@ Repository administrators should keep that check required, or require
 
 CI pins the Linux preview emulator image by digest to avoid rolling-tag regressions.
 Update the pin only after both the .NET tests and portable Linux emulator contracts
-pass with the replacement. The container also blocks startup package updates from
-replacing modules under running PostgreSQL; see
-[the upstream emulator issue](https://github.com/Azure/azure-cosmos-db-emulator-docker/issues/390).
-Remove that workaround once the pinned image includes the fix.
+pass with the replacement.
 
 You can develop and test without an Azure subscription by using the [Azure Cosmos DB Emulator](https://learn.microsoft.com/azure/cosmos-db/emulator):
 
 ```bash
 dotnet run --project CosmosDBShell/CosmosDBShell.csproj -- --connect "https://localhost:8081"
 ```
+
+For Linux preview emulator HTTP 500 errors with `PostgresError(SqlState(E58P01))`,
+see [the upstream startup package-update issue](https://github.com/Azure/azure-cosmos-db-emulator-docker/issues/390).
+The integration workflow temporarily starts the service with
+`--add-host packages.microsoft.com:127.0.0.1` to prevent package updates from
+replacing PostgreSQL modules while the server is running. The workaround does not
+skip tests or suppress emulator errors and should be removed once the image is fixed.
 
 ### Live Serverless Smoke Test
 

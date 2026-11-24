@@ -15,13 +15,17 @@ using System.Threading.Tasks;
 using Azure.Data.Cosmos.Shell.Core;
 using Azure.Data.Cosmos.Shell.Commands;
 using Azure.Data.Cosmos.Shell.Mcp;
+using Azure.Data.Cosmos.Shell.Parser;
 using Azure.Data.Cosmos.Shell.States;
 
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Azure.Cosmos;
 
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+
+using NSubstitute;
 
 using Spectre.Console;
 
@@ -35,7 +39,7 @@ public class ToolOperationsCallToolTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ExecuteTool_ServiceFailure_LogsFullExceptionOnlyWhenVerbose(bool verbose)
+    public async Task ExecuteTool_ReportedServiceFailure_LogsDebugWithFullExceptionOnlyWhenVerbose(bool verbose)
     {
         var shell = ShellInterpreter.Instance;
         var originalOptions = shell.Options;
@@ -59,7 +63,8 @@ public class ToolOperationsCallToolTests : IDisposable
                     root.GetProperty("error").GetString());
             }
 
-            var log = Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Error);
+            Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Error);
+            var log = Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Debug);
             if (verbose)
             {
                 var exception = Assert.IsAssignableFrom<Exception>(log.Exception);
@@ -193,7 +198,7 @@ public class ToolOperationsCallToolTests : IDisposable
     {
         var tool = CreateToolOperations();
 
-        var result = await tool.ConfirmDestructiveAsync(
+        var result = await tool.ConfirmCommandAsync(
             null,
             "rmdb",
             "rmdb mydb",
@@ -208,6 +213,141 @@ public class ToolOperationsCallToolTests : IDisposable
             Assert.Contains("does not support confirmation prompts", error);
             Assert.Contains("rmdb mydb", error);
         }
+    }
+
+    [Theory]
+    [InlineData("dir", "{}")]
+    [InlineData("dir", "{\"filter\":\"*.json\"}")]
+    [InlineData("dir", "{\"directory\":\"missing-directory\",\"recursive\":true,\"list\":true}")]
+    [InlineData("dir", "{\"d\":\"missing-directory\",\"r\":true,\"l\":true}")]
+    [InlineData("cat", "{\"path\":\"missing-file.json\"}")]
+    [InlineData("jq", "{\"args\":[\"-n\",\"--rawfile\",\"text\",\"missing-file.json\",\"$text\"]}")]
+    public async Task CallTool_RestrictedFilesystemCommands_RefuseBeforeAccess(string commandName, string argumentsJson)
+    {
+        var history = ShellInterpreter.Instance.History.ToArray();
+        var arguments = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argumentsJson);
+        var result = await CreateToolOperations().CallToolHandler(
+            CallContext(commandName, arguments), TestContext.Current.CancellationToken);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Contains($"Command '{commandName}' is restricted for MCP", root.GetProperty("error").GetString());
+            Assert.DoesNotContain("needs your confirmation", root.GetProperty("error").GetString());
+        }
+
+        Assert.Equal(history, ShellInterpreter.Instance.History);
+    }
+
+    [Theory]
+    [InlineData("import", "{\"file\":\"missing-file.json\"}")]
+    [InlineData("import", "{\"file\":\"missing-file.json\",\"dry-run\":true}")]
+    [InlineData("export", "{\"file\":\"missing-file.json\"}")]
+    [InlineData("export", "{\"file\":\"missing-file.json\",\"force\":true}")]
+    public async Task CallTool_FileTransfersWithoutConfirmation_RefuseBeforeAccess(string commandName, string argumentsJson)
+    {
+        var history = ShellInterpreter.Instance.History.ToArray();
+        var arguments = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argumentsJson);
+
+        var result = await CreateToolOperations().CallToolHandler(
+            CallContext(commandName, arguments), TestContext.Current.CancellationToken);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.True(isError);
+            Assert.Contains("accesses the local filesystem", root.GetProperty("error").GetString());
+            Assert.Contains("does not support confirmation prompts", root.GetProperty("error").GetString());
+            Assert.DoesNotContain("is destructive", root.GetProperty("error").GetString());
+        }
+
+        Assert.Equal(history, ShellInterpreter.Instance.History);
+    }
+
+    [Theory]
+    [InlineData("import", "accept")]
+    [InlineData("export", "accept")]
+    [InlineData("import", "decline")]
+    [InlineData("export", "decline")]
+    [InlineData("import", "cancel")]
+    [InlineData("export", "cancel")]
+    [InlineData("import", "throw")]
+    [InlineData("export", "throw")]
+    public async Task ExecuteTool_FileTransfers_OnlyExecuteAfterApproval(string commandName, string action)
+    {
+        var shell = ShellInterpreter.Instance;
+        var command = new TrackingCommand();
+        var commandLine = $"{commandName} \"sample.json\"";
+        var history = shell.History.ToArray();
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands[commandName], command, commandLine,
+            (request, _, _, confirmationCommandLine) =>
+            {
+                Assert.Contains("Confirm local filesystem access", request.Message);
+                Assert.Contains(commandLine, request.Message);
+                Assert.Contains(Directory.GetCurrentDirectory(), request.Message);
+                Assert.Contains("Account:", request.Message);
+                Assert.Contains("Current location:", request.Message);
+                Assert.Contains(commandName == "import" ? "upload its contents" : "overwrite an existing file", request.Message);
+                Assert.DoesNotContain("permanently change or delete", request.Message);
+                Assert.Equal(
+                    new[] { commandLine, Directory.GetCurrentDirectory() },
+                    JsonSerializer.Deserialize<string[]>(confirmationCommandLine));
+                if (action == "throw")
+                {
+                    throw new InvalidOperationException("prompt failed");
+                }
+
+                return new ValueTask<ElicitResult>(new ElicitResult { Action = action });
+            }, TestContext.Current.CancellationToken);
+
+        var (isError, root, document) = ReadResult(result);
+        using (document)
+        {
+            Assert.Equal(action != "accept", isError);
+            Assert.Equal(action == "accept", command.Executed);
+            if (action != "accept")
+            {
+                Assert.Equal(history, shell.History);
+                Assert.False(root.TryGetProperty("result", out _));
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("import", false)]
+    [InlineData("export", false)]
+    [InlineData("import", true)]
+    [InlineData("export", true)]
+    public async Task ExecuteTool_LocalFilesystemConfirmationRetry_BindsWorkingDirectory(string commandName, bool differentDirectory)
+    {
+        var shell = ShellInterpreter.Instance;
+        var commandLine = $"{commandName} sample";
+        var command = new TrackingCommand();
+        var exception = await Assert.ThrowsAsync<InputRequiredException>(() => CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands[commandName], command, commandLine,
+            (request, stateVersion, _, confirmationCommandLine) => throw new InputRequiredException(
+                inputRequests: new Dictionary<string, InputRequest> { ["confirm"] = InputRequest.ForElicitation(request) },
+                requestState: ConfirmationRequestState.Create(
+                    differentDirectory
+                        ? JsonSerializer.Serialize(new[] { commandLine, Path.Join(Directory.GetCurrentDirectory(), "other") })
+                        : confirmationCommandLine,
+                    stateVersion)),
+            TestContext.Current.CancellationToken));
+
+        Assert.False(command.Executed);
+        var retry = ConfirmationRetry("accept", exception.Result.RequestState!);
+        var result = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands[commandName], command, commandLine, null, TestContext.Current.CancellationToken, retry);
+
+        Assert.Equal(differentDirectory, result.IsError == true);
+        Assert.Equal(!differentDirectory, command.Executed);
+        var replay = new TrackingCommand();
+        var replayResult = await CreateToolOperations().ExecuteToolAsync(
+            shell.App.Commands[commandName], replay, commandLine, null, TestContext.Current.CancellationToken, retry);
+        Assert.True(replayResult.IsError);
+        Assert.False(replay.Executed);
     }
 
     [Fact]
@@ -292,7 +432,7 @@ public class ToolOperationsCallToolTests : IDisposable
             factory,
             command,
             "rm \"order-123\" --key \"id\" --partition-key \"customer-42\"",
-            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            (_, _, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
             TestContext.Current.CancellationToken);
 
         Assert.True(result.IsError);
@@ -335,8 +475,8 @@ public class ToolOperationsCallToolTests : IDisposable
     {
         var tool = CreateToolOperations();
 
-        var result = await tool.ConfirmDestructiveAsync(
-            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+        var result = await tool.ConfirmCommandAsync(
+            (_, _, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
             "rmdb",
             "rmdb mydb",
             CancellationToken.None);
@@ -354,7 +494,7 @@ public class ToolOperationsCallToolTests : IDisposable
         {
             var result = await CreateToolOperations().ExecuteToolAsync(
                 shell.App.Commands["rm"], command, "rm test-*",
-                (request, _, _) =>
+                (request, _, _, _) =>
                 {
                     Assert.Contains("Account:", request.Message);
                     Assert.Contains("Current location:", request.Message);
@@ -387,7 +527,7 @@ public class ToolOperationsCallToolTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ExecuteTool_DefersWarningsAndRestoresInvocationScope(bool fail)
+    public async Task ExecuteTool_RendersDeferredWarningsAndRestoresInvocationScope(bool fail)
     {
         var shell = ShellInterpreter.Instance;
         var originalMcpPort = shell.McpPort;
@@ -409,8 +549,12 @@ public class ToolOperationsCallToolTests : IDisposable
             Assert.True(command.WasMcpInvocation);
             Assert.False(shell.IsMcpInvocation);
             Assert.NotNull(command.Warning);
-            Assert.False(command.Warning.IsRendered);
-            Assert.Empty(await File.ReadAllTextAsync(stderrFile, TestContext.Current.CancellationToken));
+            Assert.True(command.Warning.IsRendered);
+            Assert.True(command.WarningWasDeferredDuringExecution);
+            var diagnostics = await File.ReadAllTextAsync(stderrFile, TestContext.Current.CancellationToken);
+            Assert.Equal(1, diagnostics.Split("mutation warning", StringSplitOptions.None).Length - 1);
+            Assert.DoesNotContain("updated mutation warning", diagnostics);
+            Assert.Equal(fail, diagnostics.Contains("mutation failed", StringComparison.Ordinal));
             var (_, root, document) = ReadResult(result);
             using (document)
             {
@@ -434,6 +578,8 @@ public class ToolOperationsCallToolTests : IDisposable
 
         public CommandWarning? Warning { get; private set; }
 
+        public bool WarningWasDeferredDuringExecution { get; private set; }
+
         public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
         {
             this.WasMcpInvocation = shell.IsMcpInvocation;
@@ -443,6 +589,7 @@ public class ToolOperationsCallToolTests : IDisposable
             shell.RenderUpdatedWarnings(commandState);
             commandState.UpdateWarning(this.Warning, "mutation warning");
             shell.RenderWarnings(commandState);
+            this.WarningWasDeferredDuringExecution = !this.Warning.IsRendered;
             if (this.ShouldFail)
             {
                 throw new CommandException(commandText, "mutation failed");
@@ -458,10 +605,420 @@ public class ToolOperationsCallToolTests : IDisposable
         var command = new TrackingCommand();
         var result = await CreateToolOperations().ExecuteToolAsync(
             ShellInterpreter.Instance.App.Commands["rm"], command, "rm test-*",
-            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            (_, _, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
             TestContext.Current.CancellationToken);
         Assert.False(result.IsError == true);
         Assert.True(command.Executed);
+    }
+
+    [Theory]
+    [InlineData("pwd", null)]
+    [InlineData("pwd", "json")]
+    [InlineData("pwd", "csv")]
+    [InlineData("pwd", "table")]
+    [InlineData("help", null)]
+    [InlineData("ls", null)]
+    [InlineData("ls", "json")]
+    [InlineData("ls", "csv")]
+    [InlineData("ls", "table")]
+    public async Task CallTool_RendersResultLikeTypedCommand(string command, string? sessionFormat)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var originalState = shell.State;
+        var originalFormat = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        using var output = new StringWriter();
+        using var client = Substitute.For<CosmosClient>();
+        client.Endpoint.Returns(new Uri("https://example.documents.azure.com/"));
+        client.GetDatabaseQueryIterator<DatabaseProperties>().Returns(Substitute.For<FeedIterator<DatabaseProperties>>());
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = sessionFormat };
+            shell.State = command == "ls" ? new ConnectedState(client) : new DisconnectedState();
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", null);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            Console.SetOut(output);
+            var arguments = command == "help"
+                ? new Dictionary<string, JsonElement> { ["command"] = Json("\"connect\""), ["plain"] = Json("true") }
+                : null;
+            var typedCommand = command == "help" ? "help connect --plain" : command;
+
+            var typed = await shell.ExecuteCommandAsync(typedCommand, TestContext.Current.CancellationToken);
+            Assert.False(typed.IsError);
+            var expected = output.ToString();
+            Assert.False(string.IsNullOrWhiteSpace(expected));
+            output.GetStringBuilder().Clear();
+
+            var result = await CreateToolOperations().CallToolHandler(CallContext(command, arguments), TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError == true);
+            var actual = output.ToString();
+            var echoEnd = shell.IsMachineMode
+                ? 0
+                : actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
+            Assert.Equal(expected, actual[echoEnd..]);
+            Assert.True(result.StructuredContent!.Value.TryGetProperty("result", out _));
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            AnsiConsole.Console = savedConsole;
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", originalFormat);
+            shell.State = originalState;
+            shell.Options = originalOptions;
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CallTool_EchoWithCsvSessionDefault_PreservesTextResult(bool environmentDefault)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var originalFormat = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        using var output = new StringWriter();
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = environmentDefault ? null : "csv" };
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", environmentDefault ? "csv" : null);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            Console.SetOut(output);
+
+            var result = await CreateToolOperations().CallToolHandler(
+                CallContext("echo", new Dictionary<string, JsonElement> { ["messages"] = Json("[\"hello\"]") }),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(result.IsError == true);
+            var root = result.StructuredContent!.Value;
+            Assert.Equal("hello", root.GetProperty("result").GetString());
+            Assert.Equal("hello", root.GetProperty("outputText").GetString());
+            var actual = output.ToString();
+            var echoEnd = shell.IsMachineMode
+                ? 0
+                : actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
+            Assert.Equal("hello" + Environment.NewLine, actual[echoEnd..]);
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            AnsiConsole.Console = savedConsole;
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", originalFormat);
+            shell.Options = originalOptions;
+        }
+    }
+
+    public static IEnumerable<object?[]> CommandFailureOutputCases()
+    {
+        (string Command, string? Action)[] commands =
+        [
+            ("theme", "use"),
+            ("theme", "show"),
+            ("theme", "edit"),
+            ("theme", null),
+            ("help", null),
+        ];
+        foreach (var (command, action) in commands)
+        {
+            foreach (var format in new[] { "user", "json", "csv" })
+            {
+                foreach (var redirect in new[] { false, true })
+                {
+                    yield return [command, action, format, redirect];
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(CommandFailureOutputCases))]
+    public async Task CallTool_CommandFailure_IsDisplayedOnce(string command, string? action, string format, bool redirect)
+    {
+        const string unknownName = "nonexistent-mcp-test-name";
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var originalErrorRedirect = shell.ErrOutRedirect;
+        var originalErrorAppend = shell.AppendErrRedirection;
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        var savedError = Console.Error;
+        using var output = new StringWriter();
+        using var diagnostics = new StringWriter();
+        var errorFile = Path.GetTempFileName();
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = format };
+            shell.ErrOutRedirect = redirect ? errorFile : null;
+            shell.AppendErrRedirection = false;
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            AnsiConsole.Console.Profile.Width = 200;
+            Console.SetOut(output);
+            Console.SetError(diagnostics);
+            var arguments = new Dictionary<string, JsonElement>();
+            if (command == "help")
+            {
+                arguments["command"] = JsonSerializer.SerializeToElement(unknownName);
+            }
+            else
+            {
+                arguments["action"] = JsonSerializer.SerializeToElement(action ?? unknownName);
+                if (action != null)
+                {
+                    arguments["name"] = JsonSerializer.SerializeToElement(unknownName);
+                }
+            }
+
+            var result = await CreateToolOperations().CallToolHandler(
+                CallContext(command, arguments), TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            Assert.Contains(unknownName, result.StructuredContent!.Value.GetProperty("error").GetString());
+            var actual = output.ToString();
+            if (format == "user")
+            {
+                var echoEnd = actual.IndexOf(Environment.NewLine, StringComparison.Ordinal) + Environment.NewLine.Length;
+                actual = actual[echoEnd..];
+            }
+            else
+            {
+                Assert.Empty(actual);
+            }
+
+            var errorText = redirect
+                ? await File.ReadAllTextAsync(errorFile, TestContext.Current.CancellationToken)
+                : diagnostics.ToString();
+            Assert.Equal(1, (actual + errorText).Split(unknownName, StringSplitOptions.None).Length - 1);
+            if (format != "user")
+            {
+                using var error = JsonDocument.Parse(errorText);
+                Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+                Assert.Contains(unknownName, error.RootElement.GetProperty("error").GetString());
+            }
+
+            if (redirect)
+            {
+                Assert.Empty(diagnostics.ToString());
+            }
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            Console.SetError(savedError);
+            AnsiConsole.Console = savedConsole;
+            shell.Options = originalOptions;
+            shell.ErrOutRedirect = originalErrorRedirect;
+            shell.AppendErrRedirection = originalErrorAppend;
+            File.Delete(errorFile);
+        }
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("user", null)]
+    [InlineData("json", null)]
+    [InlineData("csv", null)]
+    [InlineData("table", null)]
+    [InlineData(null, "json")]
+    [InlineData(null, "csv")]
+    [InlineData("json", "csv")]
+    [InlineData("csv", "json")]
+    public async Task ExecuteTool_RendersSelectedFormatWithoutChangingMcpResult(string? format, string? sessionFormat)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var originalFormat = Environment.GetEnvironmentVariable("COSMOSDB_SHELL_FORMAT");
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        using var output = new StringWriter();
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = sessionFormat };
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", null);
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            Console.SetOut(output);
+            var command = new PresentationCommand { Format = format };
+            var expectedState = await command.ExecuteAsync(shell, new CommandState(), "echo", TestContext.Current.CancellationToken);
+            shell.PrintState(expectedState);
+            var expected = output.ToString();
+            Assert.False(string.IsNullOrWhiteSpace(expected));
+            output.GetStringBuilder().Clear();
+
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["echo"], command, "echo presentation", null, TestContext.Current.CancellationToken);
+
+            var echo = shell.IsMachineMode ? string.Empty : "echo presentation" + Environment.NewLine;
+            Assert.Equal(echo + expected, output.ToString());
+            Assert.False(result.IsError == true);
+            var root = result.StructuredContent!.Value;
+            Assert.Equal("value", Assert.Single(root.GetProperty("result").EnumerateArray()).GetProperty("name").GetString());
+            Assert.Equal("next-page", root.GetProperty("continuationToken").GetString());
+            if ((format ?? sessionFormat) == "csv")
+            {
+                Assert.Equal(expected.TrimEnd('\r', '\n'), root.GetProperty("outputText").GetString()!.TrimEnd('\r', '\n'));
+            }
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            AnsiConsole.Console = savedConsole;
+            Environment.SetEnvironmentVariable("COSMOSDB_SHELL_FORMAT", originalFormat);
+            shell.Options = originalOptions;
+        }
+    }
+
+    private sealed class PresentationCommand : CosmosCommand
+    {
+        [CosmosOption("format")]
+        public string? Format { get; init; }
+
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+        {
+            commandState.SetFormat(this.Format);
+            commandState.Result = new ShellJson(Json("[{\"name\":\"value\"}]"));
+            commandState.RenderUser = () => AnsiConsole.WriteLine("friendly value");
+            commandState.IsPage = true;
+            commandState.ContinuationToken = "next-page";
+            return Task.FromResult(commandState);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ExecuteTool_ReturnedFailure_IsVisibleAndPreservesStructuredResult(bool structured, bool machineMode)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        var savedError = Console.Error;
+        using var output = new StringWriter();
+        using var diagnostics = new StringWriter();
+        var exception = new CommandException("echo", "terminal failure");
+        CommandState state = structured
+            ? new StructuredErrorCommandState(exception, new ShellJson(Json("{\"failed\":1}")))
+            : new ErrorCommandState(exception);
+        state.AddWarning("terminal warning");
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = machineMode ? "json" : "user" };
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            Console.SetOut(output);
+            Console.SetError(diagnostics);
+
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["echo"], new ResultCommand(state), "echo failure", null, TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            var root = result.StructuredContent!.Value;
+            Assert.Contains("terminal failure", root.GetProperty("error").GetString());
+            Assert.Equal("terminal warning", Assert.Single(root.GetProperty("warnings").EnumerateArray()).GetString());
+            Assert.True(state.OutputRendered);
+            var combinedOutput = $"{output}{diagnostics}";
+            Assert.Contains("terminal warning", combinedOutput);
+            if (structured)
+            {
+                Assert.Equal(1, root.GetProperty("result").GetProperty("failed").GetInt32());
+                Assert.Contains("\"failed\"", combinedOutput);
+            }
+            else
+            {
+                Assert.Contains("terminal failure", combinedOutput);
+            }
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            Console.SetError(savedError);
+            AnsiConsole.Console = savedConsole;
+            shell.Options = originalOptions;
+        }
+    }
+
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(false, 0.0)]
+    [InlineData(false, 2.5)]
+    [InlineData(true, null)]
+    [InlineData(true, 0.0)]
+    [InlineData(true, 2.5)]
+    public async Task ExecuteTool_RenderingFailure_IsReportedToTerminalAndMcpClient(bool verbose, double? requestCharge)
+    {
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var savedConsole = AnsiConsole.Console;
+        using var output = new StringWriter();
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = "user", Verbose = verbose };
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            var state = new CommandState
+            {
+                RenderUser = () => throw new InvalidOperationException("rendering failed"),
+                RequestCharge = requestCharge,
+            };
+
+            var result = await CreateToolOperations().ExecuteToolAsync(
+                shell.App.Commands["echo"], new ResultCommand(state), "echo render", null, TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            Assert.Contains("rendering failed", output.ToString());
+            Assert.Contains("rendering failed", result.StructuredContent!.Value.GetProperty("error").GetString());
+            var hasRequestCharge = result.StructuredContent.Value.TryGetProperty("requestCharge", out var charge);
+            Assert.Equal(requestCharge.HasValue, hasRequestCharge);
+            if (requestCharge.HasValue)
+            {
+                Assert.Equal(requestCharge.Value, charge.GetDouble());
+            }
+            Assert.False(shell.IsMcpInvocation);
+        }
+        finally
+        {
+            AnsiConsole.Console = savedConsole;
+            shell.Options = originalOptions;
+        }
+    }
+
+    private sealed class ResultCommand(CommandState result) : CosmosCommand
+    {
+        public override Task<CommandState> ExecuteAsync(ShellInterpreter shell, CommandState commandState, string commandText, CancellationToken token)
+            => Task.FromResult(result);
     }
 
     [Fact]
@@ -484,7 +1041,7 @@ public class ToolOperationsCallToolTests : IDisposable
 
             var result = await CreateToolOperations().ExecuteToolAsync(
                 ShellInterpreter.Instance.App.Commands["rm"], command, "rm test-*",
-                (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+                (_, _, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
                 TestContext.Current.CancellationToken);
 
             Assert.False(result.IsError == true);
@@ -507,8 +1064,8 @@ public class ToolOperationsCallToolTests : IDisposable
     {
         var tool = CreateToolOperations();
 
-        var result = await tool.ConfirmDestructiveAsync(
-            (_, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = action }),
+        var result = await tool.ConfirmCommandAsync(
+            (_, _, _, _) => new ValueTask<ElicitResult>(new ElicitResult { Action = action }),
             "rmdb",
             "rmdb mydb",
             CancellationToken.None);
@@ -529,8 +1086,8 @@ public class ToolOperationsCallToolTests : IDisposable
     {
         var tool = CreateToolOperations();
 
-        var result = await tool.ConfirmDestructiveAsync(
-            (_, _, _) => throw new InvalidOperationException("boom"),
+        var result = await tool.ConfirmCommandAsync(
+            (_, _, _, _) => throw new InvalidOperationException("boom"),
             "rmdb",
             "rmdb mydb",
             CancellationToken.None);
@@ -629,6 +1186,22 @@ public class ToolOperationsCallToolTests : IDisposable
         {
             CultureInfo.CurrentCulture = originalCulture;
         }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task FormatOptionForHistory_BooleanRoundTripsWithoutAddingAFilter(bool recursive)
+    {
+        var shell = ShellInterpreter.Instance;
+        var factory = shell.App.Commands["dir"];
+        var option = factory.Options.Single(o => o.Name[0] == "recursive");
+        var parser = new StatementParser("dir" + ToolOperations.FormatOptionForHistory(option, recursive));
+        var statement = Assert.IsType<CommandStatement>(Assert.Single(parser.ParseStatements()));
+        var command = Assert.IsType<DirCommand>(await statement.CreateCommandAsync(factory, shell, new CommandState(), TestContext.Current.CancellationToken));
+
+        Assert.Equal(recursive, command.Recursive);
+        Assert.Null(command.Filter);
     }
 
     [Fact]
@@ -1111,9 +1684,9 @@ public class ToolOperationsCallToolTests : IDisposable
 
         var exception = await Assert.ThrowsAsync<InputRequiredException>(() => CreateToolOperations().ExecuteToolAsync(
             shell.App.Commands["rm"], command, "rm test-*",
-            (request, stateVersion, _) => throw new InputRequiredException(
+            (request, stateVersion, _, confirmationCommandLine) => throw new InputRequiredException(
                 inputRequests: new Dictionary<string, InputRequest> { ["confirm"] = InputRequest.ForElicitation(request) },
-                requestState: ConfirmationRequestState.Create("rm test-*", stateVersion)),
+                requestState: ConfirmationRequestState.Create(confirmationCommandLine, stateVersion)),
             TestContext.Current.CancellationToken));
 
         Assert.False(command.Executed);
