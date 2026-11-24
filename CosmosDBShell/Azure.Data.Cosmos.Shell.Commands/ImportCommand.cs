@@ -41,6 +41,8 @@ internal enum ImportMode
 [CosmosExample("import items.json --concurrency=32", DescriptionKey = "command-import-example-8")]
 [McpAnnotation(
     Title = "Import Container Items",
+    Restricted = true,
+    Confirmable = true,
     ReadOnly = false,
     Idempotent = false,
     OpenWorld = true,

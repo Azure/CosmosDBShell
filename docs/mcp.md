@@ -121,6 +121,29 @@ Confirmation includes the connected account endpoint and current navigation loca
 
 Shell and MCP command execution is serialized against the shared interpreter. Confirmation prompts do not hold the execution lock, so the shell remains usable while waiting. Clients still share a connection and navigation context: pass explicit `database` and `container` arguments for independent operations rather than relying on an earlier `cd` call.
 
+### Local Filesystem Restrictions and Transfer Confirmation
+
+The `cat`, `dir`, and `jq` commands cannot be invoked through MCP, even by clients
+that support confirmation. Run them manually in the interactive shell.
+
+The `import` and `export` tools require explicit user confirmation before execution.
+Imports read local data files and can upload their contents to Cosmos DB; exports
+write database data to local files and can overwrite existing files with `force`.
+Import dry runs also require confirmation because they still read local files.
+The `force` argument does not bypass MCP confirmation.
+
+The prompt shows the exact command, including file paths and options, and the local
+working directory used for relative paths. Approval is bound to both that command
+and working directory, using the same single-use, expiring confirmation as
+destructive commands. Declined, cancelled, invalid, or unavailable confirmation
+prevents execution. A changed working directory or shell context requires a new
+confirmation.
+
+Interactive shell use is unchanged. Cosmos DB navigation with `cd` and listing
+with `ls` do not require this filesystem confirmation. These restrictions are not
+a filesystem sandbox: other commands, including `bulk` file inputs and theme
+operations, can still access local files. Use only trusted MCP clients.
+
 The MCP confirmation applies even when a command is invoked with a force / no-prompt argument (for example `rmdb OldDB true`). That argument only skips the *interactive shell* prompt; it does not bypass the MCP elicitation gate.
 
 For single-item deletions, prefer `rm` with `key: "id"`, `partition-key`, and `dry-run: true` first, then repeat the call with the returned `etag` in the `etag` argument. The confirmation prompt shows the `--partition-key` and `--etag` values, and the delete only succeeds if the item still has the reviewed ETag, including when the item changes while the confirmation is pending. See [Deleting a single item safely](commands.md#deleting-a-single-item-safely).
