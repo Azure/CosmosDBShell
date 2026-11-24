@@ -18,6 +18,7 @@ using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using NSubstitute;
+using Spectre.Console;
 
 [Collection(CosmosShell.Tests.Shell.ThemeStateTestCollection.Name)]
 public class McpLocationSubscriptionTests
@@ -432,11 +433,109 @@ public class McpLocationSubscriptionTests
                 var result = await client.CallToolAsync("version", cancellationToken: timeout.Token);
                 Assert.False(result.IsError == true);
                 Assert.NotEmpty(result.Content);
+
+                var savedConsole = AnsiConsole.Console;
+                var savedOut = Console.Out;
+                using var output = new StringWriter();
+                try
+                {
+                    AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+                    {
+                        Ansi = AnsiSupport.No,
+                        ColorSystem = ColorSystemSupport.NoColors,
+                        Out = new AnsiConsoleOutput(output),
+                    });
+                    Console.SetOut(output);
+                    const string message = "mcp-terminal-result";
+
+                    var echo = await client.CallToolAsync(
+                        "echo", new Dictionary<string, object?> { ["messages"] = new[] { message } }, cancellationToken: timeout.Token);
+
+                    Assert.False(echo.IsError == true);
+                    Assert.Equal(message, echo.StructuredContent!.Value.GetProperty("result").GetString());
+                    Assert.Contains($"echo \"{message}\"", output.ToString());
+                    Assert.Single(output.ToString().Split(Environment.NewLine), line => line == message);
+                }
+                finally
+                {
+                    Console.SetOut(savedOut);
+                    AnsiConsole.Console = savedConsole;
+                }
             }
         }
         finally
         {
             await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Theory]
+    [InlineData(HttpTransportMode.StreamableHttp, false, false)]
+    [InlineData(HttpTransportMode.StreamableHttp, false, true)]
+    [InlineData(HttpTransportMode.StreamableHttp, true, false)]
+    [InlineData(HttpTransportMode.StreamableHttp, true, true)]
+    [InlineData(HttpTransportMode.Sse, false, false)]
+    [InlineData(HttpTransportMode.Sse, false, true)]
+    [InlineData(HttpTransportMode.Sse, true, false)]
+    [InlineData(HttpTransportMode.Sse, true, true)]
+    public async Task CommandFailure_WithHostLogging_IsDisplayedOnce(HttpTransportMode transportMode, bool machineMode, bool verbose)
+    {
+        const string unknownName = "mcp-host-failure";
+        var shell = ShellInterpreter.Instance;
+        var originalOptions = shell.Options;
+        var savedConsole = AnsiConsole.Console;
+        var savedOut = Console.Out;
+        var savedError = Console.Error;
+        using var output = new StringWriter();
+        using var diagnostics = new StringWriter();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        try
+        {
+            shell.Options = new Program.CosmosShellOptions { Output = machineMode ? "json" : "user", Verbose = verbose };
+            AnsiConsole.Console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Ansi = AnsiSupport.No,
+                ColorSystem = ColorSystemSupport.NoColors,
+                Out = new AnsiConsoleOutput(output),
+            });
+            Console.SetOut(output);
+            Console.SetError(diagnostics);
+            using (var host = McpServer.CreateHost(new Program.CosmosShellOptions { McpPort = 0 }))
+            {
+                await host.StartAsync(timeout.Token);
+                try
+                {
+                    await using var client = await ConnectAsync(
+                        host, timeout.Token, transportMode == HttpTransportMode.Sse ? "2024-11-05" : "2025-11-25", transportMode);
+                    var result = await client.CallToolAsync(
+                        "theme", new Dictionary<string, object?> { ["action"] = "use", ["name"] = unknownName },
+                        cancellationToken: timeout.Token);
+
+                    Assert.True(result.IsError);
+                    Assert.Contains(unknownName, result.StructuredContent!.Value.GetProperty("error").GetString());
+                }
+                finally
+                {
+                    await host.StopAsync(TestContext.Current.CancellationToken);
+                }
+            }
+
+            var combinedOutput = $"{output}{diagnostics}";
+            Assert.Equal(machineMode ? 1 : 2, combinedOutput.Split(unknownName, StringSplitOptions.None).Length - 1);
+            if (machineMode)
+            {
+                Assert.Empty(output.ToString());
+                using var error = JsonDocument.Parse(diagnostics.ToString());
+                Assert.Equal("error", error.RootElement.GetProperty("status").GetString());
+            }
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+            Console.SetError(savedError);
+            AnsiConsole.Console = savedConsole;
+            shell.Options = originalOptions;
         }
     }
 
