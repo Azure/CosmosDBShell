@@ -28,6 +28,8 @@ internal enum ExportFormat
 [CosmosExample("export items.json --db=MyDB --con=Products --max=1000", DescriptionKey = "command-export-example-5")]
 [McpAnnotation(
     Title = "Export Container Items",
+    Restricted = true,
+    Confirmable = true,
     ReadOnly = false,
     Idempotent = false,
     OpenWorld = true,

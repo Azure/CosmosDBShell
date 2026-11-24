@@ -10,7 +10,7 @@ using System.Text;
 using Microsoft.AspNetCore.WebUtilities;
 
 /// <summary>
-/// Creates and validates the MRTR <c>requestState</c> for destructive-command confirmation.
+/// Creates and validates the MRTR <c>requestState</c> for command confirmation.
 /// The state binds an approval to the exact command line and shell state version it was
 /// requested for, and is signed so a client cannot fabricate or retarget it. Each state
 /// carries a nonce that can be read once and expires after <see cref="Lifetime"/>, so a
