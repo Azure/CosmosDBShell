@@ -107,7 +107,11 @@ jobs:
     runs-on: ubuntu-latest
     services:
       cosmosdb:
-        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-EN20261117pre@sha256:11b42b669436fbbe00b33a58e9317dcc9f0cb23ed3196b0cbb1860e26527352c
+        # Pin the passing preview image to avoid regressions from the rolling tag.
+        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator@sha256:db53613dae19d0a3d5ad50688d14aa6e957af082dafea56b52e1bd3a6b3f1406
+        # Prevent startup updates from replacing modules under running PostgreSQL.
+        # Remove when Azure/azure-cosmos-db-emulator-docker#390 is fixed in this image.
+        options: --add-host packages.microsoft.com:127.0.0.1
         ports:
           - 8081:8081
         env:

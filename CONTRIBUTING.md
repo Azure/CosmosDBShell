@@ -183,6 +183,13 @@ Repository administrators should keep that check required, or require
 
 ### Running Against the Emulator
 
+CI pins the Linux preview emulator image by digest to avoid rolling-tag regressions.
+Update the pin only after both the .NET tests and portable Linux emulator contracts
+pass with the replacement. The container also blocks startup package updates from
+replacing modules under running PostgreSQL; see
+[the upstream emulator issue](https://github.com/Azure/azure-cosmos-db-emulator-docker/issues/390).
+Remove that workaround once the pinned image includes the fix.
+
 You can develop and test without an Azure subscription by using the [Azure Cosmos DB Emulator](https://learn.microsoft.com/azure/cosmos-db/emulator):
 
 ```bash
