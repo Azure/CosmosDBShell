@@ -45,6 +45,7 @@
       "properties": {
         "mode": {"enum": ["json", "jsonl", "csv", "text", "bytes", "empty", "absent"]},
         "expected": {},
+        "normalizeNewlines": {"const": true},
         "schema": {"type": ["object", "boolean"]},
         "dynamic": {"type": "object", "propertyNames": {"pattern": "^/"}, "additionalProperties": {"type": ["object", "boolean"]}},
         "unordered": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
@@ -60,12 +61,14 @@
       "additionalProperties": false,
       "required": ["id", "profiles", "sources", "exitCode", "files"],
       "oneOf": [{"required": ["script"], "not": {"required": ["args"]}}, {"required": ["args"], "not": {"required": ["script"]}}],
+      "dependentRequired": {"stdin": ["args"]},
       "properties": {
         "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
         "profiles": {"type": "array", "uniqueItems": true, "minItems": 1, "items": {"enum": ["offline", "emulator-linux", "emulator-windows"]}},
         "sources": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^CosmosDBShell\\.Tests/.+\\.cs::[A-Za-z_][A-Za-z0-9_]*$"}},
         "script": {"type": "string", "minLength": 1},
         "args": {"type": "array", "items": {"type": "string"}},
+        "stdin": {"type": "string", "minLength": 1},
         "format": {"enum": ["json", "csv", "user", "table"]},
         "exitCode": {"type": "integer", "minimum": 0, "maximum": 255},
         "timeoutSeconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 120},

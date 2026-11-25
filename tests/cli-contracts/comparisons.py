@@ -154,7 +154,7 @@ def validate_comparison(spec):
         "json": {"expected", "schema", "dynamic", "unordered"},
         "jsonl": {"expected", "schema", "dynamic", "unordered"},
         "csv": {"expected", "delimiter"},
-        "text": {"expected", "contains", "notContains", "lineCounts", "occurrences"},
+        "text": {"expected", "normalizeNewlines", "contains", "notContains", "lineCounts", "occurrences"},
         "bytes": {"expected"}, "empty": set(), "absent": set(),
     }
     if mode not in allowed:
@@ -182,6 +182,8 @@ def validate_comparison(spec):
         raise ValueError("Text comparison requires assertions")
     if mode == "text" and "expected" in spec and not isinstance(spec["expected"], str):
         raise ValueError("Text expected must be a string")
+    if "normalizeNewlines" in spec and (spec["normalizeNewlines"] is not True or "expected" not in spec):
+        raise ValueError("normalizeNewlines must be true and requires exact expected text")
     if "schema" in spec:
         check_schema(spec["schema"])
     for schema in spec.get("dynamic", {}).values():
@@ -215,7 +217,12 @@ def compare_file(path: Path, spec: dict):
             assert rows == spec["expected"], f"{path.name}: CSV rows {rows!r} != {spec['expected']!r}"
         elif mode == "text":
             if "expected" in spec:
-                assert text == spec["expected"], f"{path.name}: {text!r} != {spec['expected']!r}"
+                expected = spec["expected"]
+                actual = text
+                if spec.get("normalizeNewlines"):
+                    actual = actual.replace("\r\n", "\n")
+                    expected = expected.replace("\r\n", "\n")
+                assert actual == expected, f"{path.name}: {text!r} != {spec['expected']!r}"
             for value in spec.get("contains", []):
                 assert value in text, f"{path.name}: missing {value!r}"
             for value in spec.get("notContains", []):

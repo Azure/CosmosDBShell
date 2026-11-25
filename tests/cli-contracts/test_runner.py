@@ -2,6 +2,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import psutil
 import pytest
@@ -61,6 +62,22 @@ def test_raw_cli_arguments_are_not_prefixed(tmp_path):
     })
     del definition["script"]
     run_case(definition, fake("import sys,json; print(json.dumps(sys.argv[1:]),end='')"), tmp_path)
+
+
+def test_stdin_delivers_expanded_utf8_bytes_and_eof(tmp_path):
+    definition = case(args=["--literal"], stdin="Gr\u00fc\u00dfe ${VALUE}\r\nlast", files={
+        "stdout.txt": {"mode": "bytes", "expected": list("Gr\u00fc\u00dfe a & b\r\nlast".encode("utf-8"))},
+    })
+    del definition["script"]
+    code = "import sys; assert sys.argv[1:] == ['--literal']; sys.stdout.buffer.write(sys.stdin.buffer.read())"
+    run_case(definition, fake(code), tmp_path, {"VALUE": "a & b"})
+
+
+def test_timeout_when_child_does_not_read_stdin(tmp_path):
+    definition = case(args=[], stdin="x" * (1024 * 1024), timeoutSeconds=1)
+    del definition["script"]
+    with pytest.raises(AssertionError, match="timed out"):
+        run_case(definition, fake("import time; time.sleep(10)"), tmp_path)
 
 
 @pytest.mark.parametrize("code", [
@@ -142,6 +159,28 @@ def test_failure_artifacts_include_only_declared_files_not_config_or_home(tmp_pa
         save_failure_artifacts(case(), work, destination)
 
 
+@pytest.mark.parametrize("existing", [False, True])
+def test_failure_artifact_handling_keeps_original_assertion(tmp_path, existing):
+    from test_contracts import test_contract
+
+    artifacts = tmp_path / "artifacts"
+    destination = artifacts / case()["id"]
+    if existing:
+        destination.mkdir(parents=True)
+        (destination / "stdout.txt").write_bytes(b"previous output")
+    config = SimpleNamespace(getoption={"--contract-artifacts": artifacts}.__getitem__)
+    with pytest.raises(AssertionError, match="stdout.txt: expected empty output") as failure:
+        test_contract(case(), fake("print('unexpected output')"), tmp_path, config)
+    note = failure.value.__notes__[0]
+    assert str(destination) in note
+    if existing:
+        assert "Refusing to overwrite" in note
+        assert (destination / "stdout.txt").read_bytes() == b"previous output"
+    else:
+        assert note.startswith("Failure artifacts:")
+        assert b"unexpected output" in (destination / "stdout.txt").read_bytes()
+
+
 def write_manifest(root, cases):
     (root / "schema.json").write_bytes((ROOT / "schema.json").read_bytes())
     (root / "cases").mkdir(exist_ok=True)
@@ -153,6 +192,7 @@ def write_manifest(root, cases):
     {"files": {"result": {"mode": "bad"}}}, {"fixtures": {"../escape": ""}},
     {"fixtures": {"stdout.txt": ""}}, {"files": {"result": {"mode": "text"}}},
     {"profiles": ["emulator-linux"]}, {"emulator": {}},
+    {"stdin": "echo one"},
     {"environment": {"AZURE_CLIENT_SECRET": "not-allowed"}},
 ])
 def test_malformed_manifests_are_errors(tmp_path, changes):
@@ -164,4 +204,13 @@ def test_malformed_manifests_are_errors(tmp_path, changes):
 def test_duplicate_ids_fail(tmp_path):
     write_manifest(tmp_path, [case(), case()])
     with pytest.raises(ValueError, match="Duplicate case"):
+        load_cases(tmp_path)
+
+
+@pytest.mark.parametrize("stdin", ["", ["echo one"]])
+def test_stdin_manifest_requires_nonempty_text(tmp_path, stdin):
+    definition = case(args=[], stdin=stdin)
+    del definition["script"]
+    write_manifest(tmp_path, [definition])
+    with pytest.raises(ValueError, match="Invalid manifest"):
         load_cases(tmp_path)

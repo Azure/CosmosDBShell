@@ -74,8 +74,10 @@ credentials or production data to a case.
 ## Capturing only command output
 
 Every case runs a fresh process in an isolated working/config directory with
-closed stdin and a timeout. Related commands share a script/session. The runner
-captures subprocess stdout and stderr into `stdout.txt` and `stderr.txt`.
+a timeout. The runner sends optional UTF-8 input to the child's stdin pipe and
+then closes it; cases without input get immediate EOF. Related commands share
+a script/session. The runner captures subprocess stdout and stderr into
+`stdout.txt` and `stderr.txt`.
 
 Structured contracts normally redirect each command's result inside the shell:
 
@@ -83,9 +85,10 @@ Structured contracts normally redirect each command's result inside the shell:
 echo {"id":"one","count":9007199254740993} > 'result.json'
 ```
 
-Only declared output files are compared. An interactive prompt cannot contaminate
-`result.json`; the runner never guesses or removes prompt text. A prompt, ANSI
-escape, or duplicate JSON result *inside* the declared file causes a failure.
+The runner compares only declared files and never removes prompts, ANSI escapes,
+or duplicate JSON from them. If redirection must leave stdout silent, declare
+`stdout.txt` with `"mode": "empty"`. If stdout intentionally carries machine-readable
+data, assert its content rather than leaving the stream unchecked.
 
 Internal redirection bypasses the human renderer. Human/table cases therefore
 use `--output user`/`--output table` without internal result redirection and
@@ -111,6 +114,7 @@ explicitly reviewed removed methods in the migration map.
     "exitCode": 0,
     "files": {
       "result.json": {"mode": "json", "expected": {"id": "one"}},
+      "stdout.txt": {"mode": "empty"},
       "stderr.txt": {"mode": "empty"}
     }
   }]
@@ -120,7 +124,10 @@ explicitly reviewed removed methods in the migration map.
 The example illustrates the format; use the actual method name from the source
 test when adding a case. Use either `script` or raw CLI `args`; scripts get
 `--output <format> -c <script>` (`json` by default), whereas `args` are passed
-verbatim. `fixtures` maps relative filenames to UTF-8 input text.
+verbatim. To test piped scripts, use raw `args` without `-c`, for example
+`"args": ["--quiet", "--output", "json"]`, with a nonempty string such as
+`"stdin": "echo first\necho second"`. The runner does not add a trailing
+newline. `fixtures` maps relative filenames to UTF-8 input text.
 `timeoutSeconds` defaults to 45 and is capped at 120.
 
 Placeholders use only `${ALL_CAPS}`. `${WORK}` is the native case directory;
@@ -142,6 +149,8 @@ case directory.
   `delimiter` defaults to comma. Equivalent CSV quoting is accepted.
 - `text`: exact `expected` text, or semantic `contains`, `notContains`,
   `lineCounts` and substring `occurrences` assertions. No universal whitespace/ANSI/prompt normalization.
+  Opt in to LF/CRLF equivalence for exact text with `"normalizeNewlines": true`;
+  line order, blank lines, and the final newline still have to match.
   Assert labels, values and counts, not table borders or terminal widths.
   Include counts on stable labels/values to reject duplicated rendered output.
 - `bytes`, `empty`, `absent`: exact byte arrays, an existing empty file, or
@@ -245,5 +254,6 @@ python -m pytest tests\cli-contracts --profile offline --shell-executable C:\pat
 Failure folders contain only declared synthetic fixtures, the case definition,
 and isolated process output; inherited environment variables are not recorded.
 Use a new artifacts directory for each run: previous failure evidence is never
-silently overwritten. Upload only this dedicated synthetic test data, never
+overwritten. If saving fails, the runner adds a diagnostic to the original test
+failure instead of replacing it. Upload only this dedicated synthetic test data, never
 arbitrary shell sessions, real-account diagnostics, or local configuration.

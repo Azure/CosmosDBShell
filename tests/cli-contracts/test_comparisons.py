@@ -159,6 +159,20 @@ def test_no_prompt_or_ansi_is_stripped(tmp_path):
             compare_file(path, {"mode": "json", "expected": {"id": 1}})
 
 
+def test_exact_text_newline_normalization_is_opt_in(tmp_path):
+    path = tmp_path / "result"
+    exact = {"mode": "text", "expected": "first\nsecond\n"}
+    portable = {**exact, "normalizeNewlines": True}
+    path.write_bytes(b"first\r\nsecond\r\n")
+    compare_file(path, portable)
+    with pytest.raises(AssertionError):
+        compare_file(path, exact)
+    for data in (b"second\nfirst\n", b"first\nsecond", b"first\nsecond\nsecond\n", b"first\rsecond\r"):
+        path.write_bytes(data)
+        with pytest.raises(AssertionError):
+            compare_file(path, portable)
+
+
 @pytest.mark.parametrize("mode", ["json", "text", "csv", "bytes", "empty"])
 def test_missing_artifact_fails(tmp_path, mode):
     specs = {"json": {"expected": {}}, "text": {"expected": ""}, "csv": {"expected": []}, "bytes": {"expected": []}}
@@ -171,6 +185,8 @@ def test_missing_artifact_fails(tmp_path, mode):
     {"mode": "csv", "expected": [["a", 1]]}, {"mode": "bytes", "expected": [256]},
     {"mode": "json", "schema": {}, "dynamic": {"/x": {}}},
     {"mode": "empty", "contains": ["x"]},
+    {"mode": "text", "contains": ["x"], "normalizeNewlines": True},
+    {"mode": "text", "expected": "x", "normalizeNewlines": "true"},
     {"mode": "json", "schema": {"$ref": "https://example.com/schema.json"}},
 ])
 def test_invalid_comparison_is_not_success_shaped(spec):

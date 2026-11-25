@@ -17,7 +17,12 @@ def test_contract(contract_case, shell_launch, tmp_path, pytestconfig):
     except Exception as error:
         artifacts = pytestconfig.getoption("--contract-artifacts")
         if artifacts is not None:
-            destination = artifacts.resolve() / contract_case["id"]
-            save_failure_artifacts(contract_case, work, destination)
-            error.add_note(f"Failure artifacts: {destination}")
+            destination = artifacts / contract_case["id"]
+            try:
+                destination = artifacts.resolve() / contract_case["id"]
+                save_failure_artifacts(contract_case, work, destination)
+            except (OSError, RuntimeError, ValueError) as artifact_error:
+                error.add_note(f"Could not save failure artifacts to {destination}: {artifact_error}")
+            else:
+                error.add_note(f"Failure artifacts: {destination}")
         raise

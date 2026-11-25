@@ -1,8 +1,10 @@
+from concurrent.futures import Future
 import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
+from threading import Thread
 
 import psutil
 
@@ -119,6 +121,42 @@ def _kill_owned_tree(process):
     psutil.wait_procs([*children, parent], timeout=5)
 
 
+def _communicate(process, stdin, timeout):
+    pending = None
+    if os.name == "nt" and stdin:
+        # Older Windows Python versions can block writing a full stdin pipe
+        # before communicate() starts enforcing its timeout.
+        pending = Future()
+
+        def send():
+            try:
+                pending.set_result(process.communicate(input=stdin))
+            except BaseException as error:
+                pending.set_exception(error)
+
+        Thread(target=send, daemon=True).start()
+
+    try:
+        if pending is None:
+            process.communicate(input=stdin, timeout=timeout)
+        else:
+            try:
+                pending.result(timeout=timeout)
+            except TimeoutError as error:
+                raise subprocess.TimeoutExpired(process.args, timeout) from error
+    except subprocess.TimeoutExpired:
+        _kill_owned_tree(process)
+        if pending is None:
+            process.communicate(timeout=10)
+        else:
+            process.wait(timeout=10)
+        raise
+    except BaseException:
+        _kill_owned_tree(process)
+        process.wait(timeout=10)
+        raise
+
+
 def save_failure_artifacts(case, work, destination):
     if destination.exists():
         raise FileExistsError(f"Refusing to overwrite previous failure artifacts: {destination}")
@@ -148,6 +186,7 @@ def run_case(case, launch, work, bindings=None):
     args = case.get("args")
     if args is None:
         args = ["--output", case.get("format", "json"), "-c", case["script"]]
+    stdin = case.get("stdin", "").encode("utf-8")
     timeout = float(case.get("timeoutSeconds", 45))
     with (work / "stdout.txt").open("wb") as stdout, (work / "stderr.txt").open("wb") as stderr:
         process = subprocess.Popen(
@@ -155,15 +194,9 @@ def run_case(case, launch, work, bindings=None):
             stdin=subprocess.PIPE, stdout=stdout, stderr=stderr,
         )
         try:
-            process.communicate(input=b"", timeout=timeout)
+            _communicate(process, stdin, timeout)
         except subprocess.TimeoutExpired as error:
-            _kill_owned_tree(process)
-            process.communicate(timeout=10)
             raise AssertionError(f"{case['id']}: timed out after {timeout:g}s; output in {work}") from error
-        except BaseException:
-            _kill_owned_tree(process)
-            process.wait(timeout=10)
-            raise
     assert process.returncode == case["exitCode"], (
         f"{case['id']}: exit code {process.returncode} != {case['exitCode']}\n"
         f"stdout: {(work / 'stdout.txt').read_text(encoding='utf-8-sig')}\n"

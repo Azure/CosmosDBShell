@@ -62,7 +62,7 @@
     },
     {
       "disposition": "pending_external",
-      "reason": "Process suite mixes startup, stream, stdin, environment, rendering and error variants. Script/args cases can migrate many scenarios, but stdin/interactive variants and remaining rows are not claimed covered.",
+      "reason": "Process suite mixes startup, stream, stdin, environment, rendering and error variants. Portable cases cover selected stdin and script/args scenarios, but interactive behavior and remaining rows are not claimed covered.",
       "files": ["CosmosDBShell.Tests/Integration/ShellProcessTests.cs"]
     },
     {
