@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "stdin.statements.semicolon",
+      "profiles": ["offline"],
+      "sources": ["CosmosDBShell.Tests/Integration/ShellProcessTests.cs::MultipleStatements_PrintEveryResultInOrder"],
+      "args": ["--quiet", "--output", "json"],
+      "stdin": "echo first; echo second",
+      "exitCode": 0,
+      "files": {"stdout.txt": {"mode": "text", "expected": "first\nsecond\n", "normalizeNewlines": true}, "stderr.txt": {"mode": "empty"}}
+    },
+    {
+      "id": "stdin.statements.newline",
+      "profiles": ["offline"],
+      "sources": ["CosmosDBShell.Tests/Integration/ShellProcessTests.cs::MultipleStatements_PrintEveryResultInOrder"],
+      "args": ["--quiet", "--output", "json"],
+      "stdin": "echo first\necho second",
+      "exitCode": 0,
+      "files": {"stdout.txt": {"mode": "text", "expected": "first\nsecond\n", "normalizeNewlines": true}, "stderr.txt": {"mode": "empty"}}
+    },
+    {
+      "id": "stdin.redirect.append",
+      "profiles": ["offline"],
+      "sources": ["CosmosDBShell.Tests/Integration/ShellProcessTests.cs::MultipleStatements_HonorEachFileRedirection"],
+      "args": ["--quiet", "--output", "json"],
+      "stdin": "echo first > 'result.txt'; echo second >> 'result.txt'",
+      "exitCode": 0,
+      "files": {
+        "result.txt": {"mode": "text", "expected": "first\nsecond\n", "normalizeNewlines": true},
+        "stdout.txt": {"mode": "empty"},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "stdin.redirect.overwrite",
+      "profiles": ["offline"],
+      "sources": ["CosmosDBShell.Tests/Integration/ShellProcessTests.cs::MultipleStatements_HonorEachFileRedirection"],
+      "args": ["--quiet", "--output", "json"],
+      "stdin": "echo first > 'result.txt'; echo second > 'result.txt'",
+      "exitCode": 0,
+      "files": {
+        "result.txt": {"mode": "text", "expected": "second\n", "normalizeNewlines": true},
+        "stdout.txt": {"mode": "empty"},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "stdin.redirect.distinct",
+      "profiles": ["offline"],
+      "sources": ["CosmosDBShell.Tests/Integration/ShellProcessTests.cs::MultipleStatements_HonorEachFileRedirection"],
+      "args": ["--quiet", "--output", "json"],
+      "stdin": "echo first > 'first.txt'; echo second > 'second.txt'",
+      "exitCode": 0,
+      "files": {
+        "first.txt": {"mode": "text", "expected": "first\n", "normalizeNewlines": true},
+        "second.txt": {"mode": "text", "expected": "second\n", "normalizeNewlines": true},
+        "stdout.txt": {"mode": "empty"},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "stdin.error.syntax",
+      "profiles": ["offline"],
+      "sources": ["CosmosDBShell.Tests/Integration/ShellProcessTests.cs::StdinPipedScript_SyntaxError_ReturnsUsageExitCode"],
+      "args": ["--output", "json"],
+      "stdin": "echo \"unterminated",
+      "exitCode": 2,
+      "files": {
+        "stdout.txt": {"mode": "empty"},
+        "stderr.txt": {"mode": "json", "schema": {"type": "object", "required": ["status", "error"], "properties": {"status": {"const": "error"}, "error": {"type": "string", "minLength": 1}}}}
+      }
+    }
+  ]
+}

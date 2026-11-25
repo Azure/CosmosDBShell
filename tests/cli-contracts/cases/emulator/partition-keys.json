@@ -1,0 +1,71 @@
+{
+  "schemaVersion":1,
+  "cases":[
+    {
+      "id":"emulator.keys.typed-scalar-point-reads",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/PrintPartitionKeyTests.cs::Print_MixedKeyFixtures_SelectsExactDocumentsThroughShellPointReads"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; print numeric 680 | filter '{id, pk, marker}' > 'numeric.json'; print string '\"680\"' | filter '{id, pk, marker}' > 'string.json'; print fraction 680.5 | filter '{id, pk, marker}' > 'fraction.json'; print boolean true | filter '{id, pk, marker}' > 'boolean.json'; print false-value false | filter '{id, pk, marker}' > 'false.json'; print null-value null | filter '{id, pk, marker}' > 'null.json'; print null-string '\"null\"' | filter '{id, pk, marker}' > 'null-string.json'; print zeroes '001' | filter '{id, pk, marker}' > 'zeroes.json'; print empty '' | filter '{id, pk, marker}' > 'empty.json'; print space ' ' | filter '{id, pk, marker}' > 'space.json'",
+      "exitCode":0,
+      "emulator":{"containers":[{"id":"items","partitionKey":["/pk"],"items":[
+        {"id":"numeric","pk":680,"marker":"numeric"},
+        {"id":"string","pk":"680","marker":"string"},
+        {"id":"fraction","pk":680.5,"marker":"fraction"},
+        {"id":"boolean","pk":true,"marker":"boolean"},
+        {"id":"false-value","pk":false,"marker":"false"},
+        {"id":"null-value","pk":null,"marker":"null"},
+        {"id":"null-string","pk":"null","marker":"null-string"},
+        {"id":"zeroes","pk":"001","marker":"zeroes"},
+        {"id":"empty","pk":"","marker":"empty"},
+        {"id":"space","pk":" ","marker":"space"}
+      ]}]},
+      "files":{
+        "numeric.json":{"mode":"json","expected":{"id":"numeric","pk":680,"marker":"numeric"}},
+        "string.json":{"mode":"json","expected":{"id":"string","pk":"680","marker":"string"}},
+        "fraction.json":{"mode":"json","expected":{"id":"fraction","pk":680.5,"marker":"fraction"}},
+        "boolean.json":{"mode":"json","expected":{"id":"boolean","pk":true,"marker":"boolean"}},
+        "false.json":{"mode":"json","expected":{"id":"false-value","pk":false,"marker":"false"}},
+        "null.json":{"mode":"json","expected":{"id":"null-value","pk":null,"marker":"null"}},
+        "null-string.json":{"mode":"json","expected":{"id":"null-string","pk":"null","marker":"null-string"}},
+        "zeroes.json":{"mode":"json","expected":{"id":"zeroes","pk":"001","marker":"zeroes"}},
+        "empty.json":{"mode":"json","expected":{"id":"empty","pk":"","marker":"empty"}},
+        "space.json":{"mode":"json","expected":{"id":"space","pk":" ","marker":"space"}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"emulator.keys.hierarchical-point-reads",
+      "profiles":["emulator-linux","emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/PrintPartitionKeyTests.cs::Print_MixedKeyFixtures_SelectsExactDocumentsThroughShellPointReads"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; print a '[1001,\"customer\"]' --database '${DB}' --container two | filter '{id, first, second, marker}' > 'two.json'; print b '[\"tenant\",680,true]' --database '${DB}' --container three | filter '{id, first, second, third, marker}' > 'three.json'",
+      "exitCode":0,
+      "emulator":{"containers":[
+        {"id":"two","partitionKey":["/first","/second"],"items":[{"id":"a","first":1001,"second":"customer","marker":"two"}]},
+        {"id":"three","partitionKey":["/first","/second","/third"],"items":[{"id":"b","first":"tenant","second":680,"third":true,"marker":"three"}]}
+      ]},
+      "files":{
+        "two.json":{"mode":"json","expected":{"id":"a","first":1001,"second":"customer","marker":"two"}},
+        "three.json":{"mode":"json","expected":{"id":"b","first":"tenant","second":680,"third":true,"marker":"three"}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    },
+    {
+      "id":"emulator.keys.same-id-numeric-string-collisions",
+      "profiles":["emulator-windows"],
+      "sources":["CosmosDBShell.Tests/Integration/PrintPartitionKeyTests.cs::Print_SameIdNumericAndStringKeys_SelectsExactScalarAndHierarchicalDocuments"],
+      "script":"connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; print same 680 | filter '{id, pk, marker}' > 'numeric.json'; print same '\"680\"' | filter '{id, pk, marker}' > 'string.json'; print pair '[\"tenant\",680]' --container two | filter '{id, first, second, marker}' > 'two-number.json'; print pair '[\"tenant\",\"680\"]' --container two | filter '{id, first, second, marker}' > 'two-string.json'",
+      "exitCode":0,
+      "emulator":{"containers":[
+        {"id":"items","partitionKey":["/pk"],"items":[{"id":"same","pk":680,"marker":"numeric"},{"id":"same","pk":"680","marker":"string"}]},
+        {"id":"two","partitionKey":["/first","/second"],"items":[{"id":"pair","first":"tenant","second":680,"marker":"numeric"},{"id":"pair","first":"tenant","second":"680","marker":"string"}]}
+      ]},
+      "files":{
+        "numeric.json":{"mode":"json","expected":{"id":"same","pk":680,"marker":"numeric"}},
+        "string.json":{"mode":"json","expected":{"id":"same","pk":"680","marker":"string"}},
+        "two-number.json":{"mode":"json","expected":{"id":"pair","first":"tenant","second":680,"marker":"numeric"}},
+        "two-string.json":{"mode":"json","expected":{"id":"pair","first":"tenant","second":"680","marker":"string"}},
+        "stderr.txt":{"mode":"empty"}
+      }
+    }
+  ]
+}

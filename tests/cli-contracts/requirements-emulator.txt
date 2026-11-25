@@ -1,0 +1,2 @@
+-r requirements.txt
+azure-cosmos==4.17.1

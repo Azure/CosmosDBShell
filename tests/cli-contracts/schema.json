@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "cases"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "cases": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/case"}}
+  },
+  "$defs": {
+    "containers": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "partitionKey", "items"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1, "pattern": "^[^/\\\\?#]+$"},
+          "partitionKey": {"type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}},
+          "items": {"type": "array", "items": {
+            "type": "object", "required": ["id"],
+            "properties": {"id": {"type": "string", "minLength": 1}},
+            "not": {"anyOf": [{"required": ["_rid"]}, {"required": ["_self"]}, {"required": ["_etag"]}, {"required": ["_attachments"]}, {"required": ["_ts"]}]}
+          }}
+        }
+      }
+    },
+    "emulator": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "containers": {"$ref": "#/$defs/containers"},
+        "verify": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "containers": {"$ref": "#/$defs/containers"},
+            "databaseExists": {"type": "boolean"},
+            "newDatabaseExists": {"type": "boolean"}
+          }
+        }
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {"enum": ["json", "jsonl", "csv", "text", "bytes", "empty", "absent"]},
+        "expected": {},
+        "normalizeNewlines": {"const": true},
+        "schema": {"type": ["object", "boolean"]},
+        "dynamic": {"type": "object", "propertyNames": {"pattern": "^/"}, "additionalProperties": {"type": ["object", "boolean"]}},
+        "unordered": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "delimiter": {"type": "string", "minLength": 1, "maxLength": 1},
+        "contains": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "notContains": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "lineCounts": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "integer", "minimum": 0}},
+        "occurrences": {"type": "object", "minProperties": 1, "propertyNames": {"minLength": 1}, "additionalProperties": {"type": "integer", "minimum": 0}}
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "profiles", "sources", "exitCode", "files"],
+      "oneOf": [{"required": ["script"], "not": {"required": ["args"]}}, {"required": ["args"], "not": {"required": ["script"]}}],
+      "dependentRequired": {"stdin": ["args"]},
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
+        "profiles": {"type": "array", "uniqueItems": true, "minItems": 1, "items": {"enum": ["offline", "emulator-linux", "emulator-windows"]}},
+        "sources": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^CosmosDBShell\\.Tests/.+\\.cs::[A-Za-z_][A-Za-z0-9_]*$"}},
+        "script": {"type": "string", "minLength": 1},
+        "args": {"type": "array", "items": {"type": "string"}},
+        "stdin": {"type": "string", "minLength": 1},
+        "format": {"enum": ["json", "csv", "user", "table"]},
+        "exitCode": {"type": "integer", "minimum": 0, "maximum": 255},
+        "timeoutSeconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 120},
+        "fixtures": {"type": "object", "additionalProperties": {"type": "string"}},
+        "files": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/comparison"}},
+        "environment": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "COSMOSDB_SHELL_FORMAT": {"type": "string"},
+            "COSMOSDB_SHELL_CSVSEP": {"type": "string"},
+            "COSMOSDB_SHELL_CSV_SCALAR_COLUMN": {"type": "string"}
+          }
+        },
+        "emulator": {"$ref": "#/$defs/emulator"}
+      }
+    }
+  }
+}

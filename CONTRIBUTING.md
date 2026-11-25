@@ -120,6 +120,20 @@ Run the offline regression suite without a database:
 dotnet test CosmosDBShell.Tests/CosmosDBShell.Tests.csproj --filter "Category!=Emulator"
 ```
 
+### Portable CLI Contracts
+
+The [language-neutral CLI suite](docs/cli-contract-tests.md) runs reviewed
+scripts against an executable and compares only declared result files, process
+exit codes, and independently verified emulator side effects. Add cases there
+for externally observable command/script behavior so the same contracts can
+validate the future Rust implementation without a .NET test host.
+
+Keep the existing xUnit tests for the official build, which does not yet run the
+portable suite, and for internal assertions. The suite's migration inventory reports links
+and remaining coverage; a linked case does not imply a whole theory was migrated.
+See the guide for Python setup, launcher selection, output capture, emulator
+profiles, and strict comparison rules.
+
 ### Updating Localized Text
 
 Edit `CosmosDBShell/lang/en.ftl`, then build normally:
@@ -170,7 +184,8 @@ Repository administrators should keep that check required, or require
 ### Running Against the Emulator
 
 CI pins the Linux preview emulator image by digest to avoid rolling-tag regressions.
-Update the pin only after the full Linux emulator suite passes with the replacement.
+Update the pin only after both the .NET tests and portable Linux emulator contracts
+pass with the replacement.
 
 You can develop and test without an Azure subscription by using the [Azure Cosmos DB Emulator](https://learn.microsoft.com/azure/cosmos-db/emulator):
 

@@ -107,7 +107,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           dotnet tool restore
           if ($LASTEXITCODE -ne 0) {
-            throw "Failed to restore .NET local tools (nbgv)."
+            throw "Failed to restore .NET local tools."
           }
 
       - name: Compute version properties
@@ -200,29 +200,84 @@ jobs:
           }
 
       - name: Test solution
-        run: >-
-          dotnet test CosmosDBShell.sln
-          --configuration $env:BUILD_CONFIGURATION
-          --no-build
-          --no-restore
-          --logger "trx;LogFileName=test-results.trx"
-          --results-directory TestResults
-          --collect "XPlat Code Coverage"
+        id: xunit-coverage
         shell: pwsh
+        run: |
+          dotnet tool run dotnet-coverage collect `
+            --settings tests/cli-contracts/coverage.config `
+            --output TestResults/xunit/coverage.cobertura.xml `
+            --output-format cobertura `
+            dotnet test CosmosDBShell.sln `
+              --configuration $env:BUILD_CONFIGURATION `
+              --no-build `
+              --no-restore `
+              --logger "trx;LogFileName=test-results.trx" `
+              --results-directory TestResults
+          if ($LASTEXITCODE -ne 0) {
+            throw "Solution tests or coverage collection failed."
+          }
+
+          [xml]$coverage = Get-Content -Raw TestResults/xunit/coverage.cobertura.xml
+          $coveredProductLines = $coverage.SelectNodes('//class[contains(@filename, "Azure.Data.Cosmos.Shell.")]/lines/line[@hits > 0]')
+          if ($coveredProductLines.Count -eq 0) {
+            throw "Solution tests collected no C# shell product coverage."
+          }
+
+      - name: Setup Python for portable coverage
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: tests/cli-contracts/requirements.txt
+
+      - name: Install portable contract dependencies
+        run: python -m pip install -r tests/cli-contracts/requirements.txt
+
+      - name: Collect C# coverage from portable CLI contracts
+        id: cli-coverage
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $assembly = & ./tests/cli-contracts/resolve-shell-assembly.ps1 -Configuration $env:BUILD_CONFIGURATION
+          dotnet tool run dotnet-coverage collect `
+            --settings tests/cli-contracts/coverage.config `
+            --output TestResults/cli-contracts/coverage.cobertura.xml `
+            --output-format cobertura `
+            python -m pytest tests/cli-contracts --profile offline `
+              --shell-executable dotnet `
+              --shell-prefix-arg $assembly `
+              --contract-artifacts TestResults/cli-contract-failures `
+              --junitxml TestResults/cli-contracts.xml -q
+          if ($LASTEXITCODE -ne 0) {
+            throw "Portable CLI contracts or coverage collection failed."
+          }
+
+          [xml]$coverage = Get-Content -Raw TestResults/cli-contracts/coverage.cobertura.xml
+          $coveredProductLines = $coverage.SelectNodes('//class[contains(@filename, "Azure.Data.Cosmos.Shell.")]/lines/line[@hits > 0]')
+          if ($coveredProductLines.Count -eq 0) {
+            throw "Portable CLI contracts collected no C# shell product coverage."
+          }
+
+      - name: Upload raw coverage and portable contract results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-contract-coverage-results
+          path: |
+            TestResults/cli-contracts.xml
+            TestResults/cli-contracts/coverage.cobertura.xml
+            TestResults/xunit/coverage.cobertura.xml
+            TestResults/cli-contract-failures/
+          retention-days: 7
 
       - name: Generate code coverage report
-        if: always()
+        id: combined-coverage
+        if: steps.xunit-coverage.outcome == 'success' && steps.cli-coverage.outcome == 'success'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $coverageFiles = Get-ChildItem -Path TestResults -Recurse -Filter 'coverage.cobertura.xml' -ErrorAction SilentlyContinue
-          if (-not $coverageFiles) {
-            Write-Host '::warning::No coverage files found; skipping coverage report.'
-            return
-          }
-
-          $reports = ($coverageFiles.FullName -join ';')
+          $reports = 'TestResults/xunit/coverage.cobertura.xml;TestResults/cli-contracts/coverage.cobertura.xml'
           dotnet tool run reportgenerator `
             "-reports:$reports" `
             "-targetdir:TestResults/coverage" `
@@ -239,13 +294,13 @@ jobs:
 
       # Publish coverage to GitHub Code Quality so the aggregate percentage and
       # per-file breakdown appear directly on the PR (public preview feature).
-      # ReportGenerator merges the per-project XPlat reports into a single
+      # ReportGenerator merges xUnit and portable CLI reports into a single
       # Cobertura.xml that this action uploads. Skipped for fork PRs, which
       # cannot write to the base repo; `fail-on-error: false` keeps CI green if
       # Code Quality is not yet enabled on the repository.
       - name: Upload coverage to GitHub Code Quality
         if: >-
-          always() &&
+          steps.combined-coverage.outcome == 'success' &&
           (github.event_name != 'pull_request' ||
            github.event.pull_request.head.repo.full_name == github.repository) &&
           hashFiles('TestResults/coverage/Cobertura.xml') != ''

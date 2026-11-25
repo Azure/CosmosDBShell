@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "offline-ftab-markdown-sort-and-take",
+      "profiles": ["offline"],
+      "sources": [
+        "CosmosDBShell.Tests/CommandTests/FtabCommandTests.cs::ExecuteAsync_SortsObjectRows_Descending",
+        "CosmosDBShell.Tests/CommandTests/FtabCommandTests.cs::ExecuteAsync_AppliesFieldsAndTake_ToDocumentsWrapper"
+      ],
+      "format": "json",
+      "script": "echo [{\"id\":\"a\",\"score\":1},{\"id\":\"b\",\"score\":2}] | ftab -sort score:desc -take 1 -format markdown > 'table.md'",
+      "exitCode": 0,
+      "files": {
+        "table.md": {"mode": "text", "lineCounts": {"| id | score |": 1, "| --- | --- |": 1, "| b | 2 |": 1, "| a | 1 |": 0}},
+        "stdout.txt": {"mode": "empty"},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "offline-cls-machine-result",
+      "profiles": ["offline"],
+      "sources": ["CosmosDBShell.Tests/Integration/BasicCommandsTests.cs::Cls_RunsWithoutError"],
+      "format": "json",
+      "script": "cls > 'result.json'",
+      "exitCode": 0,
+      "files": {
+        "result.json": {"mode": "json", "expected": {"status": "ok"}},
+        "stdout.txt": {"mode": "empty"},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "offline-doctor-disconnected-without-update-check",
+      "profiles": ["offline"],
+      "sources": [
+        "CosmosDBShell.Tests/Integration/ShellProcessTests.cs::Doctor_ReportsJsonAndRequiredCheckExitCode",
+        "CosmosDBShell.Tests/CommandTests/DoctorCommandTests.cs::WhoAliases_ReturnStructuredContextWithoutTextHeading"
+      ],
+      "format": "json",
+      "script": "doctor who --no-update-check > 'report.json'",
+      "exitCode": 0,
+      "files": {
+        "report.json": {
+          "mode": "json",
+          "schema": {
+            "type": "object",
+            "required": ["schemaVersion", "status", "summary", "checks"],
+            "additionalProperties": false,
+            "properties": {
+              "schemaVersion": {"const": 1},
+              "status": {"const": "PASS"},
+              "summary": {
+                "type": "object",
+                "required": ["fail", "durationMs", "requestCharge"],
+                "properties": {"fail": {"const": 0}, "durationMs": {"type": "integer", "minimum": 0}, "requestCharge": {"type": "null"}}
+              },
+              "checks": {
+                "type": "array",
+                "allOf": [
+                  {"contains": {"required": ["id", "status"], "properties": {"id": {"const": "shell"}, "status": {"const": "PASS"}}}, "maxContains": 1},
+                  {"contains": {"required": ["id", "status", "code"], "properties": {"id": {"const": "connection"}, "status": {"const": "SKIP"}, "code": {"const": "not-connected"}}}, "maxContains": 1},
+                  {"contains": {"required": ["id", "status", "code"], "properties": {"id": {"const": "updates"}, "status": {"const": "SKIP"}, "code": {"const": "update-check-disabled"}}}, "maxContains": 1}
+                ],
+                "items": {"type": "object"}
+              }
+            }
+          }
+        },
+        "stdout.txt": {"mode": "empty"},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "offline-edit-requires-terminal",
+      "profiles": ["offline"],
+      "sources": ["CosmosDBShell.Tests/Integration/ShellProcessTests.cs::MachineMode_CommandFailure_ReportsSingleStructuredError"],
+      "format": "json",
+      "script": "edit 'draft.csh'",
+      "exitCode": 1,
+      "files": {
+        "draft.csh": {"mode": "absent"},
+        "stdout.txt": {"mode": "empty"},
+        "stderr.txt": {"mode": "json", "expected": {"status": "error", "error": "'edit' needs an interactive terminal and cannot run from a script or piped input."}}
+      }
+    },
+    {
+      "id": "offline-welcome-quick-start",
+      "profiles": ["offline"],
+      "sources": ["CosmosDBShell.Tests/CommandTests/WelcomeCommandTests.cs::WelcomeCommand_PrintsScreenAndReturnsSuccess"],
+      "format": "user",
+      "script": "welcome",
+      "exitCode": 0,
+      "files": {
+        "stdout.txt": {"mode": "text", "contains": ["START HERE", "connect <endpoint>", "ls  /  cd <name>  /  pwd", "query \"SELECT * FROM c\"", "https://github.com/Azure/CosmosDBShell"]},
+        "stderr.txt": {"mode": "empty"}
+      }
+    }
+  ]
+}

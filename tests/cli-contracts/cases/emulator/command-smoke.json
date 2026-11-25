@@ -1,0 +1,223 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "emulator-bucket-client-selection-and-reset",
+      "profiles": ["emulator-linux", "emulator-windows"],
+      "sources": ["CosmosDBShell.Tests/Integration/AdditionalCommandsTests.cs::Bucket_ShowsCurrent_SetsAndResets"],
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}'; bucket > 'before.json'; bucket 3; bucket > 'selected.json'; bucket 0; bucket > 'reset.json'",
+      "exitCode": 0,
+      "emulator": {},
+      "files": {
+        "before.json": {"mode": "json", "expected": {"clientBucket": null}},
+        "selected.json": {"mode": "json", "expected": {"clientBucket": 3}},
+        "reset.json": {"mode": "json", "expected": {"clientBucket": null}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-can-i-and-whoami-with-emulator-key",
+      "profiles": ["emulator-linux", "emulator-windows"],
+      "sources": [
+        "CosmosDBShell.Tests/CommandTests/CanICommandTests.cs::CanI_KeyAuth_ReportsAllow",
+        "CosmosDBShell.Tests/CommandTests/WhoamiCommandTests.cs::Whoami_KeyAuth_ReportsNoIdentity"
+      ],
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; can-i read > 'access.json'; whoami > 'identity.json'",
+      "exitCode": 0,
+      "emulator": {"containers": [{"id": "items", "partitionKey": ["/pk"], "items": []}]},
+      "files": {
+        "access.json": {"mode": "json", "expected": {"action": "read", "database": "${DB}", "container": "items", "decision": "allow", "method": "key", "statusCode": null, "note": "Connected with a master key (account-key or emulator); all data actions are permitted."}},
+        "identity.json": {"mode": "json", "expected": {"credentialType": "Emulator", "identityAvailable": false, "note": "Connected with account-key or emulator credentials; no Entra identity is available."}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-conflict-index-and-ttl-show-defaults",
+      "profiles": ["emulator-windows"],
+      "sources": [
+        "CosmosDBShell.Tests/CommandTests/ConflictCommandTests.cs::NormalizeMode_ReturnsCanonicalMode",
+        "CosmosDBShell.Tests/Integration/AdditionalCommandsTests.cs::IndexPolicy_Read_ReturnsPolicyJson",
+        "CosmosDBShell.Tests/CommandTests/TtlCommandTests.cs::Show_WithSeconds_ThrowsCommandException"
+      ],
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; conflict show > 'conflict.json'; index show > 'index.json'; ttl show > 'ttl.json'",
+      "exitCode": 0,
+      "emulator": {"containers": [{"id": "items", "partitionKey": ["/pk"], "items": []}]},
+      "files": {
+        "conflict.json": {"mode": "json", "expected": {"container": "items", "mode": "LastWriterWins", "resolutionPath": "/_ts", "resolutionProcedure": null}},
+        "index.json": {"mode": "json", "expected": {"automatic": true, "indexingMode": "Consistent", "includedPaths": [{"path": "/*", "indexes": []}], "excludedPaths": [{"path": "/\"_etag\"/?"}], "compositeIndexes": [], "spatialIndexes": [], "vectorIndexes": [], "fullTextIndexes": []}},
+        "ttl.json": {"mode": "json", "expected": {"container": "items", "status": "disabled", "defaultTimeToLiveSeconds": null}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-info-and-throughput-at-container-scope",
+      "profiles": ["emulator-windows"],
+      "sources": [
+        "CosmosDBShell.Tests/Integration/AdditionalCommandsTests.cs::Info_AtContainerLevel_ReturnsContainerSettings",
+        "CosmosDBShell.Tests/Integration/AdditionalCommandsTests.cs::Info_AtContainerLevel_IncludesIndexingPolicySummary",
+        "CosmosDBShell.Tests/CommandTests/ThroughputCommandTests.cs::Show_WithRu_ThrowsCommandException"
+      ],
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; info > 'info.json'; throughput show > 'throughput.json'",
+      "exitCode": 0,
+      "emulator": {"containers": [{"id": "items", "partitionKey": ["/pk"], "items": [{"id": "one", "pk": "a"}]}]},
+      "files": {
+        "info.json": {
+          "mode": "json",
+          "expected": {
+            "id": "items",
+            "partitionKey": ["/pk"],
+            "minThroughput": 400,
+            "maxThroughput": 400,
+            "analyticalTTL": null,
+            "geospatialType": "Geography",
+            "documentCount": 1,
+            "dataSizeKb": null,
+            "totalSizeKb": null,
+            "session": {"requestCharge": null, "chargedOperationCount": null},
+            "indexingPolicy": {"indexingMode": "Consistent", "automatic": true, "includedPaths": 1, "excludedPaths": 1, "compositeIndexes": 0, "spatialIndexes": 0, "vectorIndexes": 0}
+          },
+          "dynamic": {
+            "/dataSizeKb": {"type": "integer", "minimum": 0},
+            "/totalSizeKb": {"type": "integer", "minimum": 0},
+            "/session/requestCharge": {"type": "number", "exclusiveMinimum": 0},
+            "/session/chargedOperationCount": {"type": "integer", "minimum": 1}
+          }
+        },
+        "throughput.json": {"mode": "json", "expected": {"scope": "container", "resource": "items", "mode": "manual", "throughput": 400, "autoscaleMaxThroughput": null, "minThroughput": 400}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-schema-infers-types-and-presence",
+      "profiles": ["emulator-linux", "emulator-windows"],
+      "sources": [
+        "CosmosDBShell.Tests/CommandTests/SchemaCommandTests.cs::BuildFieldsOnlyResult_ReturnsOnlySampleCountAndFields",
+        "CosmosDBShell.Tests/CommandTests/SchemaCommandTests.cs::InferSchema_RecordsMultipleTypesForSameField",
+        "CosmosDBShell.Tests/CommandTests/SchemaCommandTests.cs::InferSchema_TracksPresenceAcrossDocuments"
+      ],
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; schema --fields-only > 'schema.json'",
+      "exitCode": 0,
+      "emulator": {"containers": [{"id": "items", "partitionKey": ["/pk"], "items": [
+        {"id": "one", "pk": "a", "sample": 1, "optional": true},
+        {"id": "two", "pk": "a", "sample": "two"}
+      ]}]},
+      "files": {
+        "schema.json": {
+          "mode": "json",
+          "schema": {
+            "type": "object",
+            "required": ["sampledDocuments", "fields"],
+            "additionalProperties": false,
+            "properties": {
+              "sampledDocuments": {"const": 2},
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["path", "types", "presence"],
+                  "additionalProperties": false,
+                  "properties": {"path": {"type": "string"}, "types": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}, "presence": {"enum": [1, 2]}}
+                },
+                "allOf": [
+                  {"contains": {"const": {"path": "id", "types": ["string"], "presence": 2}}, "maxContains": 1},
+                  {"contains": {"const": {"path": "pk", "types": ["string"], "presence": 2}}, "maxContains": 1},
+                  {"contains": {"const": {"path": "sample", "types": ["number", "string"], "presence": 2}}, "maxContains": 1},
+                  {"contains": {"const": {"path": "optional", "types": ["boolean"], "presence": 1}}, "maxContains": 1}
+                ]
+              }
+            }
+          }
+        },
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-delete-item-preserves-neighbor",
+      "profiles": ["emulator-linux", "emulator-windows"],
+      "sources": ["CosmosDBShell.Tests/Integration/AdditionalCommandsTests.cs::Delete_Item_RemovesItem"],
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; delete item 'target' > 'deleted.json'",
+      "exitCode": 0,
+      "emulator": {
+        "containers": [{"id": "items", "partitionKey": ["/pk"], "items": [{"id": "target", "pk": "target"}, {"id": "neighbor", "pk": "neighbor", "value": 42}]}],
+        "verify": {"containers": [{"id": "items", "partitionKey": ["/pk"], "items": [{"id": "neighbor", "pk": "neighbor", "value": 42}]}]}
+      },
+      "files": {
+        "deleted.json": {"mode": "json", "expected": {"type": "item", "count": 1, "dryRun": false}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-watch-bounded-change-feed",
+      "profiles": ["emulator-windows"],
+      "sources": ["CosmosDBShell.Tests/CommandTests/WatchCommandTests.cs::ExecuteAsync_BoundedMachineWatch_ReturnsExactlyMaxChangesOnce"],
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; watch --from-beginning --max 2 > 'changes.json'",
+      "exitCode": 0,
+      "timeoutSeconds": 20,
+      "emulator": {"containers": [{"id": "items", "partitionKey": ["/pk"], "items": [
+        {"id": "first", "pk": "a", "value": 1}, {"id": "second", "pk": "a", "value": 2}, {"id": "third", "pk": "a", "value": 3}
+      ]}]},
+      "files": {
+        "changes.json": {
+          "mode": "json",
+          "expected": {"type": "item", "values": [
+            {"id": "first", "pk": "a", "value": 1, "_rid": null, "_self": null, "_etag": null, "_attachments": null, "_ts": null, "_lsn": null},
+            {"id": "second", "pk": "a", "value": 2, "_rid": null, "_self": null, "_etag": null, "_attachments": null, "_ts": null, "_lsn": null}
+          ]},
+          "dynamic": {
+            "/values/0/_rid": {"type": "string"}, "/values/0/_self": {"type": "string"}, "/values/0/_etag": {"type": "string"}, "/values/0/_attachments": {"type": "string"}, "/values/0/_ts": {"type": "integer"}, "/values/0/_lsn": {"type": "integer"},
+            "/values/1/_rid": {"type": "string"}, "/values/1/_self": {"type": "string"}, "/values/1/_etag": {"type": "string"}, "/values/1/_attachments": {"type": "string"}, "/values/1/_ts": {"type": "integer"}, "/values/1/_lsn": {"type": "integer"}
+          }
+        },
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-sproc-create-list-delete",
+      "profiles": ["emulator-windows"],
+      "sources": ["CosmosDBShell.Tests/Integration/ServerSideProgrammingTests.cs::Sproc_CreateListShowExists_AndDelete"],
+      "fixtures": {"body.js": "function sample() { getContext().getResponse().setBody(\"sample\"); }"},
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; sproc create sample 'body.js' > 'created.json'; sproc list > 'listed.json'; sproc delete sample > 'deleted.json'; sproc list > 'remaining.json'",
+      "exitCode": 0,
+      "emulator": {"containers": [{"id": "items", "partitionKey": ["/pk"], "items": []}]},
+      "files": {
+        "created.json": {"mode": "json", "expected": {"type": "sproc", "id": "sample", "created": true}},
+        "listed.json": {"mode": "json", "expected": {"type": "sproc", "values": [{"id": "sample", "bodyLength": 67, "etag": null, "lastModified": null}]}, "dynamic": {"/values/0/etag": {"type": "string", "minLength": 1}, "/values/0/lastModified": {"type": "string", "minLength": 1}}},
+        "deleted.json": {"mode": "json", "expected": {"type": "sproc", "id": "sample", "deleted": true}},
+        "remaining.json": {"mode": "json", "expected": {"type": "sproc", "values": []}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-trigger-create-list-delete",
+      "profiles": ["emulator-windows"],
+      "sources": ["CosmosDBShell.Tests/Integration/ServerSideProgrammingTests.cs::Trigger_CreateListShowExists_AndDelete"],
+      "fixtures": {"body.js": "function sample() { getContext().getRequest().getBody(); }"},
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; trigger create sample 'body.js' --type pre --operation create > 'created.json'; trigger list > 'listed.json'; trigger delete sample > 'deleted.json'; trigger list > 'remaining.json'",
+      "exitCode": 0,
+      "emulator": {"containers": [{"id": "items", "partitionKey": ["/pk"], "items": []}]},
+      "files": {
+        "created.json": {"mode": "json", "expected": {"type": "trigger", "id": "sample", "created": true, "triggerType": "Pre", "triggerOperation": "Create"}},
+        "listed.json": {"mode": "json", "expected": {"type": "trigger", "values": [{"id": "sample", "bodyLength": 58, "triggerType": "Pre", "triggerOperation": "Create", "etag": null}]}, "dynamic": {"/values/0/etag": {"type": "string", "minLength": 1}}},
+        "deleted.json": {"mode": "json", "expected": {"type": "trigger", "id": "sample", "deleted": true}},
+        "remaining.json": {"mode": "json", "expected": {"type": "trigger", "values": []}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    },
+    {
+      "id": "emulator-udf-create-list-delete",
+      "profiles": ["emulator-windows"],
+      "sources": ["CosmosDBShell.Tests/Integration/ServerSideProgrammingTests.cs::Udf_CreateListShowExists_AndDelete"],
+      "fixtures": {"body.js": "function sample() { return 1; }"},
+      "script": "connect 'AccountEndpoint=${ENDPOINT};AccountKey=${EMULATOR_KEY};' --mode gateway; cd '${DB}/items'; udf create sample 'body.js' > 'created.json'; udf list > 'listed.json'; udf delete sample > 'deleted.json'; udf list > 'remaining.json'",
+      "exitCode": 0,
+      "emulator": {"containers": [{"id": "items", "partitionKey": ["/pk"], "items": []}]},
+      "files": {
+        "created.json": {"mode": "json", "expected": {"type": "udf", "id": "sample", "created": true}},
+        "listed.json": {"mode": "json", "expected": {"type": "udf", "values": [{"id": "sample", "bodyLength": 31, "etag": null}]}, "dynamic": {"/values/0/etag": {"type": "string", "minLength": 1}}},
+        "deleted.json": {"mode": "json", "expected": {"type": "udf", "id": "sample", "deleted": true}},
+        "remaining.json": {"mode": "json", "expected": {"type": "udf", "values": []}},
+        "stderr.txt": {"mode": "empty"}
+      }
+    }
+  ]
+}
